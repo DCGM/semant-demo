@@ -1,5 +1,5 @@
 import httpx
-from config import config
+from semant_demo.config import config
 
 EMBEDDING_URL = "http://localhost:8001"
 
