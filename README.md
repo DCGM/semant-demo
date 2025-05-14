@@ -1,1 +1,1 @@
-# sematn-demo
+# semant-demo
