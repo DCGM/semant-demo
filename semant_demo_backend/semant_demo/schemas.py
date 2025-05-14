@@ -36,6 +36,7 @@ class Document(BaseModel):
 
 class TextChunk(BaseModel):
     id: uuid.UUID
+    title: str
     text: str
     start_page_id: uuid.UUID
     from_page: int
