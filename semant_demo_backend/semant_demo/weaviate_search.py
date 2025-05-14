@@ -10,7 +10,7 @@ from gemma_embedding import get_query_embedding
 
 
 class WeaviateSearch:
-    def __init__(self, client: WeaviateAsyncClient, ):
+    def __init__(self, client: WeaviateAsyncClient):
         self.client = client
         # collections.get() is synchronous, no await needed
         self.chunk_col = self.client.collections.get("Chunks")
@@ -94,6 +94,6 @@ class WeaviateSearch:
         return schemas.SearchResponse(
             results=results,
             search_request=search_request,
-            search_time=search_time,
+            time_spent=search_time,
             search_log=[log_entry]
         )

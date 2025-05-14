@@ -1,0 +1,6 @@
+pydantic
+fastapi
+uvicorn
+numpy
+weaviate-client
+openai
