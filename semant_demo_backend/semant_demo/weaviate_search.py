@@ -80,6 +80,7 @@ class WeaviateSearch:
             document = schemas.Document(**doc_props)
             chunk = schemas.TextChunkWithDocument(
                 id=obj.id,
+                title=obj.properties.get("title", "<no text>"),
                 text=obj.properties.get("text", "<no text>"),
                 start_page_id=obj.properties.get("start_page_id"),
                 from_page=obj.properties.get("from_page"),
