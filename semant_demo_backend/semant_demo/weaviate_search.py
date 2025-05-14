@@ -1,12 +1,11 @@
 import logging
 import weaviate
-from weaviate import use_async_with_custom, WeaviateAsyncClient
-from weaviate.connect import ConnectionParams
-from weaviate.classes.query import Filter
-import schemas
 from time import time
-from config import Config
-from gemma_embedding import get_query_embedding
+from weaviate import use_async_with_custom, WeaviateAsyncClient
+from weaviate.classes.query import Filter
+from semant_demo import schemas
+from semant_demo.config import Config
+from semant_demo.gemma_embedding import get_query_embedding
 
 
 class WeaviateSearch:

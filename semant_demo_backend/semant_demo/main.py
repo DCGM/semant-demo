@@ -1,22 +1,27 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 import os
 import openai
-import schemas
-from config import config
+from semant_demo import schemas
+from semant_demo.config import config
 import logging
-from weaviate_search import WeaviateSearch
+from semant_demo.weaviate_search import WeaviateSearch
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 
 openai.api_key = os.getenv(config.OPENAI_API_KEY)
-search = WeaviateSearch.create(config)
-
+global_searcher = None
+async def get_search() -> WeaviateSearch:
+    global global_searcher
+    if global_searcher is None:
+        global_searcher = await WeaviateSearch.create(config)
+    return global_searcher
 app = FastAPI()
 
 
 @app.post("/search", response_model=schemas.SearchResponse)
-async def search(req: schemas.SearchRequest) -> schemas.SearchResponse:
-    return search.search(req)
+async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.SearchResponse:
+    return searcher.search(req)
 
 
 @app.post("/summarize/{summary_type}", response_model=schemas.SummaryResponse)
