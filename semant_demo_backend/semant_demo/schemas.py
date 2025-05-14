@@ -1,0 +1,60 @@
+from enum import Enum
+from pydantic import BaseModel
+from datetime import datetime
+import uuid
+
+
+class SearchRequest(BaseModel):
+    query: str
+    limit: int = 10
+    min_year: int | None = None
+    max_year: int | None = None
+    min_date: datetime | None = None
+    max_date: datetime | None = None
+    language: str | None = None
+
+
+class Document(BaseModel):
+    id: uuid.UUID
+    library: str
+    title: str
+    subtitle: str | None = None
+    partNumber: int | None = None
+    partName: str | None = None
+    yearIssued: int | None = None
+    dateIssued: datetime | None = None
+    author: str | None = None
+    publisher: str | None = None
+    language: str | None = None
+    description: str | None = None
+    url: str | None = None
+    public: str | None = None
+    documentType: str | None = None
+    genre: str | None = None
+    placeTerm: str | None = None
+
+
+class TextChunk(BaseModel):
+    id: uuid.UUID
+    text: str
+    start_page_id: uuid.UUID
+    from_page: int
+    to_page: int
+    end_paragraph: bool
+    language: str | None = None
+    document: uuid.UUID
+
+
+class TextChunkWithDocument(TextChunk):
+    document_object: Document
+
+
+class SearchResponse(BaseModel):
+    results: list[TextChunkWithDocument]
+    search_request: SearchRequest
+    time_spent: float
+    search_log: list[str]
+
+class SummaryResponse(BaseModel):
+    summary: str
+    time_spent: float
