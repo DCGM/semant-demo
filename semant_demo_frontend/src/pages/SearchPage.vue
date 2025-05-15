@@ -90,6 +90,7 @@
 import { ref } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QCardActions, QSeparator, QList, QItem, QItemSection, QDialog, QSelect } from 'quasar'
 import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument } from 'src/models'
+import { api } from 'src/boot/axios'
 
 const searchForm = ref<SearchRequest>({
   query: '',
@@ -122,13 +123,7 @@ async function onSearch () {
   results.value = []
   summary.value = ''
   try {
-    const resp = await fetch('/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(searchForm.value)
-    })
-    if (!resp.ok) throw new Error('Search failed')
-    const data: SearchResponse = await resp.json()
+    const { data } = await api.post<SearchResponse>('/search', searchForm.value)
     results.value = data.results
     timeSpent.value = data.time_spent
     searchLog.value = data.search_log
@@ -155,13 +150,7 @@ async function onSummarize () {
       time_spent: timeSpent.value,
       search_log: searchLog.value
     }
-    const resp = await fetch(`/summarize/${summaryType.value}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    if (!resp.ok) throw new Error('Summarization failed')
-    const data: SummaryResponse = await resp.json()
+    const { data } = await api.post<SummaryResponse>(`/summarize/${summaryType.value}`, payload)
     summary.value = data.summary
     summaryTimeSpent.value = data.time_spent
     showSummary.value = true
