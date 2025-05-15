@@ -23,23 +23,22 @@
       </div>
     </q-form>
 
-    <div v-if="summaries.length" class="q-mb-lg">
-      <div v-for="(item, idx) in summaries" :key="idx" class="q-mb-md">
-        <q-card style="min-width:350px;max-width:600px;margin:auto;">
-          <q-card-section>
-            <div class="text-h6">Summary</div>
-            <div class="text-caption text-grey">Time spent: {{ item.timeSpent.toFixed(2) }}s</div>
-            <div v-if="item.question" class="text-caption text-primary q-mt-sm">Q: {{ item.question }}</div>
-          </q-card-section>
-          <q-separator />
-          <q-card-section>
-            <div>{{ item.summary }}</div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
-
     <div v-if="results.length" class="q-mb-md">
+      <div v-if="summaries.length" class="q-mb-lg">
+        <div v-for="(item, idx) in summaries" :key="idx" class="q-mb-md">
+          <q-card style="min-width:350px;max-width:600px;margin:auto;">
+            <q-card-section>
+              <div class="text-h6" v-if="item.question">Q: {{ item.question }}</div>
+              <div class="text-h6" v-else>Summary</div>
+              <div class="text-caption text-grey">Time spent: {{ item.timeSpent.toFixed(2) }}s</div>
+            </q-card-section>
+            <q-separator />
+            <q-card-section>
+              <div>{{ item.summary }}</div>
+            </q-card-section>
+          </q-card>
+        </div>
+      </div>
       <div class="q-pa-sm bg-grey-2 rounded-borders" style="max-width: 700px; margin: auto;">
         <div class="row items-center q-gutter-sm q-mb-sm">
           <q-select
@@ -77,15 +76,15 @@
     </div>
 
     <div v-if="results.length" class="q-mt-lg">
-      <!-- Summary & Actions -->
-      <div class="q-pa-sm">
+      <div class="q-pa-sm row items-center q-gutter-sm">
         <div class="text-h6">Results ({{ results.length }})</div>
-        <div class="text-caption text-grey">
+        <div class="text-caption text-grey q-ml-md">
           Time spent: {{ timeSpent.toFixed(2) }}s
         </div>
+        <q-btn flat size="sm" color="primary" @click="toggleSelectAll">
+          {{ allSelected ? 'Unselect All' : 'Select All' }}
+        </q-btn>
       </div>
-
-      <!-- List of Items -->
       <q-list bordered separator class="q-mt-md">
         <q-item
           v-for="(chunk, index) in results"
@@ -160,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox } from 'quasar'
 import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument } from 'src/models'
 import { api } from 'src/boot/axios'
@@ -195,6 +194,8 @@ const selectedResults = ref<Array<string | number>>([])
 const summaries = ref<Array<{ summary: string, timeSpent: number, question?: string }>>([])
 const questionInput = ref('')
 const asking = ref(false)
+
+const allSelected = computed(() => selectedResults.value.length === results.value.length && results.value.length > 0)
 
 async function onSearch () {
   loading.value = true
@@ -271,6 +272,14 @@ async function onAskQuestion () {
     summaries.value.unshift({ summary: 'Failed to answer question.', timeSpent: 0, question })
   } finally {
     asking.value = false
+  }
+}
+
+function toggleSelectAll () {
+  if (allSelected.value) {
+    selectedResults.value = []
+  } else {
+    selectedResults.value = results.value.map(r => r.id)
   }
 }
 </script>
