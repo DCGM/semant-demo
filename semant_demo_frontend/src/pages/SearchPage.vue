@@ -250,15 +250,22 @@ async function onAskQuestion () {
   asking.value = true
   const question = questionInput.value.trim()
   questionInput.value = ''
+  // Use only selected results if any, otherwise all
+  let toSend: TextChunkWithDocument[]
+  if (selectedResults.value.length > 0) {
+    const selectedSet = new Set(selectedResults.value)
+    toSend = results.value.filter(r => selectedSet.has(r.id))
+  } else {
+    toSend = results.value
+  }
   try {
     const payload = {
-      results: results.value,
+      results: toSend,
       search_request: lastSearchRequest.value,
       time_spent: timeSpent.value,
-      search_log: searchLog.value,
-      question
+      search_log: searchLog.value
     }
-    const { data } = await api.post<SummaryResponse>(`/summarize/${summaryType.value}`, payload)
+    const { data } = await api.post<SummaryResponse>(`/question/${encodeURIComponent(question)}`, payload)
     summaries.value.unshift({ summary: data.summary, timeSpent: data.time_spent, question })
   } catch (e) {
     summaries.value.unshift({ summary: 'Failed to answer question.', timeSpent: 0, question })

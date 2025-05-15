@@ -74,3 +74,49 @@ async def summarize(search_response: schemas.SearchResponse, summary_type: str) 
         summary=summary_text,
         time_spent=search_response.time_spent,
     )
+
+
+@app.post("/api/question/{question_text}", response_model=schemas.SummaryResponse)
+async def question(search_response: schemas.SearchResponse, question_text: str) -> schemas.SummaryResponse:
+    # build your snippets with IDs
+    snippets = [
+        f"[doc{i+1}]" + res.text.replace('\\n', ' ')
+        for i, res in enumerate(search_response.results)
+    ]
+
+    system_prompt = "\n".join([
+        "You are a summarization assistant.",
+        "You will be given text snippets, each labeled with a unique ID like [doc1], [doc2], … [doc15].",
+        "When answering, rely only on the information in the snippets. Do not include any information that is not in the snippets.",
+        "Any information you provide must be supported by the snippets and the snipet labels must be included as much as possible."
+    ])
+
+    user_prompt = "\n".join([
+        "Here are the text snippets I want to talk about:",
+        *snippets,
+    ])
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+        {"role": "user", "content": question_text},
+    ]
+    print(messages)
+
+    try:
+        resp = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.0,
+            max_tokens=300,
+        )
+    except openai.OpenAIError as e:
+        logging.error(e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+    summary_text = resp.choices[0].message.content.strip()
+
+    return schemas.SummaryResponse(
+        summary=summary_text,
+        time_spent=search_response.time_spent,
+    )
