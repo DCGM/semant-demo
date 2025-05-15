@@ -3,6 +3,7 @@
 export interface SearchRequest {
   query: string;
   limit?: number;
+  type: string; // 'text' or 'document'
   min_year?: number | null;
   max_year?: number | null;
   min_date?: string | null; // ISO datetime string
@@ -40,9 +41,18 @@ export interface TextChunk {
   end_paragraph: boolean;
   language?: string | null;
   document: string; // UUID as string
+
+  ner_P?: string[] | null; // Person entities
+  ner_T?: string[] | null; // Temporal entities
+  ner_A?: string[] | null; // Address entities
+  ner_G?: string[] | null; // Geographical entities
+  ner_I?: string[] | null; // Institution entities
+  ner_M?: string[] | null; // Media entities
+  ner_O?: string[] | null; // Cultural artifacts
 }
 
 export interface TextChunkWithDocument extends TextChunk {
+  summary?: string | null;
   document_object: Document;
 }
 
