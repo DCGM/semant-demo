@@ -52,7 +52,7 @@
           />
           <q-btn
             color="secondary"
-            label="Summarize All"
+            label="Summarize"
             :loading="summarizing"
             @click="onSummarize"
           />
@@ -221,9 +221,17 @@ async function onSearch () {
 async function onSummarize () {
   if (!results.value.length || !lastSearchRequest.value) return
   summarizing.value = true
+  // Use only selected results if any, otherwise all
+  let toSummarize: TextChunkWithDocument[]
+  if (selectedResults.value.length > 0) {
+    const selectedSet = new Set(selectedResults.value)
+    toSummarize = results.value.filter(r => selectedSet.has(r.id))
+  } else {
+    toSummarize = results.value
+  }
   try {
     const payload = {
-      results: results.value,
+      results: toSummarize,
       search_request: lastSearchRequest.value,
       time_spent: timeSpent.value,
       search_log: searchLog.value
