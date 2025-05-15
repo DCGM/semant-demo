@@ -3,10 +3,16 @@ from pydantic import BaseModel
 from datetime import datetime
 import uuid
 
+class SearchType(str, Enum):
+    text = "text"
+    vector = "vector"
+    hybrid = "hybrid"
+
 
 class SearchRequest(BaseModel):
     query: str
     limit: int = 10
+    type: SearchType = SearchType.hybrid
     min_year: int | None = None
     max_year: int | None = None
     min_date: datetime | None = None
