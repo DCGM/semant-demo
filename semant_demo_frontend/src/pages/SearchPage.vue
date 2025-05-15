@@ -238,9 +238,9 @@ async function onSummarize () {
       search_log: searchLog.value
     }
     const { data } = await api.post<SummaryResponse>(`/summarize/${summaryType.value}`, payload)
-    summaries.value.unshift({ summary: data.summary, timeSpent: data.time_spent })
+    summaries.value.push({ summary: data.summary, timeSpent: data.time_spent })
   } catch (e) {
-    summaries.value.unshift({ summary: 'Failed to summarize.', timeSpent: 0 })
+    summaries.value.push({ summary: 'Failed to summarize.', timeSpent: 0 })
   } finally {
     summarizing.value = false
   }
@@ -267,9 +267,9 @@ async function onAskQuestion () {
       search_log: searchLog.value
     }
     const { data } = await api.post<SummaryResponse>(`/question/${encodeURIComponent(question)}`, payload)
-    summaries.value.unshift({ summary: data.summary, timeSpent: data.time_spent, question })
+    summaries.value.push({ summary: data.summary, timeSpent: data.time_spent, question })
   } catch (e) {
-    summaries.value.unshift({ summary: 'Failed to answer question.', timeSpent: 0, question })
+    summaries.value.push({ summary: 'Failed to answer question.', timeSpent: 0, question })
   } finally {
     asking.value = false
   }
