@@ -55,18 +55,38 @@ class WeaviateSearch:
             for f in filters[1:]:
                 combined_filter &= f
 
-        q_vector = await get_query_embedding(search_request.query)
-
-        # Execute hybrid search
         t1 = time()
-        result = await self.chunk_col.query.hybrid(
-            query=search_request.query,
-            alpha=1,
-            vector=q_vector,
-            limit=search_request.limit,
-            filters=combined_filter,
-            return_references=QueryReference(link_on="document", return_properties=None)
-        )
+        if search_request.type == schemas.SearchType.hybrid:
+            q_vector = await get_query_embedding(search_request.query)
+
+            # Execute hybrid search
+            result = await self.chunk_col.query.hybrid(
+                query=search_request.query,
+                alpha=1,
+                vector=q_vector,
+                limit=search_request.limit,
+                filters=combined_filter,
+                return_references=QueryReference(link_on="document", return_properties=None)
+            )
+        elif search_request.type == schemas.SearchType.text:
+            # Execute text search
+            result = await self.chunk_col.query.bm25(
+                query=search_request.query,
+                limit=search_request.limit,
+                filters=combined_filter,
+                return_references=QueryReference(link_on="document", return_properties=None)
+            )
+        elif search_request.type == schemas.SearchType.vector:
+            q_vector = await get_query_embedding(search_request.query)
+            result = await self.chunk_col.query.near_vector(
+                near_vector=q_vector,
+                limit=search_request.limit,
+                filters=combined_filter,
+                return_references=QueryReference(link_on="document", return_properties=None)
+            )
+        else:
+            raise ValueError(f"Unknown search type: {search_request.type}")
+
         search_time = time() - t1
 
         # Parse results
