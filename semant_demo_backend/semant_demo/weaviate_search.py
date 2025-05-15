@@ -102,9 +102,10 @@ class WeaviateSearch:
             if not doc_objs:
                 continue
             first_doc = doc_objs[0]
+            if "library" not in first_doc.properties or not first_doc.properties["library"]:
+                first_doc.properties["library"] = "mzk"
             document_obj = schemas.Document(
                 id=first_doc.uuid,
-                library='mzk',
                 **first_doc.properties,
             )
             chunk = schemas.TextChunkWithDocument(
@@ -113,6 +114,7 @@ class WeaviateSearch:
                 document_object=document_obj,
                 document=first_doc.uuid
             )
+            chunk.text = chunk.text.replace("-\n", "").replace("\n", " ")
             results.append(chunk)
         response = schemas.SearchResponse(
             results=results,
