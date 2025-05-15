@@ -42,7 +42,7 @@ async def summarize(search_response: schemas.SearchResponse, summary_type: str) 
         "If multiple snippets support the same fact, list all their IDs separated by commas: “This approach improved accuracy by 12% [doc2, doc7, doc11].”",
         "Do not introduce any facts that are not in the snippets. Focus on information that is relevant to the user query.",
         "Write the summary clearly and concisely.",
-        "Keep the summary under 100 words."
+        "Keep the summary under 200 words."
     ])
 
     user_prompt = "\n".join([
