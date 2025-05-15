@@ -36,6 +36,7 @@ class Document(BaseModel):
     url: str | None = None
     public: str | None = None
     documentType: str | None = None
+    keywords: str | None = None
     genre: str | None = None
     placeTerm: str | None = None
 
@@ -51,8 +52,17 @@ class TextChunk(BaseModel):
     language: str | None = None
     document: uuid.UUID
 
+    ner_P: list[str] | None = None  # Person entities
+    ner_T: list[str] | None = None  # Temporal entities
+    ner_A: list[str] | None = None  # Address entities
+    ner_G: list[str] | None = None  # Geographical entities
+    ner_I: list[str] | None = None  # Institution entities
+    ner_M: list[str] | None = None  # Media entities
+    ner_O: list[str] | None = None  # Cultural artifacts
+
 
 class TextChunkWithDocument(TextChunk):
+    summary: str | None = None
     document_object: Document
 
 
