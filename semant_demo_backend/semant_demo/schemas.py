@@ -36,12 +36,12 @@ class Document(BaseModel):
 
 class TextChunk(BaseModel):
     id: uuid.UUID
-    title: str
+    title: str = "<N/A>"
     text: str
     start_page_id: uuid.UUID
     from_page: int
     to_page: int
-    end_paragraph: bool
+    end_paragraph: bool = True
     language: str | None = None
     document: uuid.UUID
 
