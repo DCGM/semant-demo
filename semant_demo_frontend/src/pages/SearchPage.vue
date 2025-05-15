@@ -1,5 +1,28 @@
 <template>
   <q-page class="q-pa-md">
+    <q-form @submit.prevent="onSearch">
+      <div class="row q-col-gutter-md">
+        <div class="col">
+          <q-input v-model="searchForm.query" label="Search Query" dense outlined required />
+        </div>
+        <div class="col">
+          <q-input v-model.number="searchForm.limit" type="number" label="Limit" dense outlined :min="1" :max="50" />
+        </div>
+        <div class="col">
+          <q-input v-model="searchForm.language" label="Language" dense outlined />
+        </div>
+        <div class="col">
+          <q-input v-model.number="searchForm.min_year" type="number" label="Min Year" dense outlined />
+        </div>
+        <div class="col">
+          <q-input v-model.number="searchForm.max_year" type="number" label="Max Year" dense outlined />
+        </div>
+        <div class="col-auto flex flex-center">
+          <q-btn type="submit" color="primary" label="Search" :loading="loading" />
+        </div>
+      </div>
+    </q-form>
+
     <div v-if="summaries.length" class="q-mb-lg">
       <div v-for="(item, idx) in summaries" :key="idx" class="q-mb-md">
         <q-card style="min-width:350px;max-width:600px;margin:auto;">
@@ -52,29 +75,6 @@
         </div>
       </div>
     </div>
-
-    <q-form @submit.prevent="onSearch">
-      <div class="row q-col-gutter-md">
-        <div class="col">
-          <q-input v-model="searchForm.query" label="Search Query" dense outlined required />
-        </div>
-        <div class="col">
-          <q-input v-model.number="searchForm.limit" type="number" label="Limit" dense outlined :min="1" :max="50" />
-        </div>
-        <div class="col">
-          <q-input v-model="searchForm.language" label="Language" dense outlined />
-        </div>
-        <div class="col">
-          <q-input v-model.number="searchForm.min_year" type="number" label="Min Year" dense outlined />
-        </div>
-        <div class="col">
-          <q-input v-model.number="searchForm.max_year" type="number" label="Max Year" dense outlined />
-        </div>
-        <div class="col-auto flex flex-center">
-          <q-btn type="submit" color="primary" label="Search" :loading="loading" />
-        </div>
-      </div>
-    </q-form>
 
     <div v-if="results.length" class="q-mt-lg">
       <!-- Summary & Actions -->
@@ -200,6 +200,7 @@ async function onSearch () {
   loading.value = true
   results.value = []
   summary.value = ''
+  summaries.value = [] // clear summaries and answered questions on new search
   try {
     const { data } = await api.post<SearchResponse>('/search', searchForm.value)
     results.value = data.results
