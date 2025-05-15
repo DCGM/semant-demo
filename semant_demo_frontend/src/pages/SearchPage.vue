@@ -12,10 +12,10 @@
           <q-input v-model="searchForm.language" label="Language" dense outlined />
         </div>
         <div class="col">
-          <q-input v-model="searchForm.min_year" type="number" label="Min Year" dense outlined />
+          <q-input v-model.number="searchForm.min_year" type="number" label="Min Year" dense outlined />
         </div>
         <div class="col">
-          <q-input v-model="searchForm.max_year" type="number" label="Max Year" dense outlined />
+          <q-input v-model.number="searchForm.max_year" type="number" label="Max Year" dense outlined />
         </div>
         <div class="col-auto flex flex-center">
           <q-btn type="submit" color="primary" label="Search" :loading="loading" />
@@ -24,47 +24,77 @@
     </q-form>
 
     <div v-if="results.length" class="q-mt-lg">
-      <q-card>
-        <q-card-section>
-          <div class="text-h6">Results ({{ results.length }})</div>
-          <div class="text-caption text-grey">Time spent: {{ timeSpent.toFixed(2) }}s</div>
-        </q-card-section>
-        <q-separator />
-        <q-card-section>
-          <q-list bordered separator>
-            <q-item v-for="chunk in results" :key="chunk.id">
-              <q-item-section>
-                <div class="text-bold">{{ chunk.title }}</div>
-                <div class="text-caption">
-                  {{ chunk.document_object.author || 'Unknown Author' }} | {{ chunk.document_object.yearIssued || 'Year N/A' }}
-                </div>
-                <div class="q-mt-xs">{{ chunk.text }}</div>
-                <div class="text-caption text-grey">
-                  Pages: {{ chunk.from_page }}-{{ chunk.to_page }}
-                </div>
-              </q-item-section>
-            </q-item>
-          </q-list>
-        </q-card-section>
-        <q-separator />
-        <q-card-actions align="right">
-          <q-select
-            v-model="summaryType"
-            :options="summaryTypes"
-            label="Summary Type"
-            dense
-            outlined
-            style="min-width: 150px"
-          />
-          <q-btn
-            color="secondary"
-            label="Summarize"
-            :loading="summarizing"
-            @click="onSummarize"
-            :disable="!results.length"
-          />
-        </q-card-actions>
-      </q-card>
+      <!-- Summary & Actions -->
+      <div class="q-pa-sm">
+      <div class="text-h6">Results ({{ results.length }})</div>
+      <div class="text-caption text-grey">
+        Time spent: {{ timeSpent.toFixed(2) }}s
+      </div>
+      <div class="row items-center q-gutter-sm q-mt-sm">
+        <q-select
+        v-model="summaryType"
+        :options="summaryTypes"
+        label="Summary Type"
+        dense
+        outlined
+        style="min-width: 150px"
+        />
+        <q-btn
+        color="secondary"
+        label="Summarize All"
+        :loading="summarizing"
+        @click="onSummarize"
+        />
+      </div>
+      </div>
+
+      <!-- List of Items -->
+      <q-list bordered separator class="q-mt-md">
+      <q-item
+        v-for="(chunk, index) in results"
+        :key="chunk.id"
+        clickable
+        class="q-pa-sm"
+      >
+        <q-item-section>
+        <div class="text-h6">{{ index + 1 }}. {{ chunk.title }}</div>
+        <div class="text-caption text-grey">
+          {{ chunk.document_object.author || 'Unknown Author' }}
+          |
+          {{ chunk.document_object.yearIssued || 'Year N/A' }}
+        </div>
+        <div class="text-caption">
+          Doc Title: {{ chunk.document_object.title || 'N/A' }}
+          |
+          Language: {{ chunk.language || 'N/A' }}
+        </div>
+        <div class="text-caption text-grey">
+          Pages: {{ chunk.from_page }}–{{ chunk.to_page }}
+        </div>
+
+        <!-- Always show text -->
+        <div style="white-space: pre-wrap; margin-top: 0.5rem;">
+          {{ chunk.text }}
+        </div>
+
+        <!-- NER only when present -->
+        <div class="text-caption q-mt-sm">
+          <div v-if="chunk.ner_P && chunk.ner_P.length">
+          <strong>People:</strong> {{ chunk.ner_P.join(', ') }}
+          </div>
+          <div v-if="chunk.ner_I && chunk.ner_I.length">
+          <strong>Institutions:</strong> {{ chunk.ner_I.join(', ') }}
+          </div>
+          <div v-if="chunk.ner_M && chunk.ner_M.length">
+          <strong>Media:</strong> {{ chunk.ner_M.join(', ') }}
+          </div>
+          <div v-if="chunk.ner_O && chunk.ner_O.length">
+          <strong>Artifacts:</strong> {{ chunk.ner_O.join(', ') }}
+          </div>
+        </div>
+        </q-item-section>
+      </q-item>
+      </q-list>
     </div>
 
     <q-dialog v-model="showSummary">
