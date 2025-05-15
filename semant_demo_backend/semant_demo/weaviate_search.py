@@ -6,7 +6,9 @@ from weaviate.classes.query import Filter
 from semant_demo import schemas
 from semant_demo.config import Config
 from semant_demo.gemma_embedding import get_query_embedding
-
+from weaviate.classes.query import QueryReference
+import weaviate.collections.classes.internal
+from uuid import UUID
 
 class WeaviateSearch:
     def __init__(self, client: WeaviateAsyncClient):
@@ -63,37 +65,40 @@ class WeaviateSearch:
             vector=q_vector,
             limit=search_request.limit,
             filters=combined_filter,
-            return_references=["document"],
+            return_references=QueryReference(link_on="document", return_properties=None)
         )
         search_time = time() - t1
 
         # Parse results
-        results = []
+        results: list[schemas.TextChunkWithDocument] = []
         log_entry = (
             f"Top {len(result.objects)} results for “{search_request.query}”. "
             f"Retrieved in {search_time:.2f} seconds:"
         )
         logging.info(log_entry)
         for obj in result.objects:
-            doc_props = obj.references.get("document", [{}])[0].get("properties", {})
-            document = schemas.Document(**doc_props)
+            chunk_data = obj.properties
+            doc_objs = obj.references.get("document").objects
+            if not doc_objs:
+                continue
+            first_doc = doc_objs[0]
+            document_obj = schemas.Document(
+                id=first_doc.uuid,
+                library='mzk',
+                **first_doc.properties,
+            )
             chunk = schemas.TextChunkWithDocument(
-                id=obj.id,
-                title=obj.properties.get("title", "<no text>"),
-                text=obj.properties.get("text", "<no text>"),
-                start_page_id=obj.properties.get("start_page_id"),
-                from_page=obj.properties.get("from_page"),
-                to_page=obj.properties.get("to_page"),
-                end_paragraph=obj.properties.get("end_paragraph"),
-                language=obj.properties.get("language"),
-                document=obj.properties.get("document"),
-                document_object=document
+                id=obj.uuid,
+                **chunk_data,
+                document_object=document_obj,
+                document=first_doc.uuid
             )
             results.append(chunk)
-
-        return schemas.SearchResponse(
+        response = schemas.SearchResponse(
             results=results,
             search_request=search_request,
             time_spent=search_time,
             search_log=[log_entry]
         )
+        logging.info(f'Response created in {time() - t1:.2f} seconds')
+        return response

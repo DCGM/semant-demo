@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 import os
 import openai
 from semant_demo import schemas
@@ -9,7 +9,8 @@ import asyncio
 
 logging.basicConfig(level=logging.INFO)
 
-openai.api_key = os.getenv(config.OPENAI_API_KEY)
+openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+
 global_searcher = None
 async def get_search() -> WeaviateSearch:
     global global_searcher
@@ -19,44 +20,57 @@ async def get_search() -> WeaviateSearch:
 app = FastAPI()
 
 
-@app.post("/search", response_model=schemas.SearchResponse)
+@app.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.SearchResponse:
-    return searcher.search(req)
+    response = await searcher.search(req)
+    return response
 
 
-@app.post("/summarize/{summary_type}", response_model=schemas.SummaryResponse)
+@app.post("/api/summarize/{summary_type}", response_model=schemas.SummaryResponse)
 async def summarize(search_response: schemas.SearchResponse, summary_type: str) -> schemas.SummaryResponse:
-    snippets = [res.text.replace('\n', ' ') for res in search_response.results]
-    resp = openai.ChatCompletion.create(
-      model="gpt-4o-mini", messages=[
-            {
-                "role": "system",
-                "content": '\n'.join([
-                    "You are a summarization assistant.",
-                    "You will be given text snippets, each labeled with a unique ID like [doc1], [doc2], … [doc15].",
-                    "You should produce a single, concise summary that covers all the key points relevant to a user search query.",
-                    "After every fact that you extract from a snippet, append the snippet’s ID in square brackets—for example: “The gene ABC is upregulated in tumor cells [doc3].”",
-                    "If multiple snippets support the same fact, list all their IDs separated by commas: “This approach improved accuracy by 12% [doc2, doc7, doc11].”",
-                    "Do not introduce any facts that are not in the snippets. Focus on information that is relevant to the user query.",
-                    "Write the summary clearly and concisely.",
-                    "Keep the summary under 100 words."
-                ])
-            },
-            {
-                "role": "user",
-                "content": '\n'.join(
-                    [f'The user query is: "{search_response.search_request.query}"',
-                      "Here are the retrieved text snippets:",
-                      *snippets,
-                      "",
-                      "Please summarize these contexts, tagging each statement with its source ID. Do not add any other text."
-                     ])
-            }
-        ]
-    )
+    # build your snippets with IDs
+    snippets = [
+        f"[doc{i+1}]" + res.text.replace('\\n', ' ')
+        for i, res in enumerate(search_response.results)
+    ]
+
+    system_prompt = "\n".join([
+        "You are a summarization assistant.",
+        "You will be given text snippets, each labeled with a unique ID like [doc1], [doc2], … [doc15].",
+        "You should produce a single, concise summary that covers all the key points relevant to a user search query.",
+        "After every fact that you extract from a snippet, append the snippet’s ID in square brackets—for example: “The gene ABC is upregulated in tumor cells [doc3].”",
+        "If multiple snippets support the same fact, list all their IDs separated by commas: “This approach improved accuracy by 12% [doc2, doc7, doc11].”",
+        "Do not introduce any facts that are not in the snippets. Focus on information that is relevant to the user query.",
+        "Write the summary clearly and concisely.",
+        "Keep the summary under 100 words."
+    ])
+
+    user_prompt = "\n".join([
+        f'The user query is: "{search_response.search_request.query}"',
+        "Here are the retrieved text snippets:",
+        *snippets,
+        "",
+        "Please summarize these contexts, tagging each statement with its source ID. Do not add any other text."
+    ])
+
+    try:
+        resp = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            max_tokens=300,
+        )
+    except openai.OpenAIError as e:
+        # turn any SDK error into a 502
+        logging.error(e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+    summary_text = resp.choices[0].message.content.strip()
 
     return schemas.SummaryResponse(
-        summary=resp.choices[0].message.content,
+        summary=summary_text,
         time_spent=search_response.time_spent,
     )
-
