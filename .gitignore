@@ -7,6 +7,9 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+.quasar
+.idea
+node_modules
 .Python
 build/
 develop-eggs/
