@@ -96,7 +96,7 @@
             <q-checkbox v-model="selectedResults" :val="chunk.id" />
           </q-item-section>
           <q-item-section>
-            <div class="text-h6">{{ index + 1 }}. {{ chunk.title }}</div>
+            <div class="text-h6">{{ index + 1 }}. {{ chunk.query_title || chunk.title }}</div>
             <div class="text-caption text-grey">
               {{ chunk.document_object.author || 'Unknown Author' }}
               |
@@ -109,6 +109,11 @@
             </div>
             <div class="text-caption text-grey">
               Pages: {{ chunk.from_page }}–{{ chunk.to_page }}
+            </div>
+
+            <!-- Show query_summary if available -->
+            <div v-if="chunk.query_summary" class="q-mt-sm bg-grey-3 q-pa-sm rounded-borders">
+              <strong>Summary:</strong> {{ chunk.query_summary }}
             </div>
 
             <!-- Always show text -->
