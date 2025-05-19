@@ -167,7 +167,7 @@ import { api } from 'src/boot/axios'
 const searchForm = ref<SearchRequest>({
   query: '',
   limit: 10,
-  type: 'text', // Added the required 'type' property
+  type: 'hybrid', // Added the required 'type' property
   min_year: null,
   max_year: null,
   min_date: null,
