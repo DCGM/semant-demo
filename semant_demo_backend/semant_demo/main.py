@@ -55,7 +55,7 @@ async def summarize(search_response: schemas.SearchResponse, summary_type: str) 
 
     try:
         resp = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -105,7 +105,7 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
 
     try:
         resp = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             messages=messages,
             temperature=0.0,
             max_tokens=300,
