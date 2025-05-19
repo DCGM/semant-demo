@@ -13,6 +13,14 @@ class SearchRequest(BaseModel):
     query: str
     limit: int = 10
     type: SearchType = SearchType.hybrid
+    search_title_generate: bool = True
+    search_title_prompt: str | None = None
+    search_title_model: str | None = None
+    search_summary_generate: bool = True
+    search_summary_prompt: str | None = None
+    search_summary_model: str | None = None
+    search_llm_filter: bool = False
+
     min_year: int | None = None
     max_year: int | None = None
     min_date: datetime | None = None
@@ -62,6 +70,8 @@ class TextChunk(BaseModel):
 
 
 class TextChunkWithDocument(TextChunk):
+    query_title: str | None = None
+    query_summary: str | None = None
     summary: str | None = None
     document_object: Document
 
