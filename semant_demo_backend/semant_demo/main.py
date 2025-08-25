@@ -156,7 +156,7 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
     )
 
 @app.post("/api/tag", response_model=schemas.TagStartResponse)
-async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks) -> schemas.TagStartResponse:
+async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search)) -> schemas.TagStartResponse:
     print("Tagging...")
     print(tagReq)
     taskId = str(uuid.uuid4()) # generate id for current task
@@ -164,8 +164,18 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
         session.add(Task(taskId=taskId))
         await session.commit()
 
-    background_tasks.add_task(tag_and_store, tagReq, taskId)
+    background_tasks.add_task(tag_and_store, tagReq, taskId, tagger)
     return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
+
+"""
+    try:
+        async with db.begin():
+            stm = (delete(table).where(table.id == id))
+            await db.execute(stm)
+    except exc.SQLAlchemyError as e:
+        logging.exception(f'Failed deleting object in database. Object probably does not exist. ID={id}')
+        raise DBError(f'Failed deleting object in database. Object probably does not exist. ID={id}') from e
+"""
 
 @app.get("/api/tag/status/{taskId}")
 async def check_status(taskId: str):

@@ -6,6 +6,7 @@ from semant_demo.schemas import Task, TasksBase
 import asyncio
 from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.config import config
+import logging
 
 # Reuse the same DB engine from main.py
 DB_URL = "sqlite+aiosqlite:///tasks.db"
@@ -40,25 +41,19 @@ async def async_tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, sess
     except Exception as e:
         await update_task_status(task_id, "FAILED", {"error": str(e)})
 """
-   # TODO logging module
-async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str):
-    
+
+async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, tagger: WeaviateSearch):
     try:
         await update_task_status(task_id, "RUNNING", collection_name=tagReq.collection_name)
         
         # TODO replace with Weaviate/LLM operations:
-        with open("log.txt", mode="w", encoding="utf-8") as log_file:
-            searcher_tag = await WeaviateSearch.create(config) # TODO globalne cez Depends
-            response = await searcher_tag.tag(tagReq)
-            log_file.write(f"Starting task with data: {str(tagReq)}")
-            #await asyncio.sleep(30)  # Simulate work
-            log_file.write(f"Task finished. Response: {response}")
-            #response = await searcher_tag.tag(tagReq)
-            await searcher_tag.close()
+        
+        logging.info(f"Starting task with data: {str(tagReq)}")
+        response = await tagger.tag(tagReq)
+        logging.info(f"Task finished. Response: {response}")
         await update_task_status(task_id, "COMPLETED", {"result": response}, collection_name=tagReq.collection_name)
     except Exception as e:
         await update_task_status(task_id, "FAILED", {"error": str(e)}, collection_name=tagReq.collection_name)
-
 
     """
 
