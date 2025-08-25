@@ -10,6 +10,13 @@ export interface SearchRequest {
   language?: string | null;
 }
 
+export interface TagRequest {
+  tag_name: string;
+  tag_definition: string;
+  tag_examples: string[];
+  collection_name: string;
+}
+
 export interface Document {
   id: string; // UUID as string
   library: string;
@@ -68,4 +75,26 @@ export interface SearchResponse {
 export interface SummaryResponse {
   summary: string;
   time_spent: number;
+}
+
+export interface TaggingResponse {
+  texts: string[];
+  tagged: string[]; // the llm response if the tag belongs to the chunk
+}
+
+export interface TagStartResponse {
+  job_started: boolean;
+  task_id: string;
+  message: string;
+}
+
+export interface TagResult {
+  texts: string[];
+  tags: string[];
+}
+
+export interface StatusResponse {
+  taskId: string;
+  status: string;
+  result: TagResult;
 }

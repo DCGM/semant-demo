@@ -13,36 +13,6 @@ from .ollama_proxy import OllamaProxy
 from .config import config
 import asyncio
 
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_ollama.llms import OllamaLLM
-from langchain_core.documents import Document
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.runnable import Runnable
-
-from langchain_core.prompt_values import PromptValue
-from langchain_core.messages import BaseMessage
-
-class OllamaProxyRunnable(Runnable):
-    def __init__(self, proxy, model_name):
-        self.proxy = proxy
-        self.model_name = model_name
-
-    async def ainvoke(self, input, config=None):
-        # Handle PromptValue (e.g. from ChatPromptTemplate)
-        if isinstance(input, PromptValue):
-            input = input.to_string()
-
-        # Handle list of messages
-        elif isinstance(input, list) and all(isinstance(m, BaseMessage) for m in input):
-            input = "\n".join([m.content for m in input])
-
-        # Now input is guaranteed to be a string
-        response = await self.proxy.call_ollama(self.model_name, input)
-        return response
-
-    def invoke(self, input, config=None):
-        return asyncio.run(self.ainvoke(input, config))
-
 class WeaviateSearch:
     def __init__(self, client: WeaviateAsyncClient):
         self.client = client
@@ -55,18 +25,6 @@ class WeaviateSearch:
                 "If the the text is not relavant, write \"N/A\" \n"
         self.summary_prompt = "Generate a sort summary in Czech from the following text: \"{text}\" \n " \
                 "The summary should be in a list of concise facts extracted from the text which are relevant for this search query: \"{query}\""           
-        self.tag_template = "You are given a document, decide whether tag \"{tag_name}\" belongs to the document. \n " \
-                "The tag's definition is: \"{tag_definition}\". \n " \
-                "Here are examples of texts belonging to the tag: {tag_examples}. \n " \
-                "Output Ano if the tag belongs or Ne if it does not belong to the document, do not output anything else. \n " \
-                "Be benevolent and output True if there is some connection between tag and the text of the document. \n " \
-                "Document: \n " \
-                "{content}"
-                #"Do not output any explanation just True or False. \n " \
-                #"Consider meaning of the tag. \n " \
-                #"Ignore exact punctuation or minor wording differences. Decide based on the meaning of the tag. \n " \
-        
-#"Do not tag document when tag is not associated with it, but tag document if the tag is associated with the content. \n " \
 
     @classmethod
     async def create(cls, config:Config) -> "WeaviateSearch":
@@ -217,27 +175,22 @@ class WeaviateSearch:
     async def tag(self, tag_request: schemas.TagReqTemplate) -> schemas.TagResponse:
         # tags chunks
         try:
-
-            prompt = ChatPromptTemplate.from_template(self.tag_template)
-            model = OllamaProxyRunnable(self.ollama_proxy, self.ollama_model)
-            chain = prompt | model
-
-            # get the collection
-            collection_name = tag_request.collection_name
+            # Get the collection
+            collection_name = "Chunks"
             collection = self.client.collections.get(collection_name)
             
-            # query weaviate db for chunks of chosen collection
+            # Query with filters (if provided)
             query = collection.query.fetch_objects(
-                return_properties=["text"],  # only return the text field
+                return_properties=["text"],  # Only return the "text" field
             )
-            results = await query
-            # extract text field from each object
-            texts = [obj.properties["text"] for obj in results.objects]
-
-            # process with llm and decide if tag belongs to text 
-            tags = await chain.abatch([{"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text} for text in texts])
             
-            return {'texts': texts, 'tags': tags}
+            results = await query
+            
+            # Extract the 'text' field from each object
+            texts = [obj.properties["text"] for obj in results.objects]
+            tag = tag_request.tag
+
+            return {'texts': texts, 'tags': [tag, 'tagtest', 'teg_test2']}
             
         except Exception as e:
             print(f"Error fetching texts from collection {collection_name}: {e}")
