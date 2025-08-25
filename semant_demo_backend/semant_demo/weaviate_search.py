@@ -9,8 +9,9 @@ from semant_demo.gemma_embedding import get_query_embedding
 from weaviate.classes.query import QueryReference
 import weaviate.collections.classes.internal
 from uuid import UUID
-from ollama_proxy import OllamaProxy
-from config import config
+# from ollama_proxy import OllamaProxy
+from semant_demo.ollama_proxy import OllamaProxy
+from semant_demo.config import config
 import asyncio
 
 class WeaviateSearch:
