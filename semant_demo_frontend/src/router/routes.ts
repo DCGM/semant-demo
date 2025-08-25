@@ -8,6 +8,11 @@ const routes: RouteRecordRaw[] = [
     children: [{ path: '', component: () => import('pages/SearchPage.vue') }]
   },
   {
+    path: '/tag/',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/TaggingPage.vue') }]
+  },
+  {
     path: '/about/',
     component: () => import('layouts/MainLayout.vue'),
     children: [{ path: '', component: () => import('pages/AboutPage.vue') }]

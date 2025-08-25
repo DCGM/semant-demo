@@ -4,3 +4,10 @@ uvicorn
 numpy
 weaviate-client
 openai
+ollama_proxy
+celery
+redis
+sqlalchemy 
+aiosqlite
+langchain
+langchain-ollama

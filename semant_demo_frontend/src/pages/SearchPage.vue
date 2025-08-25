@@ -208,7 +208,9 @@ async function onSearch () {
   summary.value = ''
   summaries.value = [] // clear summaries and answered questions on new search
   try {
+    console.log("Search will start")
     const { data } = await api.post<SearchResponse>('/search', searchForm.value)
+    console.log("Search response received:", data)
     results.value = data.results
     timeSpent.value = data.time_spent
     searchLog.value = data.search_log

@@ -2,6 +2,9 @@ from enum import Enum
 from pydantic import BaseModel
 from datetime import datetime
 import uuid
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, String, JSON
 
 class SearchType(str, Enum):
     text = "text"
@@ -44,18 +47,28 @@ class Document(BaseModel):
     url: str | None = None
     public: str | None = None
     documentType: str | None = None
-    keywords: str | None = None
+    keywords: str | list[str] | None = None
     genre: str | None = None
     placeTerm: str | None = None
 
+"""
+    start_page_id: uuid.UUID #Optional[uuid.UUID] = None
+    from_page: int #Optional[int] = None
+    to_page: int #Optional[int] = None
 
+    start_page_id: Optional[uuid.UUID] = None
+    from_page: Optional[int] = None
+    to_page: Optional[int] = None
+"""
+
+from typing import Optional
 class TextChunk(BaseModel):
     id: uuid.UUID
     title: str = "<N/A>"
     text: str
-    start_page_id: uuid.UUID
-    from_page: int
-    to_page: int
+    start_page_id: uuid.UUID #Optional[uuid.UUID] = None
+    from_page: int #Optional[int] = None
+    to_page: int #Optional[int] = None
     end_paragraph: bool = True
     language: str | None = None
     document: uuid.UUID
@@ -85,3 +98,27 @@ class SearchResponse(BaseModel):
 class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
+
+class TagStartResponse(BaseModel):
+    job_started: bool
+    task_id: str
+    message: str
+
+class TagReqTemplate(BaseModel):
+    tag_name: str            # name of the tag
+    tag_definition: str    # description of the tag
+    tag_examples: list[str] # list of examples what should be tagged
+    collection_name: str
+
+class TagResponse(BaseModel):
+    texts: list[str]
+    tags: list[str]
+
+# Task Model
+TasksBase = declarative_base()
+class Task(TasksBase):
+    __tablename__ = "tasks"
+    taskId = Column(String(36), primary_key=True)
+    status = Column(String(20), default="PENDING")  # PENDING|RUNNING|COMPLETED|FAILED
+    result = Column(JSON, nullable=True)
+    collection_name = Column(String, nullable=True)
