@@ -12,6 +12,9 @@ export interface SearchRequest {
 
 export interface TagRequest {
   tag_name: string;
+  tag_shorthand: string;
+  tag_color: string;
+  tag_pictogram: string;
   tag_definition: string;
   tag_examples: string[];
   collection_name: string;

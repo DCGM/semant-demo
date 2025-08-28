@@ -8,6 +8,7 @@ from semant_demo.config import Config
 from semant_demo.gemma_embedding import get_query_embedding
 from weaviate.classes.query import QueryReference
 import weaviate.collections.classes.internal
+from weaviate.collections.classes.filters import Filter
 from uuid import UUID
 from .ollama_proxy import OllamaProxy
 from .config import config
@@ -218,6 +219,60 @@ class WeaviateSearch:
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
 
+    async def add_or_get_tag(self, tag_request: schemas.TagReqTemplate) -> str:
+        """
+        Create a new tag or return existing tag UUID if it matches
+        """
+        logging.info("In the add or get tag")
+        try:
+            tag_collection = self.client.collections.get("Tag")
+        except Exception:
+            # collection does not exist so create it
+            tag_collection = await self.client.collections.create(
+                name="Tag",
+                properties=[
+                    {"name": "tag_name", "dataType": "string"},
+                    {"name": "tag_shorthand", "dataType": "string"},
+                    {"name": "tag_color", "dataType": "string"},
+                    {"name": "tag_pictogram", "dataType": "string"},
+                    {"name": "tag_definition", "dataType": "string"},
+                    {"name": "tag_examples", "dataType": "string"},
+                ]
+            )
+        
+        # check if tag with same properties already exists
+        filters =(
+            Filter.by_property("tag_name").equal(tag_request.tag_name) &
+            Filter.by_property("tag_shorthand").equal(tag_request.tag_shorthand)&
+            Filter.by_property("tag_color").equal(tag_request.tag_color)
+        )
+        results = await self.client.collections.get("Tag").query.fetch_objects(
+            filters=filters
+        )
+        existing_tags = results.objects
+        
+        # check for exact match
+        for existing_tag in existing_tags:
+            if (existing_tag.properties["tag_name"] == tag_request.tag_name and
+                existing_tag.properties["tag_shorthand"] == tag_request.tag_shorthand and
+                existing_tag.properties["tag_color"] == tag_request.tag_color and
+                existing_tag.properties["tag_pictogram"] == tag_request.tag_pictogram):
+                return existing_tag.uuid  # return existing tag UUID
+        
+        # if no exact match found then create new tag
+        new_tag_uuid = await self.client.collections.get("Tag").data.insert(
+            properties={
+                "tag_name": tag_request.tag_name,
+                "tag_shorthand": tag_request.tag_shorthand,
+                "tag_color": tag_request.tag_color,
+                "tag_pictogram": tag_request.tag_pictogram,
+                "tag_definition": tag_request.tag_definition,
+                "tag_examples": tag_request.tag_examples
+            }
+        )
+        return new_tag_uuid  
+         
+
     async def tag(self, tag_request: schemas.TagReqTemplate) -> schemas.TagResponse:
         # tags chunks
         try:
@@ -244,29 +299,92 @@ class WeaviateSearch:
             
             # store in weaviate (upload positive tag instances to weaviate)
             positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE)
-            for idx, obj in enumerate(results.objects):
-                if positive_responses.search(tags[idx]): # if the llm response is positive then store the tag data
-                    await weaviate_objects.data.update(
-                        uuid = obj.uuid,
-                        properties = {
-                            "tag": {"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": obj.properties["text"]}, # TODO remove , "content": obj.properties["text"]
-                        }
-                    )
             
-            # check stored TODO remove this part
-            weaviate_objects_test = self.client.collections.get(collection_name)
-            query_test = weaviate_objects_test.query.fetch_objects()
-            test_results = await query_test
-            for obj in test_results.objects:
-                logging.info(f"Objects: {obj.uuid}, orig_text {obj.properties["text"]} tag: {obj.properties["tag"]}")
+            # check if there are any positive repsonses
+            positive = any(positive_responses.search(t) for t in tags)
+            if positive:
+                tag_uuid = await self.add_or_get_tag(tag_request)
+                logging.info("Got past add new object")
+                for idx, obj in enumerate(results.objects):
+                    if positive_responses.search(tags[idx]): # if the llm response is positive then store the tag data
+                        # add the new tag data
+                        await weaviate_objects.data.reference_add(
+                            from_uuid = obj.uuid,
+                            from_property="hasTags",
+                            to=tag_uuid
+                        )
+                        """
+                        await weaviate_objects.data.reference.add(
+                            from_uuid = obj.uuid,
+                            from_property_name="hasTags",
+                            to_uuid = tag_uuid,
+                            to_class_name = "Tag",)
+                        """
+                """
+                            properties = {
+                                "tag": {"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": obj.properties["text"]}, # TODO remove , "content": obj.properties["text"]
+                            }
+                """
+                
+                cfg = await self.client.collections.get("Chunks").config.get()
+                logging.info(f"Chunk refs: {[r.name for r in cfg.references]}")
 
+                # check stored TODO remove this part
+                from weaviate.classes.query import QueryReference
+
+                # check stored
+                weaviate_objects_test = self.client.collections.get(collection_name)
+
+                test_results = await weaviate_objects_test.query.fetch_objects(
+                    return_properties=["text"],
+                    return_references=QueryReference(
+                        link_on="hasTags",
+                        return_properties=["tag_name", "tag_shorthand", "tag_color", "tag_pictogram", "tag_definition", "tag_examples"]
+                    ),
+                    limit=100,
+                )
+
+                for obj in test_results.objects:
+                    logging.info(f"Chunk {obj.uuid} | text: {obj.properties.get('text','')[:80]}...")
+
+                    # references come under obj.references, not properties
+                    tags_ref = obj.references.get("hasTags") if obj.references else None
+                    if tags_ref and getattr(tags_ref, "objects", None):
+                        for tag_obj in tags_ref.objects:
+                            logging.info(
+                                f"Tag {tag_obj.uuid} | "
+                                f"name={tag_obj.properties.get('tag_name')} | "
+                                f"short={tag_obj.properties.get('tag_shorthand')} | "
+                                f"color={tag_obj.properties.get('tag_color')} | "
+                                f"pic={tag_obj.properties.get('tag_pictogram')} | "
+                                f"def={tag_obj.properties.get('tag_definition')} | "
+                                f"examples={str(tag_obj.properties.get('tag_examples'))}"
+                            )
+                    else:
+                        logging.info("No tags found")
+                """
+                weaviate_objects_test = self.client.collections.get(collection_name)
+                query_test = weaviate_objects_test.query.fetch_objects()
+                test_results = await query_test
+                for obj in test_results.objects:
+                    logging.info(f"Objects: {obj.uuid}, orig_text {obj.properties["text"]}")
+                    logging.info(f"Properties: {obj.properties}")
+                    # Check if hasTags reference exists and handle it properly
+                    try:
+                        
+                        for ref in obj.references["hasTags"]:
+                                logging.info(f"Tag ref: {ref.uuid}, properties: {ref.properties}")
+                    except Exception as e:
+                        logging.info(f"No tags found, {e}")
+                """
             return {'texts': texts, 'tags': tags}
             
         except Exception as e:
             print(f"Error fetching texts from collection {collection_name}: {e}")
             return []
-    
-        """
+
+
+"""
         test: INFO:root:Objects: 038b29a5-776d-4865-9891-df3f2576e8ea, orig_text Jak informuje náš washingtonský zpravodaj Miroslav Konvalina, Bush v rozhlase uvedl: "V nutnosti odzbrojit Irák jsou Spojené Státy zajedno a Kongres je v této otázce zajedno. Amerika mluví jedním hlasem. Irák musí odzbrojit a podřídit se všem rezolucím OSN, nebo k tomu bude donucen". I přesto, že prezident Bush považuje Irák za naprostou prioritu, řada politických vůdců ve Spojených Státech opakovaně upozorňuje, že na domácím poli by měl Bush svést důležitější bitvy, zejména se stagnující ekonomikou. Demokraté chtějí v následujících dnech před listopadovými kongresovými volbami ostře vystoupit proti republikánskému řízení hospodářství. Demokraté také chtějí svolat ekonomické fórum a vyzvali Bushovi poradce, aby odstoupili. Prezident Bush dává v ekonomice přednost smířlivějšímu tónu a vyzval demokratickou opozici v Kongresu, aby se republikány sjednotila kolem hospodářství tak, jak se to podařilo v případě Irácké rezoluce. tag: {'tag_name': 'Prezident', 'tag_definition': 'Hlava statu', 'content': 'Jak informuje náš washingtonský zpravodaj Miroslav Konvalina, Bush v rozhlase uvedl: "V nutnosti odzbrojit Irák jsou Spojené Státy zajedno a Kongres je v této otázce zajedno. Amerika mluví jedním hlasem. Irák musí odzbrojit a podřídit se všem rezolucím OSN, nebo k tomu bude donucen". I přesto, že prezident Bush považuje Irák za naprostou prioritu, řada politických vůdců ve Spojených Státech opakovaně upozorňuje, že na domácím poli by měl Bush svést důležitější bitvy, zejména se stagnující ekonomikou. Demokraté chtějí v následujících dnech před listopadovými kongresovými volbami ostře vystoupit proti republikánskému řízení hospodářství. Demokraté také chtějí svolat ekonomické fórum a vyzvali Bushovi poradce, aby odstoupili. Prezident Bush dává v ekonomice přednost smířlivějšímu tónu a vyzval demokratickou opozici v Kongresu, aby se republikány sjednotila kolem hospodářství tak, jak se to podařilo v případě Irácké rezoluce.', 'tag_examples': ['EU Cesko']}
 INFO:root:Objects: 0afae9a3-9226-4bae-a3ea-43e6bf05724a, orig_text Václav Havel: Nepleťte si ekonomiku s účetnictvím Na druhý den byl ve Smetanově síni avizován projev exprezidenta a dramatika Václava Havla. Poselstvím a hlavním tématem jeho slov byla schopnost mladých perspektivních manažerů umění rozlišit zisk spočitatelný od nespočitatelného, ono kulturní dědictví či ztráty, jež nelze vyčíslil v účetního tabulkách. tag: None
 INFO:root:Objects: 0b8d98fa-749c-4e73-87c9-ddb9e49a830b, orig_text V obsáhlé řeči, ve které se opíral o témata Praha, globalizace, konkurence post sovětských zemí v EU, uvedl, že management budoucnosti by neměl stavět své pilíře na agresivních jedincích a na Darwinově teorii Boje druhů. Běžnému zaměstnanci by se neměl utahovat opasek ve prospěch manažerů. "Je nutné trvale kultivovat lidský kapitál," vyslal jako poselství Jiří Paroubek mladým elitám současnosti. V pondělí na závěr prvního bloku zaujal svým energickým a vyčerpávajícím projevem publicista a spolupředseda poslanecké skupiny Evropského parlamentu a člen komise Evropského parlamentu Daniel Cohn-Bendit. Takřka hodinu mluvil o historickém pozadí Evropy, kterou přirovnával ke krásné bytosti, které se chtějí všichni dotknout, ale zároveň se bojí k ní přiblížit. Do prostoru vznesl i zásadní otázku:"Proč potřebujeme Evropu. Potřebujeme ji vůbec?!" Přemýšlel nad problémem národních identit, nad tím, že žádný stát v Evropě by neměl být víc a že národnost konec konců znamená právě ty pomyslné hranice v Evropě. tag: {'tag_examples': ['EU Cesko'], 'tag_definition': 'Hlava statu', 'content': 'V obsáhlé řeči, ve které se opíral o témata Praha, globalizace, konkurence post sovětských zemí v EU, uvedl, že management budoucnosti by neměl stavět své pilíře na agresivních jedincích a na Darwinově teorii Boje druhů. Běžnému zaměstnanci by se neměl utahovat opasek ve prospěch manažerů. "Je nutné trvale kultivovat lidský kapitál," vyslal jako poselství Jiří Paroubek mladým elitám současnosti. V pondělí na závěr prvního bloku zaujal svým energickým a vyčerpávajícím projevem publicista a spolupředseda poslanecké skupiny Evropského parlamentu a člen komise Evropského parlamentu Daniel Cohn-Bendit. Takřka hodinu mluvil o historickém pozadí Evropy, kterou přirovnával ke krásné bytosti, které se chtějí všichni dotknout, ale zároveň se bojí k ní přiblížit. Do prostoru vznesl i zásadní otázku:"Proč potřebujeme Evropu. Potřebujeme ji vůbec?!" Přemýšlel nad problémem národních identit, nad tím, že žádný stát v Evropě by neměl být víc a že národnost konec konců znamená právě ty pomyslné hranice v Evropě.', 'tag_name': 'Prezident'}
@@ -307,4 +425,29 @@ Results:
         
         str(self.chunk_col)
         return {'texts': ['test', 'test1'], 'tags': ['tagtest', 'teg_test2']}
-        """
+
+INFO:root:Got past add new object
+INFO:httpx:HTTP Request: POST http://localhost:8080/v1/objects/Chunks/0b8d98fa-749c-4e73-87c9-ddb9e49a830b/references/hasTags "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://localhost:8080/v1/schema/Chunks "HTTP/1.1 200 OK"
+INFO:root:Chunk refs: ['document', 'hasTags']
+INFO:root:Objects: 038b29a5-776d-4865-9891-df3f2576e8ea, orig_text Jak informuje náš washingtonský zpravodaj Miroslav Konvalina, Bush v rozhlase uvedl: "V nutnosti odzbrojit Irák jsou Spojené Státy zajedno a Kongres je v této otázce zajedno. Amerika mluví jedním hlasem. Irák musí odzbrojit a podřídit se všem rezolucím OSN, nebo k tomu bude donucen". I přesto, že prezident Bush považuje Irák za naprostou prioritu, řada politických vůdců ve Spojených Státech opakovaně upozorňuje, že na domácím poli by měl Bush svést důležitější bitvy, zejména se stagnující ekonomikou. Demokraté chtějí v následujících dnech před listopadovými kongresovými volbami ostře vystoupit proti republikánskému řízení hospodářství. Demokraté také chtějí svolat ekonomické fórum a vyzvali Bushovi poradce, aby odstoupili. Prezident Bush dává v ekonomice přednost smířlivějšímu tónu a vyzval demokratickou opozici v Kongresu, aby se republikány sjednotila kolem hospodářství tak, jak se to podařilo v případě Irácké rezoluce.
+INFO:root:Properties: {'text': 'Jak informuje náš washingtonský zpravodaj Miroslav Konvalina, Bush v rozhlase uvedl: "V nutnosti odzbrojit Irák jsou Spojené Státy zajedno a Kongres je v této otázce zajedno. Amerika mluví jedním hlasem. Irák musí odzbrojit a podřídit se všem rezolucím OSN, nebo k tomu bude donucen". I přesto, že prezident Bush považuje Irák za naprostou prioritu, řada politických vůdců ve Spojených Státech opakovaně upozorňuje, že na domácím poli by měl Bush svést důležitější bitvy, zejména se stagnující ekonomikou. Demokraté chtějí v následujících dnech před listopadovými kongresovými volbami ostře vystoupit proti republikánskému řízení hospodářství. Demokraté také chtějí svolat ekonomické fórum a vyzvali Bushovi poradce, aby odstoupili. Prezident Bush dává v ekonomice přednost smířlivějšímu tónu a vyzval demokratickou opozici v Kongresu, aby se republikány sjednotila kolem hospodářství tak, jak se to podařilo v případě Irácké rezoluce.', 'tag': {'tag_examples': ['EU Cesko'], 'tag_definition': 'Hlava statu', 'content': 'Jak informuje náš washingtonský zpravodaj Miroslav Konvalina, Bush v rozhlase uvedl: "V nutnosti odzbrojit Irák jsou Spojené Státy zajedno a Kongres je v této otázce zajedno. Amerika mluví jedním hlasem. Irák musí odzbrojit a podřídit se všem rezolucím OSN, nebo k tomu bude donucen". I přesto, že prezident Bush považuje Irák za naprostou prioritu, řada politických vůdců ve Spojených Státech opakovaně upozorňuje, že na domácím poli by měl Bush svést důležitější bitvy, zejména se stagnující ekonomikou. Demokraté chtějí v následujících dnech před listopadovými kongresovými volbami ostře vystoupit proti republikánskému řízení hospodářství. Demokraté také chtějí svolat ekonomické fórum a vyzvali Bushovi poradce, aby odstoupili. Prezident Bush dává v ekonomice přednost smířlivějšímu tónu a vyzval demokratickou opozici v Kongresu, aby se republikány sjednotila kolem hospodářství tak, jak se to podařilo v případě Irácké rezoluce.', 'tag_name': 'Prezident'}, 'to_page': '2', 'from_page': '1', 'start_page_id': '87615e80-7370-43a6-832d-ed5970170327'}
+INFO:root:No tags found, 'NoneType' object is not subscriptable
+INFO:root:Objects: 0afae9a3-9226-4bae-a3ea-43e6bf05724a, orig_text Václav Havel: Nepleťte si ekonomiku s účetnictvím Na druhý den byl ve Smetanově síni avizován projev exprezidenta a dramatika Václava Havla. Poselstvím a hlavním tématem jeho slov byla schopnost mladých perspektivních manažerů umění rozlišit zisk spočitatelný od nespočitatelného, ono kulturní dědictví či ztráty, jež nelze vyčíslil v účetního tabulkách.
+INFO:root:Properties: {'text': 'Václav Havel: Nepleťte si ekonomiku s účetnictvím Na druhý den byl ve Smetanově síni avizován projev exprezidenta a dramatika Václava Havla. Poselstvím a hlavním tématem jeho slov byla schopnost mladých perspektivních manažerů umění rozlišit zisk spočitatelný od nespočitatelného, ono kulturní dědictví či ztráty, jež nelze vyčíslil v účetního tabulkách.', 'tag': None, 'to_page': '3', 'from_page': '2', 'start_page_id': '5263d30b-12bc-404a-86e3-077a58023d76'}
+INFO:root:No tags found, 'NoneType' object is not subscriptable
+INFO:root:Objects: 0b8d98fa-749c-4e73-87c9-ddb9e49a830b, orig_text V obsáhlé řeči, ve které se opíral o témata Praha, globalizace, konkurence post sovětských zemí v EU, uvedl, že management budoucnosti by neměl stavět své pilíře na agresivních jedincích a na Darwinově teorii Boje druhů. Běžnému zaměstnanci by se neměl utahovat opasek ve prospěch manažerů. "Je nutné trvale kultivovat lidský kapitál," vyslal jako poselství Jiří Paroubek mladým elitám současnosti. V pondělí na závěr prvního bloku zaujal svým energickým a vyčerpávajícím projevem publicista a spolupředseda poslanecké skupiny Evropského parlamentu a člen komise Evropského parlamentu Daniel Cohn-Bendit. Takřka hodinu mluvil o historickém pozadí Evropy, kterou přirovnával ke krásné bytosti, které se chtějí všichni dotknout, ale zároveň se bojí k ní přiblížit. Do prostoru vznesl i zásadní otázku:"Proč potřebujeme Evropu. Potřebujeme ji vůbec?!" Přemýšlel nad problémem národních identit, nad tím, že žádný stát v Evropě by neměl být víc a že národnost konec konců znamená právě ty pomyslné hranice v Evropě.
+INFO:root:Properties: {'text': 'V obsáhlé řeči, ve které se opíral o témata Praha, globalizace, konkurence post sovětských zemí v EU, uvedl, že management budoucnosti by neměl stavět své pilíře na agresivních jedincích a na Darwinově teorii Boje druhů. Běžnému zaměstnanci by se neměl utahovat opasek ve prospěch manažerů. "Je nutné trvale kultivovat lidský kapitál," vyslal jako poselství Jiří Paroubek mladým elitám současnosti. V pondělí na závěr prvního bloku zaujal svým energickým a vyčerpávajícím projevem publicista a spolupředseda poslanecké skupiny Evropského parlamentu a člen komise Evropského parlamentu Daniel Cohn-Bendit. Takřka hodinu mluvil o historickém pozadí Evropy, kterou přirovnával ke krásné bytosti, které se chtějí všichni dotknout, ale zároveň se bojí k ní přiblížit. Do prostoru vznesl i zásadní otázku:"Proč potřebujeme Evropu. Potřebujeme ji vůbec?!" Přemýšlel nad problémem národních identit, nad tím, že žádný stát v Evropě by neměl být víc a že národnost konec konců znamená právě ty pomyslné hranice v Evropě.', 'tag': {'tag_examples': ['EU Cesko'], 'tag_definition': 'Hlava statu', 'content': 'V obsáhlé řeči, ve které se opíral o témata Praha, globalizace, konkurence post sovětských zemí v EU, uvedl, že management budoucnosti by neměl stavět své pilíře na agresivních jedincích a na Darwinově teorii Boje druhů. Běžnému zaměstnanci by se neměl utahovat opasek ve prospěch manažerů. "Je nutné trvale kultivovat lidský kapitál," vyslal jako poselství Jiří Paroubek mladým elitám současnosti. V pondělí na závěr prvního bloku zaujal svým energickým a vyčerpávajícím projevem publicista a spolupředseda poslanecké skupiny Evropského parlamentu a člen komise Evropského parlamentu Daniel Cohn-Bendit. Takřka hodinu mluvil o historickém pozadí Evropy, kterou přirovnával ke krásné bytosti, které se chtějí všichni dotknout, ale zároveň se bojí k ní přiblížit. Do prostoru vznesl i zásadní otázku:"Proč potřebujeme Evropu. Potřebujeme ji vůbec?!" Přemýšlel nad problémem národních identit, nad tím, že žádný stát v Evropě by neměl být víc a že národnost konec konců znamená právě ty pomyslné hranice v Evropě.', 'tag_name': 'Prezident'}, 'to_page': '2', 'from_page': '1', 'start_page_id': '5263d30b-12bc-404a-86e3-077a58023d76'}
+INFO:root:No tags found, 'NoneType' object is not subscriptable
+INFO:root:Objects: 453b0a91-07c1-485e-8ed7-a163747e4ea5, orig_text Věřím ve vás, v mladší generaci, která se bude dívat dál do budoucna, za úzký soudobý horizont." Na Successor's European Youth Summit 2006 se sešlo se takřka 400 mladých manažerů z celého světa. Účastníci summitu zastávají v mladém věku významné posty v oblasti obchodu, vědy, výzkumu či umění. V Obecním době na panelových diskuzích debatovali o globalizace, nových teoriích růstu, světové bídě i Evropské unii. Panely vedly osobnosti z tuzemské manažerské špičky: generální ředitel Czechinvest Tomáš Hruda, hlavní ekonom Raiffeisen Bank, člen představenstva Škoda Auto Martin Jahn, bývalý ministr financí Pavel Mertlík, poradce premiéra ČR Valtr Komárek či viceprezident společnosti Microsoft pro Evropu, Blízký východ a Afriku Jan Mühlfeit nebo před velkým sálem promluvili i bývalý československý ministr zahraničních věcí Jiří Dienstbier..
+INFO:root:Properties: {'text': 'Věřím ve vás, v mladší generaci, která se bude dívat dál do budoucna, za úzký soudobý horizont." Na Successor\'s European Youth Summit 2006 se sešlo se takřka 400 mladých manažerů z celého světa. Účastníci summitu zastávají v mladém věku významné posty v oblasti obchodu, vědy, výzkumu či umění. V Obecním době na panelových diskuzích debatovali o globalizace, nových teoriích růstu, světové bídě i Evropské unii. Panely vedly osobnosti z tuzemské manažerské špičky: generální ředitel Czechinvest Tomáš Hruda, hlavní ekonom Raiffeisen Bank, člen představenstva Škoda Auto Martin Jahn, bývalý ministr financí Pavel Mertlík, poradce premiéra ČR Valtr Komárek či viceprezident společnosti Microsoft pro Evropu, Blízký východ a Afriku Jan Mühlfeit nebo před velkým sálem promluvili i bývalý československý ministr zahraničních věcí Jiří Dienstbier..', 'tag': {'tag_examples': ['Beneš, prezident, je v EU'], 'tag_pictogram': 'key', 'tag_shorthand': 'cz', 'tag_color': '#03a9f4', 'tag_definition': 'Stát, krajina kde žijou lidi', 'content': 'Věřím ve vás, v mladší generaci, která se bude dívat dál do budoucna, za úzký soudobý horizont." Na Successor\'s European Youth Summit 2006 se sešlo se takřka 400 mladých manažerů z celého světa. Účastníci summitu zastávají v mladém věku významné posty v oblasti obchodu, vědy, výzkumu či umění. V Obecním době na panelových diskuzích debatovali o globalizace, nových teoriích růstu, světové bídě i Evropské unii. Panely vedly osobnosti z tuzemské manažerské špičky: generální ředitel Czechinvest Tomáš Hruda, hlavní ekonom Raiffeisen Bank, člen představenstva Škoda Auto Martin Jahn, bývalý ministr financí Pavel Mertlík, poradce premiéra ČR Valtr Komárek či viceprezident společnosti Microsoft pro Evropu, Blízký východ a Afriku Jan Mühlfeit nebo před velkým sálem promluvili i bývalý československý ministr zahraničních věcí Jiří Dienstbier..', 'tag_name': 'Cesko'}, 'to_page': '5', 'from_page': '4', 'start_page_id': '5263d30b-12bc-404a-86e3-077a58023d76'}
+INFO:root:No tags found, 'NoneType' object is not subscriptable
+INFO:root:Objects: 787683f5-4378-4aa2-bf98-89856fc7f839, orig_text "Přestat si plést ekonomiku s účetnictvím - to by měl být cíl mladých perspektivních manažerů, kteří budou již brzo řídit hospodářství svých zemí," uvedl mírně skepticky exprezident Václav Havel a dodal, "existuje bezpočet zisků, které nelze žádným sebelepším účetním systémem zjistit, a je i mnoho ztrát, které nelze tímto způsobem zjistit." Města halí postmoderní nic, řekl Havel Havel se zamýšlel i nad konzumní propastí, do které se dostávají lidé a jejich města: "Česká a moravská města obklíčily zvláštní zóny, kde jsou rozcapené jakési veliké jednopodlažní tovární haly, další chrámy konzumu - supermarkety, podivná sídliště, která si hrají na vilky, ale ve skutečnosti jsou anonymní. Jsou zde ohromné skladovací plochy, ohromná parkoviště a mezitím step, step a step. Dohromady to nenazvete ničím Není to pole, ani louka ani les, ani vesnice, ani město. Je to jakési postmoderní nic." Přestože jeho projev měl pesimistickou a posmutnělou dikcí, na závěr tomuto Havel opanoval:"Jsem optimista.
+INFO:root:Properties: {'text': '"Přestat si plést ekonomiku s účetnictvím - to by měl být cíl mladých perspektivních manažerů, kteří budou již brzo řídit hospodářství svých zemí," uvedl mírně skepticky exprezident Václav Havel a dodal, "existuje bezpočet zisků, které nelze žádným sebelepším účetním systémem zjistit, a je i mnoho ztrát, které nelze tímto způsobem zjistit." Města halí postmoderní nic, řekl Havel Havel se zamýšlel i nad konzumní propastí, do které se dostávají lidé a jejich města: "Česká a moravská města obklíčily zvláštní zóny, kde jsou rozcapené jakési veliké jednopodlažní tovární haly, další chrámy konzumu - supermarkety, podivná sídliště, která si hrají na vilky, ale ve skutečnosti jsou anonymní. Jsou zde ohromné skladovací plochy, ohromná parkoviště a mezitím step, step a step. Dohromady to nenazvete ničím Není to pole, ani louka ani les, ani vesnice, ani město. Je to jakési postmoderní nic." Přestože jeho projev měl pesimistickou a posmutnělou dikcí, na závěr tomuto Havel opanoval:"Jsem optimista.', 'tag': {'tag_name': 'Cesko', 'tag_pictogram': 'key', 'tag_shorthand': 'cz', 'tag_color': '#03a9f4', 'tag_definition': 'Stát, krajina kde žijou lidi', 'content': '"Přestat si plést ekonomiku s účetnictvím - to by měl být cíl mladých perspektivních manažerů, kteří budou již brzo řídit hospodářství svých zemí," uvedl mírně skepticky exprezident Václav Havel a dodal, "existuje bezpočet zisků, které nelze žádným sebelepším účetním systémem zjistit, a je i mnoho ztrát, které nelze tímto způsobem zjistit." Města halí postmoderní nic, řekl Havel Havel se zamýšlel i nad konzumní propastí, do které se dostávají lidé a jejich města: "Česká a moravská města obklíčily zvláštní zóny, kde jsou rozcapené jakési veliké jednopodlažní tovární haly, další chrámy konzumu - supermarkety, podivná sídliště, která si hrají na vilky, ale ve skutečnosti jsou anonymní. Jsou zde ohromné skladovací plochy, ohromná parkoviště a mezitím step, step a step. Dohromady to nenazvete ničím Není to pole, ani louka ani les, ani vesnice, ani město. Je to jakési postmoderní nic." Přestože jeho projev měl pesimistickou a posmutnělou dikcí, na závěr tomuto Havel opanoval:"Jsem optimista.', 'tag_examples': ['Beneš, prezident, je v EU']}, 'to_page': '4', 'from_page': '3', 'start_page_id': '5263d30b-12bc-404a-86e3-077a58023d76'}
+INFO:root:No tags found, 'NoneType' object is not subscriptable
+INFO:root:Objects: fc65adff-b1b8-4310-80a0-c93d819bef53, orig_text Bush požádal zákonodárce o rychlé odhlasování několika ekonomických zákonů, například krytí teroristických hrozeb pojišťovnami. Neexistence této legislativy podle něho zbrzdila nebo znemožnila přes 15 miliard transakcí s nemovitostmi a ve druhém plánu to vedlo ke ztrátě více než 300.000 pracovních příležitostí. Průzkumy veřejného mínění ukazují, že Američané se zajímají více o ekonomiku než o případnou intervenci jejich armády proti Iráku. O Iráku začne otevřeně diskutovat ve středu Rada bezpečnosti OSN. V tomto typu debaty tak budou moci sdělit své stanovisko zástupci všech členských zemí Světové organizace..
+INFO:root:Properties: {'text': 'Bush požádal zákonodárce o rychlé odhlasování několika ekonomických zákonů, například krytí teroristických hrozeb pojišťovnami. Neexistence této legislativy podle něho zbrzdila nebo znemožnila přes 15 miliard transakcí s nemovitostmi a ve druhém plánu to vedlo ke ztrátě více než 300.000 pracovních příležitostí. Průzkumy veřejného mínění ukazují, že Američané se zajímají více o ekonomiku než o případnou intervenci jejich armády proti Iráku. O Iráku začne otevřeně diskutovat ve středu Rada bezpečnosti OSN. V tomto typu debaty tak budou moci sdělit své stanovisko zástupci všech členských zemí Světové organizace..', 'tag': None, 'to_page': '3', 'from_page': '2', 'start_page_id': '87615e80-7370-43a6-832d-ed5970170327'}
+INFO:root:No tags found, 'NoneType' object is not subscriptable
+INFO:root:Task finished. Response: {'texts': ['Jak informuje náš washingtonský zpravodaj Miroslav Konvalina, Bush v rozhlase uvedl: "V nutnosti odzbrojit Irák jsou Spojené Státy zajedno a Kongres je v této otázce zajedno. Amerika mluví jedním hlasem. Irák musí odzbrojit a podřídit se všem rezolucím OSN, nebo k tomu bude donucen". I přesto, že prezident Bush považuje Irák za naprostou prioritu, řada politických vůdců ve Spojených Státech opakovaně upozorňuje, že na domácím poli by měl Bush svést důležitější bitvy, zejména se stagnující ekonomikou. Demokraté chtějí v následujících dnech před listopadovými kongresovými volbami ostře vystoupit proti republikánskému řízení hospodářství. Demokraté také chtějí svolat ekonomické fórum a vyzvali Bushovi poradce, aby odstoupili. Prezident Bush dává v ekonomice přednost smířlivějšímu tónu a vyzval demokratickou opozici v Kongresu, aby se republikány sjednotila kolem hospodářství tak, jak se to podařilo v případě Irácké rezoluce.', 'Václav Havel: Nepleťte si ekonomiku s účetnictvím Na druhý den byl ve Smetanově síni avizován projev exprezidenta a dramatika Václava Havla. Poselstvím a hlavním tématem jeho slov byla schopnost mladých perspektivních manažerů umění rozlišit zisk spočitatelný od nespočitatelného, ono kulturní dědictví či ztráty, jež nelze vyčíslil v účetního tabulkách.', 'V obsáhlé řeči, ve které se opíral o témata Praha, globalizace, konkurence post sovětských zemí v EU, uvedl, že management budoucnosti by neměl stavět své pilíře na agresivních jedincích a na Darwinově teorii Boje druhů. Běžnému zaměstnanci by se neměl utahovat opasek ve prospěch manažerů. "Je nutné trvale kultivovat lidský kapitál," vyslal jako poselství Jiří Paroubek mladým elitám současnosti. V pondělí na závěr prvního bloku zaujal svým energickým a vyčerpávajícím projevem publicista a spolupředseda poslanecké skupiny Evropského parlamentu a člen komise Evropského parlamentu Daniel Cohn-Bendit. Takřka hodinu mluvil o historickém pozadí Evropy, kterou přirovnával ke krásné bytosti, které se chtějí všichni dotknout, ale zároveň se bojí k ní přiblížit. Do prostoru vznesl i zásadní otázku:"Proč potřebujeme Evropu. Potřebujeme ji vůbec?!" Přemýšlel nad problémem národních identit, nad tím, že žádný stát v Evropě by neměl být víc a že národnost konec konců znamená právě ty pomyslné hranice v Evropě.', 'Věřím ve vás, v mladší generaci, která se bude dívat dál do budoucna, za úzký soudobý horizont." Na Successor\'s European Youth Summit 2006 se sešlo se takřka 400 mladých manažerů z celého světa. Účastníci summitu zastávají v mladém věku významné posty v oblasti obchodu, vědy, výzkumu či umění. V Obecním době na panelových diskuzích debatovali o globalizace, nových teoriích růstu, světové bídě i Evropské unii. Panely vedly osobnosti z tuzemské manažerské špičky: generální ředitel Czechinvest Tomáš Hruda, hlavní ekonom Raiffeisen Bank, člen představenstva Škoda Auto Martin Jahn, bývalý ministr financí Pavel Mertlík, poradce premiéra ČR Valtr Komárek či viceprezident společnosti Microsoft pro Evropu, Blízký východ a Afriku Jan Mühlfeit nebo před velkým sálem promluvili i bývalý československý ministr zahraničních věcí Jiří Dienstbier..', '"Přestat si plést ekonomiku s účetnictvím - to by měl být cíl mladých perspektivních manažerů, kteří budou již brzo řídit hospodářství svých zemí," uvedl mírně skepticky exprezident Václav Havel a dodal, "existuje bezpočet zisků, které nelze žádným sebelepším účetním systémem zjistit, a je i mnoho ztrát, které nelze tímto způsobem zjistit." Města halí postmoderní nic, řekl Havel Havel se zamýšlel i nad konzumní propastí, do které se dostávají lidé a jejich města: "Česká a moravská města obklíčily zvláštní zóny, kde jsou rozcapené jakési veliké jednopodlažní tovární haly, další chrámy konzumu - supermarkety, podivná sídliště, která si hrají na vilky, ale ve skutečnosti jsou anonymní. Jsou zde ohromné skladovací plochy, ohromná parkoviště a mezitím step, step a step. Dohromady to nenazvete ničím Není to pole, ani louka ani les, ani vesnice, ani město. Je to jakési postmoderní nic." Přestože jeho projev měl pesimistickou a posmutnělou dikcí, na závěr tomuto Havel opanoval:"Jsem optimista.', 'Bush požádal zákonodárce o rychlé odhlasování několika ekonomických zákonů, například krytí teroristických hrozeb pojišťovnami. Neexistence této legislativy podle něho zbrzdila nebo znemožnila přes 15 miliard transakcí s nemovitostmi a ve druhém plánu to vedlo ke ztrátě více než 300.000 pracovních příležitostí. Průzkumy veřejného mínění ukazují, že Američané se zajímají více o ekonomiku než o případnou intervenci jejich armády proti Iráku. O Iráku začne otevřeně diskutovat ve středu Rada bezpečnosti OSN. V tomto typu debaty tak budou moci sdělit své stanovisko zástupci všech členských zemí Světové organizace..'], 'tags': ['Ne', 'Ne', 'Ano', 'Ne.', 'Ne', 'Ne']}
+INFO:root:Updated ok
+"""
