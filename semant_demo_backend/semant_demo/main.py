@@ -160,13 +160,16 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
     print("Tagging...")
     print(tagReq)
     taskId = str(uuid.uuid4()) # generate id for current task
-    async with AsyncSessionLocal() as session: # 
-        session.add(Task(taskId=taskId))
-        await session.commit()
+    try:
+        async with AsyncSessionLocal() as session: # 
+            session.add(Task(taskId=taskId))
+            await session.commit()
 
-    background_tasks.add_task(tag_and_store, tagReq, taskId, tagger)
-    return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
-
+        background_tasks.add_task(tag_and_store, tagReq, taskId, tagger)
+        return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
+    except Exception as e:
+        logging.error(e)
+        raise HTTPException(status_code=500, detail=str(e))
 """
     try:
         async with db.begin():
@@ -190,6 +193,8 @@ async def check_status(taskId: str):
                 result = json.loads(result)
             except Exception:
                 result = None
+
+        logging.info(f"Repsonse status: {task.status}")
 
         return {"taskId": taskId, "status": task.status, "result": task.result}
 

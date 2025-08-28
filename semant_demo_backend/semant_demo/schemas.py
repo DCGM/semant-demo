@@ -105,8 +105,11 @@ class TagStartResponse(BaseModel):
     message: str
 
 class TagReqTemplate(BaseModel):
-    tag_name: str            # name of the tag
-    tag_definition: str    # description of the tag
+    tag_name: str           # name of the tag
+    tag_shorthand: str          # shorthand for the name
+    tag_color: str              # color assigned to the tag
+    tag_pictogram: str          # image
+    tag_definition: str     # description of the tag
     tag_examples: list[str] # list of examples what should be tagged
     collection_name: str
 
@@ -122,3 +125,15 @@ class Task(TasksBase):
     status = Column(String(20), default="PENDING")  # PENDING|RUNNING|COMPLETED|FAILED
     result = Column(JSON, nullable=True)
     collection_name = Column(String, nullable=True)
+
+tag_class = {
+    "class": "Tag",
+    "properties": [
+        {"name": "tag_name", "dataType": ["string"]},
+        {"name": "tag_shorthand", "dataType": ["string"]},
+        {"name": "tag_color", "dataType": ["string"]},
+        {"name": "tag_pictogram", "dataType": ["string"]},
+        {"name": "tag_definition", "dataType": ["text"]},
+        {"name": "tag_examples", "dataType": ["text[]"]}
+    ]
+}

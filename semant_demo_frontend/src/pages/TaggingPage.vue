@@ -9,7 +9,79 @@
           <q-input v-model="tagForm.collection_name" type="text" label="Collection name" dense outlined />
         </div>
         <div class="row">
-          <q-input v-model="tagForm.tag_name" label="Tag Name" dense outlined required />
+          <div class="col">
+            <q-input v-model="tagForm.tag_name" label="Tag Name" dense outlined required />
+          </div>
+          <div class="col">
+            <q-input v-model="tagForm.tag_shorthand" type="text" label="Shorthand" dense outlined />
+          </div>
+        </div>
+        <div class="row">
+          <!-- Color -->
+          <div class="col">
+            <q-select
+              v-model="tagForm.tag_color"
+              :options="colors"
+              option-label="name"
+              option-value="color" type="text" label="Color" emit-value map-options dense outlined
+            >
+            <template v-slot:option="scope">
+              <q-item v-bind="scope.itemProps">
+              <q-item-section avatar>
+                <div
+                  class="color-swatch"
+                  :style="{ backgroundColor: scope.opt.color }"
+                ></div>
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ scope.opt.name }}</q-item-label>
+              </q-item-section>
+              </q-item>
+            </template>
+            <template v-slot:selected>
+              <q-item v-if="tagForm.tag_color">
+                <q-item-section avatar>
+                  <div class="color-swatch" :style="{ backgroundColor: tagForm.tag_color }">
+                  </div>
+                </q-item-section>
+                <q-item-section>
+                  {{ colors.find(c => c.color === tagForm.tag_color)?.name }}
+                </q-item-section>
+              </q-item>
+            </template>
+            </q-select>
+          </div>
+          <!-- Pictogram -->
+          <div class="col">
+            <q-select
+              v-model="tagForm.tag_pictogram"
+              :options="pictograms"
+              option-label="name"
+              option-value="icon" type="text" label="Pictogram" emit-value map-options dense outlined
+            >
+            <template v-slot:option="scope">
+              <q-item v-bind="scope.itemProps">
+              <q-item-section avatar>
+                <q-icon :name="scope.opt.icon" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ scope.opt.name }}</q-item-label>
+              </q-item-section>
+              </q-item>
+            </template>
+            <template v-slot:selected>
+              <q-item v-if="tagForm.tag_pictogram">
+                <q-item-section avatar>
+                  <q-icon :name="tagForm.tag_pictogram" />
+                </q-item-section>
+                <q-item-section>
+                  {{ pictograms.find(p => p.icon === tagForm.tag_pictogram)?.name }}
+                </q-item-section>
+              </q-item>
+            <!--span v-else>Select a Pictogram</span-->
+            </template>
+            </q-select>
+          </div>
         </div>
         <div class="col">
           <q-input v-model="tagForm.tag_definition" type="text" label="Tag definition" dense outlined />
@@ -98,10 +170,36 @@ interface TaskInfo {
 
 const tagForm = ref<TagRequest>({
   tag_name: '',
+  shorthand: '',
+  color: '',
+  pictogram: '',
   tag_definition: '',
   tag_examples: [''],
   collection_name: 'Chunks'
 })
+
+const pictograms = ref([
+  { name: 'Circle', icon: 'circle' },
+  { name: 'Key', icon: 'key' },
+  { name: 'Square', icon: 'square' },
+  { name: 'Lock', icon: 'lock' }
+])
+
+const colors = ref([
+  { name: 'Green', color: '#4caf50' },
+  { name: 'Light Green', color: '#8bc34a' },
+  { name: 'Lime', color: '#cddc39' },
+  { name: 'Light Blue', color: '#03a9f4' },
+  { name: 'Blue', color: '#2196f3' },
+  { name: 'Cyan', color: '#00bcd4' },
+  { name: 'Yellow', color: '#ffeb3b' },
+  { name: 'Orange', color: '#ff9800' },
+  { name: 'Red', color: '#f44336' },
+  { name: 'Pink', color: '#e91e63' },
+  { name: 'Purple', color: '#9c27b0' },
+  { name: 'Brown', color: '#795548' },
+  { name: 'Grey', color: '#9e9e9e' }
+])
 
 const loading = ref(false)
 const allTaskInfo = ref<TaskInfo[]>([])

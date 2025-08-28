@@ -52,9 +52,10 @@ async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, tagger: We
         response = await tagger.tag(tagReq)
         logging.info(f"Task finished. Response: {response}")
         await update_task_status(task_id, "COMPLETED", {"result": response}, collection_name=tagReq.collection_name)
+        logging.info("Updated ok")
     except Exception as e:
         await update_task_status(task_id, "FAILED", {"error": str(e)}, collection_name=tagReq.collection_name)
-
+        logging.error(f"Error: {e}")
     """
 
     #Thread-safe entry point
