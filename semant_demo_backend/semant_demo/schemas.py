@@ -4,7 +4,7 @@ from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, JSON
+from sqlalchemy import Column, String, JSON, Integer
 
 class SearchType(str, Enum):
     text = "text"
@@ -124,6 +124,8 @@ class Task(TasksBase):
     taskId = Column(String(36), primary_key=True)
     status = Column(String(20), default="PENDING")  # PENDING|RUNNING|COMPLETED|FAILED
     result = Column(JSON, nullable=True)
+    all_texts_count = Column(Integer, nullable=True)
+    processed_count = Column(Integer, nullable=True)
     collection_name = Column(String, nullable=True)
 
 tag_class = {

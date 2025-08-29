@@ -100,4 +100,6 @@ export interface StatusResponse {
   taskId: string;
   status: string;
   result: TagResult;
+  all_texts_count: number;
+  processed_count: number;
 }
