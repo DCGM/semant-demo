@@ -12,12 +12,28 @@ from semant_demo.tagging import tag_and_store
 import uuid
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
+#from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, String, JSON
+from glob import glob  
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
+from sqlalchemy import select, update, bindparam   
+from typing import AsyncGenerator   
+#import db
+from sqlalchemy import exc
+
+import logging  
 
 from semant_demo.schemas import Task, TasksBase
 
 import json
+
+from semant_demo.weaviate_search import DBError
+
+"""
+if os.path.exists(config.SQL_DB_URL):
+    os.remove(config.SQL_DB_URL)
+    print("Deleted old database file")
+"""
 
 """
 from semant_demo.celery_tagging import tag_and_store
@@ -25,9 +41,18 @@ from celery.result import AsyncResult
 """
 
 logging.basicConfig(level=logging.INFO)
-DB_URL = "sqlite+aiosqlite:///tasks.db"
-engine = create_async_engine(DB_URL)
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+global_engine = None
+global_async_session_maker = None
+
+# Dependency
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    global global_engine, global_async_session_maker
+    if global_engine is None:
+        global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
+        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=False)
+    async with global_async_session_maker() as session:
+        yield session    
 
 openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
@@ -42,7 +67,13 @@ app = FastAPI()
 # Create tables on startup
 @app.on_event("startup")
 async def startup():
-    async with engine.begin() as conn:
+    global global_engine, global_async_session_maker
+    global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
+    global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=False)
+    async with global_engine.begin() as conn:
+        # drop all tables first
+        #await conn.run_sync(TasksBase.metadata.drop_all)
+        # create tables
         await conn.run_sync(TasksBase.metadata.create_all)
 
 app.add_middleware(
@@ -156,16 +187,20 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
     )
 
 @app.post("/api/tag", response_model=schemas.TagStartResponse)
-async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search)) -> schemas.TagStartResponse:
+async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
     print("Tagging...")
     print(tagReq)
     taskId = str(uuid.uuid4()) # generate id for current task
     try:
-        async with AsyncSessionLocal() as session: # 
-            session.add(Task(taskId=taskId))
-            await session.commit()
+        try:
+            async with session.begin():
+                session.add(Task(taskId=taskId))
+                await session.commit()
+        except exc.SQLAlchemyError as e:
+            logging.exception(f'Failed adding object to database. Task ID={taskId}')
+            raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
 
-        background_tasks.add_task(tag_and_store, tagReq, taskId, tagger)
+        background_tasks.add_task(tag_and_store, tagReq, taskId, tagger, global_async_session_maker)
         return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
     except Exception as e:
         logging.error(e)
@@ -181,9 +216,12 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
 """
 
 @app.get("/api/tag/status/{taskId}")
-async def check_status(taskId: str):
-    async with AsyncSessionLocal() as session:
-        task = await session.get(Task, taskId)
+async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session)):
+        try:
+            task = await session.get(Task, taskId)
+        except exc.SQLAlchemyError as e:
+            logging.exception(f'Failed loading object from database. Task ID={taskId}')
+            raise DBError(f'Failed loading object from database. Task ID={taskId}') from e
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         # prepare the result
@@ -196,7 +234,7 @@ async def check_status(taskId: str):
 
         logging.info(f"Repsonse status: {task.status}")
 
-        return {"taskId": taskId, "status": task.status, "result": task.result}
+        return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count}
 
 """
 @app.get("/api/tag/status/{task_id}")

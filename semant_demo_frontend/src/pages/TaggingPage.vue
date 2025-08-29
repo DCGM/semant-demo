@@ -135,7 +135,10 @@
         <q-card-section>
           <div class="text-subtitle2">ID: {{ task.task_id }}</div>
           <div class="text-caption">Status: {{ task.status }}</div>
-          <q-linear-progress v-if="task.status === 'PROCESSING' || task.status === 'STARTED'" indeterminate class="q-mt-sm"/>
+          <q-linear-progress v-if="task.status === 'PROCESSING' || task.status === 'RUNNING' || task.status === 'STARTED'" indeterminate class="q-mt-sm"/>
+          <div v-if="task.status === 'RUNNING'" class="q-mt-sm">
+            <div class="text-caption">Processed: {{ task.processed_count ?? 0 }} / {{ task.all_texts_count ?? 0 }}</div>
+          </div>
           <div v-if="task.status === 'COMPLETED'" class="q-mt-sm">
             <div class="text-positive">Completed</div>
             <div v-if="task.result" class="q-mt-sm">
@@ -161,18 +164,30 @@ import { api } from 'src/boot/axios'
 
 interface TaskInfo {
   task_id: string;
-  status: 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  status: 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING';
+  all_texts_count: number,
+  processed_count: number,
   message?: string;
   timestamp: string;
   result?: TagResult;
   error?: string;
 }
-
+/*
+const tagForm = ref<TagRequest>({
+  tag_name: 'Prezident',
+  tag_shorthand: 'p',
+  tag_color: '#4caf50',
+  tag_pictogram: 'Circle',
+  tag_definition: 'Hlava statu',
+  tag_examples: ['EU Cesko'],
+  collection_name: 'Chunks'
+})
+*/
 const tagForm = ref<TagRequest>({
   tag_name: '',
-  shorthand: '',
-  color: '',
-  pictogram: '',
+  tag_shorthand: '',
+  tag_color: '',
+  tag_pictogram: '',
   tag_definition: '',
   tag_examples: [''],
   collection_name: 'Chunks'
@@ -249,6 +264,8 @@ async function onTag () {
     const newTaskInfo: TaskInfo = {
       task_id: data.task_id,
       status: 'STARTED',
+      all_texts_count: 0,
+      processed_count: 0,
       message: data.message,
       timestamp: new Date().toISOString()
     }
@@ -277,7 +294,8 @@ function startPolling (taskId: string) {
       // server response is inside data
       const { data } = await api.get<StatusResponse>(`/tag/status/${taskId}`)
       console.log('Polling response:', data) // Debug log
-      updateTaskStatus(taskId, data.status, data.result.result)
+      console.log('processed count: ', data.processed_count, 'all count: ', data.all_texts_count)
+      updateTaskStatus(taskId, data.status, data.result, data.all_texts_count, data.processed_count)
       // stop polling when task done
       if (['COMPLETED', 'FAILED'].includes(data.status)) {
         console.log(`Stopping polling for task ${taskId}, status: ${data.status}`)
@@ -289,7 +307,7 @@ function startPolling (taskId: string) {
       updateTaskStatus(taskId, 'FAILED')
       stopPolling(taskId)
     }
-  }, 10000) // poll every 10 seconds
+  }, 3000) // poll every 10000 10 seconds
   pollingIntervals.value.set(taskId, interval)
 }
 
@@ -301,13 +319,15 @@ function stopPolling (taskId: string) {
   }
 }
 
-function updateTaskStatus (taskId: string, status: string, result?: TagResult) {
+function updateTaskStatus (taskId: string, status: string, result?: TagResult, allTextsCount?: number, processedCount?: number) {
   const index = allTaskInfo.value.findIndex(task => task.task_id === taskId)
   if (index !== -1) {
     allTaskInfo.value[index] = {
       ...allTaskInfo.value[index],
       status: status,
       result: result,
+      all_texts_count: allTextsCount,
+      processed_count: processedCount,
       // Preserve existing data
       timestamp: allTaskInfo.value[index].timestamp,
       message: allTaskInfo.value[index].message

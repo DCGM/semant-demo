@@ -9,6 +9,7 @@ from semant_demo.gemma_embedding import get_query_embedding
 from weaviate.classes.query import QueryReference
 import weaviate.collections.classes.internal
 from weaviate.collections.classes.filters import Filter
+from weaviate.classes.query import QueryReference
 from uuid import UUID
 from .ollama_proxy import OllamaProxy
 from .config import config
@@ -26,6 +27,15 @@ from langchain_core.messages import BaseMessage
 import logging
 import re
 import json
+
+from sqlalchemy import update
+from sqlalchemy import exc
+from semant_demo.schemas import Task, TasksBase
+
+import time as timeSleep
+
+class DBError(Exception):
+    pass
 
 class OllamaProxyRunnable(Runnable):
     def __init__(self, proxy, model_name):
@@ -271,12 +281,10 @@ class WeaviateSearch:
             }
         )
         return new_tag_uuid  
-         
 
-    async def tag(self, tag_request: schemas.TagReqTemplate) -> schemas.TagResponse:
+    async def tag(self, tag_request: schemas.TagReqTemplate, task_id: str, sessionmaker=None) -> schemas.TagResponse:
         # tags chunks
         try:
-
             prompt = ChatPromptTemplate.from_template(self.tag_template)
             model = OllamaProxyRunnable(self.ollama_proxy, self.ollama_model)
             chain = prompt | model
@@ -291,51 +299,46 @@ class WeaviateSearch:
             )
             results = await query
 
-            # extract text field from each object
-            texts = [obj.properties["text"] for obj in results.objects]
+            texts = []
+            tags = []
 
             # process with llm and decide if tag belongs to text 
-            tags = await chain.abatch([{"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text} for text in texts])
-            
-            # store in weaviate (upload positive tag instances to weaviate)
-            positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE)
-            
-            # check if there are any positive repsonses
-            positive = any(positive_responses.search(t) for t in tags)
-            if positive:
-                tag_uuid = await self.add_or_get_tag(tag_request)
-                logging.info("Got past add new object")
-                for idx, obj in enumerate(results.objects):
-                    if positive_responses.search(tags[idx]): # if the llm response is positive then store the tag data
+            positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
+            tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
+            all_texts_count = len(results.objects)
+            processed_count = 0
+            for obj in results.objects:
+                try:
+                    # extract text field from the current object
+                    text = obj.properties["text"]
+                    tag = await chain.ainvoke({"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text})
+
+                    # store in weaviate (upload positive tag instances to weaviate)
+                    if positive_responses.search(tag): # if the llm response is positive then store the tag data
                         # add the new tag data
                         await weaviate_objects.data.reference_add(
                             from_uuid = obj.uuid,
                             from_property="hasTags",
                             to=tag_uuid
                         )
-                        """
-                        await weaviate_objects.data.reference.add(
-                            from_uuid = obj.uuid,
-                            from_property_name="hasTags",
-                            to_uuid = tag_uuid,
-                            to_class_name = "Tag",)
-                        """
-                """
-                            properties = {
-                                "tag": {"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": obj.properties["text"]}, # TODO remove , "content": obj.properties["text"]
-                            }
-                """
+                    texts.append(text)
+                    tags.append(tag)
+                    logging.info(f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
+                    timeSleep.sleep(2)
+                    # TODO store progress in SQL db
+                    processed_count += 1 # increase number of processed chunks
+                    await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, sessionmaker=sessionmaker, all_texts_count=all_texts_count, processed_count=processed_count)
+                except Exception as e:
+                    pass # TODO revert changes
                 
-                cfg = await self.client.collections.get("Chunks").config.get()
-                logging.info(f"Chunk refs: {[r.name for r in cfg.references]}")
+            # check if the references are correct TODO remove this
+            cfg = await self.client.collections.get("Chunks").config.get()
+            logging.info(f"Chunk refs: {[r.name for r in cfg.references]}")
 
-                # check stored TODO remove this part
-                from weaviate.classes.query import QueryReference
+            # check stored TODO remove this part
+            weaviate_objects_test = self.client.collections.get(collection_name)
 
-                # check stored
-                weaviate_objects_test = self.client.collections.get(collection_name)
-
-                test_results = await weaviate_objects_test.query.fetch_objects(
+            test_results = await weaviate_objects_test.query.fetch_objects(
                     return_properties=["text"],
                     return_references=QueryReference(
                         link_on="hasTags",
@@ -344,7 +347,7 @@ class WeaviateSearch:
                     limit=100,
                 )
 
-                for obj in test_results.objects:
+            for obj in test_results.objects:
                     logging.info(f"Chunk {obj.uuid} | text: {obj.properties.get('text','')[:80]}...")
 
                     # references come under obj.references, not properties
@@ -362,7 +365,7 @@ class WeaviateSearch:
                             )
                     else:
                         logging.info("No tags found")
-                """
+            """
                 weaviate_objects_test = self.client.collections.get(collection_name)
                 query_test = weaviate_objects_test.query.fetch_objects()
                 test_results = await query_test
@@ -376,12 +379,28 @@ class WeaviateSearch:
                                 logging.info(f"Tag ref: {ref.uuid}, properties: {ref.properties}")
                     except Exception as e:
                         logging.info(f"No tags found, {e}")
-                """
+            """
             return {'texts': texts, 'tags': tags}
             
         except Exception as e:
             print(f"Error fetching texts from collection {collection_name}: {e}")
-            return []
+            return {}
+
+async def update_task_status(task_id: str, status: str, result={}, collection_name=None, sessionmaker=None, all_texts_count=0, processed_count=0):
+        try:
+            async with sessionmaker() as session:
+                async with session.begin():
+                    # update the task status in DB
+                    await session.execute(
+                        update(Task)
+                        .where(Task.taskId == task_id)
+                        .values(status=status, result=result, collection_name=collection_name, all_texts_count=int(all_texts_count), processed_count=int(processed_count))
+                    )   
+                    await session.commit()
+    
+        except exc.SQLAlchemyError as e:
+            logging.exception(f'Failed updating object in database. Task id ={id}')
+            raise DBError(f'Failed updating object in database. Task id ={id}') from e         
 
 
 """

@@ -1,28 +1,29 @@
 from semant_demo import schemas
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+#from sqlalchemy.orm import sessionmaker
 from sqlalchemy import update
+from sqlalchemy import exc
 from semant_demo.schemas import Task, TasksBase
 import asyncio
 from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.config import config
 import logging
+from semant_demo.weaviate_search import update_task_status
 
-# Reuse the same DB engine from main.py
-DB_URL = "sqlite+aiosqlite:///tasks.db"
-engine = create_async_engine(DB_URL)
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-async def update_task_status(task_id: str, status: str, result=None, collection_name=None):
-    async with AsyncSessionLocal() as session:
-        # Update the task status in DB
-        await session.execute(
-            update(Task)
-            .where(Task.taskId == task_id)
-            .values(status=status, result=result, collection_name=collection_name)
-        )
-        await session.commit()
-
+async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, tagger: WeaviateSearch, sessionmaker):
+    try:
+        #await update_task_status(task_id, "RUNNING", collection_name=tagReq.collection_name, sessionmaker=sessionmaker)
+        
+        # TODO replace with Weaviate/LLM operations:
+        logging.info(f"Starting task with data: {str(tagReq)}")
+        response = await tagger.tag(tagReq, task_id, sessionmaker=sessionmaker)
+        logging.info(f"Task finished. Response: {response}")
+        await update_task_status(task_id, "COMPLETED", result=response, collection_name=tagReq.collection_name, sessionmaker=sessionmaker)
+        logging.info("Updated ok")
+    except Exception as e:
+        await update_task_status(task_id, "FAILED", result={"error": str(e)}, collection_name=tagReq.collection_name, sessionmaker=sessionmaker)
+        logging.error(f"Error: {e}")
+    
 """
 async def async_tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, session: AsyncSession):
     try:
@@ -40,23 +41,9 @@ async def async_tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, sess
         await update_task_status(task_id, "COMPLETED", {"result": "success"})
     except Exception as e:
         await update_task_status(task_id, "FAILED", {"error": str(e)})
-"""
+"""    
 
-async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, tagger: WeaviateSearch):
-    try:
-        await update_task_status(task_id, "RUNNING", collection_name=tagReq.collection_name)
-        
-        # TODO replace with Weaviate/LLM operations:
-        
-        logging.info(f"Starting task with data: {str(tagReq)}")
-        response = await tagger.tag(tagReq)
-        logging.info(f"Task finished. Response: {response}")
-        await update_task_status(task_id, "COMPLETED", {"result": response}, collection_name=tagReq.collection_name)
-        logging.info("Updated ok")
-    except Exception as e:
-        await update_task_status(task_id, "FAILED", {"error": str(e)}, collection_name=tagReq.collection_name)
-        logging.error(f"Error: {e}")
-    """
+"""
 
     #Thread-safe entry point
     loop = asyncio.new_event_loop()
