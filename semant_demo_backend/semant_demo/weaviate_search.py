@@ -246,7 +246,8 @@ class WeaviateSearch:
                     {"name": "tag_color", "dataType": "string"},
                     {"name": "tag_pictogram", "dataType": "string"},
                     {"name": "tag_definition", "dataType": "string"},
-                    {"name": "tag_examples", "dataType": "string"},
+                    {"name": "tag_examples", "dataType": "string[]"},
+                    {"name": "collection_name", "dataType": "string"},
                 ]
             )
         
@@ -262,11 +263,14 @@ class WeaviateSearch:
         existing_tags = results.objects
         
         # check for exact match
+        # TODO check examples
         for existing_tag in existing_tags:
             if (existing_tag.properties["tag_name"] == tag_request.tag_name and
                 existing_tag.properties["tag_shorthand"] == tag_request.tag_shorthand and
                 existing_tag.properties["tag_color"] == tag_request.tag_color and
-                existing_tag.properties["tag_pictogram"] == tag_request.tag_pictogram):
+                existing_tag.properties["tag_pictogram"] == tag_request.tag_pictogram and
+                existing_tag.properties["collection_name"] == tag_request.collection_name and
+                existing_tag.properties["tag_definition"] == tag_request.tag_definition) :
                 return existing_tag.uuid  # return existing tag UUID
         
         # if no exact match found then create new tag
@@ -277,10 +281,27 @@ class WeaviateSearch:
                 "tag_color": tag_request.tag_color,
                 "tag_pictogram": tag_request.tag_pictogram,
                 "tag_definition": tag_request.tag_definition,
-                "tag_examples": tag_request.tag_examples
+                "tag_examples": tag_request.tag_examples,
+                "collection_name": tag_request.collection_name
             }
         )
         return new_tag_uuid  
+    
+    #TODO add collection to Tag class
+    async def get_all_tags(self):
+        tag_objects = await self.client.collections.get("Tag").query.fetch_objects()
+        tag_data = []
+        for obj in tag_objects.objects:
+            tag_data.append({
+            'tag_name': obj.properties["tag_name"],
+            'tag_shorthand': obj.properties["tag_shorthand"],
+            'tag_color': obj.properties["tag_color"],
+            'tag_pictogram': obj.properties["tag_pictogram"],
+            'tag_definition': obj.properties["tag_definition"],
+            'tag_examples': obj.properties["tag_examples"],
+            "collection_name": obj.properties["collection_name"],
+            })
+        return tag_data
 
     async def tag(self, tag_request: schemas.TagReqTemplate, task_id: str, sessionmaker=None) -> schemas.TagResponse:
         # tags chunks
@@ -305,6 +326,7 @@ class WeaviateSearch:
             # process with llm and decide if tag belongs to text 
             positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
             tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
+            logging.info("Past the add ir get tag")
             all_texts_count = len(results.objects)
             processed_count = 0
             for obj in results.objects:
@@ -385,6 +407,8 @@ class WeaviateSearch:
         except Exception as e:
             print(f"Error fetching texts from collection {collection_name}: {e}")
             return {}
+        
+
 
 async def update_task_status(task_id: str, status: str, result={}, collection_name=None, sessionmaker=None, all_texts_count=0, processed_count=0):
         try:

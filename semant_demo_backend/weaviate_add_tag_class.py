@@ -13,20 +13,23 @@ def setup_schema():
     try:
         client.connect()
         # Check if Tag class already exists
-        if not client.collections.exists("Tag"):
-            client.collections.create(name="Tag",
+        if client.collections.exists("Tag"):
+            print(f"Tag schema: {client.collections.get('Tag').config.get()}")
+            print("Tag class already exists")
+            client.collections.delete("Tag")
+        
+        client.collections.create(name="Tag",
                 properties=[
                     {"name": "tag_name", "data_type": wvc.DataType.TEXT},
                     {"name": "tag_shorthand", "data_type": wvc.DataType.TEXT},
                     {"name": "tag_color", "data_type": wvc.DataType.TEXT},
                     {"name": "tag_pictogram", "data_type": wvc.DataType.TEXT},
                     {"name": "tag_definition", "data_type": wvc.DataType.TEXT},
-                    {"name": "tag_examples", "data_type": wvc.DataType.TEXT_ARRAY}
+                    {"name": "tag_examples", "data_type": wvc.DataType.TEXT_ARRAY},
+                    {"name": "collection_name", "data_type": wvc.DataType.TEXT}
                 ]
             )
-            print("Tag class created successfully")
-        else:
-            print("Tag class already exists")
+        print("Tag class created successfully")
 
         """Update the Chunks class schema to include hasTags reference"""
         try:
