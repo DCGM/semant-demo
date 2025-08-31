@@ -117,6 +117,9 @@ class TagResponse(BaseModel):
     texts: list[str]
     tags: list[str]
 
+class GetTagsResponse(BaseModel):
+    tags_lst: list[TagReqTemplate]
+
 # Task Model
 TasksBase = declarative_base()
 class Task(TasksBase):
@@ -136,6 +139,7 @@ tag_class = {
         {"name": "tag_color", "dataType": ["string"]},
         {"name": "tag_pictogram", "dataType": ["string"]},
         {"name": "tag_definition", "dataType": ["text"]},
-        {"name": "tag_examples", "dataType": ["text[]"]}
+        {"name": "tag_examples", "dataType": ["text[]"]},
+        {"name": "collection_name", "dataType": ["string"]}
     ]
 }

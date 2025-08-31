@@ -236,27 +236,12 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
 
         return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count}
 
-"""
-@app.get("/api/tag/status/{task_id}")
-async def check_tagging_task_status(task_id: str):
-    status = task_status.get(task_id, "NOT_FOUND")
-    return {"task_id": task_id, "status": status}
+@app.get("/api/get_tags", response_model=schemas.GetTagsResponse)
+async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
+    response = await tagger.get_all_tags()
+    return {"tags_lst": response}
 
-@app.post("/api/tag", response_model=schemas.TagStartResponse)
-async def start_tagging(tagReq: schemas.TagTemplate) -> schemas.TagStartResponse:
-    try:
-        tag_task = tag_and_store.delay(tagReq.model_dump()) # start task asynchronously
-    except Exception as e:
-        return {"job_started": False, "message": f"Error: {e}"}
-    return {"job_started": True, "message": f"Task {tag_task.id} queued in background"}
-
-@app.get("/tasks/{task_id}")
-def get_status(task_id):
-    task_result = AsyncResult(task_id)
-    result = {
-        "task_id": task_id,
-        "task_status": task_result.status,
-        "task_result": task_result.result
-    }
-    return JSONResponse(result)
-"""
+@app.post("/api/tagged_texts", response_model=schemas.GetTagsResponse)
+async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
+    response = await tagger.get_all_tags()
+    return {"tags_lst": response}

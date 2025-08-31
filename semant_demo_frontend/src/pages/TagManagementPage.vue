@@ -5,6 +5,62 @@
         <div class="row justify-center">
           <span class="text-h6">Tag collection</span>
         </div>
+        <div class="col">
+        <q-select
+          v-model="tagForm.tag_color"
+          :options="tags"
+          option-label="tag_name"
+          option-value="tag_color"
+          type="text"
+          label="Tag"
+          emit-value
+          map-options
+          dense
+          outlined
+          :loading="loadingSpinner"
+        >
+          <!-- No option slot -->
+          <template v-slot:no-option>
+            <q-item>
+              <q-item-section class="text-grey">
+                No tags found
+              </q-item-section>
+            </q-item>
+          </template>
+          <!-- Custom option rendering -->
+          <template v-slot:option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section avatar>
+                <div
+                  class="color-swatch"
+                  :style="{ backgroundColor: scope.opt.tag_color }"
+                ></div>
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ scope.opt.tag_name }}</q-item-label>
+                <q-item-label caption>
+                  {{ scope.opt.tag_definition }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+
+          <!-- Custom selected rendering -->
+          <template v-slot:selected>
+            <q-item v-if="tagForm.tag_color">
+              <q-item-section avatar>
+                <div
+                  class="color-swatch"
+                  :style="{ backgroundColor: tagForm.tag_color }"
+                ></div>
+              </q-item-section>
+              <q-item-section>
+                {{ tags.find(t => t.tag_color === tagForm.tag_color)?.tag_name }}
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+      </div>
         <div class="row">
           <q-input v-model="tagForm.collection_name" type="text" label="Collection name" dense outlined />
         </div>
@@ -158,9 +214,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, onMounted } from 'vue'
 import type { TagRequest, TagStartResponse, StatusResponse, TagResult } from 'src/models'
 import { api } from 'src/boot/axios'
+import axios from 'axios'
 
 interface TaskInfo {
   task_id: string;
@@ -174,16 +231,6 @@ interface TaskInfo {
 }
 
 const tagForm = ref<TagRequest>({
-  tag_name: 'Prezident',
-  tag_shorthand: 'p',
-  tag_color: '#4caf50',
-  tag_pictogram: 'Circle',
-  tag_definition: 'Hlava statu',
-  tag_examples: ['EU Cesko'],
-  collection_name: 'Chunks'
-})
-/*
-const tagForm = ref<TagRequest>({
   tag_name: '',
   tag_shorthand: '',
   tag_color: '',
@@ -192,7 +239,7 @@ const tagForm = ref<TagRequest>({
   tag_examples: [''],
   collection_name: 'Chunks'
 })
-*/
+
 const pictograms = ref([
   { name: 'Circle', icon: 'circle' },
   { name: 'Key', icon: 'key' },
@@ -220,6 +267,9 @@ const loading = ref(false)
 const allTaskInfo = ref<TaskInfo[]>([])
 const pollingIntervals = ref<Map<string, number>>(new Map())
 
+const tags = ref([])
+const loadingSpinner = ref(false)
+
 // add examples field
 const addExample = () => {
   tagForm.value.tag_examples.push('')
@@ -231,6 +281,16 @@ const removeExample = (index: number) => {
     tagForm.value.tag_examples.splice(index, 1)
   }
 }
+
+onMounted(async () => {
+  loadingSpinner.value = true
+  try {
+    const res = await axios.get('/api/get_tags')
+    tags.value = res.data.tags_lst
+  } finally {
+    loadingSpinner.value = false
+  }
+})
 
 function formatDate (dateString: string): string {
   return new Date(dateString).toLocaleString()
