@@ -92,6 +92,14 @@ class WeaviateSearch:
             for f in filters[1:]:
                 combined_filter &= f
 
+
+        document_properties_to_return = [
+                "library", "title", "subTitle", "partNumber", "partName", 
+                "yearIssued", "dateIssued", "authors", "publisher", "description", 
+                "url", "public", "documentType", "keywords", "genre", "placeTerm",
+                "section", "region", "id_code"
+        ]
+
         t1 = time()
         if search_request.type == schemas.SearchType.hybrid:
             q_vector = await get_query_embedding(search_request.query)
@@ -103,7 +111,8 @@ class WeaviateSearch:
                 vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
-                return_references=QueryReference(link_on="document", return_properties=None)
+                # return_references=QueryReference(link_on="document", return_properties=None)
+                return_references=QueryReference(link_on="document", return_properties=document_properties_to_return)
             )
         elif search_request.type == schemas.SearchType.text:
             # Execute text search
@@ -111,7 +120,8 @@ class WeaviateSearch:
                 query=search_request.query,
                 limit=search_request.limit,
                 filters=combined_filter,
-                return_references=QueryReference(link_on="document", return_properties=None)
+                # return_references=QueryReference(link_on="document", return_properties=None)
+                return_references=QueryReference(link_on="document", return_properties=document_properties_to_return)
             )
         elif search_request.type == schemas.SearchType.vector:
             q_vector = await get_query_embedding(search_request.query)
@@ -119,7 +129,8 @@ class WeaviateSearch:
                 near_vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
-                return_references=QueryReference(link_on="document", return_properties=None)
+                # return_references=QueryReference(link_on="document", return_properties=None)
+                return_references=QueryReference(link_on="document", return_properties=document_properties_to_return)
             )
         else:
             raise ValueError(f"Unknown search type: {search_request.type}")
@@ -141,6 +152,7 @@ class WeaviateSearch:
             first_doc = doc_objs[0]
             if "library" not in first_doc.properties or not first_doc.properties["library"]:
                 first_doc.properties["library"] = "mzk"
+
             document_obj = schemas.Document(
                 id=first_doc.uuid,
                 **first_doc.properties,
