@@ -241,7 +241,11 @@ async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetT
     response = await tagger.get_all_tags()
     return {"tags_lst": response}
 
-@app.post("/api/tagged_texts", response_model=schemas.GetTagsResponse)
-async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
-    response = await tagger.get_all_tags()
-    return {"tags_lst": response}
+@app.post("/api/tagged_texts", response_model=schemas.GetTaggedChunksResponse)
+async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
+    try:
+        logging.info(f"In get tagged text {chosenTagUUIDs}")
+        response = await tagger.get_tagged_chunks(chosenTagUUIDs)
+        return response
+    except Exception as e:
+        logging.error(f"{e}")

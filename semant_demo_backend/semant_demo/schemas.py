@@ -117,8 +117,29 @@ class TagResponse(BaseModel):
     texts: list[str]
     tags: list[str]
 
+class TagData(BaseModel):
+    tag_name: str           # name of the tag
+    tag_shorthand: str          # shorthand for the name
+    tag_color: str              # color assigned to the tag
+    tag_pictogram: str          # image
+    tag_definition: str     # description of the tag
+    tag_examples: list[str] # list of examples what should be tagged
+    collection_name: str
+    tag_uuid: uuid.UUID
+
 class GetTagsResponse(BaseModel):
-    tags_lst: list[TagReqTemplate]
+    tags_lst: list[TagData]
+
+class GetTaggedChunksReq(BaseModel):
+    tag_uuids: list[uuid.UUID]
+
+class TaggedChunks(BaseModel):
+    tag_uuids : list[uuid.UUID] # uuids of all tags selected in UI and belonging to the text chunk
+    text_chunk: str # actual text chunk
+    chunk_id: str # to apply changes later
+
+class GetTaggedChunksResponse(BaseModel):
+    chunks_with_tags : list[TaggedChunks] # list of pairs text chunk and id belonging to it
 
 # Task Model
 TasksBase = declarative_base()

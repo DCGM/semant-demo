@@ -34,6 +34,8 @@ from semant_demo.schemas import Task, TasksBase
 
 import time as timeSleep
 
+from weaviate.collections.classes.grpc import QueryReference
+
 class DBError(Exception):
     pass
 
@@ -299,7 +301,8 @@ class WeaviateSearch:
             'tag_pictogram': obj.properties["tag_pictogram"],
             'tag_definition': obj.properties["tag_definition"],
             'tag_examples': obj.properties["tag_examples"],
-            "collection_name": obj.properties["collection_name"],
+            'collection_name': obj.properties["collection_name"],
+            'tag_uuid': obj.uuid,
             })
         return tag_data
 
@@ -372,7 +375,7 @@ class WeaviateSearch:
             for obj in test_results.objects:
                     logging.info(f"Chunk {obj.uuid} | text: {obj.properties.get('text','')[:80]}...")
 
-                    # references come under obj.references, not properties
+                    # references in chunks
                     tags_ref = obj.references.get("hasTags") if obj.references else None
                     if tags_ref and getattr(tags_ref, "objects", None):
                         for tag_obj in tags_ref.objects:
@@ -408,7 +411,52 @@ class WeaviateSearch:
             print(f"Error fetching texts from collection {collection_name}: {e}")
             return {}
         
+    async def get_tagged_chunks(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.GetTaggedChunksResponse:
+        """
+        get tag objects from them extract collection names, in these collections 
+        search for chunks that refer to any of the selected tags and return chunk 
+        texts and all tags from selected tags that are referenced from the chunk
+        """
+        try:
+            # get all chunks with at least one tag from chosenTagUUIDs list
+            # get tags
+            tag_collection = self.client.collections.get("Tag")
+            chunk_lst_with_tags = []
+            filters = Filter.by_id().contains_any([str(uuid) for uuid in chosenTagUUIDs.tag_uuids])
+            
+            results = await tag_collection.query.fetch_objects(filters=filters)
+            logging.info(f"Results: {results}")
+            # get different collection names
+            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            # iterate over the collections and retrieve text chunks and corresponding tags
+            for collection_name in collection_names:
+                # get all chunks
+                chunk_results = await self.client.collections.get(collection_name).query.fetch_objects(
+                    return_references=QueryReference(
+                        link_on="hasTags",                 # the reference property
+                        return_properties=["uuid", "tag_name"]  # properties you want from the referenced tags
+                    )
+                )
 
+                for chunk_obj in chunk_results.objects:
+                    referencedTags = chunk_obj.references.get("hasTags") if chunk_obj.references else None
+                    chunk_id = str(chunk_obj.uuid)
+                    chunk_text = chunk_obj.properties.get('text','')
+                    corresponding_tags = []
+                    logging.info(f"Referenced tags: {referencedTags}")
+                    # extract tag
+                    if referencedTags and getattr(referencedTags, "objects", None):
+                        for tag_obj in referencedTags.objects:
+                            if tag_obj.uuid in chosenTagUUIDs.tag_uuids:
+                                corresponding_tags.append(str(tag_obj.uuid))
+
+                    chunk_lst_with_tags.append({'tag_uuids': corresponding_tags, 'text_chunk': chunk_text, "chunk_id": chunk_id})
+            # process the filtered chunks to send them to frontend
+                logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
+            return {"chunks_with_tags": chunk_lst_with_tags}
+        except Exception as e:
+            logging.error(f"No tags assigned yet. {e}")
+            return {'chunks_with_tags': []}
 
 async def update_task_status(task_id: str, status: str, result={}, collection_name=None, sessionmaker=None, all_texts_count=0, processed_count=0):
         try:
