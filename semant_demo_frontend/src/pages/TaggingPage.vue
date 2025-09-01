@@ -177,7 +177,7 @@ const tagForm = ref<TagRequest>({
   tag_name: 'Prezident',
   tag_shorthand: 'p',
   tag_color: '#4caf50',
-  tag_pictogram: 'Circle',
+  tag_pictogram: 'circle',
   tag_definition: 'Hlava statu',
   tag_examples: ['EU Cesko'],
   collection_name: 'Chunks'

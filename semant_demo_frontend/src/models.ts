@@ -20,6 +20,10 @@ export interface TagRequest {
   collection_name: string;
 }
 
+export interface TagData {
+  tag_uuids: string[];
+}
+
 export interface Document {
   id: string; // UUID as string
   library: string;
@@ -89,6 +93,16 @@ export interface TagStartResponse {
   job_started: boolean;
   task_id: string;
   message: string;
+}
+
+export interface TaggedChunks {
+    tag_uuids : string[];
+    text_chunk: string;
+    chunk_id: string;
+}
+
+export interface GetTaggedChunksResponse {
+    chunks_with_tags : TaggedChunks[]
 }
 
 export interface TagResult {
