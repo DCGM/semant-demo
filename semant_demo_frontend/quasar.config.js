@@ -93,7 +93,7 @@ module.exports = configure(function (/* ctx */) {
         // proxy all requests starting with /api to jsonplaceholder
         '/api': {
           // target: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:8002',
-          target: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:8080',
+          target: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:8000',
           changeOrigin: true
           // rewrite: (path) => path.replace(/^\/api/, '')
         }
