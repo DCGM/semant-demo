@@ -6,6 +6,7 @@ from semant_demo.config import config
 import logging
 from semant_demo.weaviate_search import WeaviateSearch
 import asyncio
+from time import time
 
 logging.basicConfig(level=logging.INFO)
 
@@ -119,4 +120,46 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
     return schemas.SummaryResponse(
         summary=summary_text,
         time_spent=search_response.time_spent,
+    )
+
+@app.post("/api/rag", response_model=schemas.RagResponse)
+async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
+
+    # build your snippets with IDs
+    snippets = [
+        f"[doc{i+1}]" + res.text.replace('\\n', ' ')
+        for i, res in enumerate(request.search_response.results)
+    ]
+    context_string = "\n".join(snippets)
+
+    # prompt
+    system_prompt = (
+        "You are a helpful chatbot.\n"
+        "Use only the following pieces of context to answer the question. "
+        "Don't make up any new information. If you can not provide answer based on the context, answer only \"I can´t answer the question.\".\n"
+        "Context:\n"
+        f"{context_string}"
+    )
+
+    # call ollama
+    try:
+        t1 = time()
+        
+        generated_answer = await searcher.ollama_proxy.call_ollama_chat(
+            model=searcher.ollama_model,
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': request.question},
+            ]
+        )
+        time_spent = time() - t1
+
+    except Exception as e:
+        logging.error(f"RAG error: calling Ollama: {e}")
+        raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
+
+    # answer
+    return schemas.RagResponse(
+        rag_answer=generated_answer.strip(),
+        time_spent=time_spent
     )

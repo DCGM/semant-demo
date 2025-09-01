@@ -31,7 +31,7 @@ class SearchRequest(BaseModel):
 class Document(BaseModel):
     id: uuid.UUID
     library: str
-    title: str
+    title: str | None = None
     subtitle: str | None = None
     partNumber: int | None = None
     partName: str | None = None
@@ -84,4 +84,12 @@ class SearchResponse(BaseModel):
 
 class SummaryResponse(BaseModel):
     summary: str
+    time_spent: float
+
+class RagQuestionRequest(BaseModel):
+    search_response: SearchResponse
+    question: str
+
+class RagResponse(BaseModel):
+    rag_answer: str
     time_spent: float
