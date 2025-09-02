@@ -137,9 +137,20 @@ class TaggedChunks(BaseModel):
     tag_uuids : list[uuid.UUID] # uuids of all tags selected in UI and belonging to the text chunk
     text_chunk: str # actual text chunk
     chunk_id: str # to apply changes later
+    chunk_collection_name: str # send collection name of the chunk for faster manipulation later
 
 class GetTaggedChunksResponse(BaseModel):
     chunks_with_tags : list[TaggedChunks] # list of pairs text chunk and id belonging to it
+
+class ApproveTagReq(BaseModel):
+    approved: bool
+    chunkID: str
+    tagID: str
+    chunk_collection_name: str
+
+class ApproveTagResponse(BaseModel):
+    successful: bool
+    approved: bool
 
 # Task Model
 TasksBase = declarative_base()

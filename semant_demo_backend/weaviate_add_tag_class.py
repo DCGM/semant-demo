@@ -3,6 +3,7 @@ from weaviate import WeaviateClient
 from weaviate.connect import ConnectionParams
 from semant_demo.config import config
 import weaviate.classes.config as wvc
+from weaviate.classes.config import ReferenceProperty
 
 def setup_schema():
     conn_params = ConnectionParams.from_params(
@@ -16,8 +17,8 @@ def setup_schema():
         if client.collections.exists("Tag"):
             print(f"Tag schema: {client.collections.get('Tag').config.get()}")
             print("Tag class already exists")
-            client.collections.delete("Tag")
-        
+            client.collections.delete("Tag") # remove the class
+        # create the Tag class
         client.collections.create(name="Tag",
                 properties=[
                     {"name": "tag_name", "data_type": wvc.DataType.TEXT},
@@ -31,7 +32,31 @@ def setup_schema():
             )
         print("Tag class created successfully")
 
-        """Update the Chunks class schema to include hasTags reference"""
+         # Check if ChunkTagApproval class already exists
+        if client.collections.exists("ChunkTagApproval"):
+            print(f"ChunkTagApproval schema: {client.collections.get('ChunkTagApproval').config.get()}")
+            print("ChunkTagApproval class already exists")
+            client.collections.delete("ChunkTagApproval") # remove the class
+        # create the ChunkTagApproval class
+        client.collections.create(name="ChunkTagApproval",
+                properties=[
+                    {"name": "approved", "data_type": wvc.DataType.BOOL},
+                    {"name": "user", "data_type": wvc.DataType.TEXT},
+                ],
+                references=[
+                    ReferenceProperty(
+                        name="hasChunk",
+                        target_collection="Chunks"
+                    ),
+                    ReferenceProperty(
+                        name="hasTag",
+                        target_collection="Tag"
+                    )
+                ]
+            )
+        print("TagRef class created successfully")
+
+        """Update the Chunks class schema to include hasTags and hasApprovals reference"""
         try:
             if client.collections.exists("Chunks"):
                 chunks_collection = client.collections.get("Chunks")
@@ -39,7 +64,7 @@ def setup_schema():
                 print("Chunks collection configuration:")
                 print(f"Properties: {config.properties}")
                 # check if hasTags property exists
-                has_tags = any(prop.name == "hasTags" for prop in config.properties)
+                has_tags = any(ref.name == "hasTags" for ref in config.references)
                 print(f"hasTags property exists: {has_tags}")
                 if not has_tags:
                     chunks_collection.config.add_reference(
@@ -47,6 +72,17 @@ def setup_schema():
                         )
                     )
                     print("Successfully added hasTags reference to Chunks collection")
+                """
+                # check if hasApprovals property exists
+                has_approvals = any(ref.name == "hasApprovals" for ref in config.references)
+                print(f"hasApprovals property exists: {has_approvals}")
+                if not has_approvals:
+                    chunks_collection.config.add_reference(
+                        weaviate.classes.config.ReferenceProperty(name="hasApprovals", target_collection="ChunkTagApproval",  # OBJECT for references
+                        )
+                    )
+                    print("Successfully added hasApprovals reference to Chunks collection")
+                """
             else:
                 print("Chunks collection does not exist")
                 

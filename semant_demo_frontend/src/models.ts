@@ -99,6 +99,7 @@ export interface TaggedChunks {
     tag_uuids : string[];
     text_chunk: string;
     chunk_id: string;
+    chunk_collection_name: string;
 }
 
 export interface GetTaggedChunksResponse {
@@ -108,6 +109,11 @@ export interface GetTaggedChunksResponse {
 export interface TagResult {
   texts: string[];
   tags: string[];
+}
+
+export interface ApproveTagResponse {
+  successful: boolean;
+  approved: boolean;
 }
 
 export interface StatusResponse {

@@ -127,10 +127,43 @@
       <div v-for="chunk in chunkData.chunks_with_tags" :key="chunk.chunk_id" class="q-mb-md">
         <q-card>
           <q-card-section>
-            <div class="text-subtitle2">Chunk ID: {{ chunk.chunk_id }}</div>
-            <div class="text-body1">{{ chunk.text_chunk }}</div>
-            <div class="text-caption q-mt-sm">
-              Tags: {{ chunk.tag_uuids?.join(', ') || 'No tags' }}
+            <div class="col">
+              <div class="text-subtitle2">Chunk ID: {{ chunk.chunk_id }}</div>
+              <div class="text-body1">{{ chunk.text_chunk }}</div>
+              <div class="text-subtitle2">Chunk Collection Name: {{ chunk.chunk_collection_name }}</div>
+              <div class="text-caption q-mt-sm">
+                Tags <!-- {{ chunk.tag_uuids?.join(', ') || 'No tags' }} -->
+                <div v-for="tag_id in chunk.tag_uuids" :key="tag_id" class="q-mb-md">
+                    <div class="text-caption q-mt-sm">
+                      Tag id: {{ tag_id }}
+                    </div>
+                    <div class="row">
+                      <div class="col-auto">
+                        <q-btn-group>
+                          <q-btn
+                            @click="() => approveTag(true, chunk.chunk_id, tag_id, chunk.chunk_collection_name)"
+                            icon="fa fa-check"
+                            label="Approve Tag"
+                            color="primary"
+                            outline
+                            dense
+                          />
+                          <q-btn
+                            @click="() => approveTag(false, chunk.chunk_id, tag_id, chunk.chunk_collection_name)"
+                            icon="fa fa-close"
+                            label="Disapprove Tag"
+                            color="primary"
+                            outline
+                            dense
+                          />
+                          <span v-if="tagApproveStatus.find(item => item.tag_id === tag_id)" class="q-ml-sm">
+                            {{ tagApproveStatus.find(item => item.tag_id === tag_id).status }}
+                          </span>
+                        </q-btn-group>
+                      </div>
+                    </div>
+                </div>
+              </div>
             </div>
           </q-card-section>
         </q-card>
@@ -144,7 +177,7 @@
 
 <script setup lang="ts">
 import { ref, onUnmounted, onMounted } from 'vue'
-import type { TagData, GetTaggedChunksResponse, StatusResponse, TagResult } from 'src/models'
+import type { TagData, GetTaggedChunksResponse, ApproveTagResponse, StatusResponse, TagResult } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 
@@ -171,6 +204,8 @@ const loadingSpinner = ref(false)
 
 const chunkData = ref<GetTaggedChunksResponse|null>(null)
 
+const tagApproveStatus = ref<{ chunk_id: string; tag_id: string; status: string; chunk_collection_name: string }[]>([])
+
 // add examples field
 const addTag = () => {
   tagForm.value.tag_uuids.push('')
@@ -181,6 +216,18 @@ const removeTag = (index: number) => {
   if (tagForm.value.tag_uuids.length > 1) {
     tagForm.value.tag_uuids.splice(index, 1)
   }
+}
+
+// approve tag pass true to approve or false to diapprove
+async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string) {
+  const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
+  const { data } = await api.post<ApproveTagResponse>('/approve_tag', payload)
+  tagApproveStatus.value.push({
+    chunk_id: chunkID,
+    tag_id: tagID,
+    status: data.successful ? (data.approved ? 'Approved' : 'Disapproved') : 'Error',
+    chunk_collection_name: chunkCollectionName
+  })
 }
 
 onMounted(async () => {
