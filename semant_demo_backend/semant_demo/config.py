@@ -21,7 +21,7 @@ class Config():
 
         self.GEMMA_URL = "http://localhost:8001"
         self.OLLAMA_URLS = os.getenv("OLLAMA_URLS", "http://localhost:11434").split(",")
-        self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:1b")#os.getenv("OLLAMA_MODEL", "llama3.2") #os.getenv("OLLAMA_MODEL", "gemma3:12b")
+        self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")#os.getenv("OLLAMA_MODEL", "llama3.2") #os.getenv("OLLAMA_MODEL", "gemma3:12b")
 
         # SQL db
         self.SQL_DB_URL = "sqlite+aiosqlite:///tasks.db"

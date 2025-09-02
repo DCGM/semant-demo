@@ -449,14 +449,45 @@ class WeaviateSearch:
                         for tag_obj in referencedTags.objects:
                             if tag_obj.uuid in chosenTagUUIDs.tag_uuids:
                                 corresponding_tags.append(str(tag_obj.uuid))
-
-                    chunk_lst_with_tags.append({'tag_uuids': corresponding_tags, 'text_chunk': chunk_text, "chunk_id": chunk_id})
+                    # check if there is at least one selected tag
+                    if corresponding_tags:
+                        chunk_lst_with_tags.append({'tag_uuids': corresponding_tags, 'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collection_name})
             # process the filtered chunks to send them to frontend
                 logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
             return {"chunks_with_tags": chunk_lst_with_tags}
         except Exception as e:
             logging.error(f"No tags assigned yet. {e}")
             return {'chunks_with_tags': []}
+
+    async def approve_tag(self, data: schemas.ApproveTagReq):
+        logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
+        # create object with approval record
+        new_approve_obj_uuid = await self.client.collections.get("ChunkTagApproval").data.insert(
+            properties={
+                "approved": data.approved, # pass the value from the UI
+                "user": "default", # TODO change when users are added
+            },
+            references={
+                "hasTag": data.tagID,
+                "hasChunk": data.chunkID
+            }
+        )
+        return new_approve_obj_uuid
+        """
+        # TODO get chunk
+        data.collection_name
+        data.chunk_id
+        # TODO get tag
+        data.tag_id
+        if data.approve == True:
+            pass
+            # approve
+            
+        else:
+            pass
+            # disapprove
+        """
+        
 
 async def update_task_status(task_id: str, status: str, result={}, collection_name=None, sessionmaker=None, all_texts_count=0, processed_count=0):
         try:

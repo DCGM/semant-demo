@@ -249,3 +249,12 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, t
         return response
     except Exception as e:
         logging.error(f"{e}")
+
+@app.post("/api/approve_tag", response_model=schemas.ApproveTagResponse)
+async def get_selected_tags_chunks(approveData: schemas.ApproveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.ApproveTagResponse:
+    try:
+        response = await tagger.approve_tag(approveData)
+        return { "successful": True, "approved": approveData.approved}
+    except Exception as e:
+        logging.error(f"{e}")
+        return { "successful": False, "approved": approveData.approved}
