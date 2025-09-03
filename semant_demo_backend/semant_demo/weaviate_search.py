@@ -320,6 +320,10 @@ class WeaviateSearch:
             # query weaviate db for chunks of chosen collection
             query = weaviate_objects.query.fetch_objects(
                 return_properties=["text"],  # only return the text field
+                return_references=QueryReference(
+                    link_on="hasTags",
+                    return_properties=[] # just need uuids
+                )
             )
             results = await query
 
@@ -340,16 +344,21 @@ class WeaviateSearch:
 
                     # store in weaviate (upload positive tag instances to weaviate)
                     if positive_responses.search(tag): # if the llm response is positive then store the tag data
-                        # add the new tag data
-                        await weaviate_objects.data.reference_add(
-                            from_uuid = obj.uuid,
-                            from_property="hasTags",
-                            to=tag_uuid
-                        )
+                        # test if the reference to the tag exists
+                        references = obj.references.get("hasTags") if obj.references else None
+                        # if there are no references or there is not any reference to the wanted tag add the new reference
+                        if not references or not getattr(references, "objects", None) or not (any(str(tag_obj.uuid) == str(tag_uuid) for tag_obj in references.objects)):    
+                            # add the new tag data
+                            await weaviate_objects.data.reference_add(
+                                from_uuid = obj.uuid,
+                                from_property="hasTags",
+                                to=tag_uuid
+                            )
+                            logging.info("NOT REFERENCED YET")
                     texts.append(text)
                     tags.append(tag)
                     logging.info(f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
-                    timeSleep.sleep(2)
+                    #timeSleep.sleep(2)
                     # TODO store progress in SQL db
                     processed_count += 1 # increase number of processed chunks
                     await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, sessionmaker=sessionmaker, all_texts_count=all_texts_count, processed_count=processed_count)
@@ -428,6 +437,8 @@ class WeaviateSearch:
             logging.info(f"Results: {results}")
             # get different collection names
             collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            ChunkTagApprovalCollection = self.client.collections.get("ChunkTagApproval")
+
             # iterate over the collections and retrieve text chunks and corresponding tags
             for collection_name in collection_names:
                 # get all chunks
@@ -451,7 +462,29 @@ class WeaviateSearch:
                                 corresponding_tags.append(str(tag_obj.uuid))
                     # check if there is at least one selected tag
                     if corresponding_tags:
-                        chunk_lst_with_tags.append({'tag_uuids': corresponding_tags, 'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collection_name})
+                        # extract approval counts
+                        for tagID in corresponding_tags:
+                            filters = (
+                                Filter.by_ref("hasTag").by_id().equal(tagID) &
+                                Filter.by_ref("hasChunk").by_id().equal(chunk_id)
+                            )
+                            
+                            chunkTagApproval = await ChunkTagApprovalCollection.query.fetch_objects(
+                                filters=filters,
+                                return_properties=["approved"]
+                            )
+                            approved_count = 0
+                            disapproved_count = 0
+                            try:
+                                for chunkTApprovO in chunkTagApproval.objects:
+                                    if chunkTApprovO.properties.get('approved') is not None:
+                                        if chunkTApprovO.properties.get('approved') == True:
+                                            approved_count += 1
+                                        else:
+                                            disapproved_count += 1
+                            except:
+                                pass
+                            chunk_lst_with_tags.append({'tag_uuid': tagID, 'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collection_name, "approved_count": approved_count, "disapproved_count": disapproved_count})
             # process the filtered chunks to send them to frontend
                 logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
             return {"chunks_with_tags": chunk_lst_with_tags}
@@ -460,18 +493,43 @@ class WeaviateSearch:
             return {'chunks_with_tags': []}
 
     async def approve_tag(self, data: schemas.ApproveTagReq):
+        user = "default" # TODO change when users are added
         logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
-        # create object with approval record
-        new_approve_obj_uuid = await self.client.collections.get("ChunkTagApproval").data.insert(
-            properties={
-                "approved": data.approved, # pass the value from the UI
-                "user": "default", # TODO change when users are added
-            },
-            references={
-                "hasTag": data.tagID,
-                "hasChunk": data.chunkID
-            }
+        # test if an object of approval for tagID chunkID and user exists
+        filters = (
+            Filter.by_property("user").equal(user) &
+            Filter.by_ref("hasTag").by_id().equal(data.tagID) &
+            Filter.by_ref("hasChunk").by_id().equal(data.chunkID)
         )
+        
+        ChunkTagApprovalCollection = self.client.collections.get("ChunkTagApproval")
+
+        chunkTagApproval = await ChunkTagApprovalCollection.query.fetch_objects(
+            filters=filters
+        )
+        new_approve_obj_uuid = ""
+        if chunkTagApproval.objects:
+            # update the object
+            approval_obj = chunkTagApproval.objects[0]
+            await ChunkTagApprovalCollection.data.update(
+                uuid=approval_obj.uuid,
+                properties={
+                    "approved": data.approved,  # new value from UI
+                }
+            )
+            new_approve_obj_uuid = approval_obj.uuid
+        else:
+            # create object with approval record
+            new_approve_obj_uuid = await ChunkTagApprovalCollection.data.insert(
+                properties={
+                    "approved": data.approved, # pass the value from the UI
+                    "user": user, 
+                },
+                references={
+                    "hasTag": data.tagID,
+                    "hasChunk": data.chunkID
+                }
+            )
         return new_approve_obj_uuid
         """
         # TODO get chunk
