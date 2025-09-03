@@ -96,10 +96,12 @@ export interface TagStartResponse {
 }
 
 export interface TaggedChunks {
-    tag_uuids : string[];
+    tag_uuid : string;
     text_chunk: string;
     chunk_id: string;
     chunk_collection_name: string;
+    approved_count: number;
+    disapproved_count: number;
 }
 
 export interface GetTaggedChunksResponse {

@@ -84,12 +84,16 @@
                       :style="{ backgroundColor: tags.find(t => t.tag_uuid === tagForm.tag_uuids[index])?.tag_color }"
                     ></div>
                   </q-item-section>
+                  <q-item-section avatar>
+                    <q-item-label>{{ tags.find(t => t.tag_uuid === tagForm.tag_uuids[index])?.tag_pictogram }}</q-item-label>
+                    <q-icon :name="tags.find(t => t.tag_uuid === tagForm.tag_uuids[index])?.tag_pictogram" />
+                  </q-item-section>
                   <q-item-section >
-                    <q-item-label> Name: </q-item-label>
-                    {{ tags.find(t => t.tag_uuid === tagForm.tag_uuids[index])?.tag_name }}
+                    <q-item-label caption> Name: </q-item-label>
+                    <q-item-label> {{ tags.find(t => t.tag_uuid === tagForm.tag_uuids[index])?.tag_name }} </q-item-label>
                   </q-item-section>
                   <q-item-section class="col-grow">
-                    <q-item-label>Tag uuid:</q-item-label>
+                    <q-item-label caption>Tag uuid:</q-item-label>
                     <q-item-label caption class="text-mono">
                       {{ tagForm.tag_uuids[index] }}
                     </q-item-label>
@@ -109,6 +113,7 @@
           </div>
           <q-btn
             @click="addTag"
+            v-if="tagsLen > tagForm.tag_uuids.length"
             icon="add"
             label="Add Another Tag"
             color="primary"
@@ -124,40 +129,52 @@
 
     <!-- Text Chunk Data -->
     <div v-if="chunkData?.chunks_with_tags?.length">
-      <div v-for="chunk in chunkData.chunks_with_tags" :key="chunk.chunk_id" class="q-mb-md">
+      <div v-for="chunk_id in [...new Set(chunkData.chunks_with_tags.map(c => c.chunk_id))]" :key="chunk_id" class="q-mb-md">
         <q-card>
           <q-card-section>
             <div class="col">
-              <div class="text-subtitle2">Chunk ID: {{ chunk.chunk_id }}</div>
-              <div class="text-body1">{{ chunk.text_chunk }}</div>
-              <div class="text-subtitle2">Chunk Collection Name: {{ chunk.chunk_collection_name }}</div>
+              <div class="text-subtitle2">Chunk ID: {{ chunk_id }}</div>
+              <div class="text-body1">{{ chunkData.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.text_chunk }}</div>
+              <div class="text-subtitle2">Chunk Collection Name: {{ chunkData.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.chunk_collection_name }}</div>
               <div class="text-caption q-mt-sm">
                 Tags <!-- {{ chunk.tag_uuids?.join(', ') || 'No tags' }} -->
-                <div v-for="tag_id in chunk.tag_uuids" :key="tag_id" class="q-mb-md">
+               <div v-for="tag in chunkData.chunks_with_tags.filter(c => c.chunk_id === chunk_id)" :key="tag.tag_uuid" class="q-mb-md" >
+                    <div class="row items-center col-auto">
+                      <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
+                      <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
+                      <q-label class="q-mr-sm"> {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }} </q-label>
+                      <q-label class="q-mr-sm"> Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }} </q-label>
+                    </div>
                     <div class="text-caption q-mt-sm">
-                      Tag id: {{ tag_id }}
+                      Tag id: {{ tag.tag_uuid }}
                     </div>
                     <div class="row">
                       <div class="col-auto">
                         <q-btn-group>
-                          <q-btn
-                            @click="() => approveTag(true, chunk.chunk_id, tag_id, chunk.chunk_collection_name)"
-                            icon="fa fa-check"
-                            label="Approve Tag"
-                            color="primary"
-                            outline
-                            dense
-                          />
-                          <q-btn
-                            @click="() => approveTag(false, chunk.chunk_id, tag_id, chunk.chunk_collection_name)"
-                            icon="fa fa-close"
-                            label="Disapprove Tag"
-                            color="primary"
-                            outline
-                            dense
-                          />
-                          <span v-if="tagApproveStatus.find(item => item.tag_id === tag_id)" class="q-ml-sm">
-                            {{ tagApproveStatus.find(item => item.tag_id === tag_id).status }}
+                          <div>
+                            <div class="text-positive"> Approvals: {{ tag.approved_count }} </div>
+                            <q-btn
+                              @click="() => approveTag(true, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                              icon="fa fa-check"
+                              label="Approve Tag"
+                              color="positive"
+                              outline
+                              dense
+                            />
+                          </div>
+                          <div>
+                            <div class="text-negative"> Disapprovals: {{ tag.disapproved_count }} </div>
+                            <q-btn
+                              @click="() => approveTag(false, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                              icon="fa fa-close"
+                              label="Disapprove Tag"
+                              color="negative"
+                              outline
+                              dense
+                            />
+                          </div>
+                          <span v-if="tagApproveStatus.find(item => item.tag_id === tag.tag_uuid)" class="q-ml-sm">
+                            {{ tagApproveStatus.find(item => item.tag_id === tag.tag_uuid).status }}
                           </span>
                         </q-btn-group>
                       </div>
@@ -206,6 +223,8 @@ const chunkData = ref<GetTaggedChunksResponse|null>(null)
 
 const tagApproveStatus = ref<{ chunk_id: string; tag_id: string; status: string; chunk_collection_name: string }[]>([])
 
+const tagsLen = ref(5)
+
 // add examples field
 const addTag = () => {
   tagForm.value.tag_uuids.push('')
@@ -222,12 +241,16 @@ const removeTag = (index: number) => {
 async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string) {
   const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
   const { data } = await api.post<ApproveTagResponse>('/approve_tag', payload)
-  tagApproveStatus.value.push({
-    chunk_id: chunkID,
-    tag_id: tagID,
-    status: data.successful ? (data.approved ? 'Approved' : 'Disapproved') : 'Error',
-    chunk_collection_name: chunkCollectionName
-  })
+  if (data.successful) {
+    await onTag() // may use lighter version to refetch the state
+  } else {
+    tagApproveStatus.value.push({
+      chunk_id: chunkID,
+      tag_id: tagID,
+      status: 'Error',
+      chunk_collection_name: chunkCollectionName
+    })
+  }
 }
 
 onMounted(async () => {
@@ -235,6 +258,7 @@ onMounted(async () => {
   try {
     const res = await axios.get('/api/get_tags')
     tags.value = res.data.tags_lst
+    tagsLen.value = tags.value.length
   } finally {
     loadingSpinner.value = false
   }
