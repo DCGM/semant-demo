@@ -143,8 +143,8 @@
             <div class="text-positive">Completed</div>
             <div v-if="task.result" class="q-mt-sm">
               <div class="text-weight-bold">Results:</div>
-              <div v-for="(text, index) in task.result.texts" :key="index" class="q-pl-md">
-                {{ index + 1 }}. <strong>{{ task.result.tags[index] }} </strong> : {{ text }}
+              <div v-for="(item, idx) in task.tag_processing_data" :key="idx" class="q-pl-md">
+                {{ idx + 1 }}. <strong>{{ item.tag }}</strong> : {{ item.text }}
               </div>
             </div>
           </div>
@@ -158,15 +158,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
-import type { TagRequest, TagStartResponse, StatusResponse, TagResult } from 'src/models'
+import { ref, onUnmounted, onMounted } from 'vue'
+import type { TagRequest, TagStartResponse, StatusResponse, TagResult, ProcessedTagData } from 'src/models'
 import { api } from 'src/boot/axios'
+import axios from 'axios'
 
 interface TaskInfo {
   task_id: string;
   status: 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING';
-  all_texts_count: number,
-  processed_count: number,
+  all_texts_count: number;
+  processed_count: number;
+  tag_processing_data: ProcessedTagData[];
   message?: string;
   timestamp: string;
   result?: TagResult;
@@ -219,6 +221,7 @@ const colors = ref([
 const loading = ref(false)
 const allTaskInfo = ref<TaskInfo[]>([])
 const pollingIntervals = ref<Map<string, number>>(new Map())
+const taskIDs = ref<string[]>([])
 
 // add examples field
 const addExample = () => {
@@ -231,6 +234,24 @@ const removeExample = (index: number) => {
     tagForm.value.tag_examples.splice(index, 1)
   }
 }
+
+onMounted(async () => {
+  const res = await axios.get('/api/get_tags_ids')
+  taskIDs.value = res.data.taskIDs
+  for (const taskId of taskIDs.value) {
+    const newTaskInfo: TaskInfo = {
+      task_id: taskId,
+      status: 'LOADING',
+      all_texts_count: 0,
+      processed_count: 0,
+      tag_processing_data: [],
+      message: "Fetching data",
+      timestamp: new Date().toISOString()
+    }
+    allTaskInfo.value.unshift(newTaskInfo)
+    startPolling(taskId)
+  }
+})
 
 function formatDate (dateString: string): string {
   return new Date(dateString).toLocaleString()
@@ -295,7 +316,7 @@ function startPolling (taskId: string) {
       const { data } = await api.get<StatusResponse>(`/tag/status/${taskId}`)
       console.log('Polling response:', data) // Debug log
       console.log('processed count: ', data.processed_count, 'all count: ', data.all_texts_count)
-      updateTaskStatus(taskId, data.status, data.result, data.all_texts_count, data.processed_count)
+      updateTaskStatus(taskId, data.status, data.result, data.all_texts_count, data.processed_count, data.tag_processing_data)
       // stop polling when task done
       if (['COMPLETED', 'FAILED'].includes(data.status)) {
         console.log(`Stopping polling for task ${taskId}, status: ${data.status}`)
@@ -319,7 +340,7 @@ function stopPolling (taskId: string) {
   }
 }
 
-function updateTaskStatus (taskId: string, status: string, result?: TagResult, allTextsCount?: number, processedCount?: number) {
+function updateTaskStatus (taskId: string, status: string, result?: TagResult, allTextsCount?: number, processedCount?: number, tagProcessingData?: ProcessedTagData[]) {
   const index = allTaskInfo.value.findIndex(task => task.task_id === taskId)
   if (index !== -1) {
     allTaskInfo.value[index] = {
@@ -328,6 +349,7 @@ function updateTaskStatus (taskId: string, status: string, result?: TagResult, a
       result: result,
       all_texts_count: allTextsCount,
       processed_count: processedCount,
+      tag_processing_data: tagProcessingData,
       // Preserve existing data
       timestamp: allTaskInfo.value[index].timestamp,
       message: allTaskInfo.value[index].message

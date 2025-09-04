@@ -118,10 +118,37 @@ export interface ApproveTagResponse {
   approved: boolean;
 }
 
+export interface RemoveTagsResponse {
+  successful: boolean;
+}
+
+export interface ProcessedTagData {
+  chunk_id: string;
+  text: string;
+  tag: string;
+}
+
+export interface TagData {
+    tag_name: string           
+    tag_shorthand: string          
+    tag_color: string              
+    tag_pictogram: string         
+    tag_definition: string     
+    tag_examples: string[] 
+    collection_name: string
+    tag_uuid: string
+}
+
+export interface GetTagsResponse {
+    tags_lst: TagData[]
+}
+
 export interface StatusResponse {
   taskId: string;
   status: string;
   result: TagResult;
   all_texts_count: number;
   processed_count: number;
+  tag_id: string;
+  tag_processing_data: ProcessedTagData[];
 }

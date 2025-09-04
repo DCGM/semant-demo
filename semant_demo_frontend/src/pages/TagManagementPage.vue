@@ -104,7 +104,7 @@
             <q-btn
               v-if="tagForm.tag_uuids.length > 1"
               @click="removeTag(index)"
-              icon="delete"
+              icon="fa fa-close"
               color="negative"
               flat
               dense
@@ -121,8 +121,20 @@
             dense
           />
         </div>
-        <div class="col-auto flex flex-center">
-          <q-btn type="submit" color="primary" label="Get tagged texts" :loading="loading" />
+        <div class="row items-center" style="width: 100%;">
+          <!-- left spacer -->
+          <div class="col"></div>
+
+          <!-- center button -->
+          <div class="col-auto flex justify-center">
+            <q-btn type="submit" color="primary" label="Get tagged texts" :loading="loading" />
+          </div>
+          <div class="col"></div>
+
+          <!-- right button -->
+          <div class="col-auto flex justify-end">
+            <q-btn type="button" color="negative" label="Remove selected Tags" icon="delete" :loading="loading" @click="removeSelectedTags" />
+          </div>
         </div>
       </div>
     </q-form>
@@ -194,7 +206,7 @@
 
 <script setup lang="ts">
 import { ref, onUnmounted, onMounted } from 'vue'
-import type { TagData, GetTaggedChunksResponse, ApproveTagResponse, StatusResponse, TagResult } from 'src/models'
+import type { TagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, StatusResponse, TagResult } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 
@@ -216,7 +228,7 @@ const tagForm = ref<TagData>({
 const loading = ref(false)
 const allTaskInfo = ref<TaskInfo[]>([])
 
-const tags = ref([])
+const tags = ref<TagData[]>([])
 const loadingSpinner = ref(false)
 
 const chunkData = ref<GetTaggedChunksResponse|null>(null)
@@ -299,4 +311,18 @@ async function onTag () {
     loading.value = false
   }
 }
+
+async function removeSelectedTags () {
+  try {
+    const payload = { tag_uuids: tagForm.value.tag_uuids }
+    const { data } = await api.post<RemoveTagsResponse>('/remove_tags', payload)
+    console.log('Removing response received:', data)
+    if (data.successful) {
+      window.location.reload()
+    }
+  } catch (e) {
+    console.error('Tag removing error:', e)
+  }
+}
+
 </script>

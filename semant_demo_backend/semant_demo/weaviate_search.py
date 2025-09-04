@@ -306,7 +306,7 @@ class WeaviateSearch:
             })
         return tag_data
 
-    async def tag(self, tag_request: schemas.TagReqTemplate, task_id: str, sessionmaker=None) -> schemas.TagResponse:
+    async def tag(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
         # tags chunks
         try:
             prompt = ChatPromptTemplate.from_template(self.tag_template)
@@ -329,6 +329,7 @@ class WeaviateSearch:
 
             texts = []
             tags = []
+            tag_processing_data = []
 
             # process with llm and decide if tag belongs to text 
             positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
@@ -357,11 +358,12 @@ class WeaviateSearch:
                             logging.info("NOT REFERENCED YET")
                     texts.append(text)
                     tags.append(tag)
+                    tag_processing_data.append({"chunk_id": str(obj.uuid), "text": text, "tag": str(tag)})
                     logging.info(f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
                     #timeSleep.sleep(2)
                     # TODO store progress in SQL db
                     processed_count += 1 # increase number of processed chunks
-                    await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, sessionmaker=sessionmaker, all_texts_count=all_texts_count, processed_count=processed_count)
+                    await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, session=session, all_texts_count=all_texts_count, processed_count=processed_count, tag_id=tag_uuid, tag_processing_data=tag_processing_data)
                 except Exception as e:
                     pass # TODO revert changes
                 
@@ -492,6 +494,82 @@ class WeaviateSearch:
             logging.error(f"No tags assigned yet. {e}")
             return {'chunks_with_tags': []}
 
+    async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
+        try:
+            # remove ChunkTagApproval
+            # remove all cross-references from Chunks
+            # remove the Tag object itself
+
+            # remove ChunkTagApproval
+            ChunkTagApprovalCollection = self.client.collections.get("ChunkTagApproval")
+            filters = (
+                Filter.by_ref("hasTag").by_id().contains_any(chosenTagUUIDs.tag_uuids)
+            )
+            await ChunkTagApprovalCollection.data.delete_many(where=filters)
+            logging.info("deleted ChunkTagApproval objects")
+
+            # remove all cross-references from Chunks
+
+            # get tags for collection names
+            tag_collection = self.client.collections.get("Tag")
+            chunk_lst_with_tags = []
+            filters = Filter.by_id().contains_any([str(uuid) for uuid in chosenTagUUIDs.tag_uuids])
+            
+            results = await tag_collection.query.fetch_objects(filters=filters)
+
+            # get different collection names
+            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            ChunkTagApprovalCollection = self.client.collections.get("ChunkTagApproval")
+
+            # iterate over the collections and retrieve text chunks and corresponding tags
+            for collection_name in collection_names:
+                # get all chunks
+                chunks = self.client.collections.get(collection_name)
+                # fetch chunks with hasTags
+                res = await chunks.query.fetch_objects(
+                    return_references=QueryReference(
+                        link_on="hasTags",
+                        return_properties=[]
+                    )
+                )
+
+                tagsToRemove = set(chosenTagUUIDs.tag_uuids)
+                tagsToRemove = [str(tagID) for tagID in tagsToRemove]
+
+                # replace hasTags with remaining refs
+                for obj in res.objects:
+                    refs = obj.references or {}
+                    current = refs.get("hasTags")
+                    currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
+                    remaining = list(filter(lambda tid: tid not in tagsToRemove, currentIDs))
+                    logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+                    logging.info(f"To remove {tagsToRemove}")
+                    if len(remaining) != len(currentIDs):
+                        logging.info(f"Replacing {currentIDs} {remaining}")
+                        await chunks.data.reference_replace(
+                            from_uuid=obj.uuid,
+                            from_property="hasTags",
+                            to=remaining
+                        )
+                    check = await chunks.query.fetch_object_by_id(
+                        obj.uuid,
+                        return_references=[QueryReference(link_on="hasTags", return_properties=[])]
+                    )
+                    got = [str(r.uuid) for r in (check.references.get("hasTags").objects if check.references and check.references.get("hasTags") else [])]
+                    logging.info(f"after: {got}")
+                logging.info("deleted references from chunks to tags")
+                
+            # remove the Tag objects itself
+            result = await tag_collection.data.delete_many(
+                where=Filter.by_id().contains_any(tagsToRemove)
+            )
+            logging.info(result)
+
+            return {"successful": True}
+        except Exception as e:
+            logging.error(f"{e}")
+            return {"successful": False}
+        
     async def approve_tag(self, data: schemas.ApproveTagReq):
         user = "default" # TODO change when users are added
         logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
@@ -530,38 +608,36 @@ class WeaviateSearch:
                     "hasChunk": data.chunkID
                 }
             )
-        return new_approve_obj_uuid
-        """
-        # TODO get chunk
-        data.collection_name
-        data.chunk_id
-        # TODO get tag
-        data.tag_id
-        if data.approve == True:
-            pass
-            # approve
-            
-        else:
-            pass
-            # disapprove
-        """
-        
+        return new_approve_obj_uuid        
 
-async def update_task_status(task_id: str, status: str, result={}, collection_name=None, sessionmaker=None, all_texts_count=0, processed_count=0):
+async def update_task_status(task_id: str, status: str, result={}, collection_name=None, session=None, all_texts_count=-1, processed_count=-1, tag_id=None, tag_processing_data=None):
         try:
-            async with sessionmaker() as session:
-                async with session.begin():
-                    # update the task status in DB
-                    await session.execute(
-                        update(Task)
-                        .where(Task.taskId == task_id)
-                        .values(status=status, result=result, collection_name=collection_name, all_texts_count=int(all_texts_count), processed_count=int(processed_count))
-                    )   
-                    await session.commit()
+            values_to_update = {
+                "status": status,
+                "result": result,
+                "collection_name": collection_name,
+            }
+
+            if all_texts_count > -1:
+                values_to_update["all_texts_count"] = int(all_texts_count)
+
+            if processed_count > -1:
+                values_to_update["processed_count"] = int(processed_count)    
+
+            if tag_id is not None:
+                values_to_update["tag_id"] = str(tag_id)
+
+            if tag_processing_data is not None:
+                values_to_update["tag_processing_data"] = tag_processing_data
+
+            stmt = update(Task).where(Task.taskId == task_id).values(**values_to_update)
+            
+            # execute the update           
+            await session.execute(stmt)
     
         except exc.SQLAlchemyError as e:
-            logging.exception(f'Failed updating object in database. Task id ={id}')
-            raise DBError(f'Failed updating object in database. Task id ={id}') from e         
+            logging.exception(f'Failed updating object in database. Task id ={task_id}')
+            raise DBError(f'Failed updating object in database. Task id ={task_id}') from e         
 
 
 """
