@@ -2,11 +2,6 @@
   <q-page padding>
     <div class="full-height flex column no-wrap"></div>
       <div class="q-pa-md flex-1 overflow-auto" ref="chatArea">
-        <!-- bool while waiting for response --- 3 dots -->
-        <q-chat-message v-if="isAiThinking" name="AI" bg-color="grey-2">
-          <q-spinner-dots size="2em" />
-        </q-chat-message>
-
         <q-chat-message
           v-for="(message, index) in messages"
           :key="index"
@@ -17,8 +12,7 @@
           class="message-bubble"
         >
           <template v-slot:default>
-            <div v-if="message.sender === 'AI'" v-html="message.text.replace(/\n/g, '<br>')"></div>
-            <div v-else>{{ message.text }}</div>
+            <div v-html="convertToMarkdown(message.text)" class="markdown-body"></div>
 
             <!-- show sources -->
             <div v-if="message.sender === 'AI' && message.sources && message.sources.length > 0" class="q-mt-sm">
@@ -39,7 +33,9 @@
               <q-item v-for="(source, index) in currentSources" :key="index">
                 <q-item-section>
                   <q-item-label overline>Source: {{ index + 1 }}</q-item-label>
-                  <q-item-label caption>{{ source.text }}</q-item-label>
+                  <q-item-label caption>
+                    <div v-html="convertToMarkdown(source.text)" class="markdown-body"></div>
+                  </q-item-label>
                 </q-item-section>
               </q-item>
             </q-list>
@@ -50,6 +46,10 @@
           </q-card-actions>
         </q-card>
       </q-dialog>
+      <!-- bool while waiting for response --- 3 dots -->
+      <q-chat-message v-if="isAiThinking" name="AI" bg-color="grey-2">
+        <q-spinner-dots size="2em" />
+      </q-chat-message>
 
       <!-- question input box -->
       <div class="q-pa-md bg-white input-area">
@@ -83,6 +83,7 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
 import axios from 'axios'
+import { marked } from 'marked'
 
 // ---------------------------------------------------
 interface Source {
@@ -172,6 +173,12 @@ const sendMessage = async () => {
     isAiThinking.value = false
     scrollToBottom()
   }
+}
+
+// Markdown converter
+const convertToMarkdown = (markdownText: string) => {
+  if (!markdownText) return ''
+  return marked(markdownText) as string
 }
 
 // sources

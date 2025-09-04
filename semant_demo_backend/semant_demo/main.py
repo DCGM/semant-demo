@@ -137,6 +137,7 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
         "You are a helpful chatbot.\n"
         "Use only the following pieces of context to answer the question. "
         "Don't make up any new information. If you can not provide answer based on the context, answer only \"I can´t answer the question.\".\n"
+        "Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).\n"
         "Context:\n"
         f"{context_string}"
     )
