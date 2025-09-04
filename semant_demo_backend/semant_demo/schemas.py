@@ -4,7 +4,8 @@ from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, JSON, Integer
+from sqlalchemy import Column, String, JSON, Integer, DateTime
+import sqlalchemy.sql.functions as funcs
 
 class SearchType(str, Enum):
     text = "text"
@@ -127,6 +128,9 @@ class TagData(BaseModel):
     collection_name: str
     tag_uuid: uuid.UUID
 
+class TagTasksResponse(BaseModel):
+    taskIDs: list[uuid.UUID]
+
 class GetTagsResponse(BaseModel):
     tags_lst: list[TagData]
 
@@ -154,16 +158,22 @@ class ApproveTagResponse(BaseModel):
     successful: bool
     approved: bool
 
+class RemoveTagsResponse(BaseModel):
+    successful: bool
+
 # Task Model
 TasksBase = declarative_base()
 class Task(TasksBase):
     __tablename__ = "tasks"
-    taskId = Column(String(36), primary_key=True)
+    taskId = Column(String(36), primary_key=True) # 36 is max number of chars in uuid
     status = Column(String(20), default="PENDING")  # PENDING|RUNNING|COMPLETED|FAILED
     result = Column(JSON, nullable=True)
     all_texts_count = Column(Integer, nullable=True)
     processed_count = Column(Integer, nullable=True)
     collection_name = Column(String, nullable=True)
+    tag_id = Column(String(36)) # 36 is max number of chars in uuid
+    tag_processing_data = Column(JSON, nullable=True)
+    time_updated = Column(DateTime(timezone=True), onupdate=funcs.now()) # store updated time for loading tasks sorted by time updated
 
 tag_class = {
     "class": "Tag",

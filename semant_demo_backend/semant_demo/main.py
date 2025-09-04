@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy import Column, String, JSON
 from glob import glob  
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
-from sqlalchemy import select, update, bindparam   
+from sqlalchemy import select, update, bindparam, asc 
 from typing import AsyncGenerator   
 #import db
 from sqlalchemy import exc
@@ -215,6 +215,20 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
         raise DBError(f'Failed deleting object in database. Object probably does not exist. ID={id}') from e
 """
 
+@app.get("/api/get_tags_ids", response_model=schemas.TagTasksResponse)
+async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)) -> schemas.TagTasksResponse:
+    try:
+        logging.info(f"Fetching")
+        stmt = select(Task.taskId).order_by(asc(Task.time_updated))
+        data = await session.execute(stmt)
+        tasks_ids = data.scalars().all()
+        logging.info(f"Retrieved tasks ids: {tasks_ids}")
+        return { "taskIDs": tasks_ids }
+    
+    except exc.SQLAlchemyError as e:
+        logging.exception(f'Failed loading object from database. While loading all tasks ids.')
+        raise DBError(f'Failed loading all tasks ids from database.') from e
+
 @app.get("/api/tag/status/{taskId}")
 async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session)):
         try:
@@ -233,8 +247,9 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
                 result = None
 
         logging.info(f"Repsonse status: {task.status}")
+        logging.info(f"tag_processing_data: {task.tag_processing_data}")
 
-        return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count}
+        return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count, "tag_id": task.tag_id, "tag_processing_data": task.tag_processing_data}
 
 @app.get("/api/get_tags", response_model=schemas.GetTagsResponse)
 async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
@@ -246,6 +261,15 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, t
     try:
         logging.info(f"In get tagged text {chosenTagUUIDs}")
         response = await tagger.get_tagged_chunks(chosenTagUUIDs)
+        return response
+    except Exception as e:
+        logging.error(f"{e}")
+
+
+@app.post("/api/remove_tags", response_model=schemas.RemoveTagsResponse)
+async def remove_tags(chosenTagUUIDs: schemas.GetTaggedChunksReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.RemoveTagsResponse:
+    try:
+        response = await tagger.remove_tags(chosenTagUUIDs)
         return response
     except Exception as e:
         logging.error(f"{e}")
