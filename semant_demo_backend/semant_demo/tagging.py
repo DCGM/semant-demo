@@ -12,19 +12,20 @@ from semant_demo.weaviate_search import update_task_status
 
 async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, tagger: WeaviateSearch, sessionmaker):
     try:
-        async with sessionmaker() as session:
-            async with session.begin():
-                try:
-                    #await update_task_status(task_id, "RUNNING", collection_name=tagReq.collection_name, sessionmaker=sessionmaker)
-                    # TODO replace with Weaviate/LLM operations:
-                    logging.info(f"Starting task with data: {str(tagReq)}")
-                    response = await tagger.tag(tagReq, task_id, session=session)
-                    logging.info(f"Task finished. Response: {response}")
-                    await update_task_status(task_id, "COMPLETED", result=response, collection_name=tagReq.collection_name, session=session)
-                    logging.info("Updated ok")
-                except Exception as e:
-                    await update_task_status(task_id, "FAILED", result={"error": str(e)}, collection_name=tagReq.collection_name, session=session)
-                    logging.error(f"Error: {e}")
+        session = sessionmaker()
+        
+        try:
+            #await update_task_status(task_id, "RUNNING", collection_name=tagReq.collection_name, sessionmaker=sessionmaker)
+            # TODO replace with Weaviate/LLM operations:
+            logging.info(f"Starting task with data: {str(tagReq)}")
+            response = await tagger.tag(tagReq, task_id, session=session)
+            logging.info(f"Task finished. Response: {response}")
+            await update_task_status(task_id, "COMPLETED", result=response, collection_name=tagReq.collection_name, session=session)
+            logging.info("Updated ok")
+        except Exception as e:
+            await update_task_status(task_id, "FAILED", result={"error": str(e)}, collection_name=tagReq.collection_name, session=session)
+            logging.error(f"Error: {e}")
+        session.close()
     except Exception as e:
         logging.error(f"Error: {e}")
             

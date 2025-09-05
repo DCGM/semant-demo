@@ -135,8 +135,8 @@
         <q-card-section>
           <div class="text-subtitle2">ID: {{ task.task_id }}</div>
           <div class="text-caption">Status: {{ task.status }}</div>
-          <q-linear-progress v-if="task.status === 'PROCESSING' || task.status === 'RUNNING' || task.status === 'STARTED'" indeterminate class="q-mt-sm"/>
-          <div v-if="task.status === 'RUNNING'" class="q-mt-sm">
+          <q-linear-progress v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" indeterminate class="q-mt-sm"/>
+          <div v-if="task.status === 'RUNNING' || task.status === 'PENDING'" class="q-mt-sm">
             <div class="text-caption">Processed: {{ task.processed_count ?? 0 }} / {{ task.all_texts_count ?? 0 }}</div>
           </div>
           <div v-if="task.status === 'COMPLETED'" class="q-mt-sm">
@@ -163,9 +163,11 @@ import type { TagRequest, TagStartResponse, StatusResponse, TagResult, Processed
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 
+// status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING';
+
 interface TaskInfo {
   task_id: string;
-  status: 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING';
+  status: string;
   all_texts_count: number;
   processed_count: number;
   tag_processing_data: ProcessedTagData[];
@@ -220,7 +222,7 @@ const colors = ref([
 
 const loading = ref(false)
 const allTaskInfo = ref<TaskInfo[]>([])
-const pollingIntervals = ref<Map<string, number>>(new Map())
+const pollingIntervals = ref<Map<string, ReturnType<typeof setInterval>>>(new Map())
 const taskIDs = ref<string[]>([])
 
 // add examples field
@@ -256,17 +258,17 @@ onMounted(async () => {
 function formatDate (dateString: string): string {
   return new Date(dateString).toLocaleString()
 }
-function getTaskCardClass (status: 'started' | 'processing' | 'completed' | 'failed'): string {
+function getTaskCardClass (status: string): string {
   const classes = {
     started: 'bg-orange-1',
     processing: 'bg-blue-1',
     completed: 'bg-green-1',
     failed: 'bg-red-1'
   }
-  return classes[status] || 'bg-grey-1'
+  return status || 'bg-grey-1'
 }
-function getTaskIcon (status: 'started' | 'processing' | 'completed' | 'failed'): string {
-  const icons = {
+function getTaskIcon (status: string): string {
+  const icons: Record<string, string> = {
     started: 'schedule',
     processing: 'hourglass_empty',
     completed: 'check_circle',
@@ -274,6 +276,7 @@ function getTaskIcon (status: 'started' | 'processing' | 'completed' | 'failed')
   }
   return icons[status] || 'help'
 }
+
 async function onTag () {
   loading.value = true
   try {
@@ -288,7 +291,8 @@ async function onTag () {
       all_texts_count: 0,
       processed_count: 0,
       message: data.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      tag_processing_data: []
     }
     allTaskInfo.value.unshift(newTaskInfo) // order newest on top
     startPolling(data.task_id)
@@ -300,7 +304,10 @@ async function onTag () {
       status: 'FAILED',
       message: 'Failed to submit task',
       error: e instanceof Error ? e.message : 'Unknown error',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      all_texts_count: 0,
+      processed_count: 0,
+      tag_processing_data: []
     }
     allTaskInfo.value.unshift(errorTaskInfo)
   } finally {
@@ -328,7 +335,7 @@ function startPolling (taskId: string) {
       updateTaskStatus(taskId, 'FAILED')
       stopPolling(taskId)
     }
-  }, 3000) // poll every 10000 10 seconds
+  }, 1000) // poll every 10000 10 seconds
   pollingIntervals.value.set(taskId, interval)
 }
 
@@ -347,9 +354,9 @@ function updateTaskStatus (taskId: string, status: string, result?: TagResult, a
       ...allTaskInfo.value[index],
       status: status,
       result: result,
-      all_texts_count: allTextsCount,
-      processed_count: processedCount,
-      tag_processing_data: tagProcessingData,
+      all_texts_count: allTextsCount ?? 0,
+      processed_count: processedCount ?? 0,
+      tag_processing_data: tagProcessingData ?? [],
       // Preserve existing data
       timestamp: allTaskInfo.value[index].timestamp,
       message: allTaskInfo.value[index].message

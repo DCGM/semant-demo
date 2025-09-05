@@ -360,10 +360,11 @@ class WeaviateSearch:
                     tags.append(tag)
                     tag_processing_data.append({"chunk_id": str(obj.uuid), "text": text, "tag": str(tag)})
                     logging.info(f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
-                    #timeSleep.sleep(2)
                     # TODO store progress in SQL db
                     processed_count += 1 # increase number of processed chunks
                     await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, session=session, all_texts_count=all_texts_count, processed_count=processed_count, tag_id=tag_uuid, tag_processing_data=tag_processing_data)
+                    logging.info("After update")
+                    #await timeSleep.sleep(2)
                 except Exception as e:
                     pass # TODO revert changes
                 
@@ -401,21 +402,6 @@ class WeaviateSearch:
                             )
                     else:
                         logging.info("No tags found")
-            """
-                weaviate_objects_test = self.client.collections.get(collection_name)
-                query_test = weaviate_objects_test.query.fetch_objects()
-                test_results = await query_test
-                for obj in test_results.objects:
-                    logging.info(f"Objects: {obj.uuid}, orig_text {obj.properties["text"]}")
-                    logging.info(f"Properties: {obj.properties}")
-                    # Check if hasTags reference exists and handle it properly
-                    try:
-                        
-                        for ref in obj.references["hasTags"]:
-                                logging.info(f"Tag ref: {ref.uuid}, properties: {ref.properties}")
-                    except Exception as e:
-                        logging.info(f"No tags found, {e}")
-            """
             return {'texts': texts, 'tags': tags}
             
         except Exception as e:
@@ -634,6 +620,9 @@ async def update_task_status(task_id: str, status: str, result={}, collection_na
             
             # execute the update           
             await session.execute(stmt)
+            await session.commit()
+
+            logging.info("Data updated")
     
         except exc.SQLAlchemyError as e:
             logging.exception(f'Failed updating object in database. Task id ={task_id}')

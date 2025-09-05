@@ -50,7 +50,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     global global_engine, global_async_session_maker
     if global_engine is None:
         global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
-        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=False)
+        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=True, expire_on_commit=False)
     async with global_async_session_maker() as session:
         yield session    
 
@@ -205,15 +205,6 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
     except Exception as e:
         logging.error(e)
         raise HTTPException(status_code=500, detail=str(e))
-"""
-    try:
-        async with db.begin():
-            stm = (delete(table).where(table.id == id))
-            await db.execute(stm)
-    except exc.SQLAlchemyError as e:
-        logging.exception(f'Failed deleting object in database. Object probably does not exist. ID={id}')
-        raise DBError(f'Failed deleting object in database. Object probably does not exist. ID={id}') from e
-"""
 
 @app.get("/api/get_tags_ids", response_model=schemas.TagTasksResponse)
 async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)) -> schemas.TagTasksResponse:
