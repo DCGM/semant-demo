@@ -626,6 +626,7 @@ async def update_task_status(task_id: str, status: str, result={}, collection_na
     
         except exc.SQLAlchemyError as e:
             logging.exception(f'Failed updating object in database. Task id ={task_id}')
+            await session.rollback()  # rollback broken transaction
             raise DBError(f'Failed updating object in database. Task id ={task_id}') from e         
 
 
