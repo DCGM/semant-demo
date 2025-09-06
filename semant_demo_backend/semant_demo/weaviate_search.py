@@ -9,7 +9,6 @@ from semant_demo.gemma_embedding import get_query_embedding
 from weaviate.classes.query import QueryReference
 import weaviate.collections.classes.internal
 from uuid import UUID
-# from ollama_proxy import OllamaProxy
 from semant_demo.ollama_proxy import OllamaProxy
 from semant_demo.config import config
 import asyncio
@@ -111,7 +110,6 @@ class WeaviateSearch:
                 vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
-                # return_references=QueryReference(link_on="document", return_properties=None)
                 return_references=QueryReference(link_on="document", return_properties=document_properties_to_return)
             )
         elif search_request.type == schemas.SearchType.text:
@@ -120,7 +118,6 @@ class WeaviateSearch:
                 query=search_request.query,
                 limit=search_request.limit,
                 filters=combined_filter,
-                # return_references=QueryReference(link_on="document", return_properties=None)
                 return_references=QueryReference(link_on="document", return_properties=document_properties_to_return)
             )
         elif search_request.type == schemas.SearchType.vector:
@@ -129,7 +126,6 @@ class WeaviateSearch:
                 near_vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
-                # return_references=QueryReference(link_on="document", return_properties=None)
                 return_references=QueryReference(link_on="document", return_properties=document_properties_to_return)
             )
         else:
