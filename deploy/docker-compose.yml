@@ -1,10 +1,10 @@
 services:
-  weaviate:
+  semant-weaviate:
     command: ["--host","0.0.0.0","--port","8080","--scheme","http"]
     image: cr.weaviate.io/semitechnologies/weaviate:1.30.2
     ports:
-      - "127.0.0.1:8080:8080"   # REST only on localhost
-      - "127.0.0.1:50051:50051" # gRPC only on localhost
+      - "127.0.0.1:8089:8080"   # REST only on localhost
+      - "127.0.0.1:50059:50051" # gRPC only on localhost
     volumes:
     - /mnt/ssd2/weaviate_db:/var/lib/weaviate
     restart: on-failure:0
