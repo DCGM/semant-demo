@@ -1,0 +1,20 @@
+services:
+  weaviate:
+    command: ["--host","0.0.0.0","--port","8080","--scheme","http"]
+    image: cr.weaviate.io/semitechnologies/weaviate:1.30.2
+    ports:
+      - "127.0.0.1:8080:8080"   # REST only on localhost
+      - "127.0.0.1:50051:50051" # gRPC only on localhost
+    volumes:
+    - /mnt/ssd2/weaviate_db:/var/lib/weaviate
+    restart: on-failure:0
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      ENABLE_API_BASED_MODULES: 'true'
+      CLUSTER_HOSTNAME: 'node1'
+      DISK_USE_READONLY_PERCENTAGE: "90"
+      DISK_USE_WARNING_PERCENTAGE: "80"
+  mem_limit: 128g
+  memswap_limit: 0g
