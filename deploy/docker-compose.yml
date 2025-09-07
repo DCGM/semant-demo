@@ -16,5 +16,6 @@ services:
       CLUSTER_HOSTNAME: 'node1'
       DISK_USE_READONLY_PERCENTAGE: "90"
       DISK_USE_WARNING_PERCENTAGE: "80"
-  mem_limit: 128g
-  memswap_limit: 0g
+    mem_limit: 128g
+    memswap_limit: 0g
+
