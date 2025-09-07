@@ -28,5 +28,10 @@ This is a demonstration application for project semANT. It indexes large number 
 - Create a pull request and assign a reviewer
 - After successfull review, merge/rebase the pull request and delete the branch
 
+# Deploy
+Deploy files are in ```/deploy```. The application would be started by ```docker compose up -d``` in the directory. Only Weaviate DB is started at the moment.
 
+- Weaviate runs on semant.fit.vutbr.cz on localhost
+  - 127.0.0.1:8089
+  - 127.0.0.1:50059
 
