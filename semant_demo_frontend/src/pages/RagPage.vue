@@ -53,29 +53,40 @@
 
       <!-- question input box -->
       <div class="q-pa-md bg-white input-area">
-        <q-input
-          v-model="newMessage"
-          placeholder="What is your question?"
-          outlined
-          rounded
-          dense
-          class="q-px-md"
-          :disable="isAiThinking"
-          @keyup.enter="sendMessage"
-        >
-          <template v-slot:append>
-            <!-- Button call send directly - doesnt work with submit -->
-            <q-btn
-              icon="send"
-              round
-              dense
-              flat
-              color="primary"
-              :loading="isAiThinking"
-              @click="sendMessage"
-            />
-          </template>
-        </q-input>
+        <q-btn
+          icon="refresh"
+          round
+          flat
+          @click="resetChat"
+          class="q-mr-sm"
+          title="Reset chat"
+        />
+
+        <div class="col">
+          <q-input
+            v-model="newMessage"
+            placeholder="What is your question?"
+            outlined
+            rounded
+            dense
+            class="q-px-md"
+            :disable="isAiThinking"
+            @keyup.enter="sendMessage"
+          >
+            <template v-slot:append>
+              <!-- Button call send directly - doesnt work with submit -->
+              <q-btn
+                icon="send"
+                round
+                dense
+                flat
+                color="primary"
+                :loading="isAiThinking"
+                @click="sendMessage"
+              />
+            </template>
+          </q-input>
+        </div>
     </div>
   </q-page>
 </template>
@@ -192,6 +203,15 @@ const convertToMarkdown = (markdownText: string) => {
 const openSourcesDialog = (sources: Source[]) => {
   currentSources.value = sources
   showSourcesDialog.value = true
+}
+
+// put chat into starting state
+const resetChat = () => {
+  messages.value = [
+    { sender: 'AI', text: 'Hello, what is your question?' }
+  ]
+  newMessage.value = ''
+  isAiThinking.value = false
 }
 
 // ----------------------Styles-----------------------------
