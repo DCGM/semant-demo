@@ -132,6 +132,8 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
     ]
     context_string = "\n".join(snippets)
 
+
+
     # prompt
     system_prompt = (
         "You are a helpful chatbot.\n"
@@ -142,16 +144,24 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
         f"{context_string}"
     )
 
-    # call ollama
+    # add system prompt
+    whole_msg = [{'role': 'system', 'content': system_prompt}]
+
+    # add history
+    if request.history:
+        for msg in request.history:
+            whole_msg.append({'role': msg.role, 'content': msg.content})
+
+    # add question
+    whole_msg.append({'role': 'user', 'content': request.question})
+
+    # call ollama (with history)
     try:
         t1 = time()
         
         generated_answer = await searcher.ollama_proxy.call_ollama_chat(
-            model=searcher.ollama_model,
-            messages=[
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': request.question},
-            ]
+            model = searcher.ollama_model,
+            messages = whole_msg 
         )
         time_spent = time() - t1
 

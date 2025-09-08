@@ -113,7 +113,7 @@ const isAiThinking = ref(false)
 const showSourcesDialog = ref(false)
 const currentSources = ref<Source[]>([])
 
-// ---------------------------------------------------
+// ----------------------Main chat-----------------------------
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -148,10 +148,15 @@ const sendMessage = async () => {
       return
     }
 
+    // get history
+    const allRelevantMsg = messages.value.slice(0, -1).filter(msg => msg.sources !== undefined || msg.sender === 'me') // remove messages without any informations
+    const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
+
     // rag question
     const ragRequestBody = {
       search_response: searchResponse.data,
-      question: userQuery
+      question: userQuery,
+      history: context
     }
     const ragResponse = await axios.post('/api/rag', ragRequestBody)
     const ragAnswer = ragResponse.data.rag_answer
@@ -175,6 +180,8 @@ const sendMessage = async () => {
   }
 }
 
+// ----------------------Small functions-----------------------------
+
 // Markdown converter
 const convertToMarkdown = (markdownText: string) => {
   if (!markdownText) return ''
@@ -187,6 +194,7 @@ const openSourcesDialog = (sources: Source[]) => {
   showSourcesDialog.value = true
 }
 
+// ----------------------Styles-----------------------------
 </script>
 
 <style scoped>

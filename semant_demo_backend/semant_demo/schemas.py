@@ -1,5 +1,6 @@
 from enum import Enum
 from pydantic import BaseModel
+from typing import Literal
 from datetime import datetime
 import uuid
 
@@ -86,10 +87,17 @@ class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
 
+class RagChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
 class RagQuestionRequest(BaseModel):
     search_response: SearchResponse
     question: str
+    history: list[RagChatMessage] | None = None    # chat history, to keep context
 
 class RagResponse(BaseModel):
     rag_answer: str
     time_spent: float
+
+
