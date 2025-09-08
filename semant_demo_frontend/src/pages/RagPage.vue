@@ -12,16 +12,20 @@
           class="message-bubble"
         >
           <template v-slot:default>
-            <div v-html="convertToMarkdown(message.text)" class="markdown-body"></div>
-
-            <!-- show sources -->
+            <!-- message TEXT  -->
+            <div
+              v-html="replaceSourcesAndConvertToMarcdown(message, index)" class="markdown-body"
+              @click.capture="singleSourceClicks"
+            ></div>
+            <!-- show sources - bottom button  -->
             <div v-if="message.sender === 'AI' && message.sources && message.sources.length > 0" class="q-mt-sm">
-              <a href="#" @click.prevent="openSourcesDialog(message.sources)" class="source-link">Zdroje</a>
+              <a href="#" @click.prevent="openSourcesDialog(message.sources)" class="source-link">Sources</a>
             </div>
           </template>
         </q-chat-message>
       </div>
 
+      <!-- sources window -->
       <q-dialog v-model="showSourcesDialog">
         <q-card style="width: 700px; max-width: 80vw;">
           <q-card-section>
@@ -32,7 +36,11 @@
             <q-list bordered separator>
               <q-item v-for="(source, index) in currentSources" :key="index">
                 <q-item-section>
-                  <q-item-label overline>Source: {{ index + 1 }}</q-item-label>
+                  <!-- difference between one and more sources -->
+                  <q-item-label overline>
+                    <span v-if="currentSources.length > 1">Doc: {{ index + 1 }}</span>
+                    <span v-else>Source of this information:</span>
+                  </q-item-label>
                   <q-item-label caption>
                     <div v-html="convertToMarkdown(source.text)" class="markdown-body"></div>
                   </q-item-label>
@@ -53,6 +61,7 @@
 
       <!-- question input box -->
       <div class="q-pa-md bg-white input-area">
+        <!-- reset chat button -->
         <q-btn
           icon="refresh"
           round
@@ -62,6 +71,7 @@
           title="Reset chat"
         />
 
+         <!-- input box with send button -->
         <div class="col">
           <q-input
             v-model="newMessage"
@@ -191,7 +201,7 @@ const sendMessage = async () => {
   }
 }
 
-// ----------------------Small functions-----------------------------
+// ----------------------Other functions-----------------------------
 
 // Markdown converter
 const convertToMarkdown = (markdownText: string) => {
@@ -199,10 +209,47 @@ const convertToMarkdown = (markdownText: string) => {
   return marked(markdownText) as string
 }
 
+// Process source and conver to MarcDown
+
+const replaceSourcesAndConvertToMarcdown = (msg: Message, msgIndex: number) => {
+  if (msg.sender !== 'AI' || !msg.sources) { // replace sources only for AI messages
+    return convertToMarkdown(msg.text)
+  }
+
+  const sourcesRegex = /\[doc(\d+)\]/g
+
+  // replace sources links
+  const result = msg.text.replace(sourcesRegex, (match, strIndex) => {
+    const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
+    if (msg.sources && msg.sources[sourceIndex]) {
+      return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
+    }
+    return match // nothing found
+  })
+  return convertToMarkdown(result)
+}
+
 // sources
 const openSourcesDialog = (sources: Source[]) => {
   currentSources.value = sources
   showSourcesDialog.value = true
+}
+
+const singleSourceClicks = (event: Event) => {
+  const target = event.target as HTMLElement
+  // check if element was clicked and have required atributes
+  if (target.classList.contains('source-link') && target.dataset.sourceIndex && target.dataset.messageIndex) {
+    event.preventDefault()
+    // get indexes
+    const msgIndex = parseInt(target.dataset.messageIndex, 10)
+    const sourceIndex = parseInt(target.dataset.sourceIndex, 10)
+
+    const clickedMsg = messages.value[msgIndex]
+
+    if (clickedMsg && clickedMsg.sources && clickedMsg.sources[sourceIndex]) {
+      openSourcesDialog([clickedMsg.sources[sourceIndex]])
+    }
+  }
 }
 
 // put chat into starting state
