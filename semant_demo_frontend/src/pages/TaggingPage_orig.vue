@@ -163,9 +163,9 @@ import type { TagRequest, TagStartResponse, StatusResponse, TagResult, Processed
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 
-// status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING';
+// TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING';
 
-interface TaskInfo {
+interface TaskInfo { // Task
   task_id: string;
   status: string;
   all_texts_count: number;

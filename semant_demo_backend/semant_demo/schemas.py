@@ -100,6 +100,10 @@ class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
 
+class CreateTagResponse(BaseModel):
+    tag_created: bool
+    message: str
+
 class TagStartResponse(BaseModel):
     job_started: bool
     task_id: str

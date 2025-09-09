@@ -19,6 +19,7 @@ def setup_schema():
             print("Tag class already exists")
             client.collections.delete("Tag") # remove the class
         # create the Tag class
+        # TODO rename remove tag_name name
         client.collections.create(name="Tag",
                 properties=[
                     {"name": "tag_name", "data_type": wvc.DataType.TEXT},

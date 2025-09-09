@@ -186,6 +186,16 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
         time_spent=search_response.time_spent,
     )
 
+# creates tag in weaviate db, or not if the same tag already exists
+@app.post("/api/create_tag", response_model=schemas.CreateTagResponse)
+async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateTagResponse:
+    try:
+        tag_id = await tagger.add_or_get_tag(tagReq)
+        return {"tag_created": True, "message": f"Tag {tagReq.tag_name} created with tag id {tag_id}"}
+    except Exception as e:
+        logging.error(e)
+        return {"tag_created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
+
 @app.post("/api/tag", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
     print("Tagging...")
@@ -274,3 +284,5 @@ async def get_selected_tags_chunks(approveData: schemas.ApproveTagReq, tagger: W
     except Exception as e:
         logging.error(f"{e}")
         return { "successful": False, "approved": approveData.approved}
+    
+# http://localhost:8002/docs#
