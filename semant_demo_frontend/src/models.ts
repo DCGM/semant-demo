@@ -95,6 +95,11 @@ export interface TagStartResponse {
   message: string;
 }
 
+export interface CreateTagResponse {
+  tag_created: boolean;
+  message: string;
+}
+
 export interface TaggedChunks {
     tag_uuid : string;
     text_chunk: string;

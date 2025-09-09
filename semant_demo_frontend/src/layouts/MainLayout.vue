@@ -29,18 +29,6 @@
             </q-item>
           </router-link>
 
-          <router-link to="/tag/" style="text-decoration: none; color: inherit;">
-            <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/news') }" v-ripple
-              clickable>
-              <q-item-section avatar>
-                <q-icon name="fa-solid fa-tag" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>Document tagging</q-item-label>
-              </q-item-section>
-            </q-item>
-          </router-link>
-
           <router-link to="/tag_manage/" style="text-decoration: none; color: inherit;">
             <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/news') }" v-ripple
               clickable>
