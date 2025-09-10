@@ -122,6 +122,11 @@ class TagResponse(BaseModel):
     texts: list[str]
     tags: list[str]
 
+class TagType(str, Enum):
+    positive = "positive"
+    negative = "negative"
+    automatic = "automatic"
+
 class TagData(BaseModel):
     tag_name: str           # name of the tag
     tag_shorthand: str          # shorthand for the name
@@ -140,14 +145,13 @@ class GetTagsResponse(BaseModel):
 
 class GetTaggedChunksReq(BaseModel):
     tag_uuids: list[uuid.UUID]
+    tag_type: TagType
 
 class TaggedChunks(BaseModel):
     tag_uuid : uuid.UUID # uuid of a tag selected in UI and belonging to the text chunk
     text_chunk: str # actual text chunk
     chunk_id: str # to apply changes later
     chunk_collection_name: str # send collection name of the chunk for faster manipulation later
-    approved_count: int
-    disapproved_count: int
 
 class GetTaggedChunksResponse(BaseModel):
     chunks_with_tags : list[TaggedChunks] # list of pairs text chunk and id belonging to it

@@ -338,11 +338,13 @@
                     <div class="text-caption q-mt-sm">
                       Tag id: {{ tag.tag_uuid }}
                     </div>
+                    <div class="text-h6 q-mt-sm">
+                      Tag type: Automatic
+                    </div>
                     <div class="row">
                       <div class="col-auto">
                         <q-btn-group>
                           <div>
-                            <div class="text-positive"> Approvals: {{ tag.approved_count }} </div>
                             <q-btn
                               @click="() => approveTag(true, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
                               icon="fa fa-check"
@@ -353,7 +355,6 @@
                             />
                           </div>
                           <div>
-                            <div class="text-negative"> Disapprovals: {{ tag.disapproved_count }} </div>
                             <q-btn
                               @click="() => approveTag(false, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
                               icon="fa fa-close"
@@ -385,7 +386,7 @@
 
 <script setup lang="ts">
 import { ref, onUnmounted, onMounted } from 'vue'
-import type { TagRequest, CreateTagResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData } from 'src/models'
+import type { TagRequest, CreateTagResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 
@@ -472,6 +473,8 @@ const tags = ref<TagData[]>([])
 const loadingSpinner = ref(false)
 
 const chunkData = ref<GetTaggedChunksResponse|null>(null)
+const chunkDataPositive = ref<GetTaggedChunksResponse|null>(null)
+const chunkDataNegative = ref<GetTaggedChunksResponse|null>(null)
 
 const tagApproveStatus = ref<{ chunk_id: string; tag_id: string; status: string; chunk_collection_name: string }[]>([])
 
@@ -691,7 +694,7 @@ async function onTagManage () {
   loading.value = true
   try {
     console.log('Tagging will start', tagFormManage.value)
-    const payload = { tag_uuids: tagFormManage.value.tag_uuids }
+    const payload = { tag_uuids: tagFormManage.value.tag_uuids, tag_type: "automatic" }
     const { data } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload)
     console.log('Tagging response received:', data)
     chunkData.value = data

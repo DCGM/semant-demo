@@ -216,6 +216,7 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
         logging.error(e)
         raise HTTPException(status_code=500, detail=str(e))
 
+# get task ids to see history of tasks
 @app.get("/api/get_tags_ids", response_model=schemas.TagTasksResponse)
 async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)) -> schemas.TagTasksResponse:
     try:
@@ -230,6 +231,7 @@ async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)) -> s
         logging.exception(f'Failed loading object from database. While loading all tasks ids.')
         raise DBError(f'Failed loading all tasks ids from database.') from e
 
+# polling to check task status
 @app.get("/api/tag/status/{taskId}")
 async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session)):
         try:
@@ -252,11 +254,13 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
 
         return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count, "tag_id": task.tag_id, "tag_processing_data": task.tag_processing_data}
 
+# retrieve all tags
 @app.get("/api/get_tags", response_model=schemas.GetTagsResponse)
 async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
     response = await tagger.get_all_tags()
     return {"tags_lst": response}
 
+# returns chunks which are tagged by certain type of tag (automatic, positive, negative)
 @app.post("/api/tagged_texts", response_model=schemas.GetTaggedChunksResponse)
 async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
     try:
@@ -265,7 +269,6 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, t
         return response
     except Exception as e:
         logging.error(f"{e}")
-
 
 @app.post("/api/remove_tags", response_model=schemas.RemoveTagsResponse)
 async def remove_tags(chosenTagUUIDs: schemas.GetTaggedChunksReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.RemoveTagsResponse:
@@ -276,13 +279,16 @@ async def remove_tags(chosenTagUUIDs: schemas.GetTaggedChunksReq, tagger: Weavia
         logging.error(f"{e}")
 
 @app.post("/api/approve_tag", response_model=schemas.ApproveTagResponse)
-async def get_selected_tags_chunks(approveData: schemas.ApproveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.ApproveTagResponse:
+async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.ApproveTagResponse:
     try:
+        logging.info("Approving...")
         response = await tagger.approve_tag(approveData)
         logging.info(f"{response}")
-        return { "successful": True, "approved": approveData.approved}
+        return { "successful": response, "approved": approveData.approved}
     except Exception as e:
         logging.error(f"{e}")
         return { "successful": False, "approved": approveData.approved}
     
 # http://localhost:8002/docs#
+
+# TODO now only automatic are shown, show positive and negative add filtering (print in FE useing chunkDataPositive/Negative)

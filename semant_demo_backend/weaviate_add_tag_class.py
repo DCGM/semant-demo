@@ -73,6 +73,27 @@ def setup_schema():
                         )
                     )
                     print("Successfully added hasTags reference to Chunks collection")
+                has_automaticTag = any(ref.name == "automaticTag" for ref in config.references)
+                if not has_automaticTag:
+                    chunks_collection.config.add_reference(
+                        ReferenceProperty(
+                        name="automaticTag",
+                        target_collection="Tag"
+                        )
+                    )
+                    chunks_collection.config.add_reference(
+                        ReferenceProperty(
+                            name="positiveTag",
+                            target_collection="Tag"
+                        )
+                    )
+                    chunks_collection.config.add_reference(
+                        ReferenceProperty(
+                            name="negativeTag",
+                            target_collection="Tag"
+                        )
+                    )
+                    print("Successfully added automatic tag reference to Chunks collection")
                 """
                 # check if hasApprovals property exists
                 has_approvals = any(ref.name == "hasApprovals" for ref in config.references)
