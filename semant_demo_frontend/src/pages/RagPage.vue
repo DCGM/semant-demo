@@ -1,0 +1,313 @@
+<template>
+  <q-page padding>
+    <div class="full-height flex column no-wrap"></div>
+      <div class="q-pa-md flex-1 overflow-auto" ref="chatArea">
+        <q-chat-message
+          v-for="(message, index) in messages"
+          :key="index"
+          :name="message.sender"
+          :sent="message.sender === 'me'"
+          :bg-color="message.sender === 'me' ? 'light-blue-2' : 'grey-2'"
+          :text-color="message.sender === 'me' ? 'black' : 'black'"
+          class="message-bubble"
+        >
+          <template v-slot:default>
+            <!-- message TEXT  -->
+            <div
+              v-html="replaceSourcesAndConvertToMarcdown(message, index)" class="markdown-body"
+              @click.capture="singleSourceClicks"
+            ></div>
+            <!-- show sources - bottom button  -->
+            <div v-if="message.sender === 'AI' && message.sources && message.sources.length > 0" class="q-mt-sm">
+              <a href="#" @click.prevent="openSourcesDialog(message.sources)" class="source-link">Sources</a>
+            </div>
+          </template>
+        </q-chat-message>
+      </div>
+
+      <!-- sources window -->
+      <q-dialog v-model="showSourcesDialog">
+        <q-card style="width: 700px; max-width: 80vw;">
+          <q-card-section>
+            <div class="text-h6">Sources</div>
+          </q-card-section>
+
+          <q-card-section class="q-pt-none">
+            <q-list bordered separator>
+              <q-item v-for="(source, index) in currentSources" :key="index">
+                <q-item-section>
+                  <!-- difference between one and more sources -->
+                  <q-item-label overline>
+                    <span v-if="currentSources.length > 1">Doc: {{ index + 1 }}</span>
+                    <span v-else>Source of this information:</span>
+                  </q-item-label>
+                  <q-item-label caption>
+                    <div v-html="convertToMarkdown(source.text)" class="markdown-body"></div>
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-card-section>
+
+          <q-card-actions align="right">
+            <q-btn flat label="Close" color="primary" v-close-popup />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
+      <!-- bool while waiting for response --- 3 dots -->
+      <q-chat-message v-if="isAiThinking" name="AI" bg-color="grey-2">
+        <q-spinner-dots size="2em" />
+      </q-chat-message>
+
+      <!-- question input box -->
+      <div class="q-pa-md bg-white input-area">
+         <div class="row items-center no-wrap q-gutter-x-sm">
+          <!-- reset chat button -->
+          <q-btn
+            icon="refresh"
+            round
+            flat
+            @click="resetChat"
+            class="q-mr-sm"
+            title="Reset chat"
+          />
+          <!-- select model -->
+            <q-select
+              v-model="selectedModel"
+              :options="models"
+              label="Model"
+              dense
+              outlined
+              style="width: 200px"
+          />
+        </div>
+         <!-- input box with send button -->
+        <div class="col">
+          <q-input
+            v-model="newMessage"
+            placeholder="What is your question?"
+            outlined
+            rounded
+            dense
+            class="q-px-md"
+            :disable="isAiThinking"
+            @keyup.enter="sendMessage"
+          >
+            <template v-slot:append>
+              <!-- Button call send directly - doesnt work with submit -->
+              <q-btn
+                icon="send"
+                round
+                dense
+                flat
+                color="primary"
+                :loading="isAiThinking"
+                @click="sendMessage"
+              />
+            </template>
+          </q-input>
+        </div>
+    </div>
+  </q-page>
+</template>
+
+<script setup lang="ts">
+import { ref, nextTick } from 'vue'
+import axios from 'axios'
+import { marked } from 'marked'
+
+// ---------------------------------------------------
+interface Source {
+  text: string;
+}
+
+interface SearchResult {
+  text: string;
+}
+
+interface Message {
+  sender: 'AI' | 'me';
+  text: string;
+  sources?: Source[];
+}
+
+// First message from AI
+const messages = ref<Message[]>([
+  { sender: 'AI', text: 'Hello, what is your question?' }
+])
+
+const newMessage = ref('')
+const chatArea = ref<HTMLElement | null>(null)
+const isAiThinking = ref(false)
+
+// sources dialog
+const showSourcesDialog = ref(false)
+const currentSources = ref<Source[]>([])
+
+// models
+const models = ref([
+  { label: 'OLLAMA (local)', value: 'OLLAMA' },
+  { label: 'GOOGLE (API)', value: 'GOOGLE' },
+  { label: 'OPENAI (API)', value: 'OPENAI' }
+])
+const selectedModel = ref(models.value[0])
+
+// ----------------------Main chat-----------------------------
+
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (chatArea.value) {
+      chatArea.value.scrollTop = chatArea.value.scrollHeight
+    }
+  })
+}
+
+const sendMessage = async () => {
+  const userQuery = newMessage.value.trim()
+  if (userQuery === '' || isAiThinking.value) return
+
+  messages.value.push({ sender: 'me', text: userQuery })
+  newMessage.value = ''
+  scrollToBottom()
+
+  // waiting
+  isAiThinking.value = true
+
+  try {
+    // get history
+    const allRelevantMsg = messages.value.slice(0, -1).filter(msg => msg.sources !== undefined || msg.sender === 'me') // remove messages without any informations
+    // history for search (long text with question)
+    const joinMessages = allRelevantMsg.map(msg => msg.text).join('\n')
+    const historyForSearch = joinMessages + '\n' + userQuery
+
+    // history for RAG
+    const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
+
+    // search chunks
+    const searchRequest = {
+      query: historyForSearch,
+      limit: 5,
+      search_title_generate: false,
+      search_summary_generate: false
+    }
+    const searchResponse = await axios.post('/api/search', searchRequest)
+    if (!searchResponse.data || searchResponse.data.results.length === 0) {
+      messages.value.push({ sender: 'AI', text: 'Sorry, we have no information about this topic.' })
+      return
+    }
+
+    // rag question
+    const ragRequestBody = {
+      search_response: searchResponse.data,
+      question: userQuery,
+      history: context,
+      model_name: selectedModel.value.value
+    }
+    const ragResponse = await axios.post('/api/rag', ragRequestBody)
+    const ragAnswer = ragResponse.data.rag_answer
+
+    // sources
+    const sourcesForAnswer: Source[] = searchResponse.data.results.map((res: SearchResult) => ({
+      text: res.text
+    }))
+
+    messages.value.push({
+      sender: 'AI',
+      text: ragAnswer,
+      sources: sourcesForAnswer
+    })
+  } catch (error) {
+    console.error('RAG error:', error)
+    messages.value.push({ sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
+  } finally {
+    isAiThinking.value = false
+    scrollToBottom()
+  }
+}
+
+// ----------------------Other functions-----------------------------
+
+// Markdown converter
+const convertToMarkdown = (markdownText: string) => {
+  if (!markdownText) return ''
+  return marked(markdownText) as string
+}
+
+// Process source and conver to MarcDown
+
+const replaceSourcesAndConvertToMarcdown = (msg: Message, msgIndex: number) => {
+  if (msg.sender !== 'AI' || !msg.sources) { // replace sources only for AI messages
+    return convertToMarkdown(msg.text)
+  }
+
+  const sourcesRegex = /\[doc\s*(\d+)\]/g
+
+  // replace sources links
+  const result = msg.text.replace(sourcesRegex, (match, strIndex) => {
+    const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
+    if (msg.sources && msg.sources[sourceIndex]) {
+      return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
+    }
+    return match // nothing found
+  })
+  return convertToMarkdown(result)
+}
+
+// sources
+const openSourcesDialog = (sources: Source[]) => {
+  currentSources.value = sources
+  showSourcesDialog.value = true
+}
+
+const singleSourceClicks = (event: Event) => {
+  const target = event.target as HTMLElement
+  // check if element was clicked and have required atributes
+  if (target.classList.contains('source-link') && target.dataset.sourceIndex && target.dataset.messageIndex) {
+    event.preventDefault()
+    // get indexes
+    const msgIndex = parseInt(target.dataset.messageIndex, 10)
+    const sourceIndex = parseInt(target.dataset.sourceIndex, 10)
+
+    const clickedMsg = messages.value[msgIndex]
+
+    if (clickedMsg && clickedMsg.sources && clickedMsg.sources[sourceIndex]) {
+      openSourcesDialog([clickedMsg.sources[sourceIndex]])
+    }
+  }
+}
+
+// put chat into starting state
+const resetChat = () => {
+  messages.value = [
+    { sender: 'AI', text: 'Hello, what is your question?' }
+  ]
+  newMessage.value = ''
+  isAiThinking.value = false
+}
+
+// ----------------------Styles-----------------------------
+</script>
+
+<style scoped>
+.chat-container {
+  height: calc(100vh - 52px);
+}
+
+.message-bubble {
+  max-width: 70%;
+}
+
+.input-area {
+  border-top: 1px solid #e0e0e0;
+}
+
+.source-link {
+  font-size: 0.8em;
+  color: #027be3;
+  text-decoration: none;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+}
+</style>

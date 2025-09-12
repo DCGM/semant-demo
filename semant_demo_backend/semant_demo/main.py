@@ -5,7 +5,9 @@ from semant_demo import schemas
 from semant_demo.config import config
 import logging
 from semant_demo.weaviate_search import WeaviateSearch
+from semant_demo.rag_generator import RagGenerator
 import asyncio
+from time import time
 
 logging.basicConfig(level=logging.INFO)
 
@@ -119,4 +121,47 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
     return schemas.SummaryResponse(
         summary=summary_text,
         time_spent=search_response.time_spent,
+    )
+
+@app.post("/api/rag", response_model=schemas.RagResponse)
+async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
+
+    # build your snippets with IDs
+    snippets = [
+        f"[doc{i+1}]" + res.text.replace('\\n', ' ')
+        for i, res in enumerate(request.search_response.results)
+    ]
+    context_string = "\n".join(snippets)
+
+    # get model id
+    model_name = request.model_name
+
+    # convert history for generator
+    if request.history:
+        history_preprocessed = [msg.model_dump() for msg in request.history]
+    else:
+        history_preprocessed = []
+
+    rag_generator = RagGenerator(config)
+
+    # call model
+    try:
+        t1 = time()
+        
+        generated_answer = await rag_generator.generate_answer(
+            model_name = model_name,
+            question_string = request.question, 
+            context_string = context_string,
+            history= history_preprocessed,
+        )
+        time_spent = time() - t1
+
+    except Exception as e:
+        logging.error(f"RAG error: calling model {model_name}: {e}")
+        raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
+
+    # answer
+    return schemas.RagResponse(
+        rag_answer=generated_answer.strip(),
+        time_spent=time_spent
     )

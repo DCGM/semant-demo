@@ -29,6 +29,18 @@
             </q-item>
           </router-link>
 
+          <router-link to="/rag/" style="text-decoration: none; color: inherit;">
+            <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/public_documents') }"
+              v-ripple clickable>
+              <q-item-section avatar>
+                <q-icon name="fa-solid fa-search" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>RAG</q-item-label>
+              </q-item-section>
+            </q-item>
+          </router-link>
+
           <router-link to="/about/" style="text-decoration: none; color: inherit;">
             <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/public_documents') }"
               v-ripple clickable>
