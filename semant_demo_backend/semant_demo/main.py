@@ -5,6 +5,7 @@ from semant_demo import schemas
 from semant_demo.config import config
 import logging
 from semant_demo.weaviate_search import WeaviateSearch
+from semant_demo.rag_generator import RagGenerator
 import asyncio
 from time import time
 
@@ -132,42 +133,31 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
     ]
     context_string = "\n".join(snippets)
 
+    # get model id
+    model_name = request.model_name
 
-
-    # prompt
-    system_prompt = (
-        "You are a helpful chatbot.\n"
-        "Use only the following pieces of context to answer the question. "
-        "For every piece of information or sentence that you take out of context, you must provide source in format `[doc X]`, where X is the number of the corresponding source.\n "
-        "Don't make up any new information. If you can not provide answer based on the context, answer only \"I can´t answer the question.\".\n"
-        "Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).\n"
-        "Context:\n"
-        f"{context_string}"
-    )
-
-    # add system prompt
-    whole_msg = [{'role': 'system', 'content': system_prompt}]
-
-    # add history
+    # convert history for generator
     if request.history:
-        for msg in request.history:
-            whole_msg.append({'role': msg.role, 'content': msg.content})
+        history_preprocessed = [msg.model_dump() for msg in request.history]
+    else:
+        history_preprocessed = []
 
-    # add question
-    whole_msg.append({'role': 'user', 'content': request.question})
+    rag_generator = RagGenerator(config)
 
-    # call ollama (with history)
+    # call model
     try:
         t1 = time()
         
-        generated_answer = await searcher.ollama_proxy.call_ollama_chat(
-            model = searcher.ollama_model,
-            messages = whole_msg 
+        generated_answer = await rag_generator.generate_answer(
+            model_name = model_name,
+            question_string = request.question, 
+            context_string = context_string,
+            history= history_preprocessed,
         )
         time_spent = time() - t1
 
     except Exception as e:
-        logging.error(f"RAG error: calling Ollama: {e}")
+        logging.error(f"RAG error: calling model {model_name}: {e}")
         raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
     # answer

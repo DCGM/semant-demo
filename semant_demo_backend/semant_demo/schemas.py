@@ -95,6 +95,7 @@ class RagQuestionRequest(BaseModel):
     search_response: SearchResponse
     question: str
     history: list[RagChatMessage] | None = None    # chat history, to keep context
+    model_name: str | None = None
 
 class RagResponse(BaseModel):
     rag_answer: str

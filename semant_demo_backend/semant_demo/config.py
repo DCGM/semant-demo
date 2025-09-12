@@ -22,6 +22,13 @@ class Config():
         self.GEMMA_URL = "http://localhost:8001"
         self.OLLAMA_URLS = os.getenv("OLLAMA_URLS", "http://localhost:11434").split(",")
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:12b")
+        self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
+        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+        self.LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY", "")
+
+        self.MODEL_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE", 0.0))
 
 
 

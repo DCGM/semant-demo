@@ -61,16 +61,26 @@
 
       <!-- question input box -->
       <div class="q-pa-md bg-white input-area">
-        <!-- reset chat button -->
-        <q-btn
-          icon="refresh"
-          round
-          flat
-          @click="resetChat"
-          class="q-mr-sm"
-          title="Reset chat"
-        />
-
+         <div class="row items-center no-wrap q-gutter-x-sm">
+          <!-- reset chat button -->
+          <q-btn
+            icon="refresh"
+            round
+            flat
+            @click="resetChat"
+            class="q-mr-sm"
+            title="Reset chat"
+          />
+          <!-- select model -->
+            <q-select
+              v-model="selectedModel"
+              :options="models"
+              label="Model"
+              dense
+              outlined
+              style="width: 200px"
+          />
+        </div>
          <!-- input box with send button -->
         <div class="col">
           <q-input
@@ -134,6 +144,14 @@ const isAiThinking = ref(false)
 const showSourcesDialog = ref(false)
 const currentSources = ref<Source[]>([])
 
+// models
+const models = ref([
+  { label: 'OLLAMA (local)', value: 'OLLAMA' },
+  { label: 'GOOGLE (API)', value: 'GOOGLE' },
+  { label: 'OPENAI (API)', value: 'OPENAI' }
+])
+const selectedModel = ref(models.value[0])
+
 // ----------------------Main chat-----------------------------
 
 const scrollToBottom = () => {
@@ -156,9 +174,18 @@ const sendMessage = async () => {
   isAiThinking.value = true
 
   try {
+    // get history
+    const allRelevantMsg = messages.value.slice(0, -1).filter(msg => msg.sources !== undefined || msg.sender === 'me') // remove messages without any informations
+    // history for search (long text with question)
+    const joinMessages = allRelevantMsg.map(msg => msg.text).join('\n')
+    const historyForSearch = joinMessages + '\n' + userQuery
+
+    // history for RAG
+    const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
+
     // search chunks
     const searchRequest = {
-      query: userQuery,
+      query: historyForSearch,
       limit: 5,
       search_title_generate: false,
       search_summary_generate: false
@@ -169,15 +196,12 @@ const sendMessage = async () => {
       return
     }
 
-    // get history
-    const allRelevantMsg = messages.value.slice(0, -1).filter(msg => msg.sources !== undefined || msg.sender === 'me') // remove messages without any informations
-    const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
-
     // rag question
     const ragRequestBody = {
       search_response: searchResponse.data,
       question: userQuery,
-      history: context
+      history: context,
+      model_name: selectedModel.value.value
     }
     const ragResponse = await axios.post('/api/rag', ragRequestBody)
     const ragAnswer = ragResponse.data.rag_answer
@@ -216,7 +240,7 @@ const replaceSourcesAndConvertToMarcdown = (msg: Message, msgIndex: number) => {
     return convertToMarkdown(msg.text)
   }
 
-  const sourcesRegex = /\[doc(\d+)\]/g
+  const sourcesRegex = /\[doc\s*(\d+)\]/g
 
   // replace sources links
   const result = msg.text.replace(sourcesRegex, (match, strIndex) => {
