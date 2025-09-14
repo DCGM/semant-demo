@@ -27,7 +27,7 @@ from semant_demo.schemas import Task, TasksBase
 
 import json
 
-from semant_demo.weaviate_search import DBError
+from semant_demo.weaviate_search import DBError, update_task_status
 
 """
 if os.path.exists(config.SQL_DB_URL):
@@ -196,6 +196,8 @@ async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = De
         logging.error(e)
         return {"tag_created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
 
+tasks = {}
+
 @app.post("/api/tag", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
     print("Tagging...")
@@ -210,7 +212,8 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
             logging.exception(f'Failed adding object to database. Task ID={taskId}')
             raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
 
-        background_tasks.add_task(tag_and_store, tagReq, taskId, tagger, global_async_session_maker)
+        task = asyncio.create_task(tag_and_store(tagReq, taskId, tagger, global_async_session_maker))
+        tasks[taskId] = task
         return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
     except Exception as e:
         logging.error(e)
@@ -254,6 +257,16 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
 
         return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count, "tag_id": task.tag_id, "tag_processing_data": task.tag_processing_data}
 
+# cancel task
+@app.get("/api/cancel_task", response_model=schemas.CancelTaskResponse)
+async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session)) -> schemas.CancelTaskResponse:
+        taskAsyncio = tasks[taskId]
+        if taskAsyncio and not taskAsyncio.done():
+            taskAsyncio.cancel()
+            await update_task_status(task_id=taskId, status="CANCELED", session=session)
+            return {"message": f"Task {taskId} cancelled", "taskCanceled": True}
+        return {"message": f"No running task {taskId}", "taskCanceled": False}
+
 # retrieve all tags
 @app.get("/api/get_tags", response_model=schemas.GetTagsResponse)
 async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
@@ -292,3 +305,4 @@ async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq, tagger:
 # http://localhost:8002/docs#
 
 # TODO now only automatic are shown, show positive and negative add filtering (print in FE useing chunkDataPositive/Negative)
+# pridat do tagFormManage tag_type alebo aspon pridat nejaky select

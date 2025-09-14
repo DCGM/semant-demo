@@ -289,6 +289,16 @@
                   <div class="row items-center">
                     <q-icon :name="getTaskIcon(task.status)" class="q-mr-sm" />
                     <div class="text-h6">Task #{{ allTaskInfo.length - allTaskInfo.indexOf(task) }}</div>
+                    <div v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" >
+                      <q-btn
+                        @click="() => cancelTask(task.task_id, task)"
+                                icon="fa fa-close"
+                                label="Cancel Task"
+                                color="negative"
+                                outline
+                                dense
+                        />
+                    </div>
                     <q-space />
                     <div class="text-caption">{{ formatDate(task.timestamp) }}</div>
                   </div>
@@ -317,7 +327,7 @@
             </div>
     </q-expansion-item>
 
-    <!-- Text Chunk Data -->
+    <!-- Text Chunk Data automatic -->
     <div v-if="chunkData?.chunks_with_tags?.length">
       <div v-for="chunk_id in [...new Set(chunkData.chunks_with_tags.map(c => c.chunk_id))]" :key="chunk_id" class="q-mb-md">
         <q-card>
@@ -378,6 +388,76 @@
       </div>
     </div>
     <div v-else>
+      <div class="text-caption q-mt-md">No automatic tagged chunks found.</div>
+    </div>
+
+    <!-- Positive chunks -->
+    <div v-if="chunkDataPositive?.chunks_with_tags?.length">
+      <div v-for="chunk_id in [...new Set(chunkDataPositive.chunks_with_tags.map(c => c.chunk_id))]" :key="chunk_id" class="q-mb-md">
+        <q-card>
+          <q-card-section>
+            <div class="col">
+              <div class="text-subtitle2">Chunk ID: {{ chunk_id }}</div>
+              <div class="text-body1">{{ chunkDataPositive.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.text_chunk }}</div>
+              <div class="text-subtitle2">Chunk Collection Name: {{ chunkDataPositive.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.chunk_collection_name }}</div>
+              <div class="text-caption q-mt-sm">
+                Tags <!-- {{ chunk.tag_uuids?.join(', ') || 'No tags' }} -->
+               <div v-for="tag in chunkDataPositive.chunks_with_tags.filter(c => c.chunk_id === chunk_id)" :key="tag.tag_uuid" class="q-mb-md" >
+                    <div class="row items-center col-auto">
+                      <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
+                      <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
+                      <q-label class="q-mr-sm"> {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }} </q-label>
+                      <q-label class="q-mr-sm"> Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }} </q-label>
+                    </div>
+                    <div class="text-caption q-mt-sm">
+                      Tag id: {{ tag.tag_uuid }}
+                    </div>
+                    <div class="text-h6 q-mt-sm">
+                      Tag type: Positive
+                    </div>
+                </div>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+    <div v-else>
+      <div class="text-caption q-mt-md">No tagged chunks found.</div>
+    </div>
+
+      <!-- Negative chunks -->
+    <div v-if="chunkDataNegative?.chunks_with_tags?.length">
+      <div v-for="chunk_id in [...new Set(chunkDataNegative.chunks_with_tags.map(c => c.chunk_id))]" :key="chunk_id" class="q-mb-md">
+        <q-card>
+          <q-card-section>
+            <div class="col">
+              <div class="text-subtitle2">Chunk ID: {{ chunk_id }}</div>
+              <div class="text-body1">{{ chunkDataNegative.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.text_chunk }}</div>
+              <div class="text-subtitle2">Chunk Collection Name: {{ chunkDataNegative.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.chunk_collection_name }}</div>
+              <div class="text-caption q-mt-sm">
+                Tags <!-- {{ chunk.tag_uuids?.join(', ') || 'No tags' }} -->
+               <div v-for="tag in chunkDataNegative.chunks_with_tags.filter(c => c.chunk_id === chunk_id)" :key="tag.tag_uuid" class="q-mb-md" >
+                    <div class="row items-center col-auto">
+                      <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
+                      <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
+                      <q-label class="q-mr-sm"> {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }} </q-label>
+                      <q-label class="q-mr-sm"> Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }} </q-label>
+                    </div>
+                    <div class="text-caption q-mt-sm">
+                      Tag id: {{ tag.tag_uuid }}
+                    </div>
+                    <div class="text-h6 q-mt-sm">
+                      Tag type: Negative
+                    </div>
+                </div>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+    <div v-else>
       <div class="text-caption q-mt-md">No tagged chunks found.</div>
     </div>
   </q-page>
@@ -386,11 +466,11 @@
 
 <script setup lang="ts">
 import { ref, onUnmounted, onMounted } from 'vue'
-import type { TagRequest, CreateTagResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType } from 'src/models'
+import type { TagRequest, CreateTagResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 
-// TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING';
+// TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 
 interface TaskInfo { // Task
   task_id: string;
@@ -639,6 +719,16 @@ async function onRunTask () {
   }
 }
 
+// cancel task
+async function cancelTask (taskID: string) {
+  const payload = { params: { taskId: taskID } }
+  const { data: data1 } = await api.get<CancelTaskResponse>('/cancel_task', payload)
+  console.log("Canceled: ", data1.taskCanceled)
+  const { data } = await api.get<StatusResponse>(`/tag/status/${taskID}`)
+  stopPolling(taskID)
+  updateTaskStatus(taskID, data.status, data.result, data.all_texts_count, data.processed_count, data.tag_processing_data)
+}
+
 function startPolling (taskId: string) {
   // clear existing interval if any
   // stopPolling(taskId)
@@ -693,11 +783,21 @@ function updateTaskStatus (taskId: string, status: string, result?: TagResult, a
 async function onTagManage () {
   loading.value = true
   try {
-    console.log('Tagging will start', tagFormManage.value)
+    // console.log('Tagging will start', tagFormManage.value)
     const payload = { tag_uuids: tagFormManage.value.tag_uuids, tag_type: "automatic" }
-    const { data } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload)
-    console.log('Tagging response received:', data)
-    chunkData.value = data
+    const { data: data1 } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload)
+    console.log('Tagging response received:', data1)
+    chunkData.value = data1
+    // positive
+    const payload2 = { tag_uuids: tagFormManage.value.tag_uuids, tag_type: "positive" }
+    const { data: data2 } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload2)
+    console.log('Tagging response received:', data2)
+    chunkDataPositive.value = data2
+    // negative
+    const payload3 = { tag_uuids: tagFormManage.value.tag_uuids, tag_type: "negative" }
+    const { data: data3 } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload3)
+    console.log('Tagging response received:', data3)
+    chunkDataNegative.value = data3
   } catch (e) {
     console.error('Tagging error:', e)
   } finally {

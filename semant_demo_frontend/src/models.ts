@@ -122,6 +122,11 @@ export interface TagResult {
   tags: string[];
 }
 
+export interface CancelTaskResponse {
+    message: string;
+    taskCanceled: boolean;
+}
+
 export interface ApproveTagResponse {
   successful: boolean;
   approved: boolean;
