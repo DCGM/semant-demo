@@ -140,6 +140,10 @@ class TagData(BaseModel):
 class TagTasksResponse(BaseModel):
     taskIDs: list[uuid.UUID]
 
+class CancelTaskResponse(BaseModel):
+    message: str
+    taskCanceled: bool
+
 class GetTagsResponse(BaseModel):
     tags_lst: list[TagData]
 

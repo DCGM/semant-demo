@@ -572,7 +572,7 @@ class WeaviateSearch:
         except Exception as e:
             logging.error(f"{e}")
             return {"successful": False}
-        
+
     async def approve_tag(self, data: schemas.ApproveTagReq):
         try:
             user = "default" # TODO change when users are added
@@ -592,21 +592,40 @@ class WeaviateSearch:
                     link_on="negativeTag"
                 )]
             )
+
+            refs = obj.references or {}
+
+            # helper to extract UUID strings from reference block
+            def ref_uuids(ref_block):
+                if not ref_block:
+                    return []
+                return [str(r.uuid) for r in ref_block.objects]
+
+            auto_ids = ref_uuids(refs.get("automaticTag"))
+            pos_ids = ref_uuids(refs.get("positiveTag"))
+            neg_ids = ref_uuids(refs.get("negativeTag"))
+
+            tag_id = str(data.tagID)
+
             # create the reference for approved tag
             if data.approved: # positive tags
-                await chunks.data.reference_add(
-                    from_uuid = obj.uuid,
+                
+                updatedTags = sorted(set(pos_ids + [tag_id]))
+                await chunks.data.reference_replace(
+                    from_uuid=obj.uuid,
                     from_property="positiveTag",
-                    to=data.tagID
+                    to=updatedTags,
                 )
             else: # negative tags
-                await chunks.data.reference_add(
-                    from_uuid = obj.uuid,
+
+                updatedTags = sorted(set(neg_ids + [tag_id]))
+                await chunks.data.reference_replace(
+                    from_uuid=obj.uuid,
                     from_property="negativeTag",
-                    to=data.tagID
+                    to=updatedTags,
                 )
+
             # remove the reference from the automatic tags
-            refs = obj.references or {}
             current = refs.get("automaticTag")
             currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
             remaining = [tid for tid in currentIDs if tid != data.tagID]
@@ -674,10 +693,14 @@ class WeaviateSearch:
 async def update_task_status(task_id: str, status: str, result={}, collection_name=None, session=None, all_texts_count=-1, processed_count=-1, tag_id=None, tag_processing_data=None):
         try:
             values_to_update = {
-                "status": status,
-                "result": result,
-                "collection_name": collection_name,
+                "status": status
             }
+
+            if collection_name is not None:
+                values_to_update["collection_name"] = collection_name
+
+            if result != {}:
+                values_to_update["result"] = result
 
             if all_texts_count > -1:
                 values_to_update["all_texts_count"] = int(all_texts_count)
