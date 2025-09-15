@@ -284,14 +284,61 @@
             </div>
 
             <!-- Tags -->
-             <div class="text-caption q-mt-sm">
+            <div class="text-caption q-mt-sm">
               <div v-if="tagFilterModes.positive && chunk.positiveTags && chunk.positiveTags.length">
-                <strong>Positive tags:</strong> {{chunk.positiveTags.join(', ') }}
+                <strong>Positive tags:</strong>
+                <div v-for="tag in chunk.positiveTags" :key="tag.tag_uuid" class="q-mb-md">
+                  <div class="row items-center col-auto">
+                    <div class="color-swatch" :style="{ backgroundColor: tag.tag_color }"></div>
+                    <q-icon :name="tag.tag_pictogram" />
+                    <q-label class="q-mr-sm">{{ tag.tag_name }}</q-label>
+                    <q-label class="q-mr-sm">Definition: {{ tag.tag_definition }}</q-label>
+                    <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
+                  </div>
+                </div>
               </div>
               <div v-if="tagFilterModes.automatic && chunk.automaticTags && chunk.automaticTags.length">
-                <strong>Automatic tags:</strong> {{chunk.automaticTags.join(', ') }}
+                <strong>Automatic tags:</strong>
+                <div v-for="tag in chunk.automaticTags" :key="tag.tag_uuid" class="q-mb-md">
+                  <div class="row items-center col-auto">
+                    <div class="color-swatch" :style="{ backgroundColor: tag.tag_color }"></div>
+                    <q-icon :name="tag.tag_pictogram" />
+                    <q-label class="q-mr-sm">{{ tag.tag_name }}</q-label>
+                    <q-label class="q-mr-sm">Definition: {{ tag.tag_definition }}</q-label>
+                    <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
+                  </div>
+                  <div class="row">
+                      <div class="col-auto">
+                        <q-btn-group>
+                          <div>
+                            <q-btn
+                              @click="() => approveTag(true, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                              icon="fa fa-check"
+                              label="Approve Tag"
+                              color="positive"
+                              outline
+                              dense
+                            />
+                          </div>
+                          <div>
+                            <q-btn
+                              @click="() => approveTag(false, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                              icon="fa fa-close"
+                              label="Disapprove Tag"
+                              color="negative"
+                              outline
+                              dense
+                            />
+                          </div>
+                          <span v-if="tagApproveStatus.find(item => item.tag_id === tag.tag_uuid)" class="q-ml-sm">
+                            {{ tagApproveStatus.find(item => item.tag_id === tag.tag_uuid).status }}
+                          </span>
+                        </q-btn-group>
+                      </div>
+                    </div>
+                </div>
               </div>
-             </div>
+            </div>
           </q-item-section>
         </q-item>
       </q-list>
@@ -362,6 +409,12 @@ const loadingSpinner = ref(false)
 const tagFilterModes = ref({
   positive: true, // by default check
   automatic: true
+})
+
+const tagMap = computed(() => {
+  const map = new Map<string, TagData>()
+  tags.value.forEach(t => map.set(t.tag_uuid, t))
+  return map
 })
 
 async function onSearch () {
@@ -456,7 +509,7 @@ function toggleSelectAll () {
 async function fetchTags () {
   loadingSpinner.value = true
   try {
-    const res = await api.get('/get_tags')
+    const res = await api.get('/all_tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
   } finally {
@@ -495,11 +548,11 @@ async function onFilterByTag () {
       )
     })
     .map(c => {
-      const tagInfo = chunkTagMap.get(c.id)!
+      const chunkInfo = chunkTags.find(ct => ct.chunk_id === c.id) || {}
       return {
         ...c,
-        positiveTags: tagInfo.positive_tags_ids || [],
-        automaticTags: tagInfo.automatic_tags_ids || []
+        positiveTags: (chunkInfo.positive_tags_ids || []).map(id => tagMap.value.get(id)).filter(Boolean),
+        automaticTags: (chunkInfo.automatic_tags_ids || []).map(id => tagMap.value.get(id)).filter(Boolean)
       }
     })
   // results.value = (results.value || []).filter(c => filteredChunkIDs.has(c.id))

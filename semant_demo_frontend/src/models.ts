@@ -70,8 +70,8 @@ export interface TextChunkWithDocument extends TextChunk {
   document_object: Document;
   query_title: string | null;
   query_summary: string | null;
-  automaticTags: string[];
-  positiveTags: string[];
+  automaticTags: TagData[];
+  positiveTags: TagData[];
 }
 
 export interface SearchResponse {
