@@ -573,6 +573,83 @@ class WeaviateSearch:
             logging.error(f"{e}")
             return {"successful": False}
 
+    async def filterChunksByTags(self, requestedData: schemas.FilterChunksByTagsRequest ):
+        """
+        get tag objects, chunk objects,
+        then filter the chunks that has positive tags and automatic tags referces to any of 
+        the selected tags and return the data
+        """
+        def get_all_refs(refs):
+            """
+            transform references to a list
+            """
+            if refs is None:
+                return []
+            if isinstance(refs, list):
+                return refs
+            return [refs]  # wrap single reference to a list
+        try:            
+            # get all chunks from the list and filter them by the tag
+            filters = [Filter.by_id().contains_any([str(uuid) for uuid in requestedData.chunkIds])]
+            if requestedData.positive:
+                filters.append(Filter.by_ref("automaticTag").by_id().contains_any(requestedData.tagIds))
+            if requestedData.automatic:
+                filters.append(Filter.by_ref("positiveTag").by_id().contains_any(requestedData.tagIds))
+            combinedFilters = filters[0]
+            for f in filters[1:]:
+                combinedFilters |= f
+            
+            chunk_results = await self.client.collections.get('Chunks').query.fetch_objects(
+                filters=combinedFilters,
+                return_references=[
+                    QueryReference(
+                        link_on="automaticTag",                 # the reference property
+                        return_properties=["uuid", "tag_name"]  # properties from the referenced tags
+                    ),
+                    QueryReference(
+                        link_on="positiveTag",                 
+                        return_properties=["uuid", "tag_name"] 
+                    ), 
+                ]
+            )
+
+            # helper to extract UUID strings from reference block
+            def ref_uuids(ref_block):
+                if not ref_block:
+                    return []
+                return [str(r.uuid) for r in ref_block.objects]
+
+            # helper to extract UUID strings from reference block
+            def ref_uuids(ref_block):
+                if not ref_block:
+                    return []
+                return [str(r.uuid) for r in ref_block.objects]
+
+            resultLst = []
+            for chunk in chunk_results.objects:
+                refs = chunk.references or {}
+
+                auto_ids = ref_uuids(refs.get("automaticTag"))
+                pos_ids = ref_uuids(refs.get("positiveTag"))
+
+                requested_ids = requestedData.tagIds
+
+                auto_ids = list(set(auto_ids) & set(requested_ids))
+                pos_ids = list(set(pos_ids) & set(requested_ids))
+                """                # get tags the chunk reference as positive
+                positiveRefs = get_all_refs(chunk.references.get("positiveTag"))
+                positiveTags = [t.uuid for t in positiveRefs]
+                # get tags the chunk reference as automatic
+                automaticRefs = get_all_refs(chunk.references.get("automaticTag"))
+                automaticTags = [t.uuid for t in automaticRefs]
+                """
+                resultLst.append({'chunk_id': str(chunk.uuid), 'positive_tags_ids': pos_ids, 'automatic_tags_ids': auto_ids})
+            logging.info(f'"chunkTags": {resultLst} ')
+            return { "chunkTags": resultLst }
+        except Exception as e:
+            logging.error(f"Error in chunk filtering: {e}")
+            return { "chunkTags": [] }
+
     async def approve_tag(self, data: schemas.ApproveTagReq):
         try:
             user = "default" # TODO change when users are added
