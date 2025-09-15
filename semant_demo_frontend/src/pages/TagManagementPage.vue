@@ -740,7 +740,7 @@ function startPolling (taskId: string) {
       console.log('processed count: ', data.processed_count, 'all count: ', data.all_texts_count)
       updateTaskStatus(taskId, data.status, data.result, data.all_texts_count, data.processed_count, data.tag_processing_data)
       // stop polling when task done
-      if (['COMPLETED', 'FAILED'].includes(data.status)) {
+      if (['COMPLETED', 'FAILED', 'CANCELED'].includes(data.status)) {
         console.log(`Stopping polling for task ${taskId}, status: ${data.status}`)
         stopPolling(taskId)
       }

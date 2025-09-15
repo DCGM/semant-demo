@@ -302,6 +302,11 @@ async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq, tagger:
         logging.error(f"{e}")
         return { "successful": False, "approved": approveData.approved}
     
+@app.post("/api/filter_tags", response_model=schemas.FilterChunksByTagsResponse)
+async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest, tagger: WeaviateSearch = Depends(get_search)) -> schemas.FilterChunksByTagsResponse:
+    response = await tagger.filterChunksByTags(requestedData)
+    return response
+    
 # http://localhost:8002/docs#
 
 # TODO now only automatic are shown, show positive and negative add filtering (print in FE useing chunkDataPositive/Negative)
