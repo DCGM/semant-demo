@@ -186,9 +186,12 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
         time_spent=search_response.time_spent,
     )
 
-# creates tag in weaviate db, or not if the same tag already exists
+
 @app.post("/api/create_tag", response_model=schemas.CreateTagResponse)
 async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateTagResponse:
+    """
+    creates tag in weaviate db, or not if the same tag already exists
+    """
     try:
         tag_id = await tagger.add_or_get_tag(tagReq)
         return {"tag_created": True, "message": f"Tag {tagReq.tag_name} created with tag id {tag_id}"}
@@ -198,8 +201,11 @@ async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = De
 
 tasks = {}
 
-@app.post("/api/tag", response_model=schemas.TagStartResponse)
+@app.post("/api/run_tagging_task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
+    """
+    Starts tagging task in form of asyncio.create_task
+    """
     print("Tagging...")
     print(tagReq)
     taskId = str(uuid.uuid4()) # generate id for current task
@@ -220,7 +226,7 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
         raise HTTPException(status_code=500, detail=str(e))
 
 # get task ids to see history of tasks
-@app.get("/api/get_tags_ids", response_model=schemas.TagTasksResponse)
+@app.get("/api/all_tags_ids", response_model=schemas.TagTasksResponse)
 async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)) -> schemas.TagTasksResponse:
     try:
         logging.info(f"Fetching")
@@ -268,14 +274,16 @@ async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_ses
         return {"message": f"No running task {taskId}", "taskCanceled": False}
 
 # retrieve all tags
-@app.get("/api/get_tags", response_model=schemas.GetTagsResponse)
+@app.get("/api/all_tags", response_model=schemas.GetTagsResponse)
 async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
     response = await tagger.get_all_tags()
     return {"tags_lst": response}
 
-# returns chunks which are tagged by certain type of tag (automatic, positive, negative)
 @app.post("/api/tagged_texts", response_model=schemas.GetTaggedChunksResponse)
 async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
+    """
+    returns chunks which are tagged by certain type of tag (automatic, positive, negative)
+    """
     try:
         logging.info(f"In get tagged text {chosenTagUUIDs}")
         response = await tagger.get_tagged_chunks(chosenTagUUIDs)
@@ -283,16 +291,19 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, t
     except Exception as e:
         logging.error(f"{e}")
 
-@app.post("/api/remove_tags", response_model=schemas.RemoveTagsResponse)
-async def remove_tags(chosenTagUUIDs: schemas.GetTaggedChunksReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.RemoveTagsResponse:
+@app.delete("/api/remove_tags", response_model=schemas.RemoveTagsResponse)
+async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.RemoveTagsResponse:
     try:
         response = await tagger.remove_tags(chosenTagUUIDs)
         return response
     except Exception as e:
         logging.error(f"{e}")
 
-@app.post("/api/approve_tag", response_model=schemas.ApproveTagResponse)
+@app.put("/api/approve_tag", response_model=schemas.ApproveTagResponse)
 async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.ApproveTagResponse:
+    """
+    User approve or disapprove a tag, changes the reference of the tag
+    """
     try:
         logging.info("Approving...")
         response = await tagger.approve_tag(approveData)
@@ -304,6 +315,9 @@ async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq, tagger:
     
 @app.post("/api/filter_tags", response_model=schemas.FilterChunksByTagsResponse)
 async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest, tagger: WeaviateSearch = Depends(get_search)) -> schemas.FilterChunksByTagsResponse:
+    """
+    Filter chunks by given tags and positive or/and automatic flags
+    """
     response = await tagger.filterChunksByTags(requestedData)
     return response
     

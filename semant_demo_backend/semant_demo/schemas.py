@@ -151,6 +151,9 @@ class GetTaggedChunksReq(BaseModel):
     tag_uuids: list[uuid.UUID]
     tag_type: TagType
 
+class RemoveTagReq(BaseModel):
+    tag_uuids: list[uuid.UUID]
+
 class TaggedChunks(BaseModel):
     tag_uuid : uuid.UUID # uuid of a tag selected in UI and belonging to the text chunk
     text_chunk: str # actual text chunk
