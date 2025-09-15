@@ -307,35 +307,6 @@
                     <q-label class="q-mr-sm">Definition: {{ tag.tag_definition }}</q-label>
                     <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
                   </div>
-                  <div class="row">
-                      <div class="col-auto">
-                        <q-btn-group>
-                          <div>
-                            <q-btn
-                              @click="() => approveTag(true, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
-                              icon="fa fa-check"
-                              label="Approve Tag"
-                              color="positive"
-                              outline
-                              dense
-                            />
-                          </div>
-                          <div>
-                            <q-btn
-                              @click="() => approveTag(false, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
-                              icon="fa fa-close"
-                              label="Disapprove Tag"
-                              color="negative"
-                              outline
-                              dense
-                            />
-                          </div>
-                          <span v-if="tagApproveStatus.find(item => item.tag_id === tag.tag_uuid)" class="q-ml-sm">
-                            {{ tagApproveStatus.find(item => item.tag_id === tag.tag_uuid).status }}
-                          </span>
-                        </q-btn-group>
-                      </div>
-                    </div>
                 </div>
               </div>
             </div>
