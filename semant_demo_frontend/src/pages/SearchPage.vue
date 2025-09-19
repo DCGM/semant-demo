@@ -307,6 +307,35 @@
                     <q-label class="q-mr-sm">Definition: {{ tag.tag_definition }}</q-label>
                     <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
                   </div>
+                  <div class="row">
+                      <div class="col-auto">
+                        <q-btn-group>
+                          <div>
+                            <q-btn
+                              @click="() => approveTag(true, chunk.id, tag.tag_uuid, 'Chunks')"
+                              icon="fa fa-check"
+                              label="Approve Tag"
+                              color="positive"
+                              outline
+                              dense
+                            />
+                          </div>
+                          <div>
+                            <q-btn
+                              @click="() => approveTag(false, chunk.id, tag.tag_uuid, 'Chunks')"
+                              icon="fa fa-close"
+                              label="Disapprove Tag"
+                              color="negative"
+                              outline
+                              dense
+                            />
+                          </div>
+                          <span v-if="tagApproveStatus.find(item => item.tag_id === tag.tag_uuid)" class="q-ml-sm">
+                            {{ tagApproveStatus.find(item => item.tag_id === tag.tag_uuid).status }}
+                          </span>
+                        </q-btn-group>
+                      </div>
+                    </div>
                 </div>
               </div>
             </div>
@@ -337,7 +366,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData } from 'src/models'
+import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse } from 'src/models'
 import { api } from 'src/boot/axios'
 
 const searchForm = ref<SearchRequest>({
@@ -373,6 +402,7 @@ const asking = ref(false)
 
 const allSelected = computed(() => selectedResults.value.length === results.value.length && results.value.length > 0)
 
+const tagApproveStatus = ref<{ chunk_id: string; tag_id: string; status: string; chunk_collection_name: string }[]>([])
 const tagFormManage = ref<TagData>({ tag_uuids: [''] })
 const tagsLen = ref(5)
 const tags = ref<TagData[]>([])
@@ -527,6 +557,22 @@ async function onFilterByTag () {
       }
     })
   // results.value = (results.value || []).filter(c => filteredChunkIDs.has(c.id))
+}
+
+// approve tag pass true to approve or false to diapprove
+async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string) {
+  const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
+  const { data } = await api.put<ApproveTagResponse>('/approve_tag', payload)
+  if (data.successful) {
+    await onFilterByTag() // may use lighter version to refetch the state
+  } else {
+    tagApproveStatus.value.push({
+      chunk_id: chunkID,
+      tag_id: tagID,
+      status: 'Error',
+      chunk_collection_name: chunkCollectionName
+    })
+  }
 }
 
 // add examples field
