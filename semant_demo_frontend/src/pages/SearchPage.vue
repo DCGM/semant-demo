@@ -283,6 +283,120 @@
               </div>
             </div>
 
+            <div class="row">
+            <div class="col-auto">
+              <q-select
+                v-model="perChunkTags[chunk.id]"
+                :options="tags"
+                option-label="tag_name"
+                option-value="tag_uuid"
+                type="text"
+                class="col"
+                placeholder="Select a tag"
+                emit-value
+                map-options
+                dense
+                outlined
+                :loading="loadingSpinner"
+                @popup-show="fetchTags"
+              >
+                <!-- No option slot -->
+                <template v-slot:no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      No tags found
+                    </q-item-section>
+                  </q-item>
+                </template>
+                          <!-- Custom option rendering -->
+                          <template v-slot:option="scope">
+                            <q-item v-bind="scope.itemProps">
+                              <q-item-section avatar>
+                                <div
+                                  class="color-swatch"
+                                  :style="{ backgroundColor: scope.opt.tag_color }"
+                                ></div>
+                              </q-item-section>
+                              <q-item-section avatar>
+                                <q-item-label>{{ scope.opt.tag_pictogram }}</q-item-label>
+                                <q-icon :name="scope.opt.tag_pictogram" />
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label>{{ scope.opt.tag_name }}</q-item-label>
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label> Definition: </q-item-label>
+                                <q-item-label caption>
+                                  {{ scope.opt.tag_definition }}
+                                </q-item-label>
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label> Examples: </q-item-label>
+                                <div v-for="(example, index) in scope.opt.tag_examples" :key="index" class="row items-center q-mb-sm">
+                                  <q-item-label caption>
+                                    {{ example }}
+                                  </q-item-label>
+                                </div>
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label> Collection name: </q-item-label>
+                                <q-item-label caption>
+                                  {{ scope.opt.collection_name }}
+                                </q-item-label>
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label> Tag uuid: </q-item-label>
+                                <q-item-label caption>
+                                  {{ scope.opt.tag_uuid }}
+                                </q-item-label>
+                              </q-item-section>
+                            </q-item>
+                          </template>
+
+                          <!-- Custom selected rendering -->
+                          <template v-slot:selected>
+                            <q-item v-if="perChunkTags[chunk.id]">
+                              <q-item-section avatar>
+                                <div
+                                  class="color-swatch"
+                                  :style="{ backgroundColor: tags.find(t => t.tag_uuid === perChunkTags[chunk.id])?.tag_color }"
+                                ></div>
+                              </q-item-section>
+                              <q-item-section avatar>
+                                <q-item-label>{{ tags.find(t => t.tag_uuid === perChunkTags[chunk.id])?.tag_pictogram }}</q-item-label>
+                                <q-icon :name="tags.find(t => t.tag_uuid === perChunkTags[chunk.id])?.tag_pictogram" />
+                              </q-item-section>
+                              <q-item-section >
+                                <q-item-label caption> Name: </q-item-label>
+                                <q-item-label> {{ tags.find(t => t.tag_uuid === perChunkTags[chunk.id])?.tag_name }} </q-item-label>
+                              </q-item-section>
+                              <q-item-section class="col-grow">
+                                <q-item-label caption>Tag uuid:</q-item-label>
+                                <q-item-label caption class="text-mono">
+                                  {{ perChunkTags[chunk.id] }}
+                                </q-item-label>
+                              </q-item-section>
+                            </q-item>
+                            <!-- when nothing selected, show placeholder -->
+                            <div v-else class="text-grey q-pl-sm">
+                              Select a tag
+                            </div>
+                          </template>
+                        </q-select>
+                      </div>
+                      <div class="col-auto">
+                        <q-btn
+                              @click="() => addUserTag(chunk.id, perChunkTags[chunk.id])"
+                              icon="add"
+                              label="Add Tag"
+                              color="primary"
+                              outline
+                              dense
+                        />
+                      </div>
+                      <q-space />
+                    </div>
+
             <!-- Tags -->
             <div class="text-caption q-mt-sm">
               <div v-if="tagFilterModes.positive && chunk.positiveTags && chunk.positiveTags.length">
@@ -335,6 +449,7 @@
                           </span>
                         </q-btn-group>
                       </div>
+                      <q-space />
                     </div>
                 </div>
               </div>
@@ -365,7 +480,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox } from 'quasar'
+import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox, Notify } from 'quasar'
 import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse } from 'src/models'
 import { api } from 'src/boot/axios'
 
@@ -417,6 +532,8 @@ const tagMap = computed(() => {
   tags.value.forEach(t => map.set(t.tag_uuid, t))
   return map
 })
+
+const perChunkTags = ref<Record<string, string | null>>({})
 
 async function onSearch () {
   loading.value = true
@@ -560,11 +677,13 @@ async function onFilterByTag () {
 }
 
 // approve tag pass true to approve or false to diapprove
-async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string) {
+async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string, pageReload = true) {
   const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
   const { data } = await api.put<ApproveTagResponse>('/approve_tag', payload)
   if (data.successful) {
-    await onFilterByTag() // may use lighter version to refetch the state
+    if (pageReload === true) {
+      await onFilterByTag() // may use lighter version to refetch the state
+    }
   } else {
     tagApproveStatus.value.push({
       chunk_id: chunkID,
@@ -573,6 +692,7 @@ async function approveTag (approved: boolean, chunkID: string, tagID: string, ch
       chunk_collection_name: chunkCollectionName
     })
   }
+  return data.successful
 }
 
 // add examples field
@@ -584,6 +704,41 @@ const addTag = () => {
 const removeTag = (index: number) => {
   if (tagFormManage.value.tag_uuids.length > 1) {
     tagFormManage.value.tag_uuids.splice(index, 1)
+  }
+}
+
+// add user tag to a chunk
+async function addUserTag (chunkID: string, tagID: string) {
+  if (!tagID) {
+    Notify.create({
+      message: 'Missing selected tag.',
+      color: 'negative',
+      position: 'top',
+      timeout: 2000,
+      icon: 'error'
+    })
+  }
+  var successful = await approveTag(true, chunkID, tagID, "Chunks", false)
+  if (successful) {
+    // Clear the selection so it disappears from q-select
+    perChunkTags.value[chunkID] = ''
+
+    // Show success popup
+    Notify.create({
+      message: 'Tag added successfully!',
+      color: 'positive',
+      position: 'top',
+      timeout: 2000,
+      icon: 'check'
+    })
+  } else {
+    Notify.create({
+      message: 'Failed to add tag.',
+      color: 'negative',
+      position: 'top',
+      timeout: 2000,
+      icon: 'error'
+    })
   }
 }
 </script>
