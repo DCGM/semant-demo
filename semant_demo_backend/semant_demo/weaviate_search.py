@@ -702,6 +702,24 @@ class WeaviateSearch:
                     to=updatedTags,
                 )
 
+            # helper to remove tag from disapproved and automatic tags
+            async def removeTagRef(refName):
+                current = refs.get(refName)
+                currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
+                remaining = [tid for tid in currentIDs if tid != data.tagID]
+                logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+                logging.info(f"To remove {data.tagID}")
+                if len(remaining) != len(currentIDs):
+                    logging.info(f"Replacing {currentIDs} {remaining}")
+                    await chunks.data.reference_replace(
+                        from_uuid=obj.uuid,
+                        from_property=refName,
+                        to=remaining
+                    )
+            # remove the reference from the automatic and/or negative tags
+            await removeTagRef("automaticTag")
+            await removeTagRef("negativeTag")
+            """
             # remove the reference from the automatic tags
             current = refs.get("automaticTag")
             currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
@@ -715,6 +733,7 @@ class WeaviateSearch:
                     from_property="automaticTag",
                     to=remaining
                 )
+            
                 # TODO remove (just checks)
                 chunks = self.client.collections.get("Chunks")
                 check = await chunks.query.fetch_object_by_id(
@@ -723,6 +742,7 @@ class WeaviateSearch:
                 )
                 got = [str(r.uuid) for r in (check.references.get("automaticTag").objects if check.references and check.references.get("hasTags") else [])]
                 logging.info(f"after: {got}")
+            """
             return True
         except Exception as e:
             logging.error(f"Not changed approval state. Error: {e}")
