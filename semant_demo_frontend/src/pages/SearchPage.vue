@@ -205,6 +205,12 @@
                 dense
               />
             <q-space />
+              <q-btn type="button"
+                color="negative"
+                label="Remove Automatic Tags"
+                icon="delete" :loading="loading"
+                @click="removeSelectedTags"
+              />
               <q-btn
                 color="primary"
                 label="Filter by tag(s)"
@@ -481,7 +487,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox, Notify } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse } from 'src/models'
+import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse, RemoveTagsResponse } from 'src/models'
 import { api } from 'src/boot/axios'
 
 const searchForm = ref<SearchRequest>({
@@ -679,7 +685,7 @@ async function onFilterByTag () {
 // approve tag pass true to approve or false to diapprove
 async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string, pageReload = true) {
   const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
-  const { data } = await api.put<ApproveTagResponse>('/approve_tag', payload)
+  const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
   if (data.successful) {
     if (pageReload === true) {
       await onFilterByTag() // may use lighter version to refetch the state
@@ -741,4 +747,19 @@ async function addUserTag (chunkID: string, tagID: string) {
     })
   }
 }
+
+async function removeSelectedTags () {
+  try {
+    const payload = { tag_uuids: tagFormManage.value.tag_uuids }
+    const { data } = await api.delete<RemoveTagsResponse>('/automatic_tags', { data: payload })
+    console.log('Removing response received:', data)
+    if (data.successful) {
+      // window.location.reload()
+      await onFilterByTag()
+    }
+  } catch (e) {
+    console.error('Tag removing error:', e)
+  }
+}
+
 </script>

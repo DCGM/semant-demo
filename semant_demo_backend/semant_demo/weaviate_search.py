@@ -572,6 +572,64 @@ class WeaviateSearch:
         except Exception as e:
             logging.error(f"{e}")
             return {"successful": False}
+        
+    async def remove_automatic_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
+        try:
+            # remove all automatic cross-references from Chunks
+
+            # get tags for collection names
+            tag_collection = self.client.collections.get("Tag")
+            chunk_lst_with_tags = []
+            filters = Filter.by_id().contains_any([str(uuid) for uuid in chosenTagUUIDs.tag_uuids])
+            
+            results = await tag_collection.query.fetch_objects(filters=filters)
+
+            # get different collection names
+            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            #ChunkTagApprovalCollection = self.client.collections.get("ChunkTagApproval")
+
+            # iterate over the collections and retrieve text chunks and corresponding tags
+            for collection_name in collection_names:
+                # get all chunks
+                chunks = self.client.collections.get(collection_name)
+                # fetch chunks with hasTags
+                res = await chunks.query.fetch_objects(
+                    return_references=QueryReference(
+                        link_on="automaticTag",
+                        return_properties=[]
+                    )
+                )
+
+                tagsToRemove = set(chosenTagUUIDs.tag_uuids)
+                tagsToRemove = [str(tagID) for tagID in tagsToRemove]
+
+                # replace hasTags with remaining refs
+                for obj in res.objects:
+                    refs = obj.references or {}
+                    current = refs.get("automaticTag")
+                    currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
+                    remaining = list(filter(lambda tid: tid not in tagsToRemove, currentIDs))
+                    logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+                    logging.info(f"To remove {tagsToRemove}")
+                    if len(remaining) != len(currentIDs):
+                        logging.info(f"Replacing {currentIDs} {remaining}")
+                        await chunks.data.reference_replace(
+                            from_uuid=obj.uuid,
+                            from_property="automaticTag",
+                            to=remaining
+                        )
+                    check = await chunks.query.fetch_object_by_id(
+                        obj.uuid,
+                        return_references=[QueryReference(link_on="automaticTag", return_properties=[])]
+                    )
+                    got = [str(r.uuid) for r in (check.references.get("automaticTag").objects if check.references and check.references.get("hasTags") else [])]
+                    logging.info(f"after: {got}")
+                logging.info("deleted references from chunks to tags")
+
+            return {"successful": True}
+        except Exception as e:
+            logging.error(f"{e}")
+            return {"successful": False}
 
     async def filterChunksByTags(self, requestedData: schemas.FilterChunksByTagsRequest ):
         """

@@ -274,7 +274,7 @@
 
           <!-- right button -->
           <div class="col-auto flex justify-end">
-            <q-btn type="button" color="negative" label="Remove selected Tags" icon="delete" :loading="loading" @click="removeSelectedTags" />
+            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loading" @click="removeSelectedTags" />
           </div>
         </div>
       </div>
@@ -289,6 +289,7 @@
                   <div class="row items-center">
                     <q-icon :name="getTaskIcon(task.status)" class="q-mr-sm" />
                     <div class="text-h6">Task #{{ allTaskInfo.length - allTaskInfo.indexOf(task) }}</div>
+                    <q-space />
                     <div v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" >
                       <q-btn
                         @click="() => cancelTask(task.task_id, task)"
@@ -299,7 +300,6 @@
                                 dense
                         />
                     </div>
-                    <q-space />
                     <div class="text-caption">{{ formatDate(task.timestamp) }}</div>
                   </div>
                 </q-card-section>
@@ -575,7 +575,7 @@ const removeTag = (index: number) => {
 // approve tag pass true to approve or false to diapprove
 async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string) {
   const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
-  const { data } = await api.put<ApproveTagResponse>('/approve_tag', payload)
+  const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
   if (data.successful) {
     await onTagManage() // may use lighter version to refetch the state
   } else {
@@ -808,10 +808,11 @@ async function onTagManage () {
 async function removeSelectedTags () {
   try {
     const payload = { tag_uuids: tagFormManage.value.tag_uuids }
-    const { data } = await api.delete<RemoveTagsResponse>('/remove_tags', { data: payload })
+    const { data } = await api.delete<RemoveTagsResponse>('/automatic_tags', { data: payload })
     console.log('Removing response received:', data)
     if (data.successful) {
-      window.location.reload()
+      // window.location.reload()
+      await onTagManage()
     }
   } catch (e) {
     console.error('Tag removing error:', e)

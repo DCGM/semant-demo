@@ -291,7 +291,7 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, t
     except Exception as e:
         logging.error(f"{e}")
 
-@app.delete("/api/remove_tags", response_model=schemas.RemoveTagsResponse)
+@app.delete("/api/whole_tags", response_model=schemas.RemoveTagsResponse)
 async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.RemoveTagsResponse:
     try:
         response = await tagger.remove_tags(chosenTagUUIDs)
@@ -299,7 +299,15 @@ async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq, tagger: WeaviateSear
     except Exception as e:
         logging.error(f"{e}")
 
-@app.put("/api/approve_tag", response_model=schemas.ApproveTagResponse)
+@app.delete("/api/automatic_tags", response_model=schemas.RemoveTagsResponse)
+async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.RemoveTagsResponse:
+    try:
+        response = await tagger.remove_automatic_tags(chosenTagUUIDs)
+        return response
+    except Exception as e:
+        logging.error(f"{e}")        
+
+@app.put("/api/tag_approval", response_model=schemas.ApproveTagResponse)
 async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.ApproveTagResponse:
     """
     User approve or disapprove a tag, changes the reference of the tag
