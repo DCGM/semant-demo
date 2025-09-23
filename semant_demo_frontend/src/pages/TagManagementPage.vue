@@ -153,6 +153,7 @@
               dense
               outlined
               :loading="loadingSpinner"
+              @popup-show="fetchTags"
             >
               <!-- No option slot -->
               <template v-slot:no-option>
@@ -281,7 +282,7 @@
     </q-form>
 
     <!-- tasks item -->
-    <q-expansion-item icon="assignment" label="Tasks" expand-separator>
+    <q-expansion-item icon="assignment" label="Tasks" expand-separator @show="onShowTasks">
             <!-- Task Status Cards -->
             <div v-for="task in allTaskInfo" :key="task.task_id" class="q-mt-lg">
               <q-card :class="getTaskCardClass(task.status)">
@@ -601,21 +602,7 @@ const removeExample = (index: number) => {
 }
 
 onMounted(async () => {
-  const res = await axios.get('/api/all_tags_ids')
-  taskIDs.value = res.data.taskIDs
-  for (const taskId of taskIDs.value) {
-    const newTaskInfo: TaskInfo = {
-      task_id: taskId,
-      status: 'LOADING',
-      all_texts_count: 0,
-      processed_count: 0,
-      tag_processing_data: [],
-      message: "Fetching data",
-      timestamp: new Date().toISOString()
-    }
-    allTaskInfo.value.unshift(newTaskInfo)
-    startPolling(taskId)
-  }
+  await onShowTasks()
   // the tag management part
   loadingSpinner.value = true
   try {
@@ -722,9 +709,9 @@ async function onRunTask () {
 // cancel task
 async function cancelTask (taskID: string) {
   const payload = { params: { taskId: taskID } }
-  const { data: data1 } = await api.get<CancelTaskResponse>('/cancel_task', payload)
+  const { data: data1 } = await api.delete<CancelTaskResponse>(`/tagging_task/${taskID}`, payload)
   console.log("Canceled: ", data1.taskCanceled)
-  const { data } = await api.get<StatusResponse>(`/tag/status/${taskID}`)
+  const { data } = await api.get<StatusResponse>(`/tag_status/${taskID}`)
   stopPolling(taskID)
   updateTaskStatus(taskID, data.status, data.result, data.all_texts_count, data.processed_count, data.tag_processing_data)
 }
@@ -735,7 +722,7 @@ function startPolling (taskId: string) {
   const interval: ReturnType<typeof setInterval> = setInterval(async () => {
     try {
       // server response is inside data
-      const { data } = await api.get<StatusResponse>(`/tag/status/${taskId}`)
+      const { data } = await api.get<StatusResponse>(`/tag_status/${taskId}`)
       console.log('Polling response:', data) // Debug log
       console.log('processed count: ', data.processed_count, 'all count: ', data.all_texts_count)
       updateTaskStatus(taskId, data.status, data.result, data.all_texts_count, data.processed_count, data.tag_processing_data)
@@ -816,6 +803,39 @@ async function removeSelectedTags () {
     }
   } catch (e) {
     console.error('Tag removing error:', e)
+  }
+}
+
+// fetch tag info
+async function fetchTags () {
+  loadingSpinner.value = true
+  try {
+    const res = await api.get('/all_tags')
+    tags.value = res.data.tags_lst
+    tagsLen.value = tags.value.length
+  } finally {
+    loadingSpinner.value = false
+  }
+}
+
+async function onShowTasks () {
+  const res = await axios.get('/api/all_tasks')
+  const tasks = res.data.taskData
+  for (const task of tasks) {
+    // skip if this task is already in allTaskInfo
+    const exists = allTaskInfo.value.some(t => t.task_id === task.taskId)
+    if (exists) continue
+    const newTaskInfo: TaskInfo = {
+      task_id: task.taskId,
+      status: task.status,
+      all_texts_count: task.all_texts_count,
+      processed_count: task.processed_count,
+      tag_processing_data: task.tag_processing_data,
+      message: "Loaded data",
+      result: task.result,
+      timestamp: task.timestamp
+    }
+    allTaskInfo.value.unshift(newTaskInfo)
   }
 }
 
