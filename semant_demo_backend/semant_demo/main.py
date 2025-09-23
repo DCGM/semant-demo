@@ -20,6 +20,7 @@ from sqlalchemy import select, update, bindparam, asc
 from typing import AsyncGenerator   
 #import db
 from sqlalchemy import exc
+from datetime import timezone
 
 import logging  
 
@@ -28,6 +29,7 @@ from semant_demo.schemas import Task, TasksBase
 import json
 
 from semant_demo.weaviate_search import DBError, update_task_status
+
 
 """
 if os.path.exists(config.SQL_DB_URL):
@@ -225,8 +227,9 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
         logging.error(e)
         raise HTTPException(status_code=500, detail=str(e))
 
+"""
 # get task ids to see history of tasks
-@app.get("/api/all_tags_ids", response_model=schemas.TagTasksResponse)
+@app.get("/api/all_tasks_id", response_model=schemas.TagTasksResponse)
 async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)) -> schemas.TagTasksResponse:
     try:
         logging.info(f"Fetching")
@@ -239,9 +242,43 @@ async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)) -> s
     except exc.SQLAlchemyError as e:
         logging.exception(f'Failed loading object from database. While loading all tasks ids.')
         raise DBError(f'Failed loading all tasks ids from database.') from e
+"""
+
+# get task info to see history of tasks
+@app.get("/api/all_tasks")
+async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
+    try:
+        logging.info(f"Fetching")
+        stmt = select(Task).order_by(asc(Task.time_updated))
+        data = await session.execute(stmt)
+        # prepare the result
+        tasks = data.scalars().all()
+        response = []
+        for task in tasks:
+            result = task.result
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except Exception:
+                    result = None
+            response.append({"taskId": task.taskId, 
+                             "status": task.status, 
+                             "result": result, 
+                             "all_texts_count": task.all_texts_count, 
+                             "processed_count": task.processed_count, 
+                             "tag_id": task.tag_id, 
+                             "tag_processing_data": task.tag_processing_data, 
+                             "timestamp": task.time_updated.replace(tzinfo=timezone.utc).isoformat() if task.time_updated else None})
+        
+        logging.info(f"Retrieved tasks")
+        return { "taskData": response }
+    
+    except exc.SQLAlchemyError as e:
+        logging.exception(f'Failed loading object from database. While loading all tasks ids.')
+        raise DBError(f'Failed loading all tasks ids from database.') from e
 
 # polling to check task status
-@app.get("/api/tag/status/{taskId}")
+@app.get("/api/tag_status/{taskId}")
 async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session)):
         try:
             task = await session.get(Task, taskId)
@@ -264,13 +301,15 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
         return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count, "tag_id": task.tag_id, "tag_processing_data": task.tag_processing_data}
 
 # cancel task
-@app.get("/api/cancel_task", response_model=schemas.CancelTaskResponse)
+@app.delete("/api/tagging_task/{taskId}", response_model=schemas.CancelTaskResponse)
 async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session)) -> schemas.CancelTaskResponse:
         taskAsyncio = tasks[taskId]
         if taskAsyncio and not taskAsyncio.done():
-            taskAsyncio.cancel()
-            await update_task_status(task_id=taskId, status="CANCELED", session=session)
-            return {"message": f"Task {taskId} cancelled", "taskCanceled": True}
+            if taskAsyncio.cancel():
+                await update_task_status(task_id=taskId, status="CANCELED", session=session)
+                return {"message": f"Task {taskId} cancelled", "taskCanceled": True}
+            else:
+                return {"message": f"Task {taskId} was not cancelled", "taskCanceled": False}
         return {"message": f"No running task {taskId}", "taskCanceled": False}
 
 # retrieve all tags
