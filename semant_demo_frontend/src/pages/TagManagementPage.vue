@@ -672,7 +672,7 @@ async function onRunTask () {
       const tagValues = tags.value.find(t => t.tag_uuid === uuid)
       console.log('Tagging will start', tagValues)
       const payload = { ...tagValues, tag_examples: tagValues.tag_examples.filter(example => example.trim() !== '') }
-      const { data } = await api.post<TagStartResponse>('/run_tagging_task', payload)
+      const { data } = await api.post<TagStartResponse>('/tagging_task', payload)
       console.log('Tagging response received:', data)
       // Store task information
       const newTaskInfo: TaskInfo = {

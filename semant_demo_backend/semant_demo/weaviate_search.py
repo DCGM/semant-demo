@@ -316,16 +316,81 @@ class WeaviateSearch:
             # get the collection
             collection_name = tag_request.collection_name
             weaviate_objects = self.client.collections.get(collection_name)
-            
+            tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
+
+            """
+            filtering for reference equal to certain id results in filtering out chunks without refs
+            filters= ( 
+                    ( Filter.by_ref(link_on="automaticTag").is_none(True) | Filter.by_ref(link_on="automaticTag").by_id().not_equal(tag_uuid) ) &
+                    ( Filter.by_ref(link_on="positiveTag").is_none(True) | Filter.by_ref(link_on="positiveTag").by_id().not_equal(tag_uuid) ) &
+                    ( Filter.by_ref(link_on="negativeTag").is_none(True) | Filter.by_ref(link_on="negativeTag").by_id().not_equal(tag_uuid) )
+                ),
+            weaviate doesnt offer is_none/is_empty or similar
+            so I chose to filter after fetching all of them and filter them later
+            """
             # query weaviate db for chunks of chosen collection
             query = weaviate_objects.query.fetch_objects(
                 return_properties=["text"],  # only return the text field
-                return_references=QueryReference(
+                return_references=[
+                    QueryReference(
                     link_on="automaticTag",
                     return_properties=[] # just need uuids
-                )
+                ),
+                    QueryReference(
+                        link_on="positiveTag",
+                        return_properties=[] # just need uuids
+                    ),
+                    QueryReference(
+                        link_on="negativeTag",
+                        return_properties=[] # just need uuids
+                    )
+                ]
+            )
+            queryFiltered = weaviate_objects.query.fetch_objects(
+                return_properties=["text"],  # only return the text field
+                filters = ( 
+                    Filter.by_ref(link_on="automaticTag").by_id().equal(tag_uuid) |
+                    Filter.by_ref(link_on="positiveTag").by_id().equal(tag_uuid) |
+                    Filter.by_ref(link_on="negativeTag").by_id().equal(tag_uuid)
+                ),
+                return_references=[
+                    QueryReference(
+                    link_on="automaticTag",
+                    return_properties=[] # just need uuids
+                ),
+                    QueryReference(
+                        link_on="positiveTag",
+                        return_properties=[] # just need uuids
+                    ),
+                    QueryReference(
+                        link_on="negativeTag",
+                        return_properties=[] # just need uuids
+                    )
+                ]
             )
             results = await query
+
+            resultsFiltered = await queryFiltered
+
+            final_results = results.objects
+            # collect the UUIDs from the filtered results
+            if resultsFiltered.objects:
+                filtered_ids = {obj.uuid for obj in resultsFiltered.objects}
+
+                # filter main results to exclude objects whose id is in filtered_ids
+                final_results = [obj for obj in results.objects if obj.uuid not in filtered_ids]
+
+            """
+            def safe_references(obj, key: str):
+                ref_block = obj.references.get(key) if obj.references else None
+                return ref_block.objects if ref_block else []
+            filtered_results = [
+                obj for obj in results.objects
+                if not any(ref.uuid == tag_uuid for ref in safe_references(obj, "automaticTag"))
+                and not any(ref.uuid == tag_uuid for ref in safe_references(obj, "positiveTag"))
+                and not any(ref.uuid == tag_uuid for ref in safe_references(obj, "negativeTag"))
+            ]
+            """
 
             texts = []
             tags = []
@@ -333,11 +398,10 @@ class WeaviateSearch:
 
             # process with llm and decide if tag belongs to text 
             positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
-            tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
             logging.info("Past the add ir get tag")
-            all_texts_count = len(results.objects)
+            all_texts_count = len(final_results)
             processed_count = 0
-            for obj in results.objects:
+            for obj in final_results:
                 try:
                     # extract text field from the current object
                     text = obj.properties["text"]
@@ -713,21 +777,24 @@ class WeaviateSearch:
             user = "default" # TODO change when users are added
             logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
             # get chunk
-            Filter.by_ref("hasTag").by_id().equal(data.tagID)
+            #Filter.by_ref("hasTag").by_id().equal(data.tagID)
             chunks = self.client.collections.get("Chunks")
-            obj = await chunks.query.fetch_object_by_id(data.chunkID, 
-                return_references=[
-                QueryReference(
-                    link_on="automaticTag"
-                ),
-                QueryReference(
-                    link_on="positiveTag"
-                ),
-                QueryReference(
-                    link_on="negativeTag"
-                )]
-            )
+            async def getChunkObj(data):
+                obj = await chunks.query.fetch_object_by_id(data.chunkID, 
+                    return_references=[
+                    QueryReference(
+                        link_on="automaticTag"
+                    ),
+                    QueryReference(
+                        link_on="positiveTag"
+                    ),
+                    QueryReference(
+                        link_on="negativeTag"
+                    )]
+                )
+                return obj
 
+            obj = await getChunkObj(data)
             refs = obj.references or {}
 
             # helper to extract UUID strings from reference block
@@ -742,26 +809,10 @@ class WeaviateSearch:
 
             tag_id = str(data.tagID)
 
-            # create the reference for approved tag
-            if data.approved: # positive tags
-                
-                updatedTags = sorted(set(pos_ids + [tag_id]))
-                await chunks.data.reference_replace(
-                    from_uuid=obj.uuid,
-                    from_property="positiveTag",
-                    to=updatedTags,
-                )
-            else: # negative tags
-
-                updatedTags = sorted(set(neg_ids + [tag_id]))
-                await chunks.data.reference_replace(
-                    from_uuid=obj.uuid,
-                    from_property="negativeTag",
-                    to=updatedTags,
-                )
-
             # helper to remove tag from disapproved and automatic tags
-            async def removeTagRef(refName):
+            async def removeTagRef(refName, data):
+                obj = await getChunkObj(data)
+                refs = obj.references or {}
                 current = refs.get(refName)
                 currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
                 remaining = [tid for tid in currentIDs if tid != data.tagID]
@@ -774,9 +825,32 @@ class WeaviateSearch:
                         from_property=refName,
                         to=remaining
                     )
-            # remove the reference from the automatic and/or negative tags
-            await removeTagRef("automaticTag")
-            await removeTagRef("negativeTag")
+
+            # create the reference for approved tag
+            if data.approved: # positive tags
+                
+                updatedTags = sorted(set(pos_ids + [tag_id]))
+                await chunks.data.reference_replace(
+                    from_uuid=obj.uuid,
+                    from_property="positiveTag",
+                    to=updatedTags,
+                )
+                # remove the reference from the negative tags just in case
+                await removeTagRef("negativeTag", data)
+            else: # negative tags
+
+                updatedTags = sorted(set(neg_ids + [tag_id]))
+                await chunks.data.reference_replace(
+                    from_uuid=obj.uuid,
+                    from_property="negativeTag",
+                    to=updatedTags,
+                )
+                # remove the reference from the positive tags just in case
+                await removeTagRef("positiveTag", data)
+
+            # remove the reference from the automatic tags
+            await removeTagRef("automaticTag", data)
+
             """
             # remove the reference from the automatic tags
             current = refs.get("automaticTag")
