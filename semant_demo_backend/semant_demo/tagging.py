@@ -25,7 +25,7 @@ async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, tagger: We
         except Exception as e:
             await update_task_status(task_id, "FAILED", result={"error": str(e)}, collection_name=tagReq.collection_name, session=session)
             logging.error(f"Error: {e}")
-        session.close()
+        await session.close()
     except Exception as e:
         logging.error(f"Error: {e}")
             

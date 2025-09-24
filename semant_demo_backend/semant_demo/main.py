@@ -203,7 +203,7 @@ async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = De
 
 tasks = {}
 
-@app.post("/api/run_tagging_task", response_model=schemas.TagStartResponse)
+@app.post("/api/tagging_task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
     """
     Starts tagging task in form of asyncio.create_task
