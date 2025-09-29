@@ -168,3 +168,9 @@ export interface StatusResponse {
   tag_id: string;
   tag_processing_data: ProcessedTagData[];
 }
+
+export interface AnnotationClass {
+  short: string
+  colorString: string
+  textColor: string
+}
