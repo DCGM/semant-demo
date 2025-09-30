@@ -303,7 +303,7 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
 # cancel task
 @app.delete("/api/tagging_task/{taskId}", response_model=schemas.CancelTaskResponse)
 async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session)) -> schemas.CancelTaskResponse:
-        taskAsyncio = tasks[taskId]
+        taskAsyncio = tasks[taskId] # TODO 
         if taskAsyncio and not taskAsyncio.done():
             if taskAsyncio.cancel():
                 await update_task_status(task_id=taskId, status="CANCELED", session=session)

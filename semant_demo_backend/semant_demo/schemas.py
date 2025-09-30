@@ -30,7 +30,10 @@ class SearchRequest(BaseModel):
     min_date: datetime | None = None
     max_date: datetime | None = None
     language: str | None = None
-
+    
+    tag_uuids: list[str]
+    positive: bool
+    automatic: bool
 
 class Document(BaseModel):
     id: uuid.UUID
@@ -89,12 +92,26 @@ class TextChunkWithDocument(TextChunk):
     summary: str | None = None
     document_object: Document
 
+class FilteredChunksByTags(BaseModel):
+    chunk_id: str
+    positive_tags_ids: list[str]
+    automatic_tags_ids: list[str]
+
+class FilterChunksByTagsResponse(BaseModel):
+    chunkTags: list[FilteredChunksByTags]
+
+class FilterChunksByTagsRequest(BaseModel):
+    chunkIds: list[str]
+    tagIds: list[str]
+    positive: bool
+    automatic: bool
 
 class SearchResponse(BaseModel):
     results: list[TextChunkWithDocument]
     search_request: SearchRequest
     time_spent: float
     search_log: list[str]
+    tags_result: list[FilteredChunksByTags]
 
 class SummaryResponse(BaseModel):
     summary: str
@@ -175,20 +192,6 @@ class ApproveTagResponse(BaseModel):
 
 class RemoveTagsResponse(BaseModel):
     successful: bool
-
-class FilteredChunksByTags(BaseModel):
-    chunk_id: str
-    positive_tags_ids: list[str]
-    automatic_tags_ids: list[str]
-
-class FilterChunksByTagsResponse(BaseModel):
-    chunkTags: list[FilteredChunksByTags]
-
-class FilterChunksByTagsRequest(BaseModel):
-    chunkIds: list[str]
-    tagIds: list[str]
-    positive: bool
-    automatic: bool
 
 # Task Model
 TasksBase = declarative_base()

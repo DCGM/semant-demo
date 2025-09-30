@@ -1,8 +1,8 @@
 <template>
   <q-page class="q-pa-md">
     <div class="row justify-center">
-          <span class="text-h6">Manage automatic tags</span>
-        </div>
+      <span class="text-h6">Manage automatic tags</span>
+    </div>
     <div class="row justify-left">
       <q-btn label="Create Tag" class="center" color="primary" icon="add" @click="tagCreateDialogVisible = true" />
     </div>
@@ -394,6 +394,17 @@
                       Tag type: Automatic
                     </div>
                     <div class="row">
+                      <BadgeAvatar
+                        :annotation-class="{
+                          short: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name || '?',
+                          colorString: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color || '#a19e6d',
+                          textColor: 'black',
+                          approved: 'automatic'
+                        }"
+                        @approve-click="() => approveTag(true, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                        @disapprove-click="() => approveTag(false, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                        size="sm"
+                      />
                       <div class="col-auto">
                         <q-btn-group>
                           <div>
@@ -512,6 +523,7 @@ import type { TagRequest, CreateTagResponse, TagStartResponse, StatusResponse, T
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
+import BadgeAvatar from 'src/components/BadgeAvatar.vue'
 
 // TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 

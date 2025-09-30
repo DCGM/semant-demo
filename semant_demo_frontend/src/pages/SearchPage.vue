@@ -17,6 +17,148 @@
         <div class="col">
           <q-input v-model.number="searchForm.max_year" type="number" label="Max Year" dense outlined />
         </div>
+        <!-- Filter by tag -->
+        <div class="row items-center q-gutter-sm">
+          <div class="col">
+            <div class="row items-center q-gutter-sm">
+              <div class="text-caption q-mb-sm">Filter by Tags</div>
+                <q-checkbox
+                  v-model="searchForm.positive"
+                  label="Positive"
+                  dense
+                />
+                <q-checkbox
+                  v-model="searchForm.automatic"
+                  label="Automatic"
+                  dense
+                  class="q-ml-md"
+                />
+              </div>
+            <div v-for="(example, index) in tagFormManage.tag_uuids" :key="index" class="row items-center q-mb-sm">
+              <q-select
+                v-model="searchForm.tag_uuids[index]"
+                :options="tags"
+                option-label="tag_name"
+                option-value="tag_uuid"
+                type="text"
+                label="Tag"
+                class="col"
+                emit-value
+                map-options
+                dense
+                outlined
+                :loading="loadingSpinner"
+                @popup-show="fetchTags"
+              >
+                <!-- No option slot -->
+                <template v-slot:no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      No tags found
+                    </q-item-section>
+                  </q-item>
+                </template>
+                <!-- Custom option rendering -->
+                <template v-slot:option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section avatar>
+                      <div
+                        class="color-swatch"
+                        :style="{ backgroundColor: scope.opt.tag_color }"
+                      ></div>
+                    </q-item-section>
+                    <q-item-section avatar>
+                      <q-item-label>{{ scope.opt.tag_pictogram }}</q-item-label>
+                      <q-icon :name="scope.opt.tag_pictogram" />
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.tag_name }}</q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Definition: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.tag_definition }}
+                      </q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Examples: </q-item-label>
+                      <div v-for="(example, index) in scope.opt.tag_examples" :key="index" class="row items-center q-mb-sm">
+                        <q-item-label caption>
+                          {{ example }}
+                        </q-item-label>
+                      </div>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Collection name: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.collection_name }}
+                      </q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Tag uuid: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.tag_uuid }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+
+                <!-- Custom selected rendering -->
+                <template v-slot:selected>
+                  <q-item v-if="searchForm.tag_uuids[index]">
+                    <q-item-section avatar>
+                      <div
+                        class="color-swatch"
+                        :style="{ backgroundColor: tags.find(t => t.tag_uuid === searchForm.tag_uuids[index])?.tag_color }"
+                      ></div>
+                    </q-item-section>
+                    <q-item-section avatar>
+                      <q-item-label>{{ tags.find(t => t.tag_uuid === searchForm.tag_uuids[index])?.tag_pictogram }}</q-item-label>
+                      <q-icon :name="tags.find(t => t.tag_uuid === searchForm.tag_uuids[index])?.tag_pictogram" />
+                    </q-item-section>
+                    <q-item-section >
+                      <q-item-label caption> Name: </q-item-label>
+                      <q-item-label> {{ tags.find(t => t.tag_uuid === searchForm.tag_uuids[index])?.tag_name }} </q-item-label>
+                    </q-item-section>
+                    <q-item-section class="col-grow">
+                      <q-item-label caption>Tag uuid:</q-item-label>
+                      <q-item-label caption class="text-mono">
+                        {{ searchForm.tag_uuids[index] }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+              <q-btn
+                v-if="searchForm.tag_uuids.length > 1"
+                @click="removeTag(index)"
+                icon="fa fa-close"
+                color="negative"
+                flat
+                dense
+                class="q-ml-sm"
+              />
+            </div>
+            <div class="row items-center q-gutter-sm">
+              <q-btn
+                @click="addTag"
+                v-if="tagsLen > searchForm.tag_uuids.length"
+                icon="add"
+                label="Add Another Tag"
+                color="primary"
+                outline
+                dense
+              />
+            <q-space />
+              <q-btn type="button"
+                color="negative"
+                label="Remove Automatic Tags"
+                icon="delete" :loading="loading"
+                @click="removeSelectedTags"
+              />
+            </div>
+          </div>
+        </div>
         <div class="col-auto flex flex-center">
           <q-btn type="submit" color="primary" label="Search" :loading="loading" />
         </div>
@@ -405,7 +547,7 @@
 
             <!-- Tags -->
             <div class="text-caption q-mt-sm">
-              <div v-if="tagFilterModes.positive && chunk.positiveTags && chunk.positiveTags.length">
+              <div v-if="chunk.positiveTags && chunk.positiveTags.length">
                 <strong>Positive tags:</strong>
                 <div v-for="tag in chunk.positiveTags" :key="tag.tag_uuid" class="q-mb-md">
                   <div class="row items-center col-auto">
@@ -414,10 +556,23 @@
                     <q-label class="q-mr-sm">{{ tag.tag_name }}</q-label>
                     <q-label class="q-mr-sm">Definition: {{ tag.tag_definition }}</q-label>
                     <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
+                    <div class="row">
+                    <BadgeAvatar
+                        :annotation-class="{
+                          short: tag.tag_name || '?',
+                          colorString: tag.tag_color || '#a19e6d',
+                          textColor: 'black',
+                          approved: 'positive'
+                        }"
+                        @approve-click="() => approveTag(true, chunk.id, tag.tag_uuid, 'Chunks')"
+                        @disapprove-click="() => approveTag(false, chunk.id, tag.tag_uuid, 'Chunks')"
+                        size="sm"
+                    />
+                    </div>
                   </div>
                 </div>
               </div>
-              <div v-if="tagFilterModes.automatic && chunk.automaticTags && chunk.automaticTags.length">
+              <div v-if="chunk.automaticTags && chunk.automaticTags.length">
                 <strong>Automatic tags:</strong>
                 <div v-for="tag in chunk.automaticTags" :key="tag.tag_uuid" class="q-mb-md">
                   <div class="row items-center col-auto">
@@ -426,6 +581,19 @@
                     <q-label class="q-mr-sm">{{ tag.tag_name }}</q-label>
                     <q-label class="q-mr-sm">Definition: {{ tag.tag_definition }}</q-label>
                     <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
+                  </div>
+                  <div class="row">
+                    <BadgeAvatar
+                        :annotation-class="{
+                          short: tag.tag_name || '?',
+                          colorString: tag.tag_color || '#a19e6d',
+                          textColor: 'black',
+                          approved: 'automatic'
+                        }"
+                        @approve-click="() => approveTag(true, chunk.id, tag.tag_uuid, 'Chunks')"
+                        @disapprove-click="() => approveTag(false, chunk.id, tag.tag_uuid, 'Chunks')"
+                        size="sm"
+                    />
                   </div>
                   <div class="row">
                       <div class="col-auto">
@@ -489,6 +657,8 @@ import { ref, computed } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox, Notify } from 'quasar'
 import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse, RemoveTagsResponse } from 'src/models'
 import { api } from 'src/boot/axios'
+import AvatarItem from 'src/components/AvatarItem.vue'
+import BadgeAvatar from 'src/components/BadgeAvatar.vue'
 
 const searchForm = ref<SearchRequest>({
   query: '',
@@ -498,7 +668,10 @@ const searchForm = ref<SearchRequest>({
   max_year: null,
   min_date: null,
   max_date: null,
-  language: null
+  language: null,
+  tag_uuids: [],
+  positive: true,
+  automatic: true
 })
 
 const loading = ref(false)
@@ -554,6 +727,31 @@ async function onSearch () {
     timeSpent.value = data.time_spent
     searchLog.value = data.search_log
     lastSearchRequest.value = data.search_request
+
+    const chunkTags = data?.tags_result || []
+
+    // map chunk_id -> tag info from backend
+    const chunkTagMap = new Map(
+      chunkTags.map(c => [c.chunk_id, c])
+    )
+
+    // filter and enrich results
+    results.value = (results.value || [])
+      .filter(c => {
+        const tagInfo = chunkTagMap.get(c.id)
+        return tagInfo && (
+          ((tagInfo.positive_tags_ids?.length || 0) > 0 && tagFilterModes.value.positive) ||
+          ((tagInfo.automatic_tags_ids?.length || 0) > 0 && tagFilterModes.value.automatic)
+        )
+      })
+      .map(c => {
+        const chunkInfo = chunkTags.find(ct => ct.chunk_id === c.id) || {}
+        return {
+          ...c,
+          positiveTags: (chunkInfo.positive_tags_ids || []).map(id => tagMap.value.get(id)).filter(Boolean),
+          automaticTags: (chunkInfo.automatic_tags_ids || []).map(id => tagMap.value.get(id)).filter(Boolean)
+        }
+      })
   } catch (e) {
     // handle error (could use Quasar Notify)
     results.value = []
@@ -657,7 +855,7 @@ async function onFilterByTag () {
   const { data } = await api.post('/filter_tags', payload)
   // filter the current results
   const chunkTags = data?.chunkTags || []
-  // Map chunk_id -> tag info from backend
+  // map chunk_id -> tag info from backend
   const chunkTagMap = new Map(
     chunkTags.map(c => [c.chunk_id, c])
   )
@@ -684,6 +882,52 @@ async function onFilterByTag () {
 
 // approve tag pass true to approve or false to diapprove
 async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string, pageReload = true) {
+  const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
+  const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
+  if (data.successful) {
+    if (pageReload) {
+      // Update results after approval
+      results.value = (results.value || []).map(chunk => {
+        if (chunk.id !== chunkID) return chunk
+
+        // Remove the tag from automaticTags
+        const newAutomaticTags = (chunk.automaticTags || []).filter(tag => tag.tag_uuid !== tagID)
+
+        // Add the tag to positiveTags if approved and not already present
+        const newPositiveTags = chunk.positiveTags || []
+        if (approved) {
+          const tagToAdd = chunk.automaticTags?.find(tag => tag.tag_uuid === tagID)
+          if (tagToAdd && !newPositiveTags.some(tag => tag.tag_uuid === tagID)) {
+            newPositiveTags.push(tagToAdd)
+          }
+        }
+
+        return {
+          ...chunk,
+          automaticTags: newAutomaticTags,
+          positiveTags: newPositiveTags
+        }
+      })
+
+      // apply the current tag filters to refresh the list
+      const filtered = results.value.filter(chunk => {
+        const hasPositive = (chunk.positiveTags?.length || 0) > 0
+        const hasAutomatic = (chunk.automaticTags?.length || 0) > 0
+        return (hasPositive && tagFilterModes.value.positive) || (hasAutomatic && tagFilterModes.value.automatic)
+      })
+      results.value = filtered
+    }
+  } else {
+    tagApproveStatus.value.push({
+      chunk_id: chunkID,
+      tag_id: tagID,
+      status: 'Error',
+      chunk_collection_name: chunkCollectionName
+    })
+  }
+  return data.successful
+}
+async function approveTagOld (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string, pageReload = true) {
   const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
   const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
   if (data.successful) {
