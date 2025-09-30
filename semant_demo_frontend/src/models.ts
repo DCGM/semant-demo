@@ -8,6 +8,9 @@ export interface SearchRequest {
   min_date?: string | null; // ISO datetime string
   max_date?: string | null; // ISO datetime string
   language?: string | null;
+  tag_uuids?: string[] | null;
+  positive: boolean;
+  automatic: boolean;
 }
 
 export interface TagRequest {
@@ -74,11 +77,18 @@ export interface TextChunkWithDocument extends TextChunk {
   positiveTags: TagData[];
 }
 
+interface ChunkTagData {
+  chunk_id: string;
+  positive_tags_ids: string[];
+  automatic_tags_ids: string[];
+}
+
 export interface SearchResponse {
   results: TextChunkWithDocument[];
   search_request: SearchRequest;
   time_spent: number;
   search_log: string[];
+  tags_result: ChunkTagData[];
 }
 
 export interface SummaryResponse {
@@ -173,4 +183,5 @@ export interface AnnotationClass {
   short: string
   colorString: string
   textColor: string
+  approved: 'automatic' | 'positive' | 'negative'
 }

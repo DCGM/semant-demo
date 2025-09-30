@@ -142,6 +142,23 @@ class WeaviateSearch:
             )
         if search_request.language:
             filters.append(Filter.by_property("language").equal(search_request.language))
+        
+        tagFilters = []
+        if search_request.tag_uuids:
+            #filters = [Filter.by_id().contains_any([str(uuid) for uuid in search_request.chunkIds])]
+            if search_request.automatic:
+                tagFilters.append(Filter.by_ref("automaticTag").by_id().contains_any(search_request.tag_uuids))
+            if search_request.positive:
+                tagFilters.append(Filter.by_ref("positiveTag").by_id().contains_any(search_request.tag_uuids))
+        
+        combined_tag_filters = None
+        if tagFilters:
+            combined_tag_filters = tagFilters[0]
+            for f in tagFilters[1:]:
+                combined_tag_filters = combined_tag_filters | f
+
+        if combined_tag_filters:
+            filters.append(combined_tag_filters)
 
         # Combine with AND logic
         combined_filter = None
@@ -161,7 +178,16 @@ class WeaviateSearch:
                 vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
-                return_references=QueryReference(link_on="document", return_properties=None)
+                return_references=[QueryReference(link_on="document", return_properties=None),
+                    QueryReference(
+                        link_on="automaticTag",                 # the reference property
+                        return_properties=["uuid", "tag_name"]  # properties from the referenced tags
+                    ),
+                    QueryReference(
+                        link_on="positiveTag",                 
+                        return_properties=["uuid", "tag_name"] 
+                    ), 
+                ]
             )
         elif search_request.type == schemas.SearchType.text:
             # Execute text search
@@ -170,7 +196,16 @@ class WeaviateSearch:
                 query=search_request.query,
                 limit=search_request.limit,
                 filters=combined_filter,
-                return_references=QueryReference(link_on="document", return_properties=None)
+                return_references=[QueryReference(link_on="document", return_properties=None),
+                         QueryReference(
+                        link_on="automaticTag",                 # the reference property
+                        return_properties=["uuid", "tag_name"]  # properties from the referenced tags
+                    ),
+                    QueryReference(
+                        link_on="positiveTag",                 
+                        return_properties=["uuid", "tag_name"] 
+                    ), 
+                ]          
             )
         elif search_request.type == schemas.SearchType.vector:
             q_vector = await get_query_embedding(search_request.query)
@@ -178,7 +213,16 @@ class WeaviateSearch:
                 near_vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
-                return_references=QueryReference(link_on="document", return_properties=None)
+                return_references=[QueryReference(link_on="document", return_properties=None),
+                    QueryReference(
+                        link_on="automaticTag",                 # the reference property
+                        return_properties=["uuid", "tag_name"]  # properties from the referenced tags
+                    ),
+                    QueryReference(
+                        link_on="positiveTag",                 
+                        return_properties=["uuid", "tag_name"] 
+                    ), 
+                ]
             )
         else:
             raise ValueError(f"Unknown search type: {search_request.type}")
@@ -195,6 +239,14 @@ class WeaviateSearch:
             f"Retrieved in {search_time:.2f} seconds:"
         )
         logging.info(log_entry)
+
+        # helper to extract UUID strings from reference block
+        def ref_uuids(ref_block):
+            if not ref_block:
+                return []
+            return [str(r.uuid) for r in ref_block.objects]
+        tags_result = []
+
         for obj in result.objects:
             chunk_data = obj.properties
             doc_objs = obj.references.get("document").objects
@@ -218,6 +270,18 @@ class WeaviateSearch:
             chunk.text = chunk.text.replace("-\n", "").replace("\n", " ")
             results.append(chunk)
 
+            # add tag info for this chunk
+            refs = obj.references or {}
+
+            auto_ids = ref_uuids(refs.get("automaticTag"))
+            pos_ids = ref_uuids(refs.get("positiveTag"))
+
+            requested_ids = search_request.tag_uuids
+
+            auto_ids = list(set(auto_ids) & set(requested_ids))
+            pos_ids = list(set(pos_ids) & set(requested_ids))
+            tags_result.append({'chunk_id': str(chunk.id), 'positive_tags_ids': pos_ids, 'automatic_tags_ids': auto_ids})
+
         # Process with LLM if needed
         if search_request.search_title_generate or search_request.search_summary_generate:
             results = await self._process_with_llm(results, search_request)
@@ -226,7 +290,8 @@ class WeaviateSearch:
             results=results,
             search_request=search_request,
             time_spent=search_time,
-            search_log=[log_entry]
+            search_log=[log_entry],
+            tags_result=tags_result,
         )
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
@@ -734,12 +799,6 @@ class WeaviateSearch:
                     ), 
                 ]
             )
-
-            # helper to extract UUID strings from reference block
-            def ref_uuids(ref_block):
-                if not ref_block:
-                    return []
-                return [str(r.uuid) for r in ref_block.objects]
 
             # helper to extract UUID strings from reference block
             def ref_uuids(ref_block):
