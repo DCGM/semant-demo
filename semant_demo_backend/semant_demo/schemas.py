@@ -206,6 +206,7 @@ class Task(TasksBase):
     tag_id = Column(String(36)) # 36 is max number of chars in uuid
     tag_processing_data = Column(JSON, nullable=True)
     time_updated = Column(DateTime(timezone=True), onupdate=funcs.now()) # store updated time for loading tasks sorted by time updated
+    task_name = Column(String, nullable=True)
 
 tag_class = {
     "class": "Tag",

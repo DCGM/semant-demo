@@ -183,5 +183,5 @@ export interface AnnotationClass {
   short: string
   colorString: string
   textColor: string
-  approved: 'automatic' | 'positive' | 'negative'
+  approved: string
 }

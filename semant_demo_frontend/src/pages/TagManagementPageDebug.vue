@@ -322,126 +322,266 @@
       </div>
     </q-form>
 
-    <div class="row">
-      <!-- Text Chunk Data All Automatic, Positive, Negative -->
+    <!-- tasks item -->
+    <q-expansion-item icon="assignment" label="Tasks" expand-separator @show="onShowTasks">
+            <!-- Task Status Cards -->
+            <div v-for="task in allTaskInfo" :key="task.task_id" class="q-mt-lg">
+              <q-card :class="getTaskCardClass(task.status)">
+                <q-card-section>
+                  <div class="row items-center">
+                    <q-icon :name="getTaskIcon(task.status)" class="q-mr-sm" />
+                    <div class="text-h6">Task #{{ allTaskInfo.length - allTaskInfo.indexOf(task) }}</div>
+                    <q-space />
+                    <div v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" >
+                      <q-btn
+                        @click="() => cancelTask(task.task_id, task)"
+                                icon="fa fa-close"
+                                label="Cancel Task"
+                                color="negative"
+                                outline
+                                dense
+                        />
+                    </div>
+                    <div class="text-caption">{{ formatDate(task.timestamp) }}</div>
+                  </div>
+                </q-card-section>
+                <q-card-section>
+                  <div class="text-subtitle2">ID: {{ task.task_id }}</div>
+                  <div class="text-caption">Status: {{ task.status }}</div>
+                  <q-linear-progress v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" indeterminate class="q-mt-sm"/>
+                  <div v-if="task.status === 'RUNNING' || task.status === 'PENDING'" class="q-mt-sm">
+                    <div class="text-caption">Processed: {{ task.processed_count ?? 0 }} / {{ task.all_texts_count ?? 0 }}</div>
+                  </div>
+                  <div v-if="task.status === 'COMPLETED'" class="q-mt-sm">
+                    <div class="text-positive">Completed</div>
+                    <div v-if="task.result" class="q-mt-sm">
+                      <div class="text-weight-bold">Results:</div>
+                      <div v-for="(item, idx) in task.tag_processing_data" :key="idx" class="q-pl-md">
+                        {{ idx + 1 }}. <strong>{{ item.tag }}</strong> : {{ item.text }}
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="task.status === 'FAILED'" class="text-negative q-mt-sm">
+                    Error: {{ task.error }}
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
+    </q-expansion-item>
+
+    <!-- Text Chunk Data All Automatic, Positive, Negative -->
      <!-- Text Chunk Data All Automatic, Positive, Negative -->
-  <div class="col-12 col-md-6">
-    <div v-if="mergedChunks.length">
-      <div v-for="chunk in mergedChunks" :key="chunk.chunk_id" class="q-mb-md">
+  <div v-if="mergedChunks.length">
+    <div v-for="chunk in mergedChunks" :key="chunk.chunk_id" class="q-mb-md">
+      <q-card>
+        <q-card-section>
+          <div class="col">
+            <div class="text-subtitle2">Mixed {{ chunk.chunk_id }}</div>
+            <div class="text-subtitle2">Chunk ID: {{ chunk.chunk_id }}</div>
+            <div class="text-body1">{{ chunk.text_chunk }}</div>
+            <div class="text-subtitle2">Chunk Collection Name: {{ chunk.chunk_collection_name }}</div>
+
+            <div class="text-caption q-mt-sm">Tags</div>
+
+            <div v-for="tag in chunk.tags" :key="tag.tag_uuid" class="q-mb-md">
+              <div class="row items-center col-auto">
+                <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
+                <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
+                <q-label class="q-mr-sm">{{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }}</q-label>
+                <q-label class="q-mr-sm">Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }}</q-label>
+              </div>
+
+              <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
+              <div class="text-h6 q-mt-sm">Tag type: {{ tag.tag_type }}</div>
+
+              <div class="row">
+                <BadgeAvatar
+                  :annotation-class="{
+                    short: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name || '?',
+                    colorString: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color || '#a19e6d',
+                    textColor: 'black',
+                    approved: tag.tag_type,
+                  }"
+                  @approve-click="approveTag(true, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
+                  @disapprove-click="approveTag(false, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
+                  size="sm"
+                />
+
+                <div class="col-auto">
+                  <q-btn-group>
+                    <q-btn
+                      @click="approveTag(true, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
+                      icon="fa fa-check"
+                      label="Approve Tag"
+                      color="positive"
+                      outline
+                      dense
+                    />
+                    <q-btn
+                      @click="approveTag(false, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
+                      icon="fa fa-close"
+                      label="Disapprove Tag"
+                      color="negative"
+                      outline
+                      dense
+                    />
+                    <span v-if="tagApproveStatus.find(item => item.tag_id === tag.tag_uuid)" class="q-ml-sm">
+                      {{ tagApproveStatus.find(item => item.tag_id === tag.tag_uuid).status }}
+                    </span>
+                  </q-btn-group>
+                </div>
+              </div>
+            </div> <!-- end tag -->
+          </div>
+        </q-card-section>
+      </q-card>
+    </div>
+  </div>
+
+    <!-- Text Chunk Data automatic -->
+    <div v-if="chunkData?.chunks_with_tags?.length">
+      <div v-for="chunk_id in [...new Set(chunkData.chunks_with_tags.map(c => c.chunk_id))]" :key="chunk_id" class="q-mb-md">
         <q-card>
           <q-card-section>
             <div class="col">
-              <!--<div class="text-subtitle2">Chunk ID: {{ chunk.chunk_id }}</div> -->
-              <div class="text-body1">{{ chunk.text_chunk }}</div>
-              <div class="text-subtitle2">Chunk Collection Name: {{ chunk.chunk_collection_name }}</div>
-
-              <div class="text-caption q-mt-sm">Tags</div>
-              <div class="row q-gutter-sm">
-              <div v-for="tag in chunk.tags" :key="tag.tag_uuid" class="q-mb-md">
-                <!--<div class="row items-center col-auto">
-                  <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
-                  <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
-                  <q-label class="q-mr-sm">{{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }}</q-label>
-                  <q-label class="q-mr-sm">Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }}</q-label>
-                </div>
-
-                <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
-                <div class="text-h6 q-mt-sm">Tag type: {{ tag.tag_type }}</div>
-                -->
-                <div class="col">
-                  <BadgeAvatar
-                    :annotation-class="{
-                      short: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name || '?',
-                      colorString: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color || '#a19e6d',
-                      textColor: 'black',
-                      approved: tag.tag_type,
-                    }"
-                    @approve-click="approveTag(true, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
-                    @disapprove-click="approveTag(false, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
-                    size="sm"
-                  />
-                </div>
-                  <!--
-                  <div class="col-auto">
-                    <q-btn-group>
-                      <q-btn
-                        @click="approveTag(true, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
-                        icon="fa fa-check"
-                        label="Approve Tag"
-                        color="positive"
-                        outline
-                        dense
+              <div class="text-subtitle2">Chunk ID: {{ chunk_id }}</div>
+              <div class="text-body1">{{ chunkData.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.text_chunk }}</div>
+              <div class="text-subtitle2">Chunk Collection Name: {{ chunkData.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.chunk_collection_name }}</div>
+              <div class="text-caption q-mt-sm">
+                Tags <!-- {{ chunk.tag_uuids?.join(', ') || 'No tags' }} -->
+              <div v-for="tag in chunkData.chunks_with_tags.filter(c => c.chunk_id === chunk_id)" :key="tag.tag_uuid" class="q-mb-md" >
+                    <div class="row items-center col-auto">
+                      <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
+                      <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
+                      <q-label class="q-mr-sm"> {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }} </q-label>
+                      <q-label class="q-mr-sm"> Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }} </q-label>
+                    </div>
+                    <div class="text-caption q-mt-sm">
+                      Tag id: {{ tag.tag_uuid }}
+                    </div>
+                    <div class="text-h6 q-mt-sm">
+                      Tag type: Automatic
+                    </div>
+                    <div class="row">
+                      <BadgeAvatar
+                        :annotation-class="{
+                          short: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name || '?',
+                          colorString: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color || '#a19e6d',
+                          textColor: 'black',
+                          approved: 'automatic'
+                        }"
+                        @approve-click="() => approveTag(true, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                        @disapprove-click="() => approveTag(false, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                        size="sm"
                       />
-                      <q-btn
-                        @click="approveTag(false, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
-                        icon="fa fa-close"
-                        label="Disapprove Tag"
-                        color="negative"
-                        outline
-                        dense
-                      />
-                      <span v-if="tagApproveStatus.find(item => item.tag_id === tag.tag_uuid)" class="q-ml-sm">
-                        {{ tagApproveStatus.find(item => item.tag_id === tag.tag_uuid).status }}
-                      </span>
-                    </q-btn-group>
-                  </div> -->
+                      <div class="col-auto">
+                        <q-btn-group>
+                          <div>
+                            <q-btn
+                              @click="() => approveTag(true, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                              icon="fa fa-check"
+                              label="Approve Tag"
+                              color="positive"
+                              outline
+                              dense
+                            />
+                          </div>
+                          <div>
+                            <q-btn
+                              @click="() => approveTag(false, chunk_id, tag.tag_uuid, tag.chunk_collection_name)"
+                              icon="fa fa-close"
+                              label="Disapprove Tag"
+                              color="negative"
+                              outline
+                              dense
+                            />
+                          </div>
+                          <span v-if="tagApproveStatus.find(item => item.tag_id === tag.tag_uuid)" class="q-ml-sm">
+                            {{ tagApproveStatus.find(item => item.tag_id === tag.tag_uuid).status }}
+                          </span>
+                        </q-btn-group>
+                      </div>
+                    </div>
                 </div>
-              </div> <!-- end tag -->
+              </div>
             </div>
           </q-card-section>
         </q-card>
       </div>
     </div>
-  </div>
-      <div class="col-12 col-md-6">
-        <!-- tasks item -->
-        <q-expansion-item icon="assignment" label="Tasks" expand-separator @show="onShowTasks">
-                <!-- Task Status Cards -->
-                <div v-for="task in allTaskInfo" :key="task.task_id" class="row q-mt-lg">
-                  <q-card :class="getTaskCardClass(task.status)">
-                    <q-card-section>
-                      <div class="row items-center">
-                        <q-icon :name="getTaskIcon(task.status)" class="q-mr-sm" />
-                        <div class="text-h6">Task #{{ allTaskInfo.length - allTaskInfo.indexOf(task) }}</div>
-                        <q-space />
-                        <div v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" >
-                          <q-btn
-                            @click="() => cancelTask(task.task_id, task)"
-                                    icon="fa fa-close"
-                                    label="Cancel Task"
-                                    color="negative"
-                                    outline
-                                    dense
-                            />
-                        </div>
-                        <div class="text-caption">{{ formatDate(task.timestamp) }}</div>
-                      </div>
-                    </q-card-section>
-                    <q-card-section>
-                      <div class="text-subtitle2">ID: {{ task.task_id }}</div>
-                      <div class="text-caption">Status: {{ task.status }}</div>
-                      <q-linear-progress v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" indeterminate class="q-mt-sm"/>
-                      <div v-if="task.status === 'RUNNING' || task.status === 'PENDING'" class="q-mt-sm">
-                        <div class="text-caption">Processed: {{ task.processed_count ?? 0 }} / {{ task.all_texts_count ?? 0 }}</div>
-                      </div>
-                      <div v-if="task.status === 'COMPLETED'" class="q-mt-sm">
-                        <div class="text-positive">Completed</div>
-                        <div v-if="task.result" class="q-mt-sm">
-                          <div class="text-weight-bold">Results:</div>
-                          <div v-for="(item, idx) in task.tag_processing_data" :key="idx" class="q-pl-md">
-                            {{ idx + 1 }}. <strong>{{ item.tag }}</strong> : {{ item.text }}
-                          </div>
-                        </div>
-                      </div>
-                      <div v-if="task.status === 'FAILED'" class="text-negative q-mt-sm">
-                        Error: {{ task.error }}
-                      </div>
-                    </q-card-section>
-                  </q-card>
+    <div v-else>
+      <div class="text-caption q-mt-md">No automatic tagged chunks found.</div>
+    </div>
+
+    <!-- Positive chunks -->
+    <div v-if="chunkDataPositive?.chunks_with_tags?.length">
+      <div v-for="chunk_id in [...new Set(chunkDataPositive.chunks_with_tags.map(c => c.chunk_id))]" :key="chunk_id" class="q-mb-md">
+        <q-card>
+          <q-card-section>
+            <div class="col">
+              <div class="text-subtitle2">Chunk ID: {{ chunk_id }}</div>
+              <div class="text-body1">{{ chunkDataPositive.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.text_chunk }}</div>
+              <div class="text-subtitle2">Chunk Collection Name: {{ chunkDataPositive.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.chunk_collection_name }}</div>
+              <div class="text-caption q-mt-sm">
+                Tags <!-- {{ chunk.tag_uuids?.join(', ') || 'No tags' }} -->
+               <div v-for="tag in chunkDataPositive.chunks_with_tags.filter(c => c.chunk_id === chunk_id)" :key="tag.tag_uuid" class="q-mb-md" >
+                    <div class="row items-center col-auto">
+                      <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
+                      <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
+                      <q-label class="q-mr-sm"> {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }} </q-label>
+                      <q-label class="q-mr-sm"> Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }} </q-label>
+                    </div>
+                    <div class="text-caption q-mt-sm">
+                      Tag id: {{ tag.tag_uuid }}
+                    </div>
+                    <div class="text-h6 q-mt-sm">
+                      Tag type: Positive
+                    </div>
                 </div>
-        </q-expansion-item>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
       </div>
-  </div>
+    </div>
+    <div v-else>
+      <div class="text-caption q-mt-md">No tagged chunks found.</div>
+    </div>
+
+      <!-- Negative chunks -->
+    <div v-if="chunkDataNegative?.chunks_with_tags?.length">
+      <div v-for="chunk_id in [...new Set(chunkDataNegative.chunks_with_tags.map(c => c.chunk_id))]" :key="chunk_id" class="q-mb-md">
+        <q-card>
+          <q-card-section>
+            <div class="col">
+              <div class="text-subtitle2">Chunk ID: {{ chunk_id }}</div>
+              <div class="text-body1">{{ chunkDataNegative.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.text_chunk }}</div>
+              <div class="text-subtitle2">Chunk Collection Name: {{ chunkDataNegative.chunks_with_tags.find(c => c.chunk_id === chunk_id)?.chunk_collection_name }}</div>
+              <div class="text-caption q-mt-sm">
+                Tags <!-- {{ chunk.tag_uuids?.join(', ') || 'No tags' }} -->
+               <div v-for="tag in chunkDataNegative.chunks_with_tags.filter(c => c.chunk_id === chunk_id)" :key="tag.tag_uuid" class="q-mb-md" >
+                    <div class="row items-center col-auto">
+                      <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
+                      <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
+                      <q-label class="q-mr-sm"> {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }} </q-label>
+                      <q-label class="q-mr-sm"> Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }} </q-label>
+                    </div>
+                    <div class="text-caption q-mt-sm">
+                      Tag id: {{ tag.tag_uuid }}
+                    </div>
+                    <div class="text-h6 q-mt-sm">
+                      Tag type: Negative
+                    </div>
+                </div>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+    <div v-else>
+      <div class="text-caption q-mt-md">No tagged chunks found.</div>
+    </div>
   </q-page>
 
 </template>

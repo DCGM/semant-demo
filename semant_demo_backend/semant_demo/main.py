@@ -201,8 +201,6 @@ async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = De
         logging.error(e)
         return {"tag_created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
 
-tasks = {}
-
 @app.post("/api/tagging_task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
     """
@@ -221,7 +219,19 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
             raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
 
         task = asyncio.create_task(tag_and_store(tagReq, taskId, tagger, global_async_session_maker))
-        tasks[taskId] = task
+        taskName = task.get_name()
+        # store the task name into DB
+        try:
+            async with session.begin():
+                await session.execute(
+                    update(Task)
+                    .where(Task.taskId == taskId)
+                    .values(task_name=taskName)
+                )
+        except exc.SQLAlchemyError as e:
+            logging.exception(f'Failed adding object to database. Task ID={taskId}')
+            raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
+
         return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
     except Exception as e:
         logging.error(e)
@@ -300,16 +310,36 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
 
         return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count, "tag_id": task.tag_id, "tag_processing_data": task.tag_processing_data}
 
+def getTaskByName(name):
+    for t in asyncio.all_tasks():
+        if t.get_name() == name and not t.done():
+            return t
+
 # cancel task
 @app.delete("/api/tagging_task/{taskId}", response_model=schemas.CancelTaskResponse)
 async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session)) -> schemas.CancelTaskResponse:
-        taskAsyncio = tasks[taskId] # TODO 
-        if taskAsyncio and not taskAsyncio.done():
-            if taskAsyncio.cancel():
-                await update_task_status(task_id=taskId, status="CANCELED", session=session)
-                return {"message": f"Task {taskId} cancelled", "taskCanceled": True}
-            else:
-                return {"message": f"Task {taskId} was not cancelled", "taskCanceled": False}
+        taskName = ""
+        # get task by its name
+        try:
+            async with session.begin():
+                result = await session.execute(
+                    select(Task.task_name).where(Task.taskId == taskId)
+                )
+                task_row = result.scalar_one_or_none() 
+                if task_row is None:
+                    raise DBError(f'Task ID={taskId} not found in database')
+                taskName = task_row
+                taskAsyncio = getTaskByName(taskName)
+
+                if taskAsyncio and not taskAsyncio.done():
+                    if taskAsyncio.cancel():
+                        await update_task_status(task_id=taskId, status="CANCELED", session=session)
+                        return {"message": f"Task {taskId} cancelled", "taskCanceled": True}
+                    else:
+                        return {"message": f"Task {taskId} was not cancelled", "taskCanceled": False}
+        except exc.SQLAlchemyError as e:
+            logging.exception(f'Failed loading object from database. Task ID={taskId}')
+            return {"message": f"Task retrieving failed {taskId}", "taskCanceled": False}
         return {"message": f"No running task {taskId}", "taskCanceled": False}
 
 # retrieve all tags

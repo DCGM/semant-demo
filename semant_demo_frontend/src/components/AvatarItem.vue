@@ -1,6 +1,6 @@
 <template>
   <q-avatar :size="props.size" :style="{ backgroundColor: props.annotationClass.colorString }"
-            :text-color="props.annotationClass.textColor"
+            :text-color="textColorSwitcher(props.annotationClass.colorString)"
             class="roundedAvatar"
             square>
     {{ props.annotationClass.short }}
@@ -10,6 +10,7 @@
 <script lang="ts" setup>
 import { defineProps } from 'vue'
 import { AnnotationClass } from 'src/models'
+import { textColorSwitcher } from '../utils/textColorSwitch'
 
 interface Props {
   annotationClass: AnnotationClass,
