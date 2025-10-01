@@ -7,7 +7,7 @@
               :style="{
                 backgroundColor: leftHover ? '#858585' : props.annotationClass.colorString,
                 width: 'auto', }"
-              :text-color="props.annotationClass.textColor"
+              :text-color="textColorSwitcher(props.annotationClass.colorString)"
               class="avatar left"
               @mouseenter="leftHover = true"
               @mouseleave="leftHover = false"
@@ -31,7 +31,7 @@
           :style="{
             backgroundColor: props.annotationClass.colorString,
             width: 'auto', }"
-          :text-color="props.annotationClass.textColor"
+          :text-color="textColorSwitcher(props.annotationClass.colorString)"
           class="roundedAvatar"
           @click="handleLeftClick">
         {{ props.annotationClass.short }}
@@ -43,6 +43,7 @@
 <script lang="ts" setup>
 import { defineProps, withDefaults, ref } from 'vue'
 import { AnnotationClass } from 'src/models'
+import { textColorSwitcher } from '../utils/textColorSwitch' // // "props.annotationClass.textColor"
 
 const active = ref(false)
 const leftHover = ref(false)
@@ -93,8 +94,9 @@ function handleRightClick () {
 .avatar-wrapper {
   display: inline-flex; /* make avatars sit side by side */
   border: 4px solid transparent; /* border */
-  border-radius: 10px;
+  border-radius: 8px;
   transition: border 0.2s ease;
+  background-color: gray;
 }
 
 .avatar {
@@ -116,14 +118,17 @@ function handleRightClick () {
 /* border colors */
 .border-automatic {
   border-color: gray;
+  background-color: gray;
 }
 
 .border-positive {
   border-color: green;
+  background-color: green;
 }
 
 .border-negative {
   border-color: red;
+  background-color: red;
 }
 
 </style>
