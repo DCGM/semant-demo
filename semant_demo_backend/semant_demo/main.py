@@ -8,6 +8,7 @@ from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.rag_generator import RagGenerator
 import asyncio
 from time import time
+from fastapi.staticfiles import StaticFiles
 
 logging.basicConfig(level=logging.INFO)
 
@@ -20,7 +21,6 @@ async def get_search() -> WeaviateSearch:
         global_searcher = await WeaviateSearch.create(config)
     return global_searcher
 app = FastAPI()
-
 
 @app.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.SearchResponse:
@@ -165,3 +165,11 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
         rag_answer=generated_answer.strip(),
         time_spent=time_spent
     )
+
+if os.path.isdir(config.STATIC_PATH):
+    logging.info(f"Serving static files from '{config.STATIC_PATH}' directory")
+    app.mount("/", StaticFiles(directory=config.STATIC_PATH,
+              html=True), name="static")
+else:
+    logging.warning(
+        f"'{config.STATIC_PATH}' directory not found. Static files will not be served.")
