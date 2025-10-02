@@ -22,14 +22,6 @@ async def get_search() -> WeaviateSearch:
     return global_searcher
 app = FastAPI()
 
-if os.path.isdir(config.STATIC_PATH):
-    logging.info(f"Serving static files from '{config.STATIC_PATH}' directory")
-    app.mount("/", StaticFiles(directory=config.STATIC_PATH,
-              html=True), name="static")
-else:
-    logging.warning(
-        f"'{config.STATIC_PATH}' directory not found. Static files will not be served.")
-
 @app.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.SearchResponse:
     response = await searcher.search(req)
@@ -173,3 +165,11 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
         rag_answer=generated_answer.strip(),
         time_spent=time_spent
     )
+
+if os.path.isdir(config.STATIC_PATH):
+    logging.info(f"Serving static files from '{config.STATIC_PATH}' directory")
+    app.mount("/", StaticFiles(directory=config.STATIC_PATH,
+              html=True), name="static")
+else:
+    logging.warning(
+        f"'{config.STATIC_PATH}' directory not found. Static files will not be served.")
