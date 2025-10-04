@@ -14,13 +14,7 @@ class SearchRequest(BaseModel):
     query: str
     limit: int = 10
     type: SearchType = SearchType.hybrid
-    search_title_generate: bool = True
-    search_title_prompt: str | None = None
-    search_title_model: str | None = None
-    search_summary_generate: bool = True
-    search_summary_prompt: str | None = None
-    search_summary_model: str | None = None
-    search_llm_filter: bool = False
+    hybrid_search_alpha: float = 1          # default search type is hybrid but with alpha 1 so its not actually hybrid but im keeping it from previous implementation which was without parameter alpha
 
     min_year: int | None = None
     max_year: int | None = None
@@ -76,12 +70,22 @@ class TextChunkWithDocument(TextChunk):
     summary: str | None = None
     document_object: Document
 
-
 class SearchResponse(BaseModel):
     results: list[TextChunkWithDocument]
     search_request: SearchRequest
     time_spent: float
     search_log: list[str]
+
+class TitleSummaryRequest(BaseModel):
+    search_response: SearchResponse
+    title_generate: bool = True
+    title_prompt: str | None = None
+    title_model: str | None = None
+
+    summary_generate: bool = True
+    summary_prompt: str | None = None
+    summary_model: str | None = None
+    llm_filter: bool = False
 
 class SummaryResponse(BaseModel):
     summary: str

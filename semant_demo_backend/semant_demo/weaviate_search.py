@@ -1,7 +1,7 @@
 import logging
 import weaviate
 from time import time
-from weaviate import use_async_with_custom, WeaviateAsyncClient
+from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
 from semant_demo import schemas
 from semant_demo.config import Config
@@ -9,22 +9,14 @@ from semant_demo.gemma_embedding import get_query_embedding
 from weaviate.classes.query import QueryReference
 import weaviate.collections.classes.internal
 from uuid import UUID
-from semant_demo.ollama_proxy import OllamaProxy
 from semant_demo.config import config
 import asyncio
 
 class WeaviateSearch:
     def __init__(self, client: WeaviateAsyncClient):
         self.client = client
-        self.ollama_proxy = OllamaProxy(config.OLLAMA_URLS)
-        self.ollama_model = config.OLLAMA_MODEL
         # collections.get() is synchronous, no await needed
-        self.chunk_col = self.client.collections.get("Chunks")
-        self.title_prompt = "Generate a title in Czech from the following text: \"{text}\" \n " \
-                "The title should be relevant for this search query: \"{query}\" \n" \
-                "If the the text is not relavant, write \"N/A\" \n"
-        self.summary_prompt = "Generate a sort summary in Czech from the following text: \"{text}\" \n " \
-                "The summary should be in a list of concise facts extracted from the text which are relevant for this search query: \"{query}\""           
+        self.chunk_col = self.client.collections.get("Chunks")         
 
     @classmethod
     async def create(cls, config:Config) -> "WeaviateSearch":
@@ -43,32 +35,6 @@ class WeaviateSearch:
 
     async def close(self):
         await self.client.close()  # :contentReference[oaicite:2]{index=2}
-
-    async def _process_with_llm(self, search_results: list[schemas.TextChunkWithDocument], search_request: schemas.SearchRequest) -> list[schemas.TextChunkWithDocument]:
-
-        title_prompt_template = search_request.search_title_prompt if search_request.search_title_prompt else self.title_prompt
-        summary_prompt_template = search_request.search_summary_prompt if search_request.search_summary_prompt else self.summary_prompt
-
-        if search_request.search_title_generate:
-            title_responses = [self.ollama_proxy.call_ollama(
-                self.ollama_model,
-                title_prompt_template.format(text=chunk.text, query=search_request.query)
-            ) for chunk in search_results]
-            title_responses = await asyncio.gather(*title_responses)
-            for search_result, generated_title in zip(search_results, title_responses):
-                search_result.query_title = generated_title
-
-        if search_request.search_summary_generate:
-            summary_responses = [self.ollama_proxy.call_ollama(
-                self.ollama_model,
-                summary_prompt_template.format(text=chunk.text, query=search_request.query)
-            ) for chunk in search_results]
-            summary_responses = await asyncio.gather(*summary_responses)
-            for search_result, generated_summary in zip(search_results, summary_responses):
-                search_result.query_summary = generated_summary
-
-        return search_results
-  
 
     async def search(self, search_request: schemas.SearchRequest) -> schemas.SearchResponse:
         # Build filters
@@ -106,7 +72,7 @@ class WeaviateSearch:
             # Execute hybrid search
             result = await self.chunk_col.query.hybrid(
                 query=search_request.query,
-                alpha=1,
+                alpha=search_request.hybrid_search_alpha,
                 vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
@@ -161,10 +127,6 @@ class WeaviateSearch:
             )
             chunk.text = chunk.text.replace("-\n", "").replace("\n", " ")
             results.append(chunk)
-
-        # Process with LLM if needed
-        if search_request.search_title_generate or search_request.search_summary_generate:
-            results = await self._process_with_llm(results, search_request)
 
         response = schemas.SearchResponse(
             results=results,

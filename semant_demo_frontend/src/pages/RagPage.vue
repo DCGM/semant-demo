@@ -187,8 +187,8 @@ const sendMessage = async () => {
     const searchRequest = {
       query: historyForSearch,
       limit: 5,
-      search_title_generate: false,
-      search_summary_generate: false
+      type: 'hybrid',
+      hybrid_search_alpha: 1
     }
     const searchResponse = await axios.post('/api/search', searchRequest)
     if (!searchResponse.data || searchResponse.data.results.length === 0) {

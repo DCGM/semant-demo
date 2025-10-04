@@ -6,12 +6,15 @@ from semant_demo.config import config
 import logging
 from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.rag_generator import RagGenerator
+from semant_demo.summary_generator import SummaryGenerator
 import asyncio
 from time import time
 
 logging.basicConfig(level=logging.INFO)
 
 openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+summary_generator = SummaryGenerator(config)
+rag_generator = RagGenerator(config)
 
 global_searcher = None
 async def get_search() -> WeaviateSearch:
@@ -27,6 +30,10 @@ async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(
     response = await searcher.search(req)
     return response
 
+
+@app.post("/api/titlesummary", response_model=list[schemas.TextChunkWithDocument])
+async def titleSummary(req:schemas.TitleSummaryRequest) -> list[schemas.TextChunkWithDocument]:
+    return await summary_generator.process_with_llm(req)
 
 @app.post("/api/summarize/{summary_type}", response_model=schemas.SummaryResponse)
 async def summarize(search_response: schemas.SearchResponse, summary_type: str) -> schemas.SummaryResponse:
@@ -141,8 +148,6 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
         history_preprocessed = [msg.model_dump() for msg in request.history]
     else:
         history_preprocessed = []
-
-    rag_generator = RagGenerator(config)
 
     # call model
     try:
