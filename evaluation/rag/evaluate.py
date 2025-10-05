@@ -30,8 +30,16 @@ import asyncio
 import httpx
 #others
 from typing import List, Dict
+import argparse
 
+#colors for better logs in terminal
+class Colors:
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    RESET = '\033[0m'
 
+#main class calling backend api
 class RAGAPI:
     def __init__(self, backend_url):
         self.backend_url = backend_url
@@ -89,16 +97,44 @@ def loadDataFromTXT ():
     return 
 
 async def main():
+    #load config (.env)
     load_dotenv() 
+    #get required variables
     rag_api = RAGAPI(os.getenv("BACKEND_API_URL"))
-    #TODO: parse arguments
-    eval_model = "OLLAMA" # "OPENAI"
-    rag_model = "OLLAMA"
-    mode = "NOGT"
+    parser = argparse.ArgumentParser(description="Evaluator for RAG.")
+    parser.add_argument("--mode",
+                        type=str,
+                        default="NOGT",
+                        choices=["NOGT", "GT"],
+                        help="Evaluation mode: 'NOGT' (.json required) or 'GT' (.txt required) ")
+    parser.add_argument("--rag_model",
+                        type=str,
+                        default="OLLAMA",
+                        choices=["OLLAMA","GOOGLE", "OPENAI"],
+                        help="Model used by RAG: 'OLLAMA', 'GOOGLE' or 'OPENAI' ")
+    parser.add_argument("--eval_model",
+                    type=str,
+                    default="OLLAMA",
+                    choices=["OLLAMA", "OPENAI"],
+                    help="Model used for evaluation: 'OLLAMA' or 'OPENAI' ")
+    parser.add_argument("--precission",
+                    type=str,
+                    default="OFF",
+                    choices=["ON", "OFF"],
+                    help="Only relevant in 'NOGT' mode. Precission choices: 'ON' or 'OFF' ")
+
+    args = parser.parse_args()
+
+    print(f"{Colors.GREEN} Starting evaluation in mode: {args.mode} with RAG model: {args.rag_model} and evaluation model: {args.eval_model} and precission: {args.precission}.{Colors.RESET} ")
+
+    eval_model = args.eval_model
+    rag_model = args.rag_model
+    mode = args.mode
     precission_mode = False
+    if (args.precission == "ON"):
+        precission_mode = True
 
     #get desired evaluation model
-    #load config (.env)
     if (eval_model == "OPENAI"):
         eval_model_name = os.getenv("OPENAI_EVAL_MODEL")
         #API key is taken automaticly from env ( os.getenv("OPENAI_API_KEY") )
@@ -156,6 +192,7 @@ async def main():
                               metrics=[faithfulness, answer_relevancy],
                               llm=llm)
             
+            print(f"{Colors.GREEN}---Evaluation finished ---{Colors.RESET}")
             print(result)
             if(precission_mode == True):
                 average_precision = sum(precisions) / len(precisions)
