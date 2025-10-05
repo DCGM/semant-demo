@@ -1,0 +1,51 @@
+[
+  {
+    "question_id": "q01.01_plat_1948",
+    "question": "Jaký byl průměrný plat v České Republice v roce 1948?",
+    "ground_truth": "- Průměrný hodinový výdělek dělníka se v roce 1948 zvýšil z 16,60 Kšs v lednu na 20,50 Kčs v prosinci.\n - Měsíční výdělek se potom ve stejném období zvýšil u dělníka z 3.296 Kčs na 4.562 Kčs.\n - U úředníka se plat zvýšil z 5.172 Kčs v lednu na 6.324 Kčs v prosinci.",
+    "source_document_filename": ["TODO"],
+    "contexts": [
+      "v témže období roku 1947. Průměrný hodinový výdělek dělníka zvýšil se ze 16,60 Kčs v lednu na 20,50 Kčs v prosinci. Měsíční výdělek pak ve stejném období ze 3.296 Kčs na 4.562 Kčs, u úředníka z 5.172 Kčs v lednu na 6.324 Kčs v prosinci. Podíl mezd a platů na hodnotě odbytu činil v lednu 24,4 %, v prosinci 20,6%. Životní náklady zůstaly i při mírném vzestupu velkoobchodních cen, jenž se projevil hlavně v dovážených statcích, po celý rok více méně stabilní. Tak index životních nákladů dělnické rodiny dosáhl v prosinci 1948 294,1 oproti 290,9 v lednu a průměru 295 z roku 1947. Index životních nákladů rodiny úřednické dosáhl pak v prosinci 1948 278,5 oproti 274 z ledna a průměru 278,2 z roku 1947, počítáno na basi 100 z roku 1937. Pozoruhodný a pro vývoj našich hospo-"
+    ]
+  },
+
+  {
+    "question_id": "q01.02_plat_delnika_1948",
+    "question": "Jaký byl průměrný plat dělníka v České Republice v roce 1948?",
+    "ground_truth": "- Průměrný hodinový plat dělníka se v roce 1948 zvýšil z 16,60 Kšs v lednu na 20,50 Kčs v prosinci.\n - Měsíční výdělek se potom ve stejném období zvýšil u dělníka z 3.296 Kčs na 4.562 Kčs.",
+    "source_document_filename": ["TODO"],
+    "contexts": [
+      "v témže období roku 1947. Průměrný hodinový výdělek dělníka zvýšil se ze 16,60 Kčs v lednu na 20,50 Kčs v prosinci. Měsíční výdělek pak ve stejném období ze 3.296 Kčs na 4.562 Kčs, u úředníka z 5.172 Kčs v lednu na 6.324 Kčs v prosinci. Podíl mezd a platů na hodnotě odbytu činil v lednu 24,4 %, v prosinci 20,6%. Životní náklady zůstaly i při mírném vzestupu velkoobchodních cen, jenž se projevil hlavně v dovážených statcích, po celý rok více méně stabilní. Tak index životních nákladů dělnické rodiny dosáhl v prosinci 1948 294,1 oproti 290,9 v lednu a průměru 295 z roku 1947. Index životních nákladů rodiny úřednické dosáhl pak v prosinci 1948 278,5 oproti 274 z ledna a průměru 278,2 z roku 1947, počítáno na basi 100 z roku 1937. Pozoruhodný a pro vývoj našich hospo-"
+    ]
+  },
+
+  {
+    "question_id": "q01.03_mzda_1948",
+    "question": "Jaká byla průměrná mzda v České Republice v roce 1948?",
+    "ground_truth": "- Průměrná hodinová mzda dělníka se v roce 1948 zvýšil z 16,60 Kšs v lednu na 20,50 Kčs v prosinci.\n - Měsíční mzda se ve stejném období zvýšil u dělníka z 3.296 Kčs na 4.562 Kčs.\n - U úředníka se mzda zvýšila z 5.172 Kčs v lednu na 6.324 Kčs v prosinci.",
+    "source_document_filename": ["TODO (pod sebou)"],
+    "contexts": [
+      "v témže období roku 1947. Průměrný hodinový výdělek dělníka zvýšil se ze 16,60 Kčs v lednu na 20,50 Kčs v prosinci. Měsíční výdělek pak ve stejném období ze 3.296 Kčs na 4.562 Kčs, u úředníka z 5.172 Kčs v lednu na 6.324 Kčs v prosinci. Podíl mezd a platů na hodnotě odbytu činil v lednu 24,4 %, v prosinci 20,6%. Životní náklady zůstaly i při mírném vzestupu velkoobchodních cen, jenž se projevil hlavně v dovážených statcích, po celý rok více méně stabilní. Tak index životních nákladů dělnické rodiny dosáhl v prosinci 1948 294,1 oproti 290,9 v lednu a průměru 295 z roku 1947. Index životních nákladů rodiny úřednické dosáhl pak v prosinci 1948 278,5 oproti 274 z ledna a průměru 278,2 z roku 1947, počítáno na basi 100 z roku 1937. Pozoruhodný a pro vývoj našich hospo-"
+    ]
+  },
+
+  {
+    "question_id": "q02_uhrn_mezd",
+    "question": "Jaký byl úhrn mezd v roce 1948 v České Republice?",
+    "ground_truth": "TODO",
+    "source_document_filename": ["TODO"],
+    "contexts": [
+      "TODO"
+    ]
+  },
+  
+  {
+    "question_id": "",
+    "question": "",
+    "ground_truth": "",
+    "source_document_filename": [""],
+    "contexts": [
+      ""
+    ]
+  }
+]
