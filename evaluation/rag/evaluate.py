@@ -1,10 +1,14 @@
 #env
 import os
 from dotenv import load_dotenv
-#ragas
+#ragas openai
 from langchain_openai import ChatOpenAI
 from ragas.embeddings import OpenAIEmbeddings
 import openai
+#ragas ollama
+from langchain_ollama import OllamaLLM
+from langchain_community.embeddings import HuggingFaceEmbeddings
+#ragas
 from ragas import EvaluationDataset
 from ragas import evaluate
 from ragas.llms.base import llm_factory
@@ -23,8 +27,10 @@ from ragas.metrics import (
 import httpx
 import json
 import asyncio
-from typing import List, Dict
 import httpx
+#others
+from typing import List, Dict
+
 
 class RAGAPI:
     def __init__(self, backend_url):
@@ -86,7 +92,7 @@ async def main():
     load_dotenv() 
     rag_api = RAGAPI(os.getenv("BACKEND_API_URL"))
     #TODO: parse arguments
-    eval_model = "OPENAI"
+    eval_model = "OLLAMA" # "OPENAI"
     rag_model = "OLLAMA"
     mode = "NOGT"
     precission_mode = False
@@ -98,9 +104,17 @@ async def main():
         #API key is taken automaticly from env ( os.getenv("OPENAI_API_KEY") )
         llm = llm_factory(eval_model_name)
         openai_client = openai.OpenAI()
-        embeddings = OpenAIEmbeddings(client=openai_client)
-    #TODO: add OLLAMA evaluator
+        embeddings = OpenAIEmbeddings(client=openai_client) #possibly required for GT eval
+    elif(eval_model == "OLLAMA"):
+        eval_model_name = os.getenv("OLLAMA_EVAL_MODEL")
+        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        llm = OllamaLLM(model=eval_model_name, base_url = ollama_url)
+        embeddings = HuggingFaceEmbeddings()    #possibly required for GT eval
+    else:
+        print(f"\n Invalid model: {eval_model}. Possible models: [OPENAI, OLLAMA].")
+        return
 
+    print(f"--- Model used for evaluation is {eval_model} precisely: {eval_model_name} ---")
     #TODO: load questions from files
     #query = "Jaké byly výskyty vztekliny v Praze?"
     queries = ["Jaké byly výskyty vztekliny v Praze?", "Jaká byla situace v oblasti sudet v roce 1945?"]
