@@ -42,7 +42,7 @@
 
 <script lang="ts" setup>
 import { defineProps, withDefaults, ref } from 'vue'
-import { AnnotationClass } from 'src/models'
+import { AnnotationClass, ApprovedState } from 'src/models'
 import { textColorSwitcher } from '../utils/textColorSwitch' // // "props.annotationClass.textColor"
 
 const active = ref(false)
@@ -60,8 +60,8 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{(e: 'approve-click', annotation: AnnotationClass): void
 (e: 'disapprove-click', annotation: AnnotationClass): void}>()
-
-function getBorderClass (type: 'automatic' | 'positive' | 'negative') {
+// TODO skusit vymenovany typ
+function getBorderClass (type: ApprovedState) {
   switch (type) {
     case 'automatic':
       return 'border-automatic'

@@ -179,9 +179,15 @@ export interface StatusResponse {
   tag_processing_data: ProcessedTagData[];
 }
 
+export enum ApprovedState {
+  automatic = 'automatic',
+  positive = 'positive',
+  negative = 'negative',
+}
+
 export interface AnnotationClass {
   short: string
   colorString: string
   textColor: string
-  approved: string
+  approved: ApprovedState
 }
