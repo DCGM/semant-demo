@@ -863,6 +863,9 @@ async function onShowTasks () {
       timestamp: task.timestamp
     }
     allTaskInfo.value.unshift(newTaskInfo)
+    // if (task.status === "RUNNING" or task.status === "PENDING" or === "STARTED") {
+    //   startPolling(task.taskId)
+    // }
   }
 }
 
