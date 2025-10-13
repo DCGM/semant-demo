@@ -29,7 +29,7 @@ import json
 import asyncio
 import httpx
 #others
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import argparse
 
 #colors for better logs in terminal
@@ -90,8 +90,26 @@ class RAGAPI:
 
         return answer.get('rag_answer', 'ERROR no: "rag_answer".')
 
-def loadDataFromJson ():
-    return 
+#load questions/queries and ground truths from json file given path
+def loadDataFromJson (path: str) -> Tuple[List[str], List[str]]:
+    queries = []
+    gts = []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            for entry in data:
+                if 'question' and 'ground_truth' in entry:
+                    queries.append(entry['question'])
+                    gts.append(entry['ground_truth'])
+
+        print(f"Loaded {len(queries)} questions.")
+        return queries, gts
+    
+    except FileNotFoundError:
+        raise FileNotFoundError(f"\nRAG EVALUATION ERROR: File not found: {path}")
+    except Exception as e:
+        raise Exception(f"\nRAG EVALUATION ERROR: while loading file: {path}: {e}")
+
 
 #load questions/queries from txt file given path
 def loadDataFromTXT(path: str) -> List[str]:
@@ -103,6 +121,7 @@ def loadDataFromTXT(path: str) -> List[str]:
                 if query:
                     result.append(query)
                     
+        print(f"Loaded {len(result)} questions.")
         return result
     
     except FileNotFoundError:
@@ -155,7 +174,8 @@ async def main():
     rag_model = args.rag_model
     mode = args.mode
     precission_mode = False
-    #get path
+
+    #--- get path ---
     if(args.path == "PATH_MISSING"):
         if(mode == "NOGT"):
             path = os.getenv("PATH_WITHOUT_GT")
@@ -173,12 +193,13 @@ async def main():
     #--- load data ---
     try:
         queries = []
+        ground_truth = []
         # load from txt
         if (mode == "NOGT" ):
             queries = loadDataFromTXT(path)
         # load from json
         elif (mode == "GT"):
-            queries = loadDataFromJson(path)    #TODO: load questions from files (json)
+            queries, ground_truth = loadDataFromJson(path)
     except FileNotFoundError as e:
         print("Invalid path, error detail:", e)
         return
@@ -204,6 +225,7 @@ async def main():
 
     print(f"--- Model used for evaluation is {eval_model} precisely: {eval_model_name} ---")
     
+    #--- evaluation ---
     #rag api class
     rag_api = RAGAPI(os.getenv("BACKEND_API_URL"))
     try:
@@ -250,7 +272,7 @@ async def main():
                 print(f"average_precission: {average_precision}")
 
         elif(mode == "GT"):
-            pass
+            pass #TODO gt evaluate
         else:
             print(f"\n Invalid mode: {mode}. Possible modes: [GT, NOGT].")
 
