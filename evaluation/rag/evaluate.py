@@ -93,14 +93,29 @@ class RAGAPI:
 def loadDataFromJson ():
     return 
 
-def loadDataFromTXT ():
-    return 
+#load questions/queries from txt file given path
+def loadDataFromTXT(path: str) -> List[str]:
+    result = []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                query = line.strip()
+                if query:
+                    result.append(query)
+                    
+        return result
+    
+    except FileNotFoundError:
+        raise FileNotFoundError(f"\nRAG EVALUATION ERROR: File not found: {path}")
+    except Exception as e:
+        raise Exception(f"\nRAG EVALUATION ERROR: while loading file: {path}: {e}")
+
+        
 
 async def main():
     #load config (.env)
     load_dotenv() 
     #get required variables
-    rag_api = RAGAPI(os.getenv("BACKEND_API_URL"))
     parser = argparse.ArgumentParser(description="Evaluator for RAG.")
     parser.add_argument("--mode",
                         type=str,
@@ -122,19 +137,56 @@ async def main():
                     default="OFF",
                     choices=["ON", "OFF"],
                     help="Only relevant in 'NOGT' mode. Precission choices: 'ON' or 'OFF' ")
+    parser.add_argument("--path",
+                    type=str,
+                    default="PATH_MISSING",
+                    help="Path to question file (.json with GT mode or .txt with NOGT mode)")
+    parser.add_argument("--synthetic_dataset",
+                    type=str,
+                    default="OFF",
+                    choices=["ON", "OFF"],
+                    help="Run evaluation with synthetic dataset. Synthetic dataset choices: 'ON' or 'OFF' ")
 
     args = parser.parse_args()
 
-    print(f"{Colors.GREEN} Starting evaluation in mode: {args.mode} with RAG model: {args.rag_model} and evaluation model: {args.eval_model} and precission: {args.precission}.{Colors.RESET} ")
+    print(f"{Colors.GREEN} Starting evaluation in mode: {args.mode} with RAG model: {args.rag_model} and evaluation model: {args.eval_model} and precission: {args.precission} and synthetic dataset: {args.synthetic_dataset}. {Colors.RESET} ")
 
     eval_model = args.eval_model
     rag_model = args.rag_model
     mode = args.mode
     precission_mode = False
+    #get path
+    if(args.path == "PATH_MISSING"):
+        if(mode == "NOGT"):
+            path = os.getenv("PATH_WITHOUT_GT")
+        else:
+            path = os.getenv("PATH_GT")
+    else:
+        path = args.path
+
+    if (args.synthetic_dataset == "ON"):
+        path = os.getenv("PATH_SYN")
+
     if (args.precission == "ON"):
         precission_mode = True
+ 
+    #--- load data ---
+    try:
+        queries = []
+        # load from txt
+        if (mode == "NOGT" ):
+            queries = loadDataFromTXT(path)
+        # load from json
+        elif (mode == "GT"):
+            queries = loadDataFromJson(path)    #TODO: load questions from files (json)
+    except FileNotFoundError as e:
+        print("Invalid path, error detail:", e)
+        return
+    except Exception as e:
+        print("Error detail:", e)
+        return
 
-    #get desired evaluation model
+    #--- get desired evaluation model ---
     if (eval_model == "OPENAI"):
         eval_model_name = os.getenv("OPENAI_EVAL_MODEL")
         #API key is taken automaticly from env ( os.getenv("OPENAI_API_KEY") )
@@ -151,10 +203,9 @@ async def main():
         return
 
     print(f"--- Model used for evaluation is {eval_model} precisely: {eval_model_name} ---")
-    #TODO: load questions from files
-    #query = "Jaké byly výskyty vztekliny v Praze?"
-    queries = ["Jaké byly výskyty vztekliny v Praze?", "Jaká byla situace v oblasti sudet v roce 1945?"]
-
+    
+    #rag api class
+    rag_api = RAGAPI(os.getenv("BACKEND_API_URL"))
     try:
         if (mode == "NOGT"):
             dataset = []
