@@ -193,13 +193,13 @@ async def main():
     #--- load data ---
     try:
         queries = []
-        ground_truth = []
+        ground_truths = []
         # load from txt
         if (mode == "NOGT" ):
             queries = loadDataFromTXT(path)
         # load from json
         elif (mode == "GT"):
-            queries, ground_truth = loadDataFromJson(path)
+            queries, ground_truths = loadDataFromJson(path)
     except FileNotFoundError as e:
         print("Invalid path, error detail:", e)
         return
@@ -229,9 +229,9 @@ async def main():
     #rag api class
     rag_api = RAGAPI(os.getenv("BACKEND_API_URL"))
     try:
+        dataset = []
         if (mode == "NOGT"):
-            dataset = []
-            context_precision = LLMContextPrecisionWithoutReference(llm=llm)
+            single_context_precision = LLMContextPrecisionWithoutReference(llm=llm)
             precisions = []
 
             for query in queries:
@@ -255,7 +255,7 @@ async def main():
                         retrieved_contexts=retrieved_contexts_text
                     )
                     #add precision of sample to list
-                    precisions.append(await context_precision.single_turn_ascore(sample))
+                    precisions.append(await single_context_precision.single_turn_ascore(sample))
 
             evaluation_dataset = EvaluationDataset.from_list(dataset)
 
@@ -272,7 +272,30 @@ async def main():
                 print(f"average_precission: {average_precision}")
 
         elif(mode == "GT"):
-            pass #TODO gt evaluate
+            for query, gt in zip(queries, ground_truths):
+                #search
+                retrieved_context  = await rag_api.search(query, limit=os.getenv("CHUNK_LIMIT") )
+                retrieved_contexts_text = [ctx['text'] for ctx in retrieved_context]
+                #rag
+                rag_answer = await rag_api.call_rag(query, rag_model)
+                dataset.append(
+                    {
+                        "user_input":query,
+                        "retrieved_contexts":retrieved_contexts_text,
+                        "response":rag_answer,
+                        "reference": gt
+                    }
+                )
+            evaluation_dataset = EvaluationDataset.from_list(dataset)
+
+            print(f"---Starting evaluation ---")
+
+            result = evaluate(dataset=evaluation_dataset,
+                              metrics=[faithfulness, answer_relevancy, context_recall, context_precision, answer_correctness],
+                              llm=llm)
+            
+            print(f"{Colors.GREEN}---Evaluation finished ---{Colors.RESET}")
+            print(result)
         else:
             print(f"\n Invalid mode: {mode}. Possible modes: [GT, NOGT].")
 
