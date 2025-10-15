@@ -4,3 +4,5 @@ uvicorn
 numpy
 weaviate-client
 openai
+ollama
+classconfig
