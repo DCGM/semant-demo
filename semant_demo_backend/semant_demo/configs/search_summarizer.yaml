@@ -1,0 +1,67 @@
+api:  # API configuration.
+  cls: OllamaAsyncAPI  # name of class that is subclass of APIAsync
+  config: # configuration for defined class
+    api_key: OLLAMA # API key.
+    base_url:  # Base URL for API.
+    pool_interval: 300 # Interval in seconds for checking status.
+    process_requests_interval: 1 # Interval in seconds between sending requests when processed synchronously.
+    concurrency: 10 # Maximum number of concurrent requests to the API. This is used with async processing.
+gen_title_model: gpt-oss:20b # Model to use for title generation.
+gen_title_model_options: # Model options for title generation.
+  temperature:  # Temperature for the model.
+  context_size: # Context size for the model.
+  max_completion_tokens: # Maximum number of tokens to generate. None for default.
+gen_title_error_title: N/A # Title to use when title generation fails.
+gen_title_system_prompt: |-
+  Jsi užitečný asistent, který generuje nadpisy pro texty historických dokumentů.{% if brevity %} Nadpis by neměl být delší než {{ brevity }} slov. {% endif %} Odpověz pouze nadpisem, bez dalších komentářů nebo úvodních frází.
+# System prompt for title generation.
+gen_title_prompt: |
+  Vygeneruj nadpis pro následující text historického dokumentu.
+  "{{ text.text }}"
+  Nadpis by měl být relevantní k dotazu uživatele: "{{ query }}".
+# Prompt for title generation.
+gen_results_summary_model: gpt-oss:20b # Model to use for search results summary generation.
+gen_results_summary_model_options: # Model options for search results summary generation.
+  temperature:  # Temperature for the model.
+  context_size: # Context size for the model.
+  max_completion_tokens: # Maximum number of tokens to generate. None for default.
+gen_results_summary_error_summary: N/A # Summary to use when search results summary generation fails.
+gen_results_summary_system_prompt: |
+  Jsi asistent pro sumarizaci textů.  
+  Dostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc1], [doc2], … [doc15].  
+  Tvým úkolem je vytvořit jediný, stručný souhrn, který pokryje všechny klíčové body relevantní k uživatelskému vyhledávacímu dotazu.  
+  Po každém faktu, který z úryvku získáš, připoj ID daného úryvku v hranatých závorkách – například: „Gen ABC je nadregulován v nádorových buňkách [doc3].“  
+  Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID oddělená čárkami: „Tento přístup zlepšil přesnost o 12 % [doc2, doc7, doc11].“  
+  Nevymýšlej žádná fakta, která v úryvcích nejsou. Soustřeď se pouze na informace relevantní k uživatelskému dotazu.  
+  Piš přehledně a stručně.
+  {% if brevity %} Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}
+  Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
+# System prompt for search results summary generation.
+gen_results_summary_prompt: |
+  Vytvoř souhrn následujících výsledků vyhledávání.
+
+  Uživatel zadal do vyhledávače historických dokumentů dotaz:
+
+  "{{ query }}"
+
+  Tento dotaz mu vrátil následující výsledky:
+  {% for result in results %}
+  [doc{{ loop.index }}] {{ result.text }}
+  {% endfor %}
+# Prompt for search results summary generation.
+gen_query_summary_model: gpt-oss:20b # Model to use for query summary generation.
+gen_query_summary_model_options: # Model options for query summary generation.
+  temperature:  # Temperature for the model.
+  context_size: # Context size for the model.
+  max_completion_tokens: # Maximum number of tokens to generate. None for default.
+gen_query_summary_error_summary: N/A # Summary to use when query summary generation fails.
+gen_query_summary_system_prompt: |-
+  Jsi užitečný asistent, který generuje sumarizace textů historických dokumentů.{% if brevity %} Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
+# System prompt for query summary generation.
+gen_query_summary_prompt: |
+  Prosím vytvoř krátký souhrn následujícího textu, který je relevantní k vyhledávacímu dotazu. Souhrn by měl být výstižný a obsahovat klíčové informace z textu.
+  Text historického dokumentu:
+  "{{ text.text }}"
+  Uživatel zadal do vyhledávače historických dokumentů dotaz:
+  "{{ query }}"
+# Prompt for query summary generation.
