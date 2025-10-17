@@ -16,7 +16,7 @@ readme = "README.md"
 keywords = ["SemANT", "backend", "api"]
 
 [project.urls]
-Repository = "https://github.com/mdocekal/ai_caller"
+Repository = "https://github.com/DCGM/semant-demo"
 
 #[project.scripts]
 #semantdemobackend = "semantdemobackend.__main__:main"
