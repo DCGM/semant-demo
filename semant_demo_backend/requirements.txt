@@ -7,3 +7,6 @@ openai
 ollama
 classconfig
 langchain_core
+langchain_google_genai
+langchain_openai
+langchain_community
