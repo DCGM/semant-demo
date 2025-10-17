@@ -1,6 +1,5 @@
 import asyncio
-import sys
-import time
+import logging
 from abc import abstractmethod
 from asyncio import as_completed
 from collections.abc import Iterable
@@ -8,6 +7,7 @@ from typing import AsyncGenerator
 
 from ollama import AsyncClient
 from openai import APIError, RateLimitError, AsyncOpenAI
+
 from semant_demo.llm_api.base import APIOutput, APIModelResponseOllama, APIModelResponseOpenAI, APIBase, APIRequest
 
 
@@ -75,9 +75,8 @@ class OpenAsyncAPI(APIAsync):
                         response = await self.client.chat.completions.create(**self.convert_api_request_to_dict(request))
                         break
                     except RateLimitError:
-                        print(f"Rate limit reached. Waiting for {self.pool_interval} seconds.", flush=True,
-                              file=sys.stderr)
-                        time.sleep(self.pool_interval)
+                        logging.error(f"Rate limit reached. Waiting for {self.pool_interval} seconds.")
+                        await asyncio.sleep(self.pool_interval)
 
                 return APIOutput(
                     custom_id=request.custom_id,
