@@ -49,7 +49,7 @@ class TemplatedSearchResultsSummarizer(SearchResultsSummarizer):
         desc="Title to use when title generation fails."
     )
     gen_title_system_prompt: Template = ConfigurableValue(
-        user_default=LiteralScalarString("""Jsi užitečný asistent, který generuje nadpisy pro texty historických dokumentů.{% if brevity %} Nadpis by neměl být delší než {{ brevity }} slov. {% endif %} Odpověz pouze nadpisem, bez dalších komentářů nebo úvodních frází."""),
+        user_default=LiteralScalarString("""Jsi užitečný asistent, který generuje nadpisy pro texty historických dokumentů. {% if brevity %}Nadpis by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze nadpisem, bez dalších komentářů nebo úvodních frází."""),
         desc="System prompt for title generation.",
         transform=TemplateTransformer()
     )
@@ -117,7 +117,7 @@ Tento dotaz mu vrátil následující výsledky:
         desc="Summary to use when query summary generation fails."
     )
     gen_query_summary_system_prompt: Template = ConfigurableValue(
-        user_default=LiteralScalarString("""Jsi užitečný asistent, který generuje sumarizace textů historických dokumentů.{% if brevity %} Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází."""),
+        user_default=LiteralScalarString("""Jsi užitečný asistent, který generuje sumarizace textů historických dokumentů. {% if brevity %}Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází."""),
         desc="System prompt for query summary generation.",
         transform=TemplateTransformer()
     )
