@@ -6,3 +6,4 @@ weaviate-client
 openai
 ollama
 classconfig
+langchain_core
