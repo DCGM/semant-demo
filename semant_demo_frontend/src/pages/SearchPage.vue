@@ -1,5 +1,36 @@
 <template>
   <q-page class="q-pa-md">
+    <div class="row">
+      <q-input
+        v-model="username"
+        label="Username"
+        dense
+        outlined
+        style="width: 200px"
+        @keyup.enter="handleAddUser"/>
+
+      <!-- Add chunk to collection -->
+      <div class="row items-center q-gutter-md">
+      <!-- choose a collection -->
+      <q-select
+                v-model="selectedCollectionId"
+                :options="collectionOptions"
+                label="Select a Collection"
+                outlined
+                emit-value
+                map-options
+                :loading="loading"
+                style="width: 300px;"
+      />
+      </div>
+      <!-- Refetch the collections -->
+      <q-btn
+                label="Reload Collections"
+                color="primary"
+                @click="loadCollections"
+                class="q-mb-md"
+      />
+      </div>
     <q-form @submit.prevent="onSearch">
       <div class="row q-col-gutter-md">
         <div class="col">
@@ -430,6 +461,15 @@
                 <strong>Artifacts:</strong> {{ chunk.ner_O.join(', ') }}
               </div>
             </div>
+            <div class="row">
+              <q-btn
+                label="Add chunk to collection"
+                color="primary"
+                @click="() => addChunkToCollection(chunk.id)"
+                class="q-ma-sm"
+                style="width: auto; min-width: unset;"
+              />
+            </div>
 
             <div class="row">
             <div class="col-auto">
@@ -632,7 +672,6 @@
         </q-item>
       </q-list>
     </div>
-
     <q-dialog v-model="showSummary">
       <q-card style="min-width:350px;max-width:600px">
         <q-card-section>
@@ -655,10 +694,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox, Notify } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse, RemoveTagsResponse } from 'src/models'
+import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse, RemoveTagsResponse, CreateResponse } from 'src/models'
 import { api } from 'src/boot/axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
 import BadgeAvatar from 'src/components/BadgeAvatar.vue'
+import { useCollectionStore } from 'src/stores/chunk_collection-store'
 
 const searchForm = ref<SearchRequest>({
   query: '',
@@ -1003,6 +1043,61 @@ async function removeSelectedTags () {
     }
   } catch (e) {
     console.error('Tag removing error:', e)
+  }
+}
+
+// collection manage
+const collectionStore = useCollectionStore()
+const username = ref("")
+
+const handleAddUser = async () => {
+  if (username.value.trim()) {
+    console.log('Username entered:', username.value)
+    collectionStore.setUser(username.value)
+    await loadCollections() // load collections of the user
+  }
+}
+
+// local reactive refs
+const selectedCollectionId = ref<string | null>(null)
+const selectedCollection = computed(() =>
+  collectionStore.collections.find(c => c.id === selectedCollectionId.value)
+)
+
+// computed to transform collections
+const collectionOptions = computed(() =>
+  collectionStore.collections.map(c => ({
+    label: c.name ?? `Collection ${c.id}`,
+    value: c.id
+  }))
+)
+
+// load collections from weaviate
+const loadCollections = async () => {
+  if (!collectionStore.userId) {
+    Notify.create({ message: 'No user set', position: 'top', color: 'negative' })
+    return
+  }
+
+  loading.value = true
+  try {
+    await collectionStore.fetchCollections(collectionStore.userId)
+    Notify.create({ message: 'Collections loaded', position: 'top', color: 'positive' })
+  } catch (err) {
+    console.error(err)
+    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
+  } finally {
+    loading.value = false
+  }
+}
+
+async function addChunkToCollection (currentChunkId: string) {
+  const payload = { collectionId: selectedCollectionId.value, chunkId: currentChunkId }
+  const { data } = await api.post<CreateResponse>('/chunk_2_collection', payload)
+  if (data.created) {
+    Notify.create({ message: 'Chunk added to collection', position: 'top', color: 'positive' })
+  } else {
+    Notify.create({ message: 'Failed to add chunk to collection', position: 'top', color: 'negative' })
   }
 }
 

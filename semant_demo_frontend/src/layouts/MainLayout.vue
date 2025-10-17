@@ -41,6 +41,18 @@
             </q-item>
           </router-link>
 
+          <router-link to="/collection_manage/" style="text-decoration: none; color: inherit;">
+            <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/news') }" v-ripple
+              clickable>
+              <q-item-section avatar>
+                <q-icon name="fa-solid fa-tag" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>Manage collections</q-item-label>
+              </q-item-section>
+            </q-item>
+          </router-link>
+
           <router-link to="/about/" style="text-decoration: none; color: inherit;">
             <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/public_documents') }"
               v-ripple clickable>
