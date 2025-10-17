@@ -89,7 +89,7 @@ class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
                 custom_id="gen_query_summary",
                 model="gpt-oss:20b",
                 messages=[
-                    {"role": "system", "content": "Jsi užitečný asistent, který generuje sumarizace textů historických dokumentů.Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází."},
+                    {"role": "system", "content": "Jsi užitečný asistent, který generuje sumarizace textů historických dokumentů. Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází."},
                     {"role": "user", "content": "Prosím vytvoř krátký souhrn následujícího textu, který je relevantní k vyhledávacímu dotazu. Souhrn by měl být výstižný a obsahovat klíčové informace z textu.\nText historického dokumentu:\n\"AI is...\"\nUživatel zadal do vyhledávače historických dokumentů dotaz:\n\"What is AI?\""}
                 ],
             )
