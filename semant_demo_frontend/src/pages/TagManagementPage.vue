@@ -3,8 +3,19 @@
     <div class="row justify-center">
       <span class="text-h6">Manage automatic tags</span>
     </div>
-    <div class="row justify-left">
-      <q-btn label="Create Tag" class="center" color="primary" icon="add" @click="tagCreateDialogVisible = true" />
+    <div class="row justify-between">
+      <div>
+        <q-btn label="Create Tag" class="center" color="primary" icon="add" @click="tagCreateDialogVisible = true" />
+      </div>
+      <div>
+        <q-input
+        v-model="username"
+        label="Username"
+        dense
+        outlined
+        style="width: 200px"
+        @keyup.enter="handleAddUser"/>
+      </div>
     </div>
     <q-dialog v-model="tagCreateDialogVisible">
       <q-card style="width: 25rem; max-width: 90vw;">
@@ -448,11 +459,12 @@
 
 <script setup lang="ts">
 import { ref, onUnmounted, onMounted } from 'vue'
-import type { TagRequest, CreateTagResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse } from 'src/models'
+import type { TagRequest, CreateResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
 import BadgeAvatar from 'src/components/BadgeAvatar.vue'
+import useUserStore from 'src/stores'
 
 // TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 
@@ -546,6 +558,9 @@ const tagApproveStatus = ref<{ chunk_id: string; tag_id: string; status: string;
 const tagsLen = ref(5)
 
 const tagCreateDialogVisible = ref(false)
+
+const userStore = useUserStore()
+const username = ref("")
 
 interface MergedTag {
   tag_uuid: string
@@ -654,9 +669,9 @@ async function onCreateTag () {
   try {
     console.log('Tagging will start', tagForm.value)
     const payload = { ...tagForm.value, tag_examples: tagForm.value.tag_examples.filter(example => example.trim() !== '') }
-    const { data } = await api.post<CreateTagResponse>('/create_tag', payload)
+    const { data } = await api.post<CreateResponse>('/create_tag', payload)
     console.log('Tagging response received:', data)
-    tagCreation.value.created = data.tag_created
+    tagCreation.value.created = data.created
     tagCreation.value.action = true
     tagCreation.value.error = data.message
   } catch (e) {
@@ -866,6 +881,12 @@ async function onShowTasks () {
     // if (task.status === "RUNNING" or task.status === "PENDING" or === "STARTED") {
     //   startPolling(task.taskId)
     // }
+  }
+}
+
+const handleAddUser = () => {
+  if (username.value.trim()) {
+    console.log('Username entered:', username.value)
   }
 }
 

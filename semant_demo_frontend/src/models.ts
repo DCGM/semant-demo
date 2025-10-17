@@ -23,6 +23,11 @@ export interface TagRequest {
   collection_name: string;
 }
 
+export interface CollectionRequest {
+  collection_name: string;
+  user_id: string;
+}
+
 export interface TagData {
   tag_uuids: string[];
 }
@@ -107,8 +112,8 @@ export interface TagStartResponse {
   message: string;
 }
 
-export interface CreateTagResponse {
-  tag_created: boolean;
+export interface CreateResponse {
+  created: boolean;
   message: string;
 }
 
@@ -190,4 +195,22 @@ export interface AnnotationClass {
   colorString: string
   textColor: string
   approved: ApprovedState
+}
+
+export interface User {
+  id: string
+  username: string
+  full_name: string
+  user_type: string
+}
+
+export interface Collection {
+  id: string
+  name: string
+  user_id: string
+}
+
+export interface GetUserCollectionsResponse {
+  collections: Collection[]
+  user_id: string
 }

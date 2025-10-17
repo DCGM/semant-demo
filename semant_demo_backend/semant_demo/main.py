@@ -189,17 +189,17 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
     )
 
 
-@app.post("/api/create_tag", response_model=schemas.CreateTagResponse)
-async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateTagResponse:
+@app.post("/api/create_tag", response_model=schemas.CreateResponse)
+async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
     """
     creates tag in weaviate db, or not if the same tag already exists
     """
     try:
         tag_id = await tagger.add_or_get_tag(tagReq)
-        return {"tag_created": True, "message": f"Tag {tagReq.tag_name} created with tag id {tag_id}"}
+        return {"created": True, "message": f"Tag {tagReq.tag_name} created with tag id {tag_id}"}
     except Exception as e:
         logging.error(e)
-        return {"tag_created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
+        return {"created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
 
 @app.post("/api/tagging_task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: BackgroundTasks, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
@@ -397,7 +397,55 @@ async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest
     """
     response = await tagger.filterChunksByTags(requestedData)
     return response
-    
+
+@app.post("/api/user_collection", response_model=schemas.CreateResponse)
+async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplate, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
+    """
+    creates user collection in weaviate db, or not if the same user collection already exists
+    """
+    try:
+        collection_id = await tagger.add_collection(collectionReq)
+        if collection_id is None:
+            raise Exception("weaviate error")
+        return {"created": True, "message": f"Collection {collectionReq.collection_name} created with collection id {collection_id}"}
+    except Exception as e:
+        logging.error(e)
+        return {"created": False, "message": f"Collection {collectionReq.collection_name} not created becacause of: {e}"}
+
+@app.get("/api/collections", response_model=schemas.GetCollectionsResponse)
+async def fetch_collections(userId: str, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetCollectionsResponse:
+    """
+    retrieves all collections for given user
+    """
+    response = await tagger.fetch_all_collections(userId)
+    return response
+
+@app.post("/api/chunk_2_collection", response_model=schemas.CreateResponse)
+async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
+    """
+    creates user collection in weaviate db, or not if the same user collection already exists
+    """
+    try:
+        err = await tagger.add_chunk_to_collection(req)
+        if err:
+            raise Exception("weaviate error")
+        return {"created": True, "message": f"Chunk added to collection"}
+    except Exception as e:
+        logging.error(e)
+        return {"created": False, "message": f"Chunk not added to collection becacause of: {e}"}
+
+@app.get("/api/chunks_of_collection", response_model=schemas.GetTaggedChunksResponse)
+async def get_collection_chunks(collectionId: str, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTaggedChunksResponse:
+    """
+    returns chunks which belong to collection given by id
+    """
+    try:
+        logging.info(f"In get collection chunks {collectionId}")
+        response = await tagger.get_collection_chunks(collectionId)
+        return response
+    except Exception as e:
+        logging.error(f"{e}")
+
 # http://localhost:8002/docs#
 
 # TODO now only automatic are shown, show positive and negative add filtering (print in FE useing chunkDataPositive/Negative)

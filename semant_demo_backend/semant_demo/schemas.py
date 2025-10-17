@@ -117,8 +117,8 @@ class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
 
-class CreateTagResponse(BaseModel):
-    tag_created: bool
+class CreateResponse(BaseModel):
+    created: bool
     message: str
 
 class TagStartResponse(BaseModel):
@@ -193,6 +193,24 @@ class ApproveTagResponse(BaseModel):
 class RemoveTagsResponse(BaseModel):
     successful: bool
 
+# User collection
+class UserCollectionReqTemplate(BaseModel):
+    collection_name: str  # name of the collection
+    user_id: str          # user id
+
+class Collection(BaseModel):
+  id: str
+  name: str
+  user_id: str
+
+class GetCollectionsResponse(BaseModel):
+    collections: list[Collection]
+    userId: str
+
+class Chunk2CollectionReq(BaseModel):
+    collectionId: str   # id of the collection
+    chunkId: str        # chunk id
+    
 # Task Model
 TasksBase = declarative_base()
 class Task(TasksBase):
