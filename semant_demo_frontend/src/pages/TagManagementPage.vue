@@ -305,9 +305,17 @@
             outline
             dense
           />
+
+           <div class="col-auto flex justify-end">
+            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loading" @click="removeSelectedTags" />
+          </div>
         </div>
         <div class="row items-center" style="width: 100%;">
-          <!-- left spacer -->
+          <div class="col-auto flex justify-end">
+            <q-btn type="submit" color="primary" label="Get tagged texts" :loading="loading" />
+          </div>
+          <div class="col"></div>
+
           <div class="col">
             <q-btn
               @click="onRunTask"
@@ -317,17 +325,6 @@
               outline
               dense
             />
-          </div>
-
-          <!-- center button -->
-          <div class="col-auto flex justify-center">
-            <q-btn type="submit" color="primary" label="Get tagged texts" :loading="loading" />
-          </div>
-          <div class="col"></div>
-
-          <!-- right button -->
-          <div class="col-auto flex justify-end">
-            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loading" @click="removeSelectedTags" />
           </div>
         </div>
       </div>
@@ -406,7 +403,7 @@
   </div>
       <div class="col-12 col-md-6">
         <!-- tasks item -->
-        <q-expansion-item icon="assignment" label="Tasks" expand-separator @show="onShowTasks">
+        <q-expansion-item icon="assignment" label="Tasks" expand-separator ref="tasksExpansion" @show="onShowTasks">
                 <!-- Task Status Cards -->
                 <div v-for="task in allTaskInfo" :key="task.task_id" class="row q-mt-lg">
                   <q-card :class="getTaskCardClass(task.status)">
@@ -562,6 +559,8 @@ const tagCreateDialogVisible = ref(false)
 const userStore = useUserStore()
 const username = ref("")
 
+const tasksExpansion = ref(null)
+
 interface MergedTag {
   tag_uuid: string
   tag_type: string
@@ -703,6 +702,7 @@ async function onRunTask () {
       }
       allTaskInfo.value.unshift(newTaskInfo) // order newest on top
       startPolling(data.task_id)
+      tasksExpansion.value?.show()
     } catch (e) {
       console.error('Tagging error:', e)
       // add error task info

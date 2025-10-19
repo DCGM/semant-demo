@@ -7,7 +7,7 @@
         dense
         outlined
         style="width: 200px"
-        @keyup.enter="handleAddUser"/>
+        @update:model-value="handleAddUser"/>
 
       <!-- Add chunk to collection -->
       <div class="row items-center q-gutter-md">

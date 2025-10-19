@@ -14,7 +14,7 @@
         dense
         outlined
         style="width: 200px"
-        @keyup.enter="handleAddUser"/>
+        @update:model-value="handleAddUser"/>
       </div>
     </div>
     <q-dialog v-model="collectionCreateDialogVisible">
@@ -537,7 +537,7 @@ const loadCollections = async () => {
   loading.value = true
   try {
     await collectionStore.fetchCollections(collectionStore.userId)
-    Notify.create({ message: 'Collections loaded', position: 'top', color: 'positive' })
+    // Notify.create({ message: 'Collections loaded', position: 'top', color: 'positive' })
     fetchCollectionChunks()
   } catch (err) {
     console.error(err)
