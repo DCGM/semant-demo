@@ -86,43 +86,14 @@
     <div class="row">
   </div>
 
-  <div v-if="mergedChunks.length">
-      <div v-for="chunk in mergedChunks" :key="chunk.chunk_id" class="q-mb-md">
+  <div v-if="chunkData.length">
+      <div v-for="chunk in chunkData" :key="chunk.chunk_id" class="q-mb-md">
         <q-card>
           <q-card-section>
             <div class="col">
               <!--<div class="text-subtitle2">Chunk ID: {{ chunk.chunk_id }}</div> -->
               <div class="text-body1">{{ chunk.text_chunk }}</div>
-              <div class="text-subtitle2">Chunk Collection Name: {{ chunk.chunk_collection_name }}</div>
 
-              <div class="text-caption q-mt-sm">Tags</div>
-              <div class="row q-gutter-sm">
-              <div v-for="tag in chunk.tags" :key="tag.tag_uuid" class="q-mb-md">
-                <!--<div class="row items-center col-auto">
-                  <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
-                  <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
-                  <q-label class="q-mr-sm">{{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }}</q-label>
-                  <q-label class="q-mr-sm">Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }}</q-label>
-                </div>
-
-                <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
-                <div class="text-h6 q-mt-sm">Tag type: {{ tag.tag_type }}</div>
-                -->
-                <div class="col">
-                  <BadgeAvatar
-                    :annotation-class="{
-                      short: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name || '?',
-                      colorString: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color || '#a19e6d',
-                      textColor: 'black',
-                      approved: tag.tag_type,
-                    }"
-                    @approve-click="approveTag(true, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
-                    @disapprove-click="approveTag(false, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
-                    size="sm"
-                  />
-                </div>
-                </div>
-              </div> <!-- end tag -->
             </div>
           </q-card-section>
         </q-card>
@@ -136,7 +107,7 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, onMounted } from 'vue'
 import { Notify } from 'quasar'
-import type { CollectionRequest, CreateResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse } from 'src/models'
+import type { CollectionRequest, CreateResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse, GetCollectionChunksResponse, CollectionChunks } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
@@ -221,7 +192,7 @@ const userCollectionCreation = ref<ItemCreationOption>({
 const tags = ref<TagData[]>([])
 const loadingSpinner = ref(false)
 
-const chunkData = ref<GetTaggedChunksResponse|null>(null)
+const chunkData = ref<CollectionChunks[]>([])
 const chunkDataPositive = ref<GetTaggedChunksResponse|null>(null)
 const chunkDataNegative = ref<GetTaggedChunksResponse|null>(null)
 
@@ -472,36 +443,13 @@ async function fetchCollectionChunks () {
   loading.value = true
   try {
     console.log('selectedCollectionId.value =', selectedCollectionId.value)
-    const { data: data1 } = await api.get('/chunks_of_collection', {
-      params: { collectionId: 'f69088d1-9d9f-4f60-8c2a-746a51a9a159' }
+    const { data: data1 } = await api.get<GetCollectionChunksResponse>('/chunks_of_collection', {
+      params: { collectionId: selectedCollection.value?.id } // 'f69088d1-9d9f-4f60-8c2a-746a51a9a159' }
     })
-    console.log('Tagging response received:', data1)
-    chunkData.value = data1
-
-    // merge by chunk_id
-    const map = new Map<string, any>()
-
-    const add = (source: GetTaggedChunksResponse, type: string) => {
-      if (!source?.chunks_with_tags) return
-      for (const entry of source.chunks_with_tags) {
-        const id = entry.chunk_id
-        if (!map.has(id)) {
-          map.set(id, {
-            chunk_id: id,
-            text_chunk: entry.text_chunk,
-            chunk_collection_name: entry.chunk_collection_name,
-            tags: []
-          })
-        }
-        map.get(id).tags.push({ ...entry, tag_type: type })
-      }
-    }
-
-    add(chunkData.value, 'automatic')
-
-    mergedChunks.value = Array.from(map.values())
+    console.log('Chunks response received:', data1)
+    chunkData.value = data1.chunks_of_collection
   } catch (e) {
-    console.error('Tagging error:', e)
+    console.error('Collecting chunks error:', e)
   } finally {
     loading.value = false
   }

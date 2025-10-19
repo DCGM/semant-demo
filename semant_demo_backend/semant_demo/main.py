@@ -434,8 +434,8 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: Weavi
         logging.error(e)
         return {"created": False, "message": f"Chunk not added to collection becacause of: {e}"}
 
-@app.get("/api/chunks_of_collection", response_model=schemas.GetTaggedChunksResponse)
-async def get_collection_chunks(collectionId: str, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTaggedChunksResponse:
+@app.get("/api/chunks_of_collection", response_model=schemas.GetCollectionChunksResponse)
+async def get_collection_chunks(collectionId: str, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetCollectionChunksResponse:
     """
     returns chunks which belong to collection given by id
     """

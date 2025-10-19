@@ -210,6 +210,13 @@ class GetCollectionsResponse(BaseModel):
 class Chunk2CollectionReq(BaseModel):
     collectionId: str   # id of the collection
     chunkId: str        # chunk id
+
+class CollectionChunks(BaseModel):
+    text_chunk: str # actual text chunk
+    chunk_id: str # to apply changes later
+
+class GetCollectionChunksResponse(BaseModel):
+    chunks_of_collection : list[CollectionChunks] # list of pairs text chunk and id belonging to it
     
 # Task Model
 TasksBase = declarative_base()

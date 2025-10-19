@@ -214,3 +214,12 @@ export interface GetUserCollectionsResponse {
   collections: Collection[]
   user_id: string
 }
+
+export interface CollectionChunks {
+    text_chunk: string;
+    chunk_id: string;
+}
+
+export interface GetCollectionChunksResponse {
+    chunks_of_collection : CollectionChunks[]
+}
