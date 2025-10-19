@@ -1078,7 +1078,7 @@ class WeaviateSearch:
             print(e)
             return True
         
-    async def get_collection_chunks(self, collectionId: str, ) ->schemas.GetTaggedChunksResponse:
+    async def get_collection_chunks(self, collectionId: str, ) ->schemas.GetCollectionChunksResponse:
         """
         get all chunks belonging to collection with collectionId
         get tag objects from them extract collection names, in these collections 
@@ -1103,22 +1103,25 @@ class WeaviateSearch:
                 
                 referencedCollections = chunk_obj.references.get("userCollection")
                 logging.debug(f"{referencedCollections}")
-                if referencedCollections and getattr(referencedCollections, "objects", None):
-                    logging.debug(f"{referencedCollections}")
+                if referencedCollections: # and getattr(referencedCollections, "objects", None):
+                    #logging.debug(f"In referenced collection {referencedCollections}")
                     for collect_obj in referencedCollections.objects:
+                        logging.info(f"Collection id: {collect_obj.uuid}")
                         logging.debug(collect_obj.uuid)
-                        if collect_obj.uuid == collectionId:
-                            
-                            chunk_text = chunk_obj.chunk_obj.properties.get('text','')
+                        logging.info(f"{collect_obj.uuid} vs {collectionId}")
+                        if str(collect_obj.uuid) == collectionId:
+                            logging.info(f"Collection id matches")
+                            chunk_text = chunk_obj.properties.get('text','')
                             chunk_id = str(chunk_obj.uuid)
                             logging.debug(f"chunk {chunk_id} ref: {collectionId}")
-                            chunk_lst_with_tags.append({'tag_uuid': '123', 'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collectionId, "tag_type": 'automatic' })
-                    
+                            chunk_lst_with_tags.append({'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collectionId})
+                else:
+                    logging.info(f"No collection referenced")
                 logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
-            return {"chunks_with_tags": chunk_lst_with_tags}
+            return {"chunks_of_collection": chunk_lst_with_tags}
         except Exception as e:
             logging.error(f"Error: {e}")
-            return {'chunks_with_tags': []}
+            return {'chunks_of_collection': []}
     
     #TODO add collection to Tag class
     async def get_all_tags(self):
