@@ -1,4 +1,5 @@
-Both evaluate.py and generateTests.py require .env file.
+- If "generateTests.py" Ollama mode does not work while generating to many questions, try to increase timeout (default 300s).
+- Both evaluate.py and generateTests.py require .env file.
 #### evaluate.py requires:
 - backend url
     - BACKEND_API_URL
@@ -16,3 +17,5 @@ Both evaluate.py and generateTests.py require .env file.
 
 #### generateTests.py requires:
 - OPENAI_API_KEY
+
+

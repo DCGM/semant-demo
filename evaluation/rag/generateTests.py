@@ -112,7 +112,7 @@ def main():
         )
 
     else:   #OLLAMA
-        generator_llm = Ollama(model=OLLAMAmodel, base_url=os.getenv("OLLAMA_URL"))
+        generator_llm = Ollama(model=OLLAMAmodel, base_url=os.getenv("OLLAMA_URL"), request_timeout = 300.0)
         #custom promts are required, otherwise ollama wil act like chatbot 
         text_question_template_str = (
             """
