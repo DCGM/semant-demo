@@ -14,7 +14,7 @@
         dense
         outlined
         style="width: 200px"
-        @keyup.enter="handleAddUser"/>
+        @update:model-value="handleAddUser"/>
       </div>
     </div>
     <q-dialog v-model="tagCreateDialogVisible">
@@ -455,13 +455,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted, onMounted } from 'vue'
+import { ref, onUnmounted, computed, onMounted } from 'vue'
 import type { TagRequest, CreateResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
 import BadgeAvatar from 'src/components/BadgeAvatar.vue'
-import useUserStore from 'src/stores'
+import { useUserStore } from 'src/stores/user-store'
 
 // TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 
@@ -557,7 +557,7 @@ const tagsLen = ref(5)
 const tagCreateDialogVisible = ref(false)
 
 const userStore = useUserStore()
-const username = ref("")
+const username = ref('')
 
 const tasksExpansion = ref(null)
 
@@ -621,6 +621,10 @@ onMounted(async () => {
   // the tag management part
   loadingSpinner.value = true
   try {
+    // load username if already set
+    username.value = userStore.user?.id ?? ''
+
+    // load tags
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
@@ -884,9 +888,10 @@ async function onShowTasks () {
   }
 }
 
-const handleAddUser = () => {
+const handleAddUser = (value: string) => {
   if (username.value.trim()) {
     console.log('Username entered:', username.value)
+    userStore.setUser(username.value)
   }
 }
 

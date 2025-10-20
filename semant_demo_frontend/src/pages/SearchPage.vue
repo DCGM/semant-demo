@@ -692,13 +692,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox, Notify } from 'quasar'
 import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse, RemoveTagsResponse, CreateResponse } from 'src/models'
 import { api } from 'src/boot/axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
 import BadgeAvatar from 'src/components/BadgeAvatar.vue'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
+import { useUserStore } from 'src/stores/user-store'
 
 const searchForm = ref<SearchRequest>({
   query: '',
@@ -1048,12 +1049,13 @@ async function removeSelectedTags () {
 
 // collection manage
 const collectionStore = useCollectionStore()
-const username = ref("")
+const userStore = useUserStore()
+const username = ref('')
 
-const handleAddUser = async () => {
+const handleAddUser = async (value: string) => {
   if (username.value.trim()) {
     console.log('Username entered:', username.value)
-    collectionStore.setUser(username.value)
+    userStore.setUser(username.value)
     await loadCollections() // load collections of the user
   }
 }
@@ -1100,5 +1102,10 @@ async function addChunkToCollection (currentChunkId: string) {
     Notify.create({ message: 'Failed to add chunk to collection', position: 'top', color: 'negative' })
   }
 }
+
+onMounted(async () => {
+  // load username if already set
+  username.value = userStore.user?.id ?? ''
+})
 
 </script>

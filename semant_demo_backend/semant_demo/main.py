@@ -8,7 +8,7 @@ from semant_demo.config import config
 import logging
 from semant_demo.weaviate_search import WeaviateSearch
 import asyncio
-from semant_demo.tagging import tag_and_store
+from semant_demo.tagging.tagging_task import tag_and_store
 import uuid
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -28,18 +28,13 @@ from semant_demo.schemas import Task, TasksBase
 
 import json
 
-from semant_demo.weaviate_search import DBError, update_task_status
+from semant_demo.tagging.sql_utils import DBError, update_task_status
 
-
+# to reset the db
 """
 if os.path.exists(config.SQL_DB_URL):
     os.remove(config.SQL_DB_URL)
     print("Deleted old database file")
-"""
-
-"""
-from semant_demo.celery_tagging import tag_and_store
-from celery.result import AsyncResult
 """
 
 logging.basicConfig(level=logging.INFO)

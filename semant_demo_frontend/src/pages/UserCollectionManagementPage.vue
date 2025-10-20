@@ -62,7 +62,7 @@
       />
       <!-- Select the collection -->
       <q-btn
-        label="Reload Collections"
+        label="Load Collection Chunks"
         color="primary"
         @click="loadCollections"
         class="q-mb-md"
@@ -113,6 +113,7 @@ import axios from 'axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
 import BadgeAvatar from 'src/components/BadgeAvatar.vue'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
+import { useUserStore } from 'src/stores/user-store'
 
 // TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 
@@ -203,7 +204,8 @@ const tagsLen = ref(5)
 const collectionCreateDialogVisible = ref(false)
 
 const collectionStore = useCollectionStore()
-const username = ref("")
+const userStore = useUserStore()
+const username = ref('')
 
 interface MergedTag {
   tag_uuid: string
@@ -253,6 +255,10 @@ onMounted(async () => {
   // the tag management part
   loadingSpinner.value = true
   try {
+    // load username if already set
+    username.value = userStore.user?.id ?? ''
+
+    // load tags
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
@@ -508,7 +514,7 @@ async function onShowTasks () {
 const handleAddUser = async () => {
   if (username.value.trim()) {
     console.log('Username entered:', username.value)
-    collectionStore.setUser(username.value)
+    userStore.setUser(username.value)
     await loadCollections() // load collections of the user
   }
 }
