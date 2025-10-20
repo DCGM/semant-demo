@@ -1,13 +1,22 @@
 [
-  {
-    "question_id": "q01.01_plat_1948",
-    "question": "Jaký byl průměrný plat v České Republice v roce 1948?",
-    "ground_truth": "- Průměrný hodinový výdělek dělníka se v roce 1948 zvýšil z 16,60 Kšs v lednu na 20,50 Kčs v prosinci.\n - Měsíční výdělek se potom ve stejném období zvýšil u dělníka z 3.296 Kčs na 4.562 Kčs.\n - U úředníka se plat zvýšil z 5.172 Kčs v lednu na 6.324 Kčs v prosinci."
-  },
-
-  {
-    "question_id": "q01.02_plat_delnika_1948",
-    "question": "Jaký byl průměrný plat dělníka v České Republice v roce 1948?",
-    "ground_truth": "- Průměrný hodinový plat dělníka se v roce 1948 zvýšil z 16,60 Kšs v lednu na 20,50 Kčs v prosinci.\n - Měsíční výdělek se potom ve stejném období zvýšil u dělníka z 3.296 Kčs na 4.562 Kčs."
-  }
+    {
+        "question_id": "gen_li_1",
+        "question": "Jakým způsobem se volí předseda a členové výborů podle uvedeného textu, a jak dlouho trvá jejich funkční období?",
+        "ground_truth": "Předseda a členové výborů jsou voleni valným shromážděním. Funkční období všech členů ředitelstva trvá tři roky. Každým rokem vystoupí pět členů výboru a doplní se novými volbami. Každý vystupující může být opět zvolen."
+    },
+    {
+        "question_id": "gen_li_2",
+        "question": "Co naznačuje text o vnímání slovanského společenství a jeho vztahu k cárskému despotismu?",
+        "ground_truth": "Text naznačuje, že slovanské společenství je vnímáno jako oběť cárského despotismu, který se snaží oslabit a rozdělit slovanské národy. Cárský režim je kritizován za to, že v krátkozrakosti věří, že proléváním bratrské krve dosáhne svého cíle vytvoření všeslovanské říše. Text vyjadřuje nesouhlas s tímto přístupem a naznačuje, že takové činy poškozují pověst celého Slovanstva."
+    },
+    {
+        "question_id": "gen_li_3",
+        "question": "Welche rechtlichen Verstöße wurden in der Zeitschrift „Der Bauarbeiter“ festgestellt, und wie oft traten diese im Zeitraum von Ende August bis 6. Dezember auf?",
+        "ground_truth": "In der Zeitschrift „Der Bauarbeiter“ wurden folgende rechtliche Verstöße festgestellt: viermal das Vergehen nach § 14/5, einige Male das Vergehen nach § 16/1 und dreimal die Übertretung nach § 15/4 des Gesetzes 50/23."
+    },
+    {
+        "question_id": "gen_li_4",
+        "question": "Welche Anforderungen müssen Bewerber erfüllen, um sich für die Stelle des Sekundararztes an der Abteilung für Frauenkrankheiten des Hospitales in Reichenberg zu bewerben?",
+        "ground_truth": "Bewerber müssen ledig sein und tschechoslowakische Staatsbürger. Sie müssen außerdem ein schriftliches Gesuch einreichen, das mit einem 5-Kronen-Stempel versehen ist."
+    }
 ]

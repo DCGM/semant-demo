@@ -1,6 +1,6 @@
 [
   {
-    "question_id": "q01.01_plat_1948",
+    "question_id": "manual_q01.01_plat_1948",
     "question": "Jaký byl průměrný plat v České Republice v roce 1948?",
     "ground_truth": "- Průměrný hodinový výdělek dělníka se v roce 1948 zvýšil z 16,60 Kšs v lednu na 20,50 Kčs v prosinci.\n - Měsíční výdělek se potom ve stejném období zvýšil u dělníka z 3.296 Kčs na 4.562 Kčs.\n - U úředníka se plat zvýšil z 5.172 Kčs v lednu na 6.324 Kčs v prosinci.",
     "source_document_filename": ["TODO"],
@@ -10,7 +10,7 @@
   },
 
   {
-    "question_id": "q01.02_plat_delnika_1948",
+    "question_id": "manual_q01.02_plat_delnika_1948",
     "question": "Jaký byl průměrný plat dělníka v České Republice v roce 1948?",
     "ground_truth": "- Průměrný hodinový plat dělníka se v roce 1948 zvýšil z 16,60 Kšs v lednu na 20,50 Kčs v prosinci.\n - Měsíční výdělek se potom ve stejném období zvýšil u dělníka z 3.296 Kčs na 4.562 Kčs.",
     "source_document_filename": ["TODO"],
@@ -20,7 +20,7 @@
   },
 
   {
-    "question_id": "q01.03_mzda_1948",
+    "question_id": "manual_q01.03_mzda_1948",
     "question": "Jaká byla průměrná mzda v České Republice v roce 1948?",
     "ground_truth": "- Průměrná hodinová mzda dělníka se v roce 1948 zvýšil z 16,60 Kšs v lednu na 20,50 Kčs v prosinci.\n - Měsíční mzda se ve stejném období zvýšil u dělníka z 3.296 Kčs na 4.562 Kčs.\n - U úředníka se mzda zvýšila z 5.172 Kčs v lednu na 6.324 Kčs v prosinci.",
     "source_document_filename": ["TODO (pod sebou)"],
@@ -30,7 +30,7 @@
   },
 
   {
-    "question_id": "q02_uhrn_mezd",
+    "question_id": "manual_q02_uhrn_mezd",
     "question": "Jaký byl úhrn mezd v roce 1948 v České Republice?",
     "ground_truth": "TODO",
     "source_document_filename": ["TODO"],

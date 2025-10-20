@@ -1,0 +1,1232 @@
+[
+    {
+        "question_id": "gen_li_1",
+        "question": "Jaké procento průřízu se odhaduje pro opravu kultur a jak dlouho obvykle trvá, než se kultura považuje za úplnou a zdařilou?",
+        "ground_truth": "Pro opravu kultur se odhaduje průříz asi 40—50%. Obvykle trvá 3—5 let při stálých a značných doplňkách, než se kultura považuje za úplnou a zdařilou."
+    },
+    {
+        "question_id": "gen_li_2",
+        "question": "Jaké jsou hlavní překážky, které brání lesníkům v rozšiřování svých odborných znalostí a zkušeností podle textu?",
+        "ground_truth": "Hlavní překážky, které brání lesníkům v rozšiřování svých odborných znalostí a zkušeností podle textu, zahrnují nedostatek času a příležitostí k zachování a rozšiřování teoretických vědomostí, jednostranné pěstování odborných pojmů, vzdálenost a cenzuru, které omezují literární spojení, a také skromné prostředky."
+    },
+    {
+        "question_id": "gen_li_3",
+        "question": "Based on the text, what challenges do foresters face when relying solely on practical experience, and how does this impact their approach to understanding forest pests like the \"klikoroha\"?",
+        "ground_truth": "Foresters face several challenges when relying solely on practical experience. The text highlights the lack of intelligent auxiliary forces and the extensive and intensively utilized forest areas, which leave foresters dependent on their practical knowledge. This situation forces them to revisit old books on forest protection and cultivation to gain a deeper understanding of forest pests like the \"klikoroha.\" The reliance on practical experience, coupled with limited resources, means that foresters must work diligently to fill gaps in their knowledge, often leading to debates and differing opinions on pest behaviors, such as where the \"klikoroha\" lays its eggs. This impacts their approach by necessitating a return to theoretical knowledge to supplement their practical experience."
+    },
+    {
+        "question_id": "gen_li_4",
+        "question": "Jaké jsou hlavní cíle polaření podle textu a jaké jsou argumenty pro a proti současnému provedení kultury při dosažení těchto cílů?",
+        "ground_truth": "Hlavní cíle polaření podle textu jsou vyčištění půdy od plevele, aby se předešlo zadušení sazenic, a odstranění kořání a odpadků sosen, aby se předešlo rozmnožení hmyzu. Argumenty pro současné provedení kultury při dosažení těchto cílů zahrnují možnost dosažení těchto cílů i při současně provedené kultuře, což někteří dokazovali z vlastní praxe. Naopak argumenty proti zahrnují nebezpečí poškození kultury, což jiní považovali za nemožné."
+    },
+    {
+        "question_id": "gen_li_5",
+        "question": "Jaké důvody jsou uvedeny v textu pro to, že nelze myslet na dobývání pařezů a úplné vyklučení paseky?",
+        "ground_truth": "V textu jsou uvedeny následující důvody, proč nelze myslet na dobývání pařezů a úplné vyklučení paseky: lidé v této oblasti neznají techniku dobývání syrových pařezů, není možné sehnat dostatečný počet dělníků pro tuto práci, mzdy jsou vysoké, ceny dříví z pařezů jsou špatné a dříví by se sotva prodalo, což by bylo nevýnosné. Navíc lidé nejsou ochotni převzít paseky do nájmu a provést vyklučení a vyčistění na vlastní účet, protože jsou neznalí, nedůvěřiví a zčásti líní."
+    },
+    {
+        "question_id": "gen_li_6",
+        "question": "Jaký jazyk byl použit pro komunikaci s polským hostem, a proč byl tento jazyk zvolen?",
+        "ground_truth": "Pro komunikaci s polským hostem byla použita němčina, protože nikdo z přítomných neovládal plynně polštinu. Němčina byla zvolena, aby se host mohl účastnit rozpravy."
+    },
+    {
+        "question_id": "gen_li_7",
+        "question": "Jaké faktory byly diskutovány v souvislosti s výběrem a střídáním polních produktů a jaký vliv mají na trvání polaření?",
+        "ground_truth": "V souvislosti s výběrem a střídáním polních produktů byly diskutovány faktory jako druh vlastnosti půdy, vliv místního podnebí, způsob očistění a obdělky pasek. Tyto faktory mají vliv na trvání polaření, protože ovlivňují, jaké produkty je vhodné pěstovat a jak dlouho může být pole využíváno pro konkrétní plodiny."
+    },
+    {
+        "question_id": "gen_li_8",
+        "question": "What challenges are mentioned in the text regarding the clearing of tree stumps on the estate, and how do these challenges affect the future growth of vegetation?",
+        "ground_truth": "The text mentions the challenge of clearing tree stumps on the estate, particularly due to the presence of various types of trees such as oak, aspen, birch, and other deciduous species mixed in with the pine trees. The difficulty lies in the fact that these stumps, if left standing, will lead to the regrowth of shoots, resulting in a dense thicket of vegetation. This regrowth is further complicated by the presence of hazel, which undergrows all the local forests and forms a network with its roots. Consequently, the effort and expense of clearing the land between these stumps would be rendered ineffective, as the area would soon become overgrown again."
+    },
+    {
+        "question_id": "gen_li_9",
+        "question": "What are the specifications and prices of the two different models of the wood planer manufactured by Vogeley & Braune in Brunswick?",
+        "ground_truth": "The wood planer manufactured by Vogeley & Braune in Brunswick comes in two different models with the following specifications and prices:\n\n1. Model I: This model can plane wood up to 400 mm wide and 130 mm thick. It is priced at 600 marks.\n\n2. Model II: This model can plane wood up to 500 mm wide and 130 mm thick. It is priced at 700 marks."
+    },
+    {
+        "question_id": "gen_li_10",
+        "question": "Jaké zařízení bude vystavěno u Černého jezera v Šumavě a jaké služby bude nabízet turistům?",
+        "ground_truth": "U Černého jezera v Šumavě bude vystavěn hostinec nákladem správy lesů knížete Hohenzollern. Hostinec bude nabízet stálou restauraci a 8—12 hostinských pokojů pro turisty."
+    },
+    {
+        "question_id": "gen_li_11",
+        "question": "What are the prices for different types and ages of tree saplings sold by the Lesní úřad in Nových Hradech and Hradec u Opavy?",
+        "ground_truth": "The Lesní úřad in Nových Hradech offers the following prices for tree saplings:\n\n- Ordinary and black pine 1-year-olds: 90 kr. per thousand\n- 2-year-old pines (not transplanted): 1 zl. 80 kr. per thousand\n- Spruce 1-year-olds: 1 zl. 20 kr. per thousand (3-year-olds: 1 zl. 60 kr.)\n- Transplanted 2-year-old pines: 2 zl. 70 kr. per thousand\n- Spruce 2-year-olds: 2 zl. 50 kr. per thousand (3-year-olds: 3 zl. 40 kr.)\n- Larch 2-year-olds: 3 zl. per thousand\n- Oak and chestnut: 5 zl. per thousand\n\nThe Lesní úřad in Hradec u Opavy offers the following prices for tree saplings:\n\n- Summer lime 4-year-olds (40–60 cm tall): 36 zl. per thousand\n- Summer lime 2-year-olds (6–14 cm tall): 15 zl. per thousand\n- Winter lime 4-year-olds (6–100 cm tall): 36 zl. per thousand\n- Winter lime 3-year-olds (20–30 cm tall): 28 zl. per thousand\n- Winter lime 2-year-olds (15–30 cm tall): 18 zl. per thousand\n- Alder 3-year-olds (60–100 cm tall): 15 zl. per thousand\n- Alder 2-year-olds (40–60 cm tall): 10 zl. per thousand"
+    },
+    {
+        "question_id": "gen_li_12",
+        "question": "What types of coniferous tree seeds are offered by Stainera a Hofmanna in Víden, Novém Městě, and what additional service is provided for testing seed germination?",
+        "ground_truth": "Stainera a Hofmanna in Víden, Novém Městě offers seeds of coniferous trees such as black and common pine, spruce, larch, and fir of the best quality. Additionally, they provide a service for testing seed germination through Jul. Stainer's germination bed, available for 3 zl. per piece."
+    },
+    {
+        "question_id": "gen_li_13",
+        "question": "What are the key features and benefits of the hand-operated device for splitting tree trunks and timber as described in the document, and who holds the patent for this invention?",
+        "ground_truth": "The key features and benefits of the hand-operated device for splitting tree trunks and timber, as described in the document, include its simple construction and the ability to be operated with just one hand. It is designed to be easily set up in a matter of seconds both in the forest and on construction and carpentry sites. The patent for this invention is held by C. Kuhn and Gebr. Kirsch."
+    },
+    {
+        "question_id": "gen_li_14",
+        "question": "Jaký je vliv dovolené na povinnost služební podle textu z 23. června 1916?",
+        "ground_truth": "Text z 23. června 1916 naznačuje, že v životě a přírodě existuje určitý cyklus vzestupu a poklesu, vypětí sil a jejich ochabnutí. To znamená, že každá činnost, ať už duševní nebo tělesná, má svůj rytmus, který zahrnuje období aktivity a odpočinku. Nabytá síla a energie potřebují čas na obnovu prostřednictvím klidu a nečinnosti. Tímto způsobem dovolená přispívá k obnově sil a energie, což je důležité pro plnění služebních povinností."
+    },
+    {
+        "question_id": "gen_li_15",
+        "question": "Jaký je význam zastavení a odpočinku při namáhavé a zodpovědné práci podle textu?",
+        "ground_truth": "Podle textu je význam zastavení a odpočinku při namáhavé a zodpovědné práci v tom, že umožňuje člověku obnovit energii a zabránit poškození organismu. Zastavení je důležité, aby se předešlo vyčerpání a aby se zachovala schopnost úspěšně vykonávat práci. Čím je práce namáhavější a zodpovědnější, tím delší by měl být odpočinek, aby se kompenzovalo větší vysílení. Tento odpočinek je označován jako dovolená."
+    },
+    {
+        "question_id": "gen_li_16",
+        "question": "Jaké jsou důvody pro uznání nutnosti dovolené pro dělníky v jiných zemích ve srovnání s přístupem k dovolené v naší zemi podle textu?",
+        "ground_truth": "V jiných zemích je uznávána nutnost dovolené pro dělníky z důvodů prospěchu práce, což znamená, že se klade důraz na to, aby i dělník měl ročně svoji dovolenou. Naopak v naší zemi dovolená spočívá na určitém stavovském podkladě a je upravena zákonem pouze pro určité vrstvy zaměstnanců, přičemž je závislá na délce strávené služby."
+    },
+    {
+        "question_id": "gen_li_17",
+        "question": "Why is taking a vacation considered beneficial for individuals working in mining, according to the text?",
+        "ground_truth": "According to the text, taking a vacation is considered beneficial for individuals working in mining because it allows them to return to their duties with full energy. The demanding nature of mining work, which requires constant mental focus and can lead to physical and mental exhaustion, leaves lasting effects on the body. A vacation provides a necessary break, helping to restore energy and prevent potential health issues that could arise from prolonged stress and fatigue."
+    },
+    {
+        "question_id": "gen_li_18",
+        "question": "Jaký vliv má účelně strávená dovolená na těžbu podle odborníků v hornictví a psychologů práce?",
+        "ground_truth": "Podle odborníků v hornictví a psychologů práce má účelně strávená dovolená pozitivní vliv na těžbu. Zvyšuje její hodnotu a mnohost, protože osvěžuje a posiluje duševní i tělesný systém pracovníků, což vede k lepšímu výkonu a efektivitě v práci."
+    },
+    {
+        "question_id": "gen_li_19",
+        "question": "Jaké důvody jsou uvedeny pro nutnost dovolené v hornictví a jaké specifické požadavky jsou kladeny na zřízence v tomto odvětví?",
+        "ground_truth": "Důvody pro nutnost dovolené v hornictví jsou uvedeny jako prospěch a výkon ve službě. Dovolená je považována za důležitou součást, z níž vychází prospěch závodu. Specifické požadavky kladené na zřízence v hornictví zahrnují zodpovědnou a vysilující práci, která je náročná jak na dole, tak na povrchu a v kancelářích. Tato práce je popsána jako úmorná a morek vysýchající, což vyžaduje určitou dobu klidu a odpočinku."
+    },
+    {
+        "question_id": "gen_li_20",
+        "question": "Jaký je význam přesného zapadání jednotlivých zoubků v kontextu popsaného stroje a jaký vliv má jejich pokřivení na celkový výkon?",
+        "ground_truth": "V kontextu popsaného stroje je přesné zapadání jednotlivých zoubků klíčové pro jeho správnou funkci. Každý jedinec je přirovnán k zoubku na kolečku, který musí přesně zapadat, aby přispěl k celkovému výkonu. Pokřivení nebo nesprávné zapadání zoubků může způsobit škodu nebo dokonce zastavení stroje. To znamená, že jakákoli odchylka od přesnosti může negativně ovlivnit celkový výkon a efektivitu, což by mohlo vést k nižšímu úspěchu a prospěchu pro majitele."
+    },
+    {
+        "question_id": "gen_li_21",
+        "question": "Jaké změny v pracovních podmínkách byly zavedeny během válečné doby, a jaký vliv měly na pracovníky v uhelných závodech?",
+        "ground_truth": "Během válečné doby byly zavedeny změny v pracovních podmínkách, které zahrnovaly nedělní těžbu a těžbu ve svátky, což znamenalo, že pracovníci téměř neměli odpočinek. Tyto změny byly zavedeny z důvodů časové nutnosti a měly drtivý vliv na pracovníky, kteří museli pracovat bez ohledu na délku doby služební. Tato situace trvala již třetím rokem, což naznačuje dlouhodobé zatížení pracovníků v uhelných závodech."
+    },
+    {
+        "question_id": "gen_li_22",
+        "question": "Jaké události se staly 31. května 1891 v Příbrami, a jaký dopad měly na místní obyvatele?",
+        "ground_truth": "Dne 31. května 1891 se v Příbrami stala katastrofa, která zanechala nezapomenutelnou a smutnou vzpomínku. Přesné detaily události nejsou v poskytnutém textu uvedeny, ale je zřejmé, že šlo o významnou a tragickou událost, která měla hluboký dopad na místní obyvatele. Tato událost je vzpomínána jako zdrcující zpráva, která se rozšířila po Příbrami."
+    },
+    {
+        "question_id": "gen_li_23",
+        "question": "Jaká byla reakce lidí na zprávu o hořících šachtách v Březových Horách a jak se situace projevila na místě katastrofy?",
+        "ground_truth": "Reakce lidí na zprávu o hořících šachtách v Březových Horách byla nejprve nedůvěřivá, protože něco takového, jako hořící kamení, nikdy předtím neslyšeli. Nicméně, touha přesvědčit se o pravdivosti této zprávy vedla k tomu, že se k místu katastrofy začaly sbíhat nepřehledné zástupy lidí ze všech směrů. Na místě katastrofy panoval chaos a zoufalství; bylo slyšet pláč matek, žen a dětí, které se křečovitě držely svých matek ve strachu, že je opustí i v této hrozné chvíli. Každý, bez ohledu na svůj společenský stav, se zapojil do záchranných prací."
+    },
+    {
+        "question_id": "gen_li_24",
+        "question": "Jaké ctnosti a vlastnosti byly vyzdviženy u horníků během popisované události a jak se projevily v krizové situaci?",
+        "ground_truth": "Během popisované události byly u horníků vyzdviženy ctnosti jako sebeobětavost a hrdinnost. Tyto vlastnosti se projevily v krizové situaci, kdy horníci riskovali své životy, aby pomohli svým kolegům, kteří byli v nebezpečí udušení. Jejich obětavost a odvaha byly patrné, když se snažili zachránit ostatní, a to i za cenu vlastního ohrožení."
+    },
+    {
+        "question_id": "gen_li_25",
+        "question": "Jakým způsobem vznikl požár na 20. patře Marianské šachty a jaké byly důsledky této katastrofy?",
+        "ground_truth": "Požár na 20. patře Marianské šachty vznikl odhozením knotu z kahance mezi ležící zbytky dřeva. Důsledkem této katastrofy bylo, že kouř se šířil chodbami spojenými mezi šachtami, což vedlo k velkému počtu obětí, přičemž se uvádí, že jich bylo přibližně 330. Mnozí z hrdinů, kteří se snažili zachránit své kamarády, se již nevrátili, obětovali se pro záchranu druhých."
+    },
+    {
+        "question_id": "gen_li_26",
+        "question": "Jakou roli hrál velitel březohorských hasičů p. Žlutický při záchraně v dole a jaký byl jeho osud?",
+        "ground_truth": "Velitel březohorských hasičů p. Žlutický hrál při záchraně v dole hrdinskou roli, protože mnohým zachránil život. Nakonec se však sám stal obětí katastrofy."
+    },
+    {
+        "question_id": "gen_li_27",
+        "question": "Jaké informace by měly být zaznamenány o narukovaných kolezích podle textu?",
+        "ground_truth": "Podle textu by měly být zaznamenány následující informace o narukovaných kolezích: zda byli vyznamenáni, zraněni, kde bojovali, zda dosáhli nějaké šarže a jaké hodnosti. Pokud se vrátili a znovu byli povoláni, mělo by to být rovněž zaznamenáno, stejně jako jejich stavovská hodnost. Pokud padli na bojišti, mělo by být zaznamenáno místo a den, kde leží. Pokud byli raněni a zemřeli v nemocnici, nebo zemřeli následkem choroby, kterou si přivodili v poli, měla by být uvedena nemocnice."
+    },
+    {
+        "question_id": "gen_li_28",
+        "question": "Jakým způsobem se řešily obtíže s nákupem tabáku pro osazenstvo závodů během války podle uvedeného textu?",
+        "ground_truth": "Obtíže s nákupem tabáku pro osazenstvo závodů během války byly řešeny tím, že závody zakoupily pro veškeré osazenstvo potřebné množství tabáku kuřlavého a cigaretového. Tímto způsobem osazenstvo neztrácelo čas obstupováním trafik a uvítalo toto zřízení docela spokojeně. Každý obdržel 4 balíčky tabáků do dýmky."
+    },
+    {
+        "question_id": "gen_li_29",
+        "question": "Jaké jsou podmínky pro cestování z Ostravy podle uvedeného textu a jaké dokumenty jsou vyžadovány?",
+        "ground_truth": "Podle uvedeného textu je Ostrava stále ve válečném pásmu, a proto je nutné mít při cestování z Ostravy buď legitimaci, nebo cestovní pas. Kdo nastupuje ve Svinově, musí se prokázat hned při vstupu do nádraží. Pokud někdo vyjíždí z nádraží Ostrava—Vítkovice, musí mít nyní cestovní pas."
+    },
+    {
+        "question_id": "gen_li_30",
+        "question": "Which regions are included in the užší válečné pásmo (narrow war zone) according to the document?",
+        "ground_truth": "The užší válečné pásmo (narrow war zone) includes the entire Bukovina and in Galicia: the eastern part up to and including the political districts of Dolina, Stryj, Zydačov, Bobrka, Přemyšlany, Kamionka, Strumilova, and further Sokal (eastern part from Bug) with the exception of the town. Additionally, the entire region of Dalmacie remains part of the southeastern narrow war zone."
+    },
+    {
+        "question_id": "gen_li_31",
+        "question": "Jaké důvody jsou uvedeny pro zrušení nedělní práce na uhelných závodech a jaký je její vliv na pondělní výkon?",
+        "ground_truth": "Důvody pro zrušení nedělní práce na uhelných závodech jsou uvedeny jako její vysoká cena vzhledem k její četnosti. Nedělní práce je drahá, protože se za ni platí o půl šichty více. Její vliv na pondělní výkon je negativní, protože výsledek nedělní práce se projeví až v pondělí, a to zpravidla slabším výkonem."
+    },
+    {
+        "question_id": "gen_li_32",
+        "question": "Jaký byl účel koupě Salmských dolů na Ostravsku Pozemkovým úvěrním ústavem ve Vídni a jakou roli v tomto procesu hrál Vojt. hrabě Šternberg?",
+        "ground_truth": "Účelem koupě Salmských dolů na Ostravsku Pozemkovým úvěrním ústavem ve Vídni bylo převést akcie Ostravské horní akciové společnosti, které byly v majetku nezletilého knížete Hugona ze Salm-Reiferscheidu, na Rakouskou horní a hutní společnost, která je sousedem těchto dolů. Vojt. hrabě Šternberg hrál v tomto procesu roli zástupce nezletilého knížete, vedl jednání za něj."
+    },
+    {
+        "question_id": "gen_li_33",
+        "question": "What was the purchase price of the Salmské mines, and how was it structured in terms of stock value and assumed debts?",
+        "ground_truth": "The purchase price of the Salmské mines was nearly 27,000,000 K. It was structured in terms of stock value, with shares being taken over at a price of 300%, and additionally, debts amounting to 8.8 million korun were assumed."
+    },
+    {
+        "question_id": "gen_li_34",
+        "question": "Kdy a kde se bude konat svatba slečny Žofie Valové a jaké povolání má její otec?",
+        "ground_truth": "Svatba slečny Žofie Valové se bude konat dne 8. července ve farním chrámu v Mar. Horách. Její otec, pan Václav Valový, je důlní na jámě „Ignát“."
+    },
+    {
+        "question_id": "gen_li_35",
+        "question": "What action did the colleagues at the \"Ignat\" mine in Mar. Horách take to support the cause associated with the book \"Otčenáš\"?",
+        "ground_truth": "The colleagues at the \"Ignat\" mine in Mar. Horách supported the cause associated with the book \"Otčenáš\" by ordering 20 more copies of the book, bringing their total order to 80 copies."
+    },
+    {
+        "question_id": "gen_li_36",
+        "question": "Jaké podmínky byly stanoveny pro vstup do občanských léčebných a jiných ošetřovacích ústavů od 15. června 1916?",
+        "ground_truth": "Od 15. června 1916 byl vstup do občanských léčebných a jiných ošetřovacích ústavů vázán na předložení očkovacího vysvědčení."
+    },
+    {
+        "question_id": "gen_li_37",
+        "question": "Jaké podmínky musí návštěvníci splnit, aby mohli navštívit ošetřovance během války proti neštovicím?",
+        "ground_truth": "Návštěvníci musí prokázat lékařským stvrzením, že byli od počátku války proti neštovicím s úspěchem očkováni nebo přeočkováni. Výjimky jsou možné pouze v případech zvláště naléhavých s výslovným svolením řídicího nebo službu konajícího lékaře ústavního."
+    },
+    {
+        "question_id": "gen_li_38",
+        "question": "Jaké důsledky mohou nastat pro cestující, kteří přes hranice přenášejí knihy, brožury, časopisy, korespondenci a spisy, podle oznámení pol. kom. v textu?",
+        "ground_truth": "Podle oznámení pol. kom. v textu mohou pro cestující, kteří přes hranice přenášejí knihy, brožury, časopisy, korespondenci a spisy, nastat zdržování při kontrole pasů a zavazadel. Tato zdržování mohou mít za následek velmi značné překážky a opozdění v cestování pro dotyčné osoby."
+    },
+    {
+        "question_id": "gen_li_39",
+        "question": "Jaké podmínky musí splnit nevěsta vojenské osoby, aby bylo uděleno povolení k sňatku, a proč je tento postup považován za protizákonný?",
+        "ground_truth": "Nevěsta vojenské osoby musí vystavit písemné prohlášení, že v případě úmrtí nebo smrti na bojišti svého manžela nebude vznášet žádné nároky vůči státu, konkrétně že nebude žádat hmotné zaopatření, které jí dle zákona přísluší. Tento postup je považován za protizákonný, a proto by k němu nemělo nadále docházet."
+    },
+    {
+        "question_id": "gen_li_40",
+        "question": "Jakým způsobem správní rada ostravských horních a hutních závodů plánuje zvýšit akciový kapitál a jak budou nové akcie rozděleny mezi akcionáře?",
+        "ground_truth": "Správní rada ostravských horních a hutních závodů plánuje zvýšit akciový kapitál vydáním nových 17.500 akcií po 400 korunách. Z těchto akcií bude 8000 kusů odevzdáno jako částečná kupní cena za 14.000 kusů ostravské horní a hutní společnosti dříve kníže Salm všeobecné Kreditce. Zbývajících 9500 kusů bude nabídnuto akcionářům takovým způsobem, aby na 10 starých akcií připadla jedna nová akcie."
+    },
+    {
+        "question_id": "gen_li_41",
+        "question": "What was the total dividend per share for the c. k. priv. severní dráha císaře Ferdinanda in the year 1915, and how did it compare to the superdividend?",
+        "ground_truth": "The total dividend per share for the c. k. priv. severní dráha císaře Ferdinanda in the year 1915 was 242 K 50 h. This total dividend was 180 K more than the superdividend."
+    },
+    {
+        "question_id": "gen_li_42",
+        "question": "Jaké opatření bylo přijato mezi obcí Lomem a kutací společností uhelných dolů v Lomu ohledně náhrady za znehodnocení budov?",
+        "ground_truth": "Byla uzavřena dohoda, dle níž kutací společnost poskytne jako náhradu za znehodnocení 20 procent ceny budov a zaváže se nahradit všechny škody, které by mohly vzniknout kutáním."
+    },
+    {
+        "question_id": "gen_li_43",
+        "question": "Jaký je rozdíl mezi účinky umělého medu a medu včelího na influenční bacily podle textu?",
+        "ground_truth": "Podle textu umělý med nemá účinek na influenční bacily, protože neobsahuje mravenčí kyseliny, které med včelí obsahuje a které tyto bacily ničí."
+    },
+    {
+        "question_id": "gen_li_44",
+        "question": "Jaký je účel vydání knihy „Otčenáš“ a komu má výnos z této knihy pomoci?",
+        "ground_truth": "Účel vydání knihy „Otčenáš“ je ve prospěch sirotečků. Výnos z této knihy má aspoň částečně pomoci Svazu, což naznačuje, že je určen na podporu sirotků."
+    },
+    {
+        "question_id": "gen_li_45",
+        "question": "Jaké události nebo aktivity byly projednávány na výborové schůzi konané 2. července 1916?",
+        "ground_truth": "Na výborové schůzi konané 2. července 1916 byly projednávány následující události nebo aktivity: přijetí několika členů do spolku Svépomoc, určení poplatků pro některé členy, a různé záležitosti spolku. Schůze byla spojena s přednáškou, na níž tajemník Svazu projednal důležité otázky."
+    },
+    {
+        "question_id": "gen_li_46",
+        "question": "Jaké typy půjček povoluje Občanská záložna pro Pol. Ostravu a okolí a za jakých podmínek?",
+        "ground_truth": "Občanská záložna pro Pol. Ostravu a okolí povoluje půjčky na směnky, cenné papíry a hypotéky za mírný úrok. Také vyměřuje za podmínek výhodných úvěr stavební."
+    },
+    {
+        "question_id": "gen_li_47",
+        "question": "Jaké rozhodnutí bylo učiněno ohledně úmrtní podpory pro pozůstalé po zemřelém členu Leop. Cisovském a jaká byla částka této podpory?",
+        "ground_truth": "Pozůstalým po zemřelém členu Leop. Cisovském byla odhlasována podpora ve výši 250 K."
+    },
+    {
+        "question_id": "gen_li_48",
+        "question": "What services and products are offered by T. Pospíšila in Moravská Ostrava according to the document?",
+        "ground_truth": "According to the document, T. Pospíšila in Moravská Ostrava offers entertaining and educational foreign language textbooks, postcards and field cards, all kinds of writing and drawing supplies."
+    },
+    {
+        "question_id": "gen_li_49",
+        "question": "Based on the context provided, how many members does the organization \"Svépomoc\" currently have?",
+        "ground_truth": "Svépomoc currently has 937 members."
+    },
+    {
+        "question_id": "gen_li_50",
+        "question": "What services and products are offered by businesses located in Pol. Ostrava, according to the document?",
+        "ground_truth": "According to the document, businesses located in Pol. Ostrava offer the following services and products:\n\n1. Funeral services by the Pol. Ostravský pohřební ústav.\n2. Entertainment at the Palace Kino, described as the most advanced electric theater of its kind.\n3. Manufacturing of artificial flowers.\n4. Long-term financial arrangements for coal mining enterprises, officials, supervisors, professors, teachers, and pensioners under favorable conditions.\n5. Personal loans with flexible repayment terms, secured by promissory notes or other guarantees, with the possibility of larger amounts without collateral if fully secured.\n6. A steam sawmill.\n7. Manufacturing and repair of carriages, wagons, and sleighs."
+    },
+    {
+        "question_id": "gen_li_51",
+        "question": "Identify and describe the types of businesses and services mentioned in the context information provided.",
+        "ground_truth": "The context information mentions several types of businesses and services:\n\n1. **Export Business**: There is a mention of a strong export business, specifically related to \"notní Havíř.\"\n\n2. **Manufacturing and Storage**: This includes the production and storage of bicycles, sewing machines, iron products, beds, and mattresses.\n\n3. **Agricultural Supplies**: The text lists various agricultural products and fertilizers such as superphosphate, steamed bone meal, kainite, potash salt, sulfate, and nitrogen lime, recommended by Albin Chamrad.\n\n4. **Drugstore and Wholesale Building Materials**: Josef Marek operates a drugstore and wholesale business for building materials in Orlová.\n\n5. **Hat and Fashion Accessories**: M. Mertová offers a wide selection of women's and children's hats and related accessories. The business also provides fashion goods, including fabrics for costumes and blouses, as well as ready-made costumes, coats, and blouses in the latest styles.\n\n6. **Glassmaking Business**: There is a mention of the first glassmaking business in Orlová, indicating a service related to glass products.\n\nThese businesses and services reflect a diverse range of commercial activities in Orlová, including manufacturing, retail, agriculture, and fashion."
+    },
+    {
+        "question_id": "gen_li_52",
+        "question": "Jaké druhy zboží a služeb nabízí obchod popsaný v textu a jaké specifické práce jsou zmiňovány v souvislosti se sklenářstvím?",
+        "ground_truth": "Obchod popsaný v textu nabízí různé druhy zboží a služeb, včetně drogerie, skleněného a porcelánového zboží, zařízení pro hostince, kavárny a vinárny, výbavy pro nevěsty, hotových obrazů, toaletních zrcadel a tabulového skla. Dále nabízí dámské látky vlněné a prací, hedvábí na kostýmy, šaty a blůzy, velký sklad koberců, záclon a bílého zboží, a pánské módní zboží jako košile, límce, kravaty, ponožky, hole a deštníky.\n\nSpecifické práce zmiňované v souvislosti se sklenářstvím zahrnují zasklívání portálů, novostaveb, domů, zrcadel a další sklenářské práce, které jsou vyřizovány rychle a za mírné ceny."
+    },
+    {
+        "question_id": "gen_li_53",
+        "question": "Kdo nabízí největší výběr pánské, dámské a dětské obuvi na Orlovsku podle uvedeného textu?",
+        "ground_truth": "Podle uvedeného textu nabízí největší výběr pánské, dámské a dětské obuvi na Orlovsku Václav Machek."
+    },
+    {
+        "question_id": "gen_li_54",
+        "question": "Analyze the pricing structure for the newspaper mentioned in the document, including the cost differences for subscribers within and outside the Protectorate. What additional fees apply for subscribers outside the Protectorate, and how does the publisher address delivery issues caused by unforeseen circumstances?",
+        "ground_truth": "The pricing structure for the newspaper mentioned in the document is as follows:\n\n- The single issue price is K 1.20.\n- The subscription price for delivery within the Protectorate is RM 270 per month.\n- For subscribers outside the Protectorate, the subscription price is also RM 270 per month, but there is an additional postal fee of 36 Rpf.\n\nRegarding delivery issues caused by unforeseen circumstances, the publisher states that they are not obligated to provide replacement deliveries in such cases."
+    },
+    {
+        "question_id": "gen_li_55",
+        "question": "Welche Rolle spielte Heraklit in der alten Legende über die Versteigerung der Philosophen Athens, und wie begründete er seine melancholische Sichtweise auf die Welt?",
+        "ground_truth": "In der alten Legende über die Versteigerung der Philosophen Athens spielte Heraklit die Rolle eines der Weisen, die von der Käuferschaft stark umstritten wurden. Seine melancholische Sichtweise auf die Welt begründete er damit, dass die Welt durcheinander sei und die Menschheit ein verwirrter Brei. Er erklärte, dass er nur Tränen vergießen könne, wenn er sehe, wie der eine des anderen Meisterknecht sein wolle, indem er ihn nötige, die gleiche Meinung und die gleiche Sprache zu haben."
+    },
+    {
+        "question_id": "gen_li_56",
+        "question": "Compare and contrast the philosophical perspectives of Heraklit and Demokritos as described in the text. How do their views reflect their attitudes towards the world and humanity?",
+        "ground_truth": "In the text, Heraklit and Demokritos are presented as philosophers with contrasting perspectives on the world and humanity. Heraklit is described as the \"ewigen Greiner,\" or eternal weeper, suggesting that he views the world with a sense of sorrow and lamentation. His attitude reflects a belief that the world is in a state of disorder or dysfunction, which causes him to mourn the state of humanity.\n\nOn the other hand, Demokritos is characterized as the \"steten Lacher,\" or constant laugher. He approaches the world with a sense of humor and irony, finding amusement in the absurdity and contradictions of human behavior. Demokritos' perspective is that the world is so fundamentally flawed and humanity so misguided that laughter is the only appropriate response.\n\nBoth philosophers recognize the imperfections and challenges of the world, but their reactions differ significantly. Heraklit's response is one of sadness and grief, while Demokritos chooses to laugh at the folly of human actions. These differing attitudes reflect their philosophical outlooks: Heraklit's is more somber and reflective, whereas Demokritos' is more detached and humorous."
+    },
+    {
+        "question_id": "gen_li_57",
+        "question": "How does Max von Schenkendorf express his feelings about using foreign languages in his verse, and what does this suggest about his relationship with his native language?",
+        "ground_truth": "Max von Schenkendorf expresses a sense of melancholy and discomfort about using foreign languages in his verse. He describes his feelings as \"trüb\" (gloomy) when he is in a foreign land and has to use foreign tongues and words, which he feels he can never love. This suggests a deep attachment and preference for his native language, as he implies that foreign words lack the warmth and familiarity of a greeting. His relationship with his native language is one of love and comfort, contrasting with the alienation he feels when using other languages."
+    },
+    {
+        "question_id": "gen_li_58",
+        "question": "Wie wird die Bedeutung der deutschen Sprache im Vergleich zu anderen Sprachen im Text dargestellt, und welche Rolle spielt Joseph von Eichendorff in dieser Darstellung?",
+        "ground_truth": "Im Text wird die deutsche Sprache als ein wertvoller und bedeutender Schatz dargestellt, der im Vergleich zu anderen Sprachen, wie dem Englischen, eine tiefere und reichere Ausdruckskraft besitzt. Es wird angedeutet, dass die deutsche Sprache etwas Einzigartiges und Wunderbares ist, das nicht durch andere Sprachen ersetzt werden kann. Joseph von Eichendorff spielt in dieser Darstellung eine wichtige Rolle, da er als Beispiel für jemanden genannt wird, der die deutsche Sprache hochschätzt. Er dankt Gott im täglichen Gebet für das \"Mirakel der deutschen Sprache und der Mutterschrift\" und kann sich nicht vorstellen, sich mit fremden Sprachen und Schriftzeichen zu arrangieren. Sein Gedicht \"O Täler weit — o Höh’n\" wird als Beispiel angeführt, das in einer anderen Sprache nicht die gleiche Wirkung hätte."
+    },
+    {
+        "question_id": "gen_li_59",
+        "question": "How did Paris influence the world in terms of fashion and manners, and how did this influence compare to the cultural exports of Vienna and Rome according to the text?",
+        "ground_truth": "According to the text, Paris was seen as exemplary for good manners and fashion, with the whole world looking to it for trends and etiquette. This influence was described as a voluntary borrowing from Paris, which exported its so-called \"courtoisie\" or politeness. This cultural export is compared to Vienna's later export of waltzes and Rome's export of fine recipes for long noodles and even longer operas. Each city is noted for its unique cultural contributions, with Paris leading in fashion and manners."
+    },
+    {
+        "question_id": "gen_li_60",
+        "question": "How does the text describe the English language in terms of its cultural impact, and what comparison is made to illustrate this point?",
+        "ground_truth": "The text describes the English language as lacking in cultural sophistication, particularly in the context of official language use. It suggests that the English language is characterized by a certain recklessness, as exemplified by the British expression \"Goddam\" (God damn me). The text implies that the English prioritize their own language over considerations of right or wrong. To illustrate this point, a comparison is made between the transformation of Shakespeare into a classical poet through translation into German, and the preference for a violin from Mittelwalde over a bagpipe, suggesting that the German interpretation is seen as more refined or melodious."
+    },
+    {
+        "question_id": "gen_li_61",
+        "question": "What were the outcomes of the battles in the forest of Hürtgen as described in the document?",
+        "ground_truth": "In the forest of Hürtgen, the battles resulted in heavy fighting around the eastern exits. The enemy, despite suffering significant human and tank losses, was only able to gain a few small patches of forest."
+    },
+    {
+        "question_id": "gen_li_62",
+        "question": "Welche strategischen Ziele verfolgte der Gegner im Raum nordöstlich von Belfort und südwestlich von Mülhausen, und wie reagierten unsere Truppen darauf?",
+        "ground_truth": "Der Gegner versuchte, durch konzentrische Angriffe aus dem Raum nordöstlich von Belfort und südwestlich von Mülhausen die burgundische Pforte zu öffnen. Unsere Truppen reagierten darauf, indem sie die Angriffe bei Masmünster verlustreich zusammenbrechen ließen."
+    },
+    {
+        "question_id": "gen_li_63",
+        "question": "Welche strategische Bedeutung hat der Straßenknotenpunkt Knin nordöstlich von Sibenik in Dalmatien, und wie haben sich die gemischten feindlichen Verbände in dieser Region verhalten?",
+        "ground_truth": "Der Straßenknotenpunkt Knin nordöstlich von Sibenik in Dalmatien hat strategische Bedeutung, da er Ziel heftiger Angriffe gemischter feindlicher Verbände ist. Diese Angriffe wurden jedoch abgewehrt, was darauf hindeutet, dass die Region um Knin von strategischem Interesse ist und umkämpft wird."
+    },
+    {
+        "question_id": "gen_li_64",
+        "question": "What changes in tactics and technology are mentioned in the context regarding the \"V 1\" and \"V 2\" attacks on England, and how have these affected the English defense strategies?",
+        "ground_truth": "The context mentions that the \"V 1\" and \"V 2\" attacks on England have significantly increased recently, with new types and tactics being employed. These changes have forced the English defense to completely reorganize. Additionally, there are reports of increased precision and novel deployment methods for these long-range weapons, targeting more confined areas. This has resulted in a greater number of \"flying bombs\" being reported than ever before."
+    },
+    {
+        "question_id": "gen_li_65",
+        "question": "Welche Herausforderungen und Verluste mussten die amerikanischen Streitkräfte in der Panzerschlacht nördlich von Aachen hinnehmen, und wie wird die Überlegenheit der neuen deutschen Panzer beschrieben?",
+        "ground_truth": "Die amerikanischen Streitkräfte mussten in der Panzerschlacht nördlich von Aachen große Verluste hinnehmen und waren in Gefahr, eine sehr schwere Niederlage zu erleiden. Die Verluste der Amerikaner waren größer als die der angreifenden deutschen Panzerverbände. Die Überlegenheit der neuen deutschen Panzer wird dadurch beschrieben, dass sie sich allen anderen schweren Panzertypen überlegen gezeigt haben. Insbesondere wird erwähnt, dass 7.5-Zentimetergranaten von den deutschen Panzern abgeprallt sind, ohne Schaden anzurichten."
+    },
+    {
+        "question_id": "gen_li_66",
+        "question": "Welche Faktoren werden in den verschiedenen Darstellungen als Gründe für das Scheitern des englisch-amerikanischen Vormarsches im Nordabschnitt genannt, und welche Rolle spielte die deutsche Heeresführung dabei?",
+        "ground_truth": "In den verschiedenen Darstellungen werden mehrere Faktoren als Gründe für das Scheitern des englisch-amerikanischen Vormarsches im Nordabschnitt genannt. Einerseits wird den vervielfachten deutschen Abwehrkräften eine entscheidende Rolle zugeschrieben, die das Vorrücken der Engländer und Amerikaner gestoppt hätten. Andererseits wird besonders die entschlossene Anstrengung der deutschen Heeresführung im Raum Aachen hervorgehoben, die den englisch-amerikanischen Ansturm erfolgreich zurückschlagen konnte. Zudem wird in einem englischen Bericht erwähnt, dass die Deutschen erstklassige Reserven in die Schlacht geführt hätten, was ebenfalls zum Stillstand der Front trotz der gewaltigen Anstrengungen der Engländer und Amerikaner beigetragen habe."
+    },
+    {
+        "question_id": "gen_li_67",
+        "question": "What challenges did the German forces face in the battles south of Venlo, and how did the weather conditions impact the combat situation?",
+        "ground_truth": "The German forces faced challenges from concentrated elite troops of the Allies, who did not miss any opportunity to launch counterattacks. The weather conditions, specifically the continuous rain, worsened the situation by creating a muddy battlefield, which affected the movement and effectiveness of both attacks and counterattacks."
+    },
+    {
+        "question_id": "gen_li_68",
+        "question": "What were the outcomes of the Soviet attacks between Budapest and Tokai, and how did the defending forces respond?",
+        "ground_truth": "The Soviet attacks between Budapest and Tokai lost their intensity yesterday. The defending forces effectively repelled all partial attacks, resulting in the Bolsheviks losing 22 tanks due to the effective defense by one of the army corps. Additionally, night-time air strikes successfully targeted enemy supply lines in the Budapest combat area and troop concentrations and preparations near Mohac, with a Danube bridge being destroyed."
+    },
+    {
+        "question_id": "gen_li_69",
+        "question": "Welche Städte und Gebiete wurden in dem beschriebenen Luftangriff besonders stark getroffen, und wie viele feindliche Flugzeuge wurden dabei abgeschossen?",
+        "ground_truth": "In dem beschriebenen Luftangriff wurden besonders das Stadtgebiet von Hannover und Hamm stark getroffen. Insgesamt wurden 88 feindliche Flugzeuge abgeschossen, darunter 61 viermotorige Bomber."
+    },
+    {
+        "question_id": "gen_li_70",
+        "question": "How does the text describe the British approach to titles and self-presentation, and what philosophical reactions does it suggest this might provoke?",
+        "ground_truth": "The text describes the British approach to titles and self-presentation as straightforward and unembarrassed, exemplified by the phrase \"Mister George Smith, he is good for ten thousand pounds.\" This suggests that the British do not rely on titles such as Doctor or Professor to assert their worth or identity. The text implies that this approach might provoke different philosophical reactions: Heraclitus would weep, Democritus would laugh, and the text questions whether either reaction is still philosophical."
+    },
+    {
+        "question_id": "gen_li_71",
+        "question": "Welche Faktoren werden im Text als Gründe für die begrenzten Fortschritte der britischen und amerikanischen Truppen in Italien genannt?",
+        "ground_truth": "Im Text werden die topographischen Verhältnisse des Landes, die ausschließlich die deutsche Verteidigung begünstigen, sowie das bereits äußerst begrenzte Straßennetz, das durch deutsche Maßnahmen und starke Regenfälle weitgehend unbrauchbar gemacht wurde, als Gründe für die begrenzten Fortschritte der britischen und amerikanischen Truppen in Italien genannt."
+    },
+    {
+        "question_id": "gen_li_72",
+        "question": "Welche Rolle spielt die Kampfmoral der deutschen Truppen laut dem Bericht des US-amerikanischen Journalisten, und welche Auswirkungen hat dies auf die Einschätzung eines möglichen Zusammenbruchs Deutschlands?",
+        "ground_truth": "Laut dem Bericht des US-amerikanischen Journalisten spielt die Kampfmoral der deutschen Truppen eine entscheidende Rolle, da sie in keiner Weise irgendwelche Hoffnungen auf einen Zusammenbruch Deutschlands zulässt. Die hohe Kampfmoral der deutschen Truppen wird als ein Faktor angesehen, der die Einschätzung eines möglichen Zusammenbruchs Deutschlands negativ beeinflusst. Dies bedeutet, dass trotz der Belastungen an der West- und Ostfront und der schweren Verluste der Alliierten in Italien, die Aussicht auf einen baldigen Zusammenbruch des deutschen Reiches als unwahrscheinlich betrachtet wird."
+    },
+    {
+        "question_id": "gen_li_73",
+        "question": "Welche strategische Bedeutung hatte die Eroberung von Nanning durch die japanischen Truppen im November 1944, insbesondere in Bezug auf die geografische Lage und die militärische Infrastruktur?",
+        "ground_truth": "Die Eroberung von Nanning durch die japanischen Truppen im November 1944 hatte eine bedeutende strategische Bedeutung. Geografisch gesehen, brachte die Einnahme von Nanning die japanischen Truppen bis auf 100 km an die indochinesische Grenze heran. Dies ermöglichte es den Japanern, ihre Kontrolle in der Region zu festigen und ihre Position in Südostasien zu stärken. Militärisch gesehen, war Nanning der letzte größere Stützpunkt der US-Luftwaffe in Südwestchina. Die Eroberung dieser Stadt und ihres Flugplatzes bedeutete, dass die Japaner einen wichtigen Luftwaffenstützpunkt der Alliierten ausschalteten, was ihre Luftüberlegenheit in der Region weiter festigte und die Bewegungsfreiheit der alliierten Streitkräfte einschränkte."
+    },
+    {
+        "question_id": "gen_li_74",
+        "question": "Welche Erfolge erzielte das japanische Spezialangriffskorps „Kamikaze“ am Samstag gegen die feindliche Angriffsflotte?",
+        "ground_truth": "Das japanische Spezialangriffskorps „Kamikaze“ erzielte am Samstag gegen die feindliche Angriffsflotte folgende Erfolge: Es wurden ein großer feindlicher Flugzeugträger, ein mittelgroßer Flugzeugträger und ein großer Kreuzer versenkt."
+    },
+    {
+        "question_id": "gen_li_75",
+        "question": "Analyze the tone and perspective of the passage regarding the cultural and political tensions between the West and the East during the time period mentioned. How does the author convey the sense of conflict and differing ideologies?",
+        "ground_truth": "The passage reflects a tone of tension and conflict between the West and the East during the time period mentioned, which is during World War II. The author conveys a sense of cultural and political tension through the use of language that highlights differences in pride, morality, and ideology between the two regions.\n\nThe passage begins by referencing a time when \"the guns speak a language that belongs to them alone,\" suggesting a period of intense military conflict. The author contrasts the pride and moral values of the West with those of the East, indicating a sense of superiority in Western values by stating, \"We have a different pride, indeed also a different morality.\" This implies a belief in the distinctiveness and perhaps the superiority of Western cultural norms.\n\nThe author also touches on the theme of cultural imposition, noting that the West does not force its customs on foreigners, partly out of fear that they might be corrupted. This suggests a defensive stance towards preserving cultural identity amidst external threats.\n\nFurthermore, the passage describes the East, specifically the Soviet Union, as a looming threat, with the metaphor of \"the red Tertius gaudens rubbing his mustache,\" indicating a cunning and opportunistic adversary. The mention of hopes to \"enthrone Bolshevik as the official language in London or New York by force\" underscores the ideological conflict and the fear of communist expansion.\n\nOverall, the author conveys the sense of conflict through vivid imagery and contrasts, highlighting the ideological divide and the perceived threat from the East, while emphasizing the West's determination to maintain its cultural integrity."
+    },
+    {
+        "question_id": "gen_li_76",
+        "question": "What were the outcomes of the American attacks against the German defensive front east of Aschen as described in the document?",
+        "ground_truth": "The outcomes of the American attacks against the German defensive front east of Aschen, as described in the document, were that the American forces, consisting of the 9th and 1st armies, attacked with stronger forces. However, German counterattacks and counteroffensives pushed back the enemy, who had made minor breakthroughs in certain sections, unless they were already halted by defensive fire. The Americans suffered losses, including a larger number of tanks and prisoners."
+    },
+    {
+        "question_id": "gen_li_77",
+        "question": "Welche strategischen Bewegungen und Kämpfe werden im Umkreis von Straßburg und in den Vogesen beschrieben, und wie haben sich die deutschen Truppen in diesen Gebieten verhalten?",
+        "ground_truth": "Im Umkreis von Straßburg konnten die feindlichen Truppen ihren Einbruchsraum nur geringfügig nach Norden und Süden erweitern, da die Besatzungen einiger Befestigungen sich hartnäckig verteidigten. In den Vogesen, insbesondere bei Markirch, fanden erbitterte Kämpfe statt. Nordöstlich von Belfort führten die deutschen Truppen nach einer geringfügigen Absetzbewegung dazu, dass die nachstoßenden feindlichen Kräfte wieder zum Stehen gebracht wurden."
+    },
+    {
+        "question_id": "gen_li_78",
+        "question": "Describe the outcomes of the battles mentioned in the context, including the actions taken by the German troops and the results of the air combat over the Western Front.",
+        "ground_truth": "The outcomes of the battles mentioned in the context include several actions and results. The German troops successfully captured several hundred prisoners and forced the enemy, who suffered heavy losses both in combat and during their retreat, out of a number of locations. After completing their mission, the German troops returned with a substantial amount of captured weapons and supplies. In air combat over the Western Front, 14 Anglo-American aircraft were shot down. Additionally, German long-range weapons continued to target the areas of London, Liège, and Antwerp with heavy artillery. In the Adriatic coastal region, the defensive battle extended to the area around Faenza, where German divisions, fighting bravely, thwarted renewed enemy attempts to break through their lines south of the Lamone sector."
+    },
+    {
+        "question_id": "gen_li_79",
+        "question": "Welche Herausforderungen mussten die Truppen bei den Marschbewegungen aus Griechenland und dem Balkan bewältigen, und wie reagierten sie auf die Angriffe der bulgarischen und bolschewistischen Kräfte?",
+        "ground_truth": "Die Truppen mussten bei den Marschbewegungen aus Griechenland und dem Balkan mehrere Herausforderungen bewältigen, darunter ständig härter werdende Gefechte sowie schlechte Wetter- und Straßenverhältnisse. Sie reagierten auf die Angriffe der bulgarischen und bolschewistischen Kräfte, indem sie in immer wiederholten Gegenangriffen alle Versuche dieser Kräfte zerschlugen, in die Flanken der Bewegungen zu stoßen. Starke Nachhuten schüttelten die überlegen nachdrängenden feindlichen Kräfte ab, und es gelang ihnen, zahlreiche Banden in den rückwärtigen Gebieten zu vernichten, die versuchten, die Marschstraßen zu sperren."
+    },
+    {
+        "question_id": "gen_li_80",
+        "question": "What were the outcomes of the Bolshevik attacks between Budapest and Ungvar, and how did the defending forces respond?",
+        "ground_truth": "The Bolshevik attacks between Budapest and Ungvar were unsuccessful. They failed in the face of the defending forces, which included grenadiers, artillery, and rocket batteries that effectively reinforced the defense."
+    },
+    {
+        "question_id": "gen_li_81",
+        "question": "Welche militärischen Einheiten und Führungspersonen werden im Bericht für ihre Leistungen in den Kämpfen bei Geilenkirchen und Aachen hervorgehoben, und welche spezifischen Erfolge werden ihnen zugeschrieben?",
+        "ground_truth": "Im Bericht werden folgende militärische Einheiten und Führungspersonen hervorgehoben:\n\n1. **Bei Geilenkirchen:**\n   - **9. Panzerdivision** unter der Führung von Generalmajor Freiherr von Elverfeldt. Sie wird für ihre besondere Standhaftigkeit ausgezeichnet. Vom 17. bis 22. November vernichtete die Division 134 feindliche Panzer, teilweise im Nahkampf, und brachte mehrere hundert Gefangene ein.\n   - **Gefreiter Deld** in einer Panzerjägerabteilung wird für seine hervorragende Tapferkeit ausgezeichnet. Er schoss als Richtschütze mit seinem Geschütz zehn nordamerikanische Panzer ab.\n\n2. **Bei Aachen:**\n   - **3. Panzergrenadierdivision** unter der Führung von Generalmajor Denkert.\n   - **12. Volksgrenadierdivision** unter Generalmajor Engel. Beide Divisionen werden für ihre unerschütterliche Standhaftigkeit und hartnäckiges Zupacken gelobt. Ihrer vorbildlichen Haltung und Ausdauer ist es im Wesentlichen zu verdanken, dass die feindlichen Durchbruchsversuche scheiterten."
+    },
+    {
+        "question_id": "gen_li_82",
+        "question": "Analyze the role of the German Luftwaffe as depicted in the document, particularly in relation to their activities over Kecskemet and their impact on Soviet forces. How does the document portray the effectiveness of the Luftwaffe during these operations?",
+        "ground_truth": "The document portrays the German Luftwaffe as highly effective in their operations over Kecskemet, particularly against Soviet forces. It highlights the Luftwaffe's dominance in the air by mentioning their significant achievements, such as shooting down 34 enemy aircraft, with an additional 18 unconfirmed but likely victories. This depiction suggests that the Luftwaffe had a substantial impact on Soviet forces, contributing to a \"düsteren Aspekt\" or bleak outlook for the Soviets. The document emphasizes the Luftwaffe's control and superiority in the air, suggesting that their operations were successful and impactful during this period."
+    },
+    {
+        "question_id": "gen_li_83",
+        "question": "Welche Rolle spielten die deutschen Schlachtflieger unter dem Kommando von Oberstleutnant Rudel in den Gefechten östlich von Budapest, und welche Erfolge erzielten sie innerhalb von zwei Tagen?",
+        "ground_truth": "Die deutschen Schlachtflieger unter dem Kommando von Oberstleutnant Rudel spielten eine bedeutende Rolle in den Gefechten östlich von Budapest, indem sie im Tiefflug über feindliche Infanterie- und Panzeransammlungen hinwegflogen. Innerhalb von zwei Tagen erzielten sie beachtliche Erfolge, indem sie 18 sowjetische Panzer zerstörten und 13 weitere beschädigten. Darüber hinaus zerstörten sie ein Sturmgeschütz, 57 Lastkraftwagen, 21 bespannte Fahrzeuge und 7 Geschütze verschiedener Art."
+    },
+    {
+        "question_id": "gen_li_84",
+        "question": "What role did the Hungarian Schnellkampfstaffeln play in the destruction of enemy resources, and what specific targets did they successfully attack?",
+        "ground_truth": "The Hungarian Schnellkampfstaffeln played a significant role in the destruction of enemy resources by attacking and destroying various targets. Specifically, they attacked the Monor train station with their Me 210 aircraft, where they successfully destroyed a train with two locomotives. Additionally, they damaged three tanks and three guns, and destroyed two anti-aircraft guns and 17 motorized vehicles."
+    },
+    {
+        "question_id": "gen_li_85",
+        "question": "Analyze the challenges faced by fighter pilots during aerial combat as illustrated by the experiences of Ritterkreuzträger Leutnant Düttmann in the provided text.",
+        "ground_truth": "The experiences of Ritterkreuzträger Leutnant Düttmann in the provided text illustrate several challenges faced by fighter pilots during aerial combat. Firstly, despite his success in shooting down enemy aircraft, Düttmann faced the danger of being shot down himself, as evidenced by his need to bail out of his burning plane. This highlights the constant threat to a pilot's life, even when they are skilled and experienced. Additionally, the text suggests that achieving high numbers of aerial victories requires significant skill and experience, as indicated by the phrase \"bei aller Kampferfahrung achtunggebietenden Abschußzahlen,\" which implies that even with considerable combat experience, achieving such numbers is a formidable task. This underscores the intense and dangerous nature of aerial combat, where pilots must constantly be on alert and ready to face life-threatening situations."
+    },
+    {
+        "question_id": "gen_li_86",
+        "question": "What factors contribute to the perceived German air superiority mentioned in the text, and how does this relate to the role of their pilots and leaders?",
+        "ground_truth": "The perceived German air superiority mentioned in the text is attributed to the qualitative excellence of the German and Hungarian pilots. This superiority is not due to a change in the numerical advantage of the enemy, which remains significant, but rather to the high quality and skill of the pilots. Additionally, the pilots are inspired and motivated by the example set by their \"aces,\" such as Oberstleutnant Rudel, which further enhances their effectiveness in battle."
+    },
+    {
+        "question_id": "gen_li_87",
+        "question": "What challenges does Kwapinski face as the successor to Mikolajczyk in the context of the London-based Polish government-in-exile, and how do British media outlets perceive his appointment?",
+        "ground_truth": "Kwapinski faces significant challenges as the successor to Mikolajczyk in the London-based Polish government-in-exile. His appointment is likely to be unsuccessful from the outset due to his reputation as a Moscow opponent, which does not sit well in England given the British alignment with Moscow. British media outlets, such as the \"Daily Telegraph\" and \"News Chronicle,\" are openly skeptical and warn that it is questionable whether the UK and other Allies could recognize a Polish government that might face strong opposition from Moscow. This skepticism is compounded by the perception that Churchill has effectively handed over the Polish issue to Moscow, leaving little room for any Polish government-in-exile that does not align with Soviet interests."
+    },
+    {
+        "question_id": "gen_li_88",
+        "question": "Welche Rolle spielt das Lubliner Komitee in der politischen Situation Polens, wie im Kontext beschrieben, und welche Auswirkungen könnte seine Proklamation als provisorische Regierung auf die Londoner Polen haben?",
+        "ground_truth": "Das Lubliner Komitee spielt in der beschriebenen politischen Situation Polens eine entscheidende Rolle, da es möglicherweise den Zeitpunkt für gekommen erachtet, sich angesichts der Schwäche der Londoner Polen zur provisorischen Regierung Polens zu proklamieren. Diese Proklamation könnte erhebliche Auswirkungen auf die Londoner Polen haben, da sie ihre Position weiter schwächen würde. Die Londoner Polen stehen bereits unter Druck, sich mit der Auslieferungspolitik zu arrangieren, und eine Proklamation des Lubliner Komitees als provisorische Regierung könnte ihre diplomatische und politische Unterstützung weiter untergraben. Dies würde die Gefahr erhöhen, dass die Londoner Polen auch international fallen gelassen werden, insbesondere da sowohl in London als auch in Amerika keine Unterstützung für eine Regierung Kwapinski erwartet wird. Die Situation wird durch den Zynismus der Mächte verschärft, die ursprünglich Garantien gegeben hatten, auf die sich die Polen verlassen hatten."
+    },
+    {
+        "question_id": "gen_li_89",
+        "question": "What was the reason given for Mikolajczyk's resignation as mentioned in the Reuter-Kommentar?",
+        "ground_truth": "The Reuter-Kommentar mentioned that the reason for Mikolajczyk's resignation was that he apparently did not find sufficient support for his views on resolving the conflict with the Soviets."
+    },
+    {
+        "question_id": "gen_li_90",
+        "question": "What was Tankasai's response to the American flappers' request to join him on the bridge, and what did he mention about the photography setup?",
+        "ground_truth": "Tankasai responded to the American flappers' request to join him on the bridge by explaining that the bridge was the worst possible location for their purpose. He mentioned the exposure time and the filter that would be best suited for the photography setup. Additionally, he reassured everyone present, including the American, English, and Dutch ladies and gentlemen, that they would all see the sunrise there."
+    },
+    {
+        "question_id": "gen_li_91",
+        "question": "Welche Bedeutung könnte die Metapher \"auf Granit beißen\" im Kontext des Gesprächs zwischen Mr. Tankasai und C. G. Yells haben?",
+        "ground_truth": "Im Kontext des Gesprächs zwischen Mr. Tankasai und C. G. Yells könnte die Metapher \"auf Granit beißen\" bedeuten, dass Mr. Tankasai auf ein unüberwindbares Hindernis stoßen wird oder dass sein Vorhaben zum Scheitern verurteilt ist. Granit ist ein sehr hartes Gestein, und der Versuch, darauf zu beißen, würde die Zähne beschädigen. Übertragen auf die Situation bedeutet es, dass Mr. Tankasai mit seinem Vorhaben auf Widerstand stoßen wird, der nicht einfach zu überwinden ist."
+    },
+    {
+        "question_id": "gen_li_92",
+        "question": "Welche Rolle spielt Frau van Laack in der beschriebenen Szene, und wie wird ihre Sprachkompetenz im Englischen dargestellt?",
+        "ground_truth": "In der beschriebenen Szene spielt Frau van Laack die Rolle einer Passagierin, die auf die Aussage von C. G. Yells reagiert. Sie weist darauf hin, dass das Schiff nicht im Hafen liegt, sondern fast noch auf hoher See ist. Ihre Sprachkompetenz im Englischen wird als bemerkenswert schlecht dargestellt."
+    },
+    {
+        "question_id": "gen_li_93",
+        "question": "What does C. G. Yells imply about England's ownership of the seas, and how does this reflect on the attitudes of the people around him?",
+        "ground_truth": "C. G. Yells implies that England has dominion over all salty waters, suggesting a sense of British imperialism and ownership of the seas. This reflects an attitude of pride and entitlement among the people around him, as they admire Yells and view England as a powerful nation that generously allows others to pursue small pleasures. The admiration for Yells and the perception of England's ownership of the seas indicate a sense of national pride and superiority."
+    },
+    {
+        "question_id": "gen_li_94",
+        "question": "Discuss the role of Mikolajczyk as the \"Ministerpräsident\" of the Polish emigrants in London and his involvement in the negotiations between England and the Soviets during World War II. How did his position reflect the broader political dynamics between these nations?",
+        "ground_truth": "Mikolajczyk, as the \"Ministerpräsident\" of the Polish emigrants in London, played a significant role in the complex political dynamics of World War II. His position was emblematic of the challenges faced by the Polish government-in-exile, which had initially relied on British support against the German invasion in 1939. However, as the war progressed, the geopolitical landscape shifted, particularly with the increasing influence of the Soviet Union.\n\nMikolajczyk was chosen by Churchill to lead the Polish emigrant government, which suggests that he was seen as a legitimate representative of Polish interests. However, his role also involved navigating the difficult and often disappointing realities of British-Soviet relations. The context indicates that Mikolajczyk was tasked with masking England's concessions to the Soviets through a \"voluntary\" compromise, highlighting the pressure on the Polish government-in-exile to align with the broader strategic interests of its allies, even when these conflicted with Poland's national aspirations.\n\nThis situation reflects the broader political dynamics of the time, where smaller nations like Poland found themselves at the mercy of larger powers. The Polish government-in-exile had to contend with the fact that its fate was largely determined by the negotiations and agreements between England and the Soviet Union. Mikolajczyk's role, therefore, was not only to represent Polish interests but also to manage the delicate balance between maintaining Polish sovereignty and accommodating the strategic imperatives of the Allies, particularly as Stalin established his own influence in Poland through the Lublin Committee."
+    },
+    {
+        "question_id": "gen_li_95",
+        "question": "Analyze the implications of the political actions taken by the London-based Polish emigrants and discuss how these actions reflect on England's foreign policy and its relationship with the Soviet Union.",
+        "ground_truth": "The political actions taken by the London-based Polish emigrants, as described in the context, reveal a complex and ultimately unsuccessful attempt to influence the future of Poland during a tumultuous period. These emigrants, including figures like Sosnkowski and Mikolajczyk, were unable to save their homeland from Soviet influence and faced personal and political failures. Sosnkowski was removed from his position and relocated to Canada, while Mikolajczyk had to come to terms with his political ambitions' collapse.\n\nThe implications of these actions are significant for England's foreign policy and its relationship with the Soviet Union. The emigrants' inability to achieve their goals highlights England's limited influence over the situation in Eastern Europe and underscores its dependency on the Soviet Union during this period. The description of the situation as a \"tragicomedy\" for England suggests that the country's foreign policy was perceived as ineffective and overly reliant on Soviet cooperation. This dependency likely constrained England's ability to act independently and assertively in international affairs, particularly concerning Eastern European matters. Overall, the situation reflects poorly on England's foreign policy, illustrating its diminished power and the challenges it faced in balancing relationships with both Western allies and the Soviet Union."
+    },
+    {
+        "question_id": "gen_li_96",
+        "question": "Welche Rolle spielte Cordell Hull im außenpolitischen Sektor der USA seit 1933, und was waren die Gründe für seinen Rücktritt?",
+        "ground_truth": "Cordell Hull spielte seit 1933 eine zentrale Rolle im außenpolitischen Sektor der USA, indem er die Geschäfte von Präsident Roosevelt leitete. Er war bekannt als einer der vehementesten Kriegsbefürworter und trieb die Bestrebungen voran, die USA schnellstmöglich in den Krieg zu involvieren. Sein Rücktritt erfolgte offiziell aus gesundheitlichen Gründen, da er seit fünf Wochen wegen einer Halsentzündung im Krankenhaus lag."
+    },
+    {
+        "question_id": "gen_li_97",
+        "question": "Discuss the implications of Hull's resignation on American foreign policy, considering the potential successors mentioned in the text.",
+        "ground_truth": "Hull's resignation is not expected to lead to any significant changes in American foreign policy. The text suggests that all the potential successors mentioned—Stettinius, Winant, Wallace, and Adolf Berle—are likely to maintain the same foreign policy course. This continuity is emphasized by the mention of Adolf Berle, who is noted for his work \"Die Weltbedeutung eines jüdischen Staates,\" indicating that the ideological and strategic direction of the foreign policy will remain consistent regardless of who takes over Hull's position."
+    },
+    {
+        "question_id": "gen_li_98",
+        "question": "Wie reagiert Claire, als sie sich umdreht und C. G. Yells hinter ihr steht, und was verrät ihre Reaktion über ihre Gefühle in diesem Moment?",
+        "ground_truth": "Als Claire sich umdreht und C. G. Yells hinter ihr steht, zuckt ihre Schulter ein wenig, was verrät, dass sie erschrocken ist. Diese Reaktion zeigt, dass sie überrascht oder möglicherweise unbehaglich ist in diesem Moment."
+    },
+    {
+        "question_id": "gen_li_99",
+        "question": "Wie reagiert Claire auf Mr. Yells' Behauptung, dass sie ihm ein Versprechen gegeben habe, und was könnte dies über ihre Beziehung zu ihm aussagen?",
+        "ground_truth": "Claire reagiert auf Mr. Yells' Behauptung, dass sie ihm ein Versprechen gegeben habe, mit innerem Widerstand, da sie denkt, dass es eine Lüge ist und sie ihm nie etwas versprochen hat. Dennoch schweigt sie und widerspricht ihm nicht direkt. Dies könnte darauf hindeuten, dass Claire entweder Konflikte vermeiden möchte oder dass sie sich in einer Position befindet, in der sie sich nicht wohl fühlt, ihm offen zu widersprechen. Ihre Reaktion könnte auch darauf hinweisen, dass sie Mr. Yells gegenüber misstrauisch ist oder dass ihre Beziehung zu ihm nicht sehr eng oder vertrauensvoll ist."
+    },
+    {
+        "question_id": "gen_li_100",
+        "question": "What significant historical events and anniversaries are mentioned in the Brunner Tagblatt article dated November 28, 1944?",
+        "ground_truth": "The Brunner Tagblatt article dated November 28, 1944, mentions the following significant historical events and anniversaries:\n\n1. The 50th anniversary of the death of Friedrich Wilhelm von Steuben, General Inspector of the North American Army, who died in Oneida County, New York, in 1794.\n2. The death of the poet Conrad Ferdinand Meyer in Kilchberg in 1898.\n3. The establishment of the SA-Wehrabzeichen (SA Military Badge) by the Führer in 1933."
+    },
+    {
+        "question_id": "gen_li_101",
+        "question": "Welche Botschaft vermittelt Gauleiter Dr. Jury in seiner Ansprache an die Wehrmachtangehörigen und DRK-Helferinnen in Bezug auf die Herausforderungen des sechsten Kriegsjahres und die Bedeutung der aktuellen Etappe im Krieg?",
+        "ground_truth": "Gauleiter Dr. Jury vermittelt in seiner Ansprache, dass das sechste Kriegsjahr sowohl für die deutsche Heimat als auch für die Wehrmachtangehörigen und DRK-Helferinnen mit schweren Belastungen verbunden ist. Er betont, dass die gegenwärtigen Herausforderungen und die Anstrengungen der Gegner das Herannahen einer entscheidenden Phase im Krieg signalisieren. Diese Phase wird als die letzte Etappe beschrieben, in der über das Überleben oder den Untergang des deutschen Volkes oder seiner jüdischen Widersacher entschieden wird. Dr. Jury ermutigt die Zuhörer, in Momenten der Schwäche die Hoffnung nicht zu verlieren, indem er daran erinnert, dass ein Volk wie das deutsche niemals vernichtet werden kann, solange es entschlossen um sein Überleben kämpft, und dass Rückschläge daran nichts ändern können."
+    },
+    {
+        "question_id": "gen_li_102",
+        "question": "Welche Rolle spielte die Hitlerjugend des Protektorats im Kontext des Fronthelfer-Einsatzes, und wie wurde ihr Beitrag von hochrangigen Militärs anerkannt?",
+        "ground_truth": "Die Hitlerjugend des Protektorats spielte die Rolle von Fronthelfern, indem sie den kämpfenden Soldaten ihre Einsatzfähigkeit zur Verfügung stellte. Ihr Beitrag wurde von hochrangigen Militärs, insbesondere von dem Deutschen Befehlshaber in der Slowakei, 44-Obergruppenführer und General der Waffen-SS Höfle, anerkannt. Höfle würdigte die freudige Hingabe der Hitlerjugend an ihren Auftrag während einer Besichtigung des fast vollendeten Stellungsbaus."
+    },
+    {
+        "question_id": "gen_li_103",
+        "question": "What sentiment did Gebietsführer Knoop express about the role of the Hitlerjugend as \"Fronthelfer\" in his speech?",
+        "ground_truth": "Gebietsführer Knoop expressed a positive sentiment about the role of the Hitlerjugend as \"Fronthelfer\" in his speech. He mentioned that the assignment had greatly inspired them and that they were as enthusiastic as the rest of the Hitlerjugend in the Reich to embrace the designation of \"Fronthelfer\" given by the Reichsjugendführer. He also expressed a commitment to continue being \"Fronthelfer\" until victory was achieved."
+    },
+    {
+        "question_id": "gen_li_104",
+        "question": "What qualities did 44-Obergruppenführer Höfle commend in the German Hitler Youth during their time in a friendly and allied state?",
+        "ground_truth": "44-Obergruppenführer Höfle commended the German Hitler Youth for their exemplary representation, outstanding readiness for action, endurance, and soldierly discipline during their time in a friendly and allied state."
+    },
+    {
+        "question_id": "gen_li_105",
+        "question": "Welche militärische Auszeichnung wurde Oberstleutnant Ernst Jansa verliehen, und welche besonderen Eigenschaften zeichnen ihn laut dem Text aus?",
+        "ground_truth": "Oberstleutnant Ernst Jansa wurde das Ritterkreuz des Eisernen Kreuzes verliehen. Laut dem Text zeichnen ihn Tapferkeit und Umsicht aus, die er im Balkan- und Ostfeldzug hervorragend bewiesen hat."
+    },
+    {
+        "question_id": "gen_li_106",
+        "question": "What event or activity led to the collection of a donation of 1000 Reichsmark by the soldiers, and how does this reflect their camaraderie and connection to their homeland?",
+        "ground_truth": "The donation of 1000 Reichsmark by the soldiers was prompted by a conversation among them, where one of the soldiers mentioned \"WHW\" (likely referring to the Winterhilfswerk, a Nazi-era charity organization). This spontaneous act of giving reflects their camaraderie and connection to their homeland as they were gathered together, discussing a planned night operation. The soldiers, bonded by their shared experiences and struggles, quickly agreed to contribute to the cause, demonstrating their unity and sense of responsibility towards their community and loved ones back home."
+    },
+    {
+        "question_id": "gen_li_107",
+        "question": "Welche Ereignisse wurden während des erweiterten Kreisappells im Festsaal des Deutschen Hauses am Montagabend thematisiert, und welche Rolle spielte Kreisleiter Dipl.-Ing. Folta dabei?",
+        "ground_truth": "Während des erweiterten Kreisappells im Festsaal des Deutschen Hauses am Montagabend wurde der Opfer des verbrecherischen Terrorangriffs der Anglo-Amerikaner auf die Landeshauptstadt Brünn am 20. November gedacht. Kreisleiter Dipl.-Ing. Folta spielte dabei eine zentrale Rolle, indem er eine ergreifende Gedenkrede hielt."
+    },
+    {
+        "question_id": "gen_li_108",
+        "question": "Welche Absicht verfolgt der Feind mit den Terrorangriffen auf die deutsche Heimat laut dem Text, und wie wird die Reaktion der deutschen Bevölkerung darauf beschrieben?",
+        "ground_truth": "Laut dem Text verfolgt der Feind mit den Terrorangriffen auf die deutsche Heimat die Absicht, eine seelische Zermürbung herbeizuführen, um dadurch die Produktion kriegswichtiger Güter und Waffen zu stören. Die Reaktion der deutschen Bevölkerung wird so beschrieben, dass es dem Feind nicht gelingen wird, diese Zermürbung zu erreichen, weder in der betroffenen Stadt noch im übrigen Reichsgebiet."
+    },
+    {
+        "question_id": "gen_li_109",
+        "question": "How does the text describe the emotional response to the deaths of soldiers compared to the victims of bombings, and what does this suggest about the perceived nature of the enemy's actions?",
+        "ground_truth": "The text describes the emotional response to the deaths of soldiers as one of consolation, as they are seen as heroes who willingly risked their lives and died a soldier's death in open combat. In contrast, the response to the victims of bombings, including women and children, is one of awareness of the criminal nature of the enemy's actions. This suggests that the enemy's conduct in the war is perceived as particularly heinous and unjust, as it targets civilians and causes suffering beyond the battlefield. The text conveys a desire for the enemy to experience suffering on a much larger scale, reflecting a deep sense of injustice and a call for retribution."
+    },
+    {
+        "question_id": "gen_li_110",
+        "question": "What is the significance of the phrase \"Ihr Opfertod bedeutet für uns eine neue Verpflichtung zum Durchhalten\" in the context of the speech given at the memorial service for the terror victims in Brünn?",
+        "ground_truth": "The phrase \"Ihr Opfertod bedeutet für uns eine neue Verpflichtung zum Durchhalten\" translates to \"Their sacrificial death means a new commitment for us to persevere.\" In the context of the speech given at the memorial service for the terror victims in Brünn, this phrase signifies that the deaths of those who have sacrificed their lives are seen as a call to action for the living. It emphasizes the duty of those who remain to continue the struggle and not give up, honoring the fallen by remaining steadfast and committed to the cause. The phrase serves as a motivational reminder to maintain resilience and dedication in the face of adversity, suggesting that giving up would render the sacrifices of the deceased meaningless."
+    },
+    {
+        "question_id": "gen_li_111",
+        "question": "What significance does the date 20th November hold in the context of the nationalsozialistische Deutschland, and how is it commemorated according to the passage?",
+        "ground_truth": "The date 20th November holds significance as a day of remembrance for those who died in the \"Freiheitskampf\" (freedom struggle) associated with the nationalsozialistische Deutschland. It is commemorated with reverence for the sacrifices made by German men, women, and children from the community who fell on that day. The passage describes a ceremony where the Kreisleiter (district leader) honors the victims, emphasizing their deaths as a sacred obligation and expressing gratitude through a commitment to victory and action. The commemoration includes the playing of the song \"Der gute Kamerad\" and a speech that highlights the importance of the sacrifices made."
+    },
+    {
+        "question_id": "gen_li_112",
+        "question": "Welche Rolle spielt der Kreisleiter in der Organisation der Hilfsmaßnahmen der Partei, und welche Anweisungen gibt er seinen Mitarbeitern, um die Schlagkraft dieser Maßnahmen zu erhöhen?",
+        "ground_truth": "Der Kreisleiter spielt eine zentrale Rolle in der Organisation der Hilfsmaßnahmen der Partei. Er gibt seinen Mitarbeitern Weisungen, um die Schlagkraft dieser Maßnahmen zu erhöhen. Dies geschieht auf der Grundlage der gewonnenen Erfahrungen, um die Effektivität der Partei in ihrer Reaktion auf Angriffe zu verbessern."
+    },
+    {
+        "question_id": "gen_li_113",
+        "question": "Welche Bedingungen müssen erfüllt sein, damit ein Soldat Kampf-, Traditions- und Erinnerungsabzeichen zur Uniform tragen darf, und welche Beispiele werden in der Verfügung des OKH genannt?",
+        "ground_truth": "Ein Soldat darf Kampf-, Traditions- und Erinnerungsabzeichen zur Uniform nur tragen, wenn diese Abzeichen durch eine besondere Verfügung des OKW (Oberkommando der Wehrmacht) oder des OKH (Oberkommando des Heeres) eingeführt und dem Träger ausdrücklich verliehen sind. In der Verfügung des OKH werden als Beispiele die Ärmelbänder „Afrika“ oder „Kreta“ genannt. Traditions- und andere Abzeichen bestimmter einzelner Truppenteile, wie etwa das Ärmelband „Großdeutschland“, dürfen nur getragen werden, solange der Soldat dem entsprechenden Truppenteil angehört."
+    },
+    {
+        "question_id": "gen_li_114",
+        "question": "Welche Bedingungen müssen erfüllt sein, damit einem Truppenteil der Ärmelstreifen verliehen werden kann, und was geschieht mit den Tuchzeichen, wenn ein Soldat aus dem betreffenden Truppenteil ausscheidet?",
+        "ground_truth": "Damit einem Truppenteil der Ärmelstreifen verliehen werden kann, müssen die Truppenteile durch hervorragende Tapferkeiten oder außergewöhnliche dienstliche Leistungen hervorgetreten sein. Wenn ein Soldat aus dem betreffenden Truppenteil ausscheidet, erlischt die Befugnis zum Tragen der Tuchzeichen, falls im Felde das Anbringen einfachster Tuchzeichen befohlen wurde."
+    },
+    {
+        "question_id": "gen_li_115",
+        "question": "Welche Maßnahmen hat die Bevölkerung von Mährisch-Ostrau ergriffen, um sich an die Erfordernisse der Zeit anzupassen, und warum wurden diese Maßnahmen notwendig?",
+        "ground_truth": "Die Bevölkerung von Mährisch-Ostrau hat die Vorhänge aus den Fenstern entfernt und stattdessen die Fenster mit Vorhängemustern bemalt. Diese Maßnahmen wurden notwendig, um der Brandgefahr entgegenzuwirken, die durch die Terrorangriffe entstanden ist."
+    },
+    {
+        "question_id": "gen_li_116",
+        "question": "Welche verschiedenen Modelle des Universalstuhls für Beinbeschädigte hat Arbeitsschutzwalter Theobald entwickelt, und für welche spezifischen Arbeitsbedingungen sind sie jeweils konzipiert?",
+        "ground_truth": "Arbeitsschutzwalter Theobald hat vier Modelle des Universalstuhls für Beinbeschädigte entwickelt. Diese Modelle sind jeweils für stehende und sitzende Arbeit konzipiert und berücksichtigen sowohl einseitig als auch doppelt Beinamputierte."
+    },
+    {
+        "question_id": "gen_li_117",
+        "question": "Welche Maßnahmen wurden in Wien ergriffen, um die Bevölkerung gegen den Bombenterror zu sichern, und welche besondere Sorge galt dabei den kranken Kindern?",
+        "ground_truth": "In der Sitzung der Ratsherren der Stadt Wien gab Stadtrat Prof. Dr. Grundel Aufschlüsse über die Maßnahmen zur Sicherung der Bevölkerung gegen den Bombenterror. Dabei galt die vornehmste Sorge der Stadt zunächst den kranken Kindern."
+    },
+    {
+        "question_id": "gen_li_118",
+        "question": "Welche Maßnahmen werden in den beschriebenen Krankenanstalten getroffen, um werdende Mütter vor und nach der Geburt zu betreuen?",
+        "ground_truth": "In den beschriebenen Krankenanstalten werden werdende Mütter etwa 14 Tage vor ihrer Niederkunft aus der Stadt in Heime gebracht. Dort wird ihnen auch nach der Geburt eine genügend lange Erholungszeit in voller Ruhe zuteil."
+    },
+    {
+        "question_id": "gen_li_119",
+        "question": "Welche Maßnahmen wurden im Rahmen des totalen Kriegseinsatzes bezüglich der Anstalt für Vor- und Frühgeschichte in Prag getroffen, und welche Funktionen bleiben weiterhin bestehen?",
+        "ground_truth": "Im Rahmen des totalen Kriegseinsatzes wurde die Anstalt für Vor- und Frühgeschichte in Prag stillgelegt, jedoch bedeutet dies nicht deren zeitweilige Auflösung oder die vollständige Einstellung ihrer wissenschaftlichen und denkmalpflegerischen Tätigkeit. Die mit der Regierungsverordnung Nr. 274/41 zusammenhängende Funktion bleibt im Rahmen der gegebenen Einschränkungen weiterhin bestehen. Die Meldepflicht für vor- und frühgeschichtliche Funde sowie die übrigen Vorschriften dieser Regierungsverordnung bleiben ebenfalls in Kraft."
+    },
+    {
+        "question_id": "gen_li_120",
+        "question": "Welche neuen Werke von Erzählungen und Anekdoten sind kürzlich erschienen, und in welchen Verlagen wurden sie veröffentlicht?",
+        "ground_truth": "Die neuen Werke von Erzählungen und Anekdoten, die kürzlich erschienen sind, sind „Später Gast“ und „Die Blume Türkenbund“. „Später Gast“ wurde im Verlag Karl H. Bischoff in Wien veröffentlicht, und „Die Blume Türkenbund“ wurde im Leykam-Verlag in Graz veröffentlicht."
+    },
+    {
+        "question_id": "gen_li_121",
+        "question": "Welche Ereignisse führten dazu, dass die im Text beschriebene Person das Buchdruckerhandwerk erlernte, und wie beeinflusste dies ihren weiteren Lebensweg?",
+        "ground_truth": "Die im Text beschriebene Person erlernte das Buchdruckerhandwerk, weil sie nach ihrer Rückkehr aus der russischen Kriegsgefangenschaft im Jahr 1920 aufgrund der Massenschließungen von Schulen in ihrem ursprünglichen Beruf kein Unterkommen mehr fand. Diese berufliche Umorientierung war eine direkte Folge der wirtschaftlichen und sozialen Umstände nach dem Ersten Weltkrieg. Der Text gibt jedoch keine spezifischen Informationen darüber, wie das Erlernen des Buchdruckerhandwerks den weiteren Lebensweg der Person beeinflusste."
+    },
+    {
+        "question_id": "gen_li_122",
+        "question": "What were the consequences faced by Judex after the dissolution of the DNSAP in 1933, and how did these consequences reflect his involvement with the movement?",
+        "ground_truth": "After the dissolution of the DNSAP in 1933, Judex lost his mandate and, like many other loyal members of the movement, faced unemployment. Additionally, he was placed under police supervision and was sentenced to one year of severe imprisonment due to his political activities. These consequences reflect his deep involvement and commitment to the movement, as he shared the hardships faced by its dedicated members."
+    },
+    {
+        "question_id": "gen_li_123",
+        "question": "Discuss the political and administrative roles that Judex held in Brünn from 1938 to 1942, as mentioned in the text. How did his positions evolve during this period?",
+        "ground_truth": "From 1938 to 1942, Judex held several political and administrative roles in Brünn, as outlined in the text. Initially, during the critical days of September 1938, Judex was taken into custody as a hostage, being marked as a National Socialist. However, shortly thereafter, he became actively involved in the revival of national life in his homeland, taking on a leading role.\n\nBy January 1939, Judex was serving on the city council. On March 15, 1939, he assumed the position of acting mayor, taking charge of the city's administration. His role continued to evolve as he was appointed as a government commissioner in accordance with the old municipal code. Finally, on July 7, 1942, Judex was appointed as the Lord Mayor (Oberbürgermeister) of Brünn. Throughout this period, his positions evolved from being a city council member to holding the highest municipal office, demonstrating a significant rise in his political and administrative influence in Brünn."
+    },
+    {
+        "question_id": "gen_li_124",
+        "question": "Welche Bauleistungen wurden in der modernen Großstadt unter der Leitung von Oskar Judex durchgeführt, und welche Bedeutung hatten diese für die Stadtentwicklung?",
+        "ground_truth": "Unter der Leitung von Oskar Judex wurden in der modernen Großstadt mehrere bedeutende Bauleistungen durchgeführt. Dazu gehören die Vollendung des Verkehrsringes um den Stadtkern, die verkehrstechnische Erschließung der Schwarzen Felder, die Errichtung von Siedlungen, Schulen und Amtsgebäuden sowie die stilvolle Wiederherstellung mittelalterlich schöner Stadtviertel. Diese Bauleistungen hatten eine wichtige Bedeutung für die Stadtentwicklung, da sie die Infrastruktur verbesserten, die Lebensqualität erhöhten und zur kulturellen und sozialen Entwicklung der Stadt beitrugen."
+    },
+    {
+        "question_id": "gen_li_125",
+        "question": "Analyze the programming schedule for the Reichsprogramm on Tuesday, November 23, 1944, and discuss the variety of cultural content offered, including specific musical pieces and their composers.",
+        "ground_truth": "The programming schedule for the Reichsprogramm on Tuesday, November 23, 1944, offers a diverse range of cultural content, particularly focusing on music. The schedule includes:\n\n1. **7:30—7:45**: A segment titled \"Zum Hören u. Behalten: Rechtsfragen des Alltags,\" which translates to \"To Listen and Remember: Legal Questions of Everyday Life.\" This segment likely addresses practical legal issues, providing educational content.\n\n2. **15:00—16:00**: A musical hour featuring \"Opernmelodien, Suften- und Serenadensätze,\" which means opera melodies, suites, and serenade movements. This segment offers a variety of classical music pieces, showcasing different styles and forms within the classical genre.\n\n3. **20:15—21:00**: A piano evening with Walter Gieseking, a renowned pianist. The program includes:\n   - The \"Italienisches Konzert\" by Johann Sebastian Bach, a well-known piece that exemplifies Bach's mastery of the Baroque concerto form.\n   - An \"Intermezzo\" by Johannes Brahms, likely a short, lyrical piano piece characteristic of Brahms' romantic style.\n   - The \"Sonate fis-Moll\" by Robert Schumann, a piano sonata in F-sharp minor, showcasing Schumann's emotional depth and complexity.\n\n4. **21:00—22:00**: A segment titled \"Johann Sebastian Bach, ein Komponistenbild von Alexander Schettler,\" which translates to \"Johann Sebastian Bach, a Composer Portrait by Alexander Schettler.\" This program likely provides an in-depth exploration of Bach's life and works, offering listeners insight into his contributions to music.\n\nOverall, the Reichsprogramm schedule for this day presents a rich tapestry of cultural content, with a strong emphasis on classical music, featuring both performances and educational segments about renowned composers."
+    },
+    {
+        "question_id": "gen_li_126",
+        "question": "What are some of the specific machinery and equipment listed in the Werkstoffeinsatzlisten recognized by the Arbeitsstab für Metallumstellung in Berlin for the Gebiet des Protektorats Böhmen und Mähren as of November 18, 1944?",
+        "ground_truth": "Some of the specific machinery and equipment listed in the Werkstoffeinsatzlisten recognized by the Arbeitsstab für Metallumstellung in Berlin for the Gebiet des Protektorats Böhmen und Mähren as of November 18, 1944, include:\n\n- Meßuhren (measuring instruments)\n- Melkmaschinen (milking machines)\n- Milchschleudern (milk centrifuges)\n- Lokomotiven (locomotives)\n- Sauerstoffkompressoren (oxygen compressors)\n- Hochofenanlagen (blast furnace installations)\n- Kakao-, Schokolade- und Süßwarenmaschinen (cocoa, chocolate, and confectionery machines)\n- Amoniaksättigeranlagen (ammonia saturator installations)\n- Dampfturbinen (steam turbines)\n- Klarsichtscheiben (clear view screens)\n- Fernthermometer für Kraftfahrzeuge (remote thermometers for motor vehicles)\n- Öldruckwarngeräte für Kraftfahrzeuge (oil pressure warning devices for motor vehicles)\n- Luftdruckprüfer für Luftschläuche (air pressure testers for air hoses)\n- Unterdruckmesser für Fahrzeuggeneratoren (vacuum gauges for vehicle generators)\n- Stehbildwerfer (still image projectors)"
+    },
+    {
+        "question_id": "gen_li_127",
+        "question": "What are the procedures for submitting exemption requests or proposals for changes to the material usage lists, and where can these lists be obtained?",
+        "ground_truth": "Exemption requests, inquiries, and proposals for changes to the material usage lists should be submitted through the relevant division of the organization of the commercial economy to the monitoring office at the Ministry of Economy and Labor. The material usage lists can be obtained from Verlag Ernst Janetzke, located at Berlin SW 68, Wassertorstraße 14, and from Beuth-Verlag, located at Berlin SW 68, Dresdner Straße 97."
+    },
+    {
+        "question_id": "gen_li_128",
+        "question": "How did the funded debt of the Reich change from June 30, 1944, to September 30, 1944, and what were the main components contributing to this change?",
+        "ground_truth": "The funded debt of the Reich increased from 126,591.0 million Reichsmark (RM) on June 30, 1944, to 130,854.1 million RM on September 30, 1944. The main component contributing to this change was the increase in the debt denominated in Reichsmark, which rose from 125,396.0 million RM to 129,661.3 million RM during the same period."
+    },
+    {
+        "question_id": "gen_li_129",
+        "question": "Wie haben sich die Kassenumsätze und die bargeldlosen Zahlungen bei den Kreditinstituten während des Krieges verändert, und welche Bedeutung hat der Zahlungsverkehr in dieser Zeit?",
+        "ground_truth": "Die Kassenumsätze, also der bare Zahlungsverkehr, haben sich bei den Kreditinstituten während des Krieges etwa verdoppelt. Die bargeldlosen Zahlungen, die im Durchschnitt etwa 16-mal so groß sind wie die Barumsätze, sind im Krieg um 75 % gewachsen. Der Zahlungsverkehr hat in dieser Zeit eine große Bedeutung, da er nicht eingeschränkt werden kann wie andere Verkehrsdienste. Dies liegt daran, dass allen Zahlungsvorgängen letztlich immer kriegs- oder lebenswichtige Leistungen oder Lieferungen entsprechen."
+    },
+    {
+        "question_id": "gen_li_130",
+        "question": "What significant event involving Dr. Ludwig Fritscher, a prominent figure in the banking sector, was reported from Vienna?",
+        "ground_truth": "Dr. Ludwig Fritscher, the president of the Vienna Stock Exchange and a board member of the Kreditanstalt-Bankverein, was reported to have died in an accident."
+    },
+    {
+        "question_id": "gen_li_131",
+        "question": "Wie hat sich der Geldbestand laut dem Dokument verändert und welche anderen finanziellen Posten wurden ebenfalls erwähnt?",
+        "ground_truth": "Der Geldbestand hat sich laut dem Dokument um 1,6 auf 1517 Millionen erhöht. Andere finanzielle Posten, die ebenfalls erwähnt wurden, sind der Devisenbestand, der um 3,5 auf 800 Millionen gestiegen ist, und die anderen Barschaften, die um 243 auf 2516 Millionen zugenommen haben. Der Effekteneskompte wird um 51 Millionen höher mit 1864 Millionen ausgewiesen. Die anderen Aktiven weisen eine Steigerung um 186 auf 51.742 Millionen auf."
+    },
+    {
+        "question_id": "gen_li_132",
+        "question": "Welche Rolle spielt die USA laut dem Bericht von Nelson Rockefeller in Bezug auf den Bedarf an Maschinen in Süd- und Mittelamerika in den ersten zehn Jahren nach Kriegsende?",
+        "ground_truth": "Laut dem Bericht von Nelson Rockefeller spielt die USA die Rolle des Hauptlieferanten für den Bedarf an neuen und gebrauchten Maschinen in Süd- und Mittelamerika in den ersten zehn Jahren nach Kriegsende. Die USA sollen 60 Prozent dieses Bedarfs decken."
+    },
+    {
+        "question_id": "gen_li_133",
+        "question": "What were the conditions under which the Jagdvorsteher could lease hunting rights without public announcement or disclosure of lease terms, according to the regulations mentioned in the document?",
+        "ground_truth": "The Jagdvorsteher could lease hunting rights without public announcement or disclosure of lease terms if the current leaseholder did not apply for an extension or if it was a new hunting lease. This was done with the approval of the Untere Jagdbehörde."
+    },
+    {
+        "question_id": "gen_li_134",
+        "question": "Beschreiben Sie den Verarbeitungsprozess des Graphits, der in den drei großen Öfen getrocknet und in der Graphitmühle weiterverarbeitet wird. Welche Qualität hat der Böhmerwälder Graphit nach dieser Verarbeitung?",
+        "ground_truth": "Der Verarbeitungsprozess des Graphits beginnt damit, dass der auf den Halden durchnässte Graphit in drei großen Öfen 20 Stunden lang getrocknet wird. Anschließend wird er durch Elevatoren in einen siloähnlichen Behälter befördert. Nach der weiteren Verarbeitung in der Graphitmühle wird der Graphit so fein, dass er, wenn er durch ein Netz mit 6400 Maschen pro Quadratzentimeter gesiebt wird, nur 5 % Rückstand hinterlässt. Die Qualität des Böhmerwälder Graphits ist hoch, da er auch nach dieser Verarbeitung noch 50 % und mehr an reinem Kohlenstoff enthält."
+    },
+    {
+        "question_id": "gen_li_135",
+        "question": "Welche Steuererleichterungen wurden von der Faschistischen Sozialrepublik Italien für Kapitalerhöhungen von Aktiengesellschaften eingeführt, und unter welchen Bedingungen können diese in Anspruch genommen werden?",
+        "ground_truth": "Die Faschistische Sozialrepublik Italien hat bedeutende Steuererleichterungen für Kapitalerhöhungen von Aktiengesellschaften eingeführt. Diese Steuererleichterungen können in Anspruch genommen werden, wenn die betreffenden Aktiengesellschaften nachweisen, dass sie Kapitalerhöhungen benötigen, um Kriegsschäden zu beseitigen oder durch Kriegshandlungen zerstörte Betriebe wieder aufzubauen. Die Erleichterungen gelten auch für Kapitalerhöhungen, die bereits vor dem Erlass der Verordnung beschlossen wurden, aber noch nicht durchgeführt sind."
+    },
+    {
+        "question_id": "gen_li_136",
+        "question": "Welche Auswirkungen hat die Stabilisierung der Drachme auf die Wirtschaftslage in Griechenland laut der Times, und welche Meinung vertreten die englischen City-Kreise dazu?",
+        "ground_truth": "Laut der Times hat die Stabilisierung der Drachme die Wirtschaft in Griechenland nicht entscheidend beeinflussen können. Die Wirtschaftslage in Griechenland hat sich in den letzten Wochen weiter verschlechtert. Die englischen City-Kreise sind der Meinung, dass mit chirurgischen Eingriffen in die Währung an der eigentlichen Wirtschaftslage nichts geändert werden kann."
+    },
+    {
+        "question_id": "gen_li_137",
+        "question": "What factors contributed to the lack of trading activity in certain standard stocks such as Rheinstahl and Siemens in the Berlin stock market at the beginning of the week?",
+        "ground_truth": "The lack of trading activity in certain standard stocks such as Rheinstahl and Siemens in the Berlin stock market at the beginning of the week was attributed to a greater market tightness."
+    },
+    {
+        "question_id": "gen_li_138",
+        "question": "Welche Rolle spielt der Fußballsport in der Heimat während der kriegsbedingten Beschränkungen, und wie trägt er zur Förderung des Arbeitseinsatzes und der Leistung bei?",
+        "ground_truth": "Der Fußballsport spielt während der kriegsbedingten Beschränkungen eine wichtige Rolle in der Heimat, da er trotz dieser Einschränkungen nichts von seiner Anziehungskraft eingebüßt hat. Die Meisterschaftsspiele ziehen viele Zuschauer an, die durch den Besuch der Spiele Entspannung und Freude finden. Darüber hinaus trägt der Fußballsport auf breiter Grundlage zur Förderung des Arbeitseinsatzes und der Leistung bei, indem er eine Entwicklung unterstützt, die über die körperliche Schulung hinausgeht. Jedes einzelne Spiel hat in dieser Hinsicht seine Bedeutung, unabhängig von der Größe der Zuschauerzahl."
+    },
+    {
+        "question_id": "gen_li_139",
+        "question": "Wie viele Zuschauer haben den 30 Spielen der Schlussrunden um die Deutsche Fußballmeisterschaft im Frühjahr beigewohnt, und was sagt dies über die Beliebtheit des Fußballs im sechsten Kriegsjahr aus?",
+        "ground_truth": "Den 30 Spielen der Schlussrunden um die Deutsche Fußballmeisterschaft im Frühjahr haben weit über eine halbe Million Zuschauer beigewohnt. Dies zeigt, dass Fußball auch im sechsten Kriegsjahr ein großer Volkssport geblieben ist."
+    },
+    {
+        "question_id": "gen_li_140",
+        "question": "Analyze the performance of the Deutsche Post-Sportgemeinschaft Brünn in their match against the Luftwaffe, highlighting the significance of their victory despite not having their usual team lineup.",
+        "ground_truth": "The Deutsche Post-Sportgemeinschaft Brünn achieved a narrow victory against the Luftwaffe with a final score of 5:4. This win is particularly significant because the team was not able to compete with their usual lineup, indicating that they had to adapt and overcome the challenge of playing with a different set of players. The individual match results show a mixed performance, with some players winning their matches and others losing. However, the overall team effort led to a successful outcome. The victory highlights the team's resilience and ability to perform well even under less-than-ideal circumstances."
+    },
+    {
+        "question_id": "gen_li_141",
+        "question": "What was the outcome of the football match held at the Dänlegen-Stadion, and which team emerged victorious?",
+        "ground_truth": "The outcome of the football match held at the Dänlegen-Stadion was a victory for the Heereself, who won with a score of 5:3."
+    },
+    {
+        "question_id": "gen_li_142",
+        "question": "What is the birth date and name of the child born to Dipl.-Ing. Hans Rataj and Frau Grete geb. Benda?",
+        "ground_truth": "The child born to Dipl.-Ing. Hans Rataj and Frau Grete geb. Benda is named Hannelore, and the birth date is 21. 11. 1944."
+    },
+    {
+        "question_id": "gen_li_143",
+        "question": "Analyze the emotional tone and language used in the announcement of Anton Richter's death and discuss how it reflects the values and sentiments of the time period in which it was written.",
+        "ground_truth": "The announcement of Anton Richter's death is steeped in the emotional tone and language characteristic of wartime Germany during the 1940s. The language used is formal and reverent, reflecting a deep sense of loss and mourning. Phrases like \"tief-traurige Nachricht\" (deeply sad news) and \"in tiefstem Schmerz\" (in deepest sorrow) convey the profound grief experienced by the family.\n\nThe announcement also reflects the values and sentiments of the time, particularly the emphasis on duty, sacrifice, and loyalty to the nation and its leaders. Anton is described as having died a \"Heldentod\" (hero's death) in \"treuester Pflichterfüllung\" (faithful fulfillment of duty), highlighting the glorification of military service and sacrifice for the \"Führer\" and the \"Bestand des Reiches\" (the existence of the Reich). This language underscores the nationalistic and militaristic values promoted by the Nazi regime, where personal loss was often framed within the context of a greater cause.\n\nAdditionally, the mention of gratitude towards the NSDAP (National Socialist German Workers' Party) and the NSV (National Socialist People's Welfare) indicates the integration of political entities into personal and communal expressions of grief, further reflecting the pervasive influence of the regime on all aspects of life during this period. The announcement serves not only as a personal expression of mourning but also as a public affirmation of loyalty to the state and its ideology."
+    },
+    {
+        "question_id": "gen_li_144",
+        "question": "Analyze the emotional tone and language used in the announcements of Hermann Schuster's and Herbert Markus's deaths. How do the families express their grief and pride in their loved ones' sacrifices during the war?",
+        "ground_truth": "The announcements of Hermann Schuster's and Herbert Markus's deaths convey a deep sense of grief and pride, reflecting the emotional complexity of losing loved ones in wartime. \n\nIn the announcement for Hermann Schuster, the language used by his family emphasizes both their sorrow and their pride in his sacrifice. Words like \"mein guter, einziger Sohn\" (my good, only son) and \"unser lieber Bruder\" (our dear brother) highlight the personal loss and affection they felt for him. The phrase \"Er gab sein junges Leben für Führer, Volk und Vaterland\" (He gave his young life for the leader, people, and fatherland) underscores a sense of patriotic duty and pride in his contribution to the war effort. The mention of his burial with \"allen milit. Ehren\" (all military honors) further reinforces the honor and respect attributed to his sacrifice.\n\nSimilarly, the announcement for Herbert Markus expresses profound grief and pride. The use of \"herzensguter, unvergeßlicher Junge\" (dear, unforgettable boy) and \"lieber Bruder\" (dear brother) conveys the deep emotional pain of his loss. The phrase \"den Heldentod fand\" (met a hero's death) and \"Er gab sein Bestes für Großdeutschland\" (He gave his best for Greater Germany) reflect a sense of pride in his ultimate sacrifice for the nation. The family acknowledges their personal loss with \"wir unser ganzes Glück\" (we our entire happiness), indicating the depth of their sorrow. The announcement of a requiem mass also signifies the family's desire to honor his memory and sacrifice.\n\nOverall, both families express their grief through affectionate and personal language, while simultaneously conveying pride in their loved ones' sacrifices for their country."
+    },
+    {
+        "question_id": "gen_li_145",
+        "question": "What instructions were given to the residents of Brünn regarding the use of gas in their homes after the repair of damaged gas lines, and who issued these instructions?",
+        "ground_truth": "The residents of Brünn were instructed not to open the gas valves in their homes until the municipal gasworks technicians had declared the house safe for gas use, as there was a risk of explosion. The instructions emphasized that both the apartment gas meters and the main gas valves of the house should remain closed until the municipal technicians authorized the use of gas. These instructions were issued by the Oberbürgermeister (Mayor) Judex."
+    },
+    {
+        "question_id": "gen_li_146",
+        "question": "On which date did the Brünner Straßenbahn resume operations on specific routes, and what were the intervals between the trams?",
+        "ground_truth": "The Brünner Straßenbahn resumed operations on specific routes on Tuesday, November 28, 1944, with intervals between the trams of 6 and 7 minutes."
+    },
+    {
+        "question_id": "gen_li_147",
+        "question": "What are the consequences for consumers who do not claim their entitlement to carp within the specified time frame according to the announcement by the Bohemian-Moravian Association for Livestock, Meat, and Fish in Prague dated September 8, 1944?",
+        "ground_truth": "Consumers who do not claim their entitlement to carp within the specified time frame of 3 days will lose their entitlement. The forfeited quantities of carp will be allocated to hospitals and similar institutions."
+    },
+    {
+        "question_id": "gen_li_148",
+        "question": "How should a carp be portioned if it needs to be divided into a middle piece and a tail piece, and how are these portions accounted for in terms of sections?",
+        "ground_truth": "If a carp needs to be divided into a middle piece and a tail piece, these two portions are considered equivalent in terms of sections. This means that both the middle piece and the tail piece are accounted for equally when calculating the sections."
+    },
+    {
+        "question_id": "gen_li_149",
+        "question": "Analyze the sequence of dates and numbers associated with Sophie Klein and B. Cerhak. What patterns or discrepancies can you identify in the distribution of numbers across the dates for each individual?",
+        "ground_truth": "In analyzing the sequence of dates and numbers associated with Sophie Klein and B. Cerhak, we can identify the following patterns and discrepancies:\n\n**Sophie Klein:**\n- The sequence of numbers is distributed in increments of 1500 across consecutive days.\n- The dates and corresponding number ranges are as follows:\n  - 27.11: 1—1500\n  - 28.11: 1501—3000\n  - 29.11: 3001—4500\n  - 30.11: 4501—6000\n  - 1.12: 6001—7500\n  - 2.12: 7501—9000\n  - 4.12: 9001—10500\n  - 5.12: 10501—12000\n  - 6.12: 12001—13500\n  - 7.12: 13501—15000\n  - 3.12: 15001—16500 (Note: The date 3.12 is out of sequence)\n  - 9.12: 16501—18000\n  - 11.12: 18001—19500\n  - 12.12: 19501—21000\n  - 13.12: 21001—22500\n  - 14.12: 22501—24000\n  - 15.12: 24001— usw. (indicating continuation)\n\n**B. Cerhak:**\n- The sequence of numbers is also distributed in increments of 1500 across consecutive days, but there are discrepancies and overlaps in the number ranges.\n- The dates and corresponding number ranges are as follows:\n  - 27.11: 1—1500\n  - 28.11: 1501—3000 (Note: The date is incorrectly listed as \"2s. 11.\")\n  - 29.11: 3001—4500\n  - 30.11: 4501—8000 (Note: This range is larger than the typical 1500 increment)\n  - 1.12: 6001—7500\n  - 2.12: 7501—9000\n  - 4.12: 9001—10500\n  - 5.12: 19501—12000 (Note: The starting number 19501 is out of sequence)\n  - 6.12: 12001—13600 (Note: This range is larger than the typical 1500 increment)\n  - 7.12: 13501—15000 (Overlap with the previous range)\n  - 8.12: 15001—16500\n  - 9.12: 16501—18000\n  - 11.12: 18001—19500\n  - 12.12: 19501—21000\n  - 13.12: 21001—22500\n  - 14.12: 22501—94000 (Note: The ending number 94000 is unusually large)\n  - 15.12: 24001—25500\n  - 16.12: 25501—27000\n  - 18.12: 27001—28500\n\n**Discrepancies:**\n- Sophie Klein's sequence is mostly consistent, except for the out-of-sequence date on 3.12.\n- B. Cerhak's sequence has several discrepancies, including incorrect dates, overlapping ranges, and unusually large number ranges, particularly on 30.11 and 14.12."
+    },
+    {
+        "question_id": "gen_li_150",
+        "question": "What are the dates and times for the scheduled \"Scharfschießen\" (live firing exercises) in the Amtsbereich according to the announcement?",
+        "ground_truth": "The scheduled \"Scharfschießen\" (live firing exercises) in the Amtsbereich are on the following dates and times: \n\n1. November 29, 1944, from 4:30 to 13:00 in the Raume Hossau.\n2. December 2, 1944, from 4:30 to 13:00 in the Raume Hossau.\n3. November 29, 1944, from 4:45 to 14:00.\n4. December 2, 1944, from 4:45 to 14:00."
+    },
+    {
+        "question_id": "gen_li_151",
+        "question": "Identify the specific time frames and locations mentioned for the activities occurring on November 29, 1944, and December 1, 1944, as described in the document.",
+        "ground_truth": "On November 29, 1944, activities are scheduled from 8:00 to 16:00 in the area of Heinzendorf. On December 1, 1944, activities are scheduled from 6:30 to 12:00 in the area of Ebersdorf and from 7:00 to 12:30 in the area of Pistau (Lehnäcker)."
+    },
+    {
+        "question_id": "gen_li_152",
+        "question": "What are the specific instructions and warnings given regarding the restricted area during the shooting exercises, and what are the consequences of not adhering to these instructions?",
+        "ground_truth": "The specific instructions and warnings regarding the restricted area during the shooting exercises are as follows: The area is closed off and secured by military posts, and entering it is associated with life-threatening danger and is strictly prohibited. It is mandatory to unconditionally follow the orders given by the personnel managing the closures. Failure to adhere to these instructions could result in severe consequences, including risking one's life."
+    },
+    {
+        "question_id": "gen_li_153",
+        "question": "Welche Änderungen der Dienstzeiten wurden in der Bezirkskrankenversicherungsanstalt in Iglau ab dem 27. November 1944 eingeführt, und an welchen Tagen wird ein Abenddienst angeboten?",
+        "ground_truth": "Ab dem 27. November 1944 wurden die Dienstzeiten in der Bezirkskrankenversicherungsanstalt in Iglau wie folgt festgesetzt: Montag bis Freitag von 7.30 bis 17.30 Uhr und Samstag von 7.30 bis 17 Uhr. Ein Abenddienst wird an zwei Tagen der Woche, nämlich Dienstag und Freitag, sowohl in der Dienststelle Beim Münzamt Nr. 8 als auch im Zahnambulatorium sowie im Ambulatorium für physikalische Therapie, Heydrichstr. 4, bis 20 Uhr angeboten."
+    },
+    {
+        "question_id": "gen_li_154",
+        "question": "In which building and on which floors are the different departments of the Deutsche Landzentrale, Ges. m. b. H., Brünn temporarily operating?",
+        "ground_truth": "The different departments of the Deutsche Landzentrale, Ges. m. b. H., Brünn are temporarily operating in the building located at Rathausgasse 11. The Kasse is in the Kassenräumen of the Landwirtschaftl. Kreditanstalt für Böhmen u. Mähren (LKA) on the corner of Krautmarkt-Rathausgasse Nr. 11, the Direktion is on the 1st floor, and the other departments are on the 4th floor."
+    },
+    {
+        "question_id": "gen_li_155",
+        "question": "Which films are being shown at both the Viktoria and Volkskino theaters?",
+        "ground_truth": "\"Die ehrbaren Frauen von Pardubitz\" is being shown at both the Viktoria and Volkskino theaters."
+    },
+    {
+        "question_id": "gen_li_156",
+        "question": "What is the address of the Kanzlei der Bauunternehmung Dipl.-Ing. St. Krumpholz after its restoration in Brünn?",
+        "ground_truth": "The address of the Kanzlei der Bauunternehmung Dipl.-Ing. St. Krumpholz after its restoration in Brünn is Talgasse Nr. 19/II. Stock."
+    },
+    {
+        "question_id": "gen_li_157",
+        "question": "How are visitors of the Lichtspieltheater informed in the event of an air raid alarm?",
+        "ground_truth": "Visitors of the Lichtspieltheater are informed in the event of an air raid alarm by specially designated messengers."
+    },
+    {
+        "question_id": "gen_li_158",
+        "question": "Jak často vychází publikace a jaké jsou možnosti předplatného v Olomouci?",
+        "ground_truth": "Publikace vychází třikrát za týden: v úterý, ve čtvrtek a v sobotu večer. Možnosti předplatného v Olomouci jsou následující: na rok za 8 zlatých, na půl roku za 4 zlaté a na čtvrt roku za 2 zlaté."
+    },
+    {
+        "question_id": "gen_li_159",
+        "question": "Based on the context provided, what factors contribute to the electoral success of Poles in certain districts despite the significant presence and support of Germans?",
+        "ground_truth": "The electoral success of Poles in certain districts, despite the significant presence and support of Germans, is attributed to their excellent organization."
+    },
+    {
+        "question_id": "gen_li_160",
+        "question": "Jaké jsou rozdíly v počtu a typu periodik mezi Poláky poznaňskými a moravskými Čechy podle uvedeného textu?",
+        "ground_truth": "Podle uvedeného textu mají Poláci poznaňští, kterých je o polovinu méně než moravských Čechů, dva politické deníky pro vzdělanější lidi, jeden deník a asi deset týdeníků psaných prostonárodně pro méně vzdělané lidi na venkově a v městech. Text neuvádí konkrétní počet a typ periodik pro moravské Čechy, ale naznačuje, že Poláci poznaňští mají relativně více periodik vzhledem k jejich počtu."
+    },
+    {
+        "question_id": "gen_li_161",
+        "question": "What is the role of the publication \"Pozor\" as described in the text, and how does it contribute to the rights and welfare of the people it represents?",
+        "ground_truth": "The publication \"Pozor\" is described as actively defending the rights and welfare of the people it represents with a sacred zeal and effort. It is portrayed as an entity that is not ashamed to receive payment for its patriotic work, as it is aware that it is advocating for the rights and properties of its people. By doing so, \"Pozor\" is contributing to the welfare of the people by ensuring their rights are upheld and their interests are protected."
+    },
+    {
+        "question_id": "gen_li_162",
+        "question": "Jaký je postoj autora k rozšíření časopisectva mezi moravskými Čechy a jaké důvody uvádí pro podporu tohoto rozšíření?",
+        "ground_truth": "Autor podporuje rozšíření časopisectva mezi moravskými Čechy. Uvádí, že by moravští Češi měli mít více než pět českých časopisů, když Češi v Čechách mají přes padesát politických časopisů. Autor se domnívá, že rozšíření časopisectva by pomohlo posílit českou národní identitu a vzdělání, podobně jako Poláci podporují své mladé lidi ve studiu, aby se z nich stali kvalifikovaní odborníci. Autor také naznačuje, že by bylo lepší mít české časopisy v rukou Čechů než Němců."
+    },
+    {
+        "question_id": "gen_li_163",
+        "question": "Jaké důvody vedou Němce k vážným úvahám o poměrech v Poznaňsku podle uvedeného textu?",
+        "ground_truth": "Podle uvedeného textu vedou Němce k vážným úvahám o poměrech v Poznaňsku znenáhlé mohutnění polského živlu v této oblasti."
+    },
+    {
+        "question_id": "gen_li_164",
+        "question": "Jakou roli hrají katoličtí kněží ve smíšených osadách podle textu a jaký vliv mají na německou mládež?",
+        "ground_truth": "Podle textu katoličtí kněží ve smíšených osadách hrají roli hlavních pěstitelů a podporovatelů národního hnutí. Mají vliv na německou mládež tím, že ji \"popolšťují,\" což naznačuje, že přispívají k polonizaci německé mládeže."
+    },
+    {
+        "question_id": "gen_li_165",
+        "question": "Jaký byl jazyk vyučování na národních školách v Poznaňsku a jaký jazyk byl používán jako učební předmět?",
+        "ground_truth": "Na národních školách v Poznaňsku byl vyučovacím jazykem v nižších třídách polština, zatímco němčina byla používána jako učební předmět."
+    },
+    {
+        "question_id": "gen_li_166",
+        "question": "Jaké kroky podnikli Poláci, aby uchovali zemi svých předků v reakci na německou hrozbu?",
+        "ground_truth": "Poláci začali přemýšlet o tom, jak uchovat zemi svých předků, a podnikli kroky jako zřízení politických spolků a ústředního agitačního výboru, který zařídil v každém okrese zvláštní odbor."
+    },
+    {
+        "question_id": "gen_li_167",
+        "question": "Jakým způsobem se v posledních třiceti letech změnilo vlastnictví velkostatkářské půdy podle textu a jaké národnosti se to týká?",
+        "ground_truth": "Podle textu se v posledních třiceti letech změnilo vlastnictví velkostatkářské půdy tak, že přes jeden milion morgů této půdy přešlo do německých rukou. Týká se to polské půdy, kterou Němci odkoupili od Poláků."
+    },
+    {
+        "question_id": "gen_li_168",
+        "question": "Jaké strategie používali Poláci k posílení svého hospodářského postavení a jaké byly důsledky těchto strategií pro německé vlastníky půdy?",
+        "ground_truth": "Poláci používali několik strategií k posílení svého hospodářského postavení. Zakládali záložny, banky a hypoteční ústavy, aby pomohli trhnout polské statky z rukou lichvářských židů a pruských upírů. Když bylo prospěšné zařídit nějaký závod, Poláci ho zřídili spojenými silami, aby je Němci nepředešli. Také vyhledávali polské kupce pro statky nebo obchody, které se měly prodávat, aby se tam nedostali Němci. Důsledkem těchto strategií bylo, že Poláci začali kupovat velkostatky zpět od Němců, což vedlo k tomu, že Němci přicházeli o půdu."
+    },
+    {
+        "question_id": "gen_li_169",
+        "question": "Jaké strategie používali Poláci k posílení své ekonomické pozice v Poznaňsku, a jaké byly výsledky těchto strategií?",
+        "ground_truth": "Poláci v Poznaňsku používali několik strategií k posílení své ekonomické pozice. Zaprvé, byli napomínáni, aby neprodávali svou rodnou půdu, což znamená, že se snažili udržet vlastnictví půdy v polských rukou. Zadruhé, Poláci se naučili spořit a hospodařit, což jim umožnilo lépe spravovat své finance. Dále se aktivně účastnili průmyslových podniků spolu s Němci, což jim poskytlo příležitosti k ekonomickému růstu.\n\nVýsledky těchto strategií byly velmi pozitivní. Poláci, kteří prodali své statky Němcům, získali značné množství peněz, které výhodně uložili. Díky těmto opatřením se vytvořil nepříznivý proud pro Němce, což naznačuje, že Poláci byli úspěšní v posílení své ekonomické pozice v regionu."
+    },
+    {
+        "question_id": "gen_li_170",
+        "question": "Jaké typy podniků jsou v Poznani v rukou polských a jaké úvěrové instituce je podporují?",
+        "ground_truth": "V Poznani jsou v rukou polských cukrovary, škrobárny, velkoprůmyslnické podniky, strojírny, parní truhlárny a alévárny. Tyto podniky jsou podporovány mnohými úvěrovými ústavy, jako je Banka pro hospodářství a průmysl a bank wloscianski (rolnický) v Poznani. Pro menší průmyslníky jsou důležité záložny a spolky úvěrní, které se rozprostírají po celém Poznansku a fungují podle systému Schulze — Delitzschowa."
+    },
+    {
+        "question_id": "gen_li_171",
+        "question": "Jakou roli hrají polští kněží a šlechtici v organizaci hospodářských a finančních institucí sloužících národohospodářským účelům v polském národním hnutí?",
+        "ground_truth": "Polští kněží a šlechtici hrají vedoucí roli v organizaci hospodářských a finančních institucí sloužících národohospodářským účelům v polském národním hnutí. Stojí v čele těchto institucí, které jsou výtečně organizovány a zahrnují hospodářské, rustikální, spořitelní a záloženské ústavy."
+    },
+    {
+        "question_id": "gen_li_172",
+        "question": "Jaký vliv mají časopisy na polské obyvatelstvo a jak se tento vliv projevuje v jejich čtenářských preferencích?",
+        "ground_truth": "Časopisy mají na polské obyvatelstvo mocný vliv. Tento vliv se projevuje v tom, že čím jsou výstřednější a ráznější hlásané náhledy časopisů pro lid, tím větší pochvalu získávají a tím větší kruh čtenářstva přitahují. To naznačuje, že polští čtenáři preferují časopisy, které mají výrazné a odvážné názory."
+    },
+    {
+        "question_id": "gen_li_173",
+        "question": "How did the influence of Polish clergy in schools contribute to the cultural dynamics between Polish and German Catholics during the period of the cultural struggle in Germany?",
+        "ground_truth": "The influence of Polish clergy in schools contributed significantly to the cultural dynamics between Polish and German Catholics during the period of the cultural struggle in Germany. The Polish clergy had a strong presence and influence in educational settings, which helped to strengthen the Polish cultural element among the population. This influence was particularly effective in the context of German Catholics, as it facilitated the process of \"Polonization\" among them. During the cultural struggle, the tensions between German Protestants and Catholics were pronounced, and the Polish clergy's influence in schools played a role in aligning German Catholics more closely with Polish cultural and national identity, thereby increasing the Polish cultural presence in the region."
+    },
+    {
+        "question_id": "gen_li_174",
+        "question": "How do Polish students in Poznań respond to the German influence in their education, and what role does family life play in this context?",
+        "ground_truth": "Polish students in Poznań respond to the German influence in their education by forming their own Polish groups and communities when they attend universities and industrial schools in cities like Berlin, Leipzig, Wrocław, and Greifswald. These groups support newly arrived compatriots both through advice and actions. Family life plays a significant role in resisting German influence, as it fosters a love for the Polish language and a sense of unity with the Polish homeland. This familial influence is a strong counter to the German efforts to Germanize the region."
+    },
+    {
+        "question_id": "gen_li_175",
+        "question": "What is the main accusation made by the Prague correspondent of \"Pozor\" against the national party in the context of the conflict in Moravia?",
+        "ground_truth": "The main accusation made by the Prague correspondent of \"Pozor\" against the national party is that the national party initiated the fratricidal conflict in Moravia. The correspondent claims that \"Pozor\" intended to fight for national rights and was not responsible for starting the conflict, implying that the national party attacked \"Pozor\" to protect their own interests and to silence a critical observer of their negligence and indifference."
+    },
+    {
+        "question_id": "gen_li_176",
+        "question": "Jaké jsou důvody, podle textu, proč severní Morava zaostává, a jakou roli v tom hraje strana národní?",
+        "ground_truth": "Podle textu severní Morava zaostává, protože strana národní buďto se bála boje s Němci, anebo nevěděla, jak ho započít. Tím strana národní ukázala svou neschopnost a svůj neúspěch."
+    },
+    {
+        "question_id": "gen_li_177",
+        "question": "Jaký návrh je považován za \"chlebičkářský\" a jaké otázky vyvolává ohledně vlastenecké činnosti?",
+        "ground_truth": "Návrh, který je považován za \"chlebičkářský\", je ten, aby v Brně byl zřízen ústřední politický spolek s okresními odbory, který by z členských příspěvků vydržoval několik lokálních časopisů, platil výlohy agitační a pořádal hospodářské i poučné, jmenovitě politické přednášky. Tento návrh vyvolává otázku, zda by si vlastenecký list měl nechat platit za svou vlasteneckou činnost a snažení, což je považováno za originální vlastenectví."
+    },
+    {
+        "question_id": "gen_li_178",
+        "question": "Analyze the tone and intent of the author in the provided text. How does the author perceive the actions and motivations of the \"Pozor\" publication and its role in the political landscape?",
+        "ground_truth": "The tone of the author in the provided text is critical and somewhat sarcastic. The author seems to perceive the actions and motivations of the \"Pozor\" publication with skepticism and disapproval. The text suggests that the author believes \"Pozor\" was not genuinely interested in fighting for \"our sacred rights\" but rather had ulterior motives. The author questions the sincerity of \"Pozor\" by implying that it was established to oppose national interests and engage in internal conflicts, rather than to support the community or political integrity.\n\nThe use of phrases like \"naivní a vý dopis\" (naive and [possibly derogatory] letter) and the sarcastic question about being \"nafleknut 'Flekovským'\" (possibly implying being under the influence or misguided) indicates that the author doubts the credibility and intentions of the publication. The author also criticizes \"Pozor\" for attacking the leaders of the Moravian people and accuses it of being more interested in scandalous activities than in genuine political engagement. Overall, the author perceives \"Pozor\" as a negative force in the political landscape, more interested in creating division and controversy than in contributing positively to political discourse."
+    },
+    {
+        "question_id": "gen_li_179",
+        "question": "Jaký je postoj autora textu k osobám, které velebí nepřítele národnosti a jaké historické postavy jsou v této souvislosti zmíněny?",
+        "ground_truth": "Autor textu má negativní postoj k osobám, které velebí nepřítele národnosti. Tyto osoby jsou přirovnávány k historickým postavám Efialta a Herostrata, což naznačuje, že autor je považuje za zrádce nebo osoby, které škodí vlastnímu národu."
+    },
+    {
+        "question_id": "gen_li_180",
+        "question": "Analyze the proposal mentioned in the document for establishing a central association in Brno with district branches to support national agitation across Moravia. How does the document suggest this proposal compares to the organization of Poznań's Poles, and what are the perceived shortcomings according to some Polish patriots?",
+        "ground_truth": "The document discusses a proposal for establishing a central association in Brno with district branches to support national agitation across Moravia. This proposal is suggested by a correspondent from \"northern Moravia\" and is published in \"Pokrok.\" The document indicates that this proposal is not as ridiculous as it might seem to a correspondent from Prague, who is likened to \"hloupej Honza\" (a foolish character from Czech folklore) writing for \"Posor.\"\n\nThe proposal is compared to the organization of Poznań's Poles, which is described as very good. However, the document suggests that even this well-regarded organization does not fully satisfy many enthusiastic Polish patriots. This implies that while the proposed organization in Brno is seen as a positive step, it may still fall short of the expectations or needs of some Polish nationalists who are looking for more robust or comprehensive support for their cause."
+    },
+    {
+        "question_id": "gen_li_181",
+        "question": "Jaký úkol by měl mít „obrance“ polských práv podle návrhu uvedeného v textu?",
+        "ground_truth": "Úkolem „obrance“ polských práv by bylo vyhledávat všechny křivdy v národním ohledu polském a přispívat v takových záležitostech každému radou i skutkem."
+    },
+    {
+        "question_id": "gen_li_182",
+        "question": "Jaké výzvy a překážky čelí národní strana na Moravě podle textu a jaké strategie by mohla použít k posílení svého vlivu?",
+        "ground_truth": "Podle textu čelí národní strana na Moravě několika výzvám a překážkám. Mezi hlavní výzvy patří mocný nepřítel, který zahrnuje bývalé ústavověrce z celého Rakouska, německou organizaci ve městech, vliv německého časopisectva, byrokracie a německého kapitálu. Další překážkou je taktika odpůrců, kteří si před volbami nechávají připisovat vyšší daně, aby se dostali do vyšších volebních sborů, a po volbách žádají o zmírnění těchto daní.\n\nStrategie, které by národní strana mohla použít k posílení svého vlivu, zahrnují pokus o vytvoření pevných hradeb každého národa, zejména ve městech na Moravě. To by mohlo zahrnovat posílení vlastní organizace, zvýšení vlivu v médiích a byrokracii, a možná i ekonomické strategie k oslabení německého kapitálu."
+    },
+    {
+        "question_id": "gen_li_183",
+        "question": "What strategies did the political factions use to influence voters and secure their support during the elections, as described in the text?",
+        "ground_truth": "The political factions used several strategies to influence voters and secure their support during the elections, as described in the text. These strategies included:\n\n1. Appointing honorary citizens to strengthen their ranks.\n2. Paying off overdue taxes for their voters so they could vote for their candidates.\n3. Offering money, reportedly five or more gold coins, for the support of local people.\n4. Intimidating dependent and indifferent individuals.\n5. Providing food such as sausages, liver sausages, and goulash, and intoxicating them with alcohol like spirits, beer, and wine.\n6. Organizing and spending money on various activities and entertainments to attract voters, as evidenced by the mention of voters arriving in carriages and experiencing various amusements."
+    },
+    {
+        "question_id": "gen_li_184",
+        "question": "Jaké byly hlavní body projednávané na schůzi rakouské delegace, která se konala v sobotu, a jaký byl postoj hraběte Coudenhove k zahraniční politice Rakouska?",
+        "ground_truth": "Hlavní body projednávané na schůzi rakouské delegace, která se konala v sobotu, zahrnovaly schválení rozpočtů finančního ministerstva a společného účetního dvora. Dále byla podána zpráva hrabětem Jindřichem Clam-Martinicem o rozpočtu společného ministerstva zahraničních věcí a jeho dodatečném úvěru. Hrabě Coudenhove vyjádřil svůj postoj k zahraniční politice Rakouska tím, že souhlasil s názory předsedy rakouské delegace a prohlásil, že zahraniční politika Rakouska směřuje k tomu, aby byla vážnost říše hájena a mír zachován. Přesto však zdůraznil, že ne všichni, kdo považují zahraniční politiku za přiměřenou, zcela souhlasí s aktuálním stavem věcí."
+    },
+    {
+        "question_id": "gen_li_185",
+        "question": "Jaké důležité reformy hospodářské jsou zanedbávány kvůli vojenským výdajům, a jaké jsou jejich možné důsledky pro stát?",
+        "ground_truth": "Důležité reformy hospodářské, které jsou zanedbávány kvůli vojenským výdajům, zahrnují obnovení valuty a sociální pokroky, jako je pojištění dělníků pro stáří a úrazy. Možné důsledky pro stát zahrnují zanedbání ekonomických a sociálních reforem, což může vést k ekonomické nestabilitě a nedostatečné sociální ochraně obyvatelstva."
+    },
+    {
+        "question_id": "gen_li_186",
+        "question": "Jaké přání je vyjádřeno v souvislosti s východní politikou Rakouska podle textu?",
+        "ground_truth": "Přání vyjádřené v souvislosti s východní politikou Rakouska podle textu je, aby Rakousko trvale zachovalo mírumilovnou zastávku na dráze východní politiky."
+    },
+    {
+        "question_id": "gen_li_187",
+        "question": "Jaký postoj vyjádřil hrabě Clam-Martinic ohledně souhlasu s politickým svazkem, který je považován za oporu zahraniční politiky?",
+        "ground_truth": "Hrabě Clam-Martinic vyjádřil úplný souhlas s politickým svazkem, který je považován za oporu zahraniční politiky, a v němž spatřuje záruku míru."
+    },
+    {
+        "question_id": "gen_li_188",
+        "question": "Jaké téma bylo projednáváno na schůzi delegace v pondělí a jaký byl výsledek tohoto projednávání?",
+        "ground_truth": "Na schůzi delegace v pondělí bylo projednáváno téma rozpočtu ministra vojenství. Výsledek tohoto projednávání byl, že rozpočet byl schválen beze vší změny a beze všeho rokování."
+    },
+    {
+        "question_id": "gen_li_189",
+        "question": "Kdo byl zvolen poslancem na radu říšskou ve Třeboni během doplňovacích voleb a jaké bylo jeho povolání?",
+        "ground_truth": "Ve Třeboni byl během doplňovacích voleb zvolen poslancem na radu říšskou p. Jos. Hlávka, který byl stavební rada a majitel velkostatku v Lažanech."
+    },
+    {
+        "question_id": "gen_li_190",
+        "question": "What is the significance of Pera Teodorovič's illness in the context of the political situation described in the document?",
+        "ground_truth": "Pera Teodorovič's illness is significant in the context of the political situation described in the document because it suggests a potentially serious consequence for a key political figure who is an opponent of the ruling authorities. Teodorovič, described as the leader and guiding spirit of the radical party and editor of \"Samouprava,\" has been imprisoned and is now seriously ill. The document implies that his illness in prison could be more than just a health issue, hinting at possible foul play or harsh conditions imposed by the authorities. This is particularly concerning given the context of political unrest and the government's handling of opposition figures, as highlighted by the reference to the process involving Mrs. Marković, which suggests a pattern of mistreatment or targeting of political adversaries by those in power in Serbia."
+    },
+    {
+        "question_id": "gen_li_191",
+        "question": "What measures were taken by the government in response to the fear of the \"spiklenců\" being freed, as mentioned in the document?",
+        "ground_truth": "The government responded to the fear of the \"spiklenců\" (conspirators) being freed by quickly and secretly transporting an entire group of them."
+    },
+    {
+        "question_id": "gen_li_192",
+        "question": "Jaké události vedly k založení Českého čtenářského spolku „Moravana“ ve Šternberku a jaký význam měl tento spolek pro místní národní hnutí?",
+        "ground_truth": "Založení Českého čtenářského spolku „Moravana“ ve Šternberku bylo výsledkem událostí, které začaly výletem spolku „Žerotín“ do Žerotína. Tento výlet byl provázen kocourkovským chováním šternberských Němců, což vyvolalo silný národní ruch ve Šternberku. Z tohoto ruchu se zrodil spolek „Moravana“, který se stal důležitým centrem národního hnutí ve městě. Spolek měl významný vliv na posílení národní identity a inteligence v oblasti, a to navzdory odporu a nepřátelství ze strany některých místních obyvatel."
+    },
+    {
+        "question_id": "gen_li_193",
+        "question": "Jaké vlastnosti jsou přisuzovány Čechům ve Šternberku podle textu a jaký je jejich postoj vůči Schweinfestfreundům?",
+        "ground_truth": "Podle textu jsou Čechové ve Šternberku popisováni jako lidé vzdělaní, rázní a opatrní. Jejich postoj vůči Schweinfestfreundům je takový, že jim nebudou dělat konkurenci v jejich oblíbené zábavě. Text naznačuje, že Čechové se nebudou stavět proti Schweinfestfreundům a očekává se, že se smíří se situací tak, jak je, a že se budou snažit naučit se od svých odpůrců společenskému chování a ušlechtilejším snahám."
+    },
+    {
+        "question_id": "gen_li_194",
+        "question": "Kdo byl zvolen předsedou shromáždění a jakou zprávu podal po přečtení stanov?",
+        "ground_truth": "Předsedou shromáždění byl zvolen p. Karel Bukovský, který po přečtení stanov stručně ale nadšeně podal zprávu zařizovacího výboru."
+    },
+    {
+        "question_id": "gen_li_195",
+        "question": "Who were the individuals elected as alternates (náhradníky) in the committee mentioned in the document?",
+        "ground_truth": "The individuals elected as alternates (náhradníky) in the committee mentioned in the document were Fr. Hándl and Jak. Vysloužil."
+    },
+    {
+        "question_id": "gen_li_196",
+        "question": "Jaké významné osobnosti jsou zobrazeny v nových místnostech spolku „Moravana“ podle textu?",
+        "ground_truth": "V nových místnostech spolku „Moravana“ jsou zobrazeny významné osobnosti jako císařští a korunní manželé, apoštolové Cyril a Metoděj, Komenský, Jiří Poděbradský, Žižka a Havlíček."
+    },
+    {
+        "question_id": "gen_li_197",
+        "question": "Jaký je hlavní úkol škol podle textu a jakou roli v tom hraje jazyk posluchačů?",
+        "ground_truth": "Hlavní úkol škol podle textu je mluvit k posluchačům, žákům jejich jazykem, aby učení nebylo zbytečné. Jazyk posluchačů hraje klíčovou roli v tom, že umožňuje porozumění a efektivní učení. Školy musí přizpůsobit svůj jazyk tak, aby každý posluchač rozuměl tomu, co se učí."
+    },
+    {
+        "question_id": "gen_li_198",
+        "question": "Jaký je postoj autora k obcím na Moravě, které dosud nepřispěly na české školy, a jaké důvody uvádí pro jejich nečinnost?",
+        "ground_truth": "Postoj autora k obcím na Moravě, které dosud nepřispěly na české školy, je kritický. Autor vyjadřuje zklamání nad tím, že existují zámožné obce a dobří hospodáři, kteří se starají o své školy a děti, ale nemyslí na potřebu českých škol na jiných místech. Autor se ptá, zda v těchto lidech nebije české srdce a zda v jejich žilách nekoluje česká krev, což naznačuje, že očekává, že by měli mít přirozený zájem na podpoře českého školství. Důvodem jejich nečinnosti je podle autora to, že potřeba českých škol na místech obrozených pro ně neexistuje, což znamená, že nejsou ochotni vidět nebo uznat důležitost podpory českého školství mimo jejich vlastní komunitu."
+    },
+    {
+        "question_id": "gen_li_199",
+        "question": "Jakou roli hrají \"Matice školské\" v kontextu českého vzdělávání podle textu a jakým způsobem přispívají k udržení českých škol?",
+        "ground_truth": "\"Matice školské\" hrají v kontextu českého vzdělávání roli organizací, které finančně podporují české školy v oblastech, kde není možné z veřejných prostředků zřídit české školy kvůli odporu nepřátel českého národa. Přispívají k udržení českých škol tím, že z darovaných peněz vydržují tyto školy, což umožňuje pokračování českého vzdělávání i v nepříznivých podmínkách."
+    },
+    {
+        "question_id": "gen_li_200",
+        "question": "Jaké jsou některé z metod, které lze použít k získávání příspěvků pro Ústřední Matici školskou, a jaký je jejich účel?",
+        "ground_truth": "Některé z metod, které lze použít k získávání příspěvků pro Ústřední Matici školskou, zahrnují sbírky dobrovolné, střelce, výhry, litkupy, dražby, a zvláště dražby, při nichž každá přihodná částka hned se složí. Účelem těchto metod je získat finanční prostředky na podporu školství, přičemž každý dar je přijímán s vděkem a má přinést dobré ovoce."
+    },
+    {
+        "question_id": "gen_li_201",
+        "question": "Jaké usnesení přijalo zastupitelstvo města Šternberk ohledně zachování německého rázu města a jaký byl důvod tohoto rozhodnutí?",
+        "ground_truth": "Zastupitelstvo města Šternberk přijalo jednohlasně usnesení, že bude všemi možnými prostředky hájit německý ráz města. Důvodem tohoto rozhodnutí byl strach 13,943 Němců z 57 Čechů žijících ve městě."
+    },
+    {
+        "question_id": "gen_li_202",
+        "question": "Jak reagoval politický úřad ve Šternberku na vyvěšení velkoněmeckých praporů na hôtel Zweiglův a jaké kroky podnikl?",
+        "ground_truth": "Politický úřad ve Šternberku, který byl v té době ještě rakouský a v jehož čele stál rakouský kavalír hrabě Razumowski, nařídil četnictvu, aby okamžitě zajistilo odstranění velkoněmeckých praporů vyvěšených na hôtel Zweiglův. Prapory byly následně odstraněny."
+    },
+    {
+        "question_id": "gen_li_203",
+        "question": "Analyze the tone and intent of the article mentioned in the context, particularly in its portrayal of the Czech community in Šternberk. How does the article's language reflect the cultural tensions between the Czech and German populations?",
+        "ground_truth": "The tone of the article mentioned in the context is critical and somewhat sarcastic, particularly in its portrayal of the Czech community in Šternberk. The article describes a local German-language publication as \"fakciosní\" (factional) and \"neznámé jakosti\" (of unknown quality), suggesting a dismissive attitude towards its credibility and content. The use of terms like \"skladiště sprostoty a lži\" (warehouse of vulgarity and lies) indicates a strong disapproval of the publication's approach and content.\n\nThe article highlights the cultural tensions between the Czech and German populations by pointing out the publication's derogatory remarks about the Czech people, especially those in Šternberk. The mention of the German publication's complaints about the Czechification of German names (e.g., Swoboda to Svoboda, Krassa to Krása) underscores the cultural and linguistic conflicts between the two communities. The sarcastic reference to the publication as a \"květ německé kultury\" (flower of German culture) further emphasizes the author's critical stance and highlights the perceived cultural arrogance or insensitivity of the German publication.\n\nOverall, the language used in the article reflects a defensive and critical perspective from the Czech viewpoint, highlighting the cultural tensions and the perceived disrespect from the German publication towards the Czech community."
+    },
+    {
+        "question_id": "gen_li_204",
+        "question": "Jaké problémy jsou zmiňovány v souvislosti s poštovním úřadem ve Šternberku podle uvedeného textu?",
+        "ground_truth": "Podle uvedeného textu jsou zmiňovány problémy s poštovním úřadem ve Šternberku, které zahrnují nešetrnost a porušování jazykové rovnoprávnosti. Konkrétně se uvádí, že na poštovním úřadě není možné dostat české blankety a potřeby a že se tam neúřaduje česky. Dále je naznačeno, že náčelník úřadu se o své povinnosti nestará příliš svědomitě."
+    },
+    {
+        "question_id": "gen_li_205",
+        "question": "Jaké rozhodnutí učinilo zastupitelstvo ohledně lékáren ve Šternberku a jaký byl důvod tohoto rozhodnutí?",
+        "ground_truth": "Zastupitelstvo se rozhodlo postarat se o zřízení třetí obecní lékárny ve Šternberku, protože stávající dvě lékárny jsou v rukou českých."
+    },
+    {
+        "question_id": "gen_li_206",
+        "question": "Jaký návrh předložil p. Kretzl a jak na něj reagovala valná hromada?",
+        "ground_truth": "P. Kretzl předložil návrh, aby byl pozván šternberský čtenářský spolek „Moravana“, který má být hlavně záštitou pro dělnictvo v Šternberku. Valná hromada na tento návrh reagovala tím, že se usnesla, že spolek přistoupí ke spolku „Moravana“ jako člen zakládající."
+    },
+    {
+        "question_id": "gen_li_207",
+        "question": "Analyze the contributions listed in the document for the charitable committee for poor children in Olomouc. Identify the total amount of money collected and discuss the significance of community involvement in charitable activities during that period.",
+        "ground_truth": "The document lists contributions made to a charitable committee for poor children in Olomouc. The contributions are given in the currency of the time, which is florins (zl.) and kreuzers (kr.). To calculate the total amount collected, we need to sum up all the contributions:\n\n- Kancelář dra. Žáčka: 5 zl. 50 kr.\n- pí. Mrázková: 2 zl.\n- p. Moric Fischer: 5 zl.\n- sleč. Langrova: 1 zl.\n- p. Mathes, sklenář: 1 zl. 50 kr.\n- Nejmenovaná: 50 kr.\n- pan Nesvadba: 2 zl.\n- p. Vojtek, kožešník: 3 čepice (not monetary, so not included in the total)\n- p. Podřecky: 2 zl.\n- paní Šenková: 2 zl.\n- p. P. kvardián u Kapuc.: 2 zl.\n- p. Slabýhoutek lékárník: 3 zl.\n- p. Hölzel papírník: 3 zl.\n- Nejmenovaná: 20 kr.\n- pí. Vyšínová: 3 zl.\n- pí. Hladná: 3 zl.\n- p. Groák: 2 zl.\n- p. P. Geisler: 2 zl.\n- p. P. Konečný: 1 zl.\n- p. P. Štěpka: 1 zl.\n- p. P. Kobliba: 1 zl.\n- Nejmenovaná: 1 zl.\n- pí. Májová: 3 zl.\n- p. Engl purkmistr: 2 zl.\n- pí. Engelmannová: 2 zl.\n- pí. Štorová: 1 zl.\n\nTo convert kreuzers to florins, note that 1 florin = 100 kreuzers. Therefore, the contributions in kreuzers need to be converted to florins:\n\n- 50 kr. = 0.5 zl.\n- 50 kr. = 0.5 zl.\n- 20 kr. = 0.2 zl.\n\nNow, summing up all the contributions in florins:\n\n5.5 + 2 + 5 + 1 + 1.5 + 0.5 + 2 + 2 + 2 + 2 + 3 + 3 + 0.2 + 3 + 3 + 2 + 2 + 1 + 1 + 1 + 1 + 3 + 2 + 2 + 1 = 54.7 zl.\n\nThe total amount of money collected is 54 florins and 70 kreuzers.\n\nThe significance of community involvement in charitable activities during that period is evident from the diverse range of contributors, including individuals from various professions and social standings. This collective effort highlights the community's commitment to supporting vulnerable groups, such as poor children, and reflects the social values and responsibilities shared by the people of that time. Community involvement in charity not only provided financial support but also fostered a sense of solidarity and mutual aid, which were crucial for addressing social issues and improving the welfare of the less fortunate."
+    },
+    {
+        "question_id": "gen_li_208",
+        "question": "Kdo byl jmenován notářem v Olomouci a jaká byla jeho předchozí pozice?",
+        "ground_truth": "Notářem v Olomouci byl jmenován p. Karel Mohelský, který byl dosud notářem v Prostějově."
+    },
+    {
+        "question_id": "gen_li_209",
+        "question": "What was the reason given by the Hunčovice fire brigade for not accepting the letter from the Olomouc municipal council?",
+        "ground_truth": "The Hunčovice fire brigade did not accept the letter from the Olomouc municipal council because the address was in German."
+    },
+    {
+        "question_id": "gen_li_210",
+        "question": "Kdo byl předsedou literárního odboru Moravské Besedy v době vydání třetího ročníku almanachu \"Zory\"?",
+        "ground_truth": "Fr. Roháček byl předsedou literárního odboru Moravské Besedy v době vydání třetího ročníku almanachu \"Zory\"."
+    },
+    {
+        "question_id": "gen_li_211",
+        "question": "Jaké důvody vedly k rozpuštění Českého politického spolku v Kroměříži a jaký význam mají politické spolky pro národní organizaci podle textu?",
+        "ground_truth": "Český politický spolek v Kroměříži se rozešel kvůli nečinnosti členů. Text naznačuje, že v době pohnuté je politováníhodné, že se věnuje málo pozornosti faktorům organizace politické, jako jsou politické spolky. Politické spolky jsou považovány za důležité pro národní organizaci, protože mohou prospěšně působit pro národnost."
+    },
+    {
+        "question_id": "gen_li_212",
+        "question": "Jaký byl účel daru, který nadějná omladina žerotínská věnovala z výtěžku poslední zábavy?",
+        "ground_truth": "Nadějná omladina žerotínská věnovala výtěžek z poslední zábavy k rozmnožení knihovny tamější rolnické čtenářské besedy."
+    },
+    {
+        "question_id": "gen_li_213",
+        "question": "Jaké významné události se polské listy věnují a jaké osobnosti z Polska se plánují zúčastnit této události v Praze?",
+        "ground_truth": "Polské listy věnují pozornost slavnostnímu otevření Národního divadla v Praze. Z Polska se plánují zúčastnit této události významné osobnosti jako zemský maršál haličský dr. Zyblikiewicz, ministrové Dunajewski a Ziemialkowski, dále pánové Grocholski, Smolka a mnozí polští profesoři, učenci a spisovatelé."
+    },
+    {
+        "question_id": "gen_li_214",
+        "question": "Jaké jsou podmínky pro stát se členem zakládajícím „Spolku pro české for. osady města Prahy a jeho předměstí“ podle stanov uvedených v textu?",
+        "ground_truth": "Podmínky pro stát se členem zakládajícím „Spolku pro české for. osady města Prahy a jeho předměstí“ podle uvedených stanov jsou: složit jednorázově 100 zl, nebo se zavázat přispívat 25 zl ročně po dobu 4 let, nebo 20 zl ročně po dobu 5 let."
+    },
+    {
+        "question_id": "gen_li_215",
+        "question": "Kdo přijímá přihlášky členů a členské příspěvky pro valnou schůzi a kde se nachází jeho knihkupectví?",
+        "ground_truth": "Přihlášky členů a členské příspěvky pro valnou schůzi přijímá p. Fr. A. Urbánek, český knihkupec, jehož knihkupectví se nachází na Ferdinaudské třídě v č. 25."
+    },
+    {
+        "question_id": "gen_li_216",
+        "question": "What were the reasons behind the closure of the \"šulfrajn\" nursery in the svatopetrská district, and how was the closure executed?",
+        "ground_truth": "The \"šulfrajn\" nursery in the svatopetrská district was closed due to financial concerns. Despite efforts to gather \"German\" children from house to house in the neighborhood, they were only able to find 8 Jewish children. The cost of 600 zl. annually to maintain a caretaker and guardian for just 8 German-Jewish children was considered a waste of money by the leaders of the šulfrajn. Consequently, the nursery was quietly closed on the morning of October 31st. That evening, two movers discreetly arrived, loaded benches and several boxes onto a cart, and relocated the šulfrajn nursery to the cattle market. The closure was executed quietly and quickly."
+    },
+    {
+        "question_id": "gen_li_217",
+        "question": "What was the motive behind strážmistr Moravec's actions towards rytmistr Eypert, and what were the consequences of his actions?",
+        "ground_truth": "The motive behind strážmistr Moravec's actions towards rytmistr Eypert was private revenge. The consequences of his actions were that Moravec shot at Eypert, severely wounding him in the chest, and then Moravec shot himself, resulting in his own death."
+    },
+    {
+        "question_id": "gen_li_218",
+        "question": "Jaké změny byly provedeny v ruské armádě ohledně praporů a jaké historické důvody k těmto změnám vedly?",
+        "ground_truth": "V ruské armádě byly provedeny změny ohledně praporů, kdy místo nich byly plukům na rozkaz cara přiděleny polní odznaky s obrazy svatých, což bylo zvykem za Petra Velikého. Tato změna byla prozatím provedena pouze v nejstarších gardových plucích, konkrétně v preobraženském a semenovském, a to z důvodu dvousetletého jubilea jejich trvání, které bylo slaveno při korunovaci cara v Moskvě. Zbývající tři prapory byly uloženy jako čestné eskorty v plukovních chrámech, kde budou nadále chovány jako relikvie těchto pluků."
+    },
+    {
+        "question_id": "gen_li_219",
+        "question": "Jaký výrobek je doporučován pro trvalé zmírnění bolestí způsobených dnou a revmatismem, a kdo je jeho výrobcem?",
+        "ground_truth": "Doporučovaným výrobkem pro trvalé zmírnění bolestí způsobených dnou a revmatismem je fluid ode dny, jehož výrobcem je krajský lékárník Frant. Jan Kwizda v Korneuburku."
+    },
+    {
+        "question_id": "gen_li_220",
+        "question": "Jaké obce byly zmíněny v kontextu jako ty, kterým bylo povoleno odprodání částí kmenového jmění?",
+        "ground_truth": "Obcím, kterým bylo povoleno odprodání částí kmenového jmění, jsou: Prace, Hrozdečka, Troubky, Křenová, Ořešín, Turovice, Dobrotice a Holešov."
+    },
+    {
+        "question_id": "gen_li_221",
+        "question": "Jaké finanční opatření bylo povoleno městské obci Holešovské pro rok 1853 a jaký byl jeho účel?",
+        "ground_truth": "Městské obci Holešovské bylo povoleno vybírat příspěvek 2 zlaté za každou krávu a jslovici schopnou k pouštění, a to na chování plemenného býka pro rok 1853."
+    },
+    {
+        "question_id": "gen_li_222",
+        "question": "Jaké události vedly k zastavení obchodování na burze vídeňsko-berlínsko-frankobrodské podle uvedeného textu?",
+        "ground_truth": "Podle uvedeného textu vedly k zastavení obchodování na burze vídeňsko-berlínsko-frankobrodské následující události: zprávy přicházející ze Srbska, které způsobily nejistotu, a zvěst z Madridu, že král Alfonso propustil protifrancouzské ministerstvo a povolal k vládě muže smýšlení protiněmeckého. Dále ministr financí francouzských plánuje vydat státní úvěrní úpisy v hodnotě více než 300 milionů franků, což posiluje přesvědčení, že Francie by v případě války neměla finanční potíže. Tyto události vedly k tomu, že burza, která stavěla své spekulace na politice Bismarcka, začala pociťovat nejistotu a zastavila veškerý obchod."
+    },
+    {
+        "question_id": "gen_li_223",
+        "question": "Analyze the data provided from the Olomouc and Prostějov grain markets. What are the differences in the prices of wheat and rye between these two locations as of the dates mentioned?",
+        "ground_truth": "The data from the Olomouc and Prostějov grain markets show the following prices for wheat and rye:\n\n- In Olomouc (as of 10th November):\n  - Wheat: 1 haktol (hectoliter) for 673 or 75218.64 (the unit is unclear, possibly a currency or measurement unit)\n  - Rye: 5.58 or 632.6.54\n\n- In Prostějov (as of 5th November):\n  - Wheat: 4.20\n  - Rye: 8.25\n\nThe differences in prices between the two locations are as follows:\n\n- Wheat: The price in Olomouc is significantly higher than in Prostějov. However, the units or currency are not clearly defined, making a direct comparison challenging.\n- Rye: The price in Olomouc is lower than in Prostějov, with Olomouc listing it as 5.58 or 632.6.54, while Prostějov lists it as 8.25.\n\nOverall, the prices for both wheat and rye differ between the two locations, with Olomouc generally having higher prices for wheat and lower prices for rye compared to Prostějov."
+    },
+    {
+        "question_id": "gen_li_224",
+        "question": "Jaké byly celkové příjmy z krejcarových sbírek uvedených v dokumentu a jaké jednotlivé částky byly získány z různých míst?",
+        "ground_truth": "Celkové příjmy z krejcarových sbírek uvedených v dokumentu činily 86,39 krejcarů. Jednotlivé částky byly získány z následujících míst:\n\n- Při jour fixu „Sokola“: 6,85 krejcarů\n- Při jour fixu Čtenářského spolku: 6,02 krejcarů\n- V hostinci „u Polášků“: 15,20 krejcarů\n- V hostinci pana Grana: 5,80 krejcarů\n- V hostinci pana Dvořáka: 1,95 krejcarů\n- Ve čtenářském spolku: 1,07 krejcarů"
+    },
+    {
+        "question_id": "gen_li_225",
+        "question": "Analyze the financial contributions listed in the document and explain the significance of the total amount collected, 133 zl. 01 kr., in the context of the local community's efforts.",
+        "ground_truth": "The document lists various financial contributions made by individuals and groups within a local community, with amounts specified in \"zl.\" (zloty) and \"kr.\" (kreuzer). These contributions appear to be collected for a communal purpose, possibly related to local events or community projects, as indicated by the mention of activities such as a gathering at \"Stolu Kmotrů\" and a meeting of an entertainment committee.\n\nThe total amount collected, 133 zl. 01 kr., signifies a substantial communal effort to pool resources for a shared goal. This total reflects the collective contributions from various community members, including individuals like Fr. Stejskal, Prokep Stajskal, and Frant. Opichal, as well as proceeds from specific events and activities. The detailed recording of each contribution suggests a transparent and organized approach to fundraising, which is crucial for maintaining trust and accountability within the community.\n\nThe significance of this total amount lies in its potential impact on the community's initiatives. It demonstrates the community's ability to mobilize resources and support from its members, which can be used to fund local projects, support cultural or social events, or contribute to broader organizational goals, such as those of the \"Ústřední Matice pro Litovel.\" The document also indicates an ongoing appeal for further contributions, highlighting the community's continuous efforts to achieve its objectives and the importance of collective participation in these endeavors."
+    },
+    {
+        "question_id": "gen_li_226",
+        "question": "What contributions did J. E. Suchý and Frž. Chvál make to the school in Malenovice, and how were these contributions acknowledged?",
+        "ground_truth": "J. E. Suchý, a c. k. postmaster and merchant in Malenovice, contributed by collecting a variety of technological materials with great diligence and dedication, which he then donated to the school in Malenovice. Frž. Chvál, a forest manager in Malenovice, contributed by gifting the school antlers from a deer and a fallow deer. These contributions were acknowledged with obligatory thanks in a note written by Ad. Kříž, the school principal, dated November 11, 1883."
+    },
+    {
+        "question_id": "gen_li_227",
+        "question": "Jaký byl zdravotní stav pisatele předtím, než začal užívat švýcarské pilulky, a jak se jeho stav změnil po jejich užívání?",
+        "ground_truth": "Předtím, než pisatel začal užívat švýcarské pilulky, trpěl nevýslovně na záduch a stísněnost v prsou. Jeho stav se navzdory veškeré poskytnuté pomoci a použití různých domácích prostředků a léků nejen nezlepšil, ale dokonce se zhoršil. Po užívání švýcarských pilulek však pisatel cítil, že jeho choroba zmizela."
+    },
+    {
+        "question_id": "gen_li_228",
+        "question": "Jaké doporučení dává sochař J... H... ohledně užívání pilulek a jaké důvody uvádí pro jejich užívání?",
+        "ground_truth": "Sochař J... H... doporučuje užívání pilulek, které mu pomohly zlepšit jeho zdraví a sílu. Uvádí, že po pravidelném užívání v malých dávkách se cítí téměř stejně silný jako před lety a může vykonávat i ty nejnaléhavější práce bez obtíží při dýchání. Zdůrazňuje, že toto doporučení dává z vlastní vůle, aniž by byl k tomu přímo či nepřímo přinucen panem Rich. Brandtem, a považuje za svou povinnost doporučit tento lék všem, kteří trpí podobnými problémy."
+    },
+    {
+        "question_id": "gen_li_229",
+        "question": "What are the requirements for a community to apply for the library being established by the \"Sázavan\" academic society, and what is the deadline for submitting applications?",
+        "ground_truth": "The requirements for a community to apply for the library being established by the \"Sázavan\" academic society are as follows: the application must be signed by the head of the community and two council members, and it must be stamped with the municipal seal. The deadline for submitting applications is December 31st (inclusive)."
+    },
+    {
+        "question_id": "gen_li_230",
+        "question": "What type of performance is scheduled at the Král. městské divadlo in Olomouc on November 14th, and who are the authors of this work?",
+        "ground_truth": "The performance scheduled at the Král. městské divadlo in Olomouc on November 14th is a comedy titled \"Krieg im Frieden,\" which is in 5 acts. The authors of this work are K. v. Moser and Fr. v. Schönthaus."
+    },
+    {
+        "question_id": "gen_li_231",
+        "question": "What type of business does Alois Stachoven recommend in Olomouc, and what specific products does he highlight in his advertisement?",
+        "ground_truth": "Alois Stachoven recommends his colonial and mixed goods business in Olomouc. In his advertisement, he specifically highlights freshly roasted coffee of guaranteed finest aromatic taste, various types of raw coffee, the finest rum from Jamaica and Cuba, the finest types of Chinese tea, genuine František's cognac, and American salon and safe petroleum."
+    },
+    {
+        "question_id": "gen_li_232",
+        "question": "What types of optical and electro-technical instruments are offered by Josefa Vejtruby's establishment in Prague, and where is it located?",
+        "ground_truth": "Josefa Vejtruby's establishment in Prague offers saccharimeters for testing the sugar content of beets, thermometers, pressure gauges and manometers, binoculars, opera glasses, telescopes, glasses and pince-nez with nickel frames and crystal lenses, house telegraphs, telephones, and lightning rods. It is located at Velká Karlova Street No. 24 in Prague."
+    },
+    {
+        "question_id": "gen_li_233",
+        "question": "What are the requirements for participating in the public auction for the lease of tolls on the district road in Zábřeh, as announced by the district road committee?",
+        "ground_truth": "To participate in the public auction for the lease of tolls on the district road in Zábřeh, as announced by the district road committee, the following requirements must be met:\n\n1. Each participant must deposit a security (vadium) of 200 zl. in cash, in state securities, or in other suitable securities at market value before the auction begins.\n2. Properly prepared, stamped, and secured offers (for each toll separately) must be submitted to the undersigned before the start of the auction.\n3. The offers must include a note stating that the bidder is aware of and fully complies with the conditions, which are available for review with the undersigned."
+    },
+    {
+        "question_id": "gen_li_234",
+        "question": "What types of products were advertised by Jan Kutschera in Olomouc in November 1883, and where was his business located?",
+        "ground_truth": "Jan Kutschera advertised soft and hard cut fuel, as well as coal, in Olomouc in November 1883. His business was located opposite the city railway station of the Austrian local railway and the Engliš restaurant."
+    },
+    {
+        "question_id": "gen_li_235",
+        "question": "Analyze the economic and social implications of the absence of a butcher or a proper merchant in the village of Pohořelice u Napajedel, as mentioned in the advertisement for the hostinec. How might this situation affect the local community and its reliance on nearby towns like Napajedla?",
+        "ground_truth": "The absence of a butcher or a proper merchant in the village of Pohořelice u Napajedel, as highlighted in the advertisement for the hostinec, has several economic and social implications for the local community.\n\nEconomically, the lack of these essential services means that residents must travel to nearby towns, such as Napajedla, to purchase meat and other goods. This reliance on external sources can lead to increased costs for transportation and time, which can be burdensome for the villagers. It also means that money that could be spent within the local economy is instead spent elsewhere, potentially stunting local economic growth and development.\n\nSocially, the absence of a butcher or merchant can affect the community's cohesion and self-sufficiency. Local businesses often serve as social hubs where residents can interact, exchange news, and build relationships. Without these establishments, there may be fewer opportunities for social interaction, which can impact community bonds and the overall sense of community identity.\n\nFurthermore, the advertisement suggests that the village is large and has many other communities associated with it, indicating a potential demand for these services. The lack of a local butcher or merchant could be seen as a gap in the market, presenting an opportunity for entrepreneurs to establish businesses that could meet local needs, stimulate economic activity, and enhance social interactions within the village."
+    },
+    {
+        "question_id": "gen_li_236",
+        "question": "In which cities can Pravon be purchased according to the provided context? List at least five locations mentioned.",
+        "ground_truth": "Pravon can be purchased in the following cities according to the provided context: Olomouc, Brno, Hustopeče, Slavkov, and Budišov."
+    },
+    {
+        "question_id": "gen_li_237",
+        "question": "What is the main product being advertised in the document, and what specific instructions are given to the public regarding its purchase?",
+        "ground_truth": "The main product being advertised in the document is \"Kwizdovu tresť,\" a medicinal essence. The specific instructions given to the public regarding its purchase are to always request \"Kwizdovu tresť\" by name and to ensure that each bottle and carton is marked with the protective trademark."
+    },
+    {
+        "question_id": "gen_li_238",
+        "question": "Analyze the economic incentives offered for purchasing the houses mentioned in the document. What are the benefits provided to potential buyers, and how might these incentives impact the local real estate market?",
+        "ground_truth": "The document outlines several economic incentives for purchasing houses, which could significantly impact the local real estate market:\n\n1. **Tax Exemption**: The houses are offered with a 15-year exemption from taxes. This is a substantial financial benefit for buyers, as it reduces the long-term cost of owning the property. Such a tax incentive can make the properties more attractive to potential buyers, encouraging investment in the area.\n\n2. **Location Benefits**: The houses are strategically located near the railway station and a newly developing square. This prime location can increase the desirability of the properties, as proximity to transportation and commercial areas is often a key factor for buyers.\n\n3. **Flexible Payment Terms**: The option to purchase the houses on installments (\"na splátky\") provides financial flexibility for buyers who may not have the full purchase amount upfront. This can broaden the pool of potential buyers, including those who might otherwise be unable to afford such an investment.\n\n4. **Potential for Commercial Use**: One of the properties includes a shop (\"kupecký krám\") with all necessary accessories, offering an opportunity for commercial activity. This dual-use potential can attract buyers interested in both residential and business opportunities.\n\n5. **Development Opportunities**: The seller also offers building plots for 136 houses where bricks can be manufactured and fired. This suggests potential for further development and investment in the area, which could lead to increased property values over time.\n\nOverall, these incentives are likely to stimulate interest in the local real estate market, attracting both residential buyers and investors. The combination of tax benefits, strategic location, flexible payment options, and development potential could lead to increased demand and potentially drive up property values in the area."
+    },
+    {
+        "question_id": "gen_li_239",
+        "question": "Based on the letters provided, what can be inferred about the effectiveness and popularity of the product for beard growth sold by Jos. Fürst in the late 19th century?",
+        "ground_truth": "Based on the letters provided, it can be inferred that the product for beard growth sold by Jos. Fürst was perceived as effective and popular in the late 19th century. The letters express satisfaction with the product, noting its ability to promote rapid beard growth, even in younger individuals. The testimonials from customers, including Josef Küfferle and Karel Hirt, highlight their positive experiences and willingness to recommend the product to others. Additionally, the mention of \"tisíce přípisů děkovacích\" (thousands of thank-you letters) suggests that many people were using and appreciating the product, indicating its popularity during that time."
+    },
+    {
+        "question_id": "gen_li_240",
+        "question": "Jaké zboží doporučuje Edvard Cerhak pro podzimní a zimní sezónu ve svém obchodě v Olomouci?",
+        "ground_truth": "Edvard Cerhak doporučuje pro podzimní a zimní sezónu ve svém obchodě v Olomouci nejnovější látky na kabáty, spodky a oděvy vůbec, pro dámy soukené látky na šaty, poletoty a látky na pláště, anglické cestovní plédy a přikrývky. Také nabízí za snížené ceny velký výběr koberců, dlouhých dle nejnovějších vzorků na potažení celých pokojů, předložky k lůžkám, koberce na pohovky a salonní koberce."
+    },
+    {
+        "question_id": "gen_li_241",
+        "question": "Who is the owner and publisher mentioned in the document?",
+        "ground_truth": "The owner and publisher mentioned in the document is Josefina Černochová."
+    },
+    {
+        "question_id": "gen_li_242",
+        "question": "Jaký počet mužů byl povolen k výběru do stálého vojska a k záloze náhradní podle zákona vydaného 1. listopadu 1885 pro rok 1886?",
+        "ground_truth": "Podle zákona vydaného 1. listopadu 1885 pro rok 1886 byl povolen výběr 55.922 mužů ke stálému vojsku (válečnému loďstvu námořskému) a 5.592 mužů k záloze náhradní."
+    },
+    {
+        "question_id": "gen_li_243",
+        "question": "What financial mechanism was authorized by the law given on November 19, 1885, to cover the investment costs for the guaranteed network of the Austrian Northwestern Railway?",
+        "ground_truth": "The law given on November 19, 1885, authorized the covering of investment costs for the guaranteed network of the Austrian Northwestern Railway through the issuance of a 4-percent priority loan. This loan was to be repayable in silver, with a nominal sum of eleven million guilders, and was to be repaid within a maximum of 67 years."
+    },
+    {
+        "question_id": "gen_li_244",
+        "question": "Jaké jsou podmínky pro použití výtěžku z půjčky podle uvedeného textu a jaké schválení je pro to potřebné?",
+        "ground_truth": "Podmínky pro použití výtěžku z půjčky podle uvedeného textu jsou následující: \n\n1. Z výtěžku půjčky musí být především vráceny státu náklady, které byly vynaloženy na stavby rozšiřovací, na rozmnožení obozu a na ostatní opatření a zařízení, a to v částce, kterou vláda stanoví po provedeném zúčtování.\n\n2. Zbývající výtěžek z půjčky, po odečtení nákladů spojených s emisí, který je určen výlučně na další potřebné investice zaručené sítě, může být použit pouze s předchozím schválením správy státní.\n\nSchválení správy státní je tedy potřebné jak pro použití zbývajícího výtěžku z půjčky na investice, tak i pro modality, za kterých bude půjčka prioritně zadána, včetně minimálního kurzu zadávacího."
+    },
+    {
+        "question_id": "gen_li_245",
+        "question": "Jaké výhody byly poskytnuty prioritním obligacím podle úmluvy uzavřené vládou s Rakouskou severozápadní drahou dne 7. května 1885?",
+        "ground_truth": "Prioritní obligace podle úmluvy uzavřené vládou s Rakouskou severozápadní drahou dne 7. května 1885 byly zproštěny poplatků a kolků, a také kolkových poplatků kuponových."
+    },
+    {
+        "question_id": "gen_li_246",
+        "question": "Based on the context information provided, identify the common element shared by František Josef, Pino, Taaffe, and Dunajewski.",
+        "ground_truth": "Based on the context information provided, the common element shared by František Josef, Pino, Taaffe, and Dunajewski is the abbreviation \"m. p.\" following each name."
+    }
+]

@@ -212,13 +212,10 @@ async def main():
         eval_model_name = os.getenv("OPENAI_EVAL_MODEL")
         #API key is taken automaticly from env ( os.getenv("OPENAI_API_KEY") )
         llm = llm_factory(eval_model_name)
-        openai_client = openai.OpenAI()
-        embeddings = OpenAIEmbeddings(client=openai_client) #possibly required for GT eval
     elif(eval_model == "OLLAMA"):
         eval_model_name = os.getenv("OLLAMA_EVAL_MODEL")
         ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
         llm = OllamaLLM(model=eval_model_name, base_url = ollama_url)
-        embeddings = HuggingFaceEmbeddings()    #possibly required for GT eval
     else:
         print(f"\n Invalid model: {eval_model}. Possible models: [OPENAI, OLLAMA].")
         return
