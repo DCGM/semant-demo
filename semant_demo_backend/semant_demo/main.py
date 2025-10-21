@@ -29,6 +29,7 @@ from semant_demo.schemas import Task, TasksBase
 import json
 
 from semant_demo.tagging.sql_utils import DBError, update_task_status
+from semant_demo.tagging.tagging_task import getTaskByName
 
 # to reset the db
 """
@@ -184,10 +185,10 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
     )
 
 
-@app.post("/api/create_tag", response_model=schemas.CreateResponse)
+@app.post("/api/tag", response_model=schemas.CreateResponse)
 async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
     """
-    creates tag in weaviate db, or not if the same tag already exists
+    Creates tag in weaviate db, or not if the same tag already exists
     """
     try:
         tag_id = await tagger.add_or_get_tag(tagReq)
@@ -201,8 +202,7 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
     """
     Starts tagging task in form of asyncio.create_task
     """
-    print("Tagging...")
-    print(tagReq)
+    logging.info("Tagging...")
     taskId = str(uuid.uuid4()) # generate id for current task
     try:
         try:
@@ -232,26 +232,12 @@ async def start_tagging(tagReq: schemas.TagReqTemplate, background_tasks: Backgr
         logging.error(e)
         raise HTTPException(status_code=500, detail=str(e))
 
-"""
-# get task ids to see history of tasks
-@app.get("/api/all_tasks_id", response_model=schemas.TagTasksResponse)
-async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)) -> schemas.TagTasksResponse:
-    try:
-        logging.info(f"Fetching")
-        stmt = select(Task.taskId).order_by(asc(Task.time_updated))
-        data = await session.execute(stmt)
-        tasks_ids = data.scalars().all()
-        logging.info(f"Retrieved tasks ids: {tasks_ids}")
-        return { "taskIDs": tasks_ids }
-    
-    except exc.SQLAlchemyError as e:
-        logging.exception(f'Failed loading object from database. While loading all tasks ids.')
-        raise DBError(f'Failed loading all tasks ids from database.') from e
-"""
 
-# get task info to see history of tasks
 @app.get("/api/all_tasks")
 async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
+    """
+    Get task info to see history of tasks
+    """
     try:
         logging.info(f"Fetching")
         stmt = select(Task).order_by(asc(Task.time_updated))
@@ -282,9 +268,12 @@ async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
         logging.exception(f'Failed loading object from database. While loading all tasks ids.')
         raise DBError(f'Failed loading all tasks ids from database.') from e
 
-# polling to check task status
+
 @app.get("/api/tag_status/{taskId}")
 async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session)):
+        """
+        Polling to check task status
+        """
         try:
             task = await session.get(Task, taskId)
         except exc.SQLAlchemyError as e:
@@ -305,48 +294,47 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
 
         return {"taskId": taskId, "status": task.status, "result": task.result, "all_texts_count": task.all_texts_count, "processed_count": task.processed_count, "tag_id": task.tag_id, "tag_processing_data": task.tag_processing_data}
 
-def getTaskByName(name):
-    for t in asyncio.all_tasks():
-        if t.get_name() == name and not t.done():
-            return t
-
-# cancel task
 @app.delete("/api/tagging_task/{taskId}", response_model=schemas.CancelTaskResponse)
 async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session)) -> schemas.CancelTaskResponse:
-        taskName = ""
-        # get task by its name
-        try:
-            async with session.begin():
-                result = await session.execute(
-                    select(Task.task_name).where(Task.taskId == taskId)
-                )
-                task_row = result.scalar_one_or_none() 
-                if task_row is None:
-                    raise DBError(f'Task ID={taskId} not found in database')
-                taskName = task_row
-                taskAsyncio = getTaskByName(taskName)
+    """
+    Cancel running task
+    """
+    taskName = ""
+    # get task by its name
+    try:
+        async with session.begin():
+            result = await session.execute(
+                select(Task.task_name).where(Task.taskId == taskId)
+            )
+            task_row = result.scalar_one_or_none() 
+            if task_row is None:
+                raise DBError(f'Task ID={taskId} not found in database')
+            taskName = task_row
+            taskAsyncio = getTaskByName(taskName)
 
-                if taskAsyncio and not taskAsyncio.done():
-                    if taskAsyncio.cancel():
-                        await update_task_status(task_id=taskId, status="CANCELED", session=session)
-                        return {"message": f"Task {taskId} cancelled", "taskCanceled": True}
-                    else:
-                        return {"message": f"Task {taskId} was not cancelled", "taskCanceled": False}
-        except exc.SQLAlchemyError as e:
-            logging.exception(f'Failed loading object from database. Task ID={taskId}')
-            return {"message": f"Task retrieving failed {taskId}", "taskCanceled": False}
-        return {"message": f"No running task {taskId}", "taskCanceled": False}
+            if taskAsyncio and not taskAsyncio.done():
+                if taskAsyncio.cancel():
+                    await update_task_status(task_id=taskId, status="CANCELED", session=session)
+                    return {"message": f"Task {taskId} cancelled", "taskCanceled": True}
+                else:
+                    return {"message": f"Task {taskId} was not cancelled", "taskCanceled": False}
+    except exc.SQLAlchemyError as e:
+        logging.exception(f'Failed loading object from database. Task ID={taskId}')
+        return {"message": f"Task retrieving failed {taskId}", "taskCanceled": False}
+    return {"message": f"No running task {taskId}", "taskCanceled": False}
 
-# retrieve all tags
 @app.get("/api/all_tags", response_model=schemas.GetTagsResponse)
 async def get_tags(tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
+    """
+    Retrieve all tags
+    """
     response = await tagger.get_all_tags()
     return {"tags_lst": response}
 
 @app.post("/api/tagged_texts", response_model=schemas.GetTaggedChunksResponse)
 async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetTagsResponse:
     """
-    returns chunks which are tagged by certain type of tag (automatic, positive, negative)
+    Returns chunks which are tagged by certain type of tag (automatic, positive, negative)
     """
     try:
         logging.info(f"In get tagged text {chosenTagUUIDs}")
@@ -357,6 +345,9 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq, t
 
 @app.delete("/api/whole_tags", response_model=schemas.RemoveTagsResponse)
 async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.RemoveTagsResponse:
+    """
+    Removes whole tags
+    """
     try:
         response = await tagger.remove_tags(chosenTagUUIDs)
         return response
@@ -365,6 +356,9 @@ async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq, tagger: WeaviateSear
 
 @app.delete("/api/automatic_tags", response_model=schemas.RemoveTagsResponse)
 async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq, tagger: WeaviateSearch = Depends(get_search)) -> schemas.RemoveTagsResponse:
+    """
+    Removes automatic tags
+    """
     try:
         response = await tagger.remove_automatic_tags(chosenTagUUIDs)
         return response
@@ -396,7 +390,7 @@ async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest
 @app.post("/api/user_collection", response_model=schemas.CreateResponse)
 async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplate, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
     """
-    creates user collection in weaviate db, or not if the same user collection already exists
+    Creates user collection in weaviate db, or not if the same user collection already exists
     """
     try:
         collection_id = await tagger.add_collection(collectionReq)
@@ -410,7 +404,7 @@ async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplat
 @app.get("/api/collections", response_model=schemas.GetCollectionsResponse)
 async def fetch_collections(userId: str, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetCollectionsResponse:
     """
-    retrieves all collections for given user
+    Retrieves all collections for given user
     """
     response = await tagger.fetch_all_collections(userId)
     return response
@@ -418,7 +412,7 @@ async def fetch_collections(userId: str, tagger: WeaviateSearch = Depends(get_se
 @app.post("/api/chunk_2_collection", response_model=schemas.CreateResponse)
 async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: WeaviateSearch = Depends(get_search), session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
     """
-    creates user collection in weaviate db, or not if the same user collection already exists
+    Creates user collection in weaviate db, or not if the same user collection already exists
     """
     try:
         err = await tagger.add_chunk_to_collection(req)
@@ -432,7 +426,7 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: Weavi
 @app.get("/api/chunks_of_collection", response_model=schemas.GetCollectionChunksResponse)
 async def get_collection_chunks(collectionId: str, tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetCollectionChunksResponse:
     """
-    returns chunks which belong to collection given by id
+    Returns chunks which belong to collection given by id
     """
     try:
         logging.info(f"In get collection chunks {collectionId}")
@@ -440,8 +434,3 @@ async def get_collection_chunks(collectionId: str, tagger: WeaviateSearch = Depe
         return response
     except Exception as e:
         logging.error(f"{e}")
-
-# http://localhost:8002/docs#
-
-# TODO now only automatic are shown, show positive and negative add filtering (print in FE useing chunkDataPositive/Negative)
-# pridat do tagFormManage tag_type alebo aspon pridat nejaky select

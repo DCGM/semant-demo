@@ -28,3 +28,8 @@ async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, tagger: We
         await session.close()
     except Exception as e:
         logging.error(f"Error: {e}")
+
+def getTaskByName(name):
+    for t in asyncio.all_tasks():
+        if t.get_name() == name and not t.done():
+            return t

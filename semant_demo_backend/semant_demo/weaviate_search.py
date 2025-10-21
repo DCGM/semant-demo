@@ -611,19 +611,9 @@ class WeaviateSearch:
 
     async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
         try:
-            # remove ChunkTagApproval
             # remove all cross-references from Chunks
             # remove the Tag object itself
 
-            # remove ChunkTagApproval
-            """
-            ChunkTagApprovalCollection = self.client.collections.get("ChunkTagApproval")
-            filters = (
-                Filter.by_ref("hasTag").by_id().contains_any(chosenTagUUIDs.tag_uuids)
-            )
-            await ChunkTagApprovalCollection.data.delete_many(where=filters)
-            logging.info("deleted ChunkTagApproval objects")
-            """
             # remove all cross-references from Chunks
 
             # get tags for collection names

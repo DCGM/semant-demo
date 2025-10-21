@@ -672,7 +672,7 @@ async function onCreateTag () {
   try {
     console.log('Tagging will start', tagForm.value)
     const payload = { ...tagForm.value, tag_examples: tagForm.value.tag_examples.filter(example => example.trim() !== '') }
-    const { data } = await api.post<CreateResponse>('/create_tag', payload)
+    const { data } = await api.post<CreateResponse>('/tag', payload)
     console.log('Tagging response received:', data)
     tagCreation.value.created = data.created
     tagCreation.value.action = true
