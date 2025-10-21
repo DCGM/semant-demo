@@ -194,6 +194,12 @@ export interface AnnotationClass {
   short: string
   colorString: string
   textColor: string
+}
+
+export interface ExtendedAnnotationClass {
+  short: string
+  colorString: string
+  textColor: string
   approved: ApprovedState
 }
 

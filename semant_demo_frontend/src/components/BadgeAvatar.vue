@@ -42,7 +42,7 @@
 
 <script lang="ts" setup>
 import { defineProps, withDefaults, ref } from 'vue'
-import { AnnotationClass, ApprovedState } from 'src/models'
+import { ExtendedAnnotationClass, ApprovedState } from 'src/models'
 import { textColorSwitcher } from '../utils/textColorSwitch' // // "props.annotationClass.textColor"
 
 const active = ref(false)
@@ -50,7 +50,7 @@ const leftHover = ref(false)
 const rightHover = ref(false)
 
 interface Props {
-  annotationClass: AnnotationClass,
+  annotationClass: ExtendedAnnotationClass,
   size?: string
 }
 
@@ -58,8 +58,8 @@ const props = withDefaults(defineProps<Props>(), {
   size: 'sm'
 })
 
-const emit = defineEmits<{(e: 'approve-click', annotation: AnnotationClass): void
-(e: 'disapprove-click', annotation: AnnotationClass): void}>()
+const emit = defineEmits<{(e: 'approve-click', annotation: ExtendedAnnotationClass): void
+(e: 'disapprove-click', annotation: ExtendedAnnotationClass): void}>()
 // TODO skusit vymenovany typ
 function getBorderClass (type: ApprovedState) {
   switch (type) {

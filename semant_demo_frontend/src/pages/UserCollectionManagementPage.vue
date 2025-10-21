@@ -140,21 +140,10 @@ const collectionForm = ref<CollectionRequest>({
   user_id: '123'
 })
 
-const tagFormManage = ref<TagData>({
+const tagFormManage = ref<{ tag_uuids: string[] }>({
   tag_uuids: ['']
 })
 
-/*
-const tagForm = ref<TagRequest>({
-  tag_name: '',
-  tag_shorthand: '',
-  tag_color: '',
-  tag_pictogram: '',
-  tag_definition: '',
-  tag_examples: [''],
-  collection_name: 'Chunks'
-})
-*/
 const pictograms = ref([
   { name: 'Circle', icon: 'circle' },
   { name: 'Key', icon: 'key' },
@@ -349,7 +338,7 @@ async function onRunTask () {
     try {
       const tagValues = tags.value.find(t => t.tag_uuid === uuid)
       console.log('Tagging will start', tagValues)
-      const payload = { ...tagValues, tag_examples: tagValues.tag_examples.filter(example => example.trim() !== '') }
+      const payload = { ...tagValues, tag_examples: tagValues?.tag_examples.filter(example => example.trim() !== '') }
       const { data } = await api.post<TagStartResponse>('/tagging_task', payload)
       console.log('Tagging response received:', data)
       // Store task information

@@ -493,21 +493,10 @@ const tagForm = ref<TagRequest>({
   collection_name: 'Chunks'
 })
 
-const tagFormManage = ref<TagData>({
+const tagFormManage = ref<{ tag_uuids: string[] }>({
   tag_uuids: ['']
 })
 
-/*
-const tagForm = ref<TagRequest>({
-  tag_name: '',
-  tag_shorthand: '',
-  tag_color: '',
-  tag_pictogram: '',
-  tag_definition: '',
-  tag_examples: [''],
-  collection_name: 'Chunks'
-})
-*/
 const pictograms = ref([
   { name: 'Circle', icon: 'circle' },
   { name: 'Key', icon: 'key' },
@@ -888,7 +877,7 @@ async function onShowTasks () {
   }
 }
 
-const handleAddUser = (value: string) => {
+const handleAddUser = () => {
   if (username.value.trim()) {
     console.log('Username entered:', username.value)
     userStore.setUser(username.value)
