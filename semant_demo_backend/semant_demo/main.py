@@ -1,12 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException
-import os
+import logging
+
 import openai
+from fastapi import FastAPI, Depends, HTTPException
+
 from semant_demo import schemas
 from semant_demo.config import config
-import logging
+from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.rag_generator import RagGenerator
-import asyncio
 from time import time
 
 logging.basicConfig(level=logging.INFO)
@@ -14,67 +15,52 @@ logging.basicConfig(level=logging.INFO)
 openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
 global_searcher = None
+global_summarizer = None
+
+
 async def get_search() -> WeaviateSearch:
     global global_searcher
     if global_searcher is None:
         global_searcher = await WeaviateSearch.create(config)
     return global_searcher
+
+
+async def get_summarizer() -> TemplatedSearchResultsSummarizer:
+    global global_summarizer
+    if global_summarizer is None:
+        global_summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
+    return global_summarizer
+
 app = FastAPI()
 
 
 @app.post("/api/search", response_model=schemas.SearchResponse)
-async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.SearchResponse:
+async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search),
+                 summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> schemas.SearchResponse:
+    start_time = time()
+
     response = await searcher.search(req)
+    await summarizer(req, response)
+
+    response.time_spent = time() - start_time
     return response
 
 
 @app.post("/api/summarize/{summary_type}", response_model=schemas.SummaryResponse)
-async def summarize(search_response: schemas.SearchResponse, summary_type: str) -> schemas.SummaryResponse:
-    # build your snippets with IDs
-    snippets = [
-        f"[doc{i+1}]" + res.text.replace('\\n', ' ')
-        for i, res in enumerate(search_response.results)
-    ]
+async def summarize(search_response: schemas.SearchResponse, summary_type: str, summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> schemas.SummaryResponse:
+    start_time = time()
+    if summary_type != "results":
+        # only "results" is supported now
+        raise HTTPException(status_code=400, detail=f"Unknown summary type: {summary_type}")
 
-    system_prompt = "\n".join([
-        "You are a summarization assistant.",
-        "You will be given text snippets, each labeled with a unique ID like [doc1], [doc2], … [doc15].",
-        "You should produce a single, concise summary that covers all the key points relevant to a user search query.",
-        "After every fact that you extract from a snippet, append the snippet’s ID in square brackets—for example: “The gene ABC is upregulated in tumor cells [doc3].”",
-        "If multiple snippets support the same fact, list all their IDs separated by commas: “This approach improved accuracy by 12% [doc2, doc7, doc11].”",
-        "Do not introduce any facts that are not in the snippets. Focus on information that is relevant to the user query.",
-        "Write the summary clearly and concisely.",
-        "Keep the summary under 200 words."
-    ])
-
-    user_prompt = "\n".join([
-        f'The user query is: "{search_response.search_request.query}"',
-        "Here are the retrieved text snippets:",
-        *snippets,
-        "",
-        "Please summarize these contexts, tagging each statement with its source ID. Do not add any other text."
-    ])
-
-    try:
-        resp = await openai_client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.0,
-            max_tokens=300,
-        )
-    except openai.OpenAIError as e:
-        # turn any SDK error into a 502
-        logging.error(e)
-        raise HTTPException(status_code=502, detail=str(e))
-
-    summary_text = resp.choices[0].message.content.strip()
-
+    summary = await summarizer.gen_results_summary(
+        search_response.search_request.query,
+        search_response.results,
+    )
+    time_spent = time() - start_time
     return schemas.SummaryResponse(
-        summary=summary_text,
-        time_spent=search_response.time_spent,
+        summary=summary,
+        time_spent=time_spent,
     )
 
 
@@ -147,10 +133,10 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
     # call model
     try:
         t1 = time()
-        
+
         generated_answer = await rag_generator.generate_answer(
             model_name = model_name,
-            question_string = request.question, 
+            question_string = request.question,
             context_string = context_string,
             history= history_preprocessed,
         )

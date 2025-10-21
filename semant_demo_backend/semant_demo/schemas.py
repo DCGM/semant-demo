@@ -10,16 +10,27 @@ class SearchType(str, Enum):
     hybrid = "hybrid"
 
 
-class SearchRequest(BaseModel):
-    query: str
-    limit: int = 10
-    type: SearchType = SearchType.hybrid
+class SummaryRequestBase(BaseModel):
     search_title_generate: bool = True
     search_title_prompt: str | None = None
     search_title_model: str | None = None
+    search_title_brevity: int | None = None  # upper bound on number of words in the title
+
     search_summary_generate: bool = True
     search_summary_prompt: str | None = None
     search_summary_model: str | None = None
+    search_summary_brevity: int | None = None  # upper bound on number of words in the summary
+
+    search_results_summary_generate: bool = True
+    search_results_summary_prompt: str | None = None
+    search_results_summary_model: str | None = None
+    search_results_summary_brevity: int | None = None  # upper bound on number of words in the summary
+
+
+class SearchRequest(SummaryRequestBase):
+    query: str
+    limit: int = 10
+    type: SearchType = SearchType.hybrid
     search_llm_filter: bool = False
 
     min_year: int | None = None
@@ -79,9 +90,15 @@ class TextChunkWithDocument(TextChunk):
 
 class SearchResponse(BaseModel):
     results: list[TextChunkWithDocument]
+    results_summary: str | None = None  # Optional overall query based summary of the results
     search_request: SearchRequest
     time_spent: float
     search_log: list[str]
+
+
+class SummaryRequest(SummaryRequestBase):
+    search_response: SearchResponse
+
 
 class SummaryResponse(BaseModel):
     summary: str
