@@ -1,0 +1,29 @@
+# query_analyzer
+# retrieval_agent
+# evaluator_agent
+# response_generator
+# basic_response_generator
+# correction_handler
+
+edges:
+  - from: "query_analyzer"
+    to: "retrieval_agent"
+    
+  - from: "retrieval_agent"
+    to: "evaluator_agent"
+    
+  - from: "correction_handler"
+    to: "retrieval_agent"
+    
+  - from: "response_generator"
+    to: "END"
+    
+  - from: "evaluator_agent"
+    conditional:
+      function: "rag.agents.orchestrator.OrchestratorAgent._should_correct"
+      branches:
+        correct: "correction_handler"
+        proceed: "response_generator"
+
+entry_point: "query_analyzer"
+

@@ -1,0 +1,14 @@
+# Vector store configuration
+
+vectorstore:
+  store_id: "CHROMA_DB"
+  persist_directory: "vectordb/chroma"
+  collection_name: "rag_content"
+
+# vectorstore:
+#   store_id: "WEAVIATE_DB"
+#   host: "127.0.0.1"
+#   port: 8089
+#   grpc_port: 50059
+#   collection_name: "Chunks"
+# #   api_key: null  # Optional API key for authentication

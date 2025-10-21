@@ -1,0 +1,18 @@
+# query_analyzer
+# retrieval_agent
+# evaluator_agent
+# response_generator
+# basic_response_generator
+# correction_handler
+
+edges:
+  - from: "query_analyzer"
+    to: "retrieval_agent"
+    
+  - from: "retrieval_agent"
+    to: "basic_response_generator"
+    
+  - from: "basic_response_generator"
+    to: "END"
+
+entry_point: "query_analyzer"

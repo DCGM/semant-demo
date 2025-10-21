@@ -1,0 +1,33 @@
+# generation-model:
+#   model_id: "OPENAI_GENERATION_MODEL"
+#   model_name: "gpt-4o-mini"
+#   api_key_env: "OPENAI_API_KEY"
+# embedding-model:
+#   model_id: "OPENAI_EMBEDDING_MODEL"
+#   model_name: "text-embedding-3-small"
+#   api_key_env: "OPENAI_API_KEY"
+
+
+
+# Ollama local model configurations
+embedding-model:
+    model_id: "OLLAMA_EMBEDDING_MODEL"
+    model_name: "nomic-embed-text:latest"
+    base_url: "http://localhost:11434"
+
+generation-model:
+  model_id: "GENERATION_MODEL"
+  model_name: "mistral:latest"
+  base_url: "http://localhost:11434"
+  temperature: 0.1
+  max_tokens: 2000
+
+# Gemini API configurations
+# generation-model:
+#     model_id: "GENERATION_MODEL"
+#     model_name: "gemini-2.5-flash"
+#     api_key_env: "gemini_api_key_env"
+#     temperature: 0
+#     max_tokens: null
+#     timeout: null
+#     max_retries: 2

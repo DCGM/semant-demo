@@ -1,0 +1,115 @@
+
+orchestrator-agent:
+  agent_id: "ORCHESTRATOR_AGENT"
+  description: "Multi-agent system with specialized agents for enhanced assistance"
+  max_correction_attempts: 3
+
+
+
+query-analyzer-agent:
+  agent_id: "QUERY_ANALYZER_AGENT"
+  description: "Analyzes and refines user queries for better retrieval"
+  schema:
+    type: "object"
+    properties:
+      is_valid:
+        type: "boolean"
+        description: "Whether the query is valid and can be processed"
+      refined_query:
+        type: "string"
+        description: "Refined or improved version of the query"
+    required: ["is_valid", "refined_query"]
+  prompts:
+    analysis_prompt: |
+      Analyze this user query and provide structured information:
+
+      Query: {query}
+
+      Guidelines:
+      - Set is_valid to true if the query is clear and searchable
+      - Set is_valid to false if the query is unclear, too vague, or nonsensical
+      - Provide a refined query that would be better for search
+      - If the original query is already good, use it as the refined_query
+
+retrieval-agent:
+  agent_id: "RETRIEVAL_AGENT"
+  description: "Handles information retrieval from knowledge bases and documents"
+  max_results_per_source: 3
+  prompts:
+    refinement_prompt: |
+      The following search query failed to return good results: "{original_query}"
+      
+      Failed results: {failed_results}
+      
+      Please suggest a refined search query that might return better results.
+      Consider:
+      1. Using synonyms or related terms
+      2. Breaking down complex queries into simpler parts
+      3. Using more specific or more general terms
+      4. Including subject-specific terminology
+      
+      Return only the refined query, nothing else.
+
+evaluator-agent:
+  agent_id: "EVALUATOR_AGENT"
+  description: "Simplified evaluator that uses LLM to provide basic scoring and correction flags"
+  quality_threshold: 6.0
+  schema:
+    type: "object"
+    properties:
+      score:
+        type: "integer"
+        minimum: 1
+        maximum: 10
+        description: "Quality score from 1-10"
+      needs_correction:
+        type: "boolean"
+        description: "Whether the retrieval needs correction"
+    required: ["score", "needs_correction"]
+  prompts:
+    evaluation_prompt: |
+      You are an Evaluator Agent for a RAG system. Your job is to assess the quality of retrieved information and determine if corrections are needed.
+
+      Original Query: {query}
+      Query Analysis: {query_analysis}
+      Retrieved Results: {retrieved_results}
+
+      Guidelines:
+      - Give high scores (7-10) if content directly answers the query
+      - Give low scores (1-3) for irrelevant or poor content
+      - Set needs_correction to true if score is below 6 or content is irrelevant
+      - Set needs_correction to false if score is 6 or above and content is relevant
+
+response-generator-agent:
+  agent_id: "RESPONSE_GENERATOR_AGENT"
+  description: "LLM-powered agent that generates comprehensive responses from retrieved information"
+  prompts:
+    response_generation_prompt: |
+      You are a Response Generator Agent for a RAG (Retrieval-Augmented Generation) system. Your task is to generate a comprehensive, accurate, and helpful final response based on the retrieved information.
+
+      Original Query: {query}
+      Query Analysis: {query_analysis}
+      Retrieved Information: {retrieved_information}
+      Evaluation Results: {evaluation_results}
+
+      Please generate a well-structured response that:
+      1. Directly addresses the user's query
+      2. Incorporates relevant information from the retrieved sources
+      3. Provides clear, accurate, and comprehensive answers
+      4. Maintains a helpful and professional tone
+      5. Cites sources when appropriate
+      6. Acknowledges limitations if information is incomplete
+
+      Guidelines:
+      - Use the retrieved information as your primary source
+      - If the retrieved information is insufficient, clearly state this
+      - Organize your response logically with clear structure
+      - Be concise but comprehensive
+      - Avoid speculation beyond the provided information
+      - If multiple sources are available, synthesize them coherently
+
+      IMPORTANT: Respond with ONLY the final answer text. No JSON formatting, no additional explanations, just the direct response to the user's query.
+
+basic-response-generator:
+  agent_id: "BASIC_RESPONSE_GENERATOR"
+  description: "Simplified agent that returns retrieved information without structured formatting"
