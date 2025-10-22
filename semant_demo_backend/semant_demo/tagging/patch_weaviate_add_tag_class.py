@@ -1,3 +1,7 @@
+"""
+Just for insipiration in case of erro, now in https://github.com/Martin-Toma/db_benchmarks
+"""
+
 import weaviate
 from weaviate import WeaviateClient
 from weaviate.connect import ConnectionParams

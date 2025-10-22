@@ -1,3 +1,6 @@
+# How to setup weaviate
+Use weaviate with new schema. [db benchmarks](https://github.com/Martin-Toma/db_benchmarks/tree/collection-and-tag-update) in there follow `run notes.md`.
+
 # Tagging
 
 Tagging incorporates tag creation, creating references from text chunks to tag objects. Tagging functionality and weaviate schema is showed in [link to draw.io sequence diagrams ans schema](https://drive.google.com/file/d/1xlcM5zWyfa7aW9OCGwvnpS19TXJGAuvy/view?usp=drive_link)

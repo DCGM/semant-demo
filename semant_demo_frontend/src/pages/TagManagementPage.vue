@@ -331,8 +331,7 @@
     </q-form>
 
     <div class="row">
-      <!-- Text Chunk Data All Automatic, Positive, Negative -->
-     <!-- Text Chunk Data All Automatic, Positive, Negative -->
+  <!-- Text Chunk Data All Automatic, Positive, Negative -->
   <div class="col-12 col-md-6">
     <div v-if="mergedChunks.length">
       <div v-for="chunk in mergedChunks" :key="chunk.chunk_id" class="q-mb-md">
@@ -346,53 +345,19 @@
               <div class="text-caption q-mt-sm">Tags</div>
               <div class="row q-gutter-sm">
               <div v-for="tag in chunk.tags" :key="tag.tag_uuid" class="q-mb-md">
-                <!--<div class="row items-center col-auto">
-                  <div class="color-swatch" :style="{ backgroundColor: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color }"></div>
-                  <q-icon :name="tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_pictogram" />
-                  <q-label class="q-mr-sm">{{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name }}</q-label>
-                  <q-label class="q-mr-sm">Definition: {{ tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_definition }}</q-label>
-                </div>
-
-                <div class="text-caption q-mt-sm">Tag id: {{ tag.tag_uuid }}</div>
-                <div class="text-h6 q-mt-sm">Tag type: {{ tag.tag_type }}</div>
-                -->
                 <div class="col">
                   <BadgeAvatar
                     :annotation-class="{
                       short: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name || '?',
                       colorString: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color || '#a19e6d',
                       textColor: 'black',
-                      approved: tag.tag_type,
+                      approved: tag.tag_type as ApprovedState,
                     }"
                     @approve-click="approveTag(true, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
                     @disapprove-click="approveTag(false, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
                     size="sm"
                   />
                 </div>
-                  <!--
-                  <div class="col-auto">
-                    <q-btn-group>
-                      <q-btn
-                        @click="approveTag(true, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
-                        icon="fa fa-check"
-                        label="Approve Tag"
-                        color="positive"
-                        outline
-                        dense
-                      />
-                      <q-btn
-                        @click="approveTag(false, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
-                        icon="fa fa-close"
-                        label="Disapprove Tag"
-                        color="negative"
-                        outline
-                        dense
-                      />
-                      <span v-if="tagApproveStatus.find(item => item.tag_id === tag.tag_uuid)" class="q-ml-sm">
-                        {{ tagApproveStatus.find(item => item.tag_id === tag.tag_uuid).status }}
-                      </span>
-                    </q-btn-group>
-                  </div> -->
                 </div>
               </div> <!-- end tag -->
             </div>
@@ -406,7 +371,7 @@
         <q-expansion-item icon="assignment" label="Tasks" expand-separator ref="tasksExpansion" @show="onShowTasks">
                 <!-- Task Status Cards -->
                 <div v-for="task in allTaskInfo" :key="task.task_id" class="row q-mt-lg">
-                  <q-card :class="getTaskCardClass(task.status)">
+                  <q-card :class="getTaskCardClass(task.status)" class="col-12">
                     <q-card-section>
                       <div class="row items-center">
                         <q-icon :name="getTaskIcon(task.status)" class="q-mr-sm" />
@@ -414,7 +379,7 @@
                         <q-space />
                         <div v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" >
                           <q-btn
-                            @click="() => cancelTask(task.task_id, task)"
+                            @click="() => cancelTask(task.task_id)"
                                     icon="fa fa-close"
                                     label="Cancel Task"
                                     color="negative"
@@ -456,12 +421,13 @@
 
 <script setup lang="ts">
 import { ref, onUnmounted, computed, onMounted } from 'vue'
-import type { TagRequest, CreateResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse } from 'src/models'
+import type { TagRequest, CreateResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse, ApprovedState } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
 import BadgeAvatar from 'src/components/BadgeAvatar.vue'
 import { useUserStore } from 'src/stores/user-store'
+import { QExpansionItem } from 'quasar'
 
 // TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 
@@ -548,7 +514,7 @@ const tagCreateDialogVisible = ref(false)
 const userStore = useUserStore()
 const username = ref('')
 
-const tasksExpansion = ref(null)
+const tasksExpansion = ref<QExpansionItem | null>(null)
 
 interface MergedTag {
   tag_uuid: string
@@ -680,7 +646,7 @@ async function onRunTask () {
     try {
       const tagValues = tags.value.find(t => t.tag_uuid === uuid)
       console.log('Tagging will start', tagValues)
-      const payload = { ...tagValues, tag_examples: tagValues.tag_examples.filter(example => example.trim() !== '') }
+      const payload = { ...tagValues, tag_examples: tagValues?.tag_examples.filter(example => example.trim() !== '') }
       const { data } = await api.post<TagStartResponse>('/tagging_task', payload)
       console.log('Tagging response received:', data)
       // Store task information

@@ -8,7 +8,7 @@ export interface SearchRequest {
   min_date?: string | null; // ISO datetime string
   max_date?: string | null; // ISO datetime string
   language?: string | null;
-  tag_uuids?: string[] | null;
+  tag_uuids: string[] | null;
   positive: boolean;
   automatic: boolean;
 }
@@ -82,7 +82,7 @@ export interface TextChunkWithDocument extends TextChunk {
   positiveTags: TagData[];
 }
 
-interface ChunkTagData {
+export interface ChunkTagData {
   chunk_id: string;
   positive_tags_ids: string[];
   automatic_tags_ids: string[];
