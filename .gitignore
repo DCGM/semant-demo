@@ -7,6 +7,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+static/
 .quasar
 .idea
 node_modules
@@ -175,6 +176,9 @@ cython_debug/
 
 # Ruff stuff:
 .ruff_cache/
+
+# VS Code
+.vscode/
 
 # PyPI configuration file
 .pypirc

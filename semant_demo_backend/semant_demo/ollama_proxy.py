@@ -1,12 +1,12 @@
 import asyncio
 from typing import List, Optional
 from ollama import AsyncClient
+import random
 
 class OllamaProxy:
     def __init__(self, ollama_urls: List[str]):
         self.ollama_urls = ollama_urls
-        print(ollama_urls)
-        self.clients = [AsyncClient(url) for url in ollama_urls]
+        self.clients = [AsyncClient(base_url=url) for url in ollama_urls]
         self._counter = 0
         self._lock = asyncio.Lock()
 
@@ -31,3 +31,12 @@ class OllamaProxy:
             if key in response:
                 return response.get(key, "")
         return None
+
+    async def call_ollama_chat(self, model: str, messages: list[dict]) -> str:
+        client = random.choice(self.clients)
+        try:
+            response = await client.chat(model=model, messages=messages, stream=False)
+            return response['message']['content']
+        except Exception as e:
+            print(f"Error calling model: {model} at {client.host}: {e}")
+            return "Sorry, error occurred while genereting response."
