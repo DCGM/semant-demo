@@ -1,5 +1,24 @@
 # How to setup weaviate
-Use weaviate with new schema. [db benchmarks](https://github.com/Martin-Toma/db_benchmarks/tree/collection-and-tag-update) in there follow `run notes.md`.
+Use weaviate with new schema. 
+
+1. Download [example data](https://huggingface.co/datasets/Nirmata/example_data/blob/main/test_db_added_title_chunk_props_embed.zip)
+2. unzip the file
+3. setup the weaviate:
+```
+cd db_benchmarks\weaviate_benchmark
+
+docker-compose up -d
+
+cd ..
+
+cd data_tools
+
+conda activate semant
+
+python db_insert_jsonl_test.py --source-dir test_db_added_title_chunk_props_embed --delete-old
+```
+
+More info at [db benchmarks](https://github.com/Martin-Toma/db_benchmarks/tree/collection-and-tag-update) in there follow `run notes.md`.
 
 # Tagging
 
