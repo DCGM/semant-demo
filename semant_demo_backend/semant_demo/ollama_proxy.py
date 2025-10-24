@@ -6,7 +6,7 @@ import random
 class OllamaProxy:
     def __init__(self, ollama_urls: List[str]):
         self.ollama_urls = ollama_urls
-        self.clients = [AsyncClient(base_url=url) for url in ollama_urls]
+        self.clients = [AsyncClient(host=url) for url in ollama_urls]
         self._counter = 0
         self._lock = asyncio.Lock()
 

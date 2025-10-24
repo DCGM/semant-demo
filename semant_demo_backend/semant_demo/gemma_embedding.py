@@ -1,8 +1,6 @@
 import httpx
 from semant_demo.config import config
 
-EMBEDDING_URL = "http://localhost:8001"
-
 async def get_query_embedding(query: str) -> list[float]:
     print("Embedding...")
     async with httpx.AsyncClient() as client:

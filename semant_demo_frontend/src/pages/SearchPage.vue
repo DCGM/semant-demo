@@ -739,16 +739,8 @@ async function onSearch () {
     const chunkTagMap = new Map(
       chunkTags.map(c => [c.chunk_id, c])
     )
-
-    // filter and enrich results
+    // enrich results
     results.value = (results.value || [])
-      .filter(c => {
-        const tagInfo = chunkTagMap.get(c.id)
-        return tagInfo && (
-          ((tagInfo.positive_tags_ids?.length || 0) > 0 && tagFilterModes.value.positive) ||
-          ((tagInfo.automatic_tags_ids?.length || 0) > 0 && tagFilterModes.value.automatic)
-        )
-      })
       .map(c => {
         const chunkInfo = chunkTags.find(ct => ct.chunk_id === c.id) || {} as ChunkTagData
         return {
@@ -759,6 +751,7 @@ async function onSearch () {
       })
   } catch (e) {
     // handle error (could use Quasar Notify)
+    console.log(e)
     results.value = []
     timeSpent.value = 0
     searchLog.value = []

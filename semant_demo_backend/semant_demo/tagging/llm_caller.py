@@ -6,10 +6,8 @@ from langchain_core.messages import BaseMessage
 from langchain.schema.runnable import Runnable
 
 class OllamaProxyRunnable(Runnable):
-    def __init__(self, proxy, model_name):
-        self.proxy = proxy
+    def __init__(self):
         self.ollama_proxy = OllamaProxy(config.OLLAMA_URLS)
-        self.model_name = model_name
         self.ollama_model = config.OLLAMA_MODEL
 
     async def ainvoke(self, input, config=None):
@@ -22,7 +20,7 @@ class OllamaProxyRunnable(Runnable):
             input = "\n".join([m.content for m in input])
 
         # Now input is guaranteed to be a string
-        response = await self.proxy.call_ollama(self.model_name, input)
+        response = await self.ollama_proxy.call_ollama(self.ollama_model, input)
         return response
 
     def invoke(self, input, config=None):

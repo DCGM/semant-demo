@@ -17,7 +17,7 @@ class Config:
         self.PRODUCTION = os.getenv("PRODUCTION", str(False)).lower() in TRUE_VALUES
         self.MODEL_NAME = os.getenv("MODEL_NAME", 'clip-ViT-L-14')
         self.USE_TRANSLATOR = os.getenv("USE_TRANSLATOR", str(False)).lower() in TRUE_VALUES
-        self.PORT = int(os.getenv("PORT", 8080))
+        self.PORT = int(os.getenv("PORT", 8000))
         self.ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:9000")
 
         self.GEMMA_URL = "http://localhost:8001"

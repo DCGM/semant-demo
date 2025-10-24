@@ -240,13 +240,12 @@ async function approveTag (approved: boolean, chunkID: string, tagID: string, ch
 }
 
 onMounted(async () => {
+  // load username if already set
+  username.value = userStore.user?.id ?? ''
   await onShowTasks()
   // the tag management part
   loadingSpinner.value = true
   try {
-    // load username if already set
-    username.value = userStore.user?.id ?? ''
-
     // load tags
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
@@ -435,11 +434,15 @@ function updateTaskStatus (taskId: string, status: string, result?: TagResult, a
 }
 
 async function fetchCollectionChunks () {
+  if (!selectedCollectionId.value) {
+    console.log("Collection name not chosen")
+    return
+  }
   loading.value = true
   try {
     console.log('selectedCollectionId.value =', selectedCollectionId.value)
     const { data: data1 } = await api.get<GetCollectionChunksResponse>('/chunks_of_collection', {
-      params: { collectionId: selectedCollection.value?.id } // 'f69088d1-9d9f-4f60-8c2a-746a51a9a159' }
+      params: { collectionId: selectedCollection.value?.id }
     })
     console.log('Chunks response received:', data1)
     chunkData.value = data1.chunks_of_collection

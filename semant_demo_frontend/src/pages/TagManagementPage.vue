@@ -572,13 +572,12 @@ const removeExample = (index: number) => {
 }
 
 onMounted(async () => {
+  // load username if already set
+  username.value = userStore.user?.id ?? ''
   await onShowTasks()
   // the tag management part
   loadingSpinner.value = true
   try {
-    // load username if already set
-    username.value = userStore.user?.id ?? ''
-
     // load tags
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
