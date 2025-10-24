@@ -1,7 +1,5 @@
-import logging
-
 import openai
-from fastapi import FastAPI, Depends, HTTPException
+import logging
 
 from semant_demo import schemas
 from semant_demo.config import config
@@ -10,7 +8,43 @@ from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.rag_generator import RagGenerator
 from time import time
 
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from semant_demo.routes import export_router
+
+from semant_demo import schemas
+from semant_demo.config import config
+from semant_demo.weaviate_search import WeaviateSearch
+from semant_demo.tagging.tagging_task import tag_and_store
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy import Column, String, JSON
+from glob import glob
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
+from sqlalchemy import select, update, bindparam, asc
+from sqlalchemy import exc
+from datetime import timezone
+
+from typing import AsyncGenerator
+
+from semant_demo.schemas import Task, TasksBase
+from semant_demo.tagging.sql_utils import DBError, update_task_status
+from semant_demo.tagging.tagging_task import getTaskByName
+
 logging.basicConfig(level=logging.INFO)
+
+global_engine = None
+global_async_session_maker = None
+
+# Dependency
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    global global_engine, global_async_session_maker
+    if global_engine is None:
+        global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
+        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=True, expire_on_commit=False)
+    async with global_async_session_maker() as session:
+        yield session
 
 openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
@@ -32,7 +66,28 @@ async def get_summarizer() -> TemplatedSearchResultsSummarizer:
     return global_summarizer
 
 app = FastAPI()
+# mount routes
+app.include_router(export_router)
 
+# Create tables on startup
+@app.on_event("startup")
+async def startup():
+    global global_engine, global_async_session_maker
+    global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
+    global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=False)
+    async with global_engine.begin() as conn:
+        # drop all tables first
+        #await conn.run_sync(TasksBase.metadata.drop_all)
+        # create tables
+        await conn.run_sync(TasksBase.metadata.create_all)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[config.ALLOWED_ORIGIN],  # http://localhost:9000
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search),
@@ -108,6 +163,7 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
         summary=summary_text,
         time_spent=search_response.time_spent,
     )
+
 
 @app.post("/api/rag", response_model=schemas.RagResponse)
 async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:

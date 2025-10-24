@@ -7,6 +7,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+static/
 .quasar
 .idea
 node_modules
@@ -63,6 +64,9 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+
+# SQL stuff
+semant_demo_backend/tasks.db
 
 # Flask stuff:
 instance/

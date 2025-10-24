@@ -1,5 +1,36 @@
 <template>
   <q-page class="q-pa-md">
+    <div class="row">
+      <q-input
+        v-model="username"
+        label="Username"
+        dense
+        outlined
+        style="width: 200px"
+        @update:model-value="handleAddUser"/>
+
+      <!-- Add chunk to collection -->
+      <div class="row items-center q-gutter-md">
+      <!-- choose a collection -->
+      <q-select
+                v-model="selectedCollectionId"
+                :options="collectionOptions"
+                label="Select a Collection"
+                outlined
+                emit-value
+                map-options
+                :loading="loading"
+                style="width: 300px;"
+      />
+      </div>
+      <!-- Refetch the collections -->
+      <q-btn
+                label="Reload Collections"
+                color="primary"
+                @click="loadCollections"
+                class="q-mb-md"
+      />
+      </div>
     <q-form @submit.prevent="onSearch">
       <div class="row q-col-gutter-md">
         <div class="col">
@@ -16,6 +47,148 @@
         </div>
         <div class="col">
           <q-input v-model.number="searchForm.max_year" type="number" label="Max Year" dense outlined />
+        </div>
+        <!-- Filter by tag -->
+        <div class="row items-center q-gutter-sm">
+          <div class="col">
+            <div class="row items-center q-gutter-sm">
+              <div class="text-caption q-mb-sm">Filter by Tags</div>
+                <q-checkbox
+                  v-model="searchForm.positive"
+                  label="Positive"
+                  dense
+                />
+                <q-checkbox
+                  v-model="searchForm.automatic"
+                  label="Automatic"
+                  dense
+                  class="q-ml-md"
+                />
+              </div>
+            <div v-for="(example, index) in tagFormManage.tag_uuids" :key="index" class="row items-center q-mb-sm">
+              <q-select
+                v-model="(searchForm.tag_uuids ?? [])[index]"
+                :options="tags"
+                option-label="tag_name"
+                option-value="tag_uuid"
+                type="text"
+                label="Tag"
+                class="col"
+                emit-value
+                map-options
+                dense
+                outlined
+                :loading="loadingSpinner"
+                @popup-show="fetchTags"
+              >
+                <!-- No option slot -->
+                <template v-slot:no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      No tags found
+                    </q-item-section>
+                  </q-item>
+                </template>
+                <!-- Custom option rendering -->
+                <template v-slot:option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section avatar>
+                      <div
+                        class="color-swatch"
+                        :style="{ backgroundColor: scope.opt.tag_color }"
+                      ></div>
+                    </q-item-section>
+                    <q-item-section avatar>
+                      <q-item-label>{{ scope.opt.tag_pictogram }}</q-item-label>
+                      <q-icon :name="scope.opt.tag_pictogram" />
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.tag_name }}</q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Definition: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.tag_definition }}
+                      </q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Examples: </q-item-label>
+                      <div v-for="(example, index) in scope.opt.tag_examples" :key="index" class="row items-center q-mb-sm">
+                        <q-item-label caption>
+                          {{ example }}
+                        </q-item-label>
+                      </div>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Collection name: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.collection_name }}
+                      </q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Tag uuid: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.tag_uuid }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+
+                <!-- Custom selected rendering -->
+                <template v-slot:selected>
+                  <q-item v-if="(searchForm.tag_uuids ?? [])[index]">
+                    <q-item-section avatar>
+                      <div
+                        class="color-swatch"
+                        :style="{ backgroundColor: tags.find(t => t.tag_uuid === (searchForm.tag_uuids ?? [])[index])?.tag_color }"
+                      ></div>
+                    </q-item-section>
+                    <q-item-section avatar>
+                      <q-item-label>{{ tags.find(t => t.tag_uuid === (searchForm.tag_uuids ?? [])[index])?.tag_pictogram }}</q-item-label>
+                      <q-icon :name="tags.find(t => t.tag_uuid === (searchForm.tag_uuids ?? [])[index])?.tag_pictogram" />
+                    </q-item-section>
+                    <q-item-section >
+                      <q-item-label caption> Name: </q-item-label>
+                      <q-item-label> {{ tags.find(t => t.tag_uuid === (searchForm.tag_uuids ?? [])[index])?.tag_name }} </q-item-label>
+                    </q-item-section>
+                    <q-item-section class="col-grow">
+                      <q-item-label caption>Tag uuid:</q-item-label>
+                      <q-item-label caption class="text-mono">
+                        {{ (searchForm.tag_uuids ?? [])[index] }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+              <q-btn
+                v-if="(searchForm.tag_uuids?.length ?? 0) > 1"
+                @click="removeTag(index)"
+                icon="fa fa-close"
+                color="negative"
+                flat
+                dense
+                class="q-ml-sm"
+              />
+            </div>
+            <div class="row items-center q-gutter-sm">
+              <q-btn
+                @click="addTag"
+                v-if="tagsLen > (searchForm.tag_uuids?.length ?? 0)"
+                icon="add"
+                label="Add Another Tag"
+                color="primary"
+                outline
+                dense
+              />
+            <q-space />
+              <q-btn type="button"
+                color="negative"
+                label="Remove Automatic Tags"
+                icon="delete" :loading="loading"
+                @click="removeSelectedTags"
+              />
+            </div>
+          </div>
         </div>
         <div class="col-auto flex flex-center">
           <q-btn type="submit" color="primary" label="Search" :loading="loading" />
@@ -71,6 +244,155 @@
             :loading="asking"
             @click="onAskQuestion"
           />
+        </div>
+        <!-- Filter by tag -->
+        <div class="row items-center q-gutter-sm">
+          <div class="col">
+            <div class="row items-center q-gutter-sm">
+              <div class="text-caption q-mb-sm">Filter by Tags</div>
+                <q-checkbox
+                  v-model="tagFilterModes.positive"
+                  label="Positive"
+                  dense
+                />
+                <q-checkbox
+                  v-model="tagFilterModes.automatic"
+                  label="Automatic"
+                  dense
+                  class="q-ml-md"
+                />
+              </div>
+            <div v-for="(example, index) in tagFormManage.tag_uuids" :key="index" class="row items-center q-mb-sm">
+              <q-select
+                v-model="tagFormManage.tag_uuids[index]"
+                :options="tags"
+                option-label="tag_name"
+                option-value="tag_uuid"
+                type="text"
+                label="Tag"
+                class="col"
+                emit-value
+                map-options
+                dense
+                outlined
+                :loading="loadingSpinner"
+                @popup-show="fetchTags"
+              >
+                <!-- No option slot -->
+                <template v-slot:no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      No tags found
+                    </q-item-section>
+                  </q-item>
+                </template>
+                <!-- Custom option rendering -->
+                <template v-slot:option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section avatar>
+                      <div
+                        class="color-swatch"
+                        :style="{ backgroundColor: scope.opt.tag_color }"
+                      ></div>
+                    </q-item-section>
+                    <q-item-section avatar>
+                      <q-item-label>{{ scope.opt.tag_pictogram }}</q-item-label>
+                      <q-icon :name="scope.opt.tag_pictogram" />
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.tag_name }}</q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Definition: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.tag_definition }}
+                      </q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Examples: </q-item-label>
+                      <div v-for="(example, index) in scope.opt.tag_examples" :key="index" class="row items-center q-mb-sm">
+                        <q-item-label caption>
+                          {{ example }}
+                        </q-item-label>
+                      </div>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Collection name: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.collection_name }}
+                      </q-item-label>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label> Tag uuid: </q-item-label>
+                      <q-item-label caption>
+                        {{ scope.opt.tag_uuid }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+
+                <!-- Custom selected rendering -->
+                <template v-slot:selected>
+                  <q-item v-if="tagFormManage.tag_uuids[index]">
+                    <q-item-section avatar>
+                      <div
+                        class="color-swatch"
+                        :style="{ backgroundColor: tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_color }"
+                      ></div>
+                    </q-item-section>
+                    <q-item-section avatar>
+                      <q-item-label>{{ tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_pictogram }}</q-item-label>
+                      <q-icon :name="tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_pictogram" />
+                    </q-item-section>
+                    <q-item-section >
+                      <q-item-label caption> Name: </q-item-label>
+                      <q-item-label> {{ tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_name }} </q-item-label>
+                    </q-item-section>
+                    <q-item-section class="col-grow">
+                      <q-item-label caption>Tag uuid:</q-item-label>
+                      <q-item-label caption class="text-mono">
+                        {{ tagFormManage.tag_uuids[index] }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+              <q-btn
+                v-if="tagFormManage.tag_uuids.length > 1"
+                @click="removeTag(index)"
+                icon="fa fa-close"
+                color="negative"
+                flat
+                dense
+                class="q-ml-sm"
+              />
+            </div>
+            <div class="row items-center q-gutter-sm">
+              <q-btn
+                @click="addTag"
+                v-if="tagsLen > tagFormManage.tag_uuids.length"
+                icon="add"
+                label="Add Another Tag"
+                color="primary"
+                outline
+                dense
+              />
+            <q-space />
+              <q-btn type="button"
+                color="negative"
+                label="Remove Automatic Tags"
+                icon="delete" :loading="loading"
+                @click="removeSelectedTags"
+              />
+              <q-btn
+                color="primary"
+                label="Filter by tag(s)"
+                :loading="loading"
+                :disable="!tagFilterModes.positive && !tagFilterModes.automatic"
+                @click="onFilterByTag"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -139,11 +461,179 @@
                 <strong>Artifacts:</strong> {{ chunk.ner_O.join(', ') }}
               </div>
             </div>
+            <div class="row">
+              <q-btn
+                icon="add"
+                label="Add chunk to collection"
+                color="primary"
+                @click="() => addChunkToCollection(chunk.id)"
+                class="q-ma-sm"
+                style="width: auto; min-width: unset;"
+                outline
+                dense
+              />
+            </div>
+
+            <div class="row">
+            <div class="col-auto">
+              <q-select
+                v-model="perChunkTags[chunk.id]"
+                :options="tags"
+                option-label="tag_name"
+                option-value="tag_uuid"
+                type="text"
+                class="col"
+                placeholder="Select a tag"
+                emit-value
+                map-options
+                dense
+                outlined
+                :loading="loadingSpinner"
+                @popup-show="fetchTags"
+              >
+                <!-- No option slot -->
+                <template v-slot:no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      No tags found
+                    </q-item-section>
+                  </q-item>
+                </template>
+                          <!-- Custom option rendering -->
+                          <template v-slot:option="scope">
+                            <q-item v-bind="scope.itemProps">
+                              <q-item-section avatar>
+                                <div
+                                  class="color-swatch"
+                                  :style="{ backgroundColor: scope.opt.tag_color }"
+                                ></div>
+                              </q-item-section>
+                              <q-item-section avatar>
+                                <q-item-label>{{ scope.opt.tag_pictogram }}</q-item-label>
+                                <q-icon :name="scope.opt.tag_pictogram" />
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label>{{ scope.opt.tag_name }}</q-item-label>
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label> Definition: </q-item-label>
+                                <q-item-label caption>
+                                  {{ scope.opt.tag_definition }}
+                                </q-item-label>
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label> Examples: </q-item-label>
+                                <div v-for="(example, index) in scope.opt.tag_examples" :key="index" class="row items-center q-mb-sm">
+                                  <q-item-label caption>
+                                    {{ example }}
+                                  </q-item-label>
+                                </div>
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label> Collection name: </q-item-label>
+                                <q-item-label caption>
+                                  {{ scope.opt.collection_name }}
+                                </q-item-label>
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label> Tag uuid: </q-item-label>
+                                <q-item-label caption>
+                                  {{ scope.opt.tag_uuid }}
+                                </q-item-label>
+                              </q-item-section>
+                            </q-item>
+                          </template>
+
+                          <!-- Custom selected rendering -->
+                          <template v-slot:selected>
+                            <q-item v-if="perChunkTags[chunk.id]">
+                              <q-item-section avatar>
+                                <div
+                                  class="color-swatch"
+                                  :style="{ backgroundColor: tags.find(t => t.tag_uuid === perChunkTags[chunk.id])?.tag_color }"
+                                ></div>
+                              </q-item-section>
+                              <q-item-section avatar>
+                                <q-item-label>{{ tags.find(t => t.tag_uuid === perChunkTags[chunk.id])?.tag_pictogram }}</q-item-label>
+                                <q-icon :name="tags.find(t => t.tag_uuid === perChunkTags[chunk.id])?.tag_pictogram" />
+                              </q-item-section>
+                              <q-item-section >
+                                <q-item-label caption> Name: </q-item-label>
+                                <q-item-label> {{ tags.find(t => t.tag_uuid === perChunkTags[chunk.id])?.tag_name }} </q-item-label>
+                              </q-item-section>
+                              <q-item-section class="col-grow">
+                                <q-item-label caption>Tag uuid:</q-item-label>
+                                <q-item-label caption class="text-mono">
+                                  {{ perChunkTags[chunk.id] }}
+                                </q-item-label>
+                              </q-item-section>
+                            </q-item>
+                            <!-- when nothing selected, show placeholder -->
+                            <div v-else class="text-grey q-pl-sm">
+                              Select a tag
+                            </div>
+                          </template>
+                        </q-select>
+                      </div>
+                      <div class="col-auto">
+                        <q-btn
+                              @click="() => addUserTag(chunk.id, perChunkTags[chunk.id])"
+                              icon="add"
+                              label="Add Tag"
+                              color="primary"
+                              outline
+                              dense
+                        />
+                      </div>
+                      <q-space />
+                    </div>
+
+            <!-- Tags -->
+            <div class="text-caption q-mt-sm">
+              <div v-if="chunk.positiveTags && chunk.positiveTags.length">
+                <div v-for="tag in chunk.positiveTags" :key="tag.tag_uuid" class="q-mb-md">
+                  <div class="row items-center col-auto">
+                    <!--<q-label class="q-mr-sm">Definition: {{ tag.tag_definition }}</q-label>-->
+                    <div class="row">
+                    <BadgeAvatar
+                        :annotation-class="{
+                          short: tag.tag_name || '?',
+                          colorString: tag.tag_color || '#a19e6d',
+                          textColor: 'black',
+                          approved: 'positive' as ApprovedState
+                        }"
+                        @approve-click="() => approveTag(true, chunk.id, tag.tag_uuid, 'Chunks')"
+                        @disapprove-click="() => approveTag(false, chunk.id, tag.tag_uuid, 'Chunks')"
+                        size="sm"
+                    />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="chunk.automaticTags && chunk.automaticTags.length">
+                <strong>Automatic tags:</strong>
+                <div v-for="tag in chunk.automaticTags" :key="tag.tag_uuid" class="q-mb-md">
+                  <!--<q-label class="q-mr-sm">Definition: {{ tag.tag_definition }}</q-label>-->
+                  <div class="row">
+                    <BadgeAvatar
+                        :annotation-class="{
+                          short: tag.tag_name || '?',
+                          colorString: tag.tag_color || '#a19e6d',
+                          textColor: 'black',
+                          approved: 'automatic' as ApprovedState
+                        }"
+                        @approve-click="() => approveTag(true, chunk.id, tag.tag_uuid, 'Chunks')"
+                        @disapprove-click="() => approveTag(false, chunk.id, tag.tag_uuid, 'Chunks')"
+                        size="sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </q-item-section>
         </q-item>
       </q-list>
     </div>
-
     <q-dialog v-model="showSummary">
       <q-card style="min-width:350px;max-width:600px">
         <q-card-section>
@@ -164,10 +654,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument } from 'src/models'
+import { ref, computed, onMounted } from 'vue'
+import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QList, QItem, QItemSection, QSelect, QCheckbox, Notify } from 'quasar'
+import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, TagData, ApproveTagResponse, RemoveTagsResponse, CreateResponse, ApprovedState, ChunkTagData } from 'src/models'
 import { api } from 'src/boot/axios'
+import AvatarItem from 'src/components/AvatarItem.vue'
+import BadgeAvatar from 'src/components/BadgeAvatar.vue'
+import { useCollectionStore } from 'src/stores/chunk_collection-store'
+import { useUserStore } from 'src/stores/user-store'
 
 const searchForm = ref<SearchRequest>({
   query: '',
@@ -177,7 +671,10 @@ const searchForm = ref<SearchRequest>({
   max_year: null,
   min_date: null,
   max_date: null,
-  language: null
+  language: null,
+  tag_uuids: [],
+  positive: true,
+  automatic: true
 })
 
 const loading = ref(false)
@@ -202,19 +699,59 @@ const asking = ref(false)
 
 const allSelected = computed(() => selectedResults.value.length === results.value.length && results.value.length > 0)
 
+const tagApproveStatus = ref<{ chunk_id: string; tag_id: string; status: string; chunk_collection_name: string }[]>([])
+const tagFormManage = ref<{ tag_uuids: string[] }>({
+  tag_uuids: ['']
+})
+const tagsLen = ref(5)
+const tags = ref<TagData[]>([])
+const loadingSpinner = ref(false)
+const tagFilterModes = ref({
+  positive: true, // by default check
+  automatic: true
+})
+
+const tagMap = computed(() => {
+  const map = new Map<string, TagData>()
+  tags.value.forEach(t => map.set(t.tag_uuid, t))
+  return map
+})
+
+const perChunkTags = ref<Record<string, string | null>>({})
+
 async function onSearch () {
   loading.value = true
   results.value = []
   summary.value = ''
   summaries.value = [] // clear summaries and answered questions on new search
   try {
+    console.log("Search will start")
     const { data } = await api.post<SearchResponse>('/search', searchForm.value)
+    console.log("Search response received:", data)
     results.value = data.results
     timeSpent.value = data.time_spent
     searchLog.value = data.search_log
     lastSearchRequest.value = data.search_request
+
+    const chunkTags = data?.tags_result || []
+
+    // map chunk_id -> tag info from backend
+    const chunkTagMap = new Map(
+      chunkTags.map(c => [c.chunk_id, c])
+    )
+    // enrich results
+    results.value = (results.value || [])
+      .map(c => {
+        const chunkInfo = chunkTags.find(ct => ct.chunk_id === c.id) || {} as ChunkTagData
+        return {
+          ...c,
+          positiveTags: (chunkInfo.positive_tags_ids || []).map((id: string) => tagMap.value.get(id)).filter((t): t is TagData => Boolean(t)),
+          automaticTags: (chunkInfo.automatic_tags_ids || []).map((id: string) => tagMap.value.get(id)).filter((t): t is TagData => Boolean(t))
+        }
+      })
   } catch (e) {
     // handle error (could use Quasar Notify)
+    console.log(e)
     results.value = []
     timeSpent.value = 0
     searchLog.value = []
@@ -287,4 +824,248 @@ function toggleSelectAll () {
     selectedResults.value = results.value.map(r => r.id)
   }
 }
+
+// fetch tag info
+async function fetchTags () {
+  loadingSpinner.value = true
+  try {
+    const res = await api.get('/all_tags')
+    tags.value = res.data.tags_lst
+    tagsLen.value = tags.value.length
+  } finally {
+    loadingSpinner.value = false
+  }
+}
+
+// filter search results by selected tags
+async function onFilterByTag () {
+  console.log("Filter")
+  // results chunk.id
+  // tagFormManage.tag_uuids
+  // get all the found chunk ids from the search
+  const chunkIds = results.value.map(c => c.id)
+  const payload = {
+    chunkIds: chunkIds,
+    tagIds: tagFormManage.value.tag_uuids,
+    positive: tagFilterModes.value.positive,
+    automatic: tagFilterModes.value.automatic
+  }
+  const { data } = await api.post('/filter_tags', payload)
+  // filter the current results
+  const chunkTags = data?.chunkTags || []
+  // map chunk_id -> tag info from backend
+  const chunkTagMap = new Map<string, ChunkTagData>(
+    chunkTags.map((c: { chunk_id: any }) => [c.chunk_id, c])
+  )
+
+  // filter and enrich results
+  results.value = (results.value || [])
+    .filter(c => {
+      const tagInfo = chunkTagMap.get(c.id)
+      return tagInfo && (
+        ((tagInfo.positive_tags_ids?.length || 0) > 0 && tagFilterModes.value.positive) ||
+        ((tagInfo.automatic_tags_ids?.length || 0) > 0 && tagFilterModes.value.automatic)
+      )
+    })
+    .map(c => {
+      const chunkInfo = chunkTags.find((ct: { chunk_id: string }) => ct.chunk_id === c.id) || {}
+      return {
+        ...c,
+        positiveTags: (chunkInfo.positive_tags_ids || []).map((id: string) => tagMap.value.get(id)).filter(Boolean),
+        automaticTags: (chunkInfo.automatic_tags_ids || []).map((id: string) => tagMap.value.get(id)).filter(Boolean)
+      }
+    })
+  // results.value = (results.value || []).filter(c => filteredChunkIDs.has(c.id))
+}
+
+// approve tag pass true to approve or false to diapprove
+async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string, pageReload = true) {
+  const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
+  const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
+  if (data.successful) {
+    if (pageReload) {
+      // Update results after approval
+      results.value = (results.value || []).map(chunk => {
+        if (chunk.id !== chunkID) return chunk
+
+        // Remove the tag from automaticTags
+        const newAutomaticTags = (chunk.automaticTags || []).filter(tag => tag.tag_uuid !== tagID)
+
+        // Add the tag to positiveTags if approved and not already present
+        const newPositiveTags = chunk.positiveTags || []
+        if (approved) {
+          const tagToAdd = chunk.automaticTags?.find(tag => tag.tag_uuid === tagID)
+          if (tagToAdd && !newPositiveTags.some(tag => tag.tag_uuid === tagID)) {
+            newPositiveTags.push(tagToAdd)
+          }
+        }
+
+        return {
+          ...chunk,
+          automaticTags: newAutomaticTags,
+          positiveTags: newPositiveTags
+        }
+      })
+
+      // apply the current tag filters to refresh the list
+      const filtered = results.value.filter(chunk => {
+        const hasPositive = (chunk.positiveTags?.length || 0) > 0
+        const hasAutomatic = (chunk.automaticTags?.length || 0) > 0
+        return (hasPositive && tagFilterModes.value.positive) || (hasAutomatic && tagFilterModes.value.automatic)
+      })
+      results.value = filtered
+    }
+  } else {
+    tagApproveStatus.value.push({
+      chunk_id: chunkID,
+      tag_id: tagID,
+      status: 'Error',
+      chunk_collection_name: chunkCollectionName
+    })
+  }
+  return data.successful
+}
+async function approveTagOld (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string, pageReload = true) {
+  const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
+  const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
+  if (data.successful) {
+    if (pageReload === true) {
+      await onFilterByTag() // may use lighter version to refetch the state
+    }
+  } else {
+    tagApproveStatus.value.push({
+      chunk_id: chunkID,
+      tag_id: tagID,
+      status: 'Error',
+      chunk_collection_name: chunkCollectionName
+    })
+  }
+  return data.successful
+}
+
+// add examples field
+const addTag = () => {
+  tagFormManage.value.tag_uuids.push('')
+}
+
+// remove examples field
+const removeTag = (index: number) => {
+  if (tagFormManage.value.tag_uuids.length > 1) {
+    tagFormManage.value.tag_uuids.splice(index, 1)
+  }
+}
+
+// add user tag to a chunk
+async function addUserTag (chunkID: string, tagID: string | null) {
+  if (!tagID) {
+    Notify.create({
+      message: 'Missing selected tag.',
+      color: 'negative',
+      position: 'top',
+      timeout: 2000,
+      icon: 'error'
+    })
+  }
+  var successful = false
+  if (tagID != null) {
+    successful = await approveTag(true, chunkID, tagID, "Chunks", false)
+  }
+  if (successful) {
+    // Clear the selection so it disappears from q-select
+    perChunkTags.value[chunkID] = ''
+
+    // Show success popup
+    Notify.create({
+      message: 'Tag added successfully!',
+      color: 'positive',
+      position: 'top',
+      timeout: 2000,
+      icon: 'check'
+    })
+  } else {
+    Notify.create({
+      message: 'Failed to add tag.',
+      color: 'negative',
+      position: 'top',
+      timeout: 2000,
+      icon: 'error'
+    })
+  }
+}
+
+async function removeSelectedTags () {
+  try {
+    const payload = { tag_uuids: tagFormManage.value.tag_uuids }
+    const { data } = await api.delete<RemoveTagsResponse>('/automatic_tags', { data: payload })
+    console.log('Removing response received:', data)
+    if (data.successful) {
+      // window.location.reload()
+      await onFilterByTag()
+    }
+  } catch (e) {
+    console.error('Tag removing error:', e)
+  }
+}
+
+// collection manage
+const collectionStore = useCollectionStore()
+const userStore = useUserStore()
+const username = ref('')
+
+const handleAddUser = async () => {
+  if (username.value.trim()) {
+    console.log('Username entered:', username.value)
+    userStore.setUser(username.value)
+    await loadCollections() // load collections of the user
+  }
+}
+
+// local reactive refs
+const selectedCollectionId = ref<string | null>(null)
+const selectedCollection = computed(() =>
+  collectionStore.collections.find(c => c.id === selectedCollectionId.value)
+)
+
+// computed to transform collections
+const collectionOptions = computed(() =>
+  collectionStore.collections.map(c => ({
+    label: c.name ?? `Collection ${c.id}`,
+    value: c.id
+  }))
+)
+
+// load collections from weaviate
+const loadCollections = async () => {
+  if (!collectionStore.userId) {
+    Notify.create({ message: 'No user set', position: 'top', color: 'negative' })
+    return
+  }
+
+  loading.value = true
+  try {
+    await collectionStore.fetchCollections(collectionStore.userId)
+    // Notify.create({ message: 'Collections loaded', position: 'top', color: 'positive' })
+  } catch (err) {
+    console.error(err)
+    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
+  } finally {
+    loading.value = false
+  }
+}
+
+async function addChunkToCollection (currentChunkId: string) {
+  const payload = { collectionId: selectedCollectionId.value, chunkId: currentChunkId }
+  const { data } = await api.post<CreateResponse>('/chunk_2_collection', payload)
+  if (data.created) {
+    Notify.create({ message: 'Chunk added to collection', position: 'top', color: 'positive' })
+  } else {
+    Notify.create({ message: 'Failed to add chunk to collection', position: 'top', color: 'negative' })
+  }
+}
+
+onMounted(async () => {
+  // load username if already set
+  username.value = userStore.user?.id ?? ''
+})
+
 </script>

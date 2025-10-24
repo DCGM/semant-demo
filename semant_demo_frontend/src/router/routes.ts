@@ -15,6 +15,21 @@ const routes: RouteRecordRaw[] = [
   },
 
   {
+    path: '/tag/',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/TaggingPage.vue') }]
+  },
+  {
+    path: '/collection_manage/',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/UserCollectionManagementPage.vue') }]
+  },
+  {
+    path: '/tag_manage/',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/TagManagementPage.vue') }]
+  },
+  {
     path: '/about/',
     component: () => import('layouts/MainLayout.vue'),
     children: [{ path: '', component: () => import('pages/AboutPage.vue') }]
