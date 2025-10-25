@@ -4,8 +4,13 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_community.llms import Ollama
-from .config import Config
 
+
+from typing import Optional, List
+
+from semant_demo.config import Config
+from semant_demo.schemas import SearchResponse, SearchRequest, SearchType
+from semant_demo.weaviate_search import WeaviateSearch
 
 # prompt
 prompt_template = [
@@ -22,13 +27,12 @@ prompt_template = [
     ("user", "{question_string}")
     ]
 
-   
-#TODO: add Round robins to OLLAMA
 class RagGenerator:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, search: WeaviateSearch):
         self.config = config
         self.prompt = ChatPromptTemplate.from_messages(prompt_template)
         self.output_parser = StrOutputParser()
+        self.search = search
 
     # create chain of operations
     def create_chain(self, model_name: str):
@@ -65,14 +69,46 @@ class RagGenerator:
                 prompt_history.append(AIMessage(content=msg['content']))
         return prompt_history
     
+    #function that converts incomming search results to desired format
+    def format_context(self, results: List[SearchResponse]) -> str:
+        snippets = [
+            f"[doc{i+1}]" + res.text.replace('\\n', ' ')
+            for i, res in enumerate(results)
+        ]
+        return ("\n".join(snippets))
+    
     # execute chain
-    async def generate_answer(self, model_name: str, question_string: str, context_string: str, history: list):
+    async def generate_answer(self, model_name: str, question_string: str, history: list, context_string: Optional[str] = None, search_type: str = "hybrid", alpha: float = 0.5, limit: int = 10, search_query: Optional[str] = None ):
+        final_context = context_string
+        # check if context was entered
+        if (final_context == None):
+            #convert search type
+            try:
+                type = SearchType(search_type)
+            except ValueError:
+                raise ValueError(f"Rag error: Unknown search type: {search_type}")
+            #create db search request
+            search_request = SearchRequest(
+                query = search_query,
+                type = type,
+                hybrid_search_alpha = alpha,
+                limit = limit
+            )
+            #call db search
+            search_response = await self.search.search(search_request)
+            search_results = search_response.results
+            #convert context to desired format
+            final_context = self.format_context(search_results)
+        
         chain = self.create_chain(model_name=model_name)
         prompt_history = self.get_prompt_history(history)
 
         result = await chain.ainvoke({
-            "context_string" : context_string,
+            "context_string" : final_context,
             "question_string" : question_string,
             "prompt_history" : prompt_history
         })
-        return result
+        return {
+            "answer": result,
+            "sources": search_results
+        }

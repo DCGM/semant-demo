@@ -31,6 +31,7 @@ class SearchRequest(SummaryRequestBase):
     query: str
     limit: int = 10
     type: SearchType = SearchType.hybrid
+    hybrid_search_alpha: float = 0.5
     search_llm_filter: bool = False
 
     min_year: int | None = None
@@ -108,14 +109,19 @@ class RagChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
 
-class RagQuestionRequest(BaseModel):
-    search_response: SearchResponse
+class RagRequest(BaseModel):
     question: str
     history: list[RagChatMessage] | None = None    # chat history, to keep context
     model_name: str | None = None
+    # search parameters
+    search_type: SearchType = SearchType.hybrid
+    alpha: float = 0.5
+    limit: int = 10
+    search_query: str | None = None
 
 class RagResponse(BaseModel):
     rag_answer: str
     time_spent: float
+    sources: list[TextChunkWithDocument]
 
 

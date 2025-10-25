@@ -74,7 +74,7 @@ class WeaviateSearch:
             # Execute hybrid search
             result = await self.chunk_col.query.hybrid(
                 query=search_request.query,
-                alpha=1,
+                alpha=search_request.hybrid_search_alpha,
                 vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,

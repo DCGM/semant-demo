@@ -183,31 +183,31 @@ const sendMessage = async () => {
     // history for RAG
     const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
 
-    // search chunks
-    const searchRequest = {
-      query: historyForSearch,
-      limit: 5,
-      search_title_generate: false,
-      search_summary_generate: false
-    }
-    const searchResponse = await axios.post('/api/search', searchRequest)
-    if (!searchResponse.data || searchResponse.data.results.length === 0) {
-      messages.value.push({ sender: 'AI', text: 'Sorry, we have no information about this topic.' })
-      return
-    }
-
-    // rag question
+    // rag question + search
     const ragRequestBody = {
-      search_response: searchResponse.data,
       question: userQuery,
       history: context,
-      model_name: selectedModel.value.value
+      model_name: selectedModel.value.value,
+      // search parameters
+      search_query: historyForSearch,
+      limit: 5,
+      search_type: 'hybrid',
+      alpha: 0.5 // vector search
     }
     const ragResponse = await axios.post('/api/rag', ragRequestBody)
     const ragAnswer = ragResponse.data.rag_answer
+    const sources = ragResponse.data.sources
 
     // sources
-    const sourcesForAnswer: Source[] = searchResponse.data.results.map((res: SearchResult) => ({
+    if (!sources || sources.length === 0) {
+      messages.value.push({
+        sender: 'AI',
+        text: "Sorry we have no information about this topick.",
+        sources: []
+      })
+      return
+    }
+    const sourcesForAnswer: Source[] = sources.map((res: SearchResult) => ({
       text: res.text
     }))
 

@@ -7,7 +7,7 @@ from semant_demo import schemas
 from semant_demo.config import config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.rag_generator import RagGenerator
+from semant_demo.rag.rag_generator import RagGenerator
 from time import time
 
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +16,7 @@ openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
 global_searcher = None
 global_summarizer = None
-
+global_rag = None
 
 async def get_search() -> WeaviateSearch:
     global global_searcher
@@ -30,6 +30,12 @@ async def get_summarizer() -> TemplatedSearchResultsSummarizer:
     if global_summarizer is None:
         global_summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
     return global_summarizer
+
+async def get_rag(searcher: WeaviateSearch = Depends(get_search)) -> RagGenerator:
+    global global_rag
+    if global_rag is None:
+        global_rag = RagGenerator(config=config, search=searcher)
+    return global_rag
 
 app = FastAPI()
 
@@ -110,44 +116,36 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
     )
 
 @app.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
-
-    # build your snippets with IDs
-    snippets = [
-        f"[doc{i+1}]" + res.text.replace('\\n', ' ')
-        for i, res in enumerate(request.search_response.results)
-    ]
-    context_string = "\n".join(snippets)
-
-    # get model id
-    model_name = request.model_name
-
-    # convert history for generator
+async def rag(request: schemas.RagRequest, rag_generator: RagGenerator = Depends(get_rag)) -> schemas.RagResponse:
+    #get history if exists
     if request.history:
         history_preprocessed = [msg.model_dump() for msg in request.history]
     else:
         history_preprocessed = []
 
-    rag_generator = RagGenerator(config)
-
     # call model
     try:
         t1 = time()
 
-        generated_answer = await rag_generator.generate_answer(
-            model_name = model_name,
+        generated_result = await rag_generator.generate_answer(
+            model_name = request.model_name,
             question_string = request.question,
-            context_string = context_string,
             history= history_preprocessed,
+            #search parameters
+            search_type=request.search_type,
+            alpha=request.alpha,
+            limit=request.limit,
+            search_query = request.search_query
         )
         time_spent = time() - t1
 
     except Exception as e:
-        logging.error(f"RAG error: calling model {model_name}: {e}")
+        logging.error(f"RAG error: calling model {request.model_name}: {e}")
         raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
     # answer
     return schemas.RagResponse(
-        rag_answer=generated_answer.strip(),
+        rag_answer=generated_result["answer"].strip(),
+        sources=generated_result["sources"],
         time_spent=time_spent
     )
