@@ -113,6 +113,9 @@ class RagGenerator:
         chain = self.create_chain(rag_config=rag_config)
         prompt_history = self.get_prompt_history(history)
 
+        #TODO DEBUG
+        print(f"rag_config: {rag_config},rag_search: {rag_search} ")
+
         result = await chain.ainvoke({
             "context_string" : final_context,
             "question_string" : question_string,

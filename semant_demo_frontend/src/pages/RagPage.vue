@@ -78,8 +78,42 @@
               label="Model"
               dense
               outlined
-              style="width: 200px"
+              style="width: 150px"
           />
+          <!-- temperature -->
+            <span class="text-caption text-grey-7">Temperature:</span>
+            <q-slider
+              v-model="temperature"
+              :min="tempRange.min"
+              :max="tempRange.max"
+              :step="0.1"
+              label
+              style="width: 100px"
+          />
+          <!-- api key -->
+          <q-input v-model="apiKey" label="Api key" dense outlined />
+          <!-- search mode -->
+          <q-select
+              v-model="selectedDBSearch"
+              :options="searchModes"
+              label="Search mode"
+              dense
+              outlined
+              style="width: 150px"
+          />
+          <!-- alpha -->
+          <span class="text-caption text-grey-7">Alpha:</span>
+          <q-slider
+            v-model="alpha"
+            :min="alphaRange.min"
+            :max="alphaRange.max"
+            :step="0.1"
+            label
+            style="width: 100px"
+          />
+          <q-input v-model="language" label="Language" dense outlined />
+          <q-input v-model.number="minYear" type="number" label="Min Year" dense outlined />
+          <q-input v-model.number="maxYear" type="number" label="Max Year" dense outlined />
         </div>
          <!-- input box with send button -->
         <div class="col">
@@ -154,6 +188,29 @@ const models = ref([
 ])
 const selectedModel = ref(models.value[0])
 
+// temperature
+const temperature = ref(0.0)
+const tempRange = ref({ min: 0.0, max: 1.0 })
+
+// api key
+const apiKey = ref<string | null>(null)
+
+// search modes
+const searchModes = ref([
+  { label: 'hybrid', value: 'hybrid' },
+  { label: 'vector', value: 'vector' },
+  { label: 'text', value: 'text' }
+])
+const selectedDBSearch = ref(searchModes.value[0])
+
+// alpha
+const alpha = ref(0.5)
+const alphaRange = ref({ min: 0.0, max: 1.0 })
+
+const minYear = ref<number | null>(null)
+const maxYear = ref<number | null>(null)
+const language = ref<string | null>(null)
+
 // ----------------------Main chat-----------------------------
 
 const scrollToBottom = () => {
@@ -186,20 +243,20 @@ const sendMessage = async () => {
     const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
 
     const ragConfig = {
-      model_name: selectedModel.value.value
-      // api key
-      // temperature
+      model_name: selectedModel.value.value,
+      temperature: temperature.value,
+      api_key: apiKey.value ? apiKey.value : null
     }
     const ragSearch = {
       search_query: historyForSearch,
       limit: 5,
-      search_type: 'hybrid',
-      alpha: 0.5, // vector search
-      min_year: null,
-      max_year: null,
+      search_type: selectedDBSearch.value.value,
+      alpha: alpha.value, // vector search
+      min_year: null, // minYear.value ? minYear.value : null, - does not work now
+      max_year: null, // maxYear.value ? maxYear.value : null, - does not work now
       min_date: null,
       max_date: null,
-      language: null
+      language: null // language.value ? language.value : null - does not work now
     }
 
     // rag question + search
@@ -219,7 +276,7 @@ const sendMessage = async () => {
     if (!sources || sources.length === 0) {
       messages.value.push({
         sender: 'AI',
-        text: "Sorry we have no information about this topick.",
+        text: 'Sorry we have no information about this topick.',
         sources: []
       })
       return
@@ -235,7 +292,13 @@ const sendMessage = async () => {
     })
   } catch (error) {
     console.error('RAG error:', error)
-    messages.value.push({ sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
+    if (axios.isAxiosError(error) && error.response) {
+      if (error.response.status === 401) {
+        messages.value.push({ sender: 'AI', text: 'You have entered invalid API key.' })
+      }
+    } else {
+      messages.value.push({ sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
+    }
   } finally {
     isAiThinking.value = false
     scrollToBottom()

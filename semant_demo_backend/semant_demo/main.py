@@ -1,6 +1,8 @@
 import logging
 
 import openai
+import langchain_google_genai 
+
 from fastapi import FastAPI, Depends, HTTPException
 
 from semant_demo import schemas
@@ -147,6 +149,9 @@ async def rag(request: schemas.RagRequest, rag_generator: RagGenerator = Depends
         )
         time_spent = time() - t1
 
+    except (openai.AuthenticationError, langchain_google_genai.chat_models.ChatGoogleGenerativeAIError) as e:
+        logging.warning(e)
+        raise HTTPException(status_code=401, detail="Invalid API key.")
     except Exception as e:
         logging.error(f"RAG error: calling model {request.model_name}: {e}")
         raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
