@@ -5,11 +5,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_ollama import OllamaLLM
 
-
-from typing import List
-
 from semant_demo.config import Config
-from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagConfig
+from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagConfig, RagSearch
 from semant_demo.weaviate_search import WeaviateSearch
 
 # prompt
@@ -73,35 +70,45 @@ class RagGenerator:
         return prompt_history
     
     #function that converts incomming search results to desired format
-    def format_context(self, results: List[SearchResponse]) -> str:
+    def format_weaviate_context(self, results: list[SearchResponse]) -> str:
         snippets = [
             f"[doc{i+1}]" + res.text.replace('\\n', ' ')
             for i, res in enumerate(results)
         ]
         return ("\n".join(snippets))
     
+    async def call_weaviate_search(self, rag_search: RagSearch,  type: SearchType) -> SearchResponse:
+        #create db search request
+        search_request = SearchRequest(
+            query = rag_search.search_query,
+            type = type,
+            hybrid_search_alpha = rag_search.alpha,
+            limit = rag_search.limit,
+            min_year = rag_search.min_year,
+            max_year = rag_search.max_year,
+            min_date = rag_search.min_date,
+            max_date = rag_search.max_date,
+            language = rag_search.language
+        )
+        #call db search
+        search_response = await self.search.search(search_request)
+        return search_response
+
     # execute chain
-    async def generate_answer(self, rag_config: RagConfig, question_string: str, history: list, context_string: str | None = None, search_type: str = "hybrid", alpha: float = 0.5, limit: int = 10, search_query: str | None = None):
+    async def generate_answer(self, rag_config: RagConfig, question_string: str, history: list, rag_search: RagSearch, context_string: str | None = None):
         final_context = context_string
         # check if context was entered
         if (final_context == None):
             #convert search type
             try:
-                type = SearchType(search_type)
+                type = SearchType(rag_search.search_type)
             except ValueError:
-                raise ValueError(f"Rag error: Unknown search type: {search_type}")
-            #create db search request
-            search_request = SearchRequest(
-                query = search_query,
-                type = type,
-                hybrid_search_alpha = alpha,
-                limit = limit
-            )
-            #call db search
-            search_response = await self.search.search(search_request)
+                raise ValueError(f"Rag error: Unknown search type: {rag_search.search_type}")
+            #search in db
+            search_response = await self.call_weaviate_search(type = type, rag_search = rag_search)
             search_results = search_response.results
             #convert context to desired format
-            final_context = self.format_context(search_results)
+            final_context = self.format_weaviate_context(search_results)
         
         chain = self.create_chain(rag_config=rag_config)
         prompt_history = self.get_prompt_history(history)

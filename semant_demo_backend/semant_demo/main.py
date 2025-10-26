@@ -115,6 +115,16 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
         time_spent=search_response.time_spent,
     )
 
+@app.get("/api/rag/configurations", response_model=schemas.AvailableRagConfigurationsResponse)
+async def get_avalaible_rag_configurations():
+    return schemas.AvailableRagConfigurationsResponse(
+        available_models = ["OLLAMA", "OPENAI", "GOOGLE"],
+        used_models = [config.OLLAMA_MODEL, config.OPENAI_MODEL, config.GOOGLE_MODEL ],
+        default_temperature = 0.0,
+        temperature_range = {"min": 0.0, "max" : 1.0},
+        available_api_keys = ["OPENAI", "GOOGLE"]
+    )
+
 @app.post("/api/rag", response_model=schemas.RagResponse)
 async def rag(request: schemas.RagRequest, rag_generator: RagGenerator = Depends(get_rag)) -> schemas.RagResponse:
     #get history if exists
@@ -128,14 +138,12 @@ async def rag(request: schemas.RagRequest, rag_generator: RagGenerator = Depends
         t1 = time()
 
         generated_result = await rag_generator.generate_answer(
-            rag_config = request.rag_config,
             question_string = request.question,
             history= history_preprocessed,
+            #rag configuration parameters
+            rag_config = request.rag_config,
             #search parameters
-            search_type=request.search_type,
-            alpha=request.alpha,
-            limit=request.limit,
-            search_query = request.search_query
+            rag_search = request.rag_search
         )
         time_spent = time() - t1
 

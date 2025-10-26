@@ -144,6 +144,8 @@ const isAiThinking = ref(false)
 const showSourcesDialog = ref(false)
 const currentSources = ref<Source[]>([])
 
+// TODO load those configuration from api config
+
 // models
 const models = ref([
   { label: 'OLLAMA (local)', value: 'OLLAMA' },
@@ -188,16 +190,26 @@ const sendMessage = async () => {
       // api key
       // temperature
     }
+    const ragSearch = {
+      search_query: historyForSearch,
+      limit: 5,
+      search_type: 'hybrid',
+      alpha: 0.5, // vector search
+      min_year: null,
+      max_year: null,
+      min_date: null,
+      max_date: null,
+      language: null
+    }
+
     // rag question + search
     const ragRequestBody = {
       question: userQuery,
       history: context,
+      // model configuration parameters
       rag_config: ragConfig,
       // search parameters
-      search_query: historyForSearch,
-      limit: 5,
-      search_type: 'hybrid',
-      alpha: 0.5 // vector search
+      rag_search: ragSearch
     }
     const ragResponse = await axios.post('/api/rag', ragRequestBody)
     const ragAnswer = ragResponse.data.rag_answer
