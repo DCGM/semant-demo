@@ -6,7 +6,10 @@ weaviate-client
 openai
 ollama
 classconfig
+langchain
 langchain_core
+langchain-ollama
 langchain_google_genai
 langchain_openai
 langchain_community
+jinja2
