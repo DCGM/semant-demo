@@ -111,6 +111,7 @@
             label
             style="width: 100px"
           />
+          <q-input v-model.number="chunkNumber" type="number" label="Chunk limit" dense outlined />
           <q-input v-model="language" label="Language" dense outlined />
           <q-input v-model.number="minYear" type="number" label="Min Year" dense outlined />
           <q-input v-model.number="maxYear" type="number" label="Max Year" dense outlined />
@@ -207,6 +208,7 @@ const selectedDBSearch = ref(searchModes.value[0])
 const alpha = ref(0.5)
 const alphaRange = ref({ min: 0.0, max: 1.0 })
 
+const chunkNumber = ref<number>(5)
 const minYear = ref<number | null>(null)
 const maxYear = ref<number | null>(null)
 const language = ref<string | null>(null)
@@ -249,7 +251,7 @@ const sendMessage = async () => {
     }
     const ragSearch = {
       search_query: historyForSearch,
-      limit: 5,
+      limit: chunkNumber.value,
       search_type: selectedDBSearch.value.value,
       alpha: alpha.value, // vector search
       min_year: null, // minYear.value ? minYear.value : null, - does not work now
