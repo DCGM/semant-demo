@@ -128,7 +128,7 @@ async def rag(request: schemas.RagRequest, rag_generator: RagGenerator = Depends
         t1 = time()
 
         generated_result = await rag_generator.generate_answer(
-            model_name = request.model_name,
+            rag_config = request.rag_config,
             question_string = request.question,
             history= history_preprocessed,
             #search parameters

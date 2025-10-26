@@ -183,11 +183,16 @@ const sendMessage = async () => {
     // history for RAG
     const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
 
+    const ragConfig = {
+      model_name: selectedModel.value.value
+      // api key
+      // temperature
+    }
     // rag question + search
     const ragRequestBody = {
       question: userQuery,
       history: context,
-      model_name: selectedModel.value.value,
+      rag_config: ragConfig,
       // search parameters
       search_query: historyForSearch,
       limit: 5,

@@ -3,13 +3,13 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 
 
-from typing import Optional, List
+from typing import List
 
 from semant_demo.config import Config
-from semant_demo.schemas import SearchResponse, SearchRequest, SearchType
+from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagConfig
 from semant_demo.weaviate_search import WeaviateSearch
 
 # prompt
@@ -35,25 +35,28 @@ class RagGenerator:
         self.search = search
 
     # create chain of operations
-    def create_chain(self, model_name: str):
+    def create_chain(self, rag_config: RagConfig):
+        temperature = rag_config.temperature
+        if (temperature == None):
+            temperature = self.config.MODEL_TEMPERATURE
         # select model
-        if (model_name == "GOOGLE"):
+        if (rag_config.model_name == "GOOGLE"):
             model = ChatGoogleGenerativeAI(
                 model = self.config.GOOGLE_MODEL,
-                google_api_key = self.config.GOOGLE_API_KEY,
-                temperature = self.config.MODEL_TEMPERATURE
+                google_api_key = rag_config.api_key if rag_config.api_key else self.config.GOOGLE_API_KEY,
+                temperature = temperature
             )
-        elif (model_name == "OLLAMA"):
-            model = Ollama(
-                model=self.config.OLLAMA_MODEL,
-                base_url=self.config.OLLAMA_URLS[0],
-                temperature=self.config.MODEL_TEMPERATURE
+        elif (rag_config.model_name == "OLLAMA"):
+            model = OllamaLLM(
+                model = self.config.OLLAMA_MODEL,
+                base_url = self.config.OLLAMA_URLS[0],
+                temperature = temperature
             )
-        else:
+        else:       #OPENAI
             model = ChatOpenAI(
-                model=self.config.OPENAI_MODEL,
-                api_key=self.config.OPENAI_API_KEY,
-                temperature=self.config.MODEL_TEMPERATURE
+                model = self.config.OPENAI_MODEL,
+                api_key = rag_config.api_key if rag_config.api_key else self.config.OPENAI_API_KEY,
+                temperature = temperature
             )
 
         # creation of the chain
@@ -78,7 +81,7 @@ class RagGenerator:
         return ("\n".join(snippets))
     
     # execute chain
-    async def generate_answer(self, model_name: str, question_string: str, history: list, context_string: Optional[str] = None, search_type: str = "hybrid", alpha: float = 0.5, limit: int = 10, search_query: Optional[str] = None ):
+    async def generate_answer(self, rag_config: RagConfig, question_string: str, history: list, context_string: str | None = None, search_type: str = "hybrid", alpha: float = 0.5, limit: int = 10, search_query: str | None = None):
         final_context = context_string
         # check if context was entered
         if (final_context == None):
@@ -100,7 +103,7 @@ class RagGenerator:
             #convert context to desired format
             final_context = self.format_context(search_results)
         
-        chain = self.create_chain(model_name=model_name)
+        chain = self.create_chain(rag_config=rag_config)
         prompt_history = self.get_prompt_history(history)
 
         result = await chain.ainvoke({

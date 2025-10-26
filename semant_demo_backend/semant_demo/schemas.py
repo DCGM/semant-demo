@@ -109,10 +109,16 @@ class RagChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
 
+class RagConfig(BaseModel):
+    model_name: str | None = None       #identifier of model OLLAMA, OPENAI, GOOOGLE
+    temperature: float | None = None
+    api_key: str | None = None          #is not used in current version
+
 class RagRequest(BaseModel):
+    # rag parameters
     question: str
     history: list[RagChatMessage] | None = None    # chat history, to keep context
-    model_name: str | None = None
+    rag_config: RagConfig
     # search parameters
     search_type: SearchType = SearchType.hybrid
     alpha: float = 0.5
