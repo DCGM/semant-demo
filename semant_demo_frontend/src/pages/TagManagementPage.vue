@@ -37,7 +37,18 @@
                 <span class="text-h6">Create Tag</span>
               </div> -->
               <div class="row">
-                <q-input v-model="tagForm.collection_name" type="text" label="Collection name" dense outlined />
+                <!-- choose a collection -->
+                <q-select
+                  v-model="tagForm.collection_name"
+                  :options="collectionOptions"
+                  label="Select a Collection"
+                  outlined
+                  emit-value
+                  map-options
+                  :loading="loading"
+                  style="width: 300px;"
+                />
+                <!--<q-input v-model="tagForm.collection_name" type="text" label="Collection name" dense outlined />-->
               </div>
               <div class="row">
                 <div class="col">
@@ -427,7 +438,8 @@ import axios from 'axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
 import BadgeAvatar from 'src/components/BadgeAvatar.vue'
 import { useUserStore } from 'src/stores/user-store'
-import { QExpansionItem } from 'quasar'
+import { useCollectionStore } from 'src/stores/chunk_collection-store'
+import { QExpansionItem, Notify } from 'quasar'
 
 // TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 
@@ -513,6 +525,7 @@ const tagCreateDialogVisible = ref(false)
 
 const userStore = useUserStore()
 const username = ref('')
+const collectionStore = useCollectionStore()
 
 const tasksExpansion = ref<QExpansionItem | null>(null)
 
@@ -842,10 +855,43 @@ async function onShowTasks () {
   }
 }
 
-const handleAddUser = () => {
+const handleAddUser = async () => {
   if (username.value.trim()) {
     console.log('Username entered:', username.value)
     userStore.setUser(username.value)
+    await loadCollections() // load collections of the user
+  }
+}
+
+// local reactive refs
+const selectedCollectionId = ref<string | null>(null)
+const selectedCollection = computed(() =>
+  collectionStore.collections.find(c => c.id === selectedCollectionId.value)
+)
+
+// computed to transform collections
+const collectionOptions = computed(() =>
+  collectionStore.collections.map(c => ({
+    label: c.name ?? `Collection ${c.id}`,
+    value: c.name
+  }))
+)
+
+// load collections from weaviate
+const loadCollections = async () => {
+  if (!collectionStore.userId) {
+    Notify.create({ message: 'No user set', position: 'top', color: 'negative' })
+    return
+  }
+
+  loading.value = true
+  try {
+    await collectionStore.fetchCollections(collectionStore.userId)
+  } catch (err) {
+    console.error(err)
+    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
+  } finally {
+    loading.value = false
   }
 }
 
