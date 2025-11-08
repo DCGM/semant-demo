@@ -237,9 +237,6 @@ const sendMessage = async () => {
   try {
     // get history
     const allRelevantMsg = messages.value.slice(0, -1).filter(msg => msg.sources !== undefined || msg.sender === 'me') // remove messages without any informations
-    // history for search (long text with question)
-    const joinMessages = allRelevantMsg.map(msg => msg.text).join('\n')
-    const historyForSearch = joinMessages + '\n' + userQuery
 
     // history for RAG
     const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
@@ -250,7 +247,7 @@ const sendMessage = async () => {
       api_key: apiKey.value ? apiKey.value : null
     }
     const ragSearch = {
-      search_query: historyForSearch,
+      search_query: userQuery, // is change in rag generator anyway (bcs it have to be refrased based on history context)
       limit: chunkNumber.value,
       search_type: selectedDBSearch.value.value,
       alpha: alpha.value, // vector search

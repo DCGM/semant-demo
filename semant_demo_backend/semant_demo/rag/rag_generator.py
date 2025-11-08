@@ -10,16 +10,33 @@ from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagCo
 from semant_demo.weaviate_search import WeaviateSearch
 
 # prompt
-prompt_template = [
+answer_question_prompt_template = [
     ("system",
-    """You are a precise and helpful chatbot. Your main task is to answer the user's question based STRICTLY on the provided context.
+    """
+    You are a precise and helpful chatbot. Your main task is to answer the user's \
+    question based STRICTLY on the provided context.
     Follow these rules exactly:
     1) Use ONLY the following pieces of context to answer the question.
-    2) For every piece of information or sentence that you take out of context, you must provide source in format `[doc X]`, where X is the number of the corresponding source.\n "
+    2) For every piece of information or sentence that you take out of context, \
+    you must provide source in format `[doc X]`, where X is the number of the corresponding source."
     3) If multiple sources support one sentence, cite them all, like this: `[doc 2], [doc 5]`.
     4) Don't make up any new information. If you can not provide answer based on the context, answer only \"I can´t answer the question.\".
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
-    Context: {context_string}\n"""),
+    Context: {context_string}\n
+    """),
+    MessagesPlaceholder(variable_name="prompt_history"),
+    ("user", "{question_string}")
+    ]
+
+refrase_question_from_history_prompt_template = [
+    ("system",
+    """
+    Given a chat history and the latest user question \
+    which might reference context in the chat history, formulate a standalone question which can be understood \
+    without the chat history. Do NOT answer the question, Your goal is to make the question more specific by incorporating \
+    relevant keywords and entities (like names, locations, or dates) from the chat history. \
+    just reformulate it if needed and otherwise return it as is. 
+    """),
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "{question_string}")
     ]
@@ -27,40 +44,42 @@ prompt_template = [
 class RagGenerator:
     def __init__(self, config: Config, search: WeaviateSearch):
         self.config = config
-        self.prompt = ChatPromptTemplate.from_messages(prompt_template)
+        self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
+        self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
         self.output_parser = StrOutputParser()
         self.search = search
 
-    # create chain of operations
-    def create_chain(self, rag_config: RagConfig):
+    # initialize model
+    def _create_model(self, rag_config: RagConfig):
         temperature = rag_config.temperature
         if (temperature == None):
             temperature = self.config.MODEL_TEMPERATURE
         # select model
         if (rag_config.model_name == "GOOGLE"):
-            model = ChatGoogleGenerativeAI(
+            return ChatGoogleGenerativeAI(
                 model = self.config.GOOGLE_MODEL,
                 google_api_key = rag_config.api_key if rag_config.api_key else self.config.GOOGLE_API_KEY,
                 temperature = temperature
             )
         elif (rag_config.model_name == "OLLAMA"):
-            model = OllamaLLM(
+            return OllamaLLM(
                 model = self.config.OLLAMA_MODEL,
                 base_url = self.config.OLLAMA_URLS[0],
                 temperature = temperature
             )
         else:       #OPENAI
-            model = ChatOpenAI(
+            return ChatOpenAI(
                 model = self.config.OPENAI_MODEL,
                 api_key = rag_config.api_key if rag_config.api_key else self.config.OPENAI_API_KEY,
                 temperature = temperature
             )
 
-        # creation of the chain
-        return self.prompt | model | self.output_parser
+    # creation of the chain - will be complex in future
+    def _create_chain(self, model, prompt):    
+        return prompt | model | self.output_parser
     
     # function to get history prompt in desire format
-    def get_prompt_history(self, history: list):
+    def _get_prompt_history(self, history: list):
         prompt_history = []
         for msg in history:
             if msg['role'] == 'user':
@@ -70,14 +89,14 @@ class RagGenerator:
         return prompt_history
     
     #function that converts incomming search results to desired format
-    def format_weaviate_context(self, results: list[SearchResponse]) -> str:
+    def _format_weaviate_context(self, results: list[SearchResponse]) -> str:
         snippets = [
             f"[doc{i+1}]" + res.text.replace('\\n', ' ')
             for i, res in enumerate(results)
         ]
         return ("\n".join(snippets))
     
-    async def call_weaviate_search(self, rag_search: RagSearch,  type: SearchType) -> SearchResponse:
+    async def _call_weaviate_search(self, rag_search: RagSearch,  type: SearchType) -> SearchResponse:
         #create db search request
         search_request = SearchRequest(
             query = rag_search.search_query,
@@ -93,9 +112,35 @@ class RagGenerator:
         #call db search
         search_response = await self.search.search(search_request)
         return search_response
+    
+    #rephrase question to search desired data in database
+    async def _rephrase_question(self, question_string: str, model, prompt_history):
+        chain = self._create_chain(model=model, prompt=self.history_prompt)
+
+        correct_question = await chain.ainvoke({
+            "question_string" : question_string,
+            "prompt_history" : prompt_history
+        })
+
+        #TODO DEBUG
+        print(f"Refrased question: {correct_question}")
+
+        return correct_question
 
     # execute chain
     async def generate_answer(self, rag_config: RagConfig, question_string: str, history: list, rag_search: RagSearch, context_string: str | None = None):
+        #create llm instance
+        model = self._create_model(rag_config=rag_config)
+
+        #convert history into desired format
+        prompt_history = self._get_prompt_history(history)
+        #rephrase question if history is there
+        question = question_string
+        if (history):
+            question = await self._rephrase_question(question_string=question_string, model=model, prompt_history=prompt_history)
+        rag_search.search_query = question
+
+
         final_context = context_string
         # check if context was entered
         if (final_context == None):
@@ -105,13 +150,12 @@ class RagGenerator:
             except ValueError:
                 raise ValueError(f"Rag error: Unknown search type: {rag_search.search_type}")
             #search in db
-            search_response = await self.call_weaviate_search(type = type, rag_search = rag_search)
+            search_response = await self._call_weaviate_search(type = type, rag_search = rag_search)
             search_results = search_response.results
             #convert context to desired format
-            final_context = self.format_weaviate_context(search_results)
+            final_context = self._format_weaviate_context(search_results)
         
-        chain = self.create_chain(rag_config=rag_config)
-        prompt_history = self.get_prompt_history(history)
+        chain = self._create_chain(model=model, prompt=self.main_prompt)
 
         #TODO DEBUG
         print(f"rag_config: {rag_config},rag_search: {rag_search} ")
