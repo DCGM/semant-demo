@@ -20,7 +20,7 @@ answer_question_prompt_template = [
     2) For every piece of information or sentence that you take out of context, \
     you must provide source in format `[doc X]`, where X is the number of the corresponding source."
     3) If multiple sources support one sentence, cite them all, like this: `[doc 2], [doc 5]`.
-    4) Don't make up any new information. If you can not provide answer based on the context, answer only \"I can´t answer the question.\".
+    4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
     Context: {context_string}\n
     """),
