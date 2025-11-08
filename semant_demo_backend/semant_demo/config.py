@@ -26,7 +26,7 @@ class Config():
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:12b")
         self.SEARCH_SUMMARIZER_CONFIG = os.getenv("SEARCH_SUMMARIZER_CONFIG", str(SCRIPT_PATH / "configs" / "search_summarizer.yaml"))
 
-        self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
+        self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-2.5-pro")
         self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
         self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
