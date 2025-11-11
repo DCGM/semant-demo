@@ -14,6 +14,5 @@ langchain_openai
 langchain-ollama
 langchain_community
 jinja2
-ollama_proxy
 sqlalchemy
 aiosqlite
