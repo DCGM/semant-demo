@@ -11,5 +11,9 @@ langchain_core
 langchain-ollama
 langchain_google_genai
 langchain_openai
+langchain-ollama
 langchain_community
 jinja2
+ollama_proxy
+sqlalchemy
+aiosqlite

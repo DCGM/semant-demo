@@ -31,7 +31,7 @@ class OllamaProxy:
             if key in response:
                 return response.get(key, "")
         return None
-    
+
     async def call_ollama_chat(self, model: str, messages: list[dict]) -> str:
         client = random.choice(self.clients)
         try:

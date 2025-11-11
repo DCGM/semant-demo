@@ -23,6 +23,7 @@ class EmbeddingGemma:
         return self.model.encode(texts, convert_to_numpy=True)
 
     def embed_query(self, query: str) -> np.ndarray:
+        print("Embedding query", flush=True)
         emb = self.model.encode([query], prompt=self.prompt, convert_to_numpy=True)
         return emb[0]
 

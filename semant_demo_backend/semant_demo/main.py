@@ -1,9 +1,8 @@
-import logging
-
 import openai
 import langchain_google_genai 
 
 from fastapi import FastAPI, Depends, HTTPException
+import logging
 
 from semant_demo import schemas
 from semant_demo.config import config
@@ -11,8 +10,46 @@ from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.rag.rag_generator import RagGenerator
 from time import time
+from fastapi.staticfiles import StaticFiles
+import os
+
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from semant_demo.routes import export_router
+
+from semant_demo import schemas
+from semant_demo.config import config
+from semant_demo.weaviate_search import WeaviateSearch
+from semant_demo.tagging.tagging_task import tag_and_store
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy import Column, String, JSON
+from glob import glob
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
+from sqlalchemy import select, update, bindparam, asc
+from sqlalchemy import exc
+from datetime import timezone
+
+from typing import AsyncGenerator
+
+from semant_demo.schemas import Task, TasksBase
+from semant_demo.tagging.sql_utils import DBError, update_task_status
+from semant_demo.tagging.tagging_task import getTaskByName
 
 logging.basicConfig(level=logging.INFO)
+
+global_engine = None
+global_async_session_maker = None
+
+# Dependency
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    global global_engine, global_async_session_maker
+    if global_engine is None:
+        global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
+        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=True, expire_on_commit=False)
+    async with global_async_session_maker() as session:
+        yield session
 
 openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
@@ -40,7 +77,28 @@ async def get_rag(searcher: WeaviateSearch = Depends(get_search)) -> RagGenerato
     return global_rag
 
 app = FastAPI()
+# mount routes
+app.include_router(export_router)
 
+# Create tables on startup
+@app.on_event("startup")
+async def startup():
+    global global_engine, global_async_session_maker
+    global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
+    global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=False)
+    async with global_engine.begin() as conn:
+        # drop all tables first
+        #await conn.run_sync(TasksBase.metadata.drop_all)
+        # create tables
+        await conn.run_sync(TasksBase.metadata.create_all)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[config.ALLOWED_ORIGIN],  # http://localhost:9000
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search),
@@ -162,3 +220,11 @@ async def rag(request: schemas.RagRequest, rag_generator: RagGenerator = Depends
         sources=generated_result["sources"],
         time_spent=time_spent
     )
+
+if os.path.isdir(config.STATIC_PATH):
+    logging.info(f"Serving static files from '{config.STATIC_PATH}' directory")
+    app.mount("/", StaticFiles(directory=config.STATIC_PATH,
+              html=True), name="static")
+else:
+    logging.warning(
+        f"'{config.STATIC_PATH}' directory not found. Static files will not be served.")
