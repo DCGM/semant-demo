@@ -7,6 +7,8 @@ from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.rag_generator import RagGenerator
 from time import time
+from fastapi.staticfiles import StaticFiles
+import os
 
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -207,3 +209,11 @@ async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = De
         rag_answer=generated_answer.strip(),
         time_spent=time_spent
     )
+
+if os.path.isdir(config.STATIC_PATH):
+    logging.info(f"Serving static files from '{config.STATIC_PATH}' directory")
+    app.mount("/", StaticFiles(directory=config.STATIC_PATH,
+              html=True), name="static")
+else:
+    logging.warning(
+        f"'{config.STATIC_PATH}' directory not found. Static files will not be served.")
