@@ -70,7 +70,7 @@ module.exports = configure(function (/* ctx */) {
       env: {
         BACKEND_DEV_SERVER: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:9000',
         BACKEND_URL: process.env.BACKEND_URL ? process.env.BACKEND_URL : 'http://localhost:9000'
-      },
+      }
       // rawDefine: {}
       // ignorePublicFolder: true,
       // minify: false,

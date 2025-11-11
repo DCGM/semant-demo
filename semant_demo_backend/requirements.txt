@@ -5,8 +5,13 @@ numpy
 weaviate-client
 openai
 ollama
+classconfig
 langchain
-langchain-core
-langchain-community
-langchain-google-genai
-langchain-openai
+langchain_core
+langchain_google_genai
+langchain_openai
+langchain-ollama
+langchain_community
+ollama_proxy
+sqlalchemy
+aiosqlite
