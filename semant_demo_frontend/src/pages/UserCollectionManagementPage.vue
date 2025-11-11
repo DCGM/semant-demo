@@ -253,6 +253,12 @@ onMounted(async () => {
   } finally {
     loadingSpinner.value = false
   }
+  try {
+    // load collections from store
+    await collectionStore.fetchCollections(collectionStore.userId)
+  } catch (error) {
+    console.error(error)
+  }
 })
 
 function formatDate (dateString: string): string {
