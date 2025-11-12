@@ -107,7 +107,10 @@ class RagGenerator:
             max_year = rag_search.max_year,
             min_date = rag_search.min_date,
             max_date = rag_search.max_date,
-            language = rag_search.language
+            language = rag_search.language,
+            tag_uuids = [],
+            positive = False,
+            automatic = False
         )
         #call db search
         search_response = await self.search.search(search_request)
