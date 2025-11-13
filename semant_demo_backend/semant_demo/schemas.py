@@ -138,7 +138,7 @@ class RagChatMessage(BaseModel):
 
 #configuration of rag model
 class RagConfig(BaseModel):
-    model_name: str | None = None       #identifier of model OLLAMA, OPENAI, GOOOGLE
+    model_name: str | None = None       #identifier of model OLLAMA, OPENAI, GOOGLE
     temperature: float = 0.0
     api_key: str | None = None          #is not used in current version
 

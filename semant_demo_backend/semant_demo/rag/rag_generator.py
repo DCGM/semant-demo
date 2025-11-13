@@ -65,7 +65,10 @@ class RagGenerator(BaseRag):
 
     # initialize model
     def _create_model(self, rag_config: RagConfig):
-        temperature = rag_config.temperature
+        if rag_config.temperature:
+            temperature = rag_config.temperature
+        else:
+            temperature = 0.0
         if (temperature == None):
             temperature = self.config.MODEL_TEMPERATURE
         # select model

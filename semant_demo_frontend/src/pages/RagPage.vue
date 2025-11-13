@@ -71,6 +71,17 @@
             class="q-mr-sm"
             title="Reset chat"
           />
+            <q-select
+              v-model="selectedRAG"
+              :options="rags"
+              option-label="name"
+              label="RAG configuration"
+              :loading="isLoadingRagConfigs"
+              :disable="isLoadingRagConfigs || rags.length === 0"
+              dense
+              outlined
+              style="width: 150px"
+          />
           <!-- select model -->
             <q-select
               v-model="selectedModel"
@@ -81,7 +92,7 @@
               style="width: 150px"
           />
           <!-- temperature -->
-            <span class="text-caption text-grey-7">Temperature:</span>
+            <!-- <span class="text-caption text-grey-7">Temperature:</span>
             <q-slider
               v-model="temperature"
               :min="tempRange.min"
@@ -89,20 +100,20 @@
               :step="0.1"
               label
               style="width: 100px"
-          />
+          /> -->
           <!-- api key -->
           <q-input v-model="apiKey" label="Api key" dense outlined />
           <!-- search mode -->
-          <q-select
+          <!-- <q-select
               v-model="selectedDBSearch"
               :options="searchModes"
               label="Search mode"
               dense
               outlined
               style="width: 150px"
-          />
+          /> -->
           <!-- alpha -->
-          <span class="text-caption text-grey-7">Alpha:</span>
+          <!-- <span class="text-caption text-grey-7">Alpha:</span>
           <q-slider
             v-model="alpha"
             :min="alphaRange.min"
@@ -110,7 +121,7 @@
             :step="0.1"
             label
             style="width: 100px"
-          />
+          /> -->
           <q-input v-model.number="chunkNumber" type="number" label="Chunk limit" dense outlined />
           <q-input v-model="language" label="Language" dense outlined />
           <q-input v-model.number="minYear" type="number" label="Min Year" dense outlined />
@@ -147,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 
@@ -166,6 +177,12 @@ interface Message {
   sources?: Source[];
 }
 
+interface RagRouteConfig {
+  id: string
+  name: string
+  description: string
+}
+
 // First message from AI
 const messages = ref<Message[]>([
   { sender: 'AI', text: 'Hello, what is your question?' }
@@ -179,7 +196,10 @@ const isAiThinking = ref(false)
 const showSourcesDialog = ref(false)
 const currentSources = ref<Source[]>([])
 
-// TODO load those configuration from api config
+// selected rags from config
+const rags = ref<RagRouteConfig[]>([])
+const isLoadingRagConfigs = ref(true)
+const selectedRAG = ref<RagRouteConfig | null>(null)
 
 // models
 const models = ref([
@@ -190,28 +210,49 @@ const models = ref([
 const selectedModel = ref(models.value[0])
 
 // temperature
-const temperature = ref(0.0)
-const tempRange = ref({ min: 0.0, max: 1.0 })
+// const temperature = ref(0.0)
+// const tempRange = ref({ min: 0.0, max: 1.0 })
 
 // api key
 const apiKey = ref<string | null>(null)
 
 // search modes
-const searchModes = ref([
-  { label: 'hybrid', value: 'hybrid' },
-  { label: 'vector', value: 'vector' },
-  { label: 'text', value: 'text' }
-])
-const selectedDBSearch = ref(searchModes.value[0])
+// const searchModes = ref([
+//   { label: 'hybrid', value: 'hybrid' },
+//   { label: 'vector', value: 'vector' },
+//   { label: 'text', value: 'text' }
+// ])
+// const selectedDBSearch = ref(searchModes.value[0])
 
 // alpha
-const alpha = ref(0.5)
-const alphaRange = ref({ min: 0.0, max: 1.0 })
+// const alpha = ref(0.5)
+// const alphaRange = ref({ min: 0.0, max: 1.0 })
 
 const chunkNumber = ref<number>(5)
 const minYear = ref<number | null>(null)
 const maxYear = ref<number | null>(null)
 const language = ref<string | null>(null)
+
+// ----------------------Load RAGs----------------------
+
+async function loadRagConfigs () {
+  try {
+    isLoadingRagConfigs.value = true
+    const response = await axios.get('/api/rag/configurations')
+    rags.value = response.data
+    if (rags.value.length > 0) {
+      selectedRAG.value = rags.value[0]
+    }
+  } catch (error) {
+    messages.value.push({ sender: 'AI', text: 'None RAG model is avalaible.' })
+  } finally {
+    isLoadingRagConfigs.value = false
+  }
+}
+
+onMounted(() => {
+  loadRagConfigs()
+})
 
 // ----------------------Main chat-----------------------------
 
@@ -243,14 +284,14 @@ const sendMessage = async () => {
 
     const ragConfig = {
       model_name: selectedModel.value.value,
-      temperature: temperature.value,
+      temperature: 0.0, // temperature.value,
       api_key: apiKey.value ? apiKey.value : null
     }
     const ragSearch = {
       search_query: userQuery, // is change in rag generator anyway (bcs it have to be refrased based on history context)
       limit: chunkNumber.value,
-      search_type: selectedDBSearch.value.value,
-      alpha: alpha.value, // vector search
+      search_type: 'hybrid', // selectedDBSearch.value.value,
+      alpha: 0.5, // alpha.value, // vector search
       min_year: null, // minYear.value ? minYear.value : null, - does not work now
       max_year: null, // maxYear.value ? maxYear.value : null, - does not work now
       min_date: null,
@@ -268,7 +309,7 @@ const sendMessage = async () => {
       rag_search: ragSearch
     }
     const mainRagRequestBody = {
-      rag_id: 'testRAG',
+      rag_id: selectedRAG.value?.id,
       rag_request: ragRequestBody
     }
     const ragResponse = await axios.post('/api/rag', mainRagRequestBody)
