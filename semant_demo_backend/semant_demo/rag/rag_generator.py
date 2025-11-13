@@ -1,3 +1,8 @@
+import openai
+import langchain_google_genai 
+from fastapi import HTTPException
+from time import time
+
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -5,8 +10,11 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_ollama import OllamaLLM
 
+import logging
+
+from semant_demo.routes.rag_routes import BaseRag, register_rag
 from semant_demo.config import Config
-from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagConfig, RagSearch
+from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagConfig, RagSearch, RagRouteConfig, RagRequest, RagResponse
 from semant_demo.weaviate_search import WeaviateSearch
 
 # prompt
@@ -41,7 +49,13 @@ refrase_question_from_history_prompt_template = [
     ("user", "{question_string}")
     ]
 
-class RagGenerator:
+@register_rag
+class RagGenerator(BaseRag):
+    CONFIGURATION = RagRouteConfig(
+        id = "mainRAG",
+        name="Hlavní RAG",
+        description="Standardní RAG s hybridním vyhledáváním a podporou konverzačního kontextu."
+    )
     def __init__(self, config: Config, search: WeaviateSearch):
         self.config = config
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
@@ -172,3 +186,38 @@ class RagGenerator:
             "answer": result,
             "sources": search_results
         }
+    
+    #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
+    async def rag_request(self, request: RagRequest) -> RagResponse:
+        if request.history:
+            history_preprocessed = [msg.model_dump() for msg in request.history]
+        else:
+            history_preprocessed = []
+
+        # call model
+        try:
+            t1 = time()
+
+            generated_result = await self.generate_answer(
+                question_string = request.question,
+                history= history_preprocessed,
+                #rag configuration parameters
+                rag_config = request.rag_config,
+                #search parameters
+                rag_search = request.rag_search
+            )
+            time_spent = time() - t1
+
+        except (openai.AuthenticationError, langchain_google_genai.chat_models.ChatGoogleGenerativeAIError) as e:
+            logging.warning(e)
+            raise HTTPException(status_code=401, detail="Invalid API key.")
+        except Exception as e:
+            logging.error(f"RAG error: calling model {request.model_name}: {e}")
+            raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
+
+        # answer
+        return RagResponse(
+            rag_answer=generated_result["answer"].strip(),
+            sources=generated_result["sources"],
+            time_spent=time_spent
+        )

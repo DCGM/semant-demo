@@ -267,7 +267,11 @@ const sendMessage = async () => {
       // search parameters
       rag_search: ragSearch
     }
-    const ragResponse = await axios.post('/api/rag', ragRequestBody)
+    const mainRagRequestBody = {
+      rag_id: 'testRAG',
+      rag_request: ragRequestBody
+    }
+    const ragResponse = await axios.post('/api/rag', mainRagRequestBody)
     const ragAnswer = ragResponse.data.rag_answer
     const sources = ragResponse.data.sources
 

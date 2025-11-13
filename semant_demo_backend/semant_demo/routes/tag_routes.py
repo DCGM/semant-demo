@@ -8,7 +8,7 @@ from semant_demo import schemas
 from semant_demo.config import config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.rag.rag_generator import RagGenerator
+# from semant_demo.rag.rag_generator import RagGenerator
 from time import time
 import asyncio
 

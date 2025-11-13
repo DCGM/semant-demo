@@ -126,6 +126,11 @@ class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
 
+class RagRouteConfig(BaseModel):
+    id: str
+    name: str
+    description: str
+
 #rag message format for purpose of history
 class RagChatMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -157,6 +162,11 @@ class RagRequest(BaseModel):
     # search parameters
     rag_search: RagSearch
 
+#rag request from frontend to backend
+class RagRequestMain(BaseModel):
+    rag_id : str
+    rag_request: RagRequest
+    
 #rag response return by rag backend
 class RagResponse(BaseModel):
     rag_answer: str
