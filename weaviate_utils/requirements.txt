@@ -1,0 +1,6 @@
+lxml
+opencv-python
+shapely
+numba
+arabic-reshaper
+psycopg2
