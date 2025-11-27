@@ -8,6 +8,7 @@ Updated weaviate schema: [create_schema.py](https://github.com/Martin-Toma/db_be
     - automaticTag
     - positiveTag
     - negativeTag
+- Also on the semant server the class is named 'Chunks' not 'TextChunks' as in the schema script
 
 The db has this header:
 ```
@@ -35,7 +36,7 @@ Comparison of metadata_json:
     LANGUAGE = "Language"
 
 ```
-and weavaite metadata
+and weaviate metadata
 ```
 "title": parsed_filename["title"],
 "subtitle": "",
@@ -85,3 +86,213 @@ In metadata_json missing in weaviate:
 [db_prepare_documents.py](https://github.com/michal-hradis/db_benchmarks/blob/2b07c5eaed169e91a4565fa21976bbb18648c542/semant/db_prepare_documents.py#L4) - creates text chunks from OCR outputs - shows how to access the metadata database
 
 [insert_documents.py](https://github.com/michal-hradis/db_benchmarks/blob/2b07c5eaed169e91a4565fa21976bbb18648c542/weaviate_benchmark/insert_documents.py#L4) - shows some mapping between metadata and weaviate attributes
+
+## Server weaviate schema
+
+Only these 2 classes:
+
+```
+xtomas36@semant:~$ curl http://localhost:8080/v1/schema | jq '.classes[].class'
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  2538    0  2538    0     0  2892k      0 --:--:-- --:--:-- --:--:-- 2478k
+"Chunks"
+"Documents"
+```
+
+Use command: `curl http://localhost:8080/v1/schema | jq`
+
+```
+{
+  "classes": [
+    {
+      "class": "Chunks",
+      "invertedIndexConfig": {
+        "bm25": {
+          "b": 0.75,
+          "k1": 1.2
+        },
+        "cleanupIntervalSeconds": 60,
+        "stopwords": {
+          "additions": null,
+          "preset": "en",
+          "removals": null
+        }
+      },
+      "multiTenancyConfig": {
+        "enabled": false
+      },
+      "properties": [
+        {
+          "dataType": [
+            "boolean"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "name": "end_paragraph"
+        },
+        {
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "name": "from_page"
+        },
+        {
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "name": "language",
+          "tokenization": "word"
+        },
+        {
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "name": "start_page_id",
+          "tokenization": "word"
+        },
+        {
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "name": "text",
+          "tokenization": "word"
+        },
+        {
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "name": "to_page"
+        },
+        {
+          "dataType": [
+            "Documents"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "name": "document"
+        }
+      ],
+      "replicationConfig": {
+        "factor": 1
+      },
+      "shardingConfig": {
+        "virtualPerPhysical": 128,
+        "desiredCount": 1,
+        "actualCount": 1,
+        "desiredVirtualCount": 128,
+        "actualVirtualCount": 128,
+        "key": "_id",
+        "strategy": "hash",
+        "function": "murmur3"
+      },
+      "vectorIndexConfig": {
+        "skip": false,
+        "cleanupIntervalSeconds": 300,
+        "maxConnections": 64,
+        "efConstruction": 128,
+        "ef": -1,
+        "dynamicEfMin": 100,
+        "dynamicEfMax": 500,
+        "dynamicEfFactor": 8,
+        "vectorCacheMaxObjects": 1000000000000,
+        "flatSearchCutoff": 40000,
+        "distance": "cosine",
+        "pq": {
+          "enabled": false,
+          "bitCompression": false,
+          "segments": 0,
+          "centroids": 256,
+          "trainingLimit": 100000,
+          "encoder": {
+            "type": "kmeans",
+            "distribution": "log-normal"
+          }
+        },
+        "bq": {
+          "enabled": false
+        }
+      },
+      "vectorIndexType": "hnsw",
+      "vectorizer": "none"
+    },
+    {
+      "class": "Documents",
+      "invertedIndexConfig": {
+        "bm25": {
+          "b": 0.75,
+          "k1": 1.2
+        },
+        "cleanupIntervalSeconds": 60,
+        "stopwords": {
+          "additions": null,
+          "preset": "en",
+          "removals": null
+        }
+      },
+      "multiTenancyConfig": {
+        "enabled": false
+      },
+      "properties": [],
+      "replicationConfig": {
+        "factor": 1
+      },
+      "shardingConfig": {
+        "virtualPerPhysical": 128,
+        "desiredCount": 1,
+        "actualCount": 1,
+        "desiredVirtualCount": 128,
+        "actualVirtualCount": 128,
+        "key": "_id",
+        "strategy": "hash",
+        "function": "murmur3"
+      },
+      "vectorConfig": {
+        "default": {
+          "vectorIndexConfig": {
+            "skip": false,
+            "cleanupIntervalSeconds": 300,
+            "maxConnections": 64,
+            "efConstruction": 128,
+            "ef": -1,
+            "dynamicEfMin": 100,
+            "dynamicEfMax": 500,
+            "dynamicEfFactor": 8,
+            "vectorCacheMaxObjects": 1000000000000,
+            "flatSearchCutoff": 40000,
+            "distance": "cosine",
+            "pq": {
+              "enabled": false,
+              "bitCompression": false,
+              "segments": 0,
+              "centroids": 256,
+              "trainingLimit": 100000,
+              "encoder": {
+                "type": "kmeans",
+                "distribution": "log-normal"
+              }
+            },
+            "bq": {
+              "enabled": false
+            }
+          },
+          "vectorIndexType": "hnsw",
+          "vectorizer": {
+            "none": {}
+          }
+        }
+      }
+    }
+  ]
+}
+```
