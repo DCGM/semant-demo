@@ -1,11 +1,14 @@
 import openai
+import langchain_google_genai 
+
+from fastapi import FastAPI, Depends, HTTPException
 import logging
 
 from semant_demo import schemas
 from semant_demo.config import config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.rag_generator import RagGenerator
+from semant_demo.routes.rag_routes import get_all_rag_configurations, RAG_IMPLEMENTATIONS
 from time import time
 from fastapi.staticfiles import StaticFiles
 import os
@@ -52,7 +55,7 @@ openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
 global_searcher = None
 global_summarizer = None
-
+global_rag = None
 
 async def get_search() -> WeaviateSearch:
     global global_searcher
@@ -166,49 +169,22 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
         time_spent=search_response.time_spent,
     )
 
+@app.get("/api/rag/configurations", response_model=list[schemas.RagRouteConfig])
+async def get_avalaible_rag_configurations():
+    return get_all_rag_configurations()
 
 @app.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagQuestionRequest, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
-
-    # build your snippets with IDs
-    snippets = [
-        f"[doc{i+1}]" + res.text.replace('\\n', ' ')
-        for i, res in enumerate(request.search_response.results)
-    ]
-    context_string = "\n".join(snippets)
-
-    # get model id
-    model_name = request.model_name
-
-    # convert history for generator
-    if request.history:
-        history_preprocessed = [msg.model_dump() for msg in request.history]
-    else:
-        history_preprocessed = []
-
-    rag_generator = RagGenerator(config)
-
-    # call model
-    try:
-        t1 = time()
-
-        generated_answer = await rag_generator.generate_answer(
-            model_name = model_name,
-            question_string = request.question,
-            context_string = context_string,
-            history= history_preprocessed,
-        )
-        time_spent = time() - t1
-
-    except Exception as e:
-        logging.error(f"RAG error: calling model {model_name}: {e}")
-        raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
-
-    # answer
-    return schemas.RagResponse(
-        rag_answer=generated_answer.strip(),
-        time_spent=time_spent
-    )
+async def rag(request: schemas.RagRequestMain, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
+    #find and check rag
+    id = request.rag_id
+    if id not in RAG_IMPLEMENTATIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown RAG configuration: {id}.")
+    
+    #load class and call instance
+    RagClass = RAG_IMPLEMENTATIONS[id]
+    rag_instance  = RagClass(config, searcher)
+    return await rag_instance.rag_request(request=request.rag_request)
+    
 
 if os.path.isdir(config.STATIC_PATH):
     logging.info(f"Serving static files from '{config.STATIC_PATH}' directory")
