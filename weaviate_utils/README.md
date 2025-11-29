@@ -1,3 +1,18 @@
+## Setup weaviate
+```
+cd weaviate_utils
+
+docker-compose up -d
+
+conda activate semant
+
+python create_schema.py
+
+python insert_jsonl.py --source-dir C:\Users\marti\Music\semANT_public\semant-demo\weaviate_utils\server_setup\ --delete-old
+
+python insert_jsonl.py --source-dir /mnt/ssd2/weaviate_data/all.768/chunks.vec.lang/ --delete-old
+```
+
 ## Summary how are/should be chunks and documents stored in Weaviate DB
 
 Weaviate schema: [create_schema.py](https://github.com/michal-hradis/db_benchmarks/blob/2b07c5eaed169e91a4565fa21976bbb18648c542/weaviate_benchmark/create_schema.py#L4)
@@ -296,3 +311,11 @@ Use command: `curl http://localhost:8080/v1/schema | jq`
   ]
 }
 ```
+
+Otazky:
+
+prepisat existujuce líšiace sa dáta?
+- 
+
+Riešiť rodič - potomok?
+- 

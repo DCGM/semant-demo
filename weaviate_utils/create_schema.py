@@ -14,7 +14,7 @@ client.connect()
 print(client.is_ready())
 
 # Optional: clean slate
-for cls in ("UserCollection", "Document", "TextChunk"):
+for cls in ("UserCollection", "Document", "TextChunk", "Chunks", "Tag"):
     try:
         client.collections.delete(cls)
     except Exception as e:
@@ -86,7 +86,7 @@ client.collections.create(
 
 # 6) Create TextChunk (with reference back to its Document)
 client.collections.create(
-    name="TextChunk",
+    name="Chunks", # TextChunk
     vector_index_config=wvc.Configure.VectorIndex.hnsw(),
     properties=[
         wvc.Property(name="text", data_type=wvc.DataType.TEXT),
