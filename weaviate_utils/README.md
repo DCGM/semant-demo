@@ -9,6 +9,8 @@ conda activate semant
 python create_schema.py
 
 python db_insert_jsonl.py --source-dir C:\Users\marti\Music\semANT_public\semant-demo\weaviate_utils\server_setup\ --delete-old
+
+python update_metadata.py --logging-on 
 ------
 python insert_jsonl.py --source-dir C:\Users\marti\Music\semANT_public\semant-demo\weaviate_utils\server_setup\ --delete-old
 
