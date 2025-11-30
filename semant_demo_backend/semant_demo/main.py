@@ -8,7 +8,7 @@ from semant_demo import schemas
 from semant_demo.config import config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.routes.rag_routes import get_all_rag_configurations, RAG_IMPLEMENTATIONS
+from semant_demo.routes.rag_routes import get_all_rag_configurations, RAG_INSTANCES, rag_factory
 from time import time
 from fastapi.staticfiles import StaticFiles
 import os
@@ -85,6 +85,12 @@ async def startup():
         #await conn.run_sync(TasksBase.metadata.drop_all)
         # create tables
         await conn.run_sync(TasksBase.metadata.create_all)
+        
+    #load rags configurations and create instances
+    global global_searcher
+    global_searcher = await get_search()
+    rag_factory(global_config=config, configs_path=config.RAG_CONFIGS_PATH, searcher=global_searcher)
+    
 
 app.add_middleware(
     CORSMiddleware,
@@ -174,15 +180,14 @@ async def get_avalaible_rag_configurations():
     return get_all_rag_configurations()
 
 @app.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagRequestMain, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
+async def rag(request: schemas.RagRequestMain) -> schemas.RagResponse:
     #find and check rag
     id = request.rag_id
-    if id not in RAG_IMPLEMENTATIONS:
+    if id not in RAG_INSTANCES:
         raise HTTPException(status_code=400, detail=f"Unknown RAG configuration: {id}.")
     
     #load class and call instance
-    RagClass = RAG_IMPLEMENTATIONS[id]
-    rag_instance  = RagClass(config, searcher)
+    rag_instance = RAG_INSTANCES[id]
     return await rag_instance.rag_request(request=request.rag_request)
     
 
