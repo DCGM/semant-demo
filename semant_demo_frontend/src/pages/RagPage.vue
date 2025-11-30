@@ -80,17 +80,27 @@
               :disable="isLoadingRagConfigs || rags.length === 0"
               dense
               outlined
-              style="width: 150px"
-          />
+              style="min-width: 150px">
+              <template v-slot:option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section>
+                    <q-item-label>{{scope.opt.name }}</q-item-label>
+                    <q-item-label caption lines="2">
+                      {{ scope.opt.description }}
+                    </q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
           <!-- select model -->
-            <q-select
+            <!-- <q-select
               v-model="selectedModel"
               :options="models"
               label="Model"
               dense
               outlined
               style="width: 150px"
-          />
+          /> -->
           <!-- temperature -->
             <!-- <span class="text-caption text-grey-7">Temperature:</span>
             <q-slider
@@ -102,7 +112,7 @@
               style="width: 100px"
           /> -->
           <!-- api key -->
-          <q-input v-model="apiKey" label="Api key" dense outlined />
+          <!-- <q-input v-model="apiKey" label="Api key" dense outlined /> -->
           <!-- search mode -->
           <!-- <q-select
               v-model="selectedDBSearch"
@@ -122,7 +132,7 @@
             label
             style="width: 100px"
           /> -->
-          <q-input v-model.number="chunkNumber" type="number" label="Chunk limit" dense outlined />
+          <!-- <q-input v-model.number="chunkNumber" type="number" label="Chunk limit" dense outlined /> -->
           <q-input v-model="language" label="Language" dense outlined />
           <q-input v-model.number="minYear" type="number" label="Min Year" dense outlined />
           <q-input v-model.number="maxYear" type="number" label="Max Year" dense outlined />
@@ -282,11 +292,11 @@ const sendMessage = async () => {
     // history for RAG
     const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
 
-    const ragConfig = {
-      model_name: selectedModel.value.value,
-      temperature: 0.0, // temperature.value,
-      api_key: apiKey.value ? apiKey.value : null
-    }
+    // const ragConfig = {
+    //   model_type: selectedModel.value.value,
+    //   temperature: 0.0, // temperature.value,
+    //   api_key: apiKey.value ? apiKey.value : null
+    // }
     const ragSearch = {
       search_query: userQuery, // is change in rag generator anyway (bcs it have to be refrased based on history context)
       limit: chunkNumber.value,
@@ -304,7 +314,7 @@ const sendMessage = async () => {
       question: userQuery,
       history: context,
       // model configuration parameters
-      rag_config: ragConfig,
+      // rag_config: ragConfig,
       // search parameters
       rag_search: ragSearch
     }

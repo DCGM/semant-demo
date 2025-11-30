@@ -9,7 +9,7 @@ from semant_demo.rag.rag_generator import RagGenerator
 from semant_demo.schemas import RagConfig, RagSearch
 
 
-
+#TODO need to rewrite this script after new db will be ready
 async def main():
     search = await WeaviateSearch.create(config=config)
     rag_generator = RagGenerator(config=config, search=search)

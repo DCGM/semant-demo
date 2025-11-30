@@ -12,7 +12,7 @@ from langchain_ollama import OllamaLLM
 
 import logging
 
-from semant_demo.routes.rag_routes import BaseRag, register_rag
+from semant_demo.routes.rag_routes import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagConfig, RagSearch, RagRouteConfig, RagRequest, RagResponse
 from semant_demo.weaviate_search import WeaviateSearch
@@ -49,45 +49,51 @@ refrase_question_from_history_prompt_template = [
     ("user", "{question_string}")
     ]
 
-@register_rag
+@register_rag_class
 class RagGenerator(BaseRag):
-    CONFIGURATION = RagRouteConfig(
-        id = "mainRAG",
-        name="Hlavní RAG",
-        description="Standardní RAG s hybridním vyhledáváním a podporou konverzačního kontextu."
-    )
-    def __init__(self, config: Config, search: WeaviateSearch):
-        self.config = config
+    def __init__(self, global_config: Config, param_config, searcher: WeaviateSearch):
+        super().__init__(global_config, param_config, searcher)
+        #this can be part of config in future
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
         self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
         self.output_parser = StrOutputParser()
-        self.search = search
+        #create model instance
+        model_type = param_config.get("model_type")
+        self.model_type = model_type
+        api_key = param_config.get("api_key", None)
+        model_name = param_config.get("model_name", None)
+        temperature = param_config.get("temperature", None)
+        self.model = self._create_model(model_type, model_name, api_key, temperature)
+        #search parameters
+        self.chunk_limit = param_config.get("chunk_limit", 5)
+        self.alpha = param_config.get("alpha", 0.5)
+        self.search_type = param_config.get("search_type", "hybrid")
 
     # initialize model
-    def _create_model(self, rag_config: RagConfig):
-        if rag_config.temperature:
-            temperature = rag_config.temperature
+    def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
+        if temperature:
+            temperature = temperature
         else:
             temperature = 0.0
         if (temperature == None):
-            temperature = self.config.MODEL_TEMPERATURE
+            temperature = self.global_config.MODEL_TEMPERATURE
         # select model
-        if (rag_config.model_name == "GOOGLE"):
+        if (model_type == "GOOGLE"):
             return ChatGoogleGenerativeAI(
-                model = self.config.GOOGLE_MODEL,
-                google_api_key = rag_config.api_key if rag_config.api_key else self.config.GOOGLE_API_KEY,
+                model = model_name if model_name else self.global_config.GOOGLE_MODEL,
+                google_api_key = api_key if api_key else self.global_config.GOOGLE_API_KEY,
                 temperature = temperature
             )
-        elif (rag_config.model_name == "OLLAMA"):
+        elif (model_type == "OLLAMA"):
             return OllamaLLM(
-                model = self.config.OLLAMA_MODEL,
-                base_url = self.config.OLLAMA_URLS[0],
+                model = model_name if model_name else self.global_config.OLLAMA_MODEL,
+                base_url = self.global_config.OLLAMA_URLS[0],
                 temperature = temperature
             )
         else:       #OPENAI
             return ChatOpenAI(
-                model = self.config.OPENAI_MODEL,
-                api_key = rag_config.api_key if rag_config.api_key else self.config.OPENAI_API_KEY,
+                model = model_name if model_name else self.global_config.OPENAI_MODEL,
+                api_key = api_key if api_key else self.global_config.OPENAI_API_KEY,
                 temperature = temperature
             )
 
@@ -117,9 +123,9 @@ class RagGenerator(BaseRag):
         #create db search request
         search_request = SearchRequest(
             query = rag_search.search_query,
-            type = type,
-            hybrid_search_alpha = rag_search.alpha,
-            limit = rag_search.limit,
+            type = self.search_type,
+            hybrid_search_alpha = self.alpha,
+            limit = self.chunk_limit,
             min_year = rag_search.min_year,
             max_year = rag_search.max_year,
             min_date = rag_search.min_date,
@@ -129,8 +135,10 @@ class RagGenerator(BaseRag):
             positive = False,
             automatic = False
         )
+        #TODO DEBUG
+        print(f"search_request: {search_request}")
         #call db search
-        search_response = await self.search.search(search_request)
+        search_response = await self.searcher.search(search_request)
         return search_response
     
     #rephrase question to search desired data in database
@@ -148,9 +156,9 @@ class RagGenerator(BaseRag):
         return correct_question
 
     # execute chain
-    async def generate_answer(self, rag_config: RagConfig, question_string: str, history: list, rag_search: RagSearch, context_string: str | None = None):
+    async def generate_answer(self, question_string: str, history: list, rag_search: RagSearch, context_string: str | None = None):
         #create llm instance
-        model = self._create_model(rag_config=rag_config)
+        model = self.model
 
         #convert history into desired format
         prompt_history = self._get_prompt_history(history)
@@ -178,7 +186,7 @@ class RagGenerator(BaseRag):
         chain = self._create_chain(model=model, prompt=self.main_prompt)
 
         #TODO DEBUG
-        print(f"rag_config: {rag_config},rag_search: {rag_search} ")
+        print(f"rag_config: {self.param_config}, rag_search: {rag_search} ")
 
         result = await chain.ainvoke({
             "context_string" : final_context,
@@ -204,8 +212,6 @@ class RagGenerator(BaseRag):
             generated_result = await self.generate_answer(
                 question_string = request.question,
                 history= history_preprocessed,
-                #rag configuration parameters
-                rag_config = request.rag_config,
                 #search parameters
                 rag_search = request.rag_search
             )
@@ -215,7 +221,7 @@ class RagGenerator(BaseRag):
             logging.warning(e)
             raise HTTPException(status_code=401, detail="Invalid API key.")
         except Exception as e:
-            logging.error(f"RAG error: calling model {request.model_name}: {e}")
+            logging.error(f"RAG error: calling model {self.model_type}: {e}")
             raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
         # answer
