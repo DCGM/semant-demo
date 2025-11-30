@@ -1,0 +1,11 @@
+id: "xandry12_RagGenerator_ollama_default"
+name: "Gemma3:12b Rag with history"
+description: "RAG using Ollama's big local model Gemma3:12b. It supports history between messages."
+class_name: "RagGenerator"
+params:
+  model_type: "OLLAMA"
+  model_name: "gemma3:12b"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 5

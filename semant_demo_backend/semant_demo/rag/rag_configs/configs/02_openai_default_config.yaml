@@ -1,0 +1,11 @@
+id: "xandry12_RagGenerator_openai_default"
+name: "GPT-4o Rag with history"
+description: "RAG using OpenAI's model GPT-4o. It supports history between messages."
+class_name: "RagGenerator"
+params:
+  model_type: "OPENAI"
+  model_name: "gpt-4o-mini"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 5
