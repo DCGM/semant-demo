@@ -101,6 +101,7 @@ def create_document_collection(client: WeaviateClient, keys: list[str], collecti
     )
 
 def create_userCollection_collection(client: WeaviateClient, collection_name):
+    # create the user collection under the provided name (was hardcoded before)
     client.collections.create(
         name=collection_name,
         vector_index_config=wvc.Configure.VectorIndex.hnsw(),
@@ -110,8 +111,10 @@ def create_userCollection_collection(client: WeaviateClient, collection_name):
         ]
     )
 
-def create_tag_collection(client: WeaviateClient, collection_name):
-    client.collections.create(name=collection_name,
+def create_tag_collection(client: WeaviateClient, collection_name, user_collection_name):
+    # create tag collection and reference the actual user collection name passed in
+    client.collections.create(
+        name=collection_name,
         properties=[
             {"name": "tag_name", "data_type": wvc.DataType.TEXT},
             {"name": "tag_shorthand", "data_type": wvc.DataType.TEXT},
@@ -122,15 +125,16 @@ def create_tag_collection(client: WeaviateClient, collection_name):
             {"name": "collection_name", "data_type": wvc.DataType.TEXT}
         ],
         references=[
-            wvc.ReferenceProperty(  # add reference to chunk collections created by user
+            wvc.ReferenceProperty(
                 name="userCollection",
-                target_collection="UserCollection",
+                target_collection=user_collection_name,  # use the real name
                 cardinality="*"
             ),
         ]
     )
 
-def create_chunk_schema(client: WeaviateClient, keys: list[str], chunk_collection_name: str, document_collection_name: str) -> None:
+def create_chunk_schema(client: WeaviateClient, keys: list[str], chunk_collection_name: str,
+                        document_collection_name: str, user_collection_name: str, tag_collection_name: str) -> None:
     properties = []
     unknown_keys = set()
     for key in keys:
@@ -150,24 +154,24 @@ def create_chunk_schema(client: WeaviateClient, keys: list[str], chunk_collectio
                 target_collection=document_collection_name,
                 cardinality="1"
             ),
-                wvc.ReferenceProperty(  # add reference to chunk collections created by user
+            wvc.ReferenceProperty(
                 name="userCollection",
-                target_collection="UserCollection",
+                target_collection=user_collection_name,  # dynamic name
                 cardinality="*"
             ),
             wvc.ReferenceProperty(
                 name="automaticTag",
-                target_collection="Tag",
+                target_collection=tag_collection_name,  # dynamic tag collection
                 cardinality="1"
             ),
             wvc.ReferenceProperty(
                 name="positiveTag",
-                target_collection="Tag",
+                target_collection=tag_collection_name,
                 cardinality="1"
             ),
             wvc.ReferenceProperty(
                 name="negativeTag",
-                target_collection="Tag",
+                target_collection=tag_collection_name,
                 cardinality="1"
             ),
         ]
@@ -326,8 +330,9 @@ def main():
     # Create schema
     create_document_collection(client, document_keys, args.document_collection)
     create_userCollection_collection(client, args.usercollection_collection)
-    create_tag_collection(client, args.tag_collection)
-    create_chunk_schema(client, chunk_keys, args.chunk_collection, args.document_collection)
+    create_tag_collection(client, args.tag_collection, args.usercollection_collection)
+    create_chunk_schema(client, chunk_keys, args.chunk_collection, args.document_collection,
+                        args.usercollection_collection, args.tag_collection)
 
     # Insert documents and chunks
     insert_documents(client, args.source_dir, args.document_collection)
