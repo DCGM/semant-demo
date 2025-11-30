@@ -1,0 +1,8 @@
+id: "xandry12_Wrong_config_1"
+description: "Rag class and configuration used for purpose of testing"
+class_name: "TestRag"
+params:
+  here: "can"
+  be: "anything"
+  you: 0.0
+  want: 5

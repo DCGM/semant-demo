@@ -1,0 +1,6 @@
+id: "xandry12_RagGenerator_min_params"
+name: "Test RagGenerator"
+description: "Min params test RagGenerator"
+class_name: "RagGenerator"
+params:
+  model_type: "OLLAMA"

@@ -1,0 +1,11 @@
+id: "xandry12_RagGenerator_google_default"
+name: "Gemini-2.5-pro Rag with history"
+description: "RAG using Gemini's big model Gemini-2.5-pro. It supports history between messages."
+class_name: "RagGenerator"
+params:
+  model_type: "GOOGLE"
+  model_name: "gemini-2.5-pro"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 5
