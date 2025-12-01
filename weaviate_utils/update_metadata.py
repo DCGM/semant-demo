@@ -3,7 +3,7 @@ import argparse
 import json
 import itertools
 import re
-from datetime import datetime
+from datetime import datetime, date
 # weaviate
 from weaviate import WeaviateClient
 from weaviate.connect import ConnectionParams
@@ -34,7 +34,7 @@ def get_first_valid(data):
         return None
 
     if isinstance(data, datetime):
-        return data.date().isoformat() # year month day
+        return data.date() #.isoformat() # year month day
     
     # Base case scalar value (not list)
     if not isinstance(data, list):
@@ -117,8 +117,8 @@ def map_result_names(result):
     res_dict["publisher"] =  get_first_valid(metadata.get('Publisher', None))
     res_dict["language"] =  get_first_valid(metadata.get('Language', None))
     # missing: res_dict["description"]: "",
-    res_dict['url'] = result.id
-    res_dict['public'] = result.public
+    res_dict['url'] = str(result.id)
+    res_dict['public'] = "True" if result.public else "False"
     res_dict['documentType'] = result.record_type
     # res_dict['missing']
     # missing: res_dict["genre"]
@@ -147,6 +147,27 @@ def score_result(result):
         if value is None or value == []:
             score += 1
     return score
+
+def normalize_date(date_str):
+    """
+    convert format like 22.5.1929 to datetime or date format
+    """
+    if isinstance(date_str, date):
+        return date_str  # already a date
+
+    if isinstance(date_str, datetime):
+        return date_str
+
+    if isinstance(date_str, str):
+        match = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", date_str)
+        if match:
+            d, m, y = match.groups()
+            try:
+                return date(int(y), int(m), int(d))
+            except ValueError:
+                return None  # invalid calendar date
+
+    return None  # unparseable
 
 def decide(main_key, second_key, best_result):
     if best_result[main_key] is None or best_result[main_key] == []:
