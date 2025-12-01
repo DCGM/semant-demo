@@ -6,8 +6,6 @@ docker-compose up -d
 
 conda activate semant
 
-python create_schema.py
-
 python db_insert_jsonl.py --source-dir C:\Users\marti\Music\semANT_public\semant-demo\weaviate_utils\server_setup\ --delete-old
 
 python update_metadata.py --logging-on 
@@ -20,6 +18,7 @@ python insert_jsonl.py --source-dir /mnt/ssd2/weaviate_data/all.768/chunks.vec.l
 connect:
 ```
 ssh -L 8080:localhost:8080 xtomas36@semant.cz
+ssh -L 5888:localhost:5888 xtomas36@semant.cz
 ```
 
 ## Summary how are/should be chunks and documents stored in Weaviate DB
