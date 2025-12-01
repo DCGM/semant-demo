@@ -8,6 +8,12 @@ conda activate semant
 
 python db_insert_jsonl.py --source-dir C:\Users\marti\Music\semANT_public\semant-demo\weaviate_utils\server_setup\ --delete-old
 
+cd C:\Users\marti\Music\semANT_public\semant-demo\semant_demo_backend\semant_demo\tagging
+
+python patch_weaviate_add_tag_class.py
+
+cd weaviate_utils
+
 python update_metadata.py --logging-on 
 ------
 python insert_jsonl.py --source-dir C:\Users\marti\Music\semANT_public\semant-demo\weaviate_utils\server_setup\ --delete-old
