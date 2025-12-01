@@ -20,8 +20,8 @@ def parse_args():
     parser.add_argument("--delete-old", action="store_true", help="Delete old collections before creating new ones.")
     parser.add_argument("--document-collection", type=str, default="Documents", help="Name of the document collection.")
     parser.add_argument("--chunk-collection", type=str, default="Chunks", help="Name of the text chunk collection.")
-    parser.add_argument("--tag_collection", type=str, default="Tag", help="Name of the tag collection.")
-    parser.add_argument("--usercollection_collection", type=str, default="UserCollection", help="Name of the user collection of chunks collection.")
+    parser.add_argument("--tag-collection", type=str, default="Tag", help="Name of the tag collection.")
+    parser.add_argument("--usercollection-collection", type=str, default="UserCollection", help="Name of the user collection of chunks collection.")
     parser.add_argument('--vector-file-suffix', type=str, default='_embeddings.npy', help="Suffix for the vector files. Default is '_embeddings.npy'.")
     parser.add_argument("--owner-name", type=str, required=False, help="Collection name.")
     args = parser.parse_args()
@@ -277,19 +277,18 @@ def insert_chunks(client: WeaviateClient, source_dir: str, chunk_collection: str
                             logging.warning(f"No vector found for chunk {uuid} in file {jsonl_file}. Skipping.")
                             continue
 
-                    # Filter properties - exclude reference fields and metadata
+                    # filter properties - exclude reference fields and metadata
                     properties = {k: v for k, v in data.items() if k in chunk_column_types}
                     
                     batch.add_object(
                         uuid=uuid,
                         collection=chunk_collection,
-                        properties=properties,  # Only actual properties
+                        properties=properties,  # only actual properties
                         vector=vector,
                         references={
-                            "document": document_uuid  # References go here
+                            "document": document_uuid  # references
                         }
                     )
-
 
 def main():
     args = parse_args()
