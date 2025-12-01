@@ -86,6 +86,31 @@ def prepare_year(date):
             year = extractYear(date)
     return year
 
+from datetime import datetime, date
+
+def normalize_date(date_str):
+    """
+    Convert format like 22.5.1929 to a datetime object (naive, no timezone)
+    suitable for Weaviate DATE property.
+    """
+    if isinstance(date_str, datetime):
+        return date_str  # already datetime
+
+    if isinstance(date_str, date):
+        # convert date to datetime at midnight
+        return datetime(date_str.year, date_str.month, date_str.day)
+
+    if isinstance(date_str, str):
+        match = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", date_str)
+        if match:
+            d, m, y = match.groups()
+            try:
+                return datetime(int(y), int(m), int(d))  # naive datetime
+            except ValueError:
+                return None  # invalid calendar date
+
+    return None  # unparseable
+
 def map_result_names(result):
     """
     Renames and moves the data from db query result into a dictionary
@@ -106,19 +131,23 @@ def map_result_names(result):
     res_dict["partName"]=  get_first_valid(metadata.get('PartName', None))
     # prepare date and store it in variable to extract year later
     dateMain = get_first_valid(result.date)
-    res_dict["dateIssued"] = dateMain
+    res_dict["dateIssued"] = normalize_date(dateMain)
     yearMain = prepare_year(dateMain)
+    if yearMain is not None:
+        yearMain = int(yearMain)
     res_dict["yearIssued"] = yearMain
     date = get_first_valid(metadata.get('DateIssued', None))
-    res_dict["dateIssuedMetadata"]=  date
+    res_dict["dateIssuedMetadata"]=  normalize_date(date)
     year = prepare_year(date)
-    res_dict["yearIssuedMetadata"]= year
+    if year is not None:
+        year = int(year)
+    res_dict["yearIssuedMetadata"] = year
     res_dict["author"]=  get_all_valid(metadata.get('Author', None))
     res_dict["publisher"] =  get_first_valid(metadata.get('Publisher', None))
     res_dict["language"] =  get_first_valid(metadata.get('Language', None))
     # missing: res_dict["description"]: "",
     res_dict['url'] = str(result.id)
-    res_dict['public'] = "True" if result.public else "False"
+    res_dict['public'] = result.public
     res_dict['documentType'] = result.record_type
     # res_dict['missing']
     # missing: res_dict["genre"]
@@ -147,27 +176,6 @@ def score_result(result):
         if value is None or value == []:
             score += 1
     return score
-
-def normalize_date(date_str):
-    """
-    convert format like 22.5.1929 to datetime or date format
-    """
-    if isinstance(date_str, date):
-        return date_str  # already a date
-
-    if isinstance(date_str, datetime):
-        return date_str
-
-    if isinstance(date_str, str):
-        match = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", date_str)
-        if match:
-            d, m, y = match.groups()
-            try:
-                return date(int(y), int(m), int(d))
-            except ValueError:
-                return None  # invalid calendar date
-
-    return None  # unparseable
 
 def decide(main_key, second_key, best_result):
     if best_result[main_key] is None or best_result[main_key] == []:

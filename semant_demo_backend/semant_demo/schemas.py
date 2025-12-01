@@ -61,7 +61,7 @@ class Document(BaseModel):
     language: str | None = None
     description: str | None = None
     url: str | None = None
-    public: str | None = None
+    public: bool | None = None
     documentType: str | None = None
     keywords: str | list[str] | None = None
     genre: str | None = None
