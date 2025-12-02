@@ -860,7 +860,7 @@ class WeaviateSearch:
             })
         return tag_data
 
-    async def tag_chunks_with_llm(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
+    async def tag_chunks_with_llm_limited(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
         """
         Assigns automatic tags to chunks
         """
@@ -894,6 +894,7 @@ class WeaviateSearch:
             weaviate doesnt offer is_none/is_empty or similar
             so I chose to filter after fetching all of them and filter them later
             """
+
             # query weaviate db for chunks of chosen collection
             query = weaviate_objects.query.fetch_objects(
                 return_properties=["text"],  # only return the text field
@@ -1018,6 +1019,91 @@ class WeaviateSearch:
             #                )
             #        else:
             #            logging.info("No tags found")
+            return {'texts': texts, 'tags': tags}
+
+        except Exception as e:
+            logging.error(f"Error fetching texts from collection: {e}")
+            return {}
+        
+    async def tag_chunks_with_llm(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
+        """
+        Assigns automatic tags to chunks
+        """
+        try:
+            prompt = ChatPromptTemplate.from_template(self.tag_template)
+            model = OllamaProxyRunnable()
+            chain = prompt | model
+
+            # get the collection
+            collection_name = tag_request.collection_name
+            logging.info(f"Collection name: {collection_name}")
+            weaviate_objects = self.client.collections.get("Chunks")
+
+            tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
+
+            texts = []
+            tags = []
+            tag_processing_data = []
+
+            filters =(
+                Filter.by_ref(link_on="userCollection").by_property("name").equal(collection_name)
+            )
+
+            # process with llm and decide if tag belongs to text
+            positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
+            all_texts_count = 0
+            processed_count = 0
+            async for obj in weaviate_objects.iterator(return_properties=["text"], return_references=[QueryReference(link_on="userCollection"), QueryReference(link_on="automaticTag",return_properties=[] ), QueryReference(link_on="positiveTag",return_properties=[] ),QueryReference(link_on="negativeTag",return_properties=[] )]): 
+                logging.debug(f"collection id: {collection_name}") 
+                referenced = obj.references.get("userCollection")
+                if referenced is None:
+                    continue
+                
+                # referenced is a _CrossReference; its targets are in .objects
+                collection_objects = referenced.objects  # list of referenced objects
+                for ref_obj in collection_objects:
+                    print(ref_obj.properties['name'])
+                if any(str(ref_obj.properties['name']) == collection_name for ref_obj in collection_objects):
+                    all_texts_count += 1
+                        
+            async for obj in weaviate_objects.iterator(return_properties=["text"], return_references=[QueryReference(link_on="userCollection"), QueryReference(link_on="automaticTag",return_properties=[] ), QueryReference(link_on="positiveTag",return_properties=[] ),QueryReference(link_on="negativeTag",return_properties=[] )]): 
+                logging.debug(f"collection id: {collection_name}") 
+                referenced = obj.references.get("userCollection")
+                if referenced is None:
+                    continue
+                
+                # referenced is a _CrossReference; its targets are in .objects
+                collection_objects = referenced.objects  # list of referenced objects
+                if any(str(ref_obj.properties['name']) == collection_name for ref_obj in collection_objects):
+                    try:
+                        # extract text field from the current object
+                        text = obj.properties["text"]
+                        tag = await chain.ainvoke({"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text})
+
+                        # store in weaviate (upload positive tag instances to weaviate)
+                        if positive_responses.search(tag): # if the llm response is positive then store the tag data
+                            # test if the reference to the tag exists
+                            references = obj.references.get("automaticTag") if obj.references else None
+                            # if there are no references or there is not any reference to the wanted tag add the new reference
+                            if not references or not getattr(references, "objects", None) or not (any(str(tag_obj.uuid) == str(tag_uuid) for tag_obj in references.objects)):
+                                # add the new tag data
+                                await weaviate_objects.data.reference_add(
+                                    from_uuid = obj.uuid,
+                                    from_property="automaticTag",
+                                    to=tag_uuid
+                                )
+                                logging.info("NOT REFERENCED YET")
+                        texts.append(text)
+                        tags.append(tag)
+                        tag_processing_data.append({"chunk_id": str(obj.uuid), "text": text, "tag": str(tag)})
+                        logging.info(f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
+                        # store progress in SQL db
+                        processed_count += 1 # increase number of processed chunks
+                        await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, session=session, all_texts_count=all_texts_count, processed_count=processed_count, tag_id=tag_uuid, tag_processing_data=tag_processing_data)
+                        logging.info("After update")
+                    except Exception as e:
+                        pass # TODO revert changes
+
             return {'texts': texts, 'tags': tags}
 
         except Exception as e:

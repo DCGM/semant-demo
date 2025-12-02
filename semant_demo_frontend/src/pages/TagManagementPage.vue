@@ -642,6 +642,14 @@ async function loadExistingTagsList () {
   try {
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
+    // filter based on currently selected collection
+    if (selectedCollection.value?.name) {
+      filteredTags.value = tags.value.filter(
+        tag => tag.collection_name === selectedCollection.value?.name
+      )
+    } else {
+      filteredTags.value = []
+    }
     tagsLen.value = tags.value.length
   } finally {
     loadingSpinner.value = false
@@ -663,7 +671,8 @@ async function onCreateTag () {
     console.error('Tagging error:', e)
   } finally {
     loading.value = false
-    loadExistingTagsList()
+    await loadExistingTagsList()
+    await fetchTags()
   }
 }
 
