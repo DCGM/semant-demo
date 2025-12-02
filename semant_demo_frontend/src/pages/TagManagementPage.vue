@@ -40,7 +40,7 @@
                 <!-- choose a collection -->
                 <q-select
                   v-model="tagForm.collection_name"
-                  :options="collectionOptions"
+                  :options="collectionOptionsByName"
                   label="Select a Collection"
                   outlined
                   emit-value
@@ -892,6 +892,13 @@ const collectionOptions = computed(() =>
   collectionStore.collections.map(c => ({
     label: c.name ?? `Collection ${c.id}`,
     value: c.id
+  }))
+)
+
+const collectionOptionsByName = computed(() =>
+  collectionStore.collections.map(c => ({
+    label: c.name ?? `Collection ${c.id}`,
+    value: c.name ?? `Collection ${c.id}` // <-- use name as value
   }))
 )
 

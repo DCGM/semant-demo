@@ -218,11 +218,13 @@ class WeaviateSearch:
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
 
+    # TODO remove
     async def add_or_get_tag(self, tag_request: schemas.TagReqTemplate) -> str:
         """
         Create a new tag or return existing tag UUID if it matches
         """
         logging.info("In the add or get tag")
+        logging.info(f"The data: {tag_request}")
 
         # check if tag with same properties already exists
         filters = (
@@ -797,6 +799,7 @@ class WeaviateSearch:
         Create a new tag or return existing tag UUID if it matches
         """
         logging.info("In the add or get tag")
+        logging.info(f"The data: {tag_request}")
 
         # check if tag with same properties already exists
         filters =(
