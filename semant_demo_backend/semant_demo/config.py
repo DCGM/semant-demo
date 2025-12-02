@@ -23,7 +23,7 @@ class Config:
 
         self.GEMMA_URL = "http://localhost:8001"
         self.OLLAMA_URLS = os.getenv("OLLAMA_URLS", "http://localhost:11434").split(",")
-        self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
+        self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:12b")
         self.SEARCH_SUMMARIZER_CONFIG = os.getenv("SEARCH_SUMMARIZER_CONFIG", str(SCRIPT_PATH / "configs" / "search_summarizer.yaml"))
 
         self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
