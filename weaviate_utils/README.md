@@ -1,30 +1,37 @@
 ## Setup weaviate
+#### Connect
+To server with postgresql:
+```
+ssh -L 5888:localhost:5888 xtomas36@semant.cz
+```
+------
+
+### On server
+Setup environment:
 ```
 cd weaviate_utils
+
+python3 -m venv .venv
+
+source .venv/bin/activate
+
+pip install -r requirements.txt
 
 docker-compose up -d
-
-conda activate semant
-
-python db_insert_jsonl.py --source-dir C:\Users\marti\Music\semANT_public\semant-demo\weaviate_utils\server_setup\ --delete-old
-
-cd C:\Users\marti\Music\semANT_public\semant-demo\semant_demo_backend\semant_demo\tagging
-
-python patch_weaviate_add_tag_class.py
-
-cd weaviate_utils
-
-python update_metadata.py --logging-on 
+```
+Load chunks and document IDs to weaviate:
+```
+python db_insert_jsonl.py --source-dir /mnt/ssd2/weaviate_data/all.768/chunks.vec.lang/ --delete-old
+```
+Load the metadata to weaviate:
+```
+python update_metadata.py --logging-on
+```
 ------
-python insert_jsonl.py --source-dir C:\Users\marti\Music\semANT_public\semant-demo\weaviate_utils\server_setup\ --delete-old
-
-python insert_jsonl.py --source-dir /mnt/ssd2/weaviate_data/all.768/chunks.vec.lang/ --delete-old
+### Local
+Jus in step "Load chunks and document IDs to weaviate" load from local files:
 ```
-
-connect:
-```
-ssh -L 8080:localhost:8080 xtomas36@semant.cz
-ssh -L 5888:localhost:5888 xtomas36@semant.cz
+python db_insert_jsonl.py --source-dir path-to-folder-with-json-and-npy-files --delete-old
 ```
 
 ## Summary how are/should be chunks and documents stored in Weaviate DB
