@@ -22,7 +22,7 @@
         <q-card-section class="q-pa-md">
           <div class="row items-center">
             <div class="col text-center">
-              <div class="text-h6">Create Tag</div>
+              <div class="text-h6">Create Collection</div>
             </div>
             <div class="col-auto absolute-right q-mr-sm">
               <q-btn flat dense round icon="close" @click="collectionCreateDialogVisible = false" />
@@ -298,6 +298,7 @@ async function onCreateCollection () {
   collectionCreateDialogVisible.value = false
   loading.value = true
   try {
+    collectionForm.value.user_id = username.value
     const payload = { ...collectionForm.value }
     const { data } = await api.post<CreateResponse>('/user_collection', payload)
     console.log('User collection creation response received:', data)
@@ -528,6 +529,13 @@ const collectionOptions = computed(() =>
   collectionStore.collections.map(c => ({
     label: c.name ?? `Collection ${c.id}`,
     value: c.id
+  }))
+)
+
+const collectionOptionsByName = computed(() =>
+  collectionStore.collections.map(c => ({
+    label: c.name ?? `Collection ${c.id}`,
+    value: c.name ?? `Collection ${c.id}` // <-- use name as value
   }))
 )
 

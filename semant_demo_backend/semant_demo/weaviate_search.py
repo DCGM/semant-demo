@@ -639,7 +639,7 @@ class WeaviateSearch:
         """
         Create user collection (contains chunks user choose)
         """
-        logging.info("Adding user collection")
+        logging.info(f"Adding user collection\nUser: {req.user_id}\nCollection name: {req.collection_name}")
         try:
             usercollection_collection = self.client.collections.get("UserCollection")
         except Exception:
@@ -683,6 +683,7 @@ class WeaviateSearch:
         results = await self.client.collections.get("UserCollection").query.fetch_objects(
             filters=filters
         )
+        logging.info(f"User Id: {userId}\nRaw results: {results}")
         collections = []
         collections_respone = []
         if results.objects is not None:
@@ -736,7 +737,7 @@ class WeaviateSearch:
             logging.info(e)
             return True
 
-    async def get_collection_chunks(self, collectionId: str, ) -> schemas.GetCollectionChunksResponse:
+    async def get_collection_chunks(self, collectionId: str, ) ->schemas.GetCollectionChunksResponse:
         """
         Get all chunks belonging to collection with collectionId
         get collection object, in that collection search for chunks that refer to the
@@ -744,31 +745,32 @@ class WeaviateSearch:
         """
         try:
             chunk_lst_with_tags = []
-            chunks_collection = self.client.collections.get("Chunks")
-            all_chunks = await chunks_collection.query.fetch_objects(
-                return_references=[QueryReference(link_on="userCollection")]
-            )
-
-            for chunk_obj in all_chunks.objects:
+            chunks_collection = self.client.collections.use("Chunks")
+            # iterate over all chunks find the reference to the user collection
+            async for chunk_obj in chunks_collection.iterator(return_references=[QueryReference(link_on="userCollection")]):
                 logging.debug(f"collection id: {collectionId}")
 
                 referencedCollections = chunk_obj.references.get("userCollection")
                 logging.debug(f"{referencedCollections}")
-                if referencedCollections:  # check if collection is not none
+                if referencedCollections: # check if collection is not none
+                    logging.debug(f"Referenced collections: {referencedCollections}")
                     for collect_obj in referencedCollections.objects:
                         logging.info(f"Collection id: {collect_obj.uuid}")
                         logging.debug(collect_obj.uuid)
                         logging.info(f"{collect_obj.uuid} vs {collectionId}")
                         if str(collect_obj.uuid) == collectionId:
                             logging.info(f"Collection id matches")
-                            chunk_text = chunk_obj.properties.get('text', '')
+                            chunk_text = chunk_obj.properties.get('text','')
                             chunk_id = str(chunk_obj.uuid)
                             logging.debug(f"chunk {chunk_id} ref: {collectionId}")
-                            chunk_lst_with_tags.append(
-                                {'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collectionId})
+                            chunk_lst_with_tags.append({'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collectionId})
                 else:
                     logging.info(f"No collection referenced")
                 logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
+                # test
+                print(f"Test - Chunks in collection {collectionId}: {chunk_lst_with_tags}")
+                assert all(item['chunk_collection_name'] == collectionId for item in chunk_lst_with_tags), \
+                    "Some chunks do not match the collection ID"
             return {"chunks_of_collection": chunk_lst_with_tags}
         except Exception as e:
             logging.error(f"Error: {e}")
@@ -1295,65 +1297,6 @@ class WeaviateSearch:
             logging.error(f"Not changed approval state. Error: {e}")
             return False
 
-    async def add_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
-        """
-        Create user collection (contains chunks user choose)
-        """
-        logging.info("Adding user collection")
-        try:
-            usercollection_collection = self.client.collections.get("UserCollection")
-        except Exception:
-            # UserCollection is not in weaviate
-            return None
-
-        # check if user collection with same properties already exists
-        filters =(
-            Filter.by_property("name").equal(req.collection_name) &
-            Filter.by_property("user_id").equal(req.user_id)
-        )
-        results = await self.client.collections.get("UserCollection").query.fetch_objects(
-            filters=filters
-        )
-        if results.objects is not None:
-            if len(results.objects) > 0:
-                return results.objects[0].uuid
-
-        # if no match found, create new collection
-        new_collection_uuid = await self.client.collections.get("UserCollection").data.insert(
-            properties={
-                "name": req.collection_name,
-                "user_id": req.user_id
-            }
-        )
-        return new_collection_uuid
-
-    async def fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
-        """
-        Retrieves all collections for given user
-        """
-        try:
-            usercollection_collection = self.client.collections.get("UserCollection")
-        except Exception:
-            # UserCollection is not in weaviate
-            return None
-        # filter collections by user
-        filters =(
-            Filter.by_property("user_id").equal(userId)
-        )
-        results = await self.client.collections.get("UserCollection").query.fetch_objects(
-            filters=filters
-        )
-        collections = []
-        collections_respone = []
-        if results.objects is not None:
-            if len(results.objects) > 0:
-                collections = results.objects
-                # map collection data to expected response format
-                for o in collections:
-                    collections_respone.append({'id': str(o.uuid), 'name': o.properties['name'], 'user_id': o.properties.get('user_id')})
-
-        return {"collections": collections_respone, "userId": userId}
-
     async def add_chunk_to_collection(self, req: schemas.Chunk2CollectionReq) -> bool:
         """
         Creates reference between a chunk and a collection
@@ -1401,47 +1344,6 @@ class WeaviateSearch:
         except Exception as e:
             logging.info(e)
             return True
-
-    async def get_collection_chunks(self, collectionId: str, ) ->schemas.GetCollectionChunksResponse:
-        """
-        Get all chunks belonging to collection with collectionId
-        get collection object, in that collection search for chunks that refer to the
-        collection and return chunk texts
-        """
-        try:
-            chunk_lst_with_tags = []
-            chunks_collection = self.client.collections.get("Chunks")
-            all_chunks = await chunks_collection.query.fetch_objects(
-                return_references=[QueryReference(link_on="userCollection")]
-            )
-
-            for chunk_obj in all_chunks.objects:
-                logging.debug(f"collection id: {collectionId}")
-
-                referencedCollections = chunk_obj.references.get("userCollection")
-                logging.debug(f"{referencedCollections}")
-                if referencedCollections: # check if collection is not none
-                    for collect_obj in referencedCollections.objects:
-                        logging.info(f"Collection id: {collect_obj.uuid}")
-                        logging.debug(collect_obj.uuid)
-                        logging.info(f"{collect_obj.uuid} vs {collectionId}")
-                        if str(collect_obj.uuid) == collectionId:
-                            logging.info(f"Collection id matches")
-                            chunk_text = chunk_obj.properties.get('text','')
-                            chunk_id = str(chunk_obj.uuid)
-                            logging.debug(f"chunk {chunk_id} ref: {collectionId}")
-                            chunk_lst_with_tags.append({'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collectionId})
-                else:
-                    logging.info(f"No collection referenced")
-                logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
-                # test
-                print(f"Test - Chunks in collection {collectionId}: {chunk_lst_with_tags}")
-                assert all(item['chunk_collection_name'] == collectionId for item in chunk_lst_with_tags), \
-                    "Some chunks do not match the collection ID"
-            return {"chunks_of_collection": chunk_lst_with_tags}
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            return {'chunks_of_collection': []}
 
     #TODO add collection to Tag class
     async def get_all_tags(self):
