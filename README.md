@@ -28,5 +28,5 @@ This is a demonstration application for project semANT. It indexes large number 
 - Create a pull request and assign a reviewer
 - After successfull review, merge/rebase the pull request and delete the branch
 
-
-
+# DB schema
+Diagram of DB: [weaviate schema](https://drive.google.com/file/d/1a6YfnYYXGZRf48qyeW5zTdpJE_KSgxe3/view?usp=sharing)
