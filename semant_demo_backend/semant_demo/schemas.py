@@ -60,7 +60,7 @@ class Document(BaseModel):
     publisher: str | None = None
     language: str | None = None
     description: str | None = None
-    url: str | None = None
+    url: str | uuid.UUID | None = None
     public: bool | None = None
     documentType: str | None = None
     keywords: str | list[str] | None = None

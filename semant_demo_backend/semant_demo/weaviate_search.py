@@ -700,6 +700,7 @@ class WeaviateSearch:
         Creates reference between a chunk and a collection
         """
         try:
+            logging.info(f"In add_chunk_to_collection Collection and chunk data: {req}")
             chunks = self.client.collections.get("Chunks")
 
             async def getChunkObj(chunkID):
@@ -1387,6 +1388,15 @@ class WeaviateSearch:
                     to=updatedCollectionIds,
             )
 
+            # test
+            updated_obj = await getChunkObj(req.chunkId)
+            updated_refs = updated_obj.references or {}
+            updated_collection_ids = ref_uuids(updated_refs.get("userCollection"))
+
+            print("Test - References after update:", updated_collection_ids)
+            assert new_collection_id in updated_collection_ids, "Reference was not added properly"
+            print("Test passed: reference successfully updated")
+
             return False
         except Exception as e:
             logging.info(e)
@@ -1424,6 +1434,10 @@ class WeaviateSearch:
                 else:
                     logging.info(f"No collection referenced")
                 logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
+                # test
+                print(f"Test - Chunks in collection {collectionId}: {chunk_lst_with_tags}")
+                assert all(item['chunk_collection_name'] == collectionId for item in chunk_lst_with_tags), \
+                    "Some chunks do not match the collection ID"
             return {"chunks_of_collection": chunk_lst_with_tags}
         except Exception as e:
             logging.error(f"Error: {e}")
