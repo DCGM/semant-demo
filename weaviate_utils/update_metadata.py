@@ -146,7 +146,7 @@ def map_result_names(result):
     res_dict["publisher"] =  get_first_valid(metadata.get('Publisher', None))
     res_dict["language"] =  get_first_valid(metadata.get('Language', None))
     # missing: res_dict["description"]: "",
-    res_dict['url'] = str(result.id)
+    res_dict['url'] = result.id.__str__() # extract string of uuid
     res_dict['public'] = result.public
     res_dict['documentType'] = result.record_type
     # res_dict['missing']
