@@ -3,6 +3,8 @@
 export interface SearchRequest {
   query: string;
   limit?: number;
+  type?: 'hybrid' | 'text' | 'vector';
+  hybrid_search_alpha?: number;
   min_year?: number | null;
   max_year?: number | null;
   min_date?: string | null; // ISO datetime string

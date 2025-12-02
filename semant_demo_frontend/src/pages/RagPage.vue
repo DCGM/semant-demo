@@ -71,6 +71,17 @@
             class="q-mr-sm"
             title="Reset chat"
           />
+            <q-select
+              v-model="selectedRAG"
+              :options="rags"
+              option-label="name"
+              label="RAG configuration"
+              :loading="isLoadingRagConfigs"
+              :disable="isLoadingRagConfigs || rags.length === 0"
+              dense
+              outlined
+              style="width: 150px"
+          />
           <!-- select model -->
             <q-select
               v-model="selectedModel"
@@ -78,8 +89,43 @@
               label="Model"
               dense
               outlined
-              style="width: 200px"
+              style="width: 150px"
           />
+          <!-- temperature -->
+            <!-- <span class="text-caption text-grey-7">Temperature:</span>
+            <q-slider
+              v-model="temperature"
+              :min="tempRange.min"
+              :max="tempRange.max"
+              :step="0.1"
+              label
+              style="width: 100px"
+          /> -->
+          <!-- api key -->
+          <q-input v-model="apiKey" label="Api key" dense outlined />
+          <!-- search mode -->
+          <!-- <q-select
+              v-model="selectedDBSearch"
+              :options="searchModes"
+              label="Search mode"
+              dense
+              outlined
+              style="width: 150px"
+          /> -->
+          <!-- alpha -->
+          <!-- <span class="text-caption text-grey-7">Alpha:</span>
+          <q-slider
+            v-model="alpha"
+            :min="alphaRange.min"
+            :max="alphaRange.max"
+            :step="0.1"
+            label
+            style="width: 100px"
+          /> -->
+          <q-input v-model.number="chunkNumber" type="number" label="Chunk limit" dense outlined />
+          <q-input v-model="language" label="Language" dense outlined />
+          <q-input v-model.number="minYear" type="number" label="Min Year" dense outlined />
+          <q-input v-model.number="maxYear" type="number" label="Max Year" dense outlined />
         </div>
          <!-- input box with send button -->
         <div class="col">
@@ -112,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 
@@ -131,6 +177,12 @@ interface Message {
   sources?: Source[];
 }
 
+interface RagRouteConfig {
+  id: string
+  name: string
+  description: string
+}
+
 // First message from AI
 const messages = ref<Message[]>([
   { sender: 'AI', text: 'Hello, what is your question?' }
@@ -144,6 +196,11 @@ const isAiThinking = ref(false)
 const showSourcesDialog = ref(false)
 const currentSources = ref<Source[]>([])
 
+// selected rags from config
+const rags = ref<RagRouteConfig[]>([])
+const isLoadingRagConfigs = ref(true)
+const selectedRAG = ref<RagRouteConfig | null>(null)
+
 // models
 const models = ref([
   { label: 'OLLAMA (local)', value: 'OLLAMA' },
@@ -151,6 +208,51 @@ const models = ref([
   { label: 'OPENAI (API)', value: 'OPENAI' }
 ])
 const selectedModel = ref(models.value[0])
+
+// temperature
+// const temperature = ref(0.0)
+// const tempRange = ref({ min: 0.0, max: 1.0 })
+
+// api key
+const apiKey = ref<string | null>(null)
+
+// search modes
+// const searchModes = ref([
+//   { label: 'hybrid', value: 'hybrid' },
+//   { label: 'vector', value: 'vector' },
+//   { label: 'text', value: 'text' }
+// ])
+// const selectedDBSearch = ref(searchModes.value[0])
+
+// alpha
+// const alpha = ref(0.5)
+// const alphaRange = ref({ min: 0.0, max: 1.0 })
+
+const chunkNumber = ref<number>(5)
+const minYear = ref<number | null>(null)
+const maxYear = ref<number | null>(null)
+const language = ref<string | null>(null)
+
+// ----------------------Load RAGs----------------------
+
+async function loadRagConfigs () {
+  try {
+    isLoadingRagConfigs.value = true
+    const response = await axios.get('/api/rag/configurations')
+    rags.value = response.data
+    if (rags.value.length > 0) {
+      selectedRAG.value = rags.value[0]
+    }
+  } catch (error) {
+    messages.value.push({ sender: 'AI', text: 'None RAG model is avalaible.' })
+  } finally {
+    isLoadingRagConfigs.value = false
+  }
+}
+
+onMounted(() => {
+  loadRagConfigs()
+})
 
 // ----------------------Main chat-----------------------------
 
@@ -176,38 +278,54 @@ const sendMessage = async () => {
   try {
     // get history
     const allRelevantMsg = messages.value.slice(0, -1).filter(msg => msg.sources !== undefined || msg.sender === 'me') // remove messages without any informations
-    // history for search (long text with question)
-    const joinMessages = allRelevantMsg.map(msg => msg.text).join('\n')
-    const historyForSearch = joinMessages + '\n' + userQuery
 
     // history for RAG
     const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
 
-    // search chunks
-    const searchRequest = {
-      query: historyForSearch,
-      limit: 5,
-      search_title_generate: false,
-      search_summary_generate: false
+    const ragConfig = {
+      model_name: selectedModel.value.value,
+      temperature: 0.0, // temperature.value,
+      api_key: apiKey.value ? apiKey.value : null
     }
-    const searchResponse = await axios.post('/api/search', searchRequest)
-    if (!searchResponse.data || searchResponse.data.results.length === 0) {
-      messages.value.push({ sender: 'AI', text: 'Sorry, we have no information about this topic.' })
-      return
+    const ragSearch = {
+      search_query: userQuery, // is change in rag generator anyway (bcs it have to be refrased based on history context)
+      limit: chunkNumber.value,
+      search_type: 'hybrid', // selectedDBSearch.value.value,
+      alpha: 0.5, // alpha.value, // vector search
+      min_year: null, // minYear.value ? minYear.value : null, - does not work now
+      max_year: null, // maxYear.value ? maxYear.value : null, - does not work now
+      min_date: null,
+      max_date: null,
+      language: null // language.value ? language.value : null - does not work now
     }
 
-    // rag question
+    // rag question + search
     const ragRequestBody = {
-      search_response: searchResponse.data,
       question: userQuery,
       history: context,
-      model_name: selectedModel.value.value
+      // model configuration parameters
+      rag_config: ragConfig,
+      // search parameters
+      rag_search: ragSearch
     }
-    const ragResponse = await axios.post('/api/rag', ragRequestBody)
+    const mainRagRequestBody = {
+      rag_id: selectedRAG.value?.id,
+      rag_request: ragRequestBody
+    }
+    const ragResponse = await axios.post('/api/rag', mainRagRequestBody)
     const ragAnswer = ragResponse.data.rag_answer
+    const sources = ragResponse.data.sources
 
     // sources
-    const sourcesForAnswer: Source[] = searchResponse.data.results.map((res: SearchResult) => ({
+    if (!sources || sources.length === 0) {
+      messages.value.push({
+        sender: 'AI',
+        text: 'Sorry we have no information about this topick.',
+        sources: []
+      })
+      return
+    }
+    const sourcesForAnswer: Source[] = sources.map((res: SearchResult) => ({
       text: res.text
     }))
 
@@ -218,7 +336,13 @@ const sendMessage = async () => {
     })
   } catch (error) {
     console.error('RAG error:', error)
-    messages.value.push({ sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
+    if (axios.isAxiosError(error) && error.response) {
+      if (error.response.status === 401) {
+        messages.value.push({ sender: 'AI', text: 'You have entered invalid API key.' })
+      }
+    } else {
+      messages.value.push({ sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
+    }
   } finally {
     isAiThinking.value = false
     scrollToBottom()
