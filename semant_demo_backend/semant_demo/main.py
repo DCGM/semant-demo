@@ -8,7 +8,7 @@ from semant_demo import schemas
 from semant_demo.config import config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.routes.rag_routes import get_all_rag_configurations, RAG_INSTANCES, rag_factory
+from semant_demo.rag.rag_factory import get_all_rag_configurations, RAG_INSTANCES, rag_factory
 from time import time
 from fastapi.staticfiles import StaticFiles
 import os
