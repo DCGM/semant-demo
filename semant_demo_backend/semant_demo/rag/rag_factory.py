@@ -5,12 +5,11 @@ from typing import Dict, Type
 from semant_demo.schemas import RagRouteConfig, RagRequest, RagResponse
 
 class BaseRag:
-   def __init__(self, global_config, param_config, searcher ):
+   def __init__(self, global_config, param_config):
        self.global_config = global_config
        self.param_config = param_config
-       self.searcher = searcher
        
-   async def rag_request(self, request: RagRequest) -> RagResponse:
+   async def rag_request(self, request: RagRequest, searcher) -> RagResponse:
         raise NotImplementedError("Method \"rag_request\" is not implemented.")
 
 #dict of rag implementations avalaible in application    
@@ -27,7 +26,7 @@ RAG_INSTANCES: Dict[str, BaseRag] = {}
 #for frontend
 RAG_INSTANCES_CONFIGS: Dict[str, RagRouteConfig] = {}
 
-def rag_factory(global_config, configs_path: str, searcher):
+def rag_factory(global_config, configs_path: str):
     RAG_INSTANCES.clear()
     RAG_INSTANCES_CONFIGS.clear()
     
@@ -63,7 +62,7 @@ def rag_factory(global_config, configs_path: str, searcher):
                 RagClass = RAG_IMPLEMENTATIONS[class_name]
                 
                 #create an instance
-                instance = RagClass(global_config=global_config, param_config=params, searcher=searcher)
+                instance = RagClass(global_config=global_config, param_config=params)
                 RAG_INSTANCES[id] = instance
                 
                 #create frontend config
