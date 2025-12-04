@@ -87,9 +87,7 @@ async def startup():
         await conn.run_sync(TasksBase.metadata.create_all)
         
     #load rags configurations and create instances
-    global global_searcher
-    global_searcher = await get_search()
-    rag_factory(global_config=config, configs_path=config.RAG_CONFIGS_PATH, searcher=global_searcher)
+    rag_factory(global_config=config, configs_path=config.RAG_CONFIGS_PATH)
     
 
 app.add_middleware(
@@ -180,7 +178,7 @@ async def get_avalaible_rag_configurations():
     return get_all_rag_configurations()
 
 @app.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagRequestMain) -> schemas.RagResponse:
+async def rag(request: schemas.RagRequestMain, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
     #find and check rag
     id = request.rag_id
     if id not in RAG_INSTANCES:
@@ -188,7 +186,7 @@ async def rag(request: schemas.RagRequestMain) -> schemas.RagResponse:
     
     #load class and call instance
     rag_instance = RAG_INSTANCES[id]
-    return await rag_instance.rag_request(request=request.rag_request)
+    return await rag_instance.rag_request(request=request.rag_request, searcher=searcher)
     
 
 if os.path.isdir(config.STATIC_PATH):
