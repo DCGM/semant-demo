@@ -173,22 +173,6 @@ async def question(search_response: schemas.SearchResponse, question_text: str) 
         time_spent=search_response.time_spent,
     )
 
-@app.get("/api/rag/configurations", response_model=list[schemas.RagRouteConfig])
-async def get_avalaible_rag_configurations():
-    return get_all_rag_configurations()
-
-@app.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagRequestMain, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
-    #find and check rag
-    id = request.rag_id
-    if id not in RAG_INSTANCES:
-        raise HTTPException(status_code=400, detail=f"Unknown RAG configuration: {id}.")
-    
-    #load class and call instance
-    rag_instance = RAG_INSTANCES[id]
-    return await rag_instance.rag_request(request=request.rag_request, searcher=searcher)
-    
-
 if os.path.isdir(config.STATIC_PATH):
     logging.info(f"Serving static files from '{config.STATIC_PATH}' directory")
     app.mount("/", StaticFiles(directory=config.STATIC_PATH,
