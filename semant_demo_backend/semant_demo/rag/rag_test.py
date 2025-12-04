@@ -1,4 +1,4 @@
-from semant_demo.routes.rag_routes import BaseRag, register_rag_class
+from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagConfig, RagSearch, RagRouteConfig, RagRequest, RagResponse
 from semant_demo.config import Config
 from semant_demo.weaviate_search import WeaviateSearch
