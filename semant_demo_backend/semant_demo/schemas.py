@@ -136,11 +136,6 @@ class RagChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
 
-#configuration of rag model - not used in this version
-class RagConfig(BaseModel):
-    model_type: str | None = None       #identifier of model OLLAMA, OPENAI, GOOGLE
-    temperature: float = 0.0
-    api_key: str | None = None          #is not used in current version
 
 class RagSearch(BaseModel):
     search_type: SearchType = SearchType.hybrid
@@ -153,12 +148,11 @@ class RagSearch(BaseModel):
     max_date: datetime | None = None
     language: str | None = None
 
-#main request used by rag (contains RagConfig)
+#main request used by rag 
 class RagRequest(BaseModel):
     # rag parameters
     question: str
     history: list[RagChatMessage] | None = None    # chat history, to keep context
-    #rag_config: RagConfig
     # search parameters
     rag_search: RagSearch
 
