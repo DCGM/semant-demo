@@ -218,11 +218,13 @@ class WeaviateSearch:
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
 
+    # TODO remove
     async def add_or_get_tag(self, tag_request: schemas.TagReqTemplate) -> str:
         """
         Create a new tag or return existing tag UUID if it matches
         """
         logging.info("In the add or get tag")
+        logging.info(f"The data: {tag_request}")
 
         # check if tag with same properties already exists
         filters = (
@@ -280,7 +282,7 @@ class WeaviateSearch:
             })
         return tag_data
     
-    async def get_tagged_chunks(self, getChunksReq: schemas.GetTaggedChunksReq) -> schemas.GetTaggedChunksResponse:
+    async def get_tagged_chunks_limited(self, getChunksReq: schemas.GetTaggedChunksReq) -> schemas.GetTaggedChunksResponse:
         """
         Get tag objects from them extract collection names, in these collections
         search for chunks that refer to any of the selected tags and return chunk
@@ -297,9 +299,12 @@ class WeaviateSearch:
             logging.info(f"Results: {results}")
             # get different collection names
             collection_names = {obj.properties["collection_name"] for obj in results.objects}
-
-            # iterate over the collections and retrieve text chunks and corresponding tags
-            for collection_name in collection_names:
+            userCollectionName = next(iter(collection_names))
+            logging.info(f"Tag uuids in get_tagged_chunks: {getChunksReq.tag_uuids} {collection_names} {userCollectionName}")
+            # go over chunks, retrieve text chunks and corresponding tags
+            try:
+                collection_name = "Chunks"
+                logging.info(f"collection name: {collection_name}")
                 # get all chunks
                 chunk_results = await self.client.collections.get(collection_name).query.fetch_objects(
                     return_references=[
@@ -337,10 +342,71 @@ class WeaviateSearch:
                         for tagID in corresponding_tags:
                             chunk_lst_with_tags.append(
                                 {'tag_uuid': tagID, 'text_chunk': chunk_text, "chunk_id": chunk_id,
-                                 "chunk_collection_name": collection_name, "tag_type": getChunksReq.tag_type.value})
+                                 "chunk_collection_name": userCollectionName, "tag_type": getChunksReq.tag_type.value})
 
                 # process the filtered chunks to send them to frontend
                 logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
+            except Exception as e:
+                logging.error(f"Tags in Chunks error: {e}")
+                return {'chunks_with_tags': []}
+            return {"chunks_with_tags": chunk_lst_with_tags}
+        except Exception as e:
+            logging.error(f"No tags assigned yet. {e}")
+            return {'chunks_with_tags': []}
+    
+    # TODO fix make iterator
+    async def get_tagged_chunks(self, getChunksReq: schemas.GetTaggedChunksReq) -> schemas.GetTaggedChunksResponse:
+        """
+        Get tag objects from them extract collection names, in these collections
+        search for chunks that refer to any of the selected tags and return chunk
+        texts and all tags from selected tags that are referenced from the chunk
+        """
+        try:
+            # get all chunks with at least one tag from chosenTagUUIDs list
+            # get tags
+            tag_collection = self.client.collections.get("Tag")
+            chunk_lst_with_tags = []
+            filters = Filter.by_id().contains_any([str(uuid) for uuid in getChunksReq.tag_uuids])
+
+            results = await tag_collection.query.fetch_objects(filters=filters)
+            logging.info(f"Results: {results}")
+            # get different collection names
+            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            userCollectionName = next(iter(collection_names))
+            logging.info(f"Tag uuids in get_tagged_chunks: {getChunksReq.tag_uuids} {collection_names} {userCollectionName}")
+            # iterate over all chunks, retrieve text chunks and corresponding tags
+            try:
+                collection_name = "Chunks"
+                logging.info(f"collection name: {collection_name}")
+                reference_src = getChunksReq.tag_type.value + "Tag"  # ["automaticTag", "positiveTag", "negativeTag"]
+                logging.info(f"Source selected: {reference_src}")
+                weaviate_objects = self.client.collections.get("Chunks")
+                async for chunk_obj in weaviate_objects.iterator(return_properties=["text"], return_references=[ QueryReference(link_on="automaticTag",return_properties=[] ), QueryReference(link_on="positiveTag",return_properties=[] ),QueryReference(link_on="negativeTag",return_properties=[] )]):
+                    #for chunk_obj in chunk_results.objects:
+                    referencedTags = chunk_obj.references.get(reference_src) if chunk_obj.references else None
+                    chunk_id = str(chunk_obj.uuid)
+                    chunk_text = chunk_obj.properties.get('text', '')
+                    corresponding_tags = []
+                    logging.info(f"Referenced tags: {referencedTags}")
+                    # extract tag
+                    if referencedTags and getattr(referencedTags, "objects", None):
+                        for tag_obj in referencedTags.objects:
+                            if tag_obj.uuid in getChunksReq.tag_uuids:
+                                corresponding_tags.append(str(tag_obj.uuid))
+                    # check if there is at least one selected tag
+
+                    if corresponding_tags:
+                        # extract approval counts
+                        for tagID in corresponding_tags:
+                            chunk_lst_with_tags.append(
+                                {'tag_uuid': tagID, 'text_chunk': chunk_text, "chunk_id": chunk_id,
+                                 "chunk_collection_name": userCollectionName, "tag_type": getChunksReq.tag_type.value})
+
+                # process the filtered chunks to send them to frontend
+                logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
+            except Exception as e:
+                logging.error(f"Tags in Chunks error: {e}")
+                return {'chunks_with_tags': []}
             return {"chunks_with_tags": chunk_lst_with_tags}
         except Exception as e:
             logging.error(f"No tags assigned yet. {e}")
@@ -631,7 +697,7 @@ class WeaviateSearch:
         """
         Create user collection (contains chunks user choose)
         """
-        logging.info("Adding user collection")
+        logging.info(f"Adding user collection\nUser: {req.user_id}\nCollection name: {req.collection_name}")
         try:
             usercollection_collection = self.client.collections.get("UserCollection")
         except Exception:
@@ -675,6 +741,7 @@ class WeaviateSearch:
         results = await self.client.collections.get("UserCollection").query.fetch_objects(
             filters=filters
         )
+        logging.info(f"User Id: {userId}\nRaw results: {results}")
         collections = []
         collections_respone = []
         if results.objects is not None:
@@ -692,6 +759,7 @@ class WeaviateSearch:
         Creates reference between a chunk and a collection
         """
         try:
+            logging.info(f"In add_chunk_to_collection Collection and chunk data: {req}")
             chunks = self.client.collections.get("Chunks")
 
             async def getChunkObj(chunkID):
@@ -727,7 +795,7 @@ class WeaviateSearch:
             logging.info(e)
             return True
 
-    async def get_collection_chunks(self, collectionId: str, ) -> schemas.GetCollectionChunksResponse:
+    async def get_collection_chunks(self, collectionId: str, ) ->schemas.GetCollectionChunksResponse:
         """
         Get all chunks belonging to collection with collectionId
         get collection object, in that collection search for chunks that refer to the
@@ -735,31 +803,32 @@ class WeaviateSearch:
         """
         try:
             chunk_lst_with_tags = []
-            chunks_collection = self.client.collections.get("Chunks")
-            all_chunks = await chunks_collection.query.fetch_objects(
-                return_references=[QueryReference(link_on="userCollection")]
-            )
-
-            for chunk_obj in all_chunks.objects:
+            chunks_collection = self.client.collections.use("Chunks")
+            # iterate over all chunks find the reference to the user collection
+            async for chunk_obj in chunks_collection.iterator(return_references=[QueryReference(link_on="userCollection")]):
                 logging.debug(f"collection id: {collectionId}")
 
                 referencedCollections = chunk_obj.references.get("userCollection")
                 logging.debug(f"{referencedCollections}")
-                if referencedCollections:  # check if collection is not none
+                if referencedCollections: # check if collection is not none
+                    logging.debug(f"Referenced collections: {referencedCollections}")
                     for collect_obj in referencedCollections.objects:
                         logging.info(f"Collection id: {collect_obj.uuid}")
                         logging.debug(collect_obj.uuid)
                         logging.info(f"{collect_obj.uuid} vs {collectionId}")
                         if str(collect_obj.uuid) == collectionId:
                             logging.info(f"Collection id matches")
-                            chunk_text = chunk_obj.properties.get('text', '')
+                            chunk_text = chunk_obj.properties.get('text','')
                             chunk_id = str(chunk_obj.uuid)
                             logging.debug(f"chunk {chunk_id} ref: {collectionId}")
-                            chunk_lst_with_tags.append(
-                                {'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collectionId})
+                            chunk_lst_with_tags.append({'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collectionId})
                 else:
                     logging.info(f"No collection referenced")
                 logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
+                # test
+                print(f"Test - Chunks in collection {collectionId}: {chunk_lst_with_tags}")
+                assert all(item['chunk_collection_name'] == collectionId for item in chunk_lst_with_tags), \
+                    "Some chunks do not match the collection ID"
             return {"chunks_of_collection": chunk_lst_with_tags}
         except Exception as e:
             logging.error(f"Error: {e}")
@@ -791,6 +860,7 @@ class WeaviateSearch:
         Create a new tag or return existing tag UUID if it matches
         """
         logging.info("In the add or get tag")
+        logging.info(f"The data: {tag_request}")
 
         # check if tag with same properties already exists
         filters =(
@@ -848,7 +918,7 @@ class WeaviateSearch:
             })
         return tag_data
 
-    async def tag_chunks_with_llm(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
+    async def tag_chunks_with_llm_limited(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
         """
         Assigns automatic tags to chunks
         """
@@ -859,7 +929,17 @@ class WeaviateSearch:
 
             # get the collection
             collection_name = tag_request.collection_name
-            weaviate_objects = self.client.collections.get(collection_name)
+            logging.info(f"Collection name: {collection_name}")
+            # filter to tag just chunks in selected user collection
+            filters =(
+                Filter.by_ref(link_on="userCollection").by_property("name").equal(collection_name)
+            )
+            weaviate_objects = self.client.collections.get("Chunks")
+
+            #weaviate_objects = await chunks_collection.query.fetch_objects(
+            #    filters=filters
+            #)
+
             tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
 
             """
@@ -872,6 +952,7 @@ class WeaviateSearch:
             weaviate doesnt offer is_none/is_empty or similar
             so I chose to filter after fetching all of them and filter them later
             """
+
             # query weaviate db for chunks of chosen collection
             query = weaviate_objects.query.fetch_objects(
                 return_properties=["text"],  # only return the text field
@@ -888,7 +969,8 @@ class WeaviateSearch:
                         link_on="negativeTag",
                         return_properties=[] # just need uuids
                     )
-                ]
+                ],
+                filters=filters
             )
             queryFiltered = weaviate_objects.query.fetch_objects(
                 return_properties=["text"],  # only return the text field
@@ -1000,70 +1082,91 @@ class WeaviateSearch:
         except Exception as e:
             logging.error(f"Error fetching texts from collection: {e}")
             return {}
-
-    async def get_tagged_chunks(self, getChunksReq: schemas.GetTaggedChunksReq)->schemas.GetTaggedChunksResponse:
+        
+    async def tag_chunks_with_llm(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
         """
-        Get tag objects from them extract collection names, in these collections
-        search for chunks that refer to any of the selected tags and return chunk
-        texts and all tags from selected tags that are referenced from the chunk
+        Assigns automatic tags to chunks
         """
         try:
-            # get all chunks with at least one tag from chosenTagUUIDs list
-            # get tags
-            tag_collection = self.client.collections.get("Tag")
-            chunk_lst_with_tags = []
-            filters = Filter.by_id().contains_any([str(uuid) for uuid in getChunksReq.tag_uuids])
+            prompt = ChatPromptTemplate.from_template(self.tag_template)
+            model = OllamaProxyRunnable()
+            chain = prompt | model
 
-            results = await tag_collection.query.fetch_objects(filters=filters)
-            logging.info(f"Results: {results}")
-            # get different collection names
-            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            # get the collection
+            collection_name = tag_request.collection_name
+            logging.info(f"Collection name: {collection_name}")
+            weaviate_objects = self.client.collections.get("Chunks")
 
-            # iterate over the collections and retrieve text chunks and corresponding tags
-            for collection_name in collection_names:
-                # get all chunks
-                chunk_results = await self.client.collections.get(collection_name).query.fetch_objects(
-                    return_references=[
-                        QueryReference(
-                            link_on="automaticTag",                 # the reference property
-                            return_properties=["uuid", "tag_name"]  # properties from the referenced tags
-                        ),
-                        QueryReference(
-                            link_on="positiveTag",
-                            return_properties=["uuid", "tag_name"]
-                        ),
-                        QueryReference(
-                            link_on="negativeTag",
-                            return_properties=["uuid", "tag_name"]
-                        ),
-                    ]
-                )
-                reference_src = getChunksReq.tag_type.value + "Tag" #["automaticTag", "positiveTag", "negativeTag"]
-                logging.info(f"Source selected: {reference_src}")
-                for chunk_obj in chunk_results.objects:
-                        referencedTags = chunk_obj.references.get(reference_src) if chunk_obj.references else None
-                        chunk_id = str(chunk_obj.uuid)
-                        chunk_text = chunk_obj.properties.get('text','')
-                        corresponding_tags = []
-                        logging.info(f"Referenced tags: {referencedTags}")
-                        # extract tag
-                        if referencedTags and getattr(referencedTags, "objects", None):
-                            for tag_obj in referencedTags.objects:
-                                if tag_obj.uuid in getChunksReq.tag_uuids:
-                                    corresponding_tags.append(str(tag_obj.uuid))
-                        # check if there is at least one selected tag
+            tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
 
-                        if corresponding_tags:
-                            # extract approval counts
-                            for tagID in corresponding_tags:
-                                chunk_lst_with_tags.append({'tag_uuid': tagID, 'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collection_name, "tag_type": getChunksReq.tag_type.value })
+            texts = []
+            tags = []
+            tag_processing_data = []
 
-            # process the filtered chunks to send them to frontend
-                logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
-            return {"chunks_with_tags": chunk_lst_with_tags}
+            filters =(
+                Filter.by_ref(link_on="userCollection").by_property("name").equal(collection_name)
+            )
+
+            # process with llm and decide if tag belongs to text
+            positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
+            all_texts_count = 0
+            processed_count = 0
+            async for obj in weaviate_objects.iterator(return_properties=["text"], return_references=[QueryReference(link_on="userCollection"), QueryReference(link_on="automaticTag",return_properties=[] ), QueryReference(link_on="positiveTag",return_properties=[] ),QueryReference(link_on="negativeTag",return_properties=[] )]): 
+                logging.debug(f"collection id: {collection_name}") 
+                referenced = obj.references.get("userCollection")
+                if referenced is None:
+                    continue
+                
+                # referenced is a _CrossReference; its targets are in .objects
+                collection_objects = referenced.objects  # list of referenced objects
+                for ref_obj in collection_objects:
+                    print(ref_obj.properties['name'])
+                if any(str(ref_obj.properties['name']) == collection_name for ref_obj in collection_objects):
+                    all_texts_count += 1
+                        
+            async for obj in weaviate_objects.iterator(return_properties=["text"], return_references=[QueryReference(link_on="userCollection"), QueryReference(link_on="automaticTag",return_properties=[] ), QueryReference(link_on="positiveTag",return_properties=[] ),QueryReference(link_on="negativeTag",return_properties=[] )]): 
+                logging.debug(f"collection id: {collection_name}") 
+                referenced = obj.references.get("userCollection")
+                if referenced is None:
+                    continue
+                
+                # referenced is a _CrossReference; its targets are in .objects
+                collection_objects = referenced.objects  # list of referenced objects
+                if any(str(ref_obj.properties['name']) == collection_name for ref_obj in collection_objects):
+                    try:
+                        # extract text field from the current object
+                        text = obj.properties["text"]
+                        tag = await chain.ainvoke({"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text})
+
+                        # store in weaviate (upload positive tag instances to weaviate)
+                        if positive_responses.search(tag): # if the llm response is positive then store the tag data
+                            # test if the reference to the tag exists
+                            references = obj.references.get("automaticTag") if obj.references else None
+                            # if there are no references or there is not any reference to the wanted tag add the new reference
+                            if not references or not getattr(references, "objects", None) or not (any(str(tag_obj.uuid) == str(tag_uuid) for tag_obj in references.objects)):
+                                # add the new tag data
+                                await weaviate_objects.data.reference_add(
+                                    from_uuid = obj.uuid,
+                                    from_property="automaticTag",
+                                    to=tag_uuid
+                                )
+                                logging.info("NOT REFERENCED YET")
+                        texts.append(text)
+                        tags.append(tag)
+                        tag_processing_data.append({"chunk_id": str(obj.uuid), "text": text, "tag": str(tag)})
+                        logging.info(f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
+                        # store progress in SQL db
+                        processed_count += 1 # increase number of processed chunks
+                        await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, session=session, all_texts_count=all_texts_count, processed_count=processed_count, tag_id=tag_uuid, tag_processing_data=tag_processing_data)
+                        logging.info("After update")
+                    except Exception as e:
+                        pass # TODO revert changes
+
+            return {'texts': texts, 'tags': tags}
+
         except Exception as e:
-            logging.error(f"No tags assigned yet. {e}")
-            return {'chunks_with_tags': []}
+            logging.error(f"Error fetching texts from collection: {e}")
+            return {}
 
     async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
         """
@@ -1338,65 +1441,6 @@ class WeaviateSearch:
             logging.error(f"Not changed approval state. Error: {e}")
             return False
 
-    async def add_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
-        """
-        Create user collection (contains chunks user choose)
-        """
-        logging.info("Adding user collection")
-        try:
-            usercollection_collection = self.client.collections.get("UserCollection")
-        except Exception:
-            # UserCollection is not in weaviate
-            return None
-
-        # check if user collection with same properties already exists
-        filters =(
-            Filter.by_property("name").equal(req.collection_name) &
-            Filter.by_property("user_id").equal(req.user_id)
-        )
-        results = await self.client.collections.get("UserCollection").query.fetch_objects(
-            filters=filters
-        )
-        if results.objects is not None:
-            if len(results.objects) > 0:
-                return results.objects[0].uuid
-
-        # if no match found, create new collection
-        new_collection_uuid = await self.client.collections.get("UserCollection").data.insert(
-            properties={
-                "name": req.collection_name,
-                "user_id": req.user_id
-            }
-        )
-        return new_collection_uuid
-
-    async def fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
-        """
-        Retrieves all collections for given user
-        """
-        try:
-            usercollection_collection = self.client.collections.get("UserCollection")
-        except Exception:
-            # UserCollection is not in weaviate
-            return None
-        # filter collections by user
-        filters =(
-            Filter.by_property("user_id").equal(userId)
-        )
-        results = await self.client.collections.get("UserCollection").query.fetch_objects(
-            filters=filters
-        )
-        collections = []
-        collections_respone = []
-        if results.objects is not None:
-            if len(results.objects) > 0:
-                collections = results.objects
-                # map collection data to expected response format
-                for o in collections:
-                    collections_respone.append({'id': str(o.uuid), 'name': o.properties['name'], 'user_id': o.properties.get('user_id')})
-
-        return {"collections": collections_respone, "userId": userId}
-
     async def add_chunk_to_collection(self, req: schemas.Chunk2CollectionReq) -> bool:
         """
         Creates reference between a chunk and a collection
@@ -1431,47 +1475,19 @@ class WeaviateSearch:
                     to=updatedCollectionIds,
             )
 
+            # test
+            updated_obj = await getChunkObj(req.chunkId)
+            updated_refs = updated_obj.references or {}
+            updated_collection_ids = ref_uuids(updated_refs.get("userCollection"))
+
+            print("Test - References after update:", updated_collection_ids)
+            assert new_collection_id in updated_collection_ids, "Reference was not added properly"
+            print("Test passed: reference successfully updated")
+
             return False
         except Exception as e:
             logging.info(e)
             return True
-
-    async def get_collection_chunks(self, collectionId: str, ) ->schemas.GetCollectionChunksResponse:
-        """
-        Get all chunks belonging to collection with collectionId
-        get collection object, in that collection search for chunks that refer to the
-        collection and return chunk texts
-        """
-        try:
-            chunk_lst_with_tags = []
-            chunks_collection = self.client.collections.get("Chunks")
-            all_chunks = await chunks_collection.query.fetch_objects(
-                return_references=[QueryReference(link_on="userCollection")]
-            )
-
-            for chunk_obj in all_chunks.objects:
-                logging.debug(f"collection id: {collectionId}")
-
-                referencedCollections = chunk_obj.references.get("userCollection")
-                logging.debug(f"{referencedCollections}")
-                if referencedCollections: # check if collection is not none
-                    for collect_obj in referencedCollections.objects:
-                        logging.info(f"Collection id: {collect_obj.uuid}")
-                        logging.debug(collect_obj.uuid)
-                        logging.info(f"{collect_obj.uuid} vs {collectionId}")
-                        if str(collect_obj.uuid) == collectionId:
-                            logging.info(f"Collection id matches")
-                            chunk_text = chunk_obj.properties.get('text','')
-                            chunk_id = str(chunk_obj.uuid)
-                            logging.debug(f"chunk {chunk_id} ref: {collectionId}")
-                            chunk_lst_with_tags.append({'text_chunk': chunk_text, "chunk_id": chunk_id, "chunk_collection_name": collectionId})
-                else:
-                    logging.info(f"No collection referenced")
-                logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
-            return {"chunks_of_collection": chunk_lst_with_tags}
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            return {'chunks_of_collection': []}
 
     #TODO add collection to Tag class
     async def get_all_tags(self):

@@ -1,25 +1,3 @@
-# How to setup weaviate
-Use weaviate with new schema. 
-
-1. Download [example data](https://huggingface.co/datasets/Nirmata/example_data/blob/main/test_db_added_title_chunk_props_embed.zip)
-2. unzip the file
-3. setup the weaviate:
-```
-cd db_benchmarks\weaviate_benchmark
-
-docker-compose up -d
-
-cd ..
-
-cd data_tools
-
-conda activate semant
-
-python db_insert_jsonl_test.py --source-dir test_db_added_title_chunk_props_embed --delete-old
-```
-
-More info at [db benchmarks](https://github.com/Martin-Toma/db_benchmarks/tree/collection-and-tag-update) in there follow `run notes.md`.
-
 # Tagging
 
 Tagging incorporates tag creation, creating references from text chunks to tag objects. Tagging functionality and weaviate schema is showed in [link to draw.io sequence diagrams ans schema](https://drive.google.com/file/d/1xlcM5zWyfa7aW9OCGwvnpS19TXJGAuvy/view?usp=drive_link)
@@ -60,3 +38,27 @@ For collections management there is a separated page called `TagManagementPage.v
 
 ## Search
 User searches the chunks. The user can add the chunks (which are found in searching process) to the a selected collection.
+
+# How to setup weaviate
+Here I describe older way to locally setup weaviate database. In some time, the new schema may diverge from this one, so please start using the new approach described in `weaviate_utils\README.md`. 
+
+Use weaviate with new schema. 
+
+1. Download [example data](https://huggingface.co/datasets/Nirmata/example_data/blob/main/test_db_added_title_chunk_props_embed.zip)
+2. unzip the file
+3. setup the weaviate:
+```
+cd db_benchmarks\weaviate_benchmark
+
+docker-compose up -d
+
+cd ..
+
+cd data_tools
+
+conda activate semant
+
+python db_insert_jsonl_test.py --source-dir test_db_added_title_chunk_props_embed --delete-old
+```
+
+More info at [db benchmarks](https://github.com/Martin-Toma/db_benchmarks/tree/collection-and-tag-update) in there follow `run notes.md`.

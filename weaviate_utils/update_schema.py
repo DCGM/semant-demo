@@ -5,10 +5,11 @@ Just for insipiration in case of erro, now in https://github.com/Martin-Toma/db_
 import weaviate
 from weaviate import WeaviateClient
 from weaviate.connect import ConnectionParams
+from semant_demo.config import config
 import weaviate.classes.config as wvc
 from weaviate.classes.config import ReferenceProperty
 
-def setup_schema():
+def update_existing_schema():
     conn_params = ConnectionParams.from_params(
         http_host="localhost", http_port=8080, http_secure=False,
         grpc_host="localhost", grpc_port=50051, grpc_secure=False,
@@ -119,4 +120,4 @@ def setup_schema():
         client.close()
 
 if __name__ == "__main__":
-    setup_schema()
+    update_existing_schema()
