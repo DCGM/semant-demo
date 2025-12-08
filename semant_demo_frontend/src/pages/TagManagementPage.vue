@@ -37,7 +37,18 @@
                 <span class="text-h6">Create Tag</span>
               </div> -->
               <div class="row">
-                <q-input v-model="tagForm.collection_name" type="text" label="Collection name" dense outlined />
+                <!-- choose a collection -->
+                <q-select
+                  v-model="tagForm.collection_name"
+                  :options="collectionOptionsByName"
+                  label="Select a Collection"
+                  outlined
+                  emit-value
+                  map-options
+                  :loading="loading"
+                  style="width: 300px;"
+                />
+                <!--<q-input v-model="tagForm.collection_name" type="text" label="Collection name" dense outlined />-->
               </div>
               <div class="row">
                 <div class="col">
@@ -172,16 +183,31 @@
         <div class="row justify-center">
           <span class="text-h6">Manage automatic tags</span>
         </div>-->
+        <div class="row items-center q-gutter-md">
+
+          <!-- choose a collection -->
+          <q-select
+            v-model="selectedCollectionId"
+            :options="collectionOptions"
+            label="Select a Collection"
+            outlined
+            emit-value
+            map-options
+            :loading="loading"
+            style="width: 300px;"
+          />
+        </div>
+
         <div class="col">
-          <div class="text-caption q-mb-sm">Choose Tags</div>
+          <!--<div class="text-caption q-mb-sm">Choose Tags</div>-->
           <div v-for="(example, index) in tagFormManage.tag_uuids" :key="index" class="row items-center q-mb-sm">
             <q-select
               v-model="tagFormManage.tag_uuids[index]"
-              :options="tags"
+              :options="filteredTags"
               option-label="tag_name"
               option-value="tag_uuid"
               type="text"
-              label="Tag"
+              label="Choose Tag"
               class="col"
               emit-value
               map-options
@@ -420,14 +446,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted, computed, onMounted } from 'vue'
+import { ref, onUnmounted, computed, onMounted, watch } from 'vue'
 import type { TagRequest, CreateResponse, TagStartResponse, StatusResponse, TagResult, ProcessedTagData, GetTaggedChunksResponse, RemoveTagsResponse, ApproveTagResponse, TagData, TagType, CancelTaskResponse, ApprovedState } from 'src/models'
 import { api } from 'src/boot/axios'
 import axios from 'axios'
 import AvatarItem from 'src/components/AvatarItem.vue'
 import BadgeAvatar from 'src/components/BadgeAvatar.vue'
 import { useUserStore } from 'src/stores/user-store'
-import { QExpansionItem } from 'quasar'
+import { useCollectionStore } from 'src/stores/chunk_collection-store'
+import { QExpansionItem, Notify } from 'quasar'
 
 // TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 
@@ -513,6 +540,7 @@ const tagCreateDialogVisible = ref(false)
 
 const userStore = useUserStore()
 const username = ref('')
+const collectionStore = useCollectionStore()
 
 const tasksExpansion = ref<QExpansionItem | null>(null)
 
@@ -614,6 +642,14 @@ async function loadExistingTagsList () {
   try {
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
+    // filter based on currently selected collection
+    if (selectedCollection.value?.name) {
+      filteredTags.value = tags.value.filter(
+        tag => tag.collection_name === selectedCollection.value?.name
+      )
+    } else {
+      filteredTags.value = []
+    }
     tagsLen.value = tags.value.length
   } finally {
     loadingSpinner.value = false
@@ -635,7 +671,8 @@ async function onCreateTag () {
     console.error('Tagging error:', e)
   } finally {
     loading.value = false
-    loadExistingTagsList()
+    await loadExistingTagsList()
+    await fetchTags()
   }
 }
 
@@ -646,6 +683,7 @@ async function onRunTask () {
       const tagValues = tags.value.find(t => t.tag_uuid === uuid)
       console.log('Tagging will start', tagValues)
       const payload = { ...tagValues, tag_examples: tagValues?.tag_examples.filter(example => example.trim() !== '') }
+      console.log('Payload: ', payload)
       const { data } = await api.post<TagStartResponse>('/tagging_task', payload)
       console.log('Tagging response received:', data)
       // Store task information
@@ -813,6 +851,9 @@ async function fetchTags () {
     const res = await api.get('/all_tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
+    if (selectedCollectionId.value == null) {
+      filteredTags.value = tags.value
+    }
   } finally {
     loadingSpinner.value = false
   }
@@ -842,10 +883,72 @@ async function onShowTasks () {
   }
 }
 
-const handleAddUser = () => {
+const handleAddUser = async () => {
   if (username.value.trim()) {
     console.log('Username entered:', username.value)
     userStore.setUser(username.value)
+    await loadCollections() // load collections of the user
+  }
+}
+
+// local reactive refs
+const selectedCollectionId = ref<string | null>(null)
+const selectedCollection = computed(() =>
+  collectionStore.collections.find(c => c.id === selectedCollectionId.value)
+)
+
+// computed to transform collections
+const collectionOptions = computed(() =>
+  collectionStore.collections.map(c => ({
+    label: c.name ?? `Collection ${c.id}`,
+    value: c.id
+  }))
+)
+
+const collectionOptionsByName = computed(() =>
+  collectionStore.collections.map(c => ({
+    label: c.name ?? `Collection ${c.id}`,
+    value: c.name ?? `Collection ${c.id}` // <-- use name as value
+  }))
+)
+
+// setup variables to store filtered chunks
+const filteredTags = ref<TagData[]>([])
+watch(selectedCollectionId, async (newCollectionId) => {
+  console.log("Filtering, newCollectionId:", newCollectionId)
+  await fetchTags()
+  console.log('tags.value after fetch:', tags.value)
+  console.log('selectedCollection.value?.name:', selectedCollection.value?.name)
+  if (newCollectionId && selectedCollection.value?.name) {
+    filteredTags.value = tags.value.filter(
+      (tag) => {
+        const matches = tag.collection_name === selectedCollection.value?.name
+        console.log('Tag:', tag.tag_name, 'collection_name:', tag.collection_name, 'matches:', matches)
+        return matches
+      }
+    )
+    console.log('Final filteredTags.value:', filteredTags.value)
+    tagsLen.value = filteredTags.value.length
+  } else {
+    filteredTags.value = []
+  }
+})
+
+// load collections from weaviate
+const loadCollections = async () => {
+  if (!collectionStore.userId) {
+    Notify.create({ message: 'No user set', position: 'top', color: 'negative' })
+    return
+  }
+
+  loading.value = true
+  try {
+    await collectionStore.fetchCollections(collectionStore.userId)
+  } catch (err) {
+    console.error(err)
+    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
+  } finally {
+    loading.value = false
   }
 }
 

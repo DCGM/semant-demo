@@ -5,7 +5,6 @@ Just for insipiration in case of erro, now in https://github.com/Martin-Toma/db_
 import weaviate
 from weaviate import WeaviateClient
 from weaviate.connect import ConnectionParams
-from semant_demo.config import config
 import weaviate.classes.config as wvc
 from weaviate.classes.config import ReferenceProperty
 

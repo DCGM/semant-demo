@@ -1,0 +1,7 @@
+pydantic
+numpy
+weaviate-client
+classconfig
+sqlalchemy
+tqdm
+psycopg2
