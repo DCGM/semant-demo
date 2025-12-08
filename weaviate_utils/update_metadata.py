@@ -252,21 +252,11 @@ def main():
                 logging.error("ERROR: Weaviate is not ready.")
                 return
             
-            # Get the document collection
-            doc_collection = client.collections.get(args.document_collection)
+            # get the document collection
+            document_objects = client.collections.get(args.document_collection)
             
-            # Fetch all documents
-            logging.info(f"Fetching documents from collection: {args.document_collection}")
-            response = doc_collection.query.fetch_objects()
-            
-            documents = response.objects
-            
-            if not documents:
-                logging.info(f"\nNo documents found in collection '{args.document_collection}'")
-                return
-            
-            logging.info(f"\nFound {len(documents)} document(s)\n")
-            for idx, doc in enumerate(documents):
+            # iterator instead of fetching all at once
+            for idx, doc in enumerate(document_objects.iterator()):
                     print_document_pretty(doc, idx)
                     #################
                     # actual update #
