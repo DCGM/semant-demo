@@ -24,6 +24,30 @@ def parse_args():
         default=None,
         help="Optional: Save output to a file instead of printing to console."
     )
+    parser.add_argument(
+        "--http_host",
+        type=str,
+        default="localhost",
+        help="HTTP host for weaviate client."
+    )
+    parser.add_argument(
+        "--http_port",
+        type=int,
+        default=8080,
+        help="HTTP port for weaviate client."
+    )
+    parser.add_argument(
+        "--grpc_host",
+        type=str,
+        default="localhost",
+        help="grpc host for weaviate client."
+    )
+    parser.add_argument(
+        "--grpc_port",
+        type=int,
+        default=50051,
+        help="grpc port for weaviate client."
+    )
     return parser.parse_args()
 
 
@@ -49,8 +73,8 @@ def main():
     # Connect to Weaviate
     client = WeaviateClient(
         connection_params=ConnectionParams.from_params(
-            http_host="localhost", http_port=8080, http_secure=False,
-            grpc_host="localhost", grpc_port=50051, grpc_secure=False,
+            http_host=args.http_host, http_port=args.http_port, http_secure=False,
+            grpc_host=args.grpc_host, grpc_port=args.grpc_port, grpc_secure=False,
         )
     )
 

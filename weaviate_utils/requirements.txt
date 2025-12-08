@@ -2,12 +2,6 @@ pydantic
 numpy
 weaviate-client
 classconfig
-langchain
-langchain_core
-langchain_google_genai
-langchain_openai
-langchain-ollama
-langchain_community
-ollama_proxy
 sqlalchemy
-aiosqlite
+tqdm
+psycopg2
