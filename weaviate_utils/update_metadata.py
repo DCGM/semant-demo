@@ -293,7 +293,7 @@ def main():
                     insert_to_weaviate(client=client, data=best_db_doc, documents_collection=args.document_collection, document_id=doc.uuid)
             
             logging.info(f"\n{'='*80}")
-            logging.info(f"Total documents: {len(documents)}")
+            logging.info(f"Documents updated")
             logging.info(f"{'='*80}")
         
         finally:
