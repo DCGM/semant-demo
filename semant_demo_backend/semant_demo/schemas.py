@@ -53,7 +53,7 @@ class Document(BaseModel):
     library: str
     title: str | None = None
     subtitle: str | None = None
-    partNumber: int | None = None
+    partNumber: int | str | None = None
     partName: str | None = None
     yearIssued: int | None = None
     dateIssued: datetime | None = None
