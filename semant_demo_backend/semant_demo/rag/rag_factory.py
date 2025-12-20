@@ -26,6 +26,41 @@ RAG_INSTANCES: Dict[str, BaseRag] = {}
 #for frontend
 RAG_INSTANCES_CONFIGS: Dict[str, RagRouteConfig] = {}
 
+#load single rag configuration and return  id and frontend_config, instance of the class
+def rag_load_single_config(global_config, filepath: str):
+    try:
+        #load rag config
+        with open (filepath, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        
+        id = config.get("id")
+        name = config.get("name")
+        desc = config.get("description")
+        class_name = config.get("class_name")
+        params = config.get("params", {})
+        
+        if (not id or not name or not desc or not class_name or not params):
+            logging.error(f"Yaml is in wrong format, skipping configuration: {filepath}.")
+            return None
+        if (class_name not in RAG_IMPLEMENTATIONS):
+            logging.error(f"Unknown class: {class_name}, skipping configuration: {filepath}.")
+            return None
+
+        
+        #get class of choice
+        RagClass = RAG_IMPLEMENTATIONS[class_name]
+        
+        #create an instance
+        instance = RagClass(global_config=global_config, param_config=params)
+        
+        #create frontend config
+        frontend_config = RagRouteConfig(id=id, name=name, description=desc)
+
+        return id, frontend_config, instance
+        
+    except Exception as e:
+        logging.error(f"Failed to load RAG configuration: {filepath}: {e}")
+
 def rag_factory(global_config, configs_path: str):
     RAG_INSTANCES.clear()
     RAG_INSTANCES_CONFIGS.clear()
@@ -37,42 +72,25 @@ def rag_factory(global_config, configs_path: str):
     for filename in os.listdir(configs_path):
         if filename.endswith(".yaml"):
             filepath = os.path.join(configs_path, filename)
-            try:
-                #load rag config
-                with open (filepath, "r", encoding="utf-8") as f:
-                    config = yaml.safe_load(f)
+
+            #load single config
+            results = rag_load_single_config(global_config=global_config, filepath=filepath)
+
+            if (results is None):
+                continue
+
+            id, frontend_config, instance = results
+
+            #duplicity check
+            if (id in RAG_INSTANCES_CONFIGS):
+                logging.error(f"Same configuration id: {id}, skipping configuration: {filepath}.")
+                continue
                 
-                id = config.get("id")
-                name = config.get("name")
-                desc = config.get("description")
-                class_name = config.get("class_name")
-                params = config.get("params", {})
-                
-                if (not id or not name or not desc or not class_name or not params):
-                    logging.error(f"Yaml is in wrong format, skipping configuration: {filename}.")
-                    continue
-                if (class_name not in RAG_IMPLEMENTATIONS):
-                    logging.error(f"Unknown class: {class_name}, skipping configuration: {filename}.")
-                    continue
-                if (id in RAG_INSTANCES_CONFIGS):
-                    logging.error(f"Same configuration id: {id}, skipping configuration: {filename}.")
-                    continue
-                
-                #get class of choice
-                RagClass = RAG_IMPLEMENTATIONS[class_name]
-                
-                #create an instance
-                instance = RagClass(global_config=global_config, param_config=params)
-                RAG_INSTANCES[id] = instance
-                
-                #create frontend config
-                frontend_config = RagRouteConfig(id=id, name=name, description=desc)
-                RAG_INSTANCES_CONFIGS[id] = frontend_config
-                
-            except Exception as e:
-                logging.error(f"Failed to load RAG configuration: {filename}: {e}")
-    
-    
+            #create an instance
+            RAG_INSTANCES[id] = instance
+            
+            #create frontend config
+            RAG_INSTANCES_CONFIGS[id] = frontend_config
 
 #return all avalaible rag configurations registered in app
 def get_all_rag_configurations() -> list[RagRouteConfig]:

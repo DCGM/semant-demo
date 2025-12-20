@@ -3,7 +3,7 @@ from semant_demo.config import config
 import asyncio
 from langchain_core.prompt_values import PromptValue
 from langchain_core.messages import BaseMessage
-from langchain.schema.runnable import Runnable
+from langchain_core.runnables import Runnable
 
 class OllamaProxyRunnable(Runnable):
     def __init__(self):
