@@ -3,7 +3,7 @@ import langchain_google_genai
 from fastapi import HTTPException
 from time import time
 
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -12,47 +12,25 @@ from langchain_ollama import OllamaLLM
 
 from langgraph.graph import StateGraph, START, END
 
-from pydantic import BaseModel
-from typing_extensions import TypedDict
+from pydantic import BaseModel, Field
 
 import logging
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
-from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSearch, RagRouteConfig, RagRequest, RagResponse, AdaptiveRagState
+from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState
 from semant_demo.weaviate_search import WeaviateSearch
+#import prompts from prompt file
+from semant_demo.rag.adaptive_rag_prompts import *
 
-# prompt
-answer_question_prompt_template = [
-    ("system",
-    """
-    You are a precise and helpful chatbot. Your main task is to answer the user's \
-    question based STRICTLY on the provided context.
-    Follow these rules exactly:
-    1) Use ONLY the following pieces of context to answer the question.
-    2) For every piece of information or sentence that you take out of context, \
-    you must provide source in format `[doc X]`, where X is the number of the corresponding source."
-    3) If multiple sources support one sentence, cite them all, like this: `[doc 2], [doc 5]`.
-    4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
-    5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
-    Context: {context_string}\n
-    """),
-    MessagesPlaceholder(variable_name="prompt_history"),
-    ("user", "{question_string}")
-    ]
+#graders
+#grade relevancy of retrived documents
+class GraderChunkRelevance(BaseModel):
+    binary_score: str = Field(description="Documents are relevant to the question, 'yes' or 'no'")
 
-refrase_question_from_history_prompt_template = [
-    ("system",
-    """
-    Given a chat history and the latest user question \
-    which might reference context in the chat history, formulate a standalone question which can be understood \
-    without the chat history. Do NOT answer the question, Your goal is to make the question more specific by incorporating \
-    relevant keywords and entities (like names, locations, or dates) from the chat history. \
-    just reformulate it if needed and otherwise return it as is. 
-    """),
-    MessagesPlaceholder(variable_name="prompt_history"),
-    ("user", "{question_string}")
-    ]
+#grade relevancy of the answer
+class GraderAnswerRelevance(BaseModel):
+    binary_score: str = Field(description="Is an answer base on the context, 'yes' or 'no'")
 
 @register_rag_class
 class AdaptiveRagGenerator(BaseRag):
@@ -63,7 +41,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
         self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
         self.output_parser = StrOutputParser()
-        #create model instance
+        #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
         self.model_type = model_type
         api_key = param_config.get("api_key", None)
@@ -74,6 +52,16 @@ class AdaptiveRagGenerator(BaseRag):
         self.chunk_limit = param_config.get("chunk_limit", 5)
         self.alpha = param_config.get("alpha", 0.5)
         self.search_type = param_config.get("search_type", "hybrid")
+        #load and build graph
+        #load
+        self.qt_strategy = param_config.get("qt_strategy", "multi_query") #step_back
+        self.max_retries = param_config.get("max_retries", 3)
+        self.web_search_enabled = param_config.get("web_search_enabled", False)
+        #build
+        self.workflow = self._build_rag()
+        self.rag = self.workflow.compile()
+
+#--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -103,7 +91,54 @@ class AdaptiveRagGenerator(BaseRag):
                 temperature = temperature
             )
 
-    # creation of the chain - will be complex in future
+    # create the graph - TODO přidat odstranovani uzlu
+    def _build_rag(self):
+        #define nodes
+        workflow = StateGraph(AdaptiveRagState)
+        workflow.add_node("transform_history", self.node_history_transformation)
+        workflow.add_node("extract_metadata", self.node_extract_metadata)
+        workflow.add_node("multi_query", self.node_multi_query)
+        workflow.add_node("retrieve", self.node_retrieve)
+        workflow.add_node("grade_context", self.node_grade_context)
+        workflow.add_node("generate", self.node_generate)
+        workflow.add_node("web_search", self.node_web_search)
+
+        #define edges
+        workflow.add_edge(START, "transform_history")
+
+        workflow.add_edge("transform_history", "extract_metadata")
+        workflow.add_edge("transform_history", "multi_query")
+
+        workflow.add_edge("extract_metadata", "retrieve")
+        workflow.add_edge("multi_query", "retrieve")
+
+        workflow.add_edge("retrieve", "grade_context")
+
+        #conditional edges - cycles
+        workflow.add_conditional_edges(
+            "grade_context",
+            self.after_context_grade,
+            {
+                "generate" : "generate",
+                "web_search" : "web_search",
+                "transform" : "transform_history"
+            }
+        )
+
+        workflow.add_conditional_edges(
+            "generate",
+            self.node_grade_generation,
+            {
+                "supported": END,
+                "not_supported": "generate"
+            }
+        )
+
+        return workflow
+
+#--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+
+    # creation of the chain
     def _create_chain(self, model, prompt):    
         return prompt | model | self.output_parser
     
@@ -125,18 +160,23 @@ class AdaptiveRagGenerator(BaseRag):
         ]
         return ("\n".join(snippets))
     
-    async def _call_weaviate_search(self, rag_search: RagSearch,  type: SearchType) -> SearchResponse:
+#--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+
+    #TODO - add metadata and be able to ask multiple queries 
+    async def node_retrieve(self, state: AdaptiveRagState):
+        #get metadata
+        metadata = state.get("metadata", {})
         #create db search request
         search_request = SearchRequest(
-            query = rag_search.search_query,
+            query = state["question"],
             type = self.search_type,
             hybrid_search_alpha = self.alpha,
             limit = self.chunk_limit,
-            min_year = rag_search.min_year,
-            max_year = rag_search.max_year,
-            min_date = rag_search.min_date,
-            max_date = rag_search.max_date,
-            language = rag_search.language,
+            min_year = metadata.get("min_year"),
+            max_year = metadata.get("max_year"),
+            min_date = metadata.get("min_date"),
+            max_date = metadata.get("max_date"),
+            language = metadata.get("language"),
             tag_uuids = [],
             positive = False,
             automatic = False
@@ -145,65 +185,83 @@ class AdaptiveRagGenerator(BaseRag):
         print(f"search_request: {search_request}")
         #call db search
         search_response = await self.searcher.search(search_request)
-        return search_response
+        
+        return  {"documents" : search_response.results}
     
     #rephrase question to search desired data in database
-    async def _rephrase_question(self, question_string: str, model, prompt_history):
-        chain = self._create_chain(model=model, prompt=self.history_prompt)
+    async def node_history_transformation(self, state: AdaptiveRagState):
+        if (state["history"]):
+            #create desired chain
+            chain = self._create_chain(model=self.model, prompt=self.history_prompt)
 
-        correct_question = await chain.ainvoke({
-            "question_string" : question_string,
-            "prompt_history" : prompt_history
-        })
+            #convert history into desired format
+            prompt_history = self._get_prompt_history(state["history"])
 
-        #TODO DEBUG
-        print(f"Refrased question: {correct_question}")
+            correct_question = await chain.ainvoke({
+                "question_string" : state["question"],
+                "prompt_history" : prompt_history
+            })
 
-        return correct_question
+            #TODO DEBUG
+            print(f"Refrased question: {correct_question}")
 
-    # execute chain
-    async def generate_answer(self, question_string: str, history: list, rag_search: RagSearch, context_string: str | None = None):
-        #create llm instance
-        model = self.model
+            return {"question" : correct_question}
+        else:
+            return {"question" : state["question"]}
 
-        #convert history into desired format
-        prompt_history = self._get_prompt_history(history)
-        #rephrase question if history is there
-        question = question_string
-        if (history):
-            question = await self._rephrase_question(question_string=question_string, model=model, prompt_history=prompt_history)
-        rag_search.search_query = question
-
-
-        final_context = context_string
-        # check if context was entered
-        if (final_context == None):
-            #convert search type
-            try:
-                type = SearchType(rag_search.search_type)
-            except ValueError:
-                raise ValueError(f"Rag error: Unknown search type: {rag_search.search_type}")
-            #search in db
-            search_response = await self._call_weaviate_search(type = type, rag_search = rag_search)
-            search_results = search_response.results
-            #convert context to desired format
-            final_context = self._format_weaviate_context(search_results)
-        
-        chain = self._create_chain(model=model, prompt=self.main_prompt)
-
-        #TODO DEBUG
-        print(f"rag_config: {self.param_config}, rag_search: {rag_search} ")
-
-        result = await chain.ainvoke({
-            "context_string" : final_context,
-            "question_string" : question_string,
-            "prompt_history" : prompt_history
-        })
-        return {
-            "answer": result,
-            "sources": search_results
-        }
+    async def node_extract_metadata(self, state: AdaptiveRagState):
+        #TODO
+        return {"metadata" : {}}
     
+    async def node_multi_query(self, state: AdaptiveRagState):
+        #TODO
+        return {"queries" : [state["question"]]}
+
+    async def node_grade_context(self, state: AdaptiveRagState):
+        #TODO
+        #if relevant return this
+        return {"documents" : state["documents"]}
+    
+    def after_context_grade (self, state: AdaptiveRagState):
+        if (not state["documents"]):
+            #TODO
+            return "transform"
+        return "generate"
+
+    # generate an answer
+    async def node_generate(self, state: AdaptiveRagState):
+        chain = self._create_chain(model=self.model, prompt=self.main_prompt)
+
+        #join snippets
+        final_context = self._format_weaviate_context(state["documents"])
+
+        #get history in desired format
+        prompt_history = self._get_prompt_history(state["history"])
+
+        answer = await chain.ainvoke({
+            "context_string" : final_context,
+            "question_string" : state["question"],
+            "prompt_history" : prompt_history
+        })
+
+        #TODO DEBUG
+        print(f"rag answer: {answer}")
+
+        return {"generation": answer}
+    
+    def node_grade_generation (self, state: AdaptiveRagState):
+        #TODO
+        #if good
+        return "supported"
+        #else return "not_supported"
+    
+    def node_web_search (self, state: AdaptiveRagState):
+        #TODO
+        web_results = []
+        return {"documents" : state["documents"] + web_results}
+    
+    #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+
     #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
     async def rag_request(self, request: RagRequest, searcher: WeaviateSearch) -> RagResponse:
         if (self.searcher == None):
@@ -217,12 +275,19 @@ class AdaptiveRagGenerator(BaseRag):
         try:
             t1 = time()
 
-            generated_result = await self.generate_answer(
-                question_string = request.question,
-                history= history_preprocessed,
-                #search parameters
-                rag_search = request.rag_search
-            )
+            intial_state_values = {
+                "question" : request.question,
+                "queries" : [],
+                "history": history_preprocessed,
+                "documents": [],
+                "metadata": {},
+                "iteration_counter": 0
+            }
+            
+            config = {"recursion_limit" : 8}
+
+            generated_result = await self.rag.ainvoke(intial_state_values, config=config)
+
             time_spent = time() - t1
 
         except (openai.AuthenticationError, langchain_google_genai.chat_models.ChatGoogleGenerativeAIError) as e:
@@ -234,7 +299,7 @@ class AdaptiveRagGenerator(BaseRag):
 
         # answer
         return RagResponse(
-            rag_answer=generated_result["answer"].strip(),
-            sources=generated_result["sources"],
+            rag_answer=generated_result["generation"].strip(),
+            sources=generated_result["documents"],
             time_spent=time_spent
         )

@@ -170,7 +170,7 @@ class RagResponse(BaseModel):
 # class defining state of the adaptive rag
 class AdaptiveRagState(TypedDict):
     question: str
-    original_question: str
+    queries: list[str]
     history: list[Any]
     documents: list[Any]
     generation: str

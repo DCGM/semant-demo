@@ -9,3 +9,6 @@ params:
   search_type : "hybrid"
   alpha: 0.5
   chunk_limit: 5
+  qt_strategy : 
+  max_retries : 3
+  web_search_enabled : False
