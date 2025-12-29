@@ -1,6 +1,6 @@
 from enum import Enum
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, TypedDict, Any
 from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -166,6 +166,16 @@ class RagResponse(BaseModel):
     rag_answer: str
     time_spent: float
     sources: list[TextChunkWithDocument]
+
+# class defining state of the adaptive rag
+class AdaptiveRagState(TypedDict):
+    question: str
+    original_question: str
+    history: list[Any]
+    documents: list[Any]
+    generation: str
+    metadata: dict[str, Any]
+    iteration_counter: int
 
 
 class AvailableRagConfigurationsResponse(BaseModel):

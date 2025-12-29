@@ -13,6 +13,7 @@ langchain_google_genai
 langchain_openai
 langchain-ollama
 langchain_community
+langgraph
 jinja2
 sqlalchemy
 aiosqlite
