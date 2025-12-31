@@ -15,6 +15,9 @@ from langgraph.graph import StateGraph, START, END
 from pydantic import BaseModel, Field
 
 import logging
+import re
+import json
+from datetime import datetime
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
@@ -22,6 +25,8 @@ from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagRe
 from semant_demo.weaviate_search import WeaviateSearch
 #import prompts from prompt file
 from semant_demo.rag.adaptive_rag_prompts import *
+
+DEBUG_PRINT = True
 
 #graders
 #grade relevancy of retrived documents
@@ -40,6 +45,7 @@ class AdaptiveRagGenerator(BaseRag):
         #this can be part of config in future
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
         self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
+        self.extract_prompt = ChatPromptTemplate.from_messages(extract_metadata_from_question_template)
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
@@ -48,6 +54,10 @@ class AdaptiveRagGenerator(BaseRag):
         model_name = param_config.get("model_name", None)
         temperature = param_config.get("temperature", None)
         self.model = self._create_model(model_type, model_name, api_key, temperature)
+
+        #extract metadata model
+        self.extract_model = self._create_extract_model()
+
         #search parameters
         self.chunk_limit = param_config.get("chunk_limit", 5)
         self.alpha = param_config.get("alpha", 0.5)
@@ -57,6 +67,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.qt_strategy = param_config.get("qt_strategy", "multi_query") #step_back
         self.max_retries = param_config.get("max_retries", 3)
         self.web_search_enabled = param_config.get("web_search_enabled", False)
+        self.metadata_extraction_allowed = param_config.get("metadata_extraction_allowed", True)
         #build
         self.workflow = self._build_rag()
         self.rag = self.workflow.compile()
@@ -90,6 +101,10 @@ class AdaptiveRagGenerator(BaseRag):
                 api_key = api_key if api_key else self.global_config.OPENAI_API_KEY,
                 temperature = temperature
             )
+    
+    def _create_extract_model(self):
+        #TODO can add optional model to config
+        return self.model
 
     # create the graph - TODO přidat odstranovani uzlu
     def _build_rag(self):
@@ -181,12 +196,17 @@ class AdaptiveRagGenerator(BaseRag):
             positive = False,
             automatic = False
         )
-        #TODO DEBUG
-        print(f"search_request: {search_request}")
+        if (DEBUG_PRINT):
+            print(f"search_request: {search_request}")
         #call db search
         search_response = await self.searcher.search(search_request)
         
-        return  {"documents" : search_response.results}
+
+        counter_value = state.get("iteration_counter", 0) + 1
+
+        return  {"documents" : search_response.results, 
+                 "iteration_counter" : counter_value
+                 }
     
     #rephrase question to search desired data in database
     async def node_history_transformation(self, state: AdaptiveRagState):
@@ -202,16 +222,34 @@ class AdaptiveRagGenerator(BaseRag):
                 "prompt_history" : prompt_history
             })
 
-            #TODO DEBUG
-            print(f"Refrased question: {correct_question}")
+            if (DEBUG_PRINT):
+                print(f"Refrased question: {correct_question}")
 
             return {"question" : correct_question}
         else:
             return {"question" : state["question"]}
 
     async def node_extract_metadata(self, state: AdaptiveRagState):
-        #TODO
-        return {"metadata" : {}}
+        if (self.metadata_extraction_allowed == True):
+            chain =  self._create_chain (model=self.extract_model, prompt=self.extract_prompt)
+            result = await chain.ainvoke({"question_string" : state["question"],})
+            clean_result = re.sub(r'```json|```', '', result).strip()
+            if (DEBUG_PRINT):
+                print(f"metadata_clean_result: {clean_result}")
+            try:
+                metadata = json.loads(clean_result)
+                metadata_structured = {
+                    "min_year" : int(metadata.get("min_year")) if metadata.get("min_year") else None,
+                    "max_year" : int(metadata.get("max_year")) if metadata.get("max_year") else None,
+                    "language" : metadata.get("language")
+                }
+                if (DEBUG_PRINT):
+                    print(f"metadata_structured: {metadata_structured}")
+                return {"metadata" : metadata_structured}
+            except Exception:
+                return {"metadata" : {}}
+        else:
+            return {"metadata" : {}}
     
     async def node_multi_query(self, state: AdaptiveRagState):
         #TODO
@@ -224,8 +262,10 @@ class AdaptiveRagGenerator(BaseRag):
     
     def after_context_grade (self, state: AdaptiveRagState):
         if (not state["documents"]):
-            #TODO
-            return "transform"
+            if (state.get("iteration_counter", 0) < self.max_retries) and (self.metadata_extraction_allowed == True):
+                print(f"No documents found, transformig query. Turning metadata extraction OFF.")
+                self.metadata_extraction_allowed = False
+                return "transform"
         return "generate"
 
     # generate an answer
@@ -244,8 +284,8 @@ class AdaptiveRagGenerator(BaseRag):
             "prompt_history" : prompt_history
         })
 
-        #TODO DEBUG
-        print(f"rag answer: {answer}")
+        if (DEBUG_PRINT):
+            print(f"rag answer: {answer}")
 
         return {"generation": answer}
     
@@ -284,7 +324,7 @@ class AdaptiveRagGenerator(BaseRag):
                 "iteration_counter": 0
             }
             
-            config = {"recursion_limit" : 8}
+            config = {"recursion_limit" : 20}
 
             generated_result = await self.rag.ainvoke(intial_state_values, config=config)
 
