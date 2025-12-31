@@ -31,3 +31,16 @@ refrase_question_from_history_prompt_template = [
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "{question_string}")
     ]
+
+extract_metadata_from_question_template = [
+    ("system",
+    """
+    You are an expert metadata extractor for a historical document archive.
+    Your task is to analyze the user's query and extract relevant filtering criteria into a strict JSON format. 
+    Data to extract:
+    - min_year: The earliest year mentioned or implied (as an integer).
+    - max_year: The latest year mentioned or implied (as an integer).
+    - language: The requested language of the documents. Use  ISO 639-2/T codes (e.g., 'ces', 'deu', 'eng', 'rus', 'slk').
+    """),
+    ("user", "{question_string}")
+    ]

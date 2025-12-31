@@ -167,6 +167,13 @@ class RagResponse(BaseModel):
     time_spent: float
     sources: list[TextChunkWithDocument]
 
+class ExtractedMeradata(BaseModel):
+    min_year : int | None = None
+    max_year : int | None = None
+    min_date : datetime | None = None
+    min_date : datetime | None = None
+    language : int | None = None
+
 # class defining state of the adaptive rag
 class AdaptiveRagState(TypedDict):
     question: str
@@ -174,9 +181,8 @@ class AdaptiveRagState(TypedDict):
     history: list[Any]
     documents: list[Any]
     generation: str
-    metadata: dict[str, Any]
+    metadata: ExtractedMeradata
     iteration_counter: int
-
 
 class AvailableRagConfigurationsResponse(BaseModel):
     available_models: list[str]
