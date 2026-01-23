@@ -1,58 +1,58 @@
 #this is showcase of how to use rag without starting whole aplication
+import os
 import asyncio
+import warnings
 from dotenv import load_dotenv
 load_dotenv() #have to be called before config import
 
 from semant_demo.config import config
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.rag.rag_generator import RagGenerator
-from semant_demo.schemas import RagConfig, RagSearch
+from semant_demo.rag.rag_factory import rag_load_single_config
+from semant_demo.schemas import RagRequest, RagSearch
 
+import semant_demo.rag.rag_generator
 
-#TODO need to rewrite this script after new db will be ready
+warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<socket.socket.*>")
+warnings.filterwarnings("ignore",category=ResourceWarning, message="unclosed transport.*")
+
 async def main():
-    search = await WeaviateSearch.create(config=config)
-    rag_generator = RagGenerator(config=config, search=search)
-    # question/query - in this case its use as both rag question and search question
+    searcher = await WeaviateSearch.create(config=config)
+    # question/query
     question = "Vyskytly se v Praze neštovice po roce 1800?"
     print(f"Question: {question}\n")
     try:
-        #configuration of the model - api, model, temperature
-        model_config = RagConfig(
-            model_name="OLLAMA",
-            temperature=0.0
-        )
-        # create search query, will by used to create weaviate search query
+        #path to configuration
+        path = os.path.join(config.RAG_CONFIGS_PATH, "01_ollama_default_config .yaml")
+        #load configuration (yaml format)
+        results = rag_load_single_config(config, path)
+        
+        _, _, rag_generator = results
+
+        if (results == None):
+            return
+
+        #create search
         rag_search = RagSearch(
-            search_query = question,
-            limit= 5,
-            search_type = 'hybrid', #vector: alpha=1, text: alpha=0
-            alpha= 0.5,
-            min_year= None,
-            max_year= None,
-            min_date= None,
-            max_date=None,
-            language= None
+            search_query=question   #with history its rephrased
         )
-   
-        #call rag
-        generated_result = await rag_generator.generate_answer(
-            question_string = question,
-            history= [],
-            #rag configuration parameters
-            rag_config = model_config,
-            #search parameters
-            rag_search = rag_search
+        #create request
+        rag_request = RagRequest(
+                question =  question,
+                history = [],
+                rag_search = rag_search
         )
 
-        print(f"Answer: {generated_result["answer"]}\n")
+        #call rag
+        generated_result = await rag_generator.rag_request(rag_request, searcher=searcher)
+
+        print(f"Answer: {generated_result.rag_answer}\n")
         if (False):
-            print(f"Sources: {generated_result["sources"]}\n")
+            print(f"Sources: {generated_result.sources}\n")
 
     except Exception as e:
         print(f"RAG error: while generating response: {e}")
     finally:
-        await search.close()
+        await searcher.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

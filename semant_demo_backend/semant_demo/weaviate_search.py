@@ -16,7 +16,6 @@ from .config import config
 import asyncio
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.prompts import ChatPromptTemplate
 from semant_demo.tagging.llm_caller import OllamaProxyRunnable
 
 import semant_demo.tagging.prompt_templates as tagging_templates
