@@ -374,7 +374,7 @@ const replaceSourcesAndConvertToMarcdown = (msg: Message, msgIndex: number) => {
     return convertToMarkdown(msg.text)
   }
 
-  const sourcesRegex = /\[doc\s*(\d+)\]/g
+  const sourcesRegex = /(?:\[doc\s*(\d+)\]|Dokument\s*(\d+))/gi // /\[doc\s*(\d+)\]/g
 
   // replace sources links
   const result = msg.text.replace(sourcesRegex, (match, strIndex) => {
