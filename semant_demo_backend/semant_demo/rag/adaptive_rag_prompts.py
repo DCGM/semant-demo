@@ -13,6 +13,7 @@ answer_question_prompt_template = [
     3) If multiple sources support one sentence, cite them all, like this: `[doc 2], [doc 5]`.
     4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
+    6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
     Context: {context_string}\n
     """),
     MessagesPlaceholder(variable_name="prompt_history"),
@@ -26,7 +27,10 @@ refrase_question_from_history_prompt_template = [
     which might reference context in the chat history, formulate a standalone question which can be understood \
     without the chat history. Do NOT answer the question, Your goal is to make the question more specific by incorporating \
     relevant keywords and entities (like names, locations, or dates) from the chat history. \
-    just reformulate it if needed and otherwise return it as is. 
+    CRITICAL RULE: The standalone question MUST be in the SAME LANGUAGE as the latest user question. 
+    If the user asks in Czech, the reformulated question must be in Czech.
+    
+    Just reformulate it if needed and otherwise return it as is. 
     """),
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "{question_string}")
@@ -36,7 +40,7 @@ extract_metadata_from_question_template = [
     ("system",
     """
     You are an expert metadata extractor for a historical document archive.
-    Your task is to analyze the user's query and extract relevant filtering criteria into a strict JSON format. 
+    Your task is to analyze the user's query (which may be in Czech, German, or other languages) and extract relevant filtering criteria into a strict JSON format. 
     Data to extract:
     - min_year: The earliest year mentioned or implied (as an integer).
     - max_year: The latest year mentioned or implied (as an integer).
