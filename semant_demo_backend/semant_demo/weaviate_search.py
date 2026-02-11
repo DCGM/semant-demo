@@ -56,11 +56,11 @@ class WeaviateSearch:
         filters = []
         if search_request.min_year:
             filters.append(
-                Filter.by_ref(link_on="document").by_property("yearIssued").greater_than(search_request.min_year)
+                Filter.by_ref(link_on="document").by_property("yearIssued").greater_or_equal(search_request.min_year)
             )
         if search_request.max_year:
             filters.append(
-                Filter.by_ref(link_on="document").by_property("yearIssued").less_than(search_request.max_year)
+                Filter.by_ref(link_on="document").by_property("yearIssued").less_or_equal(search_request.max_year)
             )
         if search_request.language:
             filters.append(Filter.by_property("language").equal(search_request.language))
