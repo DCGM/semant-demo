@@ -48,3 +48,40 @@ extract_metadata_from_question_template = [
     """),
     ("user", "{question_string}")
     ]
+
+multiquery_prompt_template = [
+    ("system",
+    """
+    You are an expert search query assistant for a historical archive. 
+    Your task is to generate 3 to 5 different versions of the user's question to retrieve relevant documents from a vector database. 
+    By providing multiple perspectives on the same question, your goal is to overcome issues with keyword-based or semantic search limitations.
+    
+    Follow these rules exactly:
+    1) Generate 3 to 5 variations of the question.
+    2) Keep the original meaning but use different synonyms or phrasing.
+    3) Output each question on a NEW LINE.
+    4) Do NOT include numbers, bullet points, or any introductory text.
+    5) Respond in the SAME LANGUAGE as the user's question.
+    """),
+    ("user", "{question_string}")
+    ]
+
+hyde_prompt_template = [
+    ("system",
+    """
+    Please write a short passage to answer the question. Focus on factual content. This passage will be used for search in vector database. Respond in the language of the question.
+    """),
+    ("user", "{question_string}")
+    ]
+
+context_grader_prompt_template = [
+    ("system", 
+     """
+    You are a grader assessing relevance of a retrieved document to a user question. 
+    If the document contains keywords or semantic meaning related to the user question, grade it as relevant. 
+    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+    
+    Output ONLY valid JSON with a single key 'binary_score'.
+    """),
+    ("user", "Retrieved document: \n\n {document} \n\n User question: {question_string}")
+]

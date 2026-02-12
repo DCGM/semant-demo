@@ -18,6 +18,7 @@ import logging
 import re
 import json
 from datetime import datetime
+import asyncio
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
@@ -46,6 +47,9 @@ class AdaptiveRagGenerator(BaseRag):
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
         self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
         self.extract_prompt = ChatPromptTemplate.from_messages(extract_metadata_from_question_template)
+        self.multiquery_prompt = ChatPromptTemplate.from_messages(multiquery_prompt_template)
+        self.hyde_prompt = ChatPromptTemplate.from_messages(hyde_prompt_template)
+        self.context_grader_prompt = ChatPromptTemplate.from_messages(context_grader_prompt_template)
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
@@ -64,7 +68,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.search_type = param_config.get("search_type", "hybrid")
         #load and build graph
         #load
-        self.qt_strategy = param_config.get("qt_strategy", "multi_query") #step_back
+        self.qt_strategy = param_config.get("qt_strategy", "multi_query") #step_back / hyde / multi_query / nothing
         self.max_retries = param_config.get("max_retries", 3)
         self.web_search_enabled = param_config.get("web_search_enabled", False)
         self.metadata_extraction_allowed = param_config.get("metadata_extraction_allowed", True)
@@ -177,34 +181,61 @@ class AdaptiveRagGenerator(BaseRag):
     
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-    #TODO - add metadata and be able to ask multiple queries 
     async def node_retrieve(self, state: AdaptiveRagState):
         #get metadata
         metadata = state.get("metadata", {})
-        #create db search request
-        search_request = SearchRequest(
-            query = state["question"],
-            type = self.search_type,
-            hybrid_search_alpha = self.alpha,
-            limit = self.chunk_limit,
-            min_year = metadata.get("min_year"),
-            max_year = metadata.get("max_year"),
-            min_date = metadata.get("min_date"),
-            max_date = metadata.get("max_date"),
-            language = metadata.get("language"),
-            tag_uuids = [],
-            positive = False,
-            automatic = False
-        )
+
+        #is used strategy hyde --> use document embedding instead of query embedding
+        use_hyde_embedding = True if self.qt_strategy == "hyde" else False
+
         if (DEBUG_PRINT):
-            print(f"search_request: {search_request}")
-        #call db search
-        search_response = await self.searcher.search(search_request)
+            print(f"Is used hyde embedding: {use_hyde_embedding}.")
+
+        #load all question variants
+        queries = state.get("queries", [])
+        if not queries:
+            queries = [state["question"]]
+
+        #create db search request
+        async def single_search(query):
+            search_request = SearchRequest(
+                query = query,
+                type = self.search_type,
+                hybrid_search_alpha = self.alpha,
+                limit = self.chunk_limit,
+                min_year = metadata.get("min_year"),
+                max_year = metadata.get("max_year"),
+                min_date = metadata.get("min_date"),
+                max_date = metadata.get("max_date"),
+                language = metadata.get("language"),
+                tag_uuids = [],
+                positive = False,
+                automatic = False,
+                is_hyde = use_hyde_embedding
+            )
+            if (DEBUG_PRINT):
+                print(f"search_request: {search_request}")
+            #call db search
+            return await self.searcher.search(search_request)
+
+        #call in parallel
+        search_tasks = [single_search(query) for query in queries]
+        search_responses = await asyncio.gather(*search_tasks)
         
+        #remove duplicities and put it together
+        unique_chunks = {}
+        for response in search_responses:
+            for chunk in response.results:
+                chunk_id = getattr(chunk, "id", None)
+                print(f"chunk id: {chunk_id}")
+                if chunk_id not in unique_chunks:
+                    unique_chunks[chunk_id] = chunk
+
+        all_chunks = list(unique_chunks.values())
 
         counter_value = state.get("iteration_counter", 0) + 1
 
-        return  {"documents" : search_response.results, 
+        return  {"documents" : all_chunks, 
                  "iteration_counter" : counter_value
                  }
     
@@ -232,7 +263,7 @@ class AdaptiveRagGenerator(BaseRag):
     async def node_extract_metadata(self, state: AdaptiveRagState):
         if (self.metadata_extraction_allowed == True):
             chain =  self._create_chain (model=self.extract_model, prompt=self.extract_prompt)
-            result = await chain.ainvoke({"question_string" : state["question"],})
+            result = await chain.ainvoke({"question_string" : state["question"]})
             clean_result = re.sub(r'```json|```', '', result).strip()
             if (DEBUG_PRINT):
                 print(f"metadata_clean_result: {clean_result}")
@@ -252,20 +283,76 @@ class AdaptiveRagGenerator(BaseRag):
             return {"metadata" : {}}
     
     async def node_multi_query(self, state: AdaptiveRagState):
-        #TODO
-        return {"queries" : [state["question"]]}
+        if self.qt_strategy == "multi_query":
+            if (DEBUG_PRINT):
+                print(f"Multi query mode")
+            
+            chain = self._create_chain(model = self.model, prompt=self.multiquery_prompt)
+            result_raw = await chain.ainvoke({"question_string" : state["question"]})
+            queries = [
+                q.strip().lstrip("0123456789.- ")
+                for q in result_raw.split("\n")
+                if q.strip()
+            ]
+
+            if state["question"] not in queries:
+                queries.append(state["question"])
+
+            if (DEBUG_PRINT):
+                print(f"Queries: {queries}")
+
+            return {"queries" : queries}
+        elif self.qt_strategy == "hyde":
+            if (DEBUG_PRINT):
+                print(f"HyDe mode")
+
+            chain = self._create_chain(model = self.model, prompt=self.hyde_prompt)
+            hypothetical_doc = await chain.ainvoke({"question_string" : state["question"]})
+
+            if (DEBUG_PRINT):
+                print(f"Hypothetical doc (first 100 char): {hypothetical_doc[:100]}...")
+
+            return {"queries" : [hypothetical_doc]}
+        else:
+            return {"queries" : [state["question"]]}
 
     async def node_grade_context(self, state: AdaptiveRagState):
-        #TODO
+        chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
+
+        filtered_documents = []
+        # check every document
+        for doc in state["documents"]:
+            result_raw = await chain.ainvoke({
+                "question_string" : state["question"],
+                "document" : doc
+            })
+
+            clean_result = re.sub(r'```json|```', '', result_raw).strip()
+            try:
+                graded_doc = json.loads(clean_result)
+                score = graded_doc.get("binary_score", "no").lower()
+                if "yes" in score:
+                    filtered_documents.append(doc)
+            except Exception:
+                filtered_documents.append(doc)
+
         #if relevant return this
-        return {"documents" : state["documents"]}
+        if (DEBUG_PRINT):
+            print(f"Relevant documents number: {len(filtered_documents)}, original doc number: {len(state["documents"])}")
+        return {"documents" : filtered_documents}
     
     def after_context_grade (self, state: AdaptiveRagState):
-        if (not state["documents"]):
+        #generate if there are relevant documents
+        if (state["documents"]):
+            return "generate"
+        else:
             if (state.get("iteration_counter", 0) < self.max_retries) and (self.metadata_extraction_allowed == True):
                 print(f"No documents found, transformig query. Turning metadata extraction OFF.")
                 self.metadata_extraction_allowed = False
                 return "transform"
+            else:
+                pass
+                #TODO do something else?
         return "generate"
 
     # generate an answer
