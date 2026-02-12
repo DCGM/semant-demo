@@ -21,3 +21,7 @@ async def get_documents_embeddings(texts: list[str]) -> list[list[float]]:
         )
         resp.raise_for_status()
         return resp.json()["embeddings"]
+    
+async def get_hyde_document_embedding(text: str) -> list[float]:
+    embeddings = await get_documents_embeddings([text])
+    return embeddings[0]

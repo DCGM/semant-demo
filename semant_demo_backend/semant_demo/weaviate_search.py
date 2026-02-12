@@ -7,7 +7,7 @@ from weaviate.classes.query import Filter
 
 from semant_demo import schemas
 from semant_demo.config import Config
-from semant_demo.gemma_embedding import get_query_embedding
+from semant_demo.gemma_embedding import get_query_embedding, get_hyde_document_embedding
 from weaviate.classes.query import QueryReference
 import weaviate.collections.classes.internal
 from uuid import UUID
@@ -98,7 +98,10 @@ class WeaviateSearch:
 
         t1 = time()
         if search_request.type == schemas.SearchType.hybrid:
-            q_vector = await get_query_embedding(search_request.query)
+            if search_request.is_hyde == False:
+                q_vector = await get_query_embedding(search_request.query)
+            else:
+                q_vector = await get_hyde_document_embedding(search_request.query)
 
             # Execute hybrid search
             result = await self.chunk_col.query.hybrid(
@@ -137,7 +140,11 @@ class WeaviateSearch:
                 ]
             )
         elif search_request.type == schemas.SearchType.vector:
-            q_vector = await get_query_embedding(search_request.query)
+            if search_request.is_hyde == False:
+                q_vector = await get_query_embedding(search_request.query)
+            else:
+                q_vector = await get_hyde_document_embedding(search_request.query)
+
             result = await self.chunk_col.query.near_vector(
                 near_vector=q_vector,
                 limit=search_request.limit,
