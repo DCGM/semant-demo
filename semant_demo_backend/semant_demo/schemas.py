@@ -184,7 +184,10 @@ class AdaptiveRagState(TypedDict):
     documents: list[Any]
     generation: str
     metadata: ExtractedMeradata
-    iteration_counter: int
+    metadata_extraction_allowed : bool
+    retrieval_iteration_counter: int
+    generation_iteration_counter: int
+    feedback: str
 
 class AvailableRagConfigurationsResponse(BaseModel):
     available_models: list[str]

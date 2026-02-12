@@ -10,6 +10,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_ollama import OllamaLLM
 
+from langchain_community.tools import DuckDuckGoSearchRun   #Tavily can be used as well but it requires API key
+
 from langgraph.graph import StateGraph, START, END
 
 from pydantic import BaseModel, Field
@@ -72,6 +74,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.max_retries = param_config.get("max_retries", 3)
         self.web_search_enabled = param_config.get("web_search_enabled", False)
         self.metadata_extraction_allowed = param_config.get("metadata_extraction_allowed", True)
+        self.self_reflection = param_config.get("self_reflection", True)
         #build
         self.workflow = self._build_rag()
         self.rag = self.workflow.compile()
@@ -120,6 +123,7 @@ class AdaptiveRagGenerator(BaseRag):
         workflow.add_node("retrieve", self.node_retrieve)
         workflow.add_node("grade_context", self.node_grade_context)
         workflow.add_node("generate", self.node_generate)
+        workflow.add_node("grade_generation", self.node_grade_generation)
         workflow.add_node("web_search", self.node_web_search)
 
         #define edges
@@ -133,6 +137,9 @@ class AdaptiveRagGenerator(BaseRag):
 
         workflow.add_edge("retrieve", "grade_context")
 
+        workflow.add_edge("generate", "grade_generation")
+        workflow.add_edge("web_search", "generate")
+
         #conditional edges - cycles
         workflow.add_conditional_edges(
             "grade_context",
@@ -145,11 +152,12 @@ class AdaptiveRagGenerator(BaseRag):
         )
 
         workflow.add_conditional_edges(
-            "generate",
-            self.node_grade_generation,
+            "grade_generation",
+            self.decide_after_generation,
             {
                 "supported": END,
-                "not_supported": "generate"
+                "not_supported": "generate",
+                "web_search" : "web_search"
             }
         )
 
@@ -261,7 +269,7 @@ class AdaptiveRagGenerator(BaseRag):
             return {"question" : state["question"]}
 
     async def node_extract_metadata(self, state: AdaptiveRagState):
-        if (self.metadata_extraction_allowed == True):
+        if (state["metadata_extraction_allowed"] == True):
             chain =  self._create_chain (model=self.extract_model, prompt=self.extract_prompt)
             result = await chain.ainvoke({"question_string" : state["question"]})
             clean_result = re.sub(r'```json|```', '', result).strip()
@@ -319,12 +327,11 @@ class AdaptiveRagGenerator(BaseRag):
     async def node_grade_context(self, state: AdaptiveRagState):
         chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
 
-        filtered_documents = []
-        # check every document
-        for doc in state["documents"]:
+        async def grader_single_doc(doc):
+            print(f"Doc to be graded: {doc.text}")
             result_raw = await chain.ainvoke({
                 "question_string" : state["question"],
-                "document" : doc
+                "document" : doc.text
             })
 
             clean_result = re.sub(r'```json|```', '', result_raw).strip()
@@ -332,11 +339,23 @@ class AdaptiveRagGenerator(BaseRag):
                 graded_doc = json.loads(clean_result)
                 score = graded_doc.get("binary_score", "no").lower()
                 if "yes" in score:
-                    filtered_documents.append(doc)
+                    return doc
             except Exception:
-                filtered_documents.append(doc)
+                return doc
+            return None
+            
+        #call in parallel
+        grade_tasks = [grader_single_doc(doc) for doc in state["documents"]]
+        doc_responses = await asyncio.gather(*grade_tasks)
+        #remove None
+        filtered_documents = [doc for doc in doc_responses if doc is not None]
 
-        #if relevant return this
+        #not relevant documents found
+        if filtered_documents == []:
+            return {"documents" : [],
+                    "metadata_extraction_allowed": False }
+
+        #if relevant return documents (in original textchunk format)
         if (DEBUG_PRINT):
             print(f"Relevant documents number: {len(filtered_documents)}, original doc number: {len(state["documents"])}")
         return {"documents" : filtered_documents}
@@ -346,9 +365,8 @@ class AdaptiveRagGenerator(BaseRag):
         if (state["documents"]):
             return "generate"
         else:
-            if (state.get("iteration_counter", 0) < self.max_retries) and (self.metadata_extraction_allowed == True):
+            if (state.get("iteration_counter", 0) < self.max_retries):
                 print(f"No documents found, transformig query. Turning metadata extraction OFF.")
-                self.metadata_extraction_allowed = False
                 return "transform"
             else:
                 pass
@@ -377,13 +395,28 @@ class AdaptiveRagGenerator(BaseRag):
         return {"generation": answer}
     
     def node_grade_generation (self, state: AdaptiveRagState):
-        #TODO
-        #if good
-        return "supported"
-        #else return "not_supported"
+        if self.self_reflection == False:
+            if (DEBUG_PRINT):
+                print(f"Self reflection mode is OFF")
+            return {"feedback" : "supported"}
+        else:
+            if (DEBUG_PRINT):
+                print(f"Self reflection mode is ON")
+            return {"feedback" : "supported"}
+
+    def decide_after_generation (self, state: AdaptiveRagState):
+        feedback = state.get("feedback", "")
+        if feedback == "supported":
+            return "supported"
+        else:   #notsupported
+            #if self.get("")
+
+            if self.web_search_enabled == True:
+                if (DEBUG_PRINT):
+                    print(f"Searching on web.")
+                return "web_search"
     
     def node_web_search (self, state: AdaptiveRagState):
-        #TODO
         web_results = []
         return {"documents" : state["documents"] + web_results}
     
@@ -408,7 +441,10 @@ class AdaptiveRagGenerator(BaseRag):
                 "history": history_preprocessed,
                 "documents": [],
                 "metadata": {},
-                "iteration_counter": 0
+                "retrieval_iteration_counter: int": 0,
+                "generation_iteration_counter: int": 0,
+                "metadata_extraction_allowed": self.metadata_extraction_allowed,
+                "feedback": ""
             }
             
             config = {"recursion_limit" : 20}

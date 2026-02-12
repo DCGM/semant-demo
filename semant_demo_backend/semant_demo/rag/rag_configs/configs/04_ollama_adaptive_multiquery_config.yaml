@@ -13,3 +13,4 @@ params:
   max_retries : 3
   web_search_enabled : False
   metadata_extraction_allowed : True
+  self_reflection : True
