@@ -48,6 +48,8 @@ class SearchRequest(SummaryRequestBase):
     positive: bool
     automatic: bool
 
+    is_hyde: bool = False # variable which indicates if query is document
+
 class Document(BaseModel):
     id: uuid.UUID
     library: str
