@@ -14,7 +14,7 @@ answer_question_prompt_template = [
     4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
-    Context: {context_string}\n
+    Context: \n {context_string} \n
     """),
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "{question_string}")
@@ -66,6 +66,17 @@ multiquery_prompt_template = [
     ("user", "{question_string}")
     ]
 
+multiquery_retry = (
+            "\nCRITICAL NOTE: The previous search variations failed to find relevant documents. "
+            "For this attempt, provide SIGNIFICANTLY DIFFERENT and BROADER search terms. "
+            "Avoid terms used previously if possible and focus on different synonyms or related concepts."
+            "Previous queries: "
+        )
+
+generation_retry = (
+    "\nCRITICAL NOTE: Your previous answer had issues, correct it. Feedback: "
+)
+
 hyde_prompt_template = [
     ("system",
     """
@@ -83,5 +94,20 @@ context_grader_prompt_template = [
     
     Output ONLY valid JSON with a single key 'binary_score'.
     """),
-    ("user", "Retrieved document: \n\n {document} \n\n User question: {question_string}")
+    ("user", "Retrieved document: \n {document} \n User question: {question_string}")
+]
+
+generation_grader_prompt_template = [
+    ("system", 
+     """
+    You are a strict quality controller. 
+    Your task is to check if the generated answer is fully supported by the provided context.
+    
+    Follow these rules exactly:
+    1. If the answer contains information NOT present in the context, it is a hallucination and 'binary_score' have to be 'no'.
+    2. Respond in JSON format with two keys:
+       - 'binary_score': 'yes' if supported, 'no' if not.
+       - 'feedback': A short explanation of what is wrong or missing. It should be useful for generating improved responses.
+    """),
+    ("user", "Context: \n {documents} \n Generated answer: {answer}")
 ]
