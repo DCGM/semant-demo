@@ -188,6 +188,7 @@ class AdaptiveRagState(TypedDict):
     retrieval_iteration_counter: int
     generation_iteration_counter: int
     feedback: str
+    web_search_performed : bool
 
 class AvailableRagConfigurationsResponse(BaseModel):
     available_models: list[str]

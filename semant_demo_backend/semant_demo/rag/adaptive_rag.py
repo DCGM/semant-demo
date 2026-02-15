@@ -10,7 +10,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_ollama import OllamaLLM
 
-from langchain_community.tools import DuckDuckGoSearchRun   #Tavily can be used as well but it requires API key
+#from langchain_community.tools import DuckDuckGoSearchRun   #Tavily can be used as well but it requires API key
+from ddgs import DDGS
+import uuid
 
 from langgraph.graph import StateGraph, START, END
 
@@ -24,7 +26,7 @@ import asyncio
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
-from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState
+from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState, TextChunkWithDocument, Document
 from semant_demo.weaviate_search import WeaviateSearch
 #import prompts from prompt file
 from semant_demo.rag.adaptive_rag_prompts import *
@@ -52,6 +54,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.multiquery_prompt = ChatPromptTemplate.from_messages(multiquery_prompt_template)
         self.hyde_prompt = ChatPromptTemplate.from_messages(hyde_prompt_template)
         self.context_grader_prompt = ChatPromptTemplate.from_messages(context_grader_prompt_template)
+        self.generation_grader_prompt = ChatPromptTemplate.from_messages(generation_grader_prompt_template)
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
@@ -72,6 +75,7 @@ class AdaptiveRagGenerator(BaseRag):
         #load
         self.qt_strategy = param_config.get("qt_strategy", "multi_query") #step_back / hyde / multi_query / nothing
         self.max_retries = param_config.get("max_retries", 3)
+        self.additional_tries_with_web_search = param_config.get("additional_tries_with_web_search", 2)
         self.web_search_enabled = param_config.get("web_search_enabled", False)
         self.metadata_extraction_allowed = param_config.get("metadata_extraction_allowed", True)
         self.self_reflection = param_config.get("self_reflection", True)
@@ -179,12 +183,22 @@ class AdaptiveRagGenerator(BaseRag):
                 prompt_history.append(AIMessage(content=msg['content']))
         return prompt_history
     
+    # function to extract important information from db doc
+    def _get_clean_doc(self, doc) -> str:
+        doc_info = doc.document_object
+        title = getattr(doc_info, "title", "Unknown titel")
+        year = getattr(doc_info, "yearIssued", "Unknown year")
+        clean_doc = f"DOCUMENT/DOKUMENT: {title} (Year issued/Rok vydání: {year}) "
+        clean_doc = clean_doc + f"CONTENT/OBSAH: {doc.text.replace('\\n', ' ')}"
+
+        return clean_doc
+
     #function that converts incomming search results to desired format
     def _format_weaviate_context(self, results: list[SearchResponse]) -> str:
-        snippets = [
-            f"[doc{i+1}]" + res.text.replace('\\n', ' ')
-            for i, res in enumerate(results)
-        ]
+        snippets = []
+        for i, res in enumerate(results):
+            clean_text = self._get_clean_doc(res)
+            snippets.append(f"[doc{i+1}]\n{clean_text}\n")
         return ("\n".join(snippets))
     
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -241,10 +255,10 @@ class AdaptiveRagGenerator(BaseRag):
 
         all_chunks = list(unique_chunks.values())
 
-        counter_value = state.get("iteration_counter", 0) + 1
+        counter_value = state.get("retrieval_iteration_counter", 0) + 1
 
         return  {"documents" : all_chunks, 
-                 "iteration_counter" : counter_value
+                 "retrieval_iteration_counter" : counter_value
                  }
     
     #rephrase question to search desired data in database
@@ -291,12 +305,18 @@ class AdaptiveRagGenerator(BaseRag):
             return {"metadata" : {}}
     
     async def node_multi_query(self, state: AdaptiveRagState):
+        retry_additional_text = ""
+        iteration = state.get("retrieval_iteration_counter", 0)
+        
         if self.qt_strategy == "multi_query":
             if (DEBUG_PRINT):
                 print(f"Multi query mode")
+
+            if (iteration < 0):
+                retry_additional_text = multiquery_retry.join(state["queries"])
             
             chain = self._create_chain(model = self.model, prompt=self.multiquery_prompt)
-            result_raw = await chain.ainvoke({"question_string" : state["question"]})
+            result_raw = await chain.ainvoke({"question_string" : state["question"] + retry_additional_text})
             queries = [
                 q.strip().lstrip("0123456789.- ")
                 for q in result_raw.split("\n")
@@ -311,6 +331,7 @@ class AdaptiveRagGenerator(BaseRag):
 
             return {"queries" : queries}
         elif self.qt_strategy == "hyde":
+            #TODO add feedback - retry additional text
             if (DEBUG_PRINT):
                 print(f"HyDe mode")
 
@@ -328,10 +349,11 @@ class AdaptiveRagGenerator(BaseRag):
         chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
 
         async def grader_single_doc(doc):
-            print(f"Doc to be graded: {doc.text}")
+            clean_doc = self._get_clean_doc(doc)
+            print(f"Doc to be graded: {clean_doc}")
             result_raw = await chain.ainvoke({
                 "question_string" : state["question"],
-                "document" : doc.text
+                "document" : clean_doc
             })
 
             clean_result = re.sub(r'```json|```', '', result_raw).strip()
@@ -365,7 +387,7 @@ class AdaptiveRagGenerator(BaseRag):
         if (state["documents"]):
             return "generate"
         else:
-            if (state.get("iteration_counter", 0) < self.max_retries):
+            if (state.get("retrieval_iteration_counter", 0) < self.max_retries):
                 print(f"No documents found, transformig query. Turning metadata extraction OFF.")
                 return "transform"
             else:
@@ -375,6 +397,17 @@ class AdaptiveRagGenerator(BaseRag):
 
     # generate an answer
     async def node_generate(self, state: AdaptiveRagState):
+        #no relevant chunks found -> skip generation
+        if (state["documents"] == []):
+            return {"generation": "Sorry, I can´t answer the question."} 
+
+        #feedback
+        feedback = state.get("feedback", "")
+        feedback_prompt_add = ""
+        if (feedback != "" and feedback != "supported"):
+            feedback_prompt_add = generation_retry + feedback
+
+
         chain = self._create_chain(model=self.model, prompt=self.main_prompt)
 
         #join snippets
@@ -384,7 +417,7 @@ class AdaptiveRagGenerator(BaseRag):
         prompt_history = self._get_prompt_history(state["history"])
 
         answer = await chain.ainvoke({
-            "context_string" : final_context,
+            "context_string" : final_context + feedback_prompt_add,
             "question_string" : state["question"],
             "prompt_history" : prompt_history
         })
@@ -394,32 +427,109 @@ class AdaptiveRagGenerator(BaseRag):
 
         return {"generation": answer}
     
-    def node_grade_generation (self, state: AdaptiveRagState):
+    async def node_grade_generation (self, state: AdaptiveRagState):
+        counter_value = state.get("generation_iteration_counter", 0) + 1
         if self.self_reflection == False:
             if (DEBUG_PRINT):
                 print(f"Self reflection mode is OFF")
-            return {"feedback" : "supported"}
+            return {"feedback" : "supported", "generation_iteration_counter": counter_value}
         else:
             if (DEBUG_PRINT):
                 print(f"Self reflection mode is ON")
-            return {"feedback" : "supported"}
+
+            if (state["generation"] == "Sorry, I can´t answer the question."):
+                #no relevant documents/chunks found -> do not grade (try web search if enabled)
+                if (self.web_search_enabled == True):
+                    return {"feedback" : "", "generation_iteration_counter": counter_value}
+            
+            #grade answer and get feedback
+            chain = self._create_chain(model=self.model, prompt=self.generation_grader_prompt)
+            context = self._format_weaviate_context(state["documents"])
+
+            raw_result = await chain.ainvoke({
+                "documents" : context,
+                "answer" : state["generation"]
+            })
+
+            clean_result = re.sub(r'```json|```', '', raw_result).strip()
+            is_supported = True
+            feedback = "supported"
+            try:
+                graded_answer = json.loads(clean_result)
+                score = graded_answer.get("binary_score", "no").lower()
+                feedback = graded_answer.get("feedback", "")
+                if "no" in score:
+                    is_supported = False
+            except Exception:
+                feedback = ""
+            
+            if (is_supported == True):
+                if (DEBUG_PRINT):
+                    print(f"Answer is supported.")
+                return {"feedback" : "supported", "generation_iteration_counter": counter_value}
+            else: # not supported
+                if (DEBUG_PRINT):
+                    print(f"Answer is not supported, feedback: {feedback}")
+                return {"feedback" : feedback, "generation_iteration_counter": counter_value}
 
     def decide_after_generation (self, state: AdaptiveRagState):
         feedback = state.get("feedback", "")
-        if feedback == "supported":
+        if (feedback == "supported"):
             return "supported"
-        else:   #notsupported
-            #if self.get("")
-
+        elif (state.get("web_search_performed") == True): #search only once
+            return "supported"
+        else:   #not supported
+            #case where no relevant documents were found --> search web if allowed
+            if (state["feedback"] == ""):
+                if self.web_search_enabled == True:
+                    if (DEBUG_PRINT):
+                        print(f"No relevant documents found, searching on the web.")
+                    return "web_search"
+                else: #return "sorry answer"
+                    return "supported"
+                
+            #retry based on the feedback
+            if (state.get("generation_iteration_counter") < self.max_retries):
+                if (DEBUG_PRINT):
+                    print(f"Retrying with additional feedback.")
+                return "not_supported"
+            
+            #retried enaught times --> search web if allowed
             if self.web_search_enabled == True:
                 if (DEBUG_PRINT):
-                    print(f"Searching on web.")
+                    print(f"Searching on the web.")
                 return "web_search"
+        return "supported"
     
-    def node_web_search (self, state: AdaptiveRagState):
-        web_results = []
-        return {"documents" : state["documents"] + web_results}
-    
+    async def node_web_search (self, state: AdaptiveRagState):
+        try:
+            def ddg(query):
+                with DDGS() as ddgs:
+                    results = [r["body"] for r in ddgs.text(query, max_results= 5)]
+                    return "\n".join(results)
+                
+            uuid_tmp = uuid.uuid4()
+            search_result = await asyncio.to_thread(ddg, state["question"])
+            search_chunk = TextChunkWithDocument(
+                id=uuid_tmp,
+                title="DuckDuckGo Search",
+                start_page_id= uuid_tmp,
+                from_page=0,
+                to_page=0,
+                text= search_result,
+                document=uuid_tmp,
+                document_object=Document(id=uuid_tmp, library="web_search", title="DuckDuckGo Search", yearIssued = 2026)
+            )
+            if (DEBUG_PRINT):
+                print(f"Internet search result: {search_chunk}")
+            return {"documents" : state["documents"] + [search_chunk], "web_search_performed" : True}
+                
+        except Exception as e:
+            if (DEBUG_PRINT):
+                print(f"Web search failed. Error: {e}")
+            return {"web_search_performed" : True}
+
+
     #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
     #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
@@ -444,10 +554,11 @@ class AdaptiveRagGenerator(BaseRag):
                 "retrieval_iteration_counter: int": 0,
                 "generation_iteration_counter: int": 0,
                 "metadata_extraction_allowed": self.metadata_extraction_allowed,
-                "feedback": ""
+                "feedback": "",
+                "web_search_performed" : False
             }
             
-            config = {"recursion_limit" : 20}
+            config = {"recursion_limit" : 25}
 
             generated_result = await self.rag.ainvoke(intial_state_values, config=config)
 

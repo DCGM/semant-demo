@@ -1,6 +1,6 @@
 id: "xandry12_AdaptiveRagGenerator_ollama_default_multiquery"
 name: "Adaptive RAG using Ollama with multi query"
-description: "RAG using Ollama's big local model Gemma3:12b. It supports history between messages."
+description: "RAG using Ollama's big local model Gemma3:12b. It supports history between messages and internet/web search using DuckDuckGo."
 class_name: "AdaptiveRagGenerator"
 params:
   model_type: "OLLAMA"
@@ -11,6 +11,6 @@ params:
   chunk_limit: 5
   qt_strategy : "multi_query"
   max_retries : 3
-  web_search_enabled : False
+  web_search_enabled : True
   metadata_extraction_allowed : True
   self_reflection : True
