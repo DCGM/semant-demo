@@ -80,7 +80,7 @@
               :disable="isLoadingRagConfigs || rags.length === 0"
               dense
               outlined
-              style="min-width: 150px">
+              style="min-width: 300px">
               <template v-slot:option="scope">
                 <q-item v-bind="scope.itemProps">
                   <q-item-section>
@@ -133,9 +133,9 @@
             style="width: 100px"
           /> -->
           <!-- <q-input v-model.number="chunkNumber" type="number" label="Chunk limit" dense outlined /> -->
-          <q-input v-model="language" label="Language" dense outlined />
+          <!--- <q-input v-model="language" label="Language" dense outlined />
           <q-input v-model.number="minYear" type="number" label="Min Year" dense outlined />
-          <q-input v-model.number="maxYear" type="number" label="Max Year" dense outlined />
+          <q-input v-model.number="maxYear" type="number" label="Max Year" dense outlined /> -->
         </div>
          <!-- input box with send button -->
         <div class="col">
@@ -195,7 +195,7 @@ interface RagRouteConfig {
 
 // First message from AI
 const messages = ref<Message[]>([
-  { sender: 'AI', text: 'Hello, what is your question?' }
+  { sender: 'AI', text: 'Hello, what is your question? / Ahoj, máš na mě nějakou otázku?' }
 ])
 
 const newMessage = ref('')
