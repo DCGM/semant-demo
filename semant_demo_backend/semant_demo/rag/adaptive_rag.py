@@ -117,7 +117,7 @@ class AdaptiveRagGenerator(BaseRag):
         #TODO can add optional model to config
         return self.model
 
-    # create the graph - TODO přidat odstranovani uzlu
+    # create the graph
     def _build_rag(self):
         #define nodes
         workflow = StateGraph(AdaptiveRagState)
@@ -312,8 +312,11 @@ class AdaptiveRagGenerator(BaseRag):
             if (DEBUG_PRINT):
                 print(f"Multi query mode")
 
-            if (iteration < 0):
-                retry_additional_text = multiquery_retry.join(state["queries"])
+            if (iteration > 0):
+                joint_queries = "\n".join(state["queries"])
+                retry_additional_text = multiquery_retry.format(queries = joint_queries)
+                if (DEBUG_PRINT):
+                    print(f"Retrying multi-query feedback: {retry_additional_text}")
             
             chain = self._create_chain(model = self.model, prompt=self.multiquery_prompt)
             result_raw = await chain.ainvoke({"question_string" : state["question"] + retry_additional_text})
@@ -331,12 +334,17 @@ class AdaptiveRagGenerator(BaseRag):
 
             return {"queries" : queries}
         elif self.qt_strategy == "hyde":
-            #TODO add feedback - retry additional text
             if (DEBUG_PRINT):
                 print(f"HyDe mode")
 
+            if (iteration > 0):
+                last_hyde_doc = state["queries"][0] if state["queries"] else ""
+                retry_additional_text = hyde_retry.format(hyde_doc = last_hyde_doc)
+                if (DEBUG_PRINT):
+                    print(f"Retrying HyDe feedback: {retry_additional_text}")
+
             chain = self._create_chain(model = self.model, prompt=self.hyde_prompt)
-            hypothetical_doc = await chain.ainvoke({"question_string" : state["question"]})
+            hypothetical_doc = await chain.ainvoke({"question_string" : state["question"] + retry_additional_text})
 
             if (DEBUG_PRINT):
                 print(f"Hypothetical doc (first 100 char): {hypothetical_doc[:100]}...")
@@ -392,20 +400,20 @@ class AdaptiveRagGenerator(BaseRag):
                 return "transform"
             else:
                 pass
-                #TODO do something else?
+                #Internet search will be performed if enabled
         return "generate"
 
     # generate an answer
     async def node_generate(self, state: AdaptiveRagState):
         #no relevant chunks found -> skip generation
         if (state["documents"] == []):
-            return {"generation": "Sorry, I can´t answer the question."} 
+            return {"generation": "Sorry, I can't answer the question."} 
 
         #feedback
         feedback = state.get("feedback", "")
         feedback_prompt_add = ""
         if (feedback != "" and feedback != "supported"):
-            feedback_prompt_add = generation_retry + feedback
+            feedback_prompt_add = generation_retry.format(feedback=feedback)
 
 
         chain = self._create_chain(model=self.model, prompt=self.main_prompt)
@@ -429,7 +437,8 @@ class AdaptiveRagGenerator(BaseRag):
     
     async def node_grade_generation (self, state: AdaptiveRagState):
         counter_value = state.get("generation_iteration_counter", 0) + 1
-        if self.self_reflection == False:
+        #in case self reflection is of or web search was performed there is no reason to generate feedback because it will be ignored anyway
+        if (self.self_reflection == False or state["web_search_performed"] == True):
             if (DEBUG_PRINT):
                 print(f"Self reflection mode is OFF")
             return {"feedback" : "supported", "generation_iteration_counter": counter_value}
@@ -437,7 +446,7 @@ class AdaptiveRagGenerator(BaseRag):
             if (DEBUG_PRINT):
                 print(f"Self reflection mode is ON")
 
-            if (state["generation"] == "Sorry, I can´t answer the question."):
+            if (state["generation"].startswith("Sorry")):
                 #no relevant documents/chunks found -> do not grade (try web search if enabled)
                 if (self.web_search_enabled == True):
                     return {"feedback" : "", "generation_iteration_counter": counter_value}
@@ -480,7 +489,7 @@ class AdaptiveRagGenerator(BaseRag):
             return "supported"
         else:   #not supported
             #case where no relevant documents were found --> search web if allowed
-            if (state["feedback"] == ""):
+            if (state["feedback"] == "" or state["documents"] == []):
                 if self.web_search_enabled == True:
                     if (DEBUG_PRINT):
                         print(f"No relevant documents found, searching on the web.")
@@ -495,7 +504,7 @@ class AdaptiveRagGenerator(BaseRag):
                 return "not_supported"
             
             #retried enaught times --> search web if allowed
-            if self.web_search_enabled == True:
+            if (self.web_search_enabled == True and state["documents"] == []):
                 if (DEBUG_PRINT):
                     print(f"Searching on the web.")
                 return "web_search"
@@ -551,8 +560,8 @@ class AdaptiveRagGenerator(BaseRag):
                 "history": history_preprocessed,
                 "documents": [],
                 "metadata": {},
-                "retrieval_iteration_counter: int": 0,
-                "generation_iteration_counter: int": 0,
+                "retrieval_iteration_counter": 0,
+                "generation_iteration_counter": 0,
                 "metadata_extraction_allowed": self.metadata_extraction_allowed,
                 "feedback": "",
                 "web_search_performed" : False

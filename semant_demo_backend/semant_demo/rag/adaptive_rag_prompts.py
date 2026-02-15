@@ -70,11 +70,11 @@ multiquery_retry = (
             "\nCRITICAL NOTE: The previous search variations failed to find relevant documents. "
             "For this attempt, provide SIGNIFICANTLY DIFFERENT and BROADER search terms. "
             "Avoid terms used previously if possible and focus on different synonyms or related concepts."
-            "Previous queries: "
+            "Previous queries: {queries}"
         )
 
 generation_retry = (
-    "\nCRITICAL NOTE: Your previous answer had issues, correct it. Feedback: "
+    "\nCRITICAL NOTE: Your previous answer had issues, correct it. Feedback: {feedback}."
 )
 
 hyde_prompt_template = [
@@ -84,6 +84,13 @@ hyde_prompt_template = [
     """),
     ("user", "{question_string}")
     ]
+
+hyde_retry = (
+    "\nCRITICAL NOTE: The previous search variations failed to find relevant documents. "
+    "For this attempt, provide SIGNIFICANTLY DIFFERENT hypothetical document. "
+    "Avoid terms used previously if possible and focus on different synonyms or related concepts."
+    "Previous document: {hyde_doc}"
+)
 
 context_grader_prompt_template = [
     ("system", 
