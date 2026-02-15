@@ -266,6 +266,22 @@ class ApproveTagResponse(BaseModel):
 class RemoveTagsResponse(BaseModel):
     successful: bool
 
+# Tagging configuration
+class TaggingConfigParams(BaseModel):
+    model_type: str
+    model_name: str
+    temperature: float = 1.0
+    search_type: SearchType = SearchType.hybrid
+
+class TaggingConfig(BaseModel):
+    name: str
+    description: str
+    class_name: str
+    default_prompt: str
+    params: TaggingConfigParams
+
+class GetConfigsResponse(BaseModel):
+    configs: list[TaggingConfig]
 
 # User collection
 class UserCollectionReqTemplate(BaseModel):

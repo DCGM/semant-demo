@@ -343,6 +343,19 @@
           <div class="col"></div>
 
           <div class="col">
+            <q-select
+              v-model="selectedConfigName"
+              :options="taggingConfigs"
+              option-label="name"
+              option-value="name"
+              label="Select Tagging Config"
+              outlined
+              dense
+              @popup-show="loadTaggingConfigs"
+            />
+          </div>
+
+          <div class="col">
             <q-btn
               @click="onRunTask"
               icon="assignment"
@@ -476,6 +489,25 @@ interface TagCreationOption {
   error: string;
 }
 
+interface TaggingParams {
+  model_type: string
+  model_name: string
+  temperature: number
+  search_type: string
+}
+
+interface TaggingConfig {
+  name: string
+  description: string
+  class_name: string
+  default_prompt: string
+  params: TaggingParams
+}
+
+interface GetConfigsResponse {
+  configs: TaggingConfig[]
+}
+
 const tagForm = ref<TagRequest>({
   tag_name: 'Prezident',
   tag_shorthand: 'p',
@@ -544,6 +576,9 @@ const collectionStore = useCollectionStore()
 
 const tasksExpansion = ref<QExpansionItem | null>(null)
 
+const taggingConfigs = ref<TaggingConfig[]>([]) // store for configurations
+const selectedConfigName = ref<string | null>(null)
+
 interface MergedTag {
   tag_uuid: string
   tag_type: string
@@ -610,6 +645,7 @@ onMounted(async () => {
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
+    await loadTaggingConfigs() // load configs
   } finally {
     loadingSpinner.value = false
   }
@@ -949,6 +985,21 @@ const loadCollections = async () => {
     Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
   } finally {
     loading.value = false
+  }
+}
+
+// load tagging configurations
+async function loadTaggingConfigs () {
+  try {
+    const { data } = await api.get<GetConfigsResponse>('/configs')
+    taggingConfigs.value = data.configs
+    console.log('Loaded tagging configs:', taggingConfigs.value)
+  } catch (err) {
+    console.error('Failed to load tagging configs:', err)
+    Notify.create({
+      message: 'Failed to load tagging configurations',
+      color: 'negative'
+    })
   }
 }
 

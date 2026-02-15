@@ -17,6 +17,9 @@ Tag management page (`semant_demo_frontend\src\pages\TagManagementPage.vue`) ser
 #### Create tag
 For tag creation, there is a dialog window which pops up after clicking button "+ CREATE TAG".
 
+#### Configuration of the tagging task
+The frontend requests backend to load a configuration templates from stored configuration template files (YAML files). User selects the configuration template in the front end. API types like Ollama, OpenAI are indicated in the name of the configuration. Then user can adjust the configuration (model name, model parameters, prompt, etc.) using user interface. The current setting will be send with the tagging request to backend.
+
 #### Run tagging task
 To run tagging task, user selects tag or multiple tags and presses "RUN TAGGING TASK". This starts a separate task for each selected tag over all chunks.
 

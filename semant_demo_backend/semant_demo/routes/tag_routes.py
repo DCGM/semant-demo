@@ -23,6 +23,7 @@ from semant_demo.weaviate_search import WeaviateSearch
 import asyncio
 from semant_demo.tagging.tagging_task import tag_and_store
 import uuid
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 #from sqlalchemy.orm import sessionmaker, declarative_base
@@ -40,12 +41,16 @@ import logging
 from semant_demo.schemas import Task, TasksBase
 
 import json
+import yaml
 
 from semant_demo.tagging.sql_utils import DBError, update_task_status
 from semant_demo.tagging.tagging_task import getTaskByName
 
-
 logging.basicConfig(level=logging.INFO)
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+TAG_CONFIG_DIR = BASE_DIR / "tagging" / "configs"
+#TAG_CONFIG_DIR = r"semant_demo_backend\semant_demo\tagging\configs"
 
 global_engine = None
 global_async_session_maker = None
@@ -122,6 +127,20 @@ async def start_tagging(tagReq: schemas.TagReqTemplate,
         logging.error(e)
         raise HTTPException(status_code=500, detail=str(e))
 
+@exp_router.get("/api/configs", response_model=schemas.GetConfigsResponse)
+async def get_configs() -> schemas.GetConfigsResponse:
+    """
+    Load all config files
+    """
+    logging.debug(f"Loading config")
+    configs = []
+    for file in os.listdir(TAG_CONFIG_DIR):
+        if file.endswith((".yml", ".yaml")): # load only yaml files
+            file_pth = os.path.join(TAG_CONFIG_DIR, file)
+            with open(file_pth, "r", encoding="utf-8") as f:
+                configs.append(schemas.TaggingConfig(**yaml.safe_load(f))) # parse into schema
+    
+    return {"configs": configs}
 
 @exp_router.get("/api/all_tasks")
 async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
