@@ -10,6 +10,9 @@ class OllamaProxyRunnable(Runnable):
         self.ollama_proxy = OllamaProxy(config.OLLAMA_URLS)
         self.ollama_model = config.OLLAMA_MODEL
 
+    def set_model(self, model):
+        self.ollama_model = model
+
     async def ainvoke(self, input, config=None):
         # Handle PromptValue (e.g. from ChatPromptTemplate)
         if isinstance(input, PromptValue):

@@ -10,7 +10,7 @@ from semant_demo.config import config
 import logging
 from semant_demo.tagging.sql_utils import update_task_status
 
-async def tag_and_store(tagReq: schemas.TagReqTemplate, task_id: str, tagger: WeaviateSearch, sessionmaker):
+async def tag_and_store(tagReq: schemas.TaggingTaskReqTemplate, task_id: str, tagger: WeaviateSearch, sessionmaker):
     try:
         session = sessionmaker()
         

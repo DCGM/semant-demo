@@ -344,10 +344,9 @@
 
           <div class="col">
             <q-select
-              v-model="selectedConfigName"
+              v-model="selectedConfig"
               :options="taggingConfigs"
               option-label="name"
-              option-value="name"
               label="Select Tagging Config"
               outlined
               dense
@@ -493,14 +492,13 @@ interface TaggingParams {
   model_type: string
   model_name: string
   temperature: number
-  search_type: string
 }
 
 interface TaggingConfig {
   name: string
   description: string
   class_name: string
-  default_prompt: string
+  prompt_template: string
   params: TaggingParams
 }
 
@@ -577,7 +575,7 @@ const collectionStore = useCollectionStore()
 const tasksExpansion = ref<QExpansionItem | null>(null)
 
 const taggingConfigs = ref<TaggingConfig[]>([]) // store for configurations
-const selectedConfigName = ref<string | null>(null)
+const selectedConfig = ref<TaggingConfig>()
 
 interface MergedTag {
   tag_uuid: string
@@ -718,7 +716,7 @@ async function onRunTask () {
     try {
       const tagValues = tags.value.find(t => t.tag_uuid === uuid)
       console.log('Tagging will start', tagValues)
-      const payload = { ...tagValues, tag_examples: tagValues?.tag_examples.filter(example => example.trim() !== '') }
+      const payload = { ...tagValues, tag_examples: tagValues?.tag_examples.filter(example => example.trim() !== ''), task_config: selectedConfig.value }
       console.log('Payload: ', payload)
       const { data } = await api.post<TagStartResponse>('/tagging_task', payload)
       console.log('Tagging response received:', data)

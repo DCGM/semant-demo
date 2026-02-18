@@ -89,9 +89,8 @@ async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearch = De
         logging.error(e)
         return {"created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
 
-
 @exp_router.post("/api/tagging_task", response_model=schemas.TagStartResponse)
-async def start_tagging(tagReq: schemas.TagReqTemplate,
+async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
                         tagger: WeaviateSearch = Depends(get_search),
                         session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
     """
@@ -304,7 +303,7 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
     """
     try:
         logging.info(f"In get tagged text {chosenTagUUIDs}")
-        response = await tagger.get_tagged_chunks(chosenTagUUIDs)
+        response = await tagger.get_tagged_chunks(chosenTagUUIDs) #get_tagged_chunks_limited(chosenTagUUIDs)#
         return response
     except Exception as e:
         logging.error(f"{e}")

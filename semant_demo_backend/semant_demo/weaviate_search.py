@@ -17,12 +17,14 @@ import asyncio
 
 from langchain_core.prompts import ChatPromptTemplate
 from semant_demo.tagging.llm_caller import OllamaProxyRunnable
+from langchain_openai import ChatOpenAI
 
 import semant_demo.tagging.configs.prompt_templates as tagging_templates
 from semant_demo.tagging.sql_utils import update_task_status
 
 import logging
 import re
+import os
 
 from weaviate.collections.classes.grpc import QueryReference
 
@@ -1082,13 +1084,37 @@ class WeaviateSearch:
             logging.error(f"Error fetching texts from collection: {e}")
             return {}
         
-    async def tag_chunks_with_llm(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
+    async def tag_chunks_with_llm(self, tag_request: schemas.TaggingTaskReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
         """
         Assigns automatic tags to chunks
         """
         try:
-            prompt = ChatPromptTemplate.from_template(self.tag_template)
-            model = OllamaProxyRunnable()
+            # load config data
+            # set model from config
+            config_model_name = tag_request.task_config.params.model_name
+
+            # load prompt template from the config
+            if tag_request.task_config.prompt_template is not None:
+                prompt = ChatPromptTemplate.from_template(tag_request.task_config.prompt_template)
+            else:
+                prompt = ChatPromptTemplate.from_template(self.tag_template)
+            # select API
+            if tag_request.task_config.params.model_type == schemas.APIType.openai:
+                api_key = os.getenv("OPENAI_API_KEY", "")
+                #logging.info("API KEY: " + api_key)
+                model = ChatOpenAI(
+                    model = config_model_name if config_model_name else config.OPENAI_MODEL,
+                    api_key = api_key,
+                    temperature = tag_request.task_config.params.temperature
+                )
+            elif tag_request.task_config.params.model_type == schemas.APIType.google:
+                pass
+            else: # default ollama
+                model = OllamaProxyRunnable()
+                #logging.info(f"MODEL NAME FROM CONFIG: {tag_request.task_config.params.model_name}")
+                #logging.info(f"Whole config passed: {tag_request.task_config}")
+                model.set_model(config_model_name)
+            # prepare chain
             chain = prompt | model
 
             # get the collection
@@ -1135,8 +1161,21 @@ class WeaviateSearch:
                     try:
                         # extract text field from the current object
                         text = obj.properties["text"]
-                        tag = await chain.ainvoke({"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text})
 
+                        # print rendered prompt before sending to model
+                        logging.info(f"Rendered Prompt: \n{prompt.format(
+                                tag_name=tag_request.tag_name,
+                                tag_definition=tag_request.tag_definition,
+                                tag_examples=tag_request.tag_examples,
+                                content=text
+                            )}\n")
+                        response = await chain.ainvoke({"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text})
+                        # process response according to the api type
+                        if tag_request.task_config.params.model_type == schemas.APIType.openai:
+                            tag = response.content
+                        else:
+                            tag = response
+                        logging.info("Response: "+ tag)
                         # store in weaviate (upload positive tag instances to weaviate)
                         if positive_responses.search(tag): # if the llm response is positive then store the tag data
                             # test if the reference to the tag exists
@@ -1159,7 +1198,7 @@ class WeaviateSearch:
                         await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, session=session, all_texts_count=all_texts_count, processed_count=processed_count, tag_id=tag_uuid, tag_processing_data=tag_processing_data)
                         logging.info("After update")
                     except Exception as e:
-                        pass # TODO revert changes
+                        logging.error(f"Error tagging texts: {e}")
 
             return {'texts': texts, 'tags': tags}
 
