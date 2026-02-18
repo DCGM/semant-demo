@@ -157,6 +157,7 @@ class RagRequest(BaseModel):
     history: list[RagChatMessage] | None = None    # chat history, to keep context
     # search parameters
     rag_search: RagSearch
+    previous_documents: list[TextChunkWithDocument] = []
 
 #rag request from frontend to backend
 class RagRequestMain(BaseModel):
@@ -179,7 +180,9 @@ class ExtractedMeradata(BaseModel):
 # class defining state of the adaptive rag
 class AdaptiveRagState(TypedDict):
     question: str
+    original_question: str
     queries: list[str]
+    context_sufficient : bool
     history: list[Any]
     documents: list[Any]
     generation: str

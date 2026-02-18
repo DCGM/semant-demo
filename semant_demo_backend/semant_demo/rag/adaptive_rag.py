@@ -49,12 +49,14 @@ class AdaptiveRagGenerator(BaseRag):
         self.searcher = None
         #this can be part of config in future
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
+        self.main_prompt_history = ChatPromptTemplate.from_messages(answer_question_with_history_prompt_template)
         self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
         self.extract_prompt = ChatPromptTemplate.from_messages(extract_metadata_from_question_template)
         self.multiquery_prompt = ChatPromptTemplate.from_messages(multiquery_prompt_template)
         self.hyde_prompt = ChatPromptTemplate.from_messages(hyde_prompt_template)
         self.context_grader_prompt = ChatPromptTemplate.from_messages(context_grader_prompt_template)
         self.generation_grader_prompt = ChatPromptTemplate.from_messages(generation_grader_prompt_template)
+        self.check_sufficient_context_prompt = ChatPromptTemplate.from_messages(check_sufficient_context_prompt_template)
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
@@ -122,6 +124,8 @@ class AdaptiveRagGenerator(BaseRag):
         #define nodes
         workflow = StateGraph(AdaptiveRagState)
         workflow.add_node("transform_history", self.node_history_transformation)
+        workflow.add_node("check_context", self.node_check_context)
+        workflow.add_node("start_retrieval_branch", lambda state: state)
         workflow.add_node("extract_metadata", self.node_extract_metadata)
         workflow.add_node("multi_query", self.node_multi_query)
         workflow.add_node("retrieve", self.node_retrieve)
@@ -133,8 +137,10 @@ class AdaptiveRagGenerator(BaseRag):
         #define edges
         workflow.add_edge(START, "transform_history")
 
-        workflow.add_edge("transform_history", "extract_metadata")
-        workflow.add_edge("transform_history", "multi_query")
+        workflow.add_edge("transform_history", "check_context")
+
+        workflow.add_edge("start_retrieval_branch", "multi_query")
+        workflow.add_edge("start_retrieval_branch", "extract_metadata")
 
         workflow.add_edge("extract_metadata", "retrieve")
         workflow.add_edge("multi_query", "retrieve")
@@ -146,12 +152,21 @@ class AdaptiveRagGenerator(BaseRag):
 
         #conditional edges - cycles
         workflow.add_conditional_edges(
+            "check_context",
+            self.decide_after_check,
+            {
+                "sufficient" : "generate",
+                "insufficient" : "start_retrieval_branch"
+            }
+        )
+
+        workflow.add_conditional_edges(
             "grade_context",
             self.after_context_grade,
             {
                 "generate" : "generate",
                 "web_search" : "web_search",
-                "transform" : "transform_history"
+                "transform" : "start_retrieval_branch"
             }
         )
 
@@ -189,7 +204,7 @@ class AdaptiveRagGenerator(BaseRag):
         title = getattr(doc_info, "title", "Unknown titel")
         year = getattr(doc_info, "yearIssued", "Unknown year")
         clean_doc = f"DOCUMENT/DOKUMENT: {title} (Year issued/Rok vydání: {year}) "
-        clean_doc = clean_doc + f"CONTENT/OBSAH: {doc.text.replace('\\n', ' ')}"
+        clean_doc = clean_doc + f"CONTENT/OBSAH: " + str(doc.text.replace('\\n', ' '))
 
         return clean_doc
 
@@ -198,7 +213,7 @@ class AdaptiveRagGenerator(BaseRag):
         snippets = []
         for i, res in enumerate(results):
             clean_text = self._get_clean_doc(res)
-            snippets.append(f"[doc{i+1}]\n{clean_text}\n")
+            snippets.append(f"\n---SOURCE [doc{i+1}] START ---\n{clean_text}\n--- SOURCE [doc{i+1}] END ---")
         return ("\n".join(snippets))
     
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -271,7 +286,7 @@ class AdaptiveRagGenerator(BaseRag):
             prompt_history = self._get_prompt_history(state["history"])
 
             correct_question = await chain.ainvoke({
-                "question_string" : state["question"],
+                "question_string" : state["original_question"],
                 "prompt_history" : prompt_history
             })
 
@@ -280,7 +295,33 @@ class AdaptiveRagGenerator(BaseRag):
 
             return {"question" : correct_question}
         else:
-            return {"question" : state["question"]}
+            return {"question" : state["original_question"]}
+        
+    async def node_check_context(self, state: AdaptiveRagState):
+        if (state["history"] and state["documents"]):
+            chain = self._create_chain(model=self.model, prompt=self.check_sufficient_context_prompt)
+            context = self._format_weaviate_context(state["documents"])
+            result  = await chain.ainvoke({
+                "context_string" : context,
+                "question_string" : state["question"]
+            })
+            print(f"Previous context grade result: {result}")
+            if ("yes" in result.lower()):
+                return {"context_sufficient" : True}
+
+        return {"context_sufficient" : False}
+            
+
+
+    def decide_after_check(self, state: AdaptiveRagState):
+        if (state["context_sufficient"] == True):
+            if (DEBUG_PRINT):
+                print(f"Previous context is sufficient, skipping DB search.")
+            return "sufficient"
+        else:
+            if (DEBUG_PRINT):
+                print(f"Starting  DB search.")
+            return "insufficient"
 
     async def node_extract_metadata(self, state: AdaptiveRagState):
         if (state["metadata_extraction_allowed"] == True):
@@ -303,7 +344,7 @@ class AdaptiveRagGenerator(BaseRag):
                 return {"metadata" : {}}
         else:
             return {"metadata" : {}}
-    
+        
     async def node_multi_query(self, state: AdaptiveRagState):
         retry_additional_text = ""
         iteration = state.get("retrieval_iteration_counter", 0)
@@ -387,7 +428,7 @@ class AdaptiveRagGenerator(BaseRag):
 
         #if relevant return documents (in original textchunk format)
         if (DEBUG_PRINT):
-            print(f"Relevant documents number: {len(filtered_documents)}, original doc number: {len(state["documents"])}")
+            print(f"Relevant documents number: " + str(len(filtered_documents)), " original doc number: " + str(len(state["documents"])))
         return {"documents" : filtered_documents}
     
     def after_context_grade (self, state: AdaptiveRagState):
@@ -416,19 +457,26 @@ class AdaptiveRagGenerator(BaseRag):
             feedback_prompt_add = generation_retry.format(feedback=feedback)
 
 
-        chain = self._create_chain(model=self.model, prompt=self.main_prompt)
-
         #join snippets
         final_context = self._format_weaviate_context(state["documents"])
 
-        #get history in desired format
-        prompt_history = self._get_prompt_history(state["history"])
+        if (state["history"]):
+            chain = self._create_chain(model=self.model, prompt=self.main_prompt_history)
+            #get history in desired format
+            prompt_history = self._get_prompt_history(state["history"])
 
-        answer = await chain.ainvoke({
-            "context_string" : final_context + feedback_prompt_add,
-            "question_string" : state["question"],
-            "prompt_history" : prompt_history
-        })
+            answer = await chain.ainvoke({
+                "context_string" : final_context + feedback_prompt_add,
+                "original_question" : state["original_question"],
+                "question_string" : state["question"],
+                "prompt_history" : prompt_history
+            })
+        else:
+            chain = self._create_chain(model=self.model, prompt=self.main_prompt)
+            answer = await chain.ainvoke({
+                "context_string" : final_context + feedback_prompt_add,
+                "question_string" : state["question"]
+            })
 
         if (DEBUG_PRINT):
             print(f"rag answer: {answer}")
@@ -545,20 +593,26 @@ class AdaptiveRagGenerator(BaseRag):
     async def rag_request(self, request: RagRequest, searcher: WeaviateSearch) -> RagResponse:
         if (self.searcher == None):
             self.searcher = searcher
+        
+        previous_documents = []
         if request.history:
             history_preprocessed = [msg.model_dump() for msg in request.history]
+            previous_documents = request.previous_documents
         else:
             history_preprocessed = []
 
+        print(previous_documents)
         # call model
         try:
             t1 = time()
 
             intial_state_values = {
+                "original_question" : request.question,
                 "question" : request.question,
                 "queries" : [],
+                "context_sufficient" : False,
                 "history": history_preprocessed,
-                "documents": [],
+                "documents": previous_documents,
                 "metadata": {},
                 "retrieval_iteration_counter": 0,
                 "generation_iteration_counter": 0,

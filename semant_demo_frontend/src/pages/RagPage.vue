@@ -92,50 +92,6 @@
                 </q-item>
               </template>
             </q-select>
-          <!-- select model -->
-            <!-- <q-select
-              v-model="selectedModel"
-              :options="models"
-              label="Model"
-              dense
-              outlined
-              style="width: 150px"
-          /> -->
-          <!-- temperature -->
-            <!-- <span class="text-caption text-grey-7">Temperature:</span>
-            <q-slider
-              v-model="temperature"
-              :min="tempRange.min"
-              :max="tempRange.max"
-              :step="0.1"
-              label
-              style="width: 100px"
-          /> -->
-          <!-- api key -->
-          <!-- <q-input v-model="apiKey" label="Api key" dense outlined /> -->
-          <!-- search mode -->
-          <!-- <q-select
-              v-model="selectedDBSearch"
-              :options="searchModes"
-              label="Search mode"
-              dense
-              outlined
-              style="width: 150px"
-          /> -->
-          <!-- alpha -->
-          <!-- <span class="text-caption text-grey-7">Alpha:</span>
-          <q-slider
-            v-model="alpha"
-            :min="alphaRange.min"
-            :max="alphaRange.max"
-            :step="0.1"
-            label
-            style="width: 100px"
-          /> -->
-          <!-- <q-input v-model.number="chunkNumber" type="number" label="Chunk limit" dense outlined /> -->
-          <!--- <q-input v-model="language" label="Language" dense outlined />
-          <q-input v-model.number="minYear" type="number" label="Min Year" dense outlined />
-          <q-input v-model.number="maxYear" type="number" label="Max Year" dense outlined /> -->
         </div>
          <!-- input box with send button -->
         <div class="col">
@@ -211,37 +167,7 @@ const rags = ref<RagRouteConfig[]>([])
 const isLoadingRagConfigs = ref(true)
 const selectedRAG = ref<RagRouteConfig | null>(null)
 
-// models
-const models = ref([
-  { label: 'OLLAMA (local)', value: 'OLLAMA' },
-  { label: 'GOOGLE (API)', value: 'GOOGLE' },
-  { label: 'OPENAI (API)', value: 'OPENAI' }
-])
-const selectedModel = ref(models.value[0])
-
-// temperature
-// const temperature = ref(0.0)
-// const tempRange = ref({ min: 0.0, max: 1.0 })
-
-// api key
-const apiKey = ref<string | null>(null)
-
-// search modes
-// const searchModes = ref([
-//   { label: 'hybrid', value: 'hybrid' },
-//   { label: 'vector', value: 'vector' },
-//   { label: 'text', value: 'text' }
-// ])
-// const selectedDBSearch = ref(searchModes.value[0])
-
-// alpha
-// const alpha = ref(0.5)
-// const alphaRange = ref({ min: 0.0, max: 1.0 })
-
 const chunkNumber = ref<number>(5)
-const minYear = ref<number | null>(null)
-const maxYear = ref<number | null>(null)
-const language = ref<string | null>(null)
 
 // ----------------------Load RAGs----------------------
 
@@ -278,6 +204,9 @@ const sendMessage = async () => {
   const userQuery = newMessage.value.trim()
   if (userQuery === '' || isAiThinking.value) return
 
+  const lastAImessage = [...messages.value].reverse().find(m => m.sender === 'AI' && m.sources && m.sources.length > 0)
+  const previousDocuments = lastAImessage ? lastAImessage.sources : []
+
   messages.value.push({ sender: 'me', text: userQuery })
   newMessage.value = ''
   scrollToBottom()
@@ -292,11 +221,6 @@ const sendMessage = async () => {
     // history for RAG
     const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
 
-    // const ragConfig = {
-    //   model_type: selectedModel.value.value,
-    //   temperature: 0.0, // temperature.value,
-    //   api_key: apiKey.value ? apiKey.value : null
-    // }
     const ragSearch = {
       search_query: userQuery, // is change in rag generator anyway (bcs it have to be refrased based on history context)
       limit: chunkNumber.value,
@@ -313,10 +237,8 @@ const sendMessage = async () => {
     const ragRequestBody = {
       question: userQuery,
       history: context,
-      // model configuration parameters
-      // rag_config: ragConfig,
-      // search parameters
-      rag_search: ragSearch
+      rag_search: ragSearch,
+      previous_documents: previousDocuments
     }
     const mainRagRequestBody = {
       rag_id: selectedRAG.value?.id,
@@ -335,14 +257,14 @@ const sendMessage = async () => {
       })
       return
     }
-    const sourcesForAnswer: Source[] = sources.map((res: SearchResult) => ({
-      text: res.text
-    }))
+    // const sourcesForAnswer: Source[] = sources.map((res: SearchResult) => ({
+    //   text: res.text
+    // }))
 
     messages.value.push({
       sender: 'AI',
       text: ragAnswer,
-      sources: sourcesForAnswer
+      sources: sources
     })
   } catch (error) {
     console.error('RAG error:', error)
