@@ -1,24 +1,91 @@
 from langchain_core.prompts import  MessagesPlaceholder
 
+# # prompt
+# answer_question_prompt_template = [
+#     ("system",
+#     """
+#     You are a precise and helpful chatbot. Your main task is to answer the user's \
+#     question based STRICTLY on the provided context.
+#     Follow these rules exactly:
+#     1) Use ONLY the following pieces of context to answer the question.
+#     2) For every piece of information or sentence that you take out of context, \
+#     you must provide SOURCE in format `[doc X]`, where X is the number of the corresponding SOURCE."
+#     3) If multiple sources support one sentence, CITE them all, like this: `[doc 2], [doc 5]`.
+#     4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
+#     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
+#     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
+#     Context: \n {context_string} \n
+#     """),
+#     MessagesPlaceholder(variable_name="prompt_history"),
+#     ("user", "{question_string}")
+#     ]
+
 # prompt
 answer_question_prompt_template = [
     ("system",
     """
     You are a precise and helpful chatbot. Your main task is to answer the user's \
     question based STRICTLY on the provided context.
-    Follow these rules exactly:
+
+    STRICT RULES:
     1) Use ONLY the following pieces of context to answer the question.
-    2) For every piece of information or sentence that you take out of context, \
-    you must provide source in format `[doc X]`, where X is the number of the corresponding source."
-    3) If multiple sources support one sentence, cite them all, like this: `[doc 2], [doc 5]`.
+    2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
+    3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
     4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
+
+    EXAMPLE OF CORRECT CITATION:
+    Context: [doc 1] Franz Kafka was a writer. [doc 2] He was born in Prague.
+    Question: Kdo byl Franz Kafka a kde se narodil?
+    Answer: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2].
+    
+    Context: \n {context_string} \n
+    """),
+    ("user", "{question_string}")
+    ]
+
+answer_question_with_history_prompt_template = [
+    ("system",
+    """
+    You are a precise historical assistant. You are in a conversation. 
+    You will receive the user's CURRENT SHORT QUERY and a TECHNICAL STANDALONE version of it.
+    - Use the TECHNICAL version to find facts in the context.
+    - Use the CURRENT SHORT QUERY to match the user's tone and language.
+
+    STRICT RULES:
+    1) Use ONLY the following pieces of context to answer the question.
+    2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
+    3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
+    4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
+    5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
+    6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
+
+    EXAMPLE OF CORRECT CITATION:
+    Context: [doc 1] Franz Kafka was a writer. [doc 2] He was born in Prague.
+    Question: Kdo byl Franz Kafka a kde se narodil?
+    Answer: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2].
+    
     Context: \n {context_string} \n
     """),
     MessagesPlaceholder(variable_name="prompt_history"),
-    ("user", "{question_string}")
-    ]
+    ("user", "User's current query: {original_question}\nTechnical version to answer: {question_string}")
+]
+
+check_sufficient_context_prompt_template = [
+    ("system", """You are a retrieval optimizer. Your task is to determine if the PROVIDED CONTEXT contains enough factual information to answer the NEW QUESTION.
+
+    RULES:
+    1. Respond ONLY with the word 'yes' or 'no'.
+    2. DO NOT translate your answer. Even if the question is in Czech or German, your response must be exactly 'yes' or 'no'.
+    3. No explanations, no full sentences.
+
+    EXAMPLES:
+    Context: 'Franz Kafka was a writer.' | Question: 'Who was Kafka?' | Answer: yes
+    Context: 'He lives in Prague.' | Question: 'When was he born?' | Answer: no
+    """),
+    ("user", "CONTEXT: \n {context_string} \n NEW QUESTION: {question_string} \n Is the information sufficient? (yes/no):")
+]
 
 refrase_question_from_history_prompt_template = [
     ("system",
@@ -76,6 +143,13 @@ multiquery_retry = (
 generation_retry = (
     "\nCRITICAL NOTE: Your previous answer had issues, correct it. Feedback: {feedback}."
 )
+
+# generation_retry = (
+# "\nCRITICAL INSTRUCTION: Your previous answer was flagged for an issue: {feedback}\n"
+# "Please fix the answer, but REMEMBER: You must stay STRICTLY faithful to the provided context. "
+# "Do NOT add any information that is not explicitly stated in the documents. "
+# "If the feedback asks for something not in the context, ignore that part of the feedback."
+# )
 
 hyde_prompt_template = [
     ("system",
