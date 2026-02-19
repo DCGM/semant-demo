@@ -1,6 +1,6 @@
 id: "xandry12_AdaptiveRagGenerator_ollama_default_multiquery"
-name: "Adaptive RAG using Ollama with multi query"
-description: "RAG using Ollama's big local model Gemma3:12b. It supports history between messages and internet/web search using DuckDuckGo."
+name: "Adaptive RAG using Ollama with multi query and web search"
+description: "RAG using Ollama's big local model Gemma3:12b. It has problem with citations, it answers based on provided documents but sometimes will not cite. It supports history between messages and internet/web search using DuckDuckGo."
 class_name: "AdaptiveRagGenerator"
 params:
   model_type: "OLLAMA"

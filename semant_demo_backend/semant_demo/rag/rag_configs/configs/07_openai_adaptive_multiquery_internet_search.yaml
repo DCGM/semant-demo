@@ -1,5 +1,5 @@
 id: "xandry12_AdaptiveRagGenerator_openai_gpt51_web_search"
-name: "Adaptive RAG using OpenAI GPT5.1 with multi query"
+name: "Adaptive RAG using OpenAI GPT5.1 with multi query and web search."
 description: "Adaptive RAG with GPT5.1 model. It supports history between messages and internet/web search using DuckDuckGo."
 class_name: "AdaptiveRagGenerator"
 params:
