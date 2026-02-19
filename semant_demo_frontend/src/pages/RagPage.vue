@@ -15,6 +15,7 @@
             <!-- message TEXT  -->
             <div
               v-html="replaceSourcesAndConvertToMarcdown(message, index)" class="markdown-body"
+              @mouseup="handleMouseUp(index)"
               @click.capture="singleSourceClicks"
             ></div>
             <!-- show sources - bottom button  -->
@@ -119,21 +120,56 @@
             </template>
           </q-input>
         </div>
-    </div>
+      </div>
+
+      <q-btn
+      v-if="selectionData.show"
+      ref="explainButttonnRef"
+      label="Explain"
+      color="primary"
+      size="md"
+      rounded
+      dense
+      unelevated
+      class="absolute z-top"
+      :style="{ top: selectionData.y + 'px', left: selectionData.x + 'px', position: 'absolute' }"
+      @click="explainSelection"
+    />
+
+    <q-dialog v-model="explanationDialog.show">
+      <q-card style="width: 500px; max-width: 90vw;">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Vysvětlení tvrzení</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-card-section>
+          <div class="text-italic q-mb-md">"{{ selectionData.text }}"</div>
+          <q-separator q-mb-md />
+          <div v-if="explanationDialog.loading" class="flex flex-center q-pa-lg">
+            <q-spinner-dots size="2em" />
+          </div>
+          <div
+            v-else
+            v-html="convertToMarkdown(convertLinks(explanationDialog.text, messages[selectionData.msgIndex].sources, selectionData.msgIndex))"
+            class="markdown-body"
+            @click.capture="singleSourceClicks">
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 
 // ---------------------------------------------------
 interface Source {
-  text: string;
-}
-
-interface SearchResult {
   text: string;
 }
 
@@ -151,7 +187,7 @@ interface RagRouteConfig {
 
 // First message from AI
 const messages = ref<Message[]>([
-  { sender: 'AI', text: 'Hello, what is your question? / Ahoj, máš na mě nějakou otázku?' }
+  { sender: 'AI', text: 'Hello, what is your question? If you want to verify a statement, simply select it and click on the "Explain" button. / Ahoj, máte na mě nějakou otázku? Pokud chcete ověřit tvrzení, jednoduše jej vyberte a klikněte na tlačítko „Explain“.' }
 ])
 
 const newMessage = ref('')
@@ -168,6 +204,10 @@ const isLoadingRagConfigs = ref(true)
 const selectedRAG = ref<RagRouteConfig | null>(null)
 
 const chunkNumber = ref<number>(5)
+
+const explainButttonnRef = ref<any>(null)
+const selectionData = ref({ show: false, x: 0, y: 0, text: '', msgIndex: -1 })
+const explanationDialog = ref({ show: false, text: '', loading: false })
 
 // ----------------------Load RAGs----------------------
 
@@ -188,8 +228,12 @@ async function loadRagConfigs () {
 
 onMounted(() => {
   loadRagConfigs()
+  document.addEventListener('mousedown', handleClickOutside)
 })
 
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleClickOutside)
+})
 // ----------------------Main chat-----------------------------
 
 const scrollToBottom = () => {
@@ -289,23 +333,26 @@ const convertToMarkdown = (markdownText: string) => {
   return marked(markdownText) as string
 }
 
-// Process source and conver to MarcDown
+// convert links
+const convertLinks = (text: string, sources: Source[] | undefined, msgIndex: number) => {
+  const sourcesRegex = /(?:\[doc\s*(\d+)\]|Dokument\s*(\d+))/gi // /\[doc\s*(\d+)\]/g
 
+  // replace sources links
+  return text.replace(sourcesRegex, (match, strIndex) => {
+    const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
+    if (sources && sources[sourceIndex]) {
+      return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
+    }
+    return match
+  })
+}
+
+// Process source and conver to MarcDown
 const replaceSourcesAndConvertToMarcdown = (msg: Message, msgIndex: number) => {
   if (msg.sender !== 'AI' || !msg.sources) { // replace sources only for AI messages
     return convertToMarkdown(msg.text)
   }
-
-  const sourcesRegex = /(?:\[doc\s*(\d+)\]|Dokument\s*(\d+))/gi // /\[doc\s*(\d+)\]/g
-
-  // replace sources links
-  const result = msg.text.replace(sourcesRegex, (match, strIndex) => {
-    const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
-    if (msg.sources && msg.sources[sourceIndex]) {
-      return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
-    }
-    return match // nothing found
-  })
+  const result = convertLinks(msg.text, msg.sources, msgIndex)
   return convertToMarkdown(result)
 }
 
@@ -335,10 +382,75 @@ const singleSourceClicks = (event: Event) => {
 // put chat into starting state
 const resetChat = () => {
   messages.value = [
-    { sender: 'AI', text: 'Hello, what is your question?' }
+    { sender: 'AI', text: 'Hello, what is your question? If you want to verify a statement, simply select it and click on the "Explain" button. / Ahoj, máte na mě nějakou otázku? Pokud chcete ověřit tvrzení, jednoduše jej vyberte a klikněte na tlačítko „Explain“.' }
   ]
   newMessage.value = ''
   isAiThinking.value = false
+}
+
+// hide explain button if clicked elsewhere
+const handleClickOutside = (event: MouseEvent) => {
+  if (selectionData.value.show) {
+    const buttonEl = explainButttonnRef.value?.$el
+    if (buttonEl && !buttonEl.contains(event.target as Node)) {
+      selectionData.value.show = false
+    }
+  }
+}
+
+// selection explain window
+const handleMouseUp = (index: number) => {
+  const selection = window.getSelection()
+  const selectedText = selection ? selection.toString().trim() : ''
+
+  if (selectedText.length > 5 && messages.value[index].sender === 'AI') {
+    const range = selection!.getRangeAt(0)
+    const rect = range.getBoundingClientRect()
+
+    // get button location
+    selectionData.value = {
+      show: true,
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY - 35,
+      text: selectedText,
+      msgIndex: index
+    }
+  } else {
+    setTimeout(() => { selectionData.value.show = false }, 100)
+  }
+}
+
+// selection window call backend
+const explainSelection = async () => {
+  const msgIndex = selectionData.value.msgIndex
+  const aiMsg = messages.value[msgIndex]
+  if (!aiMsg) return
+
+  // get history
+  const allRelevantMsg = messages.value.slice(0, msgIndex).filter(msg => msg.sources !== undefined) // remove messages without any informations
+
+  // history for RAG
+  const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
+
+  explanationDialog.value.show = true
+  explanationDialog.value.loading = true
+  explanationDialog.value.text = ''
+  selectionData.value.show = false
+
+  try {
+    const response = await axios.post('/api/rag/explain', {
+      rag_id: selectedRAG.value?.id,
+      selected_text: selectionData.value.text,
+      sources: aiMsg.sources,
+      history: context,
+      full_answer: aiMsg.text
+    })
+    explanationDialog.value.text = response.data.explanation
+  } catch (error) {
+    explanationDialog.value.text = 'Sorry, this part can not be explained.'
+  } finally {
+    explanationDialog.value.loading = false
+  }
 }
 
 // ----------------------Styles-----------------------------

@@ -1,25 +1,4 @@
 from langchain_core.prompts import  MessagesPlaceholder
-
-# # prompt
-# answer_question_prompt_template = [
-#     ("system",
-#     """
-#     You are a precise and helpful chatbot. Your main task is to answer the user's \
-#     question based STRICTLY on the provided context.
-#     Follow these rules exactly:
-#     1) Use ONLY the following pieces of context to answer the question.
-#     2) For every piece of information or sentence that you take out of context, \
-#     you must provide SOURCE in format `[doc X]`, where X is the number of the corresponding SOURCE."
-#     3) If multiple sources support one sentence, CITE them all, like this: `[doc 2], [doc 5]`.
-#     4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
-#     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
-#     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
-#     Context: \n {context_string} \n
-#     """),
-#     MessagesPlaceholder(variable_name="prompt_history"),
-#     ("user", "{question_string}")
-#     ]
-
 # prompt
 answer_question_prompt_template = [
     ("system",
@@ -144,13 +123,6 @@ generation_retry = (
     "\nCRITICAL NOTE: Your previous answer had issues, correct it. Feedback: {feedback}."
 )
 
-# generation_retry = (
-# "\nCRITICAL INSTRUCTION: Your previous answer was flagged for an issue: {feedback}\n"
-# "Please fix the answer, but REMEMBER: You must stay STRICTLY faithful to the provided context. "
-# "Do NOT add any information that is not explicitly stated in the documents. "
-# "If the feedback asks for something not in the context, ignore that part of the feedback."
-# )
-
 hyde_prompt_template = [
     ("system",
     """
@@ -191,4 +163,33 @@ generation_grader_prompt_template = [
        - 'feedback': A short explanation of what is wrong or missing. It should be useful for generating improved responses.
     """),
     ("user", "Context: \n {documents} \n Generated answer: {answer}")
+]
+
+
+explain_selected_text_prompt_template = [
+        ("system",
+    """
+    You are a precise and helpful historical assistant. A user has highlighted a specific CLAIM in your previous answer and wants to see the EVIDENCE from the sources used.
+
+    SOURCES TO SEARCH: 
+    {context_string}
+
+    FULL PREVIOUS ANSWER FOR CONTEXT:
+    {full_answer}
+
+    THE SPECIFIC CLAIM TO EXPLAIN: 
+    "{selected_text}"
+
+    INSTRUCTIONS:
+    1) Look into the PROVIDED SOURCES only.
+    2) Identify the specific document [doc X] and the exact sentence that supports the CLAIM.
+    3) Quote the relevant sentence directly. When explaining, refer to the sources using the format [doc X] whenever you mention information from them.
+    4) Briefly explain the logical connection.
+    5) If the claim is NOT supported by the sources, admit it.
+    6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
+    7) Before writing a sentence, look at the Context and identify exactly which [doc X] contains the info. Double-check that the number X matches the document header. NEVER reuse a citation number from the previous sentence unless it is the same source.
+    
+    """),
+    MessagesPlaceholder(variable_name="prompt_history"),
+    ("user", "Explain why we said: '{selected_text}' in the language of the text and CITE.")
 ]

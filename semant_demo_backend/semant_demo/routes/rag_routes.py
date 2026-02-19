@@ -8,7 +8,6 @@ from semant_demo.weaviate_search import WeaviateSearch
 
 from semant_demo.rag.rag_factory import get_all_rag_configurations, RAG_INSTANCES
 
-
 #dependency
 global_searcher = None
 
@@ -35,3 +34,13 @@ async def rag(request: schemas.RagRequestMain, searcher: WeaviateSearch = Depend
     #load class and call instance
     rag_instance = RAG_INSTANCES[id]
     return await rag_instance.rag_request(request=request.rag_request, searcher=searcher)
+
+@exp_router.post("/api/rag/explain")
+async def explain_selection(request : schemas.ExplainRequest):
+    id = request.rag_id
+    if id not in RAG_INSTANCES:
+        raise HTTPException(status_code=400, detail=f"Unknown RAG configuration: {id} used for explaining.")
+    
+    #load class and call instance
+    rag_instance = RAG_INSTANCES[id]
+    return await rag_instance.explain_selection(request=request)
