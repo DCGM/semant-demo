@@ -200,6 +200,13 @@ class AvailableRagConfigurationsResponse(BaseModel):
     temperature_range: dict[str, float]
     available_api_keys: list[str]
 
+class ExplainRequest(BaseModel):
+    rag_id : str
+    selected_text : str
+    full_answer : str                                # full text of an answer from which selected_text came from
+    history: list[RagChatMessage] | None = None      # chat history, to keep context
+    sources : list[TextChunkWithDocument]            # sources / chunks of the id question
+
 class CreateResponse(BaseModel):
     created: bool
     message: str

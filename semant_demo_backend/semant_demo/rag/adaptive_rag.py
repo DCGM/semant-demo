@@ -26,7 +26,7 @@ import asyncio
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
-from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState, TextChunkWithDocument, Document
+from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState, TextChunkWithDocument, Document, ExplainRequest
 from semant_demo.weaviate_search import WeaviateSearch
 #import prompts from prompt file
 from semant_demo.rag.adaptive_rag_prompts import *
@@ -57,6 +57,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.context_grader_prompt = ChatPromptTemplate.from_messages(context_grader_prompt_template)
         self.generation_grader_prompt = ChatPromptTemplate.from_messages(generation_grader_prompt_template)
         self.check_sufficient_context_prompt = ChatPromptTemplate.from_messages(check_sufficient_context_prompt_template)
+        self.explain_selected_text_prompt = ChatPromptTemplate.from_messages(explain_selected_text_prompt_template)
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
@@ -640,3 +641,27 @@ class AdaptiveRagGenerator(BaseRag):
             sources=generated_result["documents"],
             time_spent=time_spent
         )
+    
+    #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+    # explain selection method
+    async def explain_selection(self, request : ExplainRequest):
+        full_answer = request.full_answer
+        sources_raw = request.sources
+        selected_text = request.selected_text
+        history_preprocessed = []
+        if request.history:
+            history_preprocessed = [msg.model_dump() for msg in request.history]
+
+        if (DEBUG_PRINT):
+            print(f"EXPLAIN SELECTION: Full answer: {full_answer}, Selected text: {selected_text}")
+
+        if (full_answer and sources_raw and selected_text):
+            context = self._format_weaviate_context(sources_raw)
+            chain = self._create_chain(model=self.model, prompt=self.explain_selected_text_prompt)
+            result = await chain.ainvoke({
+                "full_answer" : full_answer,
+                "context_string" : context,
+                "selected_text" : selected_text,
+                "prompt_history" : history_preprocessed
+            })
+        return {"explanation" : result}
