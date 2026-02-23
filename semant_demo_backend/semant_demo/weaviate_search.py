@@ -1089,8 +1089,32 @@ class WeaviateSearch:
         Assigns automatic tags to chunks
         """
         try:
-            prompt = ChatPromptTemplate.from_template(self.tag_template)
-            model = OllamaProxyRunnable()
+            # load config data
+            # set model from config
+            config_model_name = tag_request.task_config.params.model_name
+
+            # load prompt template from the config
+            if tag_request.task_config.prompt_template is not None:
+                prompt = ChatPromptTemplate.from_template(tag_request.task_config.prompt_template)
+            else:
+                prompt = ChatPromptTemplate.from_template(self.tag_template)
+            # select API
+            if tag_request.task_config.params.model_type == schemas.APIType.openai:
+                api_key = os.getenv("OPENAI_API_KEY", "")
+                #logging.info("API KEY: " + api_key)
+                model = ChatOpenAI(
+                    model = config_model_name if config_model_name else config.OPENAI_MODEL,
+                    api_key = api_key,
+                    temperature = tag_request.task_config.params.temperature
+                )
+            elif tag_request.task_config.params.model_type == schemas.APIType.google:
+                pass
+            else: # default ollama
+                model = OllamaProxyRunnable()
+                #logging.info(f"MODEL NAME FROM CONFIG: {tag_request.task_config.params.model_name}")
+                #logging.info(f"Whole config passed: {tag_request.task_config}")
+                model.set_model(config_model_name)
+            # prepare chain
             chain = prompt | model
 
             # get the collection
@@ -1102,26 +1126,13 @@ class WeaviateSearch:
             )
             weaviate_objects = self.client.collections.get("Chunks")
 
-            #weaviate_objects = await chunks_collection.query.fetch_objects(
-            #    filters=filters
-            #)
-
             tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
 
-            """
-            Filtering for reference equal to certain id results in filtering out chunks without refs
-            filters= ( 
-                    ( Filter.by_ref(link_on="automaticTag").is_none(True) | Filter.by_ref(link_on="automaticTag").by_id().not_equal(tag_uuid) ) &
-                    ( Filter.by_ref(link_on="positiveTag").is_none(True) | Filter.by_ref(link_on="positiveTag").by_id().not_equal(tag_uuid) ) &
-                    ( Filter.by_ref(link_on="negativeTag").is_none(True) | Filter.by_ref(link_on="negativeTag").by_id().not_equal(tag_uuid) )
-                ),
-            weaviate doesnt offer is_none/is_empty or similar
-            so I chose to filter after fetching all of them and filter them later
-            """
             final_results = []
             final_results_filtered = []
             limit = 1000  # TODO tune
             offset = 0
+            positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
             while True:
                 # query weaviate db for chunks of chosen collection
                 query = weaviate_objects.query.fetch_objects(
@@ -1191,7 +1202,6 @@ class WeaviateSearch:
             tag_processing_data = []
 
             # process with llm and decide if tag belongs to text
-            positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
             logging.info("Past the add ir get tag")
             all_texts_count = len(final_results)
             processed_count = 0
@@ -1200,7 +1210,10 @@ class WeaviateSearch:
                     # extract text field from the current object
                     text = obj.properties["text"]
                     tag = await chain.ainvoke({"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text})
-
+                    # process response according to the api type
+                    if tag_request.task_config.params.model_type == schemas.APIType.openai:
+                        tag = tag.content
+                    
                     # store in weaviate (upload positive tag instances to weaviate)
                     if positive_responses.search(tag): # if the llm response is positive then store the tag data
                         # test if the reference to the tag exists
@@ -1223,42 +1236,8 @@ class WeaviateSearch:
                     await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, session=session, all_texts_count=all_texts_count, processed_count=processed_count, tag_id=tag_uuid, tag_processing_data=tag_processing_data)
                     logging.info("After update")
                 except Exception as e:
-                    pass # TODO revert changes
+                    logging.error(f"Error in storing result to weaviate: {e}")
 
-            # uncomment to test if the references are correct
-            #cfg = await self.client.collections.get("Chunks").config.get()
-            #logging.info(f"Chunk refs: {[r.name for r in cfg.references]}")
-
-            # uncomment to test if storing works
-            #weaviate_objects_test = self.client.collections.get(collection_name)
-
-            #test_results = await weaviate_objects_test.query.fetch_objects(
-            #        return_properties=["text"],
-            #        return_references=QueryReference(
-            #            link_on="automaticTag",
-            #            return_properties=["tag_name", "tag_shorthand", "tag_color", "tag_pictogram", "tag_definition", "tag_examples"]
-            #        ),
-            #        limit=100,
-            #    )
-
-            #for obj in test_results.objects:
-            #        logging.info(f"Chunk {obj.uuid} | text: {obj.properties.get('text','')[:80]}...")
-
-                    # references in chunks
-            #        tags_ref = obj.references.get("automaticTag") if obj.references else None
-            #        if tags_ref and getattr(tags_ref, "objects", None):
-            #            for tag_obj in tags_ref.objects:
-            #                logging.info(
-            #                    f"Tag {tag_obj.uuid} | "
-            #                    f"name={tag_obj.properties.get('tag_name')} | "
-            #                    f"short={tag_obj.properties.get('tag_shorthand')} | "
-            #                    f"color={tag_obj.properties.get('tag_color')} | "
-            #                    f"pic={tag_obj.properties.get('tag_pictogram')} | "
-            #                    f"def={tag_obj.properties.get('tag_definition')} | "
-            #                    f"examples={str(tag_obj.properties.get('tag_examples'))}"
-            #                )
-            #        else:
-            #            logging.info("No tags found")
             return {'texts': texts, 'tags': tags}
 
         except Exception as e:

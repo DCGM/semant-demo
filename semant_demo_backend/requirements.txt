@@ -16,3 +16,4 @@ langchain_community
 jinja2
 sqlalchemy
 aiosqlite
+pydantic-ai

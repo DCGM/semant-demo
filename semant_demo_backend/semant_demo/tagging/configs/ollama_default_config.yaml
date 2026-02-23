@@ -1,0 +1,8 @@
+name: "Gemma3:12b Tagging"
+description: "Tagging using Ollama's small local model Gemma3:12b."
+class_name: "Tag Assigner"
+prompt_template: "You are given a document, decide whether tag \"{tag_name}\" belongs to the document. \nThe tag's definition is: \"{tag_definition}\". \nHere are examples of texts belonging to the tag: {tag_examples}. \n Output Ano if the tag belongs or Ne if it does not belong to the document, do not output anything else. \nBe benevolent and output True if there is some connection between tag and the text of the document. \nDocument: \n{content}"
+params:
+  model_type: "OLLAMA"
+  model_name: "gemma3:12b"
+  temperature: 0.0
