@@ -19,7 +19,7 @@ import openai
 from semant_demo import schemas
 from semant_demo.config import config
 import logging
-from semant_demo.weaviate_search import WeaviateSearch
+from semant_demo.weaviate_tag import WeaviateTag
 import asyncio
 from semant_demo.tagging.tagging_task import tag_and_store
 import uuid
@@ -61,19 +61,19 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
-global_searcher = None
+global_tagger = None
 
-async def get_search() -> WeaviateSearch:
-    global global_searcher
-    if global_searcher is None:
-        global_searcher = await WeaviateSearch.create(config)
-    return global_searcher
+async def get_tag() -> WeaviateTag:
+    global global_tagger
+    if global_tagger is None:
+        global_tagger = await WeaviateTag.create(config)
+    return global_tagger
 
 exp_router = APIRouter()
 
 @exp_router.post("/api/user_collection", response_model=schemas.CreateResponse)
 async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplate,
-                                 tagger: WeaviateSearch = Depends(get_search),
+                                 tagger: WeaviateTag = Depends(get_tag),
                                  session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
@@ -92,7 +92,7 @@ async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplat
 
 @exp_router.get("/api/collections", response_model=schemas.GetCollectionsResponse)
 async def fetch_collections(userId: str,
-                            tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetCollectionsResponse:
+                            tagger: WeaviateTag = Depends(get_tag)) -> schemas.GetCollectionsResponse:
     """
     Retrieves all collections for given user
     """
@@ -101,7 +101,7 @@ async def fetch_collections(userId: str,
 
 
 @exp_router.post("/api/chunk_2_collection", response_model=schemas.CreateResponse)
-async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: WeaviateSearch = Depends(get_search),
+async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: WeaviateTag = Depends(get_tag),
                                  session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
@@ -118,7 +118,7 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: Weavi
 
 @exp_router.get("/api/chunks_of_collection", response_model=schemas.GetCollectionChunksResponse)
 async def get_collection_chunks(collectionId: str,
-                                tagger: WeaviateSearch = Depends(get_search)) -> schemas.GetCollectionChunksResponse:
+                                tagger: WeaviateTag = Depends(get_tag)) -> schemas.GetCollectionChunksResponse:
     """
     Returns chunks which belong to collection given by id
     """
