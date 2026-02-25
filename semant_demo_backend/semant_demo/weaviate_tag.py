@@ -198,14 +198,30 @@ class WeaviateTag:
             offset = 0
             filters = Filter.by_id().contains_any([str(uuid) for uuid in getChunksReq.tag_uuids])
 
-            results = await tag_collection.query.fetch_objects(filters=filters)
+            results = []
+            while True:
+                results_partial = await tag_collection.query.fetch_objects(
+                        limit=limit,
+                        offset=offset,
+                        filters=filters
+                    )
+                results.extend(results_partial.objects)
+                # when no objects returned finish cycle - cycled through whole db
+                if not results_partial.objects:
+                    break
+                offset += limit # calculate new offset for next iteration
             logging.info(f"Results: {results}")
             # get different collection names
-            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            collection_names = {obj.properties["collection_name"] for obj in results}
             userCollectionName = next(iter(collection_names))
             logging.info(f"Tag uuids in get_tagged_chunks: {getChunksReq.tag_uuids} {collection_names} {userCollectionName}")
             # go over chunks, retrieve text chunks and corresponding tags
+            # filter to get chunks in selected user collection
+            filters =(
+                Filter.by_ref(link_on="userCollection").by_property("name").equal(userCollectionName)
+            )
             try:
+                offset = 0
                 while True:
                     collection_name = "Chunks"
                     logging.info(f"collection name: {collection_name}")
@@ -226,7 +242,8 @@ class WeaviateTag:
                                 link_on="negativeTag",
                                 return_properties=["uuid", "tag_name"]
                             ),
-                        ]
+                        ],
+                        filters=filters
                     )
                     # when no objects returned finish cycle
                     if not chunk_results.objects:
@@ -257,8 +274,8 @@ class WeaviateTag:
                     # process the filtered chunks to send them to frontend
                     logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
             except Exception as e:
-                pass
-                #logging.error(f"Tags in Chunks error: {e}")
+                #pass
+                logging.error(f"Tags in Chunks error: {e}")
                 #return {'chunks_with_tags': []}
             return {"chunks_with_tags": chunk_lst_with_tags}
         except Exception as e:
