@@ -52,8 +52,8 @@
             <q-input v-model="feedbackComment" autogrow outlined label="Your comment (optional) / Váš komentář (nepovinné)" />
           </q-card-section>
           <q-card-actions align="right">
-            <q-btn flat label="Zrušit" v-close-popup />
-            <q-btn flat label="Odeslat" color="primary" @click="submitFeedback" v-close-popup />
+            <q-btn flat label="Cancel / Zrušit" v-close-popup />
+            <q-btn flat label="Send / Odeslat" color="primary" @click="submitFeedback" v-close-popup />
           </q-card-actions>
         </q-card>
       </q-dialog>
