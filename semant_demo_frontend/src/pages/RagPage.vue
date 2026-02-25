@@ -22,9 +22,41 @@
             <div v-if="message.sender === 'AI' && message.sources && message.sources.length > 0" class="q-mt-sm">
               <a href="#" @click.prevent="openSourcesDialog(message.sources)" class="source-link">Sources</a>
             </div>
+            <!-- like and dislike -->
+            <div v-if="message.sender === 'AI' && index > 0" class="row items-center q-gutter-x-sm q-mt-xs">
+              <q-btn
+                flat round dense
+                size="sm"
+                icon="thumb_up"
+                :color="message.userRating === 1 ? 'green' : 'grey'"
+                @click="handleFeedback(index, 1)"
+              />
+              <q-btn
+                flat round dense
+                size="sm"
+                icon="thumb_down"
+                :color="message.userRating === -1 ? 'red' : 'grey'"
+                @click="handleFeedback(index, -1)"
+              />
+            </div>
           </template>
         </q-chat-message>
       </div>
+      <!-- dislike dialog  -->
+      <q-dialog v-model="showFeedbackDialog">
+        <q-card style="min-width: 350px">
+          <q-card-section>
+            <div class="text-subtitle1 text-weight-bold">Why didn't you like the answer? / Proč se Vám odpověď nelíbila?</div>
+          </q-card-section>
+          <q-card-section class="q-pt-none">
+            <q-input v-model="feedbackComment" autogrow outlined label="Your comment (optional) / Váš komentář (nepovinné)" />
+          </q-card-section>
+          <q-card-actions align="right">
+            <q-btn flat label="Zrušit" v-close-popup />
+            <q-btn flat label="Odeslat" color="primary" @click="submitFeedback" v-close-popup />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
 
       <!-- sources window -->
       <q-dialog v-model="showSourcesDialog">
@@ -122,6 +154,7 @@
         </div>
       </div>
 
+      <!-- explaination functionality -->
       <q-btn
       v-if="selectionData.show"
       ref="explainButttonnRef"
@@ -167,7 +200,8 @@
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
-
+import { useQuasar } from 'quasar'
+const $q = useQuasar() // notifications
 // ---------------------------------------------------
 interface Source {
   text: string;
@@ -177,6 +211,7 @@ interface Message {
   sender: 'AI' | 'me';
   text: string;
   sources?: Source[];
+  userRating?: number;
 }
 
 interface RagRouteConfig {
@@ -208,6 +243,12 @@ const chunkNumber = ref<number>(5)
 const explainButttonnRef = ref<any>(null)
 const selectionData = ref({ show: false, x: 0, y: 0, text: '', msgIndex: -1 })
 const explanationDialog = ref({ show: false, text: '', loading: false })
+
+// message feedback
+const showFeedbackDialog = ref(false)
+const feedbackComment = ref('')
+const currentFeedbackIndex = ref(-1)
+const currentRating = ref(0)
 
 // ----------------------Load RAGs----------------------
 
@@ -308,7 +349,7 @@ const sendMessage = async () => {
     messages.value.push({
       sender: 'AI',
       text: ragAnswer,
-      sources: sources
+      sources
     })
   } catch (error) {
     console.error('RAG error:', error)
@@ -404,6 +445,7 @@ const handleMouseUp = (index: number) => {
   const selectedText = selection ? selection.toString().trim() : ''
 
   if (selectedText.length > 5 && messages.value[index].sender === 'AI') {
+    if (!selection || selection.rangeCount === 0) return
     const range = selection!.getRangeAt(0)
     const rect = range.getBoundingClientRect()
 
@@ -450,6 +492,43 @@ const explainSelection = async () => {
     explanationDialog.value.text = 'Sorry, this part can not be explained.'
   } finally {
     explanationDialog.value.loading = false
+  }
+}
+
+// messages feedback
+const handleFeedback = (index: number, rating: number) => {
+  currentFeedbackIndex.value = index
+  currentRating.value = rating
+
+  if (rating === -1) {
+    feedbackComment.value = ''
+    showFeedbackDialog.value = true
+  } else {
+    submitFeedback()
+  }
+}
+
+const submitFeedback = async () => {
+  const index = currentFeedbackIndex.value
+  const msg = messages.value[index]
+  const question = messages.value[index - 1]?.text || ''
+
+  try {
+    await axios.post('/api/rag/feedback', {
+      rag_id: selectedRAG.value?.id,
+      question,
+      answer: msg.text,
+      sources: msg.sources,
+      rating: currentRating.value,
+      comment: feedbackComment.value
+    })
+
+    messages.value[index].userRating = currentRating.value
+
+    // popup/alert window
+    $q.notify({ color: 'positive', message: 'Thank you for your feedback. / Děkujeme za zpětnou vazbu.', icon: 'check' })
+  } catch (e) {
+    $q.notify({ color: 'negative', message: 'Error sending. / Chyba při odesílání.' })
   }
 }
 
