@@ -207,6 +207,14 @@ class ExplainRequest(BaseModel):
     history: list[RagChatMessage] | None = None      # chat history, to keep context
     sources : list[TextChunkWithDocument]            # sources / chunks of the id question
 
+class FeedbackRequest(BaseModel):
+    rag_id: str
+    question: str
+    sources: list[TextChunkWithDocument]
+    answer: str
+    rating: int                                     # should be: 1 - like / -1 - dislike
+    comment: str | None = None
+
 class CreateResponse(BaseModel):
     created: bool
     message: str

@@ -8,6 +8,8 @@ from semant_demo.weaviate_search import WeaviateSearch
 
 from semant_demo.rag.rag_factory import get_all_rag_configurations, RAG_INSTANCES
 
+import datetime
+import json
 #dependency
 global_searcher = None
 
@@ -44,3 +46,14 @@ async def explain_selection(request : schemas.ExplainRequest):
     #load class and call instance
     rag_instance = RAG_INSTANCES[id]
     return await rag_instance.explain_selection(request=request)
+
+# endpoint of feedback - like/dislike
+@exp_router.post("/api/rag/feedback")
+async def save_feedback(request : schemas.FeedbackRequest):
+    feedback_data = request.model_dump(mode="json")
+    feedback_data["timestamp"] = datetime.datetime.now().isoformat()
+
+    with open("user_feedback.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(feedback_data, ensure_ascii=False) + "\n")
+
+    return {"status" : "success"}
