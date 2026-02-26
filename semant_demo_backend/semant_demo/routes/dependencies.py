@@ -22,5 +22,3 @@ async def get_search() -> WeaviateSearch:
     if global_searcher is None:
         global_searcher = await WeaviateSearch.create(config)
     return global_searcher
-
-exp_router = APIRouter()
