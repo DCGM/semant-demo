@@ -124,7 +124,7 @@ async def get_collection_chunks(collectionId: str,
     """
     try:
         logging.info(f"In get collection chunks {collectionId}")
-        response = await tagger.get_collection_chunks(collectionId)
+        response = await tagger.get_collection_chunks_paged(collectionId)
         return response
     except Exception as e:
         logging.error(f"{e}")

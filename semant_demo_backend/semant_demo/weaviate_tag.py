@@ -761,6 +761,45 @@ class WeaviateTag:
             logging.error(f"Error: {e}")
             return {'chunks_of_collection': []}
 
+    async def get_collection_chunks_paged(self, collectionId: str, ) ->schemas.GetCollectionChunksResponse:
+        """
+        Get all chunks belonging to collection with collectionId
+        get collection object, in that collection search for chunks that refer to the
+        collection and return chunk texts
+        """
+        try:
+            chunk_lst_with_tags = []
+            chunks_collection = self.client.collections.use("Chunks")
+
+            limit = PAGE_LIMIT
+            offset = 0
+            # prepare filter for collection ID
+            filters = Filter.by_ref("userCollection").by_id().equal(collectionId)
+            # iterate over all chunks find the reference to the user collection
+            while True:
+                chunks_partial = await chunks_collection.query.fetch_objects(
+                        limit=limit,
+                        offset=offset,
+                        filters=filters
+                    )
+                # when no objects returned finish cycle
+                if not chunks_partial.objects:
+                    break
+                # add queried objects to the list
+                chunk_lst_with_tags.extend([
+                    {
+                        'text_chunk': chunk_obj.properties.get('text', ''),
+                        'chunk_id': str(chunk_obj.uuid),
+                        'chunk_collection_name': collectionId
+                    }
+                    for chunk_obj in chunks_partial.objects
+                ])
+                offset += limit # calculate new offset for next iteration
+            return {"chunks_of_collection": chunk_lst_with_tags}
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            return {'chunks_of_collection': []}
+
     # TODO add collection to Tag class
     async def get_all_tags(self):
         """
