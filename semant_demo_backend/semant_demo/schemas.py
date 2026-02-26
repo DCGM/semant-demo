@@ -5,7 +5,7 @@ from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, JSON, Integer, DateTime
+from sqlalchemy import Column, String, JSON, Integer, DateTime, Text
 import sqlalchemy.sql.functions as funcs
 
 class SearchType(str, Enum):
@@ -168,6 +168,7 @@ class RagRequestMain(BaseModel):
 class RagResponse(BaseModel):
     rag_answer: str
     time_spent: float
+    response_id: str
     sources: list[TextChunkWithDocument]
 
 class ExtractedMeradata(BaseModel):
@@ -209,6 +210,7 @@ class ExplainRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     rag_id: str
+    response_id: str
     question: str
     sources: list[TextChunkWithDocument]
     answer: str
@@ -369,3 +371,15 @@ tag_class = {
         {"name": "collection_name", "dataType": ["string"]}
     ]
 }
+
+class RagUserFeedback(TasksBase):
+    __tablename__ = "rag_user_feedback"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    response_id = Column(String(36), index=True, unique=True, nullable=False)
+    timestamp = Column(DateTime(timezone=True), server_default=funcs.now())
+    rag_id = Column(String(255), nullable=False)
+    question = Column(Text, nullable=False) 
+    answer = Column(Text, nullable=False)
+    rating = Column(Integer, nullable=False) # 1 - like, -1 - dislike
+    comment = Column(Text, nullable=True)
+    sources = Column(JSON, nullable=True)

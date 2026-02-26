@@ -635,11 +635,14 @@ class AdaptiveRagGenerator(BaseRag):
             logging.error(f"RAG error: calling model {self.model_type}: {e}")
             raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
+        answer_id = str(uuid.uuid4())
+
         # answer
         return RagResponse(
             rag_answer=generated_result["generation"].strip(),
             sources=generated_result["documents"],
-            time_spent=time_spent
+            time_spent=time_spent,
+            response_id= answer_id
         )
     
     #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

@@ -182,6 +182,3 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-
-# RAG feedback logs
-user_feedback.jsonl

@@ -214,6 +214,7 @@ interface Message {
   text: string;
   sources?: Source[];
   userRating?: number;
+  response_id?: string;
 }
 
 interface RagRouteConfig {
@@ -351,7 +352,8 @@ const sendMessage = async () => {
     messages.value.push({
       sender: 'AI',
       text: ragAnswer,
-      sources
+      sources,
+      response_id: ragResponse.data.response_id
     })
   } catch (error) {
     console.error('RAG error:', error)
@@ -522,6 +524,7 @@ const submitFeedback = async () => {
     msg.userRating = currentRating.value
     await axios.post('/api/rag/feedback', {
       rag_id: selectedRAG.value?.id,
+      response_id: msg.response_id,
       question,
       answer: msg.text,
       sources: msg.sources,
