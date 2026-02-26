@@ -29,6 +29,7 @@
                 size="sm"
                 icon="thumb_up"
                 :color="message.userRating === 1 ? 'green' : 'grey'"
+                :disable="message.userRating === 1"
                 @click="handleFeedback(index, 1)"
               />
               <q-btn
@@ -36,6 +37,7 @@
                 size="sm"
                 icon="thumb_down"
                 :color="message.userRating === -1 ? 'red' : 'grey'"
+                :disable="message.userRating === -1"
                 @click="handleFeedback(index, -1)"
               />
             </div>
@@ -499,6 +501,9 @@ const explainSelection = async () => {
 const handleFeedback = (index: number, rating: number) => {
   currentFeedbackIndex.value = index
   currentRating.value = rating
+  const msg = messages.value[index]
+
+  if (msg.userRating === rating) return
 
   if (rating === -1) {
     feedbackComment.value = ''
@@ -514,6 +519,7 @@ const submitFeedback = async () => {
   const question = messages.value[index - 1]?.text || ''
 
   try {
+    msg.userRating = currentRating.value
     await axios.post('/api/rag/feedback', {
       rag_id: selectedRAG.value?.id,
       question,
@@ -522,8 +528,6 @@ const submitFeedback = async () => {
       rating: currentRating.value,
       comment: feedbackComment.value
     })
-
-    messages.value[index].userRating = currentRating.value
 
     // popup/alert window
     $q.notify({ color: 'positive', message: 'Thank you for your feedback. / Děkujeme za zpětnou vazbu.', icon: 'check' })
