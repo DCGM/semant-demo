@@ -5,7 +5,6 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from semant_demo import schemas
-from semant_demo.config import config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
 # from semant_demo.rag.rag_generator import RagGenerator
@@ -14,21 +13,13 @@ import asyncio
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import os
-import openai
-from semant_demo import schemas
-from semant_demo.config import config
-import logging
-from semant_demo.weaviate_search import WeaviateSearch
-import asyncio
 from semant_demo.tagging.tagging_task import tag_and_store
 import uuid
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 #from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, String, JSON
 from glob import glob
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 from sqlalchemy import select, update, bindparam, asc
 from typing import AsyncGenerator
 #import db
@@ -44,30 +35,10 @@ import json
 from semant_demo.tagging.sql_utils import DBError, update_task_status
 from semant_demo.tagging.tagging_task import getTaskByName
 
+#import dependencies
+from semant_demo.routes.dependencies import get_async_session, get_search, get_engine
 
 logging.basicConfig(level=logging.INFO)
-
-global_engine = None
-global_async_session_maker = None
-
-# Dependency
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    global global_engine, global_async_session_maker
-    if global_engine is None:
-        global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
-        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=True, expire_on_commit=False)
-    async with global_async_session_maker() as session:
-        yield session
-
-openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
-
-global_searcher = None
-
-async def get_search() -> WeaviateSearch:
-    global global_searcher
-    if global_searcher is None:
-        global_searcher = await WeaviateSearch.create(config)
-    return global_searcher
 
 exp_router = APIRouter()
 
@@ -102,6 +73,8 @@ async def start_tagging(tagReq: schemas.TagReqTemplate,
         except exc.SQLAlchemyError as e:
             logging.exception(f'Failed adding object to database. Task ID={taskId}')
             raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
+
+        _, global_async_session_maker = get_engine()
 
         task = asyncio.create_task(tag_and_store(tagReq, taskId, tagger, global_async_session_maker))
         taskName = task.get_name()
