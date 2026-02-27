@@ -13,6 +13,9 @@ class OllamaProxyRunnable(Runnable):
     def set_model(self, model):
         self.ollama_model = model
 
+    def set_temperature(self, temperature):
+        self.temperature = temperature
+
     async def ainvoke(self, input, config=None):
         # Handle PromptValue (e.g. from ChatPromptTemplate)
         if isinstance(input, PromptValue):

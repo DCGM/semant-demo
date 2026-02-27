@@ -4,7 +4,6 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
 
 from semant_demo import schemas
-from semant_demo.config import Config
 from weaviate.classes.query import QueryReference
 from .config import config
 
@@ -21,33 +20,15 @@ import os
 
 from weaviate.collections.classes.grpc import QueryReference
 
+from .weaviate_search import WeaviateSearch
+
 PAGE_LIMIT = 1000
 
-class WeaviateTag:
+class WeaviateSearchAndTag(WeaviateSearch):
     def __init__(self, client: WeaviateAsyncClient):
-        self.client = client
-        self.chunk_col = self.client.collections.get("Chunks")
+        super().__init__(client)  # sets self.client and self.chunk_col
         self.tag_template = tagging_templates.templates["Basic"]
 
-    @classmethod
-    async def create(cls, config:Config) -> "WeaviateTag":
-        # Instantiate async client with custom params
-        async_client = weaviate.use_async_with_custom(
-            http_host=config.WEAVIATE_HOST, http_port=config.WEAVIATE_REST_PORT, http_secure=False,
-            grpc_host=config.WEAVIATE_HOST, grpc_port=config.WEAVIATE_GRPC_PORT, grpc_secure=False,
-        )
-        # Connect and verify readiness
-        await async_client.connect()  # :contentReference[oaicite:0]{index=0}
-        if not await async_client.is_ready():  # :contentReference[oaicite:1]{index=1}
-            logging.error("Weaviate is not ready.")
-            await async_client.close()
-            exit(-1)
-        return cls(async_client)
-
-    async def close(self):
-        await self.client.close()  # :contentReference[oaicite:2]{index=2}
-
-    # TODO remove
     async def add_or_get_tag(self, tag_request: schemas.TagReqTemplate) -> str:
         """
         Create a new tag or return existing tag UUID if it matches
@@ -67,7 +48,6 @@ class WeaviateTag:
         existing_tags = results.objects
 
         # check for exact match
-        # TODO check examples
         for existing_tag in existing_tags:
             if (existing_tag.properties["tag_name"] == tag_request.tag_name and
                     existing_tag.properties["tag_shorthand"] == tag_request.tag_shorthand and
@@ -95,7 +75,6 @@ class WeaviateTag:
         """
         Returns all tags from weaviate
         """
-        # TODO add collection to Tag class
         tag_objects = await self.client.collections.get("Tag").query.fetch_objects()
         tag_data = []
         for obj in tag_objects.objects:
@@ -111,78 +90,6 @@ class WeaviateTag:
             })
         return tag_data
     
-    async def get_tagged_chunks_limited(self, getChunksReq: schemas.GetTaggedChunksReq) -> schemas.GetTaggedChunksResponse:
-        """
-        Get tag objects from them extract collection names, in these collections
-        search for chunks that refer to any of the selected tags and return chunk
-        texts and all tags from selected tags that are referenced from the chunk
-        """
-        try:
-            # get all chunks with at least one tag from chosenTagUUIDs list
-            # get tags
-            tag_collection = self.client.collections.get("Tag")
-            chunk_lst_with_tags = []
-            filters = Filter.by_id().contains_any([str(uuid) for uuid in getChunksReq.tag_uuids])
-
-            results = await tag_collection.query.fetch_objects(filters=filters)
-            logging.info(f"Results: {results}")
-            # get different collection names
-            collection_names = {obj.properties["collection_name"] for obj in results.objects}
-            userCollectionName = next(iter(collection_names))
-            logging.info(f"Tag uuids in get_tagged_chunks: {getChunksReq.tag_uuids} {collection_names} {userCollectionName}")
-            # go over chunks, retrieve text chunks and corresponding tags
-            try:
-                collection_name = "Chunks"
-                logging.info(f"collection name: {collection_name}")
-                # get all chunks
-                chunk_results = await self.client.collections.get(collection_name).query.fetch_objects(
-                    return_references=[
-                        QueryReference(
-                            link_on="automaticTag",  # the reference property
-                            return_properties=["uuid", "tag_name"]  # properties from the referenced tags
-                        ),
-                        QueryReference(
-                            link_on="positiveTag",
-                            return_properties=["uuid", "tag_name"]
-                        ),
-                        QueryReference(
-                            link_on="negativeTag",
-                            return_properties=["uuid", "tag_name"]
-                        ),
-                    ]
-                )
-                reference_src = getChunksReq.tag_type.value + "Tag"  # ["automaticTag", "positiveTag", "negativeTag"]
-                logging.info(f"Source selected: {reference_src}")
-                for chunk_obj in chunk_results.objects:
-                    referencedTags = chunk_obj.references.get(reference_src) if chunk_obj.references else None
-                    chunk_id = str(chunk_obj.uuid)
-                    chunk_text = chunk_obj.properties.get('text', '')
-                    corresponding_tags = []
-                    logging.info(f"Referenced tags: {referencedTags}")
-                    # extract tag
-                    if referencedTags and getattr(referencedTags, "objects", None):
-                        for tag_obj in referencedTags.objects:
-                            if tag_obj.uuid in getChunksReq.tag_uuids:
-                                corresponding_tags.append(str(tag_obj.uuid))
-                    # check if there is at least one selected tag
-
-                    if corresponding_tags:
-                        # extract approval counts
-                        for tagID in corresponding_tags:
-                            chunk_lst_with_tags.append(
-                                {'tag_uuid': tagID, 'text_chunk': chunk_text, "chunk_id": chunk_id,
-                                 "chunk_collection_name": userCollectionName, "tag_type": getChunksReq.tag_type.value})
-
-                # process the filtered chunks to send them to frontend
-                logging.info(f"Chunks and tags info: {chunk_lst_with_tags}")
-            except Exception as e:
-                logging.error(f"Tags in Chunks error: {e}")
-                return {'chunks_with_tags': []}
-            return {"chunks_with_tags": chunk_lst_with_tags}
-        except Exception as e:
-            logging.error(f"No tags assigned yet. {e}")
-            return {'chunks_with_tags': []}
-        
     async def get_tagged_chunks_paged(self, getChunksReq: schemas.GetTaggedChunksReq) -> schemas.GetTaggedChunksResponse:
         """
         Get tag objects from them extract collection names, in these collections
@@ -883,171 +790,6 @@ class WeaviateTag:
             'tag_uuid': obj.uuid,
             })
         return tag_data
-
-    async def tag_chunks_with_llm_limited(self, tag_request: schemas.TagReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
-        """
-        Assigns automatic tags to chunks
-        """
-        try:
-            prompt = ChatPromptTemplate.from_template(self.tag_template)
-            model = OllamaProxyRunnable()
-            chain = prompt | model
-
-            # get the collection
-            collection_name = tag_request.collection_name
-            logging.info(f"Collection name: {collection_name}")
-            # filter to tag just chunks in selected user collection
-            filters =(
-                Filter.by_ref(link_on="userCollection").by_property("name").equal(collection_name)
-            )
-            weaviate_objects = self.client.collections.get("Chunks")
-
-            #weaviate_objects = await chunks_collection.query.fetch_objects(
-            #    filters=filters
-            #)
-
-            tag_uuid = await self.add_or_get_tag(tag_request) # prepare tag in weaviate
-
-            """
-            Filtering for reference equal to certain id results in filtering out chunks without refs
-            filters= ( 
-                    ( Filter.by_ref(link_on="automaticTag").is_none(True) | Filter.by_ref(link_on="automaticTag").by_id().not_equal(tag_uuid) ) &
-                    ( Filter.by_ref(link_on="positiveTag").is_none(True) | Filter.by_ref(link_on="positiveTag").by_id().not_equal(tag_uuid) ) &
-                    ( Filter.by_ref(link_on="negativeTag").is_none(True) | Filter.by_ref(link_on="negativeTag").by_id().not_equal(tag_uuid) )
-                ),
-            weaviate doesnt offer is_none/is_empty or similar
-            so I chose to filter after fetching all of them and filter them later
-            """
-
-            # query weaviate db for chunks of chosen collection
-            query = weaviate_objects.query.fetch_objects(
-                return_properties=["text"],  # only return the text field
-                return_references=[
-                    QueryReference(
-                    link_on="automaticTag",
-                    return_properties=[] # just need uuids
-                ),
-                    QueryReference(
-                        link_on="positiveTag",
-                        return_properties=[] # just need uuids
-                    ),
-                    QueryReference(
-                        link_on="negativeTag",
-                        return_properties=[] # just need uuids
-                    )
-                ],
-                filters=filters
-            )
-            queryFiltered = weaviate_objects.query.fetch_objects(
-                return_properties=["text"],  # only return the text field
-                filters = (
-                    Filter.by_ref(link_on="automaticTag").by_id().equal(tag_uuid) |
-                    Filter.by_ref(link_on="positiveTag").by_id().equal(tag_uuid) |
-                    Filter.by_ref(link_on="negativeTag").by_id().equal(tag_uuid)
-                ),
-                return_references=[
-                    QueryReference(
-                    link_on="automaticTag",
-                    return_properties=[] # just need uuids
-                ),
-                    QueryReference(
-                        link_on="positiveTag",
-                        return_properties=[] # just need uuids
-                    ),
-                    QueryReference(
-                        link_on="negativeTag",
-                        return_properties=[] # just need uuids
-                    )
-                ]
-            )
-            results = await query
-            resultsFiltered = await queryFiltered
-            final_results = results.objects
-            # collect the UUIDs from the filtered results
-            if resultsFiltered.objects:
-                filtered_ids = {obj.uuid for obj in resultsFiltered.objects}
-
-                # filter main results to exclude objects whose id is in filtered_ids
-                final_results = [obj for obj in results.objects if obj.uuid not in filtered_ids]
-
-            texts = []
-            tags = []
-            tag_processing_data = []
-
-            # process with llm and decide if tag belongs to text
-            positive_responses = re.compile("^(True|Ano|Áno)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
-            logging.info("Past the add ir get tag")
-            all_texts_count = len(final_results)
-            processed_count = 0
-            for obj in final_results:
-                try:
-                    # extract text field from the current object
-                    text = obj.properties["text"]
-                    tag = await chain.ainvoke({"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text})
-
-                    # store in weaviate (upload positive tag instances to weaviate)
-                    if positive_responses.search(tag): # if the llm response is positive then store the tag data
-                        # test if the reference to the tag exists
-                        references = obj.references.get("automaticTag") if obj.references else None
-                        # if there are no references or there is not any reference to the wanted tag add the new reference
-                        if not references or not getattr(references, "objects", None) or not (any(str(tag_obj.uuid) == str(tag_uuid) for tag_obj in references.objects)):
-                            # add the new tag data
-                            await weaviate_objects.data.reference_add(
-                                from_uuid = obj.uuid,
-                                from_property="automaticTag",
-                                to=tag_uuid
-                            )
-                            logging.info("NOT REFERENCED YET")
-                    texts.append(text)
-                    tags.append(tag)
-                    tag_processing_data.append({"chunk_id": str(obj.uuid), "text": text, "tag": str(tag)})
-                    logging.info(f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
-                    # store progress in SQL db
-                    processed_count += 1 # increase number of processed chunks
-                    await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, session=session, all_texts_count=all_texts_count, processed_count=processed_count, tag_id=tag_uuid, tag_processing_data=tag_processing_data)
-                    logging.info("After update")
-                except Exception as e:
-                    pass # TODO revert changes
-
-            # uncomment to test if the references are correct
-            #cfg = await self.client.collections.get("Chunks").config.get()
-            #logging.info(f"Chunk refs: {[r.name for r in cfg.references]}")
-
-            # uncomment to test if storing works
-            #weaviate_objects_test = self.client.collections.get(collection_name)
-
-            #test_results = await weaviate_objects_test.query.fetch_objects(
-            #        return_properties=["text"],
-            #        return_references=QueryReference(
-            #            link_on="automaticTag",
-            #            return_properties=["tag_name", "tag_shorthand", "tag_color", "tag_pictogram", "tag_definition", "tag_examples"]
-            #        ),
-            #        limit=100,
-            #    )
-
-            #for obj in test_results.objects:
-            #        logging.info(f"Chunk {obj.uuid} | text: {obj.properties.get('text','')[:80]}...")
-
-                    # references in chunks
-            #        tags_ref = obj.references.get("automaticTag") if obj.references else None
-            #        if tags_ref and getattr(tags_ref, "objects", None):
-            #            for tag_obj in tags_ref.objects:
-            #                logging.info(
-            #                    f"Tag {tag_obj.uuid} | "
-            #                    f"name={tag_obj.properties.get('tag_name')} | "
-            #                    f"short={tag_obj.properties.get('tag_shorthand')} | "
-            #                    f"color={tag_obj.properties.get('tag_color')} | "
-            #                    f"pic={tag_obj.properties.get('tag_pictogram')} | "
-            #                    f"def={tag_obj.properties.get('tag_definition')} | "
-            #                    f"examples={str(tag_obj.properties.get('tag_examples'))}"
-            #                )
-            #        else:
-            #            logging.info("No tags found")
-            return {'texts': texts, 'tags': tags}
-
-        except Exception as e:
-            logging.error(f"Error fetching texts from collection: {e}")
-            return {}
         
     async def tag_chunks_with_llm_paged(self, tag_request: schemas.TaggingTaskReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
         """
@@ -1057,7 +799,7 @@ class WeaviateTag:
             # load config data
             # set model from config
             config_model_name = tag_request.task_config.params.model_name
-
+            config_temperature = tag_request.task_config.params.temperature
             # load prompt template from the config
             if tag_request.task_config.prompt_template is not None:
                 prompt = ChatPromptTemplate.from_template(tag_request.task_config.prompt_template)
@@ -1066,19 +808,17 @@ class WeaviateTag:
             # select API
             if tag_request.task_config.params.model_type == schemas.APIType.openai:
                 api_key = os.getenv("OPENAI_API_KEY", "")
-                #logging.info("API KEY: " + api_key)
                 model = ChatOpenAI(
                     model = config_model_name if config_model_name else config.OPENAI_MODEL,
                     api_key = api_key,
-                    temperature = tag_request.task_config.params.temperature
+                    temperature = config_temperature
                 )
             elif tag_request.task_config.params.model_type == schemas.APIType.google:
                 pass
             else: # default ollama
                 model = OllamaProxyRunnable()
-                #logging.info(f"MODEL NAME FROM CONFIG: {tag_request.task_config.params.model_name}")
-                #logging.info(f"Whole config passed: {tag_request.task_config}")
                 model.set_model(config_model_name)
+                model.set_temperature(config_temperature) # this is preparation, semant_demo_backend\semant_demo\ollama_proxy.py does not support yet
             # prepare chain
             chain = prompt | model
 
@@ -1212,6 +952,7 @@ class WeaviateTag:
     async def tag_chunks_with_llm(self, tag_request: schemas.TaggingTaskReqTemplate, task_id: str, session=None) -> schemas.TagResponse:
         """
         Assigns automatic tags to chunks
+        Uses iterator
         """
         try:
             # load config data

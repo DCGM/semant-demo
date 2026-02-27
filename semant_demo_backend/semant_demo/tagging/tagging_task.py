@@ -5,12 +5,12 @@ from sqlalchemy import update
 from sqlalchemy import exc
 from semant_demo.schemas import Task, TasksBase
 import asyncio
-from semant_demo.weaviate_tag import WeaviateTag
+from semant_demo.weaviate_tag import WeaviateSearchAndTag
 from semant_demo.config import config
 import logging
 from semant_demo.tagging.sql_utils import update_task_status
 
-async def tag_and_store(tagReq: schemas.TaggingTaskReqTemplate, task_id: str, tagger: WeaviateTag, sessionmaker):
+async def tag_and_store(tagReq: schemas.TaggingTaskReqTemplate, task_id: str, tagger: WeaviateSearchAndTag, sessionmaker):
     try:
         session = sessionmaker()
         
