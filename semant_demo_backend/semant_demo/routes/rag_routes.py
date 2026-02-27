@@ -4,23 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from semant_demo.config import config
 from semant_demo import schemas
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.routes.dependencies import get_async_session
+
+#import dependencies
+from semant_demo.routes.dependencies import get_async_session, get_search #, get_engine
+
 
 from semant_demo.rag.rag_factory import get_all_rag_configurations, RAG_INSTANCES
 
 import datetime
 import logging
-#dependency
-global_searcher = None
-
-async def get_search() -> WeaviateSearch:
-    global global_searcher
-    if global_searcher is None:
-        global_searcher = await WeaviateSearch.create(config)
-    return global_searcher
 
 exp_router = APIRouter()
 

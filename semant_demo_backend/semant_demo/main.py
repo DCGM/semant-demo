@@ -1,5 +1,4 @@
 import openai
-import langchain_google_genai 
 
 from fastapi import FastAPI, Depends, HTTPException
 import logging
@@ -8,87 +7,48 @@ from semant_demo import schemas
 from semant_demo.config import config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.rag.rag_factory import get_all_rag_configurations, RAG_INSTANCES, rag_factory
+from semant_demo.rag.rag_factory import rag_factory
+from semant_demo.routes.dependencies import cleanup_dependencies, get_engine, get_search
 from time import time
 from fastapi.staticfiles import StaticFiles
 import os
 
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from semant_demo.routes import export_router
 
 from semant_demo import schemas
 from semant_demo.config import config
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.tagging.tagging_task import tag_and_store
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy import Column, String, JSON
-from glob import glob
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
-from sqlalchemy import select, update, bindparam, asc
-from sqlalchemy import exc
-from datetime import timezone
 
-from typing import AsyncGenerator
-
-from semant_demo.schemas import Task, TasksBase
-from semant_demo.tagging.sql_utils import DBError, update_task_status
-from semant_demo.tagging.tagging_task import getTaskByName
+from contextlib import asynccontextmanager
+from semant_demo.schemas import TasksBase
 
 logging.basicConfig(level=logging.INFO)
 
-global_engine = None
-global_async_session_maker = None
-
-# Dependency
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    global global_engine, global_async_session_maker
-    if global_engine is None:
-        global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
-        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=True, expire_on_commit=False)
-    async with global_async_session_maker() as session:
-        yield session
-
-openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
-
-global_searcher = None
-global_summarizer = None
-global_rag = None
-
-async def get_search() -> WeaviateSearch:
-    global global_searcher
-    if global_searcher is None:
-        global_searcher = await WeaviateSearch.create(config)
-    return global_searcher
-
-
-async def get_summarizer() -> TemplatedSearchResultsSummarizer:
-    global global_summarizer
-    if global_summarizer is None:
-        global_summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
-    return global_summarizer
-
-app = FastAPI()
-# mount routes
-app.include_router(export_router)
-
-# Create tables on startup
-@app.on_event("startup")
-async def startup():
-    global global_engine, global_async_session_maker
-    global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
-    global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=False)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global_engine, _ = get_engine()
     async with global_engine.begin() as conn:
         # drop all tables first
+        # this could depend on the envirnoment variable
         #await conn.run_sync(TasksBase.metadata.drop_all)
         # create tables
         await conn.run_sync(TasksBase.metadata.create_all)
-        
     #load rags configurations and create instances
     rag_factory(global_config=config, configs_path=config.RAG_CONFIGS_PATH)
-    
+
+    yield
+
+    #shutdown all dependencies
+    await cleanup_dependencies()
+    logging.info(f"Application cleanup complete.")
+
+#app definition
+app = FastAPI(lifespan=lifespan)
+# mount routes
+app.include_router(export_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -97,6 +57,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+#This should be probably removed/moved elsewhere
+openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+global_summarizer = None
+async def get_summarizer() -> TemplatedSearchResultsSummarizer:
+    global global_summarizer
+    if global_summarizer is None:
+        global_summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
+    return global_summarizer
 
 @app.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search),

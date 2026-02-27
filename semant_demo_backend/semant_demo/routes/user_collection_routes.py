@@ -10,15 +10,12 @@ from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.rag.rag_generator import RagGenerator
 from time import time
-import asyncio
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import os
 import openai
 from semant_demo import schemas
-from semant_demo.config import config
-import logging
 from semant_demo.weaviate_search import WeaviateSearch
 import asyncio
 from semant_demo.tagging.tagging_task import tag_and_store
@@ -44,30 +41,11 @@ import json
 from semant_demo.tagging.sql_utils import DBError, update_task_status
 from semant_demo.tagging.tagging_task import getTaskByName
 
+#import dependencies
+from semant_demo.routes.dependencies import get_async_session, get_search, get_engine
 
 logging.basicConfig(level=logging.INFO)
 
-global_engine = None
-global_async_session_maker = None
-
-# Dependency
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    global global_engine, global_async_session_maker
-    if global_engine is None:
-        global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
-        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=True, expire_on_commit=False)
-    async with global_async_session_maker() as session:
-        yield session
-
-openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
-
-global_searcher = None
-
-async def get_search() -> WeaviateSearch:
-    global global_searcher
-    if global_searcher is None:
-        global_searcher = await WeaviateSearch.create(config)
-    return global_searcher
 
 exp_router = APIRouter()
 
