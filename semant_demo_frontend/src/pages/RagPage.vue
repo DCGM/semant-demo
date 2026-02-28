@@ -15,15 +15,50 @@
             <!-- message TEXT  -->
             <div
               v-html="replaceSourcesAndConvertToMarcdown(message, index)" class="markdown-body"
+              @mouseup="handleMouseUp(index)"
               @click.capture="singleSourceClicks"
             ></div>
             <!-- show sources - bottom button  -->
             <div v-if="message.sender === 'AI' && message.sources && message.sources.length > 0" class="q-mt-sm">
               <a href="#" @click.prevent="openSourcesDialog(message.sources)" class="source-link">Sources</a>
             </div>
+            <!-- like and dislike -->
+            <div v-if="message.sender === 'AI' && index > 0" class="row items-center q-gutter-x-sm q-mt-xs">
+              <q-btn
+                flat round dense
+                size="sm"
+                icon="thumb_up"
+                :color="message.userRating === 1 ? 'green' : 'grey'"
+                :disable="message.userRating === 1"
+                @click="handleFeedback(index, 1)"
+              />
+              <q-btn
+                flat round dense
+                size="sm"
+                icon="thumb_down"
+                :color="message.userRating === -1 ? 'red' : 'grey'"
+                :disable="message.userRating === -1"
+                @click="handleFeedback(index, -1)"
+              />
+            </div>
           </template>
         </q-chat-message>
       </div>
+      <!-- dislike dialog  -->
+      <q-dialog v-model="showFeedbackDialog">
+        <q-card style="min-width: 350px">
+          <q-card-section>
+            <div class="text-subtitle1 text-weight-bold">Why didn't you like the answer? / Proč se Vám odpověď nelíbila?</div>
+          </q-card-section>
+          <q-card-section class="q-pt-none">
+            <q-input v-model="feedbackComment" autogrow outlined label="Your comment (optional) / Váš komentář (nepovinné)" />
+          </q-card-section>
+          <q-card-actions align="right">
+            <q-btn flat label="Cancel / Zrušit" v-close-popup />
+            <q-btn flat label="Send / Odeslat" color="primary" @click="submitFeedback" v-close-popup />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
 
       <!-- sources window -->
       <q-dialog v-model="showSourcesDialog">
@@ -80,7 +115,7 @@
               :disable="isLoadingRagConfigs || rags.length === 0"
               dense
               outlined
-              style="min-width: 150px">
+              style="min-width: 300px">
               <template v-slot:option="scope">
                 <q-item v-bind="scope.itemProps">
                   <q-item-section>
@@ -92,50 +127,6 @@
                 </q-item>
               </template>
             </q-select>
-          <!-- select model -->
-            <!-- <q-select
-              v-model="selectedModel"
-              :options="models"
-              label="Model"
-              dense
-              outlined
-              style="width: 150px"
-          /> -->
-          <!-- temperature -->
-            <!-- <span class="text-caption text-grey-7">Temperature:</span>
-            <q-slider
-              v-model="temperature"
-              :min="tempRange.min"
-              :max="tempRange.max"
-              :step="0.1"
-              label
-              style="width: 100px"
-          /> -->
-          <!-- api key -->
-          <!-- <q-input v-model="apiKey" label="Api key" dense outlined /> -->
-          <!-- search mode -->
-          <!-- <q-select
-              v-model="selectedDBSearch"
-              :options="searchModes"
-              label="Search mode"
-              dense
-              outlined
-              style="width: 150px"
-          /> -->
-          <!-- alpha -->
-          <!-- <span class="text-caption text-grey-7">Alpha:</span>
-          <q-slider
-            v-model="alpha"
-            :min="alphaRange.min"
-            :max="alphaRange.max"
-            :step="0.1"
-            label
-            style="width: 100px"
-          /> -->
-          <!-- <q-input v-model.number="chunkNumber" type="number" label="Chunk limit" dense outlined /> -->
-          <q-input v-model="language" label="Language" dense outlined />
-          <q-input v-model.number="minYear" type="number" label="Min Year" dense outlined />
-          <q-input v-model.number="maxYear" type="number" label="Max Year" dense outlined />
         </div>
          <!-- input box with send button -->
         <div class="col">
@@ -163,21 +154,58 @@
             </template>
           </q-input>
         </div>
-    </div>
+      </div>
+
+      <!-- explaination functionality -->
+      <q-btn
+      v-if="selectionData.show"
+      ref="explainButttonnRef"
+      label="Explain"
+      color="primary"
+      size="md"
+      rounded
+      dense
+      unelevated
+      class="absolute z-top"
+      :style="{ top: selectionData.y + 'px', left: selectionData.x + 'px', position: 'absolute' }"
+      @click="explainSelection"
+    />
+
+    <q-dialog v-model="explanationDialog.show">
+      <q-card style="width: 500px; max-width: 90vw;">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Vysvětlení tvrzení</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-card-section>
+          <div class="text-italic q-mb-md">"{{ selectionData.text }}"</div>
+          <q-separator q-mb-md />
+          <div v-if="explanationDialog.loading" class="flex flex-center q-pa-lg">
+            <q-spinner-dots size="2em" />
+          </div>
+          <div
+            v-else
+            v-html="convertToMarkdown(convertLinks(explanationDialog.text, messages[selectionData.msgIndex].sources, selectionData.msgIndex))"
+            class="markdown-body"
+            @click.capture="singleSourceClicks">
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
-
+import { useQuasar } from 'quasar'
+const $q = useQuasar() // notifications
 // ---------------------------------------------------
 interface Source {
-  text: string;
-}
-
-interface SearchResult {
   text: string;
 }
 
@@ -185,6 +213,8 @@ interface Message {
   sender: 'AI' | 'me';
   text: string;
   sources?: Source[];
+  userRating?: number;
+  response_id?: string;
 }
 
 interface RagRouteConfig {
@@ -195,7 +225,7 @@ interface RagRouteConfig {
 
 // First message from AI
 const messages = ref<Message[]>([
-  { sender: 'AI', text: 'Hello, what is your question?' }
+  { sender: 'AI', text: 'Hello, what is your question? If you want to verify a statement, simply select it and click on the "Explain" button. / Ahoj, máte na mě nějakou otázku? Pokud chcete ověřit tvrzení, jednoduše jej vyberte a klikněte na tlačítko „Explain“.' }
 ])
 
 const newMessage = ref('')
@@ -211,37 +241,17 @@ const rags = ref<RagRouteConfig[]>([])
 const isLoadingRagConfigs = ref(true)
 const selectedRAG = ref<RagRouteConfig | null>(null)
 
-// models
-const models = ref([
-  { label: 'OLLAMA (local)', value: 'OLLAMA' },
-  { label: 'GOOGLE (API)', value: 'GOOGLE' },
-  { label: 'OPENAI (API)', value: 'OPENAI' }
-])
-const selectedModel = ref(models.value[0])
-
-// temperature
-// const temperature = ref(0.0)
-// const tempRange = ref({ min: 0.0, max: 1.0 })
-
-// api key
-const apiKey = ref<string | null>(null)
-
-// search modes
-// const searchModes = ref([
-//   { label: 'hybrid', value: 'hybrid' },
-//   { label: 'vector', value: 'vector' },
-//   { label: 'text', value: 'text' }
-// ])
-// const selectedDBSearch = ref(searchModes.value[0])
-
-// alpha
-// const alpha = ref(0.5)
-// const alphaRange = ref({ min: 0.0, max: 1.0 })
-
 const chunkNumber = ref<number>(5)
-const minYear = ref<number | null>(null)
-const maxYear = ref<number | null>(null)
-const language = ref<string | null>(null)
+
+const explainButttonnRef = ref<any>(null)
+const selectionData = ref({ show: false, x: 0, y: 0, text: '', msgIndex: -1 })
+const explanationDialog = ref({ show: false, text: '', loading: false })
+
+// message feedback
+const showFeedbackDialog = ref(false)
+const feedbackComment = ref('')
+const currentFeedbackIndex = ref(-1)
+const currentRating = ref(0)
 
 // ----------------------Load RAGs----------------------
 
@@ -262,8 +272,12 @@ async function loadRagConfigs () {
 
 onMounted(() => {
   loadRagConfigs()
+  document.addEventListener('mousedown', handleClickOutside)
 })
 
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleClickOutside)
+})
 // ----------------------Main chat-----------------------------
 
 const scrollToBottom = () => {
@@ -277,6 +291,9 @@ const scrollToBottom = () => {
 const sendMessage = async () => {
   const userQuery = newMessage.value.trim()
   if (userQuery === '' || isAiThinking.value) return
+
+  const lastAImessage = [...messages.value].reverse().find(m => m.sender === 'AI' && m.sources && m.sources.length > 0)
+  const previousDocuments = lastAImessage ? lastAImessage.sources : []
 
   messages.value.push({ sender: 'me', text: userQuery })
   newMessage.value = ''
@@ -292,11 +309,6 @@ const sendMessage = async () => {
     // history for RAG
     const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
 
-    // const ragConfig = {
-    //   model_type: selectedModel.value.value,
-    //   temperature: 0.0, // temperature.value,
-    //   api_key: apiKey.value ? apiKey.value : null
-    // }
     const ragSearch = {
       search_query: userQuery, // is change in rag generator anyway (bcs it have to be refrased based on history context)
       limit: chunkNumber.value,
@@ -313,10 +325,8 @@ const sendMessage = async () => {
     const ragRequestBody = {
       question: userQuery,
       history: context,
-      // model configuration parameters
-      // rag_config: ragConfig,
-      // search parameters
-      rag_search: ragSearch
+      rag_search: ragSearch,
+      previous_documents: previousDocuments
     }
     const mainRagRequestBody = {
       rag_id: selectedRAG.value?.id,
@@ -335,14 +345,15 @@ const sendMessage = async () => {
       })
       return
     }
-    const sourcesForAnswer: Source[] = sources.map((res: SearchResult) => ({
-      text: res.text
-    }))
+    // const sourcesForAnswer: Source[] = sources.map((res: SearchResult) => ({
+    //   text: res.text
+    // }))
 
     messages.value.push({
       sender: 'AI',
       text: ragAnswer,
-      sources: sourcesForAnswer
+      sources,
+      response_id: ragResponse.data.response_id
     })
   } catch (error) {
     console.error('RAG error:', error)
@@ -367,23 +378,26 @@ const convertToMarkdown = (markdownText: string) => {
   return marked(markdownText) as string
 }
 
-// Process source and conver to MarcDown
+// convert links
+const convertLinks = (text: string, sources: Source[] | undefined, msgIndex: number) => {
+  const sourcesRegex = /(?:\[doc\s*(\d+)\]|Dokument\s*(\d+))/gi // /\[doc\s*(\d+)\]/g
 
+  // replace sources links
+  return text.replace(sourcesRegex, (match, strIndex) => {
+    const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
+    if (sources && sources[sourceIndex]) {
+      return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
+    }
+    return match
+  })
+}
+
+// Process source and conver to MarcDown
 const replaceSourcesAndConvertToMarcdown = (msg: Message, msgIndex: number) => {
   if (msg.sender !== 'AI' || !msg.sources) { // replace sources only for AI messages
     return convertToMarkdown(msg.text)
   }
-
-  const sourcesRegex = /\[doc\s*(\d+)\]/g
-
-  // replace sources links
-  const result = msg.text.replace(sourcesRegex, (match, strIndex) => {
-    const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
-    if (msg.sources && msg.sources[sourceIndex]) {
-      return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
-    }
-    return match // nothing found
-  })
+  const result = convertLinks(msg.text, msg.sources, msgIndex)
   return convertToMarkdown(result)
 }
 
@@ -413,10 +427,116 @@ const singleSourceClicks = (event: Event) => {
 // put chat into starting state
 const resetChat = () => {
   messages.value = [
-    { sender: 'AI', text: 'Hello, what is your question?' }
+    { sender: 'AI', text: 'Hello, what is your question? If you want to verify a statement, simply select it and click on the "Explain" button. / Ahoj, máte na mě nějakou otázku? Pokud chcete ověřit tvrzení, jednoduše jej vyberte a klikněte na tlačítko „Explain“.' }
   ]
   newMessage.value = ''
   isAiThinking.value = false
+}
+
+// hide explain button if clicked elsewhere
+const handleClickOutside = (event: MouseEvent) => {
+  if (selectionData.value.show) {
+    const buttonEl = explainButttonnRef.value?.$el
+    if (buttonEl && !buttonEl.contains(event.target as Node)) {
+      selectionData.value.show = false
+    }
+  }
+}
+
+// selection explain window
+const handleMouseUp = (index: number) => {
+  const selection = window.getSelection()
+  const selectedText = selection ? selection.toString().trim() : ''
+
+  if (selectedText.length > 5 && messages.value[index].sender === 'AI') {
+    if (!selection || selection.rangeCount === 0) return
+    const range = selection!.getRangeAt(0)
+    const rect = range.getBoundingClientRect()
+
+    // get button location
+    selectionData.value = {
+      show: true,
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY - 35,
+      text: selectedText,
+      msgIndex: index
+    }
+  } else {
+    setTimeout(() => { selectionData.value.show = false }, 100)
+  }
+}
+
+// selection window call backend
+const explainSelection = async () => {
+  const msgIndex = selectionData.value.msgIndex
+  const aiMsg = messages.value[msgIndex]
+  if (!aiMsg) return
+
+  // get history
+  const allRelevantMsg = messages.value.slice(0, msgIndex).filter(msg => msg.sources !== undefined) // remove messages without any informations
+
+  // history for RAG
+  const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
+
+  explanationDialog.value.show = true
+  explanationDialog.value.loading = true
+  explanationDialog.value.text = ''
+  selectionData.value.show = false
+
+  try {
+    const response = await axios.post('/api/rag/explain', {
+      rag_id: selectedRAG.value?.id,
+      selected_text: selectionData.value.text,
+      sources: aiMsg.sources,
+      history: context,
+      full_answer: aiMsg.text
+    })
+    explanationDialog.value.text = response.data.explanation
+  } catch (error) {
+    explanationDialog.value.text = 'Sorry, this part can not be explained.'
+  } finally {
+    explanationDialog.value.loading = false
+  }
+}
+
+// messages feedback
+const handleFeedback = (index: number, rating: number) => {
+  currentFeedbackIndex.value = index
+  currentRating.value = rating
+  const msg = messages.value[index]
+
+  if (msg.userRating === rating) return
+
+  if (rating === -1) {
+    feedbackComment.value = ''
+    showFeedbackDialog.value = true
+  } else {
+    submitFeedback()
+  }
+}
+
+const submitFeedback = async () => {
+  const index = currentFeedbackIndex.value
+  const msg = messages.value[index]
+  const question = messages.value[index - 1]?.text || ''
+
+  try {
+    msg.userRating = currentRating.value
+    await axios.post('/api/rag/feedback', {
+      rag_id: selectedRAG.value?.id,
+      response_id: msg.response_id,
+      question,
+      answer: msg.text,
+      sources: msg.sources,
+      rating: currentRating.value,
+      comment: feedbackComment.value
+    })
+
+    // popup/alert window
+    $q.notify({ color: 'positive', message: 'Thank you for your feedback. / Děkujeme za zpětnou vazbu.', icon: 'check' })
+  } catch (e) {
+    $q.notify({ color: 'negative', message: 'Error sending. / Chyba při odesílání.' })
+  }
 }
 
 // ----------------------Styles-----------------------------

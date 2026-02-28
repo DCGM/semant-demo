@@ -2,7 +2,7 @@ import os
 import yaml
 import logging
 from typing import Dict, Type
-from semant_demo.schemas import RagRouteConfig, RagRequest, RagResponse
+from semant_demo.schemas import RagRouteConfig, RagRequest, RagResponse, ExplainRequest
 
 class BaseRag:
    def __init__(self, global_config, param_config):
@@ -11,6 +11,9 @@ class BaseRag:
        
    async def rag_request(self, request: RagRequest, searcher) -> RagResponse:
         raise NotImplementedError("Method \"rag_request\" is not implemented.")
+   
+   async def explain_selection(self, request : ExplainRequest):
+       return {"explanation" : "This functionality is not supported by this RAG, try another."}
 
 #dict of rag implementations avalaible in application    
 RAG_IMPLEMENTATIONS: Dict[str, Type[BaseRag]] = {}

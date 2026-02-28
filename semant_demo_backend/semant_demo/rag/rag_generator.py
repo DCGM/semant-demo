@@ -1,3 +1,4 @@
+import uuid
 import openai
 import langchain_google_genai 
 from fastapi import HTTPException
@@ -227,9 +228,12 @@ class RagGenerator(BaseRag):
             logging.error(f"RAG error: calling model {self.model_type}: {e}")
             raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
+        answer_id = str(uuid.uuid4())
+
         # answer
         return RagResponse(
             rag_answer=generated_result["answer"].strip(),
             sources=generated_result["sources"],
-            time_spent=time_spent
+            time_spent=time_spent,
+            response_id= answer_id
         )

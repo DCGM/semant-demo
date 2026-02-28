@@ -1,11 +1,11 @@
 from enum import Enum
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, TypedDict, Any
 from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, JSON, Integer, DateTime
+from sqlalchemy import Column, String, JSON, Integer, DateTime, Text
 import sqlalchemy.sql.functions as funcs
 
 class SearchType(str, Enum):
@@ -51,6 +51,8 @@ class SearchRequest(SummaryRequestBase):
     tag_uuids: list[str]
     positive: bool
     automatic: bool
+
+    is_hyde: bool = False # variable which indicates if query is document
 
 class Document(BaseModel):
     id: uuid.UUID
@@ -159,6 +161,7 @@ class RagRequest(BaseModel):
     history: list[RagChatMessage] | None = None    # chat history, to keep context
     # search parameters
     rag_search: RagSearch
+    previous_documents: list[TextChunkWithDocument] = []
 
 #rag request from frontend to backend
 class RagRequestMain(BaseModel):
@@ -169,8 +172,31 @@ class RagRequestMain(BaseModel):
 class RagResponse(BaseModel):
     rag_answer: str
     time_spent: float
+    response_id: str
     sources: list[TextChunkWithDocument]
 
+class ExtractedMeradata(BaseModel):
+    min_year : int | None = None
+    max_year : int | None = None
+    min_date : datetime | None = None
+    min_date : datetime | None = None
+    language : int | None = None
+
+# class defining state of the adaptive rag
+class AdaptiveRagState(TypedDict):
+    question: str
+    original_question: str
+    queries: list[str]
+    context_sufficient : bool
+    history: list[Any]
+    documents: list[Any]
+    generation: str
+    metadata: ExtractedMeradata
+    metadata_extraction_allowed : bool
+    retrieval_iteration_counter: int
+    generation_iteration_counter: int
+    feedback: str
+    web_search_performed : bool
 
 class AvailableRagConfigurationsResponse(BaseModel):
     available_models: list[str]
@@ -178,6 +204,22 @@ class AvailableRagConfigurationsResponse(BaseModel):
     default_temperature: float
     temperature_range: dict[str, float]
     available_api_keys: list[str]
+
+class ExplainRequest(BaseModel):
+    rag_id : str
+    selected_text : str
+    full_answer : str                                # full text of an answer from which selected_text came from
+    history: list[RagChatMessage] | None = None      # chat history, to keep context
+    sources : list[TextChunkWithDocument]            # sources / chunks of the id question
+
+class FeedbackRequest(BaseModel):
+    rag_id: str
+    response_id: str
+    question: str
+    sources: list[TextChunkWithDocument]
+    answer: str
+    rating: int                                     # should be: 1 - like / -1 - dislike
+    comment: str | None = None
 
 class CreateResponse(BaseModel):
     created: bool
@@ -358,3 +400,15 @@ tag_class = {
         {"name": "collection_name", "dataType": ["string"]}
     ]
 }
+
+class RagUserFeedback(TasksBase):
+    __tablename__ = "rag_user_feedback"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    response_id = Column(String(36), index=True, unique=True, nullable=False)
+    timestamp = Column(DateTime(timezone=True), server_default=funcs.now())
+    rag_id = Column(String(255), nullable=False)
+    question = Column(Text, nullable=False) 
+    answer = Column(Text, nullable=False)
+    rating = Column(Integer, nullable=False) # 1 - like, -1 - dislike
+    comment = Column(Text, nullable=True)
+    sources = Column(JSON, nullable=True)
