@@ -20,6 +20,15 @@ For tag creation, there is a dialog window which pops up after clicking button "
 #### Configuration of the tagging task
 The frontend requests backend to load a configuration templates from stored configuration template files (YAML files). User selects the configuration template in the front end. API types like Ollama, OpenAI are indicated in the name of the configuration. Then user can adjust the configuration (model name, model parameters, prompt, etc.) using user interface. The current setting will be send with the tagging request to backend.
 
+To use metacentrum models, you have to set your API key:
+```
+set E_INFRA_KEY=my_secret_key
+```
+or
+```
+$env:E_INFRA_KEY = "my_secret_key"
+```
+
 #### Run tagging task
 To run tagging task, user selects tag or multiple tags and presses "RUN TAGGING TASK". This starts a separate task for each selected tag over all chunks.
 

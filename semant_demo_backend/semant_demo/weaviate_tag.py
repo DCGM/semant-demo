@@ -815,6 +815,14 @@ class WeaviateSearchAndTag(WeaviateSearch):
                 )
             elif tag_request.task_config.params.model_type == schemas.APIType.google:
                 pass
+            elif tag_request.task_config.params.model_type == schemas.APIType.metacentrum:
+                api_key = os.getenv("E_INFRA_KEY", "")
+                model = ChatOpenAI(
+                    model=config_model_name if config_model_name else "gpt-oss-120b",
+                    api_key=api_key,
+                    base_url="https://llm.ai.e-infra.cz/v1",
+                    temperature=config_temperature
+                )
             else: # default ollama
                 model = OllamaProxyRunnable()
                 model.set_model(config_model_name)
@@ -916,7 +924,7 @@ class WeaviateSearchAndTag(WeaviateSearch):
                     text = obj.properties["text"]
                     tag = await chain.ainvoke({"tag_name": tag_request.tag_name, "tag_definition": tag_request.tag_definition, "tag_examples": tag_request.tag_examples, "content": text})
                     # process response according to the api type
-                    if tag_request.task_config.params.model_type == schemas.APIType.openai:
+                    if tag_request.task_config.params.model_type in (schemas.APIType.openai, schemas.APIType.metacentrum):
                         tag = tag.content
                     
                     # store in weaviate (upload positive tag instances to weaviate)

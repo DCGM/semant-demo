@@ -474,18 +474,6 @@ async function removeSelectedTags () {
   }
 }
 
-// fetch tag info
-async function fetchTags () {
-  loadingSpinner.value = true
-  try {
-    const res = await api.get('/all_tags')
-    tags.value = res.data.tags_lst
-    tagsLen.value = tags.value.length
-  } finally {
-    loadingSpinner.value = false
-  }
-}
-
 async function onShowTasks () {
   const res = await axios.get('/api/all_tasks')
   const tasks = res.data.taskData

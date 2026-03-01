@@ -17,6 +17,7 @@ class APIType(str, Enum):
     ollama = "OLLAMA"
     openai = "OPENAI"
     google = "GOOGLE"
+    metacentrum = "METACENTRUM"
 
 class SummaryRequestBase(BaseModel):
     search_title_generate: bool = True
