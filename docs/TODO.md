@@ -2,13 +2,6 @@
 
 ## Critical / High Priority
 
-### 1. Eliminate duplicated global state across route files
-**Files:** `main.py`, `tag_routes.py`, `user_collection_routes.py`, `rag_routes.py`
-
-Each route module independently creates its own `global_engine`, `global_async_session_maker`, `global_searcher`, and `openai_client`. This means multiple Weaviate connections and SQLAlchemy engines exist simultaneously, wasting resources and risking inconsistency.
-
-**Fix:** Create a shared dependency-injection module (e.g. `dependencies.py`) that provides singleton instances via FastAPI's `Depends()`. All route files should import from this single source.
-
 ### 2. Remove duplicate imports
 Multiple files contain repeated imports (e.g. `tag_routes.py` imports `openai`, `logging`, `schemas`, `config`, `WeaviateSearch`, `asyncio` twice). This causes no runtime error but hurts readability and indicates copy-paste patterns.
 
