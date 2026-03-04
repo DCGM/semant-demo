@@ -1,73 +1,29 @@
-import os
-import openai
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from semant_demo import schemas
 from semant_demo.config import config
-from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
-from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.rag.rag_generator import RagGenerator
-from time import time
-import asyncio
 
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+
 import os
 import openai
 from semant_demo import schemas
-from semant_demo.config import config
 import logging
 from semant_demo.weaviate_tag import WeaviateSearchAndTag
-import asyncio
-from semant_demo.tagging.tagging_task import tag_and_store
-import uuid
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-#from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, JSON
-from glob import glob
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
-from sqlalchemy import select, update, bindparam, asc
-from typing import AsyncGenerator
-#import db
-from sqlalchemy import exc
-from datetime import timezone
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 import logging
 
-from semant_demo.schemas import Task, TasksBase
+from semant_demo.schemas import TasksBase
 
-import json
-
-from semant_demo.tagging.sql_utils import DBError, update_task_status
-from semant_demo.tagging.tagging_task import getTaskByName
-
+#import dependencies
+from semant_demo.routes.dependencies import get_async_session, get_tag
 
 logging.basicConfig(level=logging.INFO)
 
-global_engine = None
-global_async_session_maker = None
-
-# Dependency
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    global global_engine, global_async_session_maker
-    if global_engine is None:
-        global_engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
-        global_async_session_maker = async_sessionmaker(global_engine, autocommit=False, autoflush=True, expire_on_commit=False)
-    async with global_async_session_maker() as session:
-        yield session
-
-openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
-
-global_tagger = None
-
-async def get_tag() -> WeaviateSearchAndTag:
-    global global_tagger
-    if global_tagger is None:
-        global_tagger = await WeaviateSearchAndTag.create(config)
-    return global_tagger
 
 exp_router = APIRouter()
 

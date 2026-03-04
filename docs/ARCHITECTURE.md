@@ -58,6 +58,8 @@ flowchart LR
     end
 
     subgraph routes/
+        DI["dependencies.py<br/>(DI Container)"]
+        SUM_R[summarizer_routes]
         RAG_R[rag_routes]
         TAG_R[tag_routes]
         COL_R[user_collection_routes]
@@ -81,10 +83,11 @@ flowchart LR
         TAG_F[tagging/]
     end
 
-    APP --> RAG_R & TAG_R & COL_R
-    RAG_R & TAG_R & COL_R --> WS
+    APP --> DI & RAG_F
+    SUM_R & RAG_R & TAG_R & COL_R --> DI
+    DI --> WS
     RAG_R --> RAG_F
-    APP --> SUM
+    SUM_R --> SUM
     TAG_R --> TAG_F
     WS --> GEMMA
     RAG_F --> LLM_API
@@ -101,6 +104,45 @@ A singleton `Config` class that reads environment variables with sensible defaul
 - **Application** — port, CORS origin, static file path
 - **Database** — SQLite URL for task tracking
 - **RAG** — config directory path
+
+#### Dependency Injection (`routes/dependencies.py`)
+
+FastAPI application uses a centralized dependency-injection container to manage singleton instances:
+
+| Dependency | Manages | Lifetime |
+|---|---|---|
+| `get_engine()` | SQLAlchemy engine + async session factory | App startup → shutdown |
+| `get_async_session()` | Database sessions for individual requests | Per-request |
+| `get_search()` | Weaviate connection wrapper (`WeaviateSearch`) | First access → shutdown |
+| `get_summarizer()` | Search result summarization engine | First access → shutdown |
+
+All route handlers inject dependencies via FastAPI's `Depends()` pattern, avoiding scattered global state. The `cleanup_dependencies()` function is called during app shutdown to properly close connections.
+
+**Example:**
+```python
+@exp_router.post("/api/search")
+async def search(req: SearchRequest, 
+                 searcher: WeaviateSearch = Depends(get_search),
+                 summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> SearchResponse:
+    # searcher and summarizer are automatically injected
+    ...
+```
+
+#### Application Startup & Shutdown
+
+The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
+
+1. **Startup** (`main.py` lifespan):
+   - Initialize SQLAlchemy engine and database connection pool via `get_engine()`
+   - Create all required database tables (`Task`, etc.)
+   - Load RAG configurations from YAML and instantiate RAG engines via `rag_factory()`
+
+2. **Request handling** — dependency injection provides fresh database sessions and reuses long-lived connections (Weaviate, summarizer)
+
+3. **Shutdown**:
+   - Call `cleanup_dependencies()` to close Weaviate client, dispose of the database engine, and clean up resources
+
+This ensures no resource leaks and proper initialization order.
 
 #### Search Pipeline
 
