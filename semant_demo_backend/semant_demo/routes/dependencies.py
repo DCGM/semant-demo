@@ -4,9 +4,13 @@ from semant_demo.weaviate_search import WeaviateSearch
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from typing import AsyncGenerator
 
+#summarizer
+from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
+
 _engine = None
 _async_session_maker = None
 _searcher = None
+_summarizer = None
 
 def get_engine():
     global _engine, _async_session_maker
@@ -32,3 +36,9 @@ async def cleanup_dependencies():
         await _searcher.close()
     if _engine:
         await _engine.dispose()
+
+async def get_summarizer() -> TemplatedSearchResultsSummarizer:
+    global _summarizer
+    if _summarizer is None:
+        _summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
+    return _summarizer
