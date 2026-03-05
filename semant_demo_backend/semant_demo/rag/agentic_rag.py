@@ -274,7 +274,6 @@ class WeaviateToolWrapper:
             self.rag_search.search_type
         )
 
-        # 🔥 ULOŽ výsledky
         self.last_results = response.results
 
         # texts = [hit.text for hit in response.results]
@@ -624,7 +623,7 @@ class xmartiAgentRag(BaseRag):
             return RagResponse(
                 response_id = str(uuid.uuid4()),
                 rag_answer=final_answer,
-                sources=retrieved_sources,
+                sources=weaviate_tool.last_results,
                 time_spent=time.perf_counter() - start_time
             )
 
@@ -665,7 +664,7 @@ class xmartiAgentRag(BaseRag):
                         return RagResponse(
                             response_id=str(uuid.uuid4()),
                             rag_answer=final_synthesis,
-                            sources=retrieved_sources,
+                            sources=weaviate_tool.last_results,
                             time_spent=time.perf_counter() - start_time
                         )
                     else:
@@ -673,7 +672,7 @@ class xmartiAgentRag(BaseRag):
                         return RagResponse(
                             response_id=str(uuid.uuid4()),
                             rag_answer="Sorry, I can´t answer the question based on the retrieved information.",
-                            sources=retrieved_sources,
+                            sources=weaviate_tool.last_results,
                             time_spent=time.perf_counter() - start_time
                         )
                 except json.JSONDecodeError:
@@ -685,7 +684,7 @@ class xmartiAgentRag(BaseRag):
                     return RagResponse(
                         response_id=str(uuid.uuid4()),
                         rag_answer=final_synthesis,
-                        sources=retrieved_sources,
+                        sources=weaviate_tool.last_results,
                         time_spent=time.perf_counter() - start_time
                     )
             except Exception as e:
