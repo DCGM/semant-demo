@@ -1,6 +1,6 @@
 id: "xmarti96 default agent rag"
 name: "Default Agentic RAG"
-description: "default agentic rag implementation (worse than basic RAG at the moment)"
+description: "Default agentic rag implementation (worse than basic RAG at the moment). OpenAI API key needed."
 class_name: "xmartiAgentRag"
 params:
   model_type: "OPENAI"
