@@ -623,7 +623,7 @@ class xmartiAgentRag(BaseRag):
             return RagResponse(
                 response_id = str(uuid.uuid4()),
                 rag_answer=final_answer,
-                sources=weaviate_tool.last_results,
+                sources=weaviate_tool.last_results or [],
                 time_spent=time.perf_counter() - start_time
             )
 
@@ -664,7 +664,7 @@ class xmartiAgentRag(BaseRag):
                         return RagResponse(
                             response_id=str(uuid.uuid4()),
                             rag_answer=final_synthesis,
-                            sources=weaviate_tool.last_results,
+                            sources=weaviate_tool.last_results or [],
                             time_spent=time.perf_counter() - start_time
                         )
                     else:
@@ -672,7 +672,7 @@ class xmartiAgentRag(BaseRag):
                         return RagResponse(
                             response_id=str(uuid.uuid4()),
                             rag_answer="Sorry, I can´t answer the question based on the retrieved information.",
-                            sources=weaviate_tool.last_results,
+                            sources=weaviate_tool.last_results or [],
                             time_spent=time.perf_counter() - start_time
                         )
                 except json.JSONDecodeError:
@@ -684,7 +684,7 @@ class xmartiAgentRag(BaseRag):
                     return RagResponse(
                         response_id=str(uuid.uuid4()),
                         rag_answer=final_synthesis,
-                        sources=weaviate_tool.last_results,
+                        sources=weaviate_tool.last_results or [],
                         time_spent=time.perf_counter() - start_time
                     )
             except Exception as e:
