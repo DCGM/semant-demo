@@ -1,6 +1,6 @@
 id: "xmarti96 default agent rag"
-name: "Xmarti96 default agent rag"
-description: "agentic rag"
+name: "Default Agentic RAG"
+description: "default agentic rag implementation (worse than basic RAG at the moment)"
 class_name: "xmartiAgentRag"
 params:
   model_type: "OPENAI"
@@ -12,4 +12,5 @@ params:
   agent_iterations: 5
 
 ### TODO ###
+# More params
 # Move prompts here
