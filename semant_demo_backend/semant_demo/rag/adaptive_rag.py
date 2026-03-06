@@ -521,10 +521,19 @@ class AdaptiveRagGenerator(BaseRag):
             chain = self._create_chain(model=self.model, prompt=self.generation_grader_prompt)
             context = self._format_weaviate_context(state["documents"])
 
-            raw_result = await chain.ainvoke({
-                "documents" : context,
-                "answer" : state["generation"]
-            })
+            raw_result = ""
+
+            try:
+                raw_result = await asyncio.wait_for(
+                chain.ainvoke({
+                    "documents": context,
+                    "answer": state["generation"]
+                }),
+                timeout=45.0
+            )
+            except asyncio.TimeoutError:
+                if (DEBUG_PRINT): 
+                    print("Grader freezed. Skipping grading.")
 
             clean_result = re.sub(r'```json|```', '', raw_result).strip()
             is_supported = True
