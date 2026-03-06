@@ -95,19 +95,32 @@ extract_metadata_from_question_template = [
     ("user", "{question_string}")
     ]
 
+# multiquery_prompt_template = [
+#     ("system",
+#     """
+#     You are an expert search query assistant for a historical archive. 
+#     Your task is to generate 3 to 5 different versions of the user's question to retrieve relevant documents from a vector database. 
+#     By providing multiple perspectives on the same question, your goal is to overcome issues with keyword-based or semantic search limitations.
+    
+#     Follow these rules exactly:
+#     1) Generate 3 to 5 variations of the question.
+#     2) Keep the original meaning but use different synonyms or phrasing.
+#     3) Output each question on a NEW LINE.
+#     4) Do NOT include numbers, bullet points, or any introductory text.
+#     5) Respond in the SAME LANGUAGE as the user's question.
+#     """),
+#     ("user", "{question_string}")
+#     ]
+
 multiquery_prompt_template = [
     ("system",
     """
-    You are an expert search query assistant for a historical archive. 
-    Your task is to generate 3 to 5 different versions of the user's question to retrieve relevant documents from a vector database. 
-    By providing multiple perspectives on the same question, your goal is to overcome issues with keyword-based or semantic search limitations.
+    You are an expert search assistant. Generate 3 variations of the user question.
     
-    Follow these rules exactly:
-    1) Generate 3 to 5 variations of the question.
-    2) Keep the original meaning but use different synonyms or phrasing.
-    3) Output each question on a NEW LINE.
-    4) Do NOT include numbers, bullet points, or any introductory text.
-    5) Respond in the SAME LANGUAGE as the user's question.
+    STRICT RULES:
+    1) PRESERVE ENTITIES: You MUST keep all dates (e.g., '10. 12. 1863'), specific law names, and proper nouns EXACTLY as they appear.
+    2) NO DATA LOSS: Do not simplify the question so much that these identifiers are lost.
+    3) Respond in the SAME LANGUAGE as the user.
     """),
     ("user", "{question_string}")
     ]
@@ -138,33 +151,83 @@ hyde_retry = (
     "Previous document: {hyde_doc}"
 )
 
-context_grader_prompt_template = [
+# context_grader_prompt_template = [
+#     ("system", 
+#      """
+#     You are a grader assessing relevance of a retrieved document to a user question. 
+#     If the document contains keywords or semantic meaning related to the user question, grade it as relevant. 
+#     Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+    
+#     Output ONLY valid JSON with a single key 'binary_score'.
+#     """),
+#     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
+# ]
+
+# context_grader_prompt_template = [
+#     ("system", 
+#      """
+#     You are a strict relevance auditor. 
+#     Your task is to protect the generator from noisy or irrelevant data.
+
+#     RULES:
+#     1. Grade as 'yes' ONLY if the document contains a direct fact or clear evidence that answers the user's question.
+#     2. Grade as 'no' if the document is only vaguely related, covers a different time period, or is a different topic.
+#     3. If in doubt, grade as 'no'.
+    
+#     Output ONLY valid JSON with a single key 'binary_score' (yes/no).
+#     """),
+#     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
+# ]
+
+context_grader_prompt_template =[
     ("system", 
      """
-    You are a grader assessing relevance of a retrieved document to a user question. 
-    If the document contains keywords or semantic meaning related to the user question, grade it as relevant. 
-    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+    You are a lenient relevance auditor. 
+    Your task is to filter out ONLY completely unrelated noise.
+
+    RULES:
+    1. If the document contains ANY facts, names, dates, or context even slightly related to the user's question, grade it as 'yes'.
+    2. Even if the document only partially answers the question, grade it as 'yes'.
+    3. Grade as 'no' ONLY if the document is 100% unrelated to the topic.
     
-    Output ONLY valid JSON with a single key 'binary_score'.
+    Output ONLY valid JSON with a single key 'binary_score' (yes/no).
     """),
     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
 ]
 
+# generation_grader_prompt_template = [
+#     ("system", 
+#      """
+#     You are a strict quality controller. 
+#     Your task is to check if the generated answer is fully supported by the provided context.
+    
+#     Follow these rules exactly:
+#     1. If the answer contains information NOT present in the context, it is a hallucination and 'binary_score' have to be 'no'.
+#     2. Respond in JSON format with two keys:
+#        - 'binary_score': 'yes' if supported, 'no' if not.
+#        - 'feedback': A short explanation of what is wrong or missing. It should be useful for generating improved responses.
+#     """),
+#     ("user", "Context: \n {documents} \n Generated answer: {answer}")
+# ]
+
 generation_grader_prompt_template = [
     ("system", 
      """
-    You are a strict quality controller. 
-    Your task is to check if the generated answer is fully supported by the provided context.
+    You are a strict factual auditor. 
+    Compare the Generated Answer against the Context.
     
-    Follow these rules exactly:
-    1. If the answer contains information NOT present in the context, it is a hallucination and 'binary_score' have to be 'no'.
-    2. Respond in JSON format with two keys:
-       - 'binary_score': 'yes' if supported, 'no' if not.
-       - 'feedback': A short explanation of what is wrong or missing. It should be useful for generating improved responses.
+    CRITERIA:
+    1. If the answer contains ANY fact not present in the context, it is a hallucination.
+    2. Be very strict about dates and numbers.
+    
+    Respond in JSON format:
+    {{
+       "binary_score": "yes" (if fully supported) or "no" (if there is a hallucination),
+       "feedback": "Identify the specific hallucinated sentence."
+    }}
     """),
     ("user", "Context: \n {documents} \n Generated answer: {answer}")
 ]
-
 
 explain_selected_text_prompt_template = [
         ("system",
