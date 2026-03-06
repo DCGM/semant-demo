@@ -87,7 +87,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 4")
+            print("Adaptive RAG version 5")
 
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -180,7 +180,8 @@ class AdaptiveRagGenerator(BaseRag):
             {
                 "supported": END,
                 "not_supported": "generate",
-                "web_search" : "web_search"
+                "web_search" : "web_search",
+                "retry_search" : "start_retrieval_branch"
             }
         )
 
@@ -412,6 +413,11 @@ class AdaptiveRagGenerator(BaseRag):
             return {"queries" : [state["question"]]}
 
     async def node_grade_context(self, state: AdaptiveRagState):
+        iteration = state.get("retrieval_iteration_counter", 0)
+        if (iteration <= 1):
+            if (DEBUG_PRINT): print("GRADE CONTEXT - skipping firtst iteration grading")
+            return {"documents": state["documents"]}
+
         chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
 
         async def grader_single_doc(doc):
@@ -558,12 +564,34 @@ class AdaptiveRagGenerator(BaseRag):
 
     def decide_after_generation (self, state: AdaptiveRagState):
         feedback = state.get("feedback", "")
+        gen_iteration = state.get("generation_iteration_counter", 0)
+        ret_iteration = state.get("retrieval_iteration_counter", 0) 
         web_done = state.get("web_search_performed", False)
+
+        #supported answer --> finish
         if (feedback == "supported"):
+            return "supported"
+        
+        # #case where no relevant documents were found --> multiquary --> search web if allowed
+        elif (feedback == "" or state["documents"] == []):
+            #try multiquary/hyde aproach
+            if (ret_iteration < self.max_retries):
+                if (DEBUG_PRINT): 
+                    print("Basic Search failed to answer. Starting Adaptive Multi-Query Retry ---")
+                return "retry_search"
+            #web search
+            if (self.web_search_enabled and not state.get("web_search_performed")):
+                return "web_search"
             return "supported"
         elif (web_done == True): #search only once
             return "supported"
-        else:   #not supported
+        
+        #try generate again with feedback
+        if (not web_done and gen_iteration < self.max_retries):
+            if (DEBUG_PRINT):
+                print(f"Retrying generation with feedback ({gen_iteration}/{self.max_retries}).")
+            return "not_supported"
+        # else:   #not supported
             # #case where no relevant documents were found --> search web if allowed
             # if (state["feedback"] == "" or state["documents"] == []):
             #     if self.web_search_enabled == True:
@@ -575,16 +603,16 @@ class AdaptiveRagGenerator(BaseRag):
                 
             #retry based on the feedback
             #if (state.get("generation_iteration_counter") < self.max_retries):
-            if(False):
-                if (DEBUG_PRINT):
-                    print(f"Retrying with additional feedback.")
-                return "not_supported"
+            # if(False):
+            #     if (DEBUG_PRINT):
+            #         print(f"Retrying with additional feedback.")
+            #     return "not_supported"
             
-            #retried enaught times --> search web if allowed
-            if (self.web_search_enabled == True and state["documents"] == []):
-                if (DEBUG_PRINT):
-                    print(f"Searching on the web.")
-                return "web_search"
+            # #retried enaught times --> search web if allowed
+            # if (self.web_search_enabled == True and state["documents"] == []):
+            #     if (DEBUG_PRINT):
+            #         print(f"Searching on the web.")
+            #     return "web_search"
         return "supported"
     
     async def node_web_search (self, state: AdaptiveRagState):
