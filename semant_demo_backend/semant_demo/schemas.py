@@ -13,6 +13,11 @@ class SearchType(str, Enum):
     vector = "vector"
     hybrid = "hybrid"
 
+class APIType(str, Enum):
+    ollama = "OLLAMA"
+    openai = "OPENAI"
+    google = "GOOGLE"
+    metacentrum = "METACENTRUM"
 
 class SummaryRequestBase(BaseModel):
     search_title_generate: bool = True
@@ -221,7 +226,23 @@ class CreateResponse(BaseModel):
     created: bool
     message: str
 
+# Tagging configuration
+class TaggingConfigParams(BaseModel):
+    model_type: APIType
+    model_name: str
+    temperature: float = 1.0
 
+class TaggingConfig(BaseModel):
+    name: str
+    description: str
+    class_name: str
+    prompt_template: str
+    params: TaggingConfigParams
+
+class GetConfigsResponse(BaseModel):
+    configs: list[TaggingConfig]
+
+# tagging task
 class TagStartResponse(BaseModel):
     job_started: bool
     task_id: str
@@ -236,6 +257,16 @@ class TagReqTemplate(BaseModel):
     tag_definition: str  # description of the tag
     tag_examples: list[str]  # list of examples what should be tagged
     collection_name: str
+
+class TaggingTaskReqTemplate(BaseModel):
+    tag_name: str  # name of the tag
+    tag_shorthand: str  # shorthand for the name
+    tag_color: str  # color assigned to the tag
+    tag_pictogram: str  # image
+    tag_definition: str  # description of the tag
+    tag_examples: list[str]  # list of examples what should be tagged
+    collection_name: str
+    task_config: TaggingConfig
 
 
 class TagResponse(BaseModel):
@@ -307,7 +338,6 @@ class ApproveTagResponse(BaseModel):
 
 class RemoveTagsResponse(BaseModel):
     successful: bool
-
 
 # User collection
 class UserCollectionReqTemplate(BaseModel):

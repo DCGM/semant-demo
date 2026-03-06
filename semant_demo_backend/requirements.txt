@@ -18,3 +18,4 @@ jinja2
 sqlalchemy
 aiosqlite
 ddgs
+pydantic-ai
