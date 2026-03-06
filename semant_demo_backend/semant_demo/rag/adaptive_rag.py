@@ -87,7 +87,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 5")
+            print("Adaptive RAG version 6")
 
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -518,7 +518,10 @@ class AdaptiveRagGenerator(BaseRag):
             if (DEBUG_PRINT):
                 print(f"Self reflection mode is ON")
 
-            if (state["generation"].startswith("Sorry")):
+            #check if ansfer is "sorry answer"
+            answer_text = state["generation"].lower()
+            apology_phrases =["sorry", "omlouvám", "nemohu odpovědět", "nelze odpovědět", "nemám dostatek informací", "neposkytuje informace"]
+            if any(phrase in answer_text for phrase in apology_phrases):
                 #no relevant documents/chunks found -> do not grade (try web search if enabled)
                 if (self.web_search_enabled == True):
                     return {"feedback" : "", "generation_iteration_counter": counter_value}
