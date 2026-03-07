@@ -87,7 +87,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 6")
+            print("Adaptive RAG version 7")
 
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -413,10 +413,10 @@ class AdaptiveRagGenerator(BaseRag):
             return {"queries" : [state["question"]]}
 
     async def node_grade_context(self, state: AdaptiveRagState):
-        iteration = state.get("retrieval_iteration_counter", 0)
-        if (iteration <= 1):
-            if (DEBUG_PRINT): print("GRADE CONTEXT - skipping firtst iteration grading")
-            return {"documents": state["documents"]}
+        #iteration = state.get("retrieval_iteration_counter", 0)
+        # if (iteration <= 1):
+        #     if (DEBUG_PRINT): print("GRADE CONTEXT - skipping firtst iteration grading")
+        #     return {"documents": state["documents"]}
 
         chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
 
@@ -580,7 +580,7 @@ class AdaptiveRagGenerator(BaseRag):
             #try multiquary/hyde aproach
             if (ret_iteration < self.max_retries):
                 if (DEBUG_PRINT): 
-                    print("Basic Search failed to answer. Starting Adaptive Multi-Query Retry ---")
+                    print("Basic Search failed to answer. Starting Adaptive Multi-Query Retry")
                 return "retry_search"
             #web search
             if (self.web_search_enabled and not state.get("web_search_performed")):

@@ -163,22 +163,6 @@ hyde_retry = (
 #     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
 # ]
 
-# context_grader_prompt_template = [
-#     ("system", 
-#      """
-#     You are a strict relevance auditor. 
-#     Your task is to protect the generator from noisy or irrelevant data.
-
-#     RULES:
-#     1. Grade as 'yes' ONLY if the document contains a direct fact or clear evidence that answers the user's question.
-#     2. Grade as 'no' if the document is only vaguely related, covers a different time period, or is a different topic.
-#     3. If in doubt, grade as 'no'.
-    
-#     Output ONLY valid JSON with a single key 'binary_score' (yes/no).
-#     """),
-#     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
-# ]
-
 context_grader_prompt_template =[
     ("system", 
      """
@@ -188,7 +172,7 @@ context_grader_prompt_template =[
     RULES:
     1. If the document contains ANY facts, names, dates, or context even slightly related to the user's question, grade it as 'yes'.
     2. Even if the document only partially answers the question, grade it as 'yes'.
-    3. Grade as 'no' ONLY if the document is 100% unrelated to the topic.
+    3. Grade as 'no' ONLY if the document is completely unrelated to the topic.
     
     Output ONLY valid JSON with a single key 'binary_score' (yes/no).
     """),
