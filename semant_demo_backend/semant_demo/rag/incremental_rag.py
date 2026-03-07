@@ -78,7 +78,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 9")
+            print("Adaptive RAG version 11")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -333,6 +333,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         
         #join snippets
         final_context = self._format_weaviate_context(state["documents"])
+        if (DEBUG_PRINT):
+            print(f"DEBUG: Context length (chars): {len(final_context)}")
 
         if (state["history"]):
             chain = self._create_chain(model=self.model, prompt=self.main_prompt_history)
