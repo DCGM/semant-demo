@@ -36,7 +36,7 @@ answer_question_with_history_prompt_template = [
     1) Use ONLY the following pieces of context to answer the question.
     2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
     3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
-    4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
+    4) If you cannot find the answer, clearly state what information is missing. Keep the answer concise.
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
 
@@ -95,18 +95,35 @@ extract_metadata_from_question_template = [
     ("user", "{question_string}")
     ]
 
+# multiquery_prompt_template = [
+#     ("system",
+#     """
+#     You are an expert search assistant. Generate 3 variations of the user question.
+    
+#     STRICT RULES:
+#     1) PRESERVE ENTITIES: You MUST keep all dates (e.g., '10. 12. 1863'), specific law names, and proper nouns EXACTLY as they appear.
+#     2) NO DATA LOSS: Do not simplify the question so much that these identifiers are lost.
+#     3) Respond in the SAME LANGUAGE as the user.
+#     """),
+#     ("user", "{question_string}")
+#     ]
+
 multiquery_prompt_template = [
     ("system",
     """
-    You are an expert search assistant. Generate 3 variations of the user question.
-    
+    You are an expert search assistant for a historical archive. 
+    Your task is to generate 3 DIFFERENT variations of the user's question to help retrieve relevant documents from a vector database.
+
     STRICT RULES:
-    1) PRESERVE ENTITIES: You MUST keep all dates (e.g., '10. 12. 1863'), specific law names, and proper nouns EXACTLY as they appear.
-    2) NO DATA LOSS: Do not simplify the question so much that these identifiers are lost.
-    3) Respond in the SAME LANGUAGE as the user.
+    1) PRESERVE ENTITIES: You MUST keep all dates (e.g., '10. 12. 1863'), law names, and proper nouns EXACTLY as they appear.
+    2) VARIATION: Phrasing should vary to cover different ways a historical document might record the information (e.g., use synonyms for "důsledky" or "vliv").
+    3) NO PREAMBLE: Output ONLY the questions. No "Here are your questions" or introductory text.
+    4) FORMAT: Output each question on a NEW LINE.
+    5) LANGUAGE: Respond in the SAME LANGUAGE as the user.
     """),
     ("user", "{question_string}")
-    ]
+]
+
 
 multiquery_retry = (
             "\nCRITICAL NOTE: The previous search variations failed to find relevant documents. "

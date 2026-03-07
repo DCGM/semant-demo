@@ -78,7 +78,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 11")
+            print("Adaptive RAG version 12")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -167,10 +167,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             "grade_generation",
             self.decide_after_generation,
             {
-                "supported": END,
-                "not_supported": "generate",
-                "web_search" : "web_search",
-                "retry_search" : "start_retrieval_branch"
+                "finish": END,
+                "retry" : "start_retrieval_branch"
             }
         )
 
@@ -232,7 +230,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 query = query,
                 type = self.search_type,
                 hybrid_search_alpha = self.alpha,
-                limit = self.chunk_limit,
+                limit = 5 if state.get("retrieval_iteration_counter", 0) == 0 else self.chunk_limit,
                 min_year = metadata.get("min_year"),
                 max_year = metadata.get("max_year"),
                 min_date = metadata.get("min_date"),
@@ -320,7 +318,29 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         return {"metadata" : {}}
         
     async def node_multi_query(self, state: AdaptiveRagState):
-        return {"queries" : [state["question"]]}
+        iteration = state.get("retrieval_iteration_counter", 0)
+        #first time try simple retrieve
+        if (iteration == 0):
+            return {"queries" : [state["question"]]}
+        
+        else:
+            #multiple query generation
+            if (DEBUG_PRINT):
+                print(f"Multi query mode")
+
+            chain = self._create_chain(model = self.model, prompt = self.multiquery_prompt)
+            result_raw = await chain.ainvoke({"question_string" : state["question"]})
+
+            # simple parser
+            queries = [line.strip().lstrip("0123456789.- ") for line in result_raw.split("\n") if len(line.strip()) > 5]
+            queries = queries[:3]
+
+            if state["question"] not in queries:
+                    queries.append(state["question"])
+
+            return {"queries" : queries}
+
+
 
     async def node_grade_context(self, state: AdaptiveRagState):
         return {"documents": state["documents"]}
@@ -361,10 +381,22 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     
     async def node_grade_generation (self, state: AdaptiveRagState):
         gen_value = state.get("generation_iteration_counter", 0) + 1
+        answer_text = state["generation"].lower()
+        apology_phrases =["sorry", "omlouvám", "nemohu odpovědět", "nelze odpovědět", 
+                               "nemám dostatek informací", "neposkytuje informace", 
+                               "chybí", "neuvádí", "není uvedeno", "neobsahuje", 
+                               "missing", "not provided"]
+        if any(phrase in answer_text for phrase in apology_phrases):
+            if (DEBUG_PRINT): 
+                print("Context probably insufficient. Triggering retry loop...")
+            return {"feedback": "insufficient", "generation_iteration_counter": gen_value}
+        
         return {"feedback" : "supported", "generation_iteration_counter": gen_value}
 
     def decide_after_generation (self, state: AdaptiveRagState):
-        return "supported"
+        if state["feedback"] == "supported" or state["retrieval_iteration_counter"] >= self.max_retries:
+            return "finish"
+        return "retry"
     
     async def node_web_search (self, state: AdaptiveRagState):
         try:
