@@ -381,15 +381,13 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     
     async def node_grade_generation (self, state: AdaptiveRagState):
         gen_value = state.get("generation_iteration_counter", 0) + 1
-        answer_text = state["generation"].lower()
-        apology_phrases =["sorry", "omlouvám", "nemohu odpovědět", "nelze odpovědět", 
-                               "nemám dostatek informací", "neposkytuje informace", 
-                               "chybí", "neuvádí", "není uvedeno", "neobsahuje", 
-                               "missing", "not provided"]
-        if any(phrase in answer_text for phrase in apology_phrases):
+        answer_text = state["generation"]
+
+        if "SIGNAL: INSUFFICIENT" in answer_text:
             if (DEBUG_PRINT): 
                 print("Context probably insufficient. Triggering retry loop...")
-            return {"feedback": "insufficient", "generation_iteration_counter": gen_value}
+            clean_generation = answer_text.replace("SIGNAL: INSUFFICIENT", "").strip()
+            return {"feedback": "insufficient", "generation_iteration_counter": gen_value, "generation": clean_generation}
         
         return {"feedback" : "supported", "generation_iteration_counter": gen_value}
 

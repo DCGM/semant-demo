@@ -10,7 +10,7 @@ answer_question_prompt_template = [
     1) Use ONLY the following pieces of context to answer the question.
     2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
     3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
-    4) If you cannot find the answer, clearly state what information is missing. Keep the answer concise.
+    4) If you cannot find the answer, clearly state what information is missing. Keep the answer concise. CRITICAL: If any information is missing, you MUST end your response with the exact phrase: "SIGNAL: INSUFFICIENT".
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
 
