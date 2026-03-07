@@ -10,7 +10,7 @@ answer_question_prompt_template = [
     1) Use ONLY the following pieces of context to answer the question.
     2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
     3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
-    4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
+    4) Don't make up any new information. If the context does not contain the complete answer, provide a PARTIAL ANSWER based on what IS in the context, and explicitly state what information is missing.
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
 
@@ -194,20 +194,39 @@ context_grader_prompt_template =[
 #     ("user", "Context: \n {documents} \n Generated answer: {answer}")
 # ]
 
-generation_grader_prompt_template = [
+# generation_grader_prompt_template = [
+#     ("system", 
+#      """
+#     You are a strict factual auditor. 
+#     Compare the Generated Answer against the Context.
+    
+#     CRITERIA:
+#     1. If the answer contains ANY fact not present in the context, it is a hallucination.
+#     2. Be very strict about dates and numbers.
+    
+#     Respond in JSON format:
+#     {{
+#        "binary_score": "yes" (if fully supported) or "no" (if there is a hallucination),
+#        "feedback": "Identify the specific hallucinated sentence."
+#     }}
+#     """),
+#     ("user", "Context: \n {documents} \n Generated answer: {answer}")
+# ]
+
+generation_grader_prompt_template =[
     ("system", 
      """
-    You are a strict factual auditor. 
-    Compare the Generated Answer against the Context.
+    You are a factual auditor. Compare the Generated Answer against the Context.
     
     CRITERIA:
-    1. If the answer contains ANY fact not present in the context, it is a hallucination.
-    2. Be very strict about dates and numbers.
+    1. If the answer contains a material fact clearly NOT present in the context, it is a hallucination ('no').
+    2. Consider the context as a WHOLE. Facts might be distributed across multiple documents. Do not penalize the model for correctly synthesizing dates or common knowledge equivalents (e.g., resolving a holiday to a specific date if supported by another chunk).
+    3. If the answer provides a PARTIAL response and explicitly states that some information is missing (as instructed by its system prompt), grade it as 'yes' (supported), because admitting lack of info based on context is factually correct behavior.
     
-    Respond in JSON format:
+    Respond in strict JSON format without any markdown wrappers:
     {{
-       "binary_score": "yes" (if fully supported) or "no" (if there is a hallucination),
-       "feedback": "Identify the specific hallucinated sentence."
+       "binary_score": "yes" (if supported) or "no" (if hallucinated),
+       "feedback": "Identify the specific hallucinated sentence or write 'supported'."
     }}
     """),
     ("user", "Context: \n {documents} \n Generated answer: {answer}")

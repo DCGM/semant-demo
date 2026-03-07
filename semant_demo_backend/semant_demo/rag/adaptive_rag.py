@@ -87,7 +87,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 7")
+            print("Adaptive RAG version 8")
 
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -244,7 +244,7 @@ class AdaptiveRagGenerator(BaseRag):
                 query = query,
                 type = self.search_type,
                 hybrid_search_alpha = self.alpha,
-                limit = 5 if state.get("retrieval_iteration_counter", 0) == 0 else self.chunk_limit,
+                limit = 10 if state.get("retrieval_iteration_counter", 0) == 0 else self.chunk_limit,
                 min_year = metadata.get("min_year"),
                 max_year = metadata.get("max_year"),
                 min_date = metadata.get("min_date"),
@@ -274,6 +274,7 @@ class AdaptiveRagGenerator(BaseRag):
                     unique_chunks[chunk_id] = chunk
 
         all_chunks = list(unique_chunks.values())
+        all_chunks = all_chunks[:10]
 
         counter_value = state.get("retrieval_iteration_counter", 0) + 1
 
@@ -443,6 +444,7 @@ class AdaptiveRagGenerator(BaseRag):
         doc_responses = await asyncio.gather(*grade_tasks)
         #remove None
         filtered_documents = [doc for doc in doc_responses if doc is not None]
+        filtered_documents = filtered_documents[:5]
 
         #not relevant documents found
         if filtered_documents == []:
@@ -520,11 +522,14 @@ class AdaptiveRagGenerator(BaseRag):
 
             #check if ansfer is "sorry answer"
             answer_text = state["generation"].lower()
-            apology_phrases =["sorry", "omlouvám", "nemohu odpovědět", "nelze odpovědět", "nemám dostatek informací", "neposkytuje informace"]
+            apology_phrases =["sorry", "omlouvám", "nemohu odpovědět", "nelze odpovědět", 
+                               "nemám dostatek informací", "neposkytuje informace", 
+                               "chybí", "neuvádí", "není uvedeno", "neobsahuje", 
+                               "missing", "not provided"]
             if any(phrase in answer_text for phrase in apology_phrases):
                 #no relevant documents/chunks found -> do not grade (try web search if enabled)
-                if (self.web_search_enabled == True):
-                    return {"feedback" : "", "generation_iteration_counter": counter_value}
+                #if (self.web_search_enabled == True):
+                return {"feedback" : "", "generation_iteration_counter": counter_value}
             
             #grade answer and get feedback
             chain = self._create_chain(model=self.model, prompt=self.generation_grader_prompt)
