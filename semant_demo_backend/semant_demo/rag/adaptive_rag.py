@@ -87,7 +87,7 @@ class AdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 8")
+            print("Adaptive RAG version 9")
 
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -244,7 +244,7 @@ class AdaptiveRagGenerator(BaseRag):
                 query = query,
                 type = self.search_type,
                 hybrid_search_alpha = self.alpha,
-                limit = 10 if state.get("retrieval_iteration_counter", 0) == 0 else self.chunk_limit,
+                limit = 5 if state.get("retrieval_iteration_counter", 0) == 0 else self.chunk_limit,
                 min_year = metadata.get("min_year"),
                 max_year = metadata.get("max_year"),
                 min_date = metadata.get("min_date"),
@@ -330,6 +330,9 @@ class AdaptiveRagGenerator(BaseRag):
             return "insufficient"
 
     async def node_extract_metadata(self, state: AdaptiveRagState):
+        if state.get("retrieval_iteration_counter", 0) == 0:
+            if (DEBUG_PRINT): print("Skipping metadata extraction in Iteration 0")
+            return {"metadata": {}}
         if (state["metadata_extraction_allowed"] == True):
             chain =  self._create_chain (model=self.extract_model, prompt=self.extract_prompt)
             result = await chain.ainvoke({"question_string" : state["question"]})
@@ -414,10 +417,10 @@ class AdaptiveRagGenerator(BaseRag):
             return {"queries" : [state["question"]]}
 
     async def node_grade_context(self, state: AdaptiveRagState):
-        #iteration = state.get("retrieval_iteration_counter", 0)
-        # if (iteration <= 1):
-        #     if (DEBUG_PRINT): print("GRADE CONTEXT - skipping firtst iteration grading")
-        #     return {"documents": state["documents"]}
+        iteration = state.get("retrieval_iteration_counter", 0)
+        if (iteration <= 1):
+            if (DEBUG_PRINT): print("GRADE CONTEXT - skipping firtst iteration grading")
+            return {"documents": state["documents"]}
 
         chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
 
@@ -511,6 +514,7 @@ class AdaptiveRagGenerator(BaseRag):
     
     async def node_grade_generation (self, state: AdaptiveRagState):
         counter_value = state.get("generation_iteration_counter", 0) + 1
+        ret_iteration = state.get("retrieval_iteration_counter", 0)  + 1
         #in case self reflection is of or web search was performed there is no reason to generate feedback because it will be ignored anyway
         if (self.self_reflection == False or state["web_search_performed"] == True):
             if (DEBUG_PRINT):
@@ -529,7 +533,7 @@ class AdaptiveRagGenerator(BaseRag):
             if any(phrase in answer_text for phrase in apology_phrases):
                 #no relevant documents/chunks found -> do not grade (try web search if enabled)
                 #if (self.web_search_enabled == True):
-                return {"feedback" : "", "generation_iteration_counter": counter_value}
+                return {"feedback" : "", "generation_iteration_counter": counter_value}#, "retrieval_iteration_counter": ret_iteration}
             
             #grade answer and get feedback
             chain = self._create_chain(model=self.model, prompt=self.generation_grader_prompt)
