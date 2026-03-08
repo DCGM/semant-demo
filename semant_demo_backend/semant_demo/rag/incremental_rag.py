@@ -78,7 +78,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 14")
+            print("Adaptive RAG version 15")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -343,7 +343,44 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
 
     async def node_grade_context(self, state: AdaptiveRagState):
-        return {"documents": state["documents"]}
+        #first basic rag query
+        if (len(state["documents"]) <= 5 or state["retrieval_iteration_counter"] == 1):
+            return {"documents": state["documents"]}
+        
+        if (DEBUG_PRINT): 
+            print(f"GRADING RETRIEVED CONTEXT: ({len(state['documents'])} docs)")
+
+        chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
+
+        async def grader_single_doc(doc):
+            clean_doc = self._get_clean_doc(doc)
+            result_raw = await chain.ainvoke({
+                "question_string" : state["question"],
+                "document" : clean_doc
+            })
+
+            clean_result = re.sub(r'```json|```', '', result_raw).strip()
+            try:
+                graded_doc = json.loads(clean_result)
+                score = graded_doc.get("binary_score", "no").lower()
+                if "yes" in score:
+                    return doc
+            except Exception:
+                return doc
+            return None
+            
+        #call in parallel
+        grade_tasks = [grader_single_doc(doc) for doc in state["documents"]]
+        doc_responses = await asyncio.gather(*grade_tasks)
+        
+        #remove None
+        filtered_documents = [doc for doc in doc_responses if doc is not None]
+        filtered_documents = filtered_documents[:5]
+
+        #if relevant return documents (in original textchunk format)
+        if (DEBUG_PRINT):
+            print(f"Relevant documents number: " + str(len(filtered_documents)), " original doc number: " + str(len(state["documents"])))
+        return {"documents" : filtered_documents}
     
     def after_context_grade (self, state: AdaptiveRagState):
         return "generate"
