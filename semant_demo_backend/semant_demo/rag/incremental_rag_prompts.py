@@ -10,7 +10,7 @@ answer_question_prompt_template = [
     1) Use ONLY the following pieces of context to answer the question.
     2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
     3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
-    4) Provide the best possible answer using only the provided context. ONLY if the context is completely irrelevant or does not mention the main subject at all, end your response with the exact phrase: SIGNAL: INSUFFICIENT.
+    4) If you cannot find the answer, clearly state what information is missing. Keep the answer concise.
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
 
@@ -168,23 +168,42 @@ context_grader_prompt_template =[
     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
 ]
 
-generation_grader_prompt_template =[
-    ("system", 
-     """
-    You are a factual auditor. Compare the Generated Answer against the Context.
+# generation_grader_prompt_template =[
+#     ("system", 
+#      """
+#     You are a factual auditor. Compare the Generated Answer against the Context.
     
-    CRITERIA:
-    1. If the answer contains a material fact clearly NOT present in the context, it is a hallucination ('no').
-    2. Consider the context as a WHOLE. Facts might be distributed across multiple documents. Do not penalize the model for correctly synthesizing dates or common knowledge equivalents (e.g., resolving a holiday to a specific date if supported by another chunk).
-    3. If the answer provides a PARTIAL response and explicitly states that some information is missing (as instructed by its system prompt), grade it as 'yes' (supported), because admitting lack of info based on context is factually correct behavior.
+#     CRITERIA:
+#     1. If the answer contains a material fact clearly NOT present in the context, it is a hallucination ('no').
+#     2. Consider the context as a WHOLE. Facts might be distributed across multiple documents. Do not penalize the model for correctly synthesizing dates or common knowledge equivalents (e.g., resolving a holiday to a specific date if supported by another chunk).
+#     3. If the answer provides a PARTIAL response and explicitly states that some information is missing (as instructed by its system prompt), grade it as 'yes' (supported), because admitting lack of info based on context is factually correct behavior.
     
-    Respond in strict JSON format without any markdown wrappers:
-    {{
-       "binary_score": "yes" (if supported) or "no" (if hallucinated),
-       "feedback": "Identify the specific hallucinated sentence or write 'supported'."
-    }}
+#     Respond in strict JSON format without any markdown wrappers:
+#     {{
+#        "binary_score": "yes" (if supported) or "no" (if hallucinated),
+#        "feedback": "Identify the specific hallucinated sentence or write 'supported'."
+#     }}
+#     """),
+#     ("user", "Context: \n {documents} \n Generated answer: {answer}")
+# ]
+
+generation_grader_prompt_template = [
+    ("system", """
+    You are a quality auditor for a RAG system. 
+    Analyze the Answer provided below in relation to the User Question.
+    
+    GOAL:
+    Determine if the answer is a COMPLETE factual response or if it's an INCOMPLETE/SORRY response.
+
+    An answer is INCOMPLETE if:
+    - It says "information is missing", "not mentioned", "I don't know".
+    - It is a "Partial Answer" that explicitly lists what it could NOT find.
+    - It is a generic "Sorry, I can't answer" message.
+
+    Respond ONLY with a JSON object:
+    {"is_complete": "yes"} or {"is_complete": "no"}
     """),
-    ("user", "Context: \n {documents} \n Generated answer: {answer}")
+    ("user", "QUESTION: {question}\n\nANSWER: {answer}")
 ]
 
 explain_selected_text_prompt_template = [

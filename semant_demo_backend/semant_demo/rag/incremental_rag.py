@@ -78,7 +78,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 13")
+            print("Adaptive RAG version 14")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -326,7 +326,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         else:
             #multiple query generation
             if (DEBUG_PRINT):
-                print(f"Multi query mode")
+                print(f"MULTI QUERY MODE")
 
             chain = self._create_chain(model = self.model, prompt = self.multiquery_prompt)
             result_raw = await chain.ainvoke({"question_string" : state["question"]})
@@ -381,19 +381,35 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     
     async def node_grade_generation (self, state: AdaptiveRagState):
         gen_value = state.get("generation_iteration_counter", 0) + 1
-        answer_text = state["generation"]
+        chain = self._create_chain(model=self.model, prompt=self.generation_grader_prompt)
 
-        if "SIGNAL: INSUFFICIENT" in answer_text:
+        #this is grading base on question and answer --> should effect answer relevancy metrics and maybe context recall/precision
+        try:
+            result_raw = await chain.ainvoke({
+                "question": state["question"],
+                "answer": state["generation"]
+            })
+            clean_result = re.sub(r'```json|```', '', result_raw).strip()
+            decision = json.loads(clean_result)
+            
+            if decision.get("is_complete") == "no":
+                if (DEBUG_PRINT):
+                    print("GRADE GENERATION: Answer incomplete. Routing to Retry.")
+                return {"feedback": "insufficient", "generation_iteration_counter": gen_value}
+            else:
+                return {"feedback": "supported", "generation_iteration_counter": gen_value}
+            
+        except Exception as e:
             if (DEBUG_PRINT): 
-                print("Context probably insufficient. Triggering retry loop...")
-            clean_generation = answer_text.replace("SIGNAL: INSUFFICIENT", "").strip()
-            return {"feedback": "insufficient", "generation_iteration_counter": gen_value, "generation": clean_generation}
-        
-        return {"feedback" : "supported", "generation_iteration_counter": gen_value}
+                print(f"GRADER ERROR: {e}. Defaulting to finish.")
+            return {"feedback": "supported", "generation_iteration_counter": gen_value}
 
     def decide_after_generation (self, state: AdaptiveRagState):
         if state["feedback"] == "supported" or state["retrieval_iteration_counter"] >= self.max_retries:
+            if (DEBUG_PRINT): 
+                print("FINISHING: Answer satisfactory or max retries reached.")
             return "finish"
+        
         return "retry"
     
     async def node_web_search (self, state: AdaptiveRagState):
