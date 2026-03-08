@@ -1,6 +1,84 @@
 from langchain_core.prompts import  MessagesPlaceholder
 # prompt
+# answer_question_prompt_template = [
+#     ("system",
+#     """
+#     You are a precise and helpful chatbot. Your main task is to answer the user's \
+#     question based STRICTLY on the provided context.
+
+#     STRICT RULES:
+#     1) Use ONLY the following pieces of context to answer the question.
+#     2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
+#     3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
+#     4) If the context does not contain the complete answer, provide a PARTIAL ANSWER. Always mention the entities from the question (e.g., 'Regarding [Subject]...')  to stay relevant, even if you are stating that information is missing.
+#     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
+#     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
+
+#     EXAMPLE OF CORRECT CITATION:
+#     Context: [doc 1] Franz Kafka was a writer. [doc 2] He was born in Prague.
+#     Question: Kdo byl Franz Kafka a kde se narodil?
+#     Answer: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2], [doc 3].
+    
+#     Context: \n {context_string} \n
+#     """),
+#     ("user", "{question_string}")
+#     ]
+
+# answer_question_prompt_template = [
+#     ("system",
+#     """
+#     Jsi precizní historický asistent. Tvým úkolem je odpovědět na otázku uživatele VÝHRADNĚ na základě poskytnutého kontextu.
+
+#     PŘÍSNÁ PRAVIDLA:
+#     1) Použij POUZE informace z kontextu.
+#     2) CITACE: Za každé tvrzení doplň [doc X].
+#     3) JAZYK: Odpovídej v JAZYCE DOTAZU (pokud se ptá česky, odpověz česky).
+#     4) STRUKTURA: Jdi přímo k věci. Nepoužívej úvody jako "Ohledně..." nebo "Na základě textu...".
+#     5) NEÚPLNOST: Pokud v kontextu chybí odpověď na část otázky, stručně uveď jen to, co je k dispozici. O tom, co chybí, napiš maximálně jednu krátkou větu na úplný konec.
+    
+#     PŘÍKLAD SPRÁVNÉHO CITOVÁNÍ:
+#     Kontext: [doc 1] Franz Kafka byl spisovatel. [doc 2] Narodil se v Praze. [doc 3] Spisovatel Franz Kafka se narodil v Praze.
+#     Otázka: Kdo byl Franz Kafka a kde se narodil?
+#     Odpověď: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2], [doc 3].
+
+#     Kontext: \n {context_string} \n
+#     """),
+#     ("user", "{question_string}")
+#     ]
+
 answer_question_prompt_template = [
+    ("system", """
+    Jsi odborný historik. Odpovídej plynule v češtině.
+    
+    PRAVIDLA:
+    1) Odpověď začni PŘÍMO fakty. Nepoužívej úvody jako "Ohledně...", "Na základě..." nebo "V kontextu...".
+    2) Piš v odstavcích, buď věcný, ale ne strohý.
+    3) Každé tvrzení cituj pomocí [doc X].
+    4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. 
+       Jen pokud v kontextu není VŮBEC NIC k tématu, napiš jedinou větu: "K tomuto tématu chybí v dostupných pramenech podklady."
+     
+    Kontext: \n {context_string} \n
+    """),
+    ("user", "{question_string}")
+]
+
+cze_answer_question_prompt_template = [
+    ("system", """
+    Jsi odborný historik. Odpovídej plynule v češtině.
+    
+    PRAVIDLA:
+    1) Odpověď začni PŘÍMO fakty. Nepoužívej úvody jako "Ohledně...", "Na základě..." nebo "V kontextu...".
+    2) Piš v odstavcích, buď věcný, ale ne strohý.
+    3) Každé tvrzení cituj pomocí [doc X].
+    4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. 
+       Jen pokud v kontextu není VŮBEC NIC k tématu, napiš jedinou větu: "K tomuto tématu chybí v dostupných pramenech podklady."
+     
+    Kontext: \n {context_string} \n
+    """),
+    ("user", "{question_string}")
+]
+
+eng_answer_question_prompt_template = [
     ("system",
     """
     You are a precise and helpful chatbot. Your main task is to answer the user's \
@@ -12,12 +90,11 @@ answer_question_prompt_template = [
     3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
     4) If the context does not contain the complete answer, provide a PARTIAL ANSWER. Always mention the entities from the question (e.g., 'Regarding [Subject]...')  to stay relevant, even if you are stating that information is missing.
     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
-    6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
-
+    
     EXAMPLE OF CORRECT CITATION:
     Context: [doc 1] Franz Kafka was a writer. [doc 2] He was born in Prague.
-    Question: Kdo byl Franz Kafka a kde se narodil?
-    Answer: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2], [doc 3].
+    Question: Who was Franz Kafka and where was he born?
+    Answer: Franz Kafka was a writer [doc 1], who was born in Prague [doc 2], [doc 3].
     
     Context: \n {context_string} \n
     """),
@@ -199,18 +276,41 @@ context_grader_prompt_template =[
 #     ("user", "Context: \n {documents} \n Generated answer: {answer}")
 # ]
 
+# generation_grader_prompt_template = [
+#     ("system", """
+#     You are a quality auditor for a RAG system. 
+#     Analyze the Answer provided below in relation to the User Question.
+    
+#     GOAL:
+#     Determine if the answer is a COMPLETE factual response or if it's an INCOMPLETE/SORRY response.
+
+#     An answer is INCOMPLETE if:
+#     - It says "information is missing", "not mentioned", "I don't know".
+#     - It is a "Partial Answer" that explicitly lists what it could NOT find.
+#     - It is a generic "Sorry, I can't answer" message.
+
+#     Respond ONLY with a JSON object:
+#     {{"is_complete": "yes"}} or {{"is_complete": "no"}}
+#     """),
+#     ("user", "QUESTION: {question}\n\nANSWER: {answer}")
+# ]
+
 generation_grader_prompt_template = [
-    ("system", """
-    You are a quality auditor for a RAG system. 
+    ("system",
+    """
+    You are a quality auditor for a historical RAG system. 
     Analyze the Answer provided below in relation to the User Question.
     
     GOAL:
-    Determine if the answer is a COMPLETE factual response or if it's an INCOMPLETE/SORRY response.
+    Determine if the answer provides enough factual information to be useful. We want to avoid unnecessary retries if the core of the question is already answered.
 
-    An answer is INCOMPLETE if:
-    - It says "information is missing", "not mentioned", "I don't know".
-    - It is a "Partial Answer" that explicitly lists what it could NOT find.
-    - It is a generic "Sorry, I can't answer" message.
+    Mark "is_complete": "yes" if:
+    - The answer provides at least some direct facts related to the question.
+    - The answer is informative, even if it admits that some minor details are missing.
+
+    Mark "is_complete": "no" ONLY if:
+    - The answer is a complete apology (e.g., "I don't know", "Information not found").
+    - The answer is completely irrelevant to the subject of the question.
 
     Respond ONLY with a JSON object:
     {{"is_complete": "yes"}} or {{"is_complete": "no"}}
@@ -244,4 +344,14 @@ explain_selected_text_prompt_template = [
     """),
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "Explain why we said: '{selected_text}' in the language of the text and CITE.")
+]
+
+identify_language_prompt_template = [
+    ("system", 
+    """
+    Your task is to identify the language of the user's question and respond with the corresponding ISO 639-2/T code  (e.g., 'ces', 'deu', 'eng', 'rus', 'slk')..
+    Respond ONLY with a JSON object:
+    {{"language": "ces"}} or {{"is_complete": "eng"}} or {{"is_complete": "deu"}} etc.
+    """),
+    ("user", "{question_string}")
 ]

@@ -49,6 +49,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.generation_grader_prompt = ChatPromptTemplate.from_messages(generation_grader_prompt_template)
         self.check_sufficient_context_prompt = ChatPromptTemplate.from_messages(check_sufficient_context_prompt_template)
         self.explain_selected_text_prompt = ChatPromptTemplate.from_messages(explain_selected_text_prompt_template)
+        self.identify_language_prompt = ChatPromptTemplate.from_messages(identify_language_prompt_template)
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
@@ -78,7 +79,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 15")
+            print("Adaptive RAG version 15_1")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -372,7 +373,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         #call in parallel
         grade_tasks = [grader_single_doc(doc) for doc in state["documents"]]
         doc_responses = await asyncio.gather(*grade_tasks)
-        
+
         #remove None
         filtered_documents = [doc for doc in doc_responses if doc is not None]
         filtered_documents = filtered_documents[:5]
