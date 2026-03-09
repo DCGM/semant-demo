@@ -34,6 +34,7 @@ import uuid
 from typing import Any
 
 import weaviate
+from tqdm import tqdm
 from weaviate.classes.query import Filter, QueryReference
 from weaviate.collections.classes.data import DataObject, DataReference
 
@@ -327,43 +328,38 @@ async def run_tag_benchmarks() -> list[dict]:
         measurement_tags = all_tag_uuids[max_fullness:]
 
         prev_fullness = 0
+        fullness_levels = sorted(cfg.FULLNESS_LEVELS)
 
-        for fullness in sorted(cfg.FULLNESS_LEVELS):
-            log.info(f"{'='*60}")
-            log.info(f"  Fullness level: {fullness}")
-            log.info(f"{'='*60}")
+        fullness_bar = tqdm(fullness_levels, desc="Fullness levels", unit="lvl")
+        for fullness in fullness_bar:
+            fullness_bar.set_postfix(fullness=fullness)
 
             # 2. Add references to reach this fullness level (incremental)
             new_tags_to_add = fullness_tags[prev_fullness:fullness]
             if new_tags_to_add:
-                log.info(f"  Batch-adding {len(new_tags_to_add)} refs/chunk to reach fullness={fullness} …")
+                fullness_bar.write(f"  Batch-adding {len(new_tags_to_add)} refs/chunk to reach fullness={fullness}")
                 await _batch_add_refs(client, chunk_uuids, new_tags_to_add)
             prev_fullness = fullness
 
             # 3. Concurrent read test
-            for conc in cfg.CONCURRENCY_LEVELS:
-                log.info(f"  Read concurrent (concurrency={conc}) …")
+            for conc in tqdm(cfg.CONCURRENCY_LEVELS, desc=f"  f={fullness} read conc", leave=False):
                 result = await bench_read_concurrent(client, chunk_uuids, fullness, conc)
                 all_results.append(result)
 
             # 4. Batch read test
-            log.info(f"  Read batch (batch_size={cfg.READ_BATCH_SIZE}) …")
             result = await bench_read_batch(client, chunk_uuids, fullness, cfg.READ_BATCH_SIZE)
             all_results.append(result)
 
             # 5. Concurrent ref-add / ref-remove for each concurrency level
-            for conc in cfg.CONCURRENCY_LEVELS:
-                # Pick OPERATION_COUNT measurement tags
+            for conc in tqdm(cfg.CONCURRENCY_LEVELS, desc=f"  f={fullness} ref add/rm conc", leave=False):
                 op_tags = measurement_tags[: cfg.OPERATION_COUNT]
 
-                log.info(f"  Ref-add concurrent (concurrency={conc}, ops={len(op_tags)}) …")
                 for tag_uuid in op_tags:
                     result = await bench_ref_add_concurrent(
                         client, chunk_uuids, tag_uuid, fullness, conc,
                     )
                     all_results.append(result)
 
-                log.info(f"  Ref-remove concurrent (concurrency={conc}, ops={len(op_tags)}) …")
                 for tag_uuid in op_tags:
                     result = await bench_ref_remove_concurrent(
                         client, chunk_uuids, tag_uuid, fullness, conc,
@@ -373,13 +369,11 @@ async def run_tag_benchmarks() -> list[dict]:
             # 6. Batch ref-add / ref-remove
             op_tags = measurement_tags[: cfg.OPERATION_COUNT]
 
-            log.info(f"  Ref-add batch (ops={len(op_tags)}) …")
-            for tag_uuid in op_tags:
+            for tag_uuid in tqdm(op_tags, desc=f"  f={fullness} ref-add batch", leave=False):
                 result = await bench_ref_add_batch(client, chunk_uuids, tag_uuid, fullness)
                 all_results.append(result)
 
-            log.info(f"  Ref-remove batch (ops={len(op_tags)}) …")
-            for tag_uuid in op_tags:
+            for tag_uuid in tqdm(op_tags, desc=f"  f={fullness} ref-rm batch", leave=False):
                 result = await bench_ref_remove_batch(client, chunk_uuids, tag_uuid, fullness)
                 all_results.append(result)
 

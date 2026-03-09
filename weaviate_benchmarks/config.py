@@ -11,8 +11,8 @@ WEAVIATE_REST_PORT = int(os.getenv("WEAVIATE_REST_PORT", 8080))
 WEAVIATE_GRPC_PORT = int(os.getenv("WEAVIATE_GRPC_PORT", 50051))
 
 # ── Collection names (database-specific) ────────────────────────────────────
-CHUNKS_COLLECTION = os.getenv("BENCH_CHUNKS_COLLECTION", "Chunks")
-TAG_COLLECTION = os.getenv("BENCH_TAG_COLLECTION", "Tag")
+CHUNKS_COLLECTION = os.getenv("BENCH_CHUNKS_COLLECTION", "Chunks_test")
+TAG_COLLECTION = os.getenv("BENCH_TAG_COLLECTION", "Tag_test")
 
 # ── Benchmark identifiers (used as prefixes so cleanup is safe) ─────────────
 BENCH_PREFIX = "__bench_"  # all benchmark-created objects use this prefix
@@ -30,7 +30,7 @@ FULLNESS_LEVELS = [0, 5, 10, 20, 50]
 
 # How many chunks to pick for reference benchmarks.
 # Chunks are sampled in a shuffled order to avoid database-order bias.
-CHUNK_SAMPLE_SIZE = 500
+CHUNK_SAMPLE_SIZE = 50
 
 # Maximum batch size when reading chunks (used by batch read test)
 READ_BATCH_SIZE = 100

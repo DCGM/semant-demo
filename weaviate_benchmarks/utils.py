@@ -23,6 +23,10 @@ from . import config as cfg
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bench")
 
+# Silence the extremely verbose HTTP-request logs from httpx / httpcore
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 # ── Weaviate async client helper ────────────────────────────────────────────
 
