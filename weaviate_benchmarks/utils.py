@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -49,14 +50,6 @@ def bench_tag_name(index: int = 0) -> str:
     return f"{cfg.BENCH_PREFIX}tag_{index}_{uuid.uuid4().hex[:8]}"
 
 
-def bench_collection_name(index: int = 0) -> str:
-    return f"{cfg.BENCH_PREFIX}col_{index}_{uuid.uuid4().hex[:8]}"
-
-
-def bench_user_id() -> str:
-    return f"{cfg.BENCH_PREFIX}user_{uuid.uuid4().hex[:8]}"
-
-
 # ── Timing / statistics ─────────────────────────────────────────────────────
 
 
@@ -70,7 +63,7 @@ class LatencyStats:
     p99: float = 0.0
     min_val: float = 0.0
     max_val: float = 0.0
-    throughput: float = 0.0  # ops / sec
+    throughput: float = 0.0  # chunks / sec (sum of all concurrent ops)
 
     def to_dict(self) -> dict:
         return {
@@ -81,12 +74,17 @@ class LatencyStats:
             "p99_ms": round(self.p99 * 1000, 3),
             "min_ms": round(self.min_val * 1000, 3),
             "max_ms": round(self.max_val * 1000, 3),
-            "throughput_ops_sec": round(self.throughput, 2),
+            "throughput_chunks_sec": round(self.throughput, 2),
         }
 
 
 def compute_stats(latencies: Sequence[float]) -> LatencyStats:
-    """Compute stats from a list of per-operation latency values (seconds)."""
+    """Compute stats from a list of per-operation latency values (seconds).
+
+    Throughput is measured in chunks/sec: count / wall-clock-time.
+    For concurrent workloads the wall-clock time is shorter than the sum of
+    individual latencies, so throughput correctly reflects the aggregate rate.
+    """
     if not latencies:
         return LatencyStats()
     arr = np.array(latencies)
@@ -103,6 +101,23 @@ def compute_stats(latencies: Sequence[float]) -> LatencyStats:
     )
 
 
+def compute_concurrent_stats(latencies: Sequence[float], wall_time: float) -> LatencyStats:
+    """Compute stats where throughput uses actual wall-clock time (for concurrent ops)."""
+    if not latencies:
+        return LatencyStats()
+    arr = np.array(latencies)
+    return LatencyStats(
+        count=len(arr),
+        mean=float(np.mean(arr)),
+        median=float(np.median(arr)),
+        p90=float(np.percentile(arr, 90)),
+        p99=float(np.percentile(arr, 99)),
+        min_val=float(np.min(arr)),
+        max_val=float(np.max(arr)),
+        throughput=len(arr) / wall_time if wall_time > 0 else 0.0,
+    )
+
+
 async def timed_call(coro_fn: Callable[..., Coroutine], *args: Any, **kwargs: Any) -> tuple[Any, float]:
     """Call an async function, returning (result, elapsed_seconds)."""
     t0 = time.perf_counter()
@@ -110,10 +125,10 @@ async def timed_call(coro_fn: Callable[..., Coroutine], *args: Any, **kwargs: An
     return result, time.perf_counter() - t0
 
 
-async def run_parallel(coro_fn: Callable[..., Coroutine], arg_list: list[tuple], concurrency: int) -> list[float]:
+async def run_parallel(coro_fn: Callable[..., Coroutine], arg_list: list[tuple], concurrency: int) -> tuple[list[float], float]:
     """
     Run *coro_fn* for each set of args in *arg_list* with bounded concurrency.
-    Returns per-call latencies.
+    Returns (per-call latencies, wall_clock_time).
     """
     sem = asyncio.Semaphore(concurrency)
     latencies: list[float] = []
@@ -125,8 +140,10 @@ async def run_parallel(coro_fn: Callable[..., Coroutine], arg_list: list[tuple],
             async with lock:
                 latencies.append(elapsed)
 
+    t0 = time.perf_counter()
     await asyncio.gather(*[_worker(a) for a in arg_list])
-    return latencies
+    wall_time = time.perf_counter() - t0
+    return latencies, wall_time
 
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
@@ -134,9 +151,7 @@ async def run_parallel(coro_fn: Callable[..., Coroutine], arg_list: list[tuple],
 
 async def cleanup_benchmark_tags(client: weaviate.WeaviateAsyncClient):
     """Remove all Tag objects whose tag_name starts with the benchmark prefix."""
-    tag_col = client.collections.get("Tag")
-    # Fetch all tags with bench prefix
-    # Weaviate text filter with Like operator
+    tag_col = client.collections.get(cfg.TAG_COLLECTION)
     results = await tag_col.query.fetch_objects(
         filters=Filter.by_property("tag_name").like(f"{cfg.BENCH_PREFIX}*"),
         limit=10000,
@@ -148,7 +163,7 @@ async def cleanup_benchmark_tags(client: weaviate.WeaviateAsyncClient):
     log.info(f"Cleaning up {len(uuids)} benchmark tags …")
 
     # Remove references from Chunks → benchmarked tags
-    chunks_col = client.collections.get("Chunks")
+    chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
     for ref_prop in ("automaticTag", "positiveTag", "negativeTag"):
         try:
             filtered = await chunks_col.query.fetch_objects(
@@ -178,52 +193,9 @@ async def cleanup_benchmark_tags(client: weaviate.WeaviateAsyncClient):
     log.info("Benchmark tags cleaned up.")
 
 
-async def cleanup_benchmark_collections(client: weaviate.WeaviateAsyncClient):
-    """Remove all UserCollection objects whose name starts with the benchmark prefix."""
-    uc_col = client.collections.get("UserCollection")
-    results = await uc_col.query.fetch_objects(
-        filters=Filter.by_property("name").like(f"{cfg.BENCH_PREFIX}*"),
-        limit=10000,
-    )
-    if not results.objects:
-        log.info("No benchmark user-collections to clean up.")
-        return
-    uuids = [str(o.uuid) for o in results.objects]
-    log.info(f"Cleaning up {len(uuids)} benchmark user-collections …")
-
-    # Remove references from Chunks → benchmark collections
-    chunks_col = client.collections.get("Chunks")
-    try:
-        filtered = await chunks_col.query.fetch_objects(
-            filters=Filter.by_ref(link_on="userCollection").by_id().contains_any(uuids),
-            return_references=[QueryReference(link_on="userCollection", return_properties=[])],
-            limit=10000,
-        )
-        for obj in filtered.objects:
-            ref_block = obj.references.get("userCollection") if obj.references else None
-            if not ref_block:
-                continue
-            current_ids = [str(r.uuid) for r in ref_block.objects]
-            remaining = [rid for rid in current_ids if rid not in uuids]
-            if len(remaining) != len(current_ids):
-                await chunks_col.data.reference_replace(
-                    from_uuid=obj.uuid,
-                    from_property="userCollection",
-                    to=remaining,
-                )
-    except Exception as e:
-        log.warning(f"Cleanup collection refs: {e}")
-
-    await uc_col.data.delete_many(
-        where=Filter.by_property("name").like(f"{cfg.BENCH_PREFIX}*"),
-    )
-    log.info("Benchmark user-collections cleaned up.")
-
-
 async def full_cleanup(client: weaviate.WeaviateAsyncClient):
     """Run all cleanup routines."""
     await cleanup_benchmark_tags(client)
-    await cleanup_benchmark_collections(client)
 
 
 # ── Result persistence ───────────────────────────────────────────────────────
@@ -246,8 +218,32 @@ def save_results(name: str, data: Any):
 
 
 async def sample_chunk_uuids(client: weaviate.WeaviateAsyncClient, n: int) -> list[str]:
-    """Return up to *n* random Chunk UUIDs from the database."""
-    chunks = client.collections.get("Chunks")
-    # Weaviate doesn't have random sampling, but we can grab the first N
-    result = await chunks.query.fetch_objects(limit=n)
-    return [str(o.uuid) for o in result.objects]
+    """Return up to *n* chunk UUIDs, shuffled to avoid database-order bias."""
+    chunks = client.collections.get(cfg.CHUNKS_COLLECTION)
+    # Fetch more than needed, then shuffle and take n
+    fetch_n = min(n * 3, 10000)
+    result = await chunks.query.fetch_objects(limit=fetch_n)
+    uuids = [str(o.uuid) for o in result.objects]
+    random.shuffle(uuids)
+    return uuids[:n]
+
+
+# ── Collection validation ──────────────────────────────────────────────────
+
+
+async def validate_collections(client: weaviate.WeaviateAsyncClient) -> bool:
+    """Check that required collections exist and have enough chunks."""
+    try:
+        tag_col = client.collections.get(cfg.TAG_COLLECTION)
+        chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
+        # Verify Chunks has objects
+        result = await chunks_col.query.fetch_objects(limit=1)
+        if not result.objects:
+            log.error(f"Collection '{cfg.CHUNKS_COLLECTION}' is empty.")
+            return False
+        # Quick existence check on Tag collection
+        await tag_col.query.fetch_objects(limit=1)
+    except Exception as e:
+        log.error(f"Collection validation failed: {e}")
+        return False
+    return True

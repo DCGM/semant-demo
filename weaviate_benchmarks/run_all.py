@@ -2,10 +2,8 @@
 Main entry point — run all Weaviate benchmarks, then generate plots.
 
 Usage:
-    python -m weaviate_benchmarks.run_all          # run everything
-    python -m weaviate_benchmarks.run_all --tags    # tags only
-    python -m weaviate_benchmarks.run_all --cols    # collections only
-    python -m weaviate_benchmarks.run_all --plots   # only regenerate plots from existing results
+    python -m weaviate_benchmarks              # run everything
+    python -m weaviate_benchmarks --plots      # only regenerate plots from existing results
 """
 
 from __future__ import annotations
@@ -17,8 +15,8 @@ import sys
 import time
 
 from .bench_tags import run_tag_benchmarks
-from .bench_collections import run_collection_benchmarks
 from .plotting import generate_all_plots
+from .report import generate_report, compile_report
 from .utils import ensure_dirs, log, get_client, full_cleanup
 from . import config as cfg
 
@@ -39,16 +37,14 @@ def _print_summary(results: list[dict], title: str):
         median = r.get("median_ms", "-")
         p90 = r.get("p90_ms", "-")
         p99 = r.get("p99_ms", "-")
-        tput = r.get("throughput_ops_sec", "-")
+        tput = r.get("throughput_chunks_sec", "-")
 
         # Format with concurrency / fullness info
         extra = ""
         if "concurrency" in r:
             extra = f" (c={r['concurrency']})"
-        elif "fullness" in r:
-            extra = f" (f={r['fullness']})"
-        elif "n_ids" in r:
-            extra = f" (ids={r['n_ids']})"
+        if "fullness" in r:
+            extra += f" (f={r['fullness']})"
 
         def _fmt(v):
             if isinstance(v, (int, float)):
@@ -70,14 +66,13 @@ async def _safety_cleanup():
 
 async def main():
     parser = argparse.ArgumentParser(description="Weaviate Benchmark Suite")
-    parser.add_argument("--tags", action="store_true", help="Run tag benchmarks only")
-    parser.add_argument("--cols", action="store_true", help="Run collection benchmarks only")
     parser.add_argument("--plots", action="store_true", help="Only regenerate plots from existing results")
+    parser.add_argument("--report", action="store_true", help="Only regenerate LaTeX report from existing results")
+    parser.add_argument("--compile-report", action="store_true", help="Also compile the LaTeX report to PDF")
     parser.add_argument("--cleanup", action="store_true", help="Only run cleanup (remove benchmark data)")
     args = parser.parse_args()
 
     ensure_dirs()
-    run_all = not (args.tags or args.cols or args.plots or args.cleanup)
 
     if args.cleanup:
         log.info("Running cleanup only …")
@@ -88,26 +83,23 @@ async def main():
         generate_all_plots()
         return
 
+    if args.report:
+        generate_all_plots()
+        tex_path = generate_report()
+        if args.compile_report:
+            compile_report(tex_path)
+        return
+
     # Pre-run cleanup to remove stale data from aborted runs
     await _safety_cleanup()
 
     t_start = time.perf_counter()
-    tag_results = []
-    col_results = []
 
-    if run_all or args.tags:
-        log.info("╔══════════════════════════════════════════════╗")
-        log.info("║        TAG BENCHMARKS                        ║")
-        log.info("╚══════════════════════════════════════════════╝")
-        tag_results = await run_tag_benchmarks()
-        _print_summary(tag_results, "TAG BENCHMARK RESULTS")
-
-    if run_all or args.cols:
-        log.info("╔══════════════════════════════════════════════╗")
-        log.info("║        COLLECTION BENCHMARKS                 ║")
-        log.info("╚══════════════════════════════════════════════╝")
-        col_results = await run_collection_benchmarks()
-        _print_summary(col_results, "COLLECTION BENCHMARK RESULTS")
+    log.info("╔══════════════════════════════════════════════╗")
+    log.info("║        TAG REFERENCE BENCHMARKS              ║")
+    log.info("╚══════════════════════════════════════════════╝")
+    tag_results = await run_tag_benchmarks()
+    _print_summary(tag_results, "BENCHMARK RESULTS")
 
     elapsed = time.perf_counter() - t_start
     log.info(f"All benchmarks completed in {elapsed:.1f}s")
@@ -115,6 +107,12 @@ async def main():
     # Generate plots
     log.info("Generating plots …")
     generate_all_plots()
+
+    # Generate LaTeX report
+    log.info("Generating LaTeX report …")
+    tex_path = generate_report()
+    if args.compile_report:
+        compile_report(tex_path)
     log.info("Done.")
 
 

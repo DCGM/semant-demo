@@ -2,16 +2,17 @@
 Generate benchmark result plots in PNG and SVG.
 
 Reads JSON result files from the results/ directory and produces:
-  - Latency comparison bar charts (mean, median, p90, p99)
-  - Throughput charts
+  - Read latency/throughput vs fullness (concurrent & batch)
+  - Ref-add latency/throughput vs fullness (concurrent & batch)
+  - Ref-remove latency/throughput vs fullness (concurrent & batch)
   - Concurrency scaling charts
-  - Fullness impact charts
 """
 
 from __future__ import annotations
 
 import json
 import os
+from collections import defaultdict
 from typing import Any
 
 import matplotlib
@@ -53,44 +54,6 @@ def _load_results(filename: str) -> list[dict]:
 # ── Generic chart builders ──────────────────────────────────────────────────
 
 
-def _bar_chart(
-    title: str,
-    labels: list[str],
-    metric_groups: dict[str, list[float]],
-    ylabel: str,
-    filename: str,
-):
-    """
-    Grouped bar chart.
-    metric_groups: {"mean": [v1,v2,...], "median": [...], ...}
-    """
-    fig, ax = plt.subplots()
-    x = np.arange(len(labels))
-    n_groups = len(metric_groups)
-    width = 0.8 / max(n_groups, 1)
-
-    for i, (metric_name, values) in enumerate(metric_groups.items()):
-        offset = (i - n_groups / 2 + 0.5) * width
-        bars = ax.bar(x + offset, values, width, label=metric_name, color=COLORS[i % len(COLORS)])
-        # Value labels on bars
-        for bar, val in zip(bars, values):
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height(),
-                f"{val:.1f}",
-                ha="center", va="bottom", fontsize=8,
-            )
-
-    ax.set_xlabel("Operation")
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=30, ha="right")
-    ax.legend()
-    fig.tight_layout()
-    _save(fig, filename)
-
-
 def _line_chart(
     title: str,
     x_values: list[float],
@@ -110,266 +73,262 @@ def _line_chart(
     _save(fig, filename)
 
 
+def _bar_chart(
+    title: str,
+    labels: list[str],
+    metric_groups: dict[str, list[float]],
+    ylabel: str,
+    filename: str,
+):
+    """Grouped bar chart."""
+    fig, ax = plt.subplots()
+    x = np.arange(len(labels))
+    n_groups = len(metric_groups)
+    width = 0.8 / max(n_groups, 1)
+
+    for i, (metric_name, values) in enumerate(metric_groups.items()):
+        offset = (i - n_groups / 2 + 0.5) * width
+        bars = ax.bar(x + offset, values, width, label=metric_name, color=COLORS[i % len(COLORS)])
+        for bar, val in zip(bars, values):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height(),
+                f"{val:.1f}",
+                ha="center", va="bottom", fontsize=8,
+            )
+
+    ax.set_xlabel("Operation")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=30, ha="right")
+    ax.legend()
+    fig.tight_layout()
+    _save(fig, filename)
+
+
+# ── Aggregation helpers ─────────────────────────────────────────────────────
+
+
+def _aggregate_by(results: list[dict], operation: str, group_key: str) -> dict[Any, list[dict]]:
+    """Group matching results by a key (e.g. 'fullness' or 'concurrency')."""
+    groups: dict[Any, list[dict]] = defaultdict(list)
+    for r in results:
+        if r["operation"] == operation and group_key in r:
+            groups[r[group_key]].append(r)
+    return dict(sorted(groups.items()))
+
+
+def _mean_of(dicts: list[dict], key: str) -> float:
+    vals = [d[key] for d in dicts if key in d]
+    return sum(vals) / len(vals) if vals else 0.0
+
+
 # ── Plot generators ─────────────────────────────────────────────────────────
 
 
-def plot_insertion_latency(results: list[dict], entity: str):
-    """Bar chart comparing sequential, batch, and various concurrent insertion latencies."""
-    seq = [r for r in results if r["operation"] == f"{entity}_insert_sequential"]
-    conc = sorted(
-        [r for r in results if r["operation"] == f"{entity}_insert_concurrent"],
-        key=lambda r: r.get("concurrency", 0),
-    )
-    batch = [r for r in results if r["operation"] == f"{entity}_insert_batch"]
+def plot_read_vs_fullness(results: list[dict]):
+    """Read throughput & latency vs fullness — concurrent and batch."""
+    # Concurrent reads (aggregate across concurrency levels for each fullness)
+    conc_by_full = _aggregate_by(results, "read_concurrent", "fullness")
+    batch_by_full = _aggregate_by(results, "read_batch", "fullness")
 
+    if not conc_by_full and not batch_by_full:
+        return
+
+    x_vals = sorted(set(list(conc_by_full.keys()) + list(batch_by_full.keys())))
+
+    # Throughput
+    y_tput: dict[str, list[float]] = {}
+    if conc_by_full:
+        y_tput["Concurrent (avg)"] = [_mean_of(conc_by_full.get(f, []), "throughput_chunks_sec") for f in x_vals]
+    if batch_by_full:
+        y_tput["Batch"] = [_mean_of(batch_by_full.get(f, []), "throughput_chunks_sec") for f in x_vals]
+    if y_tput:
+        _line_chart("Read Throughput vs Fullness", x_vals, y_tput,
+                     "Existing refs per chunk (fullness)", "Throughput (chunks/sec)",
+                     "read_throughput_vs_fullness")
+
+    # Latency
+    y_lat: dict[str, list[float]] = {}
+    if conc_by_full:
+        y_lat["Concurrent Mean"] = [_mean_of(conc_by_full.get(f, []), "mean_ms") for f in x_vals]
+        y_lat["Concurrent P90"] = [_mean_of(conc_by_full.get(f, []), "p90_ms") for f in x_vals]
+    if batch_by_full:
+        y_lat["Batch Mean"] = [_mean_of(batch_by_full.get(f, []), "mean_ms") for f in x_vals]
+    if y_lat:
+        _line_chart("Read Latency vs Fullness", x_vals, y_lat,
+                     "Existing refs per chunk (fullness)", "Latency (ms)",
+                     "read_latency_vs_fullness")
+
+
+def plot_read_vs_concurrency(results: list[dict]):
+    """Read throughput & latency vs concurrency (at each fullness level)."""
+    conc_items = [r for r in results if r["operation"] == "read_concurrent"]
+    if not conc_items:
+        return
+
+    # Group by fullness
+    by_full: dict[int, list[dict]] = defaultdict(list)
+    for r in conc_items:
+        by_full[r["fullness"]].append(r)
+
+    all_conc = sorted(set(r["concurrency"] for r in conc_items))
+
+    # Throughput per fullness
+    y_tput: dict[str, list[float]] = {}
+    for f in sorted(by_full.keys()):
+        by_c = {r["concurrency"]: r for r in by_full[f]}
+        y_tput[f"f={f}"] = [by_c.get(c, {}).get("throughput_chunks_sec", 0) for c in all_conc]
+    _line_chart("Read Throughput vs Concurrency", all_conc, y_tput,
+                "Concurrency", "Throughput (chunks/sec)", "read_throughput_vs_concurrency")
+
+
+def plot_ref_add_vs_fullness(results: list[dict]):
+    """Ref-add throughput & latency vs fullness — concurrent and batch."""
+    conc_by_full = _aggregate_by(results, "ref_add_concurrent", "fullness")
+    batch_by_full = _aggregate_by(results, "ref_add_batch", "fullness")
+
+    if not conc_by_full and not batch_by_full:
+        return
+
+    x_vals = sorted(set(list(conc_by_full.keys()) + list(batch_by_full.keys())))
+
+    # Throughput
+    y_tput: dict[str, list[float]] = {}
+    if conc_by_full:
+        y_tput["Concurrent (avg)"] = [_mean_of(conc_by_full.get(f, []), "throughput_chunks_sec") for f in x_vals]
+    if batch_by_full:
+        y_tput["Batch"] = [_mean_of(batch_by_full.get(f, []), "throughput_chunks_sec") for f in x_vals]
+    if y_tput:
+        _line_chart("Ref-Add Throughput vs Fullness", x_vals, y_tput,
+                     "Existing refs per chunk (fullness)", "Throughput (chunks/sec)",
+                     "ref_add_throughput_vs_fullness")
+
+    # Latency
+    y_lat: dict[str, list[float]] = {}
+    if conc_by_full:
+        y_lat["Concurrent Mean"] = [_mean_of(conc_by_full.get(f, []), "mean_ms") for f in x_vals]
+        y_lat["Concurrent P90"] = [_mean_of(conc_by_full.get(f, []), "p90_ms") for f in x_vals]
+    if batch_by_full:
+        # For batch ops, derive per-chunk latency from total_time_ms / n_chunks
+        def _batch_per_chunk(items):
+            vals = []
+            for r in items:
+                n = r.get("n_chunks", 1)
+                vals.append(r.get("total_time_ms", 0) / n if n else 0)
+            return sum(vals) / len(vals) if vals else 0
+        y_lat["Batch Mean (per chunk)"] = [_batch_per_chunk(batch_by_full.get(f, [])) for f in x_vals]
+    if y_lat:
+        _line_chart("Ref-Add Latency vs Fullness", x_vals, y_lat,
+                     "Existing refs per chunk (fullness)", "Latency (ms)",
+                     "ref_add_latency_vs_fullness")
+
+
+def plot_ref_add_vs_concurrency(results: list[dict]):
+    """Ref-add throughput vs concurrency (at each fullness level)."""
+    conc_items = [r for r in results if r["operation"] == "ref_add_concurrent"]
+    if not conc_items:
+        return
+
+    by_full: dict[int, list[dict]] = defaultdict(list)
+    for r in conc_items:
+        by_full[r["fullness"]].append(r)
+
+    all_conc = sorted(set(r["concurrency"] for r in conc_items))
+
+    y_tput: dict[str, list[float]] = {}
+    for f in sorted(by_full.keys()):
+        by_c = defaultdict(list)
+        for r in by_full[f]:
+            by_c[r["concurrency"]].append(r.get("throughput_chunks_sec", 0))
+        y_tput[f"f={f}"] = [sum(by_c.get(c, [0])) / len(by_c.get(c, [1])) for c in all_conc]
+    _line_chart("Ref-Add Throughput vs Concurrency", all_conc, y_tput,
+                "Concurrency", "Throughput (chunks/sec)", "ref_add_throughput_vs_concurrency")
+
+
+def plot_ref_remove_vs_fullness(results: list[dict]):
+    """Ref-remove throughput & latency vs fullness — concurrent and batch."""
+    conc_by_full = _aggregate_by(results, "ref_remove_concurrent", "fullness")
+    batch_by_full = _aggregate_by(results, "ref_remove_batch", "fullness")
+
+    if not conc_by_full and not batch_by_full:
+        return
+
+    x_vals = sorted(set(list(conc_by_full.keys()) + list(batch_by_full.keys())))
+
+    # Throughput
+    y_tput: dict[str, list[float]] = {}
+    if conc_by_full:
+        y_tput["Concurrent (avg)"] = [_mean_of(conc_by_full.get(f, []), "throughput_chunks_sec") for f in x_vals]
+    if batch_by_full:
+        y_tput["Batch"] = [_mean_of(batch_by_full.get(f, []), "throughput_chunks_sec") for f in x_vals]
+    if y_tput:
+        _line_chart("Ref-Remove Throughput vs Fullness", x_vals, y_tput,
+                     "Existing refs per chunk (fullness)", "Throughput (chunks/sec)",
+                     "ref_remove_throughput_vs_fullness")
+
+    # Latency
+    y_lat: dict[str, list[float]] = {}
+    if conc_by_full:
+        y_lat["Concurrent Mean"] = [_mean_of(conc_by_full.get(f, []), "mean_ms") for f in x_vals]
+        y_lat["Concurrent P90"] = [_mean_of(conc_by_full.get(f, []), "p90_ms") for f in x_vals]
+    if batch_by_full:
+        def _batch_per_chunk(items):
+            vals = []
+            for r in items:
+                n = r.get("n_chunks", 1)
+                vals.append(r.get("total_time_ms", 0) / n if n else 0)
+            return sum(vals) / len(vals) if vals else 0
+        y_lat["Batch Mean (per chunk)"] = [_batch_per_chunk(batch_by_full.get(f, [])) for f in x_vals]
+    if y_lat:
+        _line_chart("Ref-Remove Latency vs Fullness", x_vals, y_lat,
+                     "Existing refs per chunk (fullness)", "Latency (ms)",
+                     "ref_remove_latency_vs_fullness")
+
+
+def plot_ref_remove_vs_concurrency(results: list[dict]):
+    """Ref-remove throughput vs concurrency (at each fullness level)."""
+    conc_items = [r for r in results if r["operation"] == "ref_remove_concurrent"]
+    if not conc_items:
+        return
+
+    by_full: dict[int, list[dict]] = defaultdict(list)
+    for r in conc_items:
+        by_full[r["fullness"]].append(r)
+
+    all_conc = sorted(set(r["concurrency"] for r in conc_items))
+
+    y_tput: dict[str, list[float]] = {}
+    for f in sorted(by_full.keys()):
+        by_c = defaultdict(list)
+        for r in by_full[f]:
+            by_c[r["concurrency"]].append(r.get("throughput_chunks_sec", 0))
+        y_tput[f"f={f}"] = [sum(by_c.get(c, [0])) / len(by_c.get(c, [1])) for c in all_conc]
+    _line_chart("Ref-Remove Throughput vs Concurrency", all_conc, y_tput,
+                "Concurrency", "Throughput (chunks/sec)", "ref_remove_throughput_vs_concurrency")
+
+
+def plot_all_operations_summary(results: list[dict]):
+    """Bar chart comparing mean latency of all operation types at fullness=0."""
+    ops = ["read_concurrent", "read_batch", "ref_add_concurrent", "ref_add_batch",
+           "ref_remove_concurrent", "ref_remove_batch"]
     labels = []
     means = []
-    medians = []
-    p90s = []
-    p99s = []
-
-    if seq:
-        labels.append("Sequential")
-        means.append(seq[0]["mean_ms"])
-        medians.append(seq[0]["median_ms"])
-        p90s.append(seq[0]["p90_ms"])
-        p99s.append(seq[0]["p99_ms"])
-
-    for r in conc:
-        labels.append(f"Conc={r['concurrency']}")
-        means.append(r["mean_ms"])
-        medians.append(r["median_ms"])
-        p90s.append(r["p90_ms"])
-        p99s.append(r["p99_ms"])
+    for op in ops:
+        items = [r for r in results if r["operation"] == op and r.get("fullness", 0) == 0]
+        if items:
+            mean = _mean_of(items, "mean_ms") if "mean_ms" in items[0] else (
+                _mean_of(items, "total_time_ms") / max(items[0].get("n_chunks", 1), 1)
+            )
+            labels.append(op.replace("_", " ").title())
+            means.append(mean)
 
     if not labels:
         return
 
-    _bar_chart(
-        title=f"{entity.title()} Insertion Latency",
-        labels=labels,
-        metric_groups={"Mean": means, "Median": medians, "P90": p90s, "P99": p99s},
-        ylabel="Latency (ms)",
-        filename=f"{entity}_insertion_latency",
-    )
-
-    # Throughput line chart for concurrent insertions
-    if conc:
-        conc_vals = [r["concurrency"] for r in conc]
-        throughputs = [r["throughput_ops_sec"] for r in conc]
-        _line_chart(
-            title=f"{entity.title()} Insertion Throughput vs Concurrency",
-            x_values=conc_vals,
-            y_series={"Throughput": throughputs},
-            xlabel="Concurrency",
-            ylabel="Throughput (ops/sec)",
-            filename=f"{entity}_insertion_throughput_vs_concurrency",
-        )
-
-
-def plot_query_latency(results: list[dict], entity: str):
-    """Bar chart comparing different query styles."""
-    query_ops = [r for r in results if "fetch" in r["operation"] and entity in r["operation"]]
-    if not query_ops:
-        return
-
-    labels = [r["operation"].replace(f"{entity}_", "") for r in query_ops]
-    _bar_chart(
-        title=f"{entity.title()} Query Latency",
-        labels=labels,
-        metric_groups={
-            "Mean": [r["mean_ms"] for r in query_ops],
-            "Median": [r["median_ms"] for r in query_ops],
-            "P90": [r["p90_ms"] for r in query_ops],
-            "P99": [r["p99_ms"] for r in query_ops],
-        },
-        ylabel="Latency (ms)",
-        filename=f"{entity}_query_latency",
-    )
-
-
-def plot_ref_add_fullness(results: list[dict], entity: str):
-    """Line chart: reference add latency vs fullness level."""
-    prefix = f"{entity}_ref_add"
-    items = sorted(
-        [r for r in results if r["operation"] == prefix and "fullness" in r],
-        key=lambda r: r["fullness"],
-    )
-    if not items:
-        return
-
-    fullness = [r["fullness"] for r in items]
-    _line_chart(
-        title=f"{entity.title()} Ref-Add Latency vs Fullness",
-        x_values=fullness,
-        y_series={
-            "Mean": [r["mean_ms"] for r in items],
-            "Median": [r["median_ms"] for r in items],
-            "P90": [r["p90_ms"] for r in items],
-            "P99": [r["p99_ms"] for r in items],
-        },
-        xlabel="Existing refs per chunk (fullness)",
-        ylabel="Latency (ms)",
-        filename=f"{entity}_ref_add_vs_fullness",
-    )
-
-
-def plot_ref_add_concurrency(results: list[dict], entity: str):
-    """Line chart: reference add latency & throughput vs concurrency."""
-    prefix = f"{entity}_ref_add_concurrent"
-    items = sorted(
-        [r for r in results if r["operation"] == prefix],
-        key=lambda r: r.get("concurrency", 0),
-    )
-    if not items:
-        return
-
-    conc = [r["concurrency"] for r in items]
-    _line_chart(
-        title=f"{entity.title()} Ref-Add Latency vs Concurrency",
-        x_values=conc,
-        y_series={
-            "Mean": [r["mean_ms"] for r in items],
-            "P90": [r["p90_ms"] for r in items],
-            "P99": [r["p99_ms"] for r in items],
-        },
-        xlabel="Concurrency",
-        ylabel="Latency (ms)",
-        filename=f"{entity}_ref_add_latency_vs_concurrency",
-    )
-
-    _line_chart(
-        title=f"{entity.title()} Ref-Add Throughput vs Concurrency",
-        x_values=conc,
-        y_series={"Throughput": [r["throughput_ops_sec"] for r in items]},
-        xlabel="Concurrency",
-        ylabel="Throughput (ops/sec)",
-        filename=f"{entity}_ref_add_throughput_vs_concurrency",
-    )
-
-
-def plot_deletion_latency(results: list[dict], entity: str):
-    """Bar chart comparing single vs batch deletion."""
-    ops = [r for r in results if "delete" in r["operation"] and entity in r["operation"]]
-    if not ops:
-        return
-
-    labels = [r["operation"].replace(f"{entity}_", "") for r in ops]
-    # Some ops (batch) may lack per-item stats — use total_time_ms where available
-    means = []
-    throughputs = []
-    for r in ops:
-        means.append(r.get("mean_ms", r.get("total_time_ms", 0)))
-        throughputs.append(r.get("throughput_ops_sec", 0))
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-
-    x = np.arange(len(labels))
-    ax1.bar(x, means, color=COLORS[:len(labels)])
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(labels)
-    ax1.set_ylabel("Latency (ms)")
-    ax1.set_title(f"{entity.title()} Deletion Latency")
-    for i, v in enumerate(means):
-        ax1.text(i, v, f"{v:.1f}", ha="center", va="bottom", fontsize=9)
-
-    ax2.bar(x, throughputs, color=COLORS[:len(labels)])
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(labels)
-    ax2.set_ylabel("Throughput (ops/sec)")
-    ax2.set_title(f"{entity.title()} Deletion Throughput")
-    for i, v in enumerate(throughputs):
-        ax2.text(i, v, f"{v:.1f}", ha="center", va="bottom", fontsize=9)
-
-    fig.tight_layout()
-    _save(fig, f"{entity}_deletion")
-
-
-def plot_chunk_query_styles(results: list[dict], entity: str):
-    """Bar chart comparing different chunk query styles (by tag/collection ref)."""
-    prefix = "chunk_query_by_"
-    ops = [r for r in results if r["operation"].startswith(prefix) and entity in r["operation"]]
-    if not ops:
-        return
-
-    labels = [r["operation"].replace(prefix, "").replace(f"{entity}_", "") for r in ops]
-    _bar_chart(
-        title=f"Chunk Query (by {entity.title()} ref) — Style Comparison",
-        labels=labels,
-        metric_groups={
-            "Mean": [r["mean_ms"] for r in ops],
-            "Median": [r["median_ms"] for r in ops],
-            "P90": [r["p90_ms"] for r in ops],
-            "P99": [r["p99_ms"] for r in ops],
-        },
-        ylabel="Latency (ms)",
-        filename=f"chunk_query_by_{entity}_styles",
-    )
-
-
-def plot_ref_remove(results: list[dict], entity: str):
-    """Bar chart for reference removal."""
-    ops = [r for r in results if r["operation"] == f"{entity}_ref_remove"]
-    if not ops:
-        return
-    r = ops[0]
-    labels = ["Ref Remove"]
-    _bar_chart(
-        title=f"{entity.title()} Reference Removal Latency",
-        labels=labels,
-        metric_groups={
-            "Mean": [r["mean_ms"]],
-            "Median": [r["median_ms"]],
-            "P90": [r["p90_ms"]],
-            "P99": [r["p99_ms"]],
-        },
-        ylabel="Latency (ms)",
-        filename=f"{entity}_ref_remove_latency",
-    )
-
-
-# ── Combined summary plot ───────────────────────────────────────────────────
-
-
-def plot_combined_summary(tag_results: list[dict], col_results: list[dict]):
-    """Side-by-side summary of tag vs collection operations."""
-    # Pick representative operations
-    op_pairs = [
-        ("tag_insert_sequential", "col_insert_sequential", "Insert (seq)"),
-        ("tag_ref_remove", "col_ref_remove", "Ref remove"),
-        ("tag_delete_single", "col_delete_single", "Delete (single)"),
-    ]
-
-    tag_map = {r["operation"]: r for r in tag_results}
-    col_map = {r["operation"]: r for r in col_results}
-
-    labels = []
-    tag_means = []
-    col_means = []
-
-    for t_op, c_op, label in op_pairs:
-        t = tag_map.get(t_op)
-        c = col_map.get(c_op)
-        if t and c:
-            labels.append(label)
-            tag_means.append(t["mean_ms"])
-            col_means.append(c["mean_ms"])
-
-    if not labels:
-        return
-
-    fig, ax = plt.subplots()
-    x = np.arange(len(labels))
-    w = 0.35
-    ax.bar(x - w / 2, tag_means, w, label="Tag", color=COLORS[0])
-    ax.bar(x + w / 2, col_means, w, label="Collection", color=COLORS[1])
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels)
-    ax.set_ylabel("Mean Latency (ms)")
-    ax.set_title("Tag vs Collection — Operation Comparison")
-    ax.legend()
-    fig.tight_layout()
-    _save(fig, "combined_summary")
+    _bar_chart("Operation Latency Comparison (fullness=0)", labels,
+               {"Mean (ms)": means}, "Latency (ms)", "operation_summary")
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────
@@ -377,29 +336,19 @@ def plot_combined_summary(tag_results: list[dict], col_results: list[dict]):
 
 def generate_all_plots():
     """Load results and generate all plots."""
-    tag_results = _load_results("tag_benchmarks.json")
-    col_results = _load_results("collection_benchmarks.json")
+    results = _load_results("tag_benchmarks.json")
 
-    if tag_results:
-        plot_insertion_latency(tag_results, "tag")
-        plot_query_latency(tag_results, "tag")
-        plot_ref_add_fullness(tag_results, "tag")
-        plot_ref_add_concurrency(tag_results, "tag")
-        plot_ref_remove(tag_results, "tag")
-        plot_deletion_latency(tag_results, "tag")
-        plot_chunk_query_styles(tag_results, "tag")
+    if not results:
+        print("No results found. Run benchmarks first.")
+        return
 
-    if col_results:
-        plot_insertion_latency(col_results, "col")
-        plot_query_latency(col_results, "col")
-        plot_ref_add_fullness(col_results, "col")
-        plot_ref_add_concurrency(col_results, "col")
-        plot_ref_remove(col_results, "col")
-        plot_deletion_latency(col_results, "col")
-        plot_chunk_query_styles(col_results, "col")
-
-    if tag_results and col_results:
-        plot_combined_summary(tag_results, col_results)
+    plot_read_vs_fullness(results)
+    plot_read_vs_concurrency(results)
+    plot_ref_add_vs_fullness(results)
+    plot_ref_add_vs_concurrency(results)
+    plot_ref_remove_vs_fullness(results)
+    plot_ref_remove_vs_concurrency(results)
+    plot_all_operations_summary(results)
 
     print(f"Plots saved to {cfg.PLOTS_DIR}")
 

@@ -1,12 +1,28 @@
 """
-Benchmarks for Tag operations:
-  - insert (single, batch, concurrent)
-  - query / search (fetch_objects with filters, fetch by ID, iterator)
-  - add tag references to chunks (under varying fullness)
-  - remove tag references from chunks
-  - delete tags
+Focused benchmarks for Tag ↔ Chunk reference operations.
 
-All created objects use the benchmark prefix and are cleaned up at the end.
+Measures only what matters:
+  - Latency & throughput of adding tag references to chunks
+  - Latency & throughput of removing tag references from chunks
+  - Speed of loading/querying chunks that carry tag references
+
+Tests are performed with:
+  - Varying concurrency (single operations)
+  - Batch operations
+
+Efficient flow (minimises setup/teardown overhead):
+  0. Validate collections exist and have enough chunks.
+  1. Insert tags needed for the whole test.
+  2. For each fullness level:
+     a. Batch-add references to reach the target fullness.
+     b. Concurrent read test (all affected chunks).
+     c. Batch read test (batches of READ_BATCH_SIZE chunks).
+     d. Concurrent insertion test (OPERATION_COUNT refs).
+     e. Concurrent deletion test (remove refs from step d).
+     f. Batch insertion test (OPERATION_COUNT refs).
+     g. Batch deletion test (remove refs from step f).
+  3. Final cleanup — delete all benchmark tags & references.
+  4. Render plots, generate report, print result tables.
 """
 
 from __future__ import annotations
@@ -19,12 +35,13 @@ from typing import Any
 
 import weaviate
 from weaviate.classes.query import Filter, QueryReference
+from weaviate.collections.classes.data import DataObject, DataReference
 
 from . import config as cfg
 from .utils import (
     bench_tag_name,
-    bench_collection_name,
     compute_stats,
+    compute_concurrent_stats,
     full_cleanup,
     get_client,
     log,
@@ -32,6 +49,7 @@ from .utils import (
     sample_chunk_uuids,
     save_results,
     timed_call,
+    validate_collections,
 )
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,132 +67,40 @@ def _tag_props(name: str) -> dict:
     }
 
 
-async def _insert_tag(client: weaviate.WeaviateAsyncClient, name: str | None = None) -> str:
-    """Insert a single benchmark tag and return its UUID."""
-    name = name or bench_tag_name()
-    tag_col = client.collections.get("Tag")
-    uid = await tag_col.data.insert(properties=_tag_props(name))
-    return str(uid)
+async def _insert_tags(client: weaviate.WeaviateAsyncClient, count: int) -> list[str]:
+    """Batch-insert *count* benchmark tags and return their UUIDs."""
+    tag_col = client.collections.get(cfg.TAG_COLLECTION)
+    objects = []
+    for i in range(count):
+        uid = uuid.uuid4()
+        objects.append(DataObject(properties=_tag_props(bench_tag_name(i)), uuid=uid))
+    await tag_col.data.insert_many(objects)
+    return [str(o.uuid) for o in objects]
 
 
-async def _insert_tag_batch(client: weaviate.WeaviateAsyncClient, names: list[str]) -> list[str]:
-    """Insert tags using batch API."""
-    tag_col = client.collections.get("Tag")
-    uuids = []
-    async with tag_col.batch.dynamic() as batch:
-        for name in names:
-            uid = uuid.uuid4()
-            batch.add_object(properties=_tag_props(name), uuid=uid)
-            uuids.append(str(uid))
-    return uuids
+async def _batch_add_refs(
+    client: weaviate.WeaviateAsyncClient,
+    chunk_uuids: list[str],
+    tag_uuids: list[str],
+    ref_prop: str = "automaticTag",
+):
+    """Batch-add tag references from every chunk to every tag."""
+    chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
+    refs = [
+        DataReference(from_property=ref_prop, from_uuid=cid, to_uuid=tid)
+        for cid in chunk_uuids
+        for tid in tag_uuids
+    ]
+    if refs:
+        await chunks_col.data.reference_add_many(refs)
 
 
-# ── 1. Tag insertion benchmarks ─────────────────────────────────────────────
+# ── Single-op primitives (used by concurrent tests) ────────────────────────
 
 
-async def bench_tag_insert_sequential(client: weaviate.WeaviateAsyncClient, n: int) -> dict:
-    """Insert *n* tags one-by-one sequentially."""
-    latencies = []
-    created_uuids = []
-    for i in range(n):
-        name = bench_tag_name(i)
-        uid, elapsed = await timed_call(_insert_tag, client, name)
-        latencies.append(elapsed)
-        created_uuids.append(uid)
-    stats = compute_stats(latencies)
-    return {"operation": "tag_insert_sequential", "n": n, **stats.to_dict()}
-
-
-async def bench_tag_insert_concurrent(client: weaviate.WeaviateAsyncClient, n: int, concurrency: int) -> dict:
-    """Insert *n* tags with bounded *concurrency*."""
-    names = [bench_tag_name(i) for i in range(n)]
-    args = [(client, name) for name in names]
-    latencies = await run_parallel(_insert_tag, args, concurrency)
-    stats = compute_stats(latencies)
-    return {"operation": "tag_insert_concurrent", "n": n, "concurrency": concurrency, **stats.to_dict()}
-
-
-async def bench_tag_insert_batch(client: weaviate.WeaviateAsyncClient, n: int) -> dict:
-    """Insert *n* tags via the batch API (single call)."""
-    names = [bench_tag_name(i) for i in range(n)]
-    t0 = time.perf_counter()
-    uuids = await _insert_tag_batch(client, names)
-    elapsed = time.perf_counter() - t0
-    return {
-        "operation": "tag_insert_batch",
-        "n": n,
-        "total_time_ms": round(elapsed * 1000, 3),
-        "throughput_ops_sec": round(n / elapsed, 2) if elapsed > 0 else 0,
-    }
-
-
-# ── 2. Tag query / search benchmarks ────────────────────────────────────────
-
-
-async def bench_tag_fetch_all(client: weaviate.WeaviateAsyncClient, iterations: int) -> dict:
-    """Measure fetch_objects for all benchmark tags."""
-    tag_col = client.collections.get("Tag")
-    latencies = []
-    for _ in range(iterations):
-        t0 = time.perf_counter()
-        await tag_col.query.fetch_objects(
-            filters=Filter.by_property("tag_name").like(f"{cfg.BENCH_PREFIX}*"),
-            limit=10000,
-        )
-        latencies.append(time.perf_counter() - t0)
-    stats = compute_stats(latencies)
-    return {"operation": "tag_fetch_all", "iterations": iterations, **stats.to_dict()}
-
-
-async def bench_tag_fetch_by_id(client: weaviate.WeaviateAsyncClient, tag_uuids: list[str]) -> dict:
-    """Measure fetch_object_by_id for each tag."""
-    tag_col = client.collections.get("Tag")
-    latencies = []
-    for uid in tag_uuids:
-        t0 = time.perf_counter()
-        await tag_col.query.fetch_object_by_id(uid)
-        latencies.append(time.perf_counter() - t0)
-    stats = compute_stats(latencies)
-    return {"operation": "tag_fetch_by_id", "n": len(tag_uuids), **stats.to_dict()}
-
-
-async def bench_tag_fetch_filtered(client: weaviate.WeaviateAsyncClient, iterations: int) -> dict:
-    """Fetch tags with a compound property filter."""
-    tag_col = client.collections.get("Tag")
-    latencies = []
-    for _ in range(iterations):
-        filters = (
-            Filter.by_property("tag_name").like(f"{cfg.BENCH_PREFIX}*")
-            & Filter.by_property("tag_color").equal("#FF0000")
-        )
-        t0 = time.perf_counter()
-        await tag_col.query.fetch_objects(filters=filters, limit=10000)
-        latencies.append(time.perf_counter() - t0)
-    stats = compute_stats(latencies)
-    return {"operation": "tag_fetch_filtered", "iterations": iterations, **stats.to_dict()}
-
-
-async def bench_tag_fetch_contains_any(client: weaviate.WeaviateAsyncClient, tag_uuids: list[str], iterations: int) -> dict:
-    """Fetch tags via contains_any (ID filter), varying batch sizes."""
-    tag_col = client.collections.get("Tag")
-    latencies = []
-    for _ in range(iterations):
-        t0 = time.perf_counter()
-        await tag_col.query.fetch_objects(
-            filters=Filter.by_id().contains_any(tag_uuids),
-            limit=10000,
-        )
-        latencies.append(time.perf_counter() - t0)
-    stats = compute_stats(latencies)
-    return {"operation": "tag_fetch_contains_any", "n_ids": len(tag_uuids), "iterations": iterations, **stats.to_dict()}
-
-
-# ── 3. Reference addition benchmarks (varying fullness) ─────────────────────
-
-
-async def _add_tag_ref(client: weaviate.WeaviateAsyncClient, chunk_uuid: str, tag_uuid: str, ref_prop: str = "automaticTag"):
-    """Add a single tag reference to a chunk."""
-    chunks_col = client.collections.get("Chunks")
+async def _add_one_ref(client: weaviate.WeaviateAsyncClient, chunk_uuid: str, tag_uuid: str, ref_prop: str = "automaticTag"):
+    """Add a single tag reference to a single chunk."""
+    chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
     await chunks_col.data.reference_add(
         from_uuid=chunk_uuid,
         from_property=ref_prop,
@@ -182,17 +108,16 @@ async def _add_tag_ref(client: weaviate.WeaviateAsyncClient, chunk_uuid: str, ta
     )
 
 
-async def _remove_tag_ref(client: weaviate.WeaviateAsyncClient, chunk_uuid: str, tag_uuids_to_remove: list[str], ref_prop: str = "automaticTag"):
-    """Remove given tag references from a chunk via replace (keep others intact)."""
-    chunks_col = client.collections.get("Chunks")
+async def _remove_one_ref(client: weaviate.WeaviateAsyncClient, chunk_uuid: str, tag_uuid: str, ref_prop: str = "automaticTag"):
+    """Remove a single tag reference from a single chunk (read-modify-write)."""
+    chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
     obj = await chunks_col.query.fetch_object_by_id(
         chunk_uuid,
         return_references=[QueryReference(link_on=ref_prop, return_properties=[])],
     )
     refs = obj.references.get(ref_prop) if obj and obj.references else None
     current = [str(r.uuid) for r in refs.objects] if refs else []
-    remove_set = set(tag_uuids_to_remove)
-    remaining = [u for u in current if u not in remove_set]
+    remaining = [u for u in current if u != tag_uuid]
     await chunks_col.data.reference_replace(
         from_uuid=chunk_uuid,
         from_property=ref_prop,
@@ -200,307 +125,269 @@ async def _remove_tag_ref(client: weaviate.WeaviateAsyncClient, chunk_uuid: str,
     )
 
 
-async def bench_tag_ref_add_varying_fullness(
+async def _read_chunk_with_refs(client: weaviate.WeaviateAsyncClient, chunk_uuid: str, ref_prop: str = "automaticTag"):
+    """Fetch a single chunk including its tag references."""
+    chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
+    await chunks_col.query.fetch_object_by_id(
+        chunk_uuid,
+        return_references=[QueryReference(link_on=ref_prop, return_properties=["tag_name"])],
+    )
+
+
+# ── Benchmark functions ─────────────────────────────────────────────────────
+
+
+async def bench_read_concurrent(
     client: weaviate.WeaviateAsyncClient,
     chunk_uuids: list[str],
-    fullness_levels: list[int],
-) -> list[dict]:
-    """
-    For each fullness level, pre-fill chunks with that many tag refs,
-    then measure adding one more.
-    """
-    results = []
-    tag_col = client.collections.get("Tag")
-
-    for fullness in fullness_levels:
-        log.info(f"  Tag ref add — fullness={fullness}")
-        # Pre-create tags for pre-fill + 1 measurement tag per chunk
-        prefill_tags = []
-        for i in range(fullness):
-            uid = await _insert_tag(client, bench_tag_name(i))
-            prefill_tags.append(uid)
-
-        # Pre-fill
-        for cid in chunk_uuids:
-            for tid in prefill_tags:
-                await _add_tag_ref(client, cid, tid)
-
-        # Create the measurement tag
-        measure_tag = await _insert_tag(client, bench_tag_name(9000 + fullness))
-
-        # Measure adding the measurement tag
-        latencies = []
-        for cid in chunk_uuids:
-            _, elapsed = await timed_call(_add_tag_ref, client, cid, measure_tag)
-            latencies.append(elapsed)
-
-        stats = compute_stats(latencies)
-        results.append({
-            "operation": "tag_ref_add",
-            "fullness": fullness,
-            "n_chunks": len(chunk_uuids),
-            **stats.to_dict(),
-        })
-
-        # Cleanup: remove measurement tag + prefill tags from chunks
-        all_bench_tags = prefill_tags + [measure_tag]
-        for cid in chunk_uuids:
-            await _remove_tag_ref(client, cid, all_bench_tags)
-
-        # Delete tag objects
-        await tag_col.data.delete_many(
-            where=Filter.by_id().contains_any(all_bench_tags)
-        )
-
-    return results
-
-
-async def bench_tag_ref_add_concurrent(
-    client: weaviate.WeaviateAsyncClient,
-    chunk_uuids: list[str],
-    concurrency_levels: list[int],
-) -> list[dict]:
-    """Measure adding one tag ref per chunk at various concurrency levels."""
-    results = []
-    tag_col = client.collections.get("Tag")
-
-    for conc in concurrency_levels:
-        log.info(f"  Tag ref add — concurrency={conc}")
-        tag_uuid = await _insert_tag(client, bench_tag_name(8000 + conc))
-        args = [(client, cid, tag_uuid) for cid in chunk_uuids]
-        latencies = await run_parallel(_add_tag_ref, args, conc)
-        stats = compute_stats(latencies)
-        results.append({
-            "operation": "tag_ref_add_concurrent",
-            "concurrency": conc,
-            "n_chunks": len(chunk_uuids),
-            **stats.to_dict(),
-        })
-        # Cleanup
-        for cid in chunk_uuids:
-            await _remove_tag_ref(client, cid, [tag_uuid])
-        await tag_col.data.delete_many(where=Filter.by_id().contains_any([tag_uuid]))
-
-    return results
-
-
-# ── 4. Reference removal benchmarks ─────────────────────────────────────────
-
-
-async def bench_tag_ref_remove(
-    client: weaviate.WeaviateAsyncClient,
-    chunk_uuids: list[str],
+    fullness: int,
+    concurrency: int,
 ) -> dict:
-    """Measure removing a single tag ref from each chunk (via replace)."""
-    tag_col = client.collections.get("Tag")
-    tag_uuid = await _insert_tag(client, bench_tag_name(7000))
-
-    # Pre-add
-    for cid in chunk_uuids:
-        await _add_tag_ref(client, cid, tag_uuid)
-
-    # Measure removal
-    latencies = []
-    for cid in chunk_uuids:
-        _, elapsed = await timed_call(_remove_tag_ref, client, cid, [tag_uuid])
-        latencies.append(elapsed)
-
-    stats = compute_stats(latencies)
-
-    # Delete tag object
-    await tag_col.data.delete_many(where=Filter.by_id().contains_any([tag_uuid]))
-
-    return {"operation": "tag_ref_remove", "n_chunks": len(chunk_uuids), **stats.to_dict()}
-
-
-# ── 5. Tag deletion benchmarks ──────────────────────────────────────────────
-
-
-async def bench_tag_delete_single(client: weaviate.WeaviateAsyncClient, n: int) -> dict:
-    """Create *n* tags then delete them one-by-one."""
-    tag_col = client.collections.get("Tag")
-    uuids = []
-    for i in range(n):
-        uid = await _insert_tag(client, bench_tag_name(i))
-        uuids.append(uid)
-
-    latencies = []
-    for uid in uuids:
-        t0 = time.perf_counter()
-        await tag_col.data.delete_by_id(uid)
-        latencies.append(time.perf_counter() - t0)
-
-    stats = compute_stats(latencies)
-    return {"operation": "tag_delete_single", "n": n, **stats.to_dict()}
-
-
-async def bench_tag_delete_batch(client: weaviate.WeaviateAsyncClient, n: int) -> dict:
-    """Create *n* tags then delete them in one delete_many call."""
-    uuids = []
-    for i in range(n):
-        uid = await _insert_tag(client, bench_tag_name(i))
-        uuids.append(uid)
-
-    tag_col = client.collections.get("Tag")
-    t0 = time.perf_counter()
-    await tag_col.data.delete_many(where=Filter.by_id().contains_any(uuids))
-    elapsed = time.perf_counter() - t0
-
+    """Read all affected chunks concurrently, returning tag references."""
+    args = [(client, cid) for cid in chunk_uuids]
+    latencies, wall_time = await run_parallel(_read_chunk_with_refs, args, concurrency)
+    stats = compute_concurrent_stats(latencies, wall_time)
     return {
-        "operation": "tag_delete_batch",
-        "n": n,
-        "total_time_ms": round(elapsed * 1000, 3),
-        "throughput_ops_sec": round(n / elapsed, 2) if elapsed > 0 else 0,
+        "operation": "read_concurrent",
+        "fullness": fullness,
+        "concurrency": concurrency,
+        "n_chunks": len(chunk_uuids),
+        **stats.to_dict(),
     }
 
 
-# ── 6. Query with tag reference filter (on Chunks) ─────────────────────────
-
-
-async def bench_chunk_query_by_tag_ref(
+async def bench_read_batch(
     client: weaviate.WeaviateAsyncClient,
     chunk_uuids: list[str],
-    iterations: int = 20,
-) -> list[dict]:
-    """
-    Benchmark querying Chunks filtered by a tag reference,
-    using different query styles: fetch_objects, bm25, near_vector placeholder.
-    """
-    tag_col = client.collections.get("Tag")
-    chunks_col = client.collections.get("Chunks")
-
-    # Create and attach a tag
-    tag_uuid = await _insert_tag(client, bench_tag_name(6000))
-    for cid in chunk_uuids:
-        await _add_tag_ref(client, cid, tag_uuid)
-
-    results = []
-
-    # Style 1: fetch_objects with ref filter
+    fullness: int,
+    batch_size: int,
+) -> dict:
+    """Read all chunks in batches of *batch_size* using contains_any ID filter."""
+    chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
     latencies = []
-    for _ in range(iterations):
+    for i in range(0, len(chunk_uuids), batch_size):
+        batch = chunk_uuids[i : i + batch_size]
         t0 = time.perf_counter()
         await chunks_col.query.fetch_objects(
-            filters=Filter.by_ref(link_on="automaticTag").by_id().contains_any([tag_uuid]),
-            return_references=[QueryReference(link_on="automaticTag", return_properties=[])],
-            limit=100,
-        )
-        latencies.append(time.perf_counter() - t0)
-    stats = compute_stats(latencies)
-    results.append({"operation": "chunk_query_by_tag_fetch_objects", "iterations": iterations, **stats.to_dict()})
-
-    # Style 2: fetch_objects with ID filter (chunks that we know have the tag)
-    latencies = []
-    for _ in range(iterations):
-        t0 = time.perf_counter()
-        await chunks_col.query.fetch_objects(
-            filters=(
-                Filter.by_id().contains_any(chunk_uuids)
-                & Filter.by_ref(link_on="automaticTag").by_id().contains_any([tag_uuid])
-            ),
+            filters=Filter.by_id().contains_any(batch),
             return_references=[QueryReference(link_on="automaticTag", return_properties=["tag_name"])],
-            limit=100,
+            limit=batch_size,
         )
         latencies.append(time.perf_counter() - t0)
     stats = compute_stats(latencies)
-    results.append({"operation": "chunk_query_by_tag_id_and_ref", "iterations": iterations, **stats.to_dict()})
+    return {
+        "operation": "read_batch",
+        "fullness": fullness,
+        "batch_size": batch_size,
+        "n_chunks": len(chunk_uuids),
+        "n_batches": len(latencies),
+        **stats.to_dict(),
+    }
 
-    # Style 3: bm25 with tag ref filter
-    latencies = []
-    for _ in range(iterations):
-        t0 = time.perf_counter()
-        await chunks_col.query.bm25(
-            query="benchmark",
-            filters=Filter.by_ref(link_on="automaticTag").by_id().contains_any([tag_uuid]),
-            return_references=[QueryReference(link_on="automaticTag", return_properties=[])],
-            limit=100,
-        )
-        latencies.append(time.perf_counter() - t0)
-    stats = compute_stats(latencies)
-    results.append({"operation": "chunk_query_by_tag_bm25", "iterations": iterations, **stats.to_dict()})
 
-    # Cleanup
+async def bench_ref_add_concurrent(
+    client: weaviate.WeaviateAsyncClient,
+    chunk_uuids: list[str],
+    tag_uuid: str,
+    fullness: int,
+    concurrency: int,
+) -> dict:
+    """Add one tag reference to each chunk concurrently."""
+    args = [(client, cid, tag_uuid) for cid in chunk_uuids]
+    latencies, wall_time = await run_parallel(_add_one_ref, args, concurrency)
+    stats = compute_concurrent_stats(latencies, wall_time)
+    return {
+        "operation": "ref_add_concurrent",
+        "fullness": fullness,
+        "concurrency": concurrency,
+        "n_chunks": len(chunk_uuids),
+        **stats.to_dict(),
+    }
+
+
+async def bench_ref_remove_concurrent(
+    client: weaviate.WeaviateAsyncClient,
+    chunk_uuids: list[str],
+    tag_uuid: str,
+    fullness: int,
+    concurrency: int,
+) -> dict:
+    """Remove one tag reference from each chunk concurrently."""
+    args = [(client, cid, tag_uuid) for cid in chunk_uuids]
+    latencies, wall_time = await run_parallel(_remove_one_ref, args, concurrency)
+    stats = compute_concurrent_stats(latencies, wall_time)
+    return {
+        "operation": "ref_remove_concurrent",
+        "fullness": fullness,
+        "concurrency": concurrency,
+        "n_chunks": len(chunk_uuids),
+        **stats.to_dict(),
+    }
+
+
+async def bench_ref_add_batch(
+    client: weaviate.WeaviateAsyncClient,
+    chunk_uuids: list[str],
+    tag_uuid: str,
+    fullness: int,
+) -> dict:
+    """Batch-add one tag reference to all chunks (single API call)."""
+    chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
+    refs = [
+        DataReference(from_property="automaticTag", from_uuid=cid, to_uuid=tag_uuid)
+        for cid in chunk_uuids
+    ]
+    t0 = time.perf_counter()
+    await chunks_col.data.reference_add_many(refs)
+    elapsed = time.perf_counter() - t0
+    n = len(chunk_uuids)
+    return {
+        "operation": "ref_add_batch",
+        "fullness": fullness,
+        "n_chunks": n,
+        "total_time_ms": round(elapsed * 1000, 3),
+        "throughput_chunks_sec": round(n / elapsed, 2) if elapsed > 0 else 0,
+    }
+
+
+async def bench_ref_remove_batch(
+    client: weaviate.WeaviateAsyncClient,
+    chunk_uuids: list[str],
+    tag_uuid: str,
+    fullness: int,
+) -> dict:
+    """Batch-remove one tag reference from all chunks.
+
+    Each batch targets a single tag across all chunks using reference_replace.
+    """
+    chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
+    t0 = time.perf_counter()
     for cid in chunk_uuids:
-        await _remove_tag_ref(client, cid, [tag_uuid])
-    await tag_col.data.delete_many(where=Filter.by_id().contains_any([tag_uuid]))
-
-    return results
+        obj = await chunks_col.query.fetch_object_by_id(
+            cid,
+            return_references=[QueryReference(link_on="automaticTag", return_properties=[])],
+        )
+        refs = obj.references.get("automaticTag") if obj and obj.references else None
+        current = [str(r.uuid) for r in refs.objects] if refs else []
+        remaining = [u for u in current if u != tag_uuid]
+        await chunks_col.data.reference_replace(
+            from_uuid=cid,
+            from_property="automaticTag",
+            to=remaining,
+        )
+    elapsed = time.perf_counter() - t0
+    n = len(chunk_uuids)
+    return {
+        "operation": "ref_remove_batch",
+        "fullness": fullness,
+        "n_chunks": n,
+        "total_time_ms": round(elapsed * 1000, 3),
+        "throughput_chunks_sec": round(n / elapsed, 2) if elapsed > 0 else 0,
+    }
 
 
 # ── Main runner ──────────────────────────────────────────────────────────────
 
 
 async def run_tag_benchmarks() -> list[dict]:
-    """Execute the full tag benchmark suite and return results."""
+    """Execute the focused benchmark suite and return results.
+
+    Flow per fullness level:
+      1. Batch-add refs to reach target fullness.
+      2. Concurrent read test.
+      3. Batch read test.
+      4. For each concurrency level:
+         a. Concurrent ref-add (OPERATION_COUNT tags).
+         b. Concurrent ref-remove (same tags).
+      5. Batch ref-add (OPERATION_COUNT tags).
+      6. Batch ref-remove (same tags).
+    """
     client = await get_client()
     all_results: list[dict] = []
 
     try:
-        n = cfg.OPS_PER_MEASUREMENT
+        # 0. Validate
+        if not await validate_collections(client):
+            return []
+
         chunk_uuids = await sample_chunk_uuids(client, cfg.CHUNK_SAMPLE_SIZE)
         if not chunk_uuids:
             log.error("No chunks found in database, cannot run benchmarks.")
             return []
+        log.info(f"Sampled {len(chunk_uuids)} chunks (shuffled) for benchmarks.")
 
-        log.info(f"Sampled {len(chunk_uuids)} chunks for reference benchmarks.")
+        # 1. Pre-create all tags we will ever need
+        max_fullness = max(cfg.FULLNESS_LEVELS) if cfg.FULLNESS_LEVELS else 0
+        total_tags_needed = max_fullness + cfg.OPERATION_COUNT
+        log.info(f"Inserting {total_tags_needed} benchmark tags …")
+        all_tag_uuids = await _insert_tags(client, total_tags_needed)
 
-        # 1. Insertion
-        log.info("=== Tag insertion benchmarks ===")
-        all_results.append(await bench_tag_insert_sequential(client, n))
-        # Cleanup inserted tags
-        await full_cleanup(client)
+        # Split into fullness tags and measurement tags
+        fullness_tags = all_tag_uuids[:max_fullness]
+        measurement_tags = all_tag_uuids[max_fullness:]
 
-        for conc in cfg.CONCURRENCY_LEVELS:
-            all_results.append(await bench_tag_insert_concurrent(client, n, conc))
-            await full_cleanup(client)
+        prev_fullness = 0
 
-        all_results.append(await bench_tag_insert_batch(client, n))
-        await full_cleanup(client)
+        for fullness in sorted(cfg.FULLNESS_LEVELS):
+            log.info(f"{'='*60}")
+            log.info(f"  Fullness level: {fullness}")
+            log.info(f"{'='*60}")
 
-        # 2. Query (need some tags first)
-        log.info("=== Tag query benchmarks ===")
-        tag_uuids = []
-        for i in range(n):
-            uid = await _insert_tag(client, bench_tag_name(i))
-            tag_uuids.append(uid)
+            # 2. Add references to reach this fullness level (incremental)
+            new_tags_to_add = fullness_tags[prev_fullness:fullness]
+            if new_tags_to_add:
+                log.info(f"  Batch-adding {len(new_tags_to_add)} refs/chunk to reach fullness={fullness} …")
+                await _batch_add_refs(client, chunk_uuids, new_tags_to_add)
+            prev_fullness = fullness
 
-        all_results.append(await bench_tag_fetch_all(client, 30))
-        all_results.append(await bench_tag_fetch_by_id(client, tag_uuids[:20]))
-        all_results.append(await bench_tag_fetch_filtered(client, 30))
-        all_results.append(await bench_tag_fetch_contains_any(client, tag_uuids[:10], 30))
-        all_results.append(await bench_tag_fetch_contains_any(client, tag_uuids, 30))
-        await full_cleanup(client)
+            # 3. Concurrent read test
+            for conc in cfg.CONCURRENCY_LEVELS:
+                log.info(f"  Read concurrent (concurrency={conc}) …")
+                result = await bench_read_concurrent(client, chunk_uuids, fullness, conc)
+                all_results.append(result)
 
-        # 3. Reference add (fullness)
-        log.info("=== Tag reference addition (fullness) benchmarks ===")
-        fullness_results = await bench_tag_ref_add_varying_fullness(
-            client, chunk_uuids, cfg.FULLNESS_LEVELS,
-        )
-        all_results.extend(fullness_results)
+            # 4. Batch read test
+            log.info(f"  Read batch (batch_size={cfg.READ_BATCH_SIZE}) …")
+            result = await bench_read_batch(client, chunk_uuids, fullness, cfg.READ_BATCH_SIZE)
+            all_results.append(result)
 
-        # 4. Reference add (concurrency)
-        log.info("=== Tag reference addition (concurrency) benchmarks ===")
-        conc_results = await bench_tag_ref_add_concurrent(
-            client, chunk_uuids, cfg.CONCURRENCY_LEVELS,
-        )
-        all_results.extend(conc_results)
+            # 5. Concurrent ref-add / ref-remove for each concurrency level
+            for conc in cfg.CONCURRENCY_LEVELS:
+                # Pick OPERATION_COUNT measurement tags
+                op_tags = measurement_tags[: cfg.OPERATION_COUNT]
 
-        # 5. Reference removal
-        log.info("=== Tag reference removal benchmarks ===")
-        all_results.append(await bench_tag_ref_remove(client, chunk_uuids))
+                log.info(f"  Ref-add concurrent (concurrency={conc}, ops={len(op_tags)}) …")
+                for tag_uuid in op_tags:
+                    result = await bench_ref_add_concurrent(
+                        client, chunk_uuids, tag_uuid, fullness, conc,
+                    )
+                    all_results.append(result)
 
-        # 6. Deletion
-        log.info("=== Tag deletion benchmarks ===")
-        all_results.append(await bench_tag_delete_single(client, n))
-        all_results.append(await bench_tag_delete_batch(client, n))
+                log.info(f"  Ref-remove concurrent (concurrency={conc}, ops={len(op_tags)}) …")
+                for tag_uuid in op_tags:
+                    result = await bench_ref_remove_concurrent(
+                        client, chunk_uuids, tag_uuid, fullness, conc,
+                    )
+                    all_results.append(result)
 
-        # 7. Chunk query by tag ref
-        log.info("=== Chunk query by tag reference benchmarks ===")
-        query_results = await bench_chunk_query_by_tag_ref(client, chunk_uuids)
-        all_results.extend(query_results)
+            # 6. Batch ref-add / ref-remove
+            op_tags = measurement_tags[: cfg.OPERATION_COUNT]
+
+            log.info(f"  Ref-add batch (ops={len(op_tags)}) …")
+            for tag_uuid in op_tags:
+                result = await bench_ref_add_batch(client, chunk_uuids, tag_uuid, fullness)
+                all_results.append(result)
+
+            log.info(f"  Ref-remove batch (ops={len(op_tags)}) …")
+            for tag_uuid in op_tags:
+                result = await bench_ref_remove_batch(client, chunk_uuids, tag_uuid, fullness)
+                all_results.append(result)
+
+        log.info("All fullness levels complete.")
 
     finally:
-        # Final safety cleanup
+        # 9. Final cleanup
+        log.info("Final cleanup …")
         await full_cleanup(client)
         await client.close()
 

@@ -1,11 +1,11 @@
 # Weaviate Benchmarks
 
-Self-contained benchmark suite for measuring Tag and UserCollection operation
-latencies and throughput against a live Weaviate instance with real data.
+Focused benchmark suite for measuring **tag-reference operations on document
+chunks** against a live Weaviate instance with real data.
 
-**The benchmarks do NOT modify existing data.** All benchmark-created Tags and
-UserCollections use a `__bench_` prefix and are fully cleaned up at the end of
-each run (and before the next run starts).
+**The benchmarks do NOT modify existing data.** All benchmark-created Tags use
+a `__bench_` prefix and are fully cleaned up at the end of each run (and before
+the next run starts).
 
 ## Quick start
 
@@ -13,12 +13,10 @@ each run (and before the next run starts).
 cd weaviate_benchmarks
 pip install -r requirements.txt
 
-# Run all benchmarks (Weaviate must be reachable at localhost:8080 / 50051)
+# Run benchmarks (Weaviate must be reachable at localhost:8080 / 50051)
 python -m weaviate_benchmarks
 
-# Or run individually
-python -m weaviate_benchmarks --tags     # tag benchmarks only
-python -m weaviate_benchmarks --cols     # collection benchmarks only
+# Utility commands
 python -m weaviate_benchmarks --plots    # regenerate plots from existing results
 python -m weaviate_benchmarks --cleanup  # remove stale benchmark data
 ```
@@ -34,50 +32,29 @@ python -m weaviate_benchmarks --cleanup  # remove stale benchmark data
 | `BENCH_PLOTS_DIR`     | `./plots`   | Where PNG/SVG plots go   |
 
 Tune benchmark parameters in `config.py`:
-- `CONCURRENCY_LEVELS` — concurrency sweep values
-- `OPS_PER_MEASUREMENT` — operations per data point
-- `FULLNESS_LEVELS` — number of existing refs per chunk
-- `CHUNK_SAMPLE_SIZE` — chunks used for reference benchmarks
+- `CONCURRENCY_LEVELS` — concurrency sweep values (default: 1, 2, 4, 8, 16, 32)
+- `OPERATION_COUNT` — refs inserted / deleted per measurement (default: 50)
+- `FULLNESS_LEVELS` — pre-existing refs per chunk (default: 0, 1, 5, 10, 25, 50)
+- `CHUNK_SAMPLE_SIZE` — chunks sampled for benchmarks (default: 500)
+- `CHUNKS_COLLECTION` — name of the chunks collection (default: `Chunks`)
+- `TAG_COLLECTION` — name of the tag collection (default: `Tag`)
+- `READ_BATCH_SIZE` — chunks per batch-read call (default: 100)
 
 ## What is benchmarked
 
-### Tag operations
-| Benchmark | Conditions varied |
-|-----------|-------------------|
-| Single insert | — |
-| Concurrent insert | concurrency: 1–32 |
-| Batch insert | — |
-| Fetch all (prefix filter) | — |
-| Fetch by ID | — |
-| Fetch compound filter | — |
-| Fetch `contains_any` | batch size |
-| Reference add to chunk | fullness: 0–50 existing refs |
-| Reference add to chunk | concurrency: 1–32 |
-| Reference remove from chunk | — |
-| Single delete | — |
-| Batch delete (`delete_many`) | — |
-| Chunk query by tag ref (`fetch_objects`) | — |
-| Chunk query by tag ref (`bm25`) | — |
-| Chunk query by tag ref (ID + ref filter) | — |
+All benchmarks focus on **tag references to chunks** — the core operation used
+when tagging documents. An efficient incremental-fullness flow is used: tags are
+inserted once, then references are added incrementally to reach each fullness
+level without redundant setup/teardown.
 
-### UserCollection operations
 | Benchmark | Conditions varied |
 |-----------|-------------------|
-| Single insert | — |
-| Concurrent insert | concurrency: 1–32 |
-| Batch insert | — |
-| Fetch by user ID | — |
-| Fetch by ID | — |
-| Fetch name + user filter | — |
-| Fetch `contains_any` | batch size |
-| Reference add to chunk | fullness: 0–50 existing refs |
-| Reference add to chunk | concurrency: 1–32 |
-| Reference remove from chunk | — |
-| Single delete | — |
-| Batch delete | — |
-| Chunk query by collection ref (`fetch_objects`) | — |
-| Chunk query by collection ref (name filter) | — |
-| Chunk query by collection ref (ID + ref filter) | — |
+| Read chunk with refs (concurrent) | fullness, concurrency |
+| Read chunk with refs (batch `contains_any`) | fullness |
+| Ref-add concurrent (`reference_add`) | fullness, concurrency |
+| Ref-add batch (`reference_add_many`) | fullness |
+| Ref-remove concurrent (read-modify-write) | fullness, concurrency |
+| Ref-remove batch (read-modify-write) | fullness |
 
 ## Reported metrics
 
@@ -86,16 +63,18 @@ For each benchmark point:
 - **Median** latency (ms)
 - **P90** latency (ms)
 - **P99** latency (ms)
-- **Throughput** (ops/sec)
+- **Throughput** (chunks/sec) — wall-clock based, counting all concurrent ops
 
 ## Output
 
-- `results/*.json` — raw benchmark data
+- `results/tag_benchmarks.json` — raw benchmark data
 - `plots/*.png` and `plots/*.svg` — charts
+- `report/benchmark_report.tex` — LaTeX report (compile with `latexmk -pdf`)
 
 ## Cleanup guarantee
 
 Every benchmark function creates data with a `__bench_` prefix and cleans up
 after itself. A safety cleanup also runs before and after the full suite.
-The only Weaviate collections touched are `Tag`, `UserCollection`, and `Chunks`
-(reference properties only). No chunk content or document data is ever modified.
+The only Weaviate collections touched are the configured Tag and Chunks
+collections (reference properties only). No chunk content or document data is
+ever modified.
