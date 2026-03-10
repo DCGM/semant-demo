@@ -11,6 +11,17 @@ This folder manages the full application stack — backend, embedding service, a
 | `update.sh` | Wrapper script — loads `.env`, sets variables and forwards arguments to `docker compose` |
 | `.env.example` | Template for environment variables |
 
+## Folder structure
+
+```
+deploy/
+├─ .env.example        # environment template
+├─ docker-compose.yaml # compose definition for services
+├─ Dockerfile          # multi-stage build for backend/frontend/embedding
+├─ update.sh           # helper wrapper to run docker compose with .env
+└─ README.md           # this file
+```
+
 ## Services
 
 - **`semant-demo`** — backend + built frontend (port 8000, behind Traefik)
