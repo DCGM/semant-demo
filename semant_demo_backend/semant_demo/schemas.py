@@ -369,6 +369,38 @@ class CollectionChunks(BaseModel):
 class GetCollectionChunksResponse(BaseModel):
     chunks_of_collection: list[CollectionChunks]  # list of pairs text chunk and id belonging to it
 
+# TagSpans
+class SpanStoreMode(str, Enum):
+    embedded = "embedded"
+    separate = "separate"
+    both = "both"
+
+
+class TagSpan(BaseModel):
+    id: str | None = None
+    tagId: str
+    start: int
+    end: int
+
+class TagSpanWriteRequest(BaseModel):
+    chunk_id: str
+    spans: list[TagSpan]
+    mode: SpanStoreMode = SpanStoreMode.embedded
+
+class TagSpanWriteResponse(BaseModel):
+    stored_in: list[SpanStoreMode]
+
+class TagSpanUpdateRequest(BaseModel):
+    mode: SpanStoreMode
+    chunk_id: str | None = None  # required for embedded
+    index: int | None = None     # required for embedded
+    span_id: str | None = None   # required for separate
+
+    # updateable fields
+    tagId: str | None = None
+    start: int | None = None
+    end: int | None = None
+# /TagSpans
 
 # Task Model
 TasksBase = declarative_base()

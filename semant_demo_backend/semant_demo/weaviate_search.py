@@ -21,6 +21,158 @@ class WeaviateSearch:
         # collections.get() is synchronous, no await needed
         self.chunk_col = self.client.collections.get("Chunks")
 
+        try:
+            self.tagspan_col = self.client.collections.get("TagSpan_test")
+        except Exception:
+            self.tagspan_col = None
+
+    # TagSpans
+    async def set_chunk_spans_embedded(self, chunk_id: str, spans: list[schemas.TagSpan]):
+        """
+        Add new TagSpan to Chunks_test's 'tagSpansArr'.
+        """
+        payloads = []
+        for s in spans:
+            payloads.append({
+                "tagId": s.tagId,
+                "start": s.start,
+                "end": s.end,
+            })
+
+        await self.chunk_col.data.update(
+            uuid=chunk_id,
+            properties={"tagSpansArr": payloads}
+        )
+
+    async def set_chunk_spans_separate(self, chunk_id: str, spans: list[schemas.TagSpan]):
+        """
+        Add new TagSpan to TagSpan_test table with reference to chunk.
+        """
+        if not self.tagspan_col:
+            raise RuntimeError("TagSpan_test collection not available")
+        # clear existing for this chunk
+        await self.tagspan_col.data.delete_many(where=Filter.by_ref("chunk").by_id().equal(chunk_id))
+
+        for s in spans:
+            await self.tagspan_col.data.insert(
+                properties={
+                    "tagId": s.tagId,
+                    "start": s.start,
+                    "end": s.end,
+                },
+                references={"chunk": chunk_id},
+            )
+
+    async def get_tag_spans(self, chunk_id: str, mode: schemas.SpanStoreMode) -> list[schemas.TagSpan]:
+        """
+        Get TagSpans
+        """
+        if mode == schemas.SpanStoreMode.embedded:
+            return await self.get_chunk_spans_embedded(chunk_id)
+
+        if mode == schemas.SpanStoreMode.separate:
+            return await self.get_chunk_spans_separate(chunk_id)
+
+        raise ValueError(
+            "Idnetify a mode: embedded or separate.")
+
+    async def get_chunk_spans_separate(self, chunk_id: str) -> list[schemas.TagSpan]:
+        """
+        Get TagSpans from TagSpans_test table by chunk id.
+        """
+        if not self.tagspan_col:
+            raise RuntimeError("TagSpan_test collection not available")
+
+        # reference chunk
+        response = await self.tagspan_col.query.fetch_objects(
+            filters=Filter.by_ref("chunk").by_id().equal(chunk_id),
+            return_properties=["tagId", "start", "end"]
+        )
+
+        # add TagSpan ID
+        return [
+            schemas.TagSpan(
+                id=str(obj.uuid),
+                tagId=obj.properties.get("tagId"),
+                start=obj.properties.get("start"),
+                end=obj.properties.get("end")
+            )
+            for obj in response.objects
+        ]
+
+    async def get_chunk_spans_embedded(self, chunk_id: str) -> list[schemas.TagSpan]:
+        """
+        Get TagSpans from Chunks_test's 'tagSpansArr'
+        """
+        obj = await self.chunk_col.query.fetch_object_by_id(
+            uuid=chunk_id,
+            return_properties=[
+                QueryNested(
+                    name="tagSpansArr",
+                    properties=["tagId", "start", "end"]
+                )
+            ]
+        )
+
+        if not obj or "tagSpansArr" not in obj.properties or obj.properties["tagSpansArr"] is None:
+            return []
+
+        raw_spans = obj.properties["tagSpansArr"]
+
+        return [
+            schemas.TagSpan(
+                tagId=s.get("tagId"),
+                start=s.get("start"),
+                end=s.get("end")
+            )
+            for s in raw_spans
+        ]
+
+    async def update_tag_span_embedded(self, chunk_id: str, index: int, update_data: dict):
+        """
+        Update TagSpan's informations like start, end, ...
+        """
+        # load TagSpan
+        obj = await self.chunk_col.query.fetch_object_by_id(
+            uuid=chunk_id,
+            return_properties=[
+                QueryNested(name="tagSpansArr", properties=[
+                            "tagId", "start", "end", "confidence", "note"])
+            ]
+        )
+
+        if not obj or "tagSpansArr" not in obj.properties:
+            raise ValueError("Chunk or TagSpans not found")
+
+        spans = obj.properties["tagSpansArr"]
+
+        if index < 0 or index >= len(spans):
+            raise IndexError("Index out of boundries")
+
+        # update necessary fields
+        for key, value in update_data.items():
+            if value is not None:
+                spans[index][key] = value
+
+        # update in db
+        await self.chunk_col.data.update(
+            uuid=chunk_id,
+            properties={"tagSpansArr": spans}
+        )
+
+    async def update_tag_span_separate(self, span_id: str, update_data: dict):
+        """
+        Update TagSpan's informations like start, end, ...
+        """
+        if not self.tagspan_col:
+            raise RuntimeError("Kolekce TagSpan_test není dostupná")
+
+        await self.tagspan_col.data.update(
+            uuid=span_id,
+            properties=update_data
+        )
+    # /TagSpans
+
     @classmethod
     async def create(cls, config:Config) -> "WeaviateSearch":
         # Instantiate async client with custom params

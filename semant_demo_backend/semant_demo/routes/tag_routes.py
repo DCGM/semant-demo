@@ -1,7 +1,7 @@
 import os
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from semant_demo import schemas
 from semant_demo.weaviate_tag import WeaviateSearchAndTag
@@ -13,8 +13,14 @@ import uuid
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
+# from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, String, JSON
+from glob import glob
+from sqlalchemy import select, update, bindparam, asc
+from typing import AsyncGenerator
+# import db
 from sqlalchemy import select, update, asc
-#import db
+# import db
 from sqlalchemy import exc
 from datetime import timezone
 
@@ -28,16 +34,19 @@ import yaml
 from semant_demo.tagging.sql_utils import DBError, update_task_status
 from semant_demo.tagging.tagging_task import getTaskByName
 
-#import dependencies
+# import dependencies
+from semant_demo.routes.dependencies import get_async_session, get_search, get_engine
+# import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_tag, get_engine
 
 logging.basicConfig(level=logging.INFO)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 TAG_CONFIG_DIR = BASE_DIR / "tagging" / "configs"
-#TAG_CONFIG_DIR = r"semant_demo_backend\semant_demo\tagging\configs"
+# TAG_CONFIG_DIR = r"semant_demo_backend\semant_demo\tagging\configs"
 
 exp_router = APIRouter()
+
 
 @exp_router.post("/api/tag", response_model=schemas.CreateResponse)
 async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearchAndTag = Depends(get_tag),
@@ -272,3 +281,78 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
         return response
     except Exception as e:
         logging.error(f"{e}")
+
+
+# TagSpans
+# """
+# Two variants controlled by "mode"
+# - embedded - spans are stored in "Chunks_test -> tagSpansArr" list of spans
+# - separate - spans are stored in separate collection "TagSpan_test", which has reference to chunk and tag
+# """
+
+
+@exp_router.post("/api/tag_spans", response_model=schemas.TagSpanWriteResponse)
+async def upsert_tag_spans(body: schemas.TagSpanWriteRequest, tagger: WeaviateSearchAndTag = Depends(get_search)) -> schemas.TagSpanWriteResponse:
+    """
+    Adds new TagSpan to Chunk
+    """
+    stored = []
+    if body.mode in (schemas.SpanStoreMode.embedded, schemas.SpanStoreMode.both):
+        await tagger.set_chunk_spans_embedded(body.chunk_id, body.spans)
+        stored.append(schemas.SpanStoreMode.embedded)
+    if body.mode in (schemas.SpanStoreMode.separate, schemas.SpanStoreMode.both):
+        await tagger.set_chunk_spans_separate(body.chunk_id, body.spans)
+        stored.append(schemas.SpanStoreMode.separate)
+    return schemas.TagSpanWriteResponse(stored_in=stored)
+
+
+@exp_router.get("/api/tag_spans/{chunk_id}", response_model=list[schemas.TagSpan])
+async def read_tag_spans(
+    chunk_id: str,
+    mode: schemas.SpanStoreMode = Query(
+        default=schemas.SpanStoreMode.separate),
+    tagger: WeaviateSearchAndTag = Depends(get_search)
+) -> list[schemas.TagSpan]:
+    """
+    Get stored TagSpans for a given chunk ID.
+    """
+    return await tagger.get_tag_spans(chunk_id, mode)
+
+
+@exp_router.patch("/api/tag_spans/update", response_model=dict)
+async def update_tag_span(
+    body: schemas.TagSpanUpdateRequest,
+    tagger: WeaviateSearchAndTag = Depends(get_search)
+):
+    """
+    Update TagSpan's information (start, end, tagId, ...)
+    """
+    all_data = body.model_dump(exclude_none=True)
+
+    # identifiers
+    mode = all_data.pop("mode")
+    chunk_id = all_data.pop("chunk_id", None)
+    index = all_data.pop("index", None)
+    span_id = all_data.pop("span_id", None)
+
+    # fields to update
+    update_fields = all_data
+
+    try:
+        if mode == schemas.SpanStoreMode.embedded:
+            if chunk_id is None or index is None:
+                raise HTTPException(
+                    status_code=400, detail="For embedded mode, chunk_id and index are required")
+            await tagger.update_tag_span_embedded(chunk_id, index, update_fields)
+
+        elif mode == schemas.SpanStoreMode.separate:
+            if span_id is None:
+                raise HTTPException(
+                    status_code=400, detail="For separate mode, span_id is required")
+            await tagger.update_tag_span_separate(span_id, update_fields)
+
+        return {"status": "success", "updated_fields": list(update_fields.keys())}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+# /TagSpans
