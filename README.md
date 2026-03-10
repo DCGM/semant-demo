@@ -93,6 +93,8 @@ flowchart LR
 
 ## Quick Start
 
+The full stack (backend, embedding service, Weaviate) is managed via Docker Compose. See [deploy/README.md](deploy/README.md) for setup and usage instructions.
+
 ```bash
 # 1. Start Weaviate
 cd weaviate_utils && docker compose up -d
