@@ -102,7 +102,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 17")
+            print("Adaptive RAG version 18")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -537,23 +537,40 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         if (DEBUG_PRINT):
             print(f"Extracting keyword for the internet search.")
 
-        language = state.get("language", "cze")
-        prompt = self._get_prompt_by_language("extract_keyword", language)
-        chain = self._create_chain(model=self.model, prompt=prompt)
-        keywords = await chain.ainvoke({"question": state["question"]})
-        search_query = keywords.strip()
+        try:
+            language = state.get("language", "cze")
+            prompt = self._get_prompt_by_language("extract_keyword", language)
+            chain = self._create_chain(model=self.model, prompt=prompt)
+            keywords_raw = await chain.ainvoke({"question": state["question"]})
+
+            keywords = keywords_raw.replace(",", " ").strip()
+
+            search_queries = [keywords, state["question"]]
+        except Exception as e:
+            print(f"Rewriting web search queries, Error: {e}")
 
         if (DEBUG_PRINT):
             print(f"Trying to search web using DuckDuckGo")
 
         try:
-            def ddg(query):
+            # def ddg(query):
+            #     with DDGS() as ddgs:
+            #         results = [r["body"] for r in ddgs.text(query, max_results= 5)]
+            #         return "\n".join(results)
+            def ddg(queries):
+                all_results = []
                 with DDGS() as ddgs:
-                    results = [r["body"] for r in ddgs.text(query, max_results= 5)]
-                    return "\n".join(results)
+                    for q in queries:
+                        if (DEBUG_PRINT): 
+                            print(f"Searching web: {q}")
+                        results = [r["body"] for r in ddgs.text(q, max_results = 6)]
+                        all_results.extend(results)
+
+                unique_results = list(dict.fromkeys(all_results))
+                return "\n".join(unique_results)
   
             uuid_tmp = uuid.uuid4()
-            search_result = await asyncio.to_thread(ddg, search_query)
+            search_result = await asyncio.to_thread(ddg, search_queries)
             #search_result = await asyncio.to_thread(ddg, state["question"])
             search_chunk = TextChunkWithDocument(
                 id=uuid_tmp,
@@ -567,12 +584,12 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             )
             if (DEBUG_PRINT):
                 print(f"Internet search result: {search_chunk}")
-            return {"documents" : state["documents"] + [search_chunk], "web_search_performed" : True}
+            return {"documents" : [search_chunk], "web_search_performed" : True, "feedback" : "supported"}
                 
         except Exception as e:
             if (DEBUG_PRINT):
                 print(f"Web search failed. Error: {e}")
-            return {"web_search_performed" : True}
+            return {"web_search_performed" : True, "feedback" : "supported"}
 
 
     #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
