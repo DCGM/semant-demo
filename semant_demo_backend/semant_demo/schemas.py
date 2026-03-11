@@ -180,6 +180,7 @@ class ExtractedMeradata(BaseModel):
 
 # class defining state of the adaptive rag
 class AdaptiveRagState(TypedDict):
+    language: str | None #ces, des, eng, ...
     question: str
     original_question: str
     queries: list[str]

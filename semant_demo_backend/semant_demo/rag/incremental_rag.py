@@ -39,17 +39,38 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         super().__init__(global_config, param_config)
         self.searcher = None
         #this can be part of config in future
-        self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
-        self.main_prompt_history = ChatPromptTemplate.from_messages(answer_question_with_history_prompt_template)
-        self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
         self.extract_prompt = ChatPromptTemplate.from_messages(extract_metadata_from_question_template)
-        self.multiquery_prompt = ChatPromptTemplate.from_messages(multiquery_prompt_template)
         self.hyde_prompt = ChatPromptTemplate.from_messages(hyde_prompt_template)
-        self.context_grader_prompt = ChatPromptTemplate.from_messages(context_grader_prompt_template)
-        self.generation_grader_prompt = ChatPromptTemplate.from_messages(generation_grader_prompt_template)
+
+        #TODO add to language prompts and rewrite it
         self.check_sufficient_context_prompt = ChatPromptTemplate.from_messages(check_sufficient_context_prompt_template)
-        self.explain_selected_text_prompt = ChatPromptTemplate.from_messages(explain_selected_text_prompt_template)
+        
+        #multilanguage prompt
         self.identify_language_prompt = ChatPromptTemplate.from_messages(identify_language_prompt_template)
+
+        #TODO rewrite prompt and add functionality to select language in explain function as well
+        self.explain_selected_text_prompt = ChatPromptTemplate.from_messages(explain_selected_text_prompt_template)
+        
+
+        self.prompts = {
+            "cze" : {
+                "history_transformation" : ChatPromptTemplate.from_messages(cze_refrase_question_from_history_prompt_template), #rewrite
+                "generate_no_history" : ChatPromptTemplate.from_messages(cze_answer_question_prompt_template),
+                "generate_with_history" : ChatPromptTemplate.from_messages(cze_answer_question_with_history_prompt_template), #rewrite
+                "multiquery" : ChatPromptTemplate.from_messages(cze_multiquery_prompt_template), #rewrite
+                "grade_context" : ChatPromptTemplate.from_messages(cze_context_grader_prompt_template), #rewrite
+                "grade_generation" : ChatPromptTemplate.from_messages(cze_generation_grader_prompt_template) #rewrite
+            },
+            "eng" : {
+                "history_transformation" : ChatPromptTemplate.from_messages(eng_refrase_question_from_history_prompt_template), #rewrite
+                "generate_no_history" : ChatPromptTemplate.from_messages(eng_answer_question_prompt_template),
+                "generate_with_history" : ChatPromptTemplate.from_messages(eng_answer_question_with_history_prompt_template), #rewrite
+                "multiquery" : ChatPromptTemplate.from_messages(eng_multiquery_prompt_template), #rewrite
+                "grade_context" : ChatPromptTemplate.from_messages(eng_context_grader_prompt_template), #rewrite
+                "grade_generation" : ChatPromptTemplate.from_messages(eng_generation_grader_prompt_template) #rewrite
+            }
+        }
+
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
@@ -79,7 +100,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 15_1")
+            print("Adaptive RAG version 15_1_new_structure")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -113,10 +134,16 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         #TODO can add optional model to config
         return self.model
     
+    def _get_prompt_by_language(self, node_type: str, language: str):
+        lang_dict = self.prompts.get(language, self.prompts.get("cze"))
+        return lang_dict.get(node_type, self.prompts["cze"].get(node_type))
+
+
      # create the graph
     def _build_rag(self):
         #define nodes
         workflow = StateGraph(AdaptiveRagState)
+        workflow.add_node("detect_language", self.node_detect_language)
         workflow.add_node("transform_history", self.node_history_transformation)
         workflow.add_node("check_context", self.node_check_context)
         workflow.add_node("start_retrieval_branch", lambda state: state)
@@ -129,10 +156,11 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         workflow.add_node("web_search", self.node_web_search)
 
         #define edges
-        workflow.add_edge(START, "transform_history")
+        workflow.add_edge(START, "detect_language")
 
+        workflow.add_edge("detect_language", "transform_history")
         workflow.add_edge("transform_history", "check_context")
-
+    
         workflow.add_edge("start_retrieval_branch", "multi_query")
         workflow.add_edge("start_retrieval_branch", "extract_metadata")
 
@@ -269,11 +297,26 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                  "retrieval_iteration_counter" : counter_value
                  }
     
+    async def node_detect_language(self, state: AdaptiveRagState):
+        chain = self._create_chain(model=self.model, prompt=self.identify_language_prompt)
+        result = await chain.ainvoke({"question_string" : state["question"]})
+        clean_result = re.sub(r'```json|```', '', result).strip()
+        try:
+            graded_doc = json.loads(clean_result)
+            language = graded_doc.get("language", "eng").lower()
+            if (DEBUG_PRINT):
+                print(f"Detected language: {language}")
+        except Exception:
+            return {"language" : "eng"}
+        return {"language" : language}
+
+
     #rephrase question to search desired data in database
     async def node_history_transformation(self, state: AdaptiveRagState):
         if (state["history"]):
             #create desired chain
-            chain = self._create_chain(model=self.model, prompt=self.history_prompt)
+            prompt = self._get_prompt_by_language("history_transformation", state["language"])
+            chain = self._create_chain(model=self.model, prompt=prompt)
 
             #convert history into desired format
             prompt_history = self._get_prompt_history(state["history"])
@@ -320,6 +363,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         
     async def node_multi_query(self, state: AdaptiveRagState):
         iteration = state.get("retrieval_iteration_counter", 0)
+        language = state.get("language", "cze")
         #first time try simple retrieve
         if (iteration == 0):
             return {"queries" : [state["question"]]}
@@ -329,7 +373,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             if (DEBUG_PRINT):
                 print(f"MULTI QUERY MODE")
 
-            chain = self._create_chain(model = self.model, prompt = self.multiquery_prompt)
+            prompt = self._get_prompt_by_language("multiquery", language)
+            chain = self._create_chain(model = self.model, prompt = prompt)
             result_raw = await chain.ainvoke({"question_string" : state["question"]})
 
             # simple parser
@@ -351,7 +396,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         if (DEBUG_PRINT): 
             print(f"GRADING RETRIEVED CONTEXT: ({len(state['documents'])} docs)")
 
-        chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
+        language = state.get("language", "cze")
+        prompt = self._get_prompt_by_language("grade_context", language)
+        chain = self._create_chain(model=self.model, prompt=prompt)
 
         async def grader_single_doc(doc):
             clean_doc = self._get_clean_doc(doc)
@@ -388,6 +435,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
     # generate an answer
     async def node_generate(self, state: AdaptiveRagState):
+        language = state.get("language", "cze")
         
         #join snippets
         final_context = self._format_weaviate_context(state["documents"])
@@ -395,7 +443,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             print(f"DEBUG: Context length (chars): {len(final_context)}")
 
         if (state["history"]):
-            chain = self._create_chain(model=self.model, prompt=self.main_prompt_history)
+            prompt = self._get_prompt_by_language("generate_with_history", language)
+            chain = self._create_chain(model=self.model, prompt=prompt)
             #get history in desired format
             prompt_history = self._get_prompt_history(state["history"])
 
@@ -406,7 +455,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "prompt_history" : prompt_history
             })
         else:
-            chain = self._create_chain(model=self.model, prompt=self.main_prompt)
+            prompt = self._get_prompt_by_language("generate_no_history", language)
+            chain = self._create_chain(model=self.model, prompt=prompt)
             answer = await chain.ainvoke({
                 "context_string" : final_context,
                 "question_string" : state["question"]
@@ -419,7 +469,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     
     async def node_grade_generation (self, state: AdaptiveRagState):
         gen_value = state.get("generation_iteration_counter", 0) + 1
-        chain = self._create_chain(model=self.model, prompt=self.generation_grader_prompt)
+        language = state.get("language", "cze")
+        prompt = self._get_prompt_by_language("grade_generation", language)
+        chain = self._create_chain(model=self.model, prompt=prompt)
 
         #this is grading base on question and answer --> should effect answer relevancy metrics and maybe context recall/precision
         try:

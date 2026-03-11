@@ -1,67 +1,5 @@
 from langchain_core.prompts import  MessagesPlaceholder
 # prompt
-# answer_question_prompt_template = [
-#     ("system",
-#     """
-#     You are a precise and helpful chatbot. Your main task is to answer the user's \
-#     question based STRICTLY on the provided context.
-
-#     STRICT RULES:
-#     1) Use ONLY the following pieces of context to answer the question.
-#     2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
-#     3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
-#     4) If the context does not contain the complete answer, provide a PARTIAL ANSWER. Always mention the entities from the question (e.g., 'Regarding [Subject]...')  to stay relevant, even if you are stating that information is missing.
-#     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
-#     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
-
-#     EXAMPLE OF CORRECT CITATION:
-#     Context: [doc 1] Franz Kafka was a writer. [doc 2] He was born in Prague.
-#     Question: Kdo byl Franz Kafka a kde se narodil?
-#     Answer: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2], [doc 3].
-    
-#     Context: \n {context_string} \n
-#     """),
-#     ("user", "{question_string}")
-#     ]
-
-# answer_question_prompt_template = [
-#     ("system",
-#     """
-#     Jsi precizní historický asistent. Tvým úkolem je odpovědět na otázku uživatele VÝHRADNĚ na základě poskytnutého kontextu.
-
-#     PŘÍSNÁ PRAVIDLA:
-#     1) Použij POUZE informace z kontextu.
-#     2) CITACE: Za každé tvrzení doplň [doc X].
-#     3) JAZYK: Odpovídej v JAZYCE DOTAZU (pokud se ptá česky, odpověz česky).
-#     4) STRUKTURA: Jdi přímo k věci. Nepoužívej úvody jako "Ohledně..." nebo "Na základě textu...".
-#     5) NEÚPLNOST: Pokud v kontextu chybí odpověď na část otázky, stručně uveď jen to, co je k dispozici. O tom, co chybí, napiš maximálně jednu krátkou větu na úplný konec.
-    
-#     PŘÍKLAD SPRÁVNÉHO CITOVÁNÍ:
-#     Kontext: [doc 1] Franz Kafka byl spisovatel. [doc 2] Narodil se v Praze. [doc 3] Spisovatel Franz Kafka se narodil v Praze.
-#     Otázka: Kdo byl Franz Kafka a kde se narodil?
-#     Odpověď: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2], [doc 3].
-
-#     Kontext: \n {context_string} \n
-#     """),
-#     ("user", "{question_string}")
-#     ]
-
-answer_question_prompt_template = [
-    ("system", """
-    Jsi odborný historik. Odpovídej plynule v češtině.
-    
-    PRAVIDLA:
-    1) Odpověď začni PŘÍMO fakty. Nepoužívej úvody jako "Ohledně...", "Na základě..." nebo "V kontextu...".
-    2) Piš v odstavcích, buď věcný, ale ne strohý.
-    3) Každé tvrzení cituj pomocí [doc X].
-    4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. 
-       Jen pokud v kontextu není VŮBEC NIC k tématu, napiš jedinou větu: "K tomuto tématu chybí v dostupných pramenech podklady."
-     
-    Kontext: \n {context_string} \n
-    """),
-    ("user", "{question_string}")
-]
-
 cze_answer_question_prompt_template = [
     ("system", """
     Jsi odborný historik. Odpovídej plynule v češtině.
@@ -101,7 +39,11 @@ eng_answer_question_prompt_template = [
     ("user", "{question_string}")
     ]
 
-answer_question_with_history_prompt_template = [
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
+eng_answer_question_with_history_prompt_template = [
     ("system",
     """
     You are a precise historical assistant. You are in a conversation. 
@@ -128,6 +70,37 @@ answer_question_with_history_prompt_template = [
     ("user", "User's current query: {original_question}\nTechnical version to answer: {question_string}")
 ]
 
+cze_answer_question_with_history_prompt_template = [
+    ("system",
+    """
+    You are a precise historical assistant. You are in a conversation. 
+    You will receive the user's CURRENT SHORT QUERY and a TECHNICAL STANDALONE version of it.
+    - Use the TECHNICAL version to find facts in the context.
+    - Use the CURRENT SHORT QUERY to match the user's tone and language.
+
+    STRICT RULES:
+    1) Use ONLY the following pieces of context to answer the question.
+    2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
+    3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
+    4) If you cannot find the answer, clearly state what information is missing. Keep the answer concise.
+    5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
+    6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
+
+    EXAMPLE OF CORRECT CITATION:
+    Context: [doc 1] Franz Kafka was a writer. [doc 2] He was born in Prague.
+    Question: Kdo byl Franz Kafka a kde se narodil?
+    Answer: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2].
+    
+    Context: \n {context_string} \n
+    """),
+    MessagesPlaceholder(variable_name="prompt_history"),
+    ("user", "User's current query: {original_question}\nTechnical version to answer: {question_string}")
+]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
 check_sufficient_context_prompt_template = [
     ("system", """You are a retrieval optimizer. Your task is to determine if the PROVIDED CONTEXT contains enough factual information to answer the NEW QUESTION.
 
@@ -143,7 +116,11 @@ check_sufficient_context_prompt_template = [
     ("user", "CONTEXT: \n {context_string} \n NEW QUESTION: {question_string} \n Is the information sufficient? (yes/no):")
 ]
 
-refrase_question_from_history_prompt_template = [
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
+eng_refrase_question_from_history_prompt_template = [
     ("system",
     """
     Given a chat history and the latest user question \
@@ -159,6 +136,54 @@ refrase_question_from_history_prompt_template = [
     ("user", "{question_string}")
     ]
 
+cze_refrase_question_from_history_prompt_template = [
+    ("system",
+    """
+    Given a chat history and the latest user question \
+    which might reference context in the chat history, formulate a standalone question which can be understood \
+    without the chat history. Do NOT answer the question, Your goal is to make the question more specific by incorporating \
+    relevant keywords and entities (like names, locations, or dates) from the chat history. \
+    CRITICAL RULE: The standalone question MUST be in the SAME LANGUAGE as the latest user question. 
+    If the user asks in Czech, the reformulated question must be in Czech.
+    
+    Just reformulate it if needed and otherwise return it as is. 
+    """),
+    MessagesPlaceholder(variable_name="prompt_history"),
+    ("user", "{question_string}")
+    ]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
+eng_multiquery_prompt_template = [
+    ("system", 
+    """
+    You are an expert history researcher. Generate 3 DIFFERENT search queries.
+    1) A specific query keeping all dates and names.
+    2) A query using synonyms for the main actions/consequences.
+    3) A STEP-BACK query: Ask about the broader historical context or the general legal/social framework of that era.
+    
+    Output ONLY the queries, one per line. No introduction. Same language as user."""),
+    ("user", "{question_string}")
+]
+
+cze_multiquery_prompt_template = [
+    ("system", 
+    """
+    You are an expert history researcher. Generate 3 DIFFERENT search queries.
+    1) A specific query keeping all dates and names.
+    2) A query using synonyms for the main actions/consequences.
+    3) A STEP-BACK query: Ask about the broader historical context or the general legal/social framework of that era.
+    
+    Output ONLY the queries, one per line. No introduction. Same language as user."""),
+    ("user", "{question_string}")
+]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
 extract_metadata_from_question_template = [
     ("system",
     """
@@ -171,47 +196,6 @@ extract_metadata_from_question_template = [
     """),
     ("user", "{question_string}")
     ]
-
-# multiquery_prompt_template = [
-#     ("system",
-#     """
-#     You are an expert search assistant. Generate 3 variations of the user question.
-    
-#     STRICT RULES:
-#     1) PRESERVE ENTITIES: You MUST keep all dates (e.g., '10. 12. 1863'), specific law names, and proper nouns EXACTLY as they appear.
-#     2) NO DATA LOSS: Do not simplify the question so much that these identifiers are lost.
-#     3) Respond in the SAME LANGUAGE as the user.
-#     """),
-#     ("user", "{question_string}")
-#     ]
-
-# multiquery_prompt_template = [
-#     ("system",
-#     """
-#     You are an expert search assistant for a historical archive. 
-#     Your task is to generate 3 DIFFERENT variations of the user's question to help retrieve relevant documents from a vector database.
-
-#     STRICT RULES:
-#     1) PRESERVE ENTITIES: You MUST keep all dates (e.g., '10. 12. 1863'), law names, and proper nouns EXACTLY as they appear.
-#     2) VARIATION: Phrasing should vary to cover different ways a historical document might record the information (e.g., use synonyms for "důsledky" or "vliv").
-#     3) NO PREAMBLE: Output ONLY the questions. No "Here are your questions" or introductory text.
-#     4) FORMAT: Output each question on a NEW LINE.
-#     5) LANGUAGE: Respond in the SAME LANGUAGE as the user.
-#     """),
-#     ("user", "{question_string}")
-# ]
-
-multiquery_prompt_template = [
-    ("system", 
-    """
-    You are an expert history researcher. Generate 3 DIFFERENT search queries.
-    1) A specific query keeping all dates and names.
-    2) A query using synonyms for the main actions/consequences.
-    3) A STEP-BACK query: Ask about the broader historical context or the general legal/social framework of that era.
-    
-    Output ONLY the queries, one per line. No introduction. Same language as user."""),
-    ("user", "{question_string}")
-]
 
 
 multiquery_retry = (
@@ -241,7 +225,11 @@ hyde_retry = (
 )
 
 
-context_grader_prompt_template =[
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
+eng_context_grader_prompt_template =[
     ("system", 
      """
     You are a lenient relevance auditor. 
@@ -257,45 +245,27 @@ context_grader_prompt_template =[
     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
 ]
 
-# generation_grader_prompt_template =[
-#     ("system", 
-#      """
-#     You are a factual auditor. Compare the Generated Answer against the Context.
+cze_context_grader_prompt_template =[
+    ("system", 
+     """
+    You are a lenient relevance auditor. 
+    Your task is to filter out ONLY completely unrelated noise.
+
+    RULES:
+    1. If the document contains ANY facts, names, dates, or context even slightly related to the user's question, grade it as 'yes'.
+    2. Even if the document only partially answers the question, grade it as 'yes'.
+    3. Grade as 'no' ONLY if the document is completely unrelated to the topic.
     
-#     CRITERIA:
-#     1. If the answer contains a material fact clearly NOT present in the context, it is a hallucination ('no').
-#     2. Consider the context as a WHOLE. Facts might be distributed across multiple documents. Do not penalize the model for correctly synthesizing dates or common knowledge equivalents (e.g., resolving a holiday to a specific date if supported by another chunk).
-#     3. If the answer provides a PARTIAL response and explicitly states that some information is missing (as instructed by its system prompt), grade it as 'yes' (supported), because admitting lack of info based on context is factually correct behavior.
-    
-#     Respond in strict JSON format without any markdown wrappers:
-#     {{
-#        "binary_score": "yes" (if supported) or "no" (if hallucinated),
-#        "feedback": "Identify the specific hallucinated sentence or write 'supported'."
-#     }}
-#     """),
-#     ("user", "Context: \n {documents} \n Generated answer: {answer}")
-# ]
+    Output ONLY valid JSON with a single key 'binary_score' (yes/no).
+    """),
+    ("user", "Retrieved document: \n {document} \n User question: {question_string}")
+]
 
-# generation_grader_prompt_template = [
-#     ("system", """
-#     You are a quality auditor for a RAG system. 
-#     Analyze the Answer provided below in relation to the User Question.
-    
-#     GOAL:
-#     Determine if the answer is a COMPLETE factual response or if it's an INCOMPLETE/SORRY response.
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
 
-#     An answer is INCOMPLETE if:
-#     - It says "information is missing", "not mentioned", "I don't know".
-#     - It is a "Partial Answer" that explicitly lists what it could NOT find.
-#     - It is a generic "Sorry, I can't answer" message.
-
-#     Respond ONLY with a JSON object:
-#     {{"is_complete": "yes"}} or {{"is_complete": "no"}}
-#     """),
-#     ("user", "QUESTION: {question}\n\nANSWER: {answer}")
-# ]
-
-generation_grader_prompt_template = [
+eng_generation_grader_prompt_template = [
     ("system",
     """
     You are a quality auditor for a historical RAG system. 
@@ -317,6 +287,45 @@ generation_grader_prompt_template = [
     """),
     ("user", "QUESTION: {question}\n\nANSWER: {answer}")
 ]
+
+cze_generation_grader_prompt_template = [
+    ("system",
+    """
+    You are a quality auditor for a historical RAG system. 
+    Analyze the Answer provided below in relation to the User Question.
+    
+    GOAL:
+    Determine if the answer provides enough factual information to be useful. We want to avoid unnecessary retries if the core of the question is already answered.
+
+    Mark "is_complete": "yes" if:
+    - The answer provides at least some direct facts related to the question.
+    - The answer is informative, even if it admits that some minor details are missing.
+
+    Mark "is_complete": "no" ONLY if:
+    - The answer is a complete apology (e.g., "I don't know", "Information not found").
+    - The answer is completely irrelevant to the subject of the question.
+
+    Respond ONLY with a JSON object:
+    {{"is_complete": "yes"}} or {{"is_complete": "no"}}
+    """),
+    ("user", "QUESTION: {question}\n\nANSWER: {answer}")
+]
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+identify_language_prompt_template = [
+    ("system", 
+    """
+    You are a language detector. Your task is to identify the language of the user's question and respond with the corresponding ISO 639-2/T code  (e.g., 'ces', 'deu', 'eng', 'rus', 'slk')..
+    Respond ONLY with a JSON object:
+    {{"language": "ces"}} or {{"language": "eng"}} or {{"language": "deu"}} etc.
+    """),
+    ("user", "{question_string}")
+]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
 
 explain_selected_text_prompt_template = [
         ("system",
@@ -344,14 +353,4 @@ explain_selected_text_prompt_template = [
     """),
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "Explain why we said: '{selected_text}' in the language of the text and CITE.")
-]
-
-identify_language_prompt_template = [
-    ("system", 
-    """
-    Your task is to identify the language of the user's question and respond with the corresponding ISO 639-2/T code  (e.g., 'ces', 'deu', 'eng', 'rus', 'slk')..
-    Respond ONLY with a JSON object:
-    {{"language": "ces"}} or {{"is_complete": "eng"}} or {{"is_complete": "deu"}} etc.
-    """),
-    ("user", "{question_string}")
 ]
