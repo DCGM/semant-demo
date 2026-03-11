@@ -100,7 +100,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 15_2")
+            print("Adaptive RAG version 16")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -292,6 +292,27 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         all_chunks = all_chunks[:10]
 
         counter_value = state.get("retrieval_iteration_counter", 0) + 1
+
+        GET_NEIGHBORS = True
+        if (GET_NEIGHBORS == True):
+            if (DEBUG_PRINT):
+                print(f"Getting neighbors")
+
+            start_chunks = all_chunks[:5]
+            expanded_chunks = []
+            seen_context = set()
+
+            for chunk in start_chunks:
+                expanded_text = await self.searcher.get_expanded_context(chunk.document, chunk.from_page)
+                if (expanded_chunks not in seen_context):
+                    new_chunk = chunk.model_copy()
+                    new_chunk.text = expanded_text
+                    expanded_chunks.append(new_chunk)
+                    seen_context.add(expanded_text)
+            
+            return  {"documents" : expanded_chunks[:5], 
+                 "retrieval_iteration_counter" : counter_value
+                 }
 
         return  {"documents" : all_chunks, 
                  "retrieval_iteration_counter" : counter_value
