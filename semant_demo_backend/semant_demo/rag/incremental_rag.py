@@ -59,7 +59,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "generate_with_history" : ChatPromptTemplate.from_messages(cze_answer_question_with_history_prompt_template), #rewrite
                 "multiquery" : ChatPromptTemplate.from_messages(cze_multiquery_prompt_template), #rewrite
                 "grade_context" : ChatPromptTemplate.from_messages(cze_context_grader_prompt_template), #rewrite
-                "grade_generation" : ChatPromptTemplate.from_messages(cze_generation_grader_prompt_template) #rewrite
+                "grade_generation" : ChatPromptTemplate.from_messages(cze_generation_grader_prompt_template), #rewrite
+                "extract_keyword" : ChatPromptTemplate.from_messages(cze_extract_keyword_prompt)
             },
             "eng" : {
                 "history_transformation" : ChatPromptTemplate.from_messages(eng_refrase_question_from_history_prompt_template), #rewrite
@@ -67,7 +68,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "generate_with_history" : ChatPromptTemplate.from_messages(eng_answer_question_with_history_prompt_template), #rewrite
                 "multiquery" : ChatPromptTemplate.from_messages(eng_multiquery_prompt_template), #rewrite
                 "grade_context" : ChatPromptTemplate.from_messages(eng_context_grader_prompt_template), #rewrite
-                "grade_generation" : ChatPromptTemplate.from_messages(eng_generation_grader_prompt_template) #rewrite
+                "grade_generation" : ChatPromptTemplate.from_messages(eng_generation_grader_prompt_template), #rewrite
+                "extract_keyword" : ChatPromptTemplate.from_messages(eng_extract_keyword_prompt)
             }
         }
 
@@ -100,7 +102,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 16")
+            print("Adaptive RAG version 17")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -197,6 +199,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             self.decide_after_generation,
             {
                 "finish": END,
+                "web_search" : "web_search",
                 "retry" : "start_retrieval_branch"
             }
         )
@@ -284,7 +287,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         for response in search_responses:
             for chunk in response.results:
                 chunk_id = getattr(chunk, "id", None)
-                print(f"chunk id: {chunk_id}")
                 if chunk_id not in unique_chunks:
                     unique_chunks[chunk_id] = chunk
 
@@ -293,7 +295,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         counter_value = state.get("retrieval_iteration_counter", 0) + 1
 
-        GET_NEIGHBORS = True
+        GET_NEIGHBORS = False
         if (GET_NEIGHBORS == True):
             if (DEBUG_PRINT):
                 print(f"Getting neighbors")
@@ -304,7 +306,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
             for chunk in start_chunks:
                 expanded_text = await self.searcher.get_expanded_context(chunk.document, chunk.from_page)
-                if (expanded_chunks not in seen_context):
+                if (expanded_text not in seen_context):
                     new_chunk = chunk.model_copy()
                     new_chunk.text = expanded_text
                     expanded_chunks.append(new_chunk)
@@ -516,22 +518,43 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             return {"feedback": "supported", "generation_iteration_counter": gen_value}
 
     def decide_after_generation (self, state: AdaptiveRagState):
-        if state["feedback"] == "supported" or state["retrieval_iteration_counter"] >= self.max_retries:
+        retrieval_count = state.get("retrieval_iteration_counter", 0)
+        web_search_done = state.get("web_search_performed", False)
+        if state["feedback"] == "supported":
             if (DEBUG_PRINT): 
-                print("FINISHING: Answer satisfactory or max retries reached.")
+                print("FINISHING: Answer satisfactory.")
             return "finish"
+        if (retrieval_count < self.max_retries):
+            if (DEBUG_PRINT): 
+                print("Retrying with multiquery.")
+            return "retry"
+        if (web_search_done == False and self.web_search_enabled == True):
+            return "web_search"
         
-        return "retry"
+        return "finish"
     
     async def node_web_search (self, state: AdaptiveRagState):
+        if (DEBUG_PRINT):
+            print(f"Extracting keyword for the internet search.")
+
+        language = state.get("language", "cze")
+        prompt = self._get_prompt_by_language("extract_keyword", language)
+        chain = self._create_chain(model=self.model, prompt=prompt)
+        keywords = await chain.ainvoke({"question": state["question"]})
+        search_query = keywords.strip()
+
+        if (DEBUG_PRINT):
+            print(f"Trying to search web using DuckDuckGo")
+
         try:
             def ddg(query):
                 with DDGS() as ddgs:
                     results = [r["body"] for r in ddgs.text(query, max_results= 5)]
                     return "\n".join(results)
-                
+  
             uuid_tmp = uuid.uuid4()
-            search_result = await asyncio.to_thread(ddg, state["question"])
+            search_result = await asyncio.to_thread(ddg, search_query)
+            #search_result = await asyncio.to_thread(ddg, state["question"])
             search_chunk = TextChunkWithDocument(
                 id=uuid_tmp,
                 title="DuckDuckGo Search",

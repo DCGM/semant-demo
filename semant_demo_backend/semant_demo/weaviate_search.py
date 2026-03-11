@@ -1517,12 +1517,13 @@ class WeaviateSearch:
     
     async def get_expanded_context(self, doc_id, center_page) -> str:
         start_page = max(0, center_page - 1)
+        end_page = center_page + 1
         result = await self.chunk_col.query.fetch_objects(
             limit=3,
             filters=(
                 Filter.by_ref(link_on="document").by_id().equal(doc_id) & 
                 Filter.by_property("from_page").greater_or_equal(start_page) &
-                Filter.by_property("from_page").less_than(center_page + 1)
+                Filter.by_property("from_page").less_or_equal(end_page)
             ),
             sort=weaviate.classes.query.Sort.by_property("from_page", ascending=True),
             return_properties=["text"]

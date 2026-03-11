@@ -306,9 +306,11 @@ cze_generation_grader_prompt_template = [
     """),
     ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
 ]
+
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
+
 identify_language_prompt_template = [
     ("system", 
     """
@@ -322,6 +324,48 @@ identify_language_prompt_template = [
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
+
+eng_extract_keyword_prompt = [
+    """
+    You are an expert in searching and research. Extract a maximum of 3 keywords for an internet search engine from the questions below. 
+    Focus on nouns, specific names, and dates.
+    Write only keywords separated by commas.
+    
+    Question: {question}
+    Keywords:
+    """
+]
+
+cze_extract_keyword_prompt = [
+    """
+    Jsi expert na vyhledávání a rešerše. Z níže uvedené otázky extrahuj maximálně 3 klíčová slova pro internetový vyhledávač. 
+    Zaměř se na podstatná jména, konkrétní jména a letopočty.
+    Piš pouze klíčová slova oddělená čárkou.
+    
+    Otázka: {question}
+    Klíčová slova:
+    """
+]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
+web_search_reranker_prompt_template = [
+    ("system",
+    """
+    Jsi expert na rešerše. Pro zadanou otázku vygeneruj 2 různé vyhledávací dotazy pro internet (jeden zaměřený na fakta/data, druhý na širší souvislosti).
+        Piš pouze dotazy, každý na nový řádek.
+        Otázka: {question}
+    """),
+    ("user", "{question_string}")
+]
+
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
 
 explain_selected_text_prompt_template = [
         ("system",

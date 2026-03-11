@@ -10,7 +10,7 @@ params:
   alpha: 0.5
   chunk_limit: 5
   qt_strategy : "multi_query"
-  max_retries : 3
+  max_retries : 2
   web_search_enabled : True
   metadata_extraction_allowed : True
   self_reflection : True
