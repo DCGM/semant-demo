@@ -7,7 +7,10 @@
   "private": true,
   "scripts": {
     "lint": "eslint --ext .js,.ts,.vue ./",
-    "test": "echo \"No test specified\" && exit 0"
+    "test": "echo \"No test specified\" && exit 0",
+    "backend:openapi": "curl -s http://127.0.0.1:8000/openapi.json -o src/generated/openapi.json",
+    "backend:generate-client": "openapi-generator-cli generate -i ./src/generated/openapi.json -g typescript-fetch -o src/generated/api --additional-properties=supportsES6=true,typescriptThreePlus=true,modelPropertyNaming=camelCase,enumPropertyNaming=camelCase,withoutPrefixEnums=true,withInterfaces=true,useSingleRequestParameter=true",
+    "backend:sync-client": "pnpm backend:openapi && pnpm backend:generate-client"
   },
   "dependencies": {
     "@quasar/extras": "^1.0.0",
@@ -31,7 +34,8 @@
     "eslint-plugin-n": "^15.0.0",
     "eslint-plugin-promise": "^6.0.0",
     "eslint-plugin-vue": "^9.0.0",
-    "typescript": "^4.5.4"
+    "typescript": "^4.5.4",
+    "@openapitools/openapi-generator-cli": "^2.24.0"
   },
   "engines": {
     "node": "^18 || ^16 || ^14.19",
