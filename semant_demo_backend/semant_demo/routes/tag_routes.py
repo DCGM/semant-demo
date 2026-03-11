@@ -54,6 +54,29 @@ async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearchAndTa
 
 @exp_router.post("/api/tagging_task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
+                        session: AsyncSession = Depends(get_async_session)):
+    task_id = str(uuid.uuid4())
+
+    # Write initial state to Redis — no SQLAlchemy needed
+    redis_client.set(
+        f"task:{task_id}",
+        json.dumps({"status": "PENDING", "task_id": task_id}),
+        ex=86400
+    )
+
+    tag_and_store.delay(tagReq.model_dump(), task_id)
+    return {"job_started": True, "task_id": task_id, "message": "Tagging task queued"}
+
+
+@exp_router.get("/api/tagging_task/{task_id}")
+async def get_task_status(task_id: str):
+    raw = redis_client.get(f"task:{task_id}")
+    if not raw:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return json.loads(raw)
+
+@exp_router.post("/api/tagging_task", response_model=schemas.TagStartResponse)
+async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
                         tagger: WeaviateSearchAndTag = Depends(get_tag),
                         session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
     """
