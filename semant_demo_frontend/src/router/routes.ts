@@ -25,6 +25,11 @@ const routes: RouteRecordRaw[] = [
     children: [{ path: '', component: () => import('pages/UserCollectionManagementPage.vue') }]
   },
   {
+    path: '/tagging/',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [{ path: '', component: () => import('pages/TaggingPage/TaggingPage.vue') }]
+  },
+  {
     path: '/tag_manage/',
     component: () => import('layouts/MainLayout.vue'),
     children: [{ path: '', component: () => import('pages/TagManagementPage.vue') }]
