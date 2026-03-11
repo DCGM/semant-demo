@@ -23,15 +23,21 @@ import os
 import re
 import logging
 import json
+import sys
+from pathlib import Path
 from celery import Task
 from weaviate.classes.query import Filter, QueryReference
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
+# Add parent directory to path so we can import sibling modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from worker import celery
-from worker.redis_client import redis_client
-from semant_demo import schemas
-from semant_demo.config import config
+from redis_client import redis_client
+from config import config
+from schemas import TaggingTaskReqTemplate, APIType
+from llm_caller import OllamaProxyRunnable
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +84,7 @@ def tag_and_store(self: Task, tag_req: dict, task_id: str):
     set_status(task_id, "RUNNING", processed=0, total=0)
 
     try:
-        req = schemas.TaggingTaskReqTemplate(**tag_req)
+        req = TaggingTaskReqTemplate(**tag_req)
 
         # --- Build LangChain chain ---
         prompt = ChatPromptTemplate.from_template(
@@ -87,14 +93,13 @@ def tag_and_store(self: Task, tag_req: dict, task_id: str):
         model_name = req.task_config.params.model_name
         temperature = req.task_config.params.temperature
 
-        if req.task_config.params.model_type == schemas.APIType.openai:
+        if req.task_config.params.model_type == APIType.openai:
             model = ChatOpenAI(
                 model=model_name or config.OPENAI_MODEL,
                 api_key=os.getenv("OPENAI_API_KEY", ""),
                 temperature=temperature,
             )
         else:
-            from semant_demo.ollama_proxy import OllamaProxyRunnable
             model = OllamaProxyRunnable()
             model.set_model(model_name)
             model.set_temperature(temperature)
@@ -174,7 +179,7 @@ def tag_and_store(self: Task, tag_req: dict, task_id: str):
                     "content": text,
                 })
 
-                tag_text = result.content if req.task_config.params.model_type == schemas.APIType.openai else str(result)
+                tag_text = result.content if req.task_config.params.model_type == APIType.openai else str(result)
 
                 if POSITIVE_RESPONSES.search(tag_text):
                     refs = obj.references.get("automaticTag") if obj.references else None
@@ -226,7 +231,7 @@ def tag_and_store(self: Task, tag_req: dict, task_id: str):
         raise self.retry(exc=e, countdown=10)
 
 
-def _add_or_get_tag_sync(client, req: schemas.TaggingTaskReqTemplate):
+def _add_or_get_tag_sync(client, req: TaggingTaskReqTemplate):
     """Sync version of add_or_get_tag — adjust to match your existing logic."""
     from semant_demo.weaviate_tag import WeaviateSearchAndTag
     # Re-use existing logic if it's already sync-compatible, otherwise inline it here

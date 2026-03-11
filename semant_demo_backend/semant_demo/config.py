@@ -36,6 +36,10 @@ class Config:
 
         # SQL db
         self.SQL_DB_URL = "sqlite+aiosqlite:///tasks.db"
+
+        # Redis config
+        self.REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+        self.REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
         
         # path to rag configs
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "configs"

@@ -1,34 +1,23 @@
 import os
 import logging
-
-from fastapi import APIRouter, Depends, HTTPException
-
-from semant_demo import schemas
-from semant_demo.weaviate_tag import WeaviateSearchAndTag
-# from semant_demo.rag.rag_generator import RagGenerator
 import asyncio
-
-from semant_demo.tagging.tagging_task import tag_and_store
 import uuid
-from pathlib import Path
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, asc
-#import db
-from sqlalchemy import exc
-from datetime import timezone
-
-import logging
-
-from semant_demo.schemas import Task, TasksBase
-
 import json
 import yaml
+from pathlib import Path
+from datetime import timezone
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, asc, exc
+
+from semant_demo import schemas
+from semant_demo.schemas import Task, TasksBase
+from semant_demo.weaviate_tag import WeaviateSearchAndTag
+from semant_demo.tagging.redis_client import redis_client
+from semant_demo.tagging.celery_client import celery
 from semant_demo.tagging.sql_utils import DBError, update_task_status
 from semant_demo.tagging.tagging_task import getTaskByName
-
-#import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_tag, get_engine
 
 logging.basicConfig(level=logging.INFO)
@@ -55,64 +44,39 @@ async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearchAndTa
 @exp_router.post("/api/tagging_task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
                         session: AsyncSession = Depends(get_async_session)):
+    """
+    Queues a tagging task to the Celery worker.
+    Task status is tracked in Redis.
+    """
     task_id = str(uuid.uuid4())
 
-    # Write initial state to Redis — no SQLAlchemy needed
+    # Write initial state to Redis
     redis_client.set(
         f"task:{task_id}",
         json.dumps({"status": "PENDING", "task_id": task_id}),
-        ex=86400
+        ex=86400  # 24h TTL
     )
 
-    tag_and_store.delay(tagReq.model_dump(), task_id)
+    # Send task to Celery worker via RabbitMQ
+    celery.send_task(
+        "tag_and_store",
+        args=[tagReq.model_dump(), task_id],
+        queue="default"
+    )
+    
     return {"job_started": True, "task_id": task_id, "message": "Tagging task queued"}
 
 
 @exp_router.get("/api/tagging_task/{task_id}")
 async def get_task_status(task_id: str):
+    """
+    Get the status of a tagging task from Redis.
+    """
     raw = redis_client.get(f"task:{task_id}")
     if not raw:
         raise HTTPException(status_code=404, detail="Task not found")
     return json.loads(raw)
 
-@exp_router.post("/api/tagging_task", response_model=schemas.TagStartResponse)
-async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
-                        tagger: WeaviateSearchAndTag = Depends(get_tag),
-                        session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
-    """
-    Starts tagging task in form of asyncio.create_task
-    """
-    logging.info("Tagging...")
-    taskId = str(uuid.uuid4())  # generate id for current task
-    try:
-        try:
-            async with session.begin():
-                session.add(Task(taskId=taskId))
-                await session.commit()
-        except exc.SQLAlchemyError as e:
-            logging.exception(f'Failed adding object to database. Task ID={taskId}')
-            raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
-
-        _, global_async_session_maker = get_engine()
-
-        task = asyncio.create_task(tag_and_store(tagReq, taskId, tagger, global_async_session_maker))
-        taskName = task.get_name()
-        # store the task name into DB
-        try:
-            async with session.begin():
-                await session.execute(
-                    update(Task)
-                    .where(Task.taskId == taskId)
-                    .values(task_name=taskName)
-                )
-        except exc.SQLAlchemyError as e:
-            logging.exception(f'Failed adding object to database. Task ID={taskId}')
-            raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
-
-        return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
-    except Exception as e:
-        logging.error(e)
-        raise HTTPException(status_code=500, detail=str(e))
 
 @exp_router.get("/api/configs", response_model=schemas.GetConfigsResponse)
 async def get_configs() -> schemas.GetConfigsResponse:
