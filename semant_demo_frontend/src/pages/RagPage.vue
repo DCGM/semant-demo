@@ -264,7 +264,7 @@ const feedbackOptions = [
   { label: 'Factually incorrect / Fakticky nesprávné', value: 'fact_error' },
   { label: 'Irrelevant / Neodpovídá na otázku', value: 'not_relevant' },
   { label: 'Citation issues / Chybějící nebo špatné zdroje', value: 'citation_error' },
-  { label: 'Poor style or language / Špatný styl nebo čeština', value: 'language_issue' }
+  { label: 'Wrong language or formatting / Chybný jazyk nebo formátování', value: 'language_issue' }
 ]
 const selectedErrorTypes = ref([])
 
