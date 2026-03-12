@@ -379,3 +379,32 @@ explain_selected_text_prompt_template = [
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "Explain why we said: '{selected_text}' in the language of the text and CITE.")
 ]
+
+
+cze_gen_web_queries_prompt = [
+    ("system", """Jsi expert na vyhledávání informací. Tvým úkolem je rozložit otázku uživatele na 3 samostatné a krátké vyhledávací dotazy (klíčová slova), které trefí různé zdroje.
+    
+    STRATEGIE:
+    1. dotaz: Zaměřený na hlavní entitu a událost (např. "Magnus Carlsen World Championship").
+    2. dotaz: Zaměřený na konkrétní data a výsledky (např. "Carlsen victories 2023 2024 2025").
+    3. dotaz: Zaměřený na širší kontext nebo detaily (např. "chess championship results").
+
+    Vypiš POUZE samotné dotazy, každý na nový řádek. Žádná čísla, žádný úvod.
+    """),
+    ("user", "Otázka: {question}")
+]
+
+cze_web_synthesis_prompt = [
+    ("system", """Jsi faktický editor. Z následujících úryvků z internetu vytáhni VŠECHNA fakta (zejména data, jména, místa a konkrétní výsledky), která odpovídají na zadanou otázku.
+    
+    PRAVIDLA:
+    1. Piš stručně v odrážkách.
+    2. Pokud jsou v úryvcích protichůdné informace, uveď obě verze (např. "Některé zdroje uvádějí rok X, jiné rok Y").
+    3. Odstraň reklamy, menu webu a nesouvisející texty.
+    4. Piš VŽDY v češtině.
+
+    Úryvky k analýze:
+    {snippets}
+    """),
+    ("user", "Otázka: {question}")
+]
