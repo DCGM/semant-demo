@@ -60,9 +60,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "multiquery" : ChatPromptTemplate.from_messages(cze_multiquery_prompt_template), #rewrite
                 "grade_context" : ChatPromptTemplate.from_messages(cze_context_grader_prompt_template), #rewrite
                 "grade_generation" : ChatPromptTemplate.from_messages(cze_generation_grader_prompt_template), #rewrite
-                "extract_keyword" : ChatPromptTemplate.from_messages(cze_extract_keyword_prompt),
-                "gen_web_queries" : ChatPromptTemplate.from_messages(cze_gen_web_queries_prompt),
-                "proc_web" : ChatPromptTemplate.from_messages(cze_web_synthesis_prompt)
+                "extract_keyword" : ChatPromptTemplate.from_messages(cze_extract_keyword_prompt)
             },
             "eng" : {
                 "history_transformation" : ChatPromptTemplate.from_messages(eng_refrase_question_from_history_prompt_template), #rewrite
@@ -104,7 +102,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 19")
+            print("Adaptive RAG version 20")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -541,16 +539,11 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         try:
             language = state.get("language", "cze")
-            # prompt = self._get_prompt_by_language("extract_keyword", language)
-            prompt = self._get_prompt_by_language("gen_web_queries", language)
+            prompt = self._get_prompt_by_language("extract_keyword", language)
             chain = self._create_chain(model=self.model, prompt=prompt)
 
-            queries_raw = await chain.ainvoke({"question": state["question"]})
-            search_queries = [q.strip() for q in queries_raw.split("\n") if len(q.strip()) > 3][:3]
-            search_queries.append(state["question"])
-
-            # keywords_raw = await chain.ainvoke({"question": state["question"]})
-            # keywords = keywords_raw.replace(",", " ").strip()
+            keywords_raw = await chain.ainvoke({"question": state["question"]})
+            keywords = keywords_raw.replace(",", " ").strip()
 
             search_queries = [keywords, state["question"]]
         except Exception as e:
@@ -573,17 +566,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 return "\n".join(unique_results)
   
             uuid_tmp = uuid.uuid4()
-            #search_result = await asyncio.to_thread(ddg, search_queries)
-
-            raw_results = await asyncio.to_thread(ddg, search_queries)
-            prompt_synth = self._get_prompt_by_language("proc_web", language)
-            chain_synth = self._create_chain(model=self.model, prompt=prompt_synth)
-            web_factsheet = await chain_synth.ainvoke({
-            "question": state["question"],
-            "snippets": raw_results[:10000]
-            })
-            search_result = web_factsheet
-
+            search_result = await asyncio.to_thread(ddg, search_queries)
 
             search_chunk = TextChunkWithDocument(
                 id=uuid_tmp,
