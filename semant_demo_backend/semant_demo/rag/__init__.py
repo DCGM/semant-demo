@@ -3,3 +3,4 @@ from semant_demo.rag.rag_test import TestRag
 from semant_demo.rag.adaptive_rag import AdaptiveRagGenerator
 from semant_demo.rag.agentic_rag import xmartiAgentRag
 from semant_demo.rag.incremental_rag import IncrementalAdaptiveRagGenerator
+from semant_demo.rag.adaptive_rag_og import AdaptiveRagGeneratorOg
