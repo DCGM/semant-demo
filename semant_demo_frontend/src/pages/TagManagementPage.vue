@@ -213,7 +213,7 @@
               map-options
               dense
               outlined
-              :loading="loadingSpinner"
+              :loading="loadingSpinnerTags"
               @popup-show="fetchTags"
             >
               <!-- No option slot -->
@@ -333,14 +333,26 @@
           />
 
            <div class="col-auto flex justify-end">
-            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loading" @click="removeSelectedTags" />
+            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loadingSpinnerRemoveTags" @click="removeSelectedTags" />
           </div>
         </div>
         <div class="row items-center" style="width: 100%;">
           <div class="col-auto flex justify-end">
-            <q-btn type="submit" color="primary" label="Get tagged texts" :loading="loading" />
+            <q-btn type="submit" color="primary" label="Get tagged texts" :loading="loadingSpinnerTaggedChunks" />
           </div>
           <div class="col"></div>
+
+          <div class="col">
+            <q-select
+              v-model="selectedConfig"
+              :options="taggingConfigs"
+              option-label="name"
+              label="Select Tagging Config"
+              outlined
+              dense
+              @click="loadTaggingConfigs"
+            />
+          </div>
 
           <div class="col">
             <q-btn
@@ -476,6 +488,24 @@ interface TagCreationOption {
   error: string;
 }
 
+interface TaggingParams {
+  model_type: string
+  model_name: string
+  temperature: number
+}
+
+interface TaggingConfig {
+  name: string
+  description: string
+  class_name: string
+  prompt_template: string
+  params: TaggingParams
+}
+
+interface GetConfigsResponse {
+  configs: TaggingConfig[]
+}
+
 const tagForm = ref<TagRequest>({
   tag_name: 'Prezident',
   tag_shorthand: 'p',
@@ -526,7 +556,11 @@ const tagCreation = ref<TagCreationOption>({
 })
 
 const tags = ref<TagData[]>([])
-const loadingSpinner = ref(false)
+const loadingSpinnerTags = ref(false)
+const loadingSpinnerTaggedChunks = ref(false)
+const loadingSpinnerRemoveTags = ref(false)
+const loadingSpinnerUserCollection = ref(false)
+const loadingSpinnerConfigs = ref(false)
 
 const chunkData = ref<GetTaggedChunksResponse|null>(null)
 const chunkDataPositive = ref<GetTaggedChunksResponse|null>(null)
@@ -543,6 +577,9 @@ const username = ref('')
 const collectionStore = useCollectionStore()
 
 const tasksExpansion = ref<QExpansionItem | null>(null)
+
+const taggingConfigs = ref<TaggingConfig[]>([]) // store for configurations
+const selectedConfig = ref<TaggingConfig>()
 
 interface MergedTag {
   tag_uuid: string
@@ -604,15 +641,18 @@ onMounted(async () => {
   username.value = userStore.user?.id ?? ''
   await onShowTasks()
   // the tag management part
+  /*
   loadingSpinner.value = true
   try {
     // load tags
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
+    await loadTaggingConfigs() // load configs
   } finally {
     loadingSpinner.value = false
   }
+  */
 })
 
 function formatDate (dateString: string): string {
@@ -638,7 +678,7 @@ function getTaskIcon (status: string): string {
 }
 
 async function loadExistingTagsList () {
-  loadingSpinner.value = true
+  loadingSpinnerTags.value = true
   try {
     const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
@@ -652,7 +692,7 @@ async function loadExistingTagsList () {
     }
     tagsLen.value = tags.value.length
   } finally {
-    loadingSpinner.value = false
+    loadingSpinnerTags.value = false
   }
 }
 
@@ -682,7 +722,7 @@ async function onRunTask () {
     try {
       const tagValues = tags.value.find(t => t.tag_uuid === uuid)
       console.log('Tagging will start', tagValues)
-      const payload = { ...tagValues, tag_examples: tagValues?.tag_examples.filter(example => example.trim() !== '') }
+      const payload = { ...tagValues, tag_examples: tagValues?.tag_examples.filter(example => example.trim() !== ''), task_config: selectedConfig.value }
       console.log('Payload: ', payload)
       const { data } = await api.post<TagStartResponse>('/tagging_task', payload)
       console.log('Tagging response received:', data)
@@ -781,9 +821,8 @@ function updateTaskStatus (taskId: string, status: string, result?: TagResult, a
 }
 
 async function onTagManage () {
-  loading.value = true
   try {
-    // console.log('Tagging will start', tagFormManage.value)
+    loadingSpinnerTaggedChunks.value = true
     const payload = { tag_uuids: tagFormManage.value.tag_uuids, tag_type: "automatic" }
     const { data: data1 } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload)
     console.log('Tagging response received:', data1)
@@ -826,12 +865,13 @@ async function onTagManage () {
   } catch (e) {
     console.error('Tagging error:', e)
   } finally {
-    loading.value = false
+    loadingSpinnerTaggedChunks.value = false
   }
 }
 
 async function removeSelectedTags () {
   try {
+    loadingSpinnerRemoveTags.value = true
     const payload = { tag_uuids: tagFormManage.value.tag_uuids }
     const { data } = await api.delete<RemoveTagsResponse>('/automatic_tags', { data: payload })
     console.log('Removing response received:', data)
@@ -841,12 +881,14 @@ async function removeSelectedTags () {
     }
   } catch (e) {
     console.error('Tag removing error:', e)
+  } finally {
+    loadingSpinnerRemoveTags.value = false
   }
 }
 
 // fetch tag info
 async function fetchTags () {
-  loadingSpinner.value = true
+  loadingSpinnerTags.value = true
   try {
     const res = await api.get('/all_tags')
     tags.value = res.data.tags_lst
@@ -855,7 +897,7 @@ async function fetchTags () {
       filteredTags.value = tags.value
     }
   } finally {
-    loadingSpinner.value = false
+    loadingSpinnerTags.value = false
   }
 }
 
@@ -885,9 +927,14 @@ async function onShowTasks () {
 
 const handleAddUser = async () => {
   if (username.value.trim()) {
-    console.log('Username entered:', username.value)
-    userStore.setUser(username.value)
-    await loadCollections() // load collections of the user
+    try {
+      loadingSpinnerUserCollection.value = true
+      console.log('Username entered:', username.value)
+      userStore.setUser(username.value)
+      await loadCollections() // load collections of the user
+    } finally {
+      loadingSpinnerUserCollection.value = false
+    }
   }
 }
 
@@ -949,6 +996,24 @@ const loadCollections = async () => {
     Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
   } finally {
     loading.value = false
+  }
+}
+
+// load tagging configurations
+async function loadTaggingConfigs () {
+  try {
+    loadingSpinnerConfigs.value = true
+    const { data } = await api.get<GetConfigsResponse>('/configs')
+    taggingConfigs.value = data.configs
+    console.log('Loaded tagging configs:', taggingConfigs.value)
+  } catch (err) {
+    console.error('Failed to load tagging configs:', err)
+    Notify.create({
+      message: 'Failed to load tagging configurations',
+      color: 'negative'
+    })
+  } finally {
+    loadingSpinnerConfigs.value = false
   }
 }
 

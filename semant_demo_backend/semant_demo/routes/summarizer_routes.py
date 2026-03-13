@@ -21,12 +21,12 @@ openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 @exp_router.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search),
                  summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> schemas.SearchResponse:
-    start_time = time()
+    start_time = time.time()
 
     response = await searcher.search(req)
     await summarizer(req, response)
 
-    response.time_spent = time() - start_time
+    response.time_spent = time.time() - start_time
     return response
 
 
