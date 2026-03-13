@@ -318,30 +318,52 @@ eng_generation_grader_prompt_template = [
     ("user", "QUESTION: {question}\n\nANSWER: {answer}")
 ]
 
+# cze_generation_grader_prompt_template = [
+#     ("system",
+#     """
+#     Jsi auditor kvality historického informačního systému.
+#     Analyzuj níže uvedenou Odpověď vzhledem k zadané Otázce.
+    
+#     CÍL:
+#     Urči, zda odpověď poskytuje užitečné faktické informace. Chceme se vyhnout zbytečnému opakování hledání, pokud je jádro otázky již zodpovězeno.
+    
+
+#     Označ "is_complete": "yes", pokud:
+#     - Odpověď obsahuje alespoň některá přímá fakta z kontextu vztahující se k otázce.
+#     - Odpověď je informativní, i když připouští, že některé drobné detaily chybí.
+
+#     Označ "is_complete": "no" POUZE, pokud:
+#     - Odpověď je pouze prázdná omluva (např. "Nevím", "Informace nebyly nalezeny").
+#     - Odpověď se vůbec netýká tématu otázky
+
+#     Odpověz POUZE platným JSON objektem:
+#     {{"is_complete": "yes"}} nebo {{"is_complete": "no"}}
+#     """),
+#     ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
+# ]
+
 cze_generation_grader_prompt_template = [
-    ("system",
+    ("system", 
     """
     Jsi auditor kvality historického informačního systému.
-    Analyzuj níže uvedenou Odpověď vzhledem k zadané Otázce.
-    
+    Tvým úkolem je posoudit, zda je Odpověď dostatečná.
+
     CÍL:
     Urči, zda odpověď poskytuje užitečné faktické informace. Chceme se vyhnout zbytečnému opakování hledání, pokud je jádro otázky již zodpovězeno.
     
-
     Označ "is_complete": "yes", pokud:
-    - Odpověď obsahuje alespoň některá přímá fakta z kontextu vztahující se k otázce.
-    - Odpověď je informativní, i když připouští, že některé drobné detaily chybí.
+    - Odpověď přímo a věcně odpovídá na hlavní jádro otázky.
 
-    Označ "is_complete": "no" POUZE, pokud:
-    - Odpověď je pouze prázdná omluva (např. "Nevím", "Informace nebyly nalezeny").
-    - Odpověď se vůbec netýká tématu otázky
+    Označ "is_complete": "no", pokud:
+    - Odpověď obsahuje věty jako "informace nejsou k dispozici" nebo "dokumenty neuvádějí".
+    - Odpověď pokrývá jen malou část komplexní otázky.
 
     Odpověz POUZE platným JSON objektem:
     {{"is_complete": "yes"}} nebo {{"is_complete": "no"}}
+    
     """),
     ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
 ]
-
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
@@ -361,25 +383,43 @@ identify_language_prompt_template = [
 #-------------------------------------------------------------------------------------------------------------------------
 
 eng_extract_keyword_prompt = [
+    ("system",
     """
     You are an expert in searching and research. Extract a maximum of 3 keywords for an internet search engine from the questions below. 
     Focus on nouns, specific names, and dates.
     Write only keywords separated by commas.
-    
-    Question: {question}
-    Keywords:
     """
+    ),
+    ("user", "Question: {question}")
 ]
 
 cze_extract_keyword_prompt = [
+    ("system",
     """
     Jsi expert na vyhledávání a rešerše. Z níže uvedené otázky extrahuj maximálně 3 klíčová slova pro internetový vyhledávač. 
     Zaměř se na podstatná jména, konkrétní jména a letopočty.
     Piš pouze klíčová slova oddělená čárkou.
+    """
+    ),
+    ("user", "Otázka: {question}")
+]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
+cze_consider_web_search_prompt = [
+    ("system",
+    """
+    Analyzuj otázku a rozhodni, zda je vhodné hledat odpověď na moderním internetu.
+        
+    - Odpověz 'WEB', pokud je otázka obecná, týká se známých osobností, moderní doby, definic nebo sportu.
+    - Odpověz 'FINISH', pokud je otázka extrémně specifická pro historické archivy (konkrétní paragrafy, lokální vyhlášky 19. století, konkrétní reálie doby).
     
     Otázka: {question}
-    Klíčová slova:
-    """
+    Rozhodnutí:
+    """),
+    ("user", "Otázka: {question}\nRozhodnutí:")
 ]
 
 #-------------------------------------------------------------------------------------------------------------------------

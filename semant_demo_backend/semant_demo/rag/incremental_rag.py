@@ -63,6 +63,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "extract_keyword" : ChatPromptTemplate.from_messages(cze_extract_keyword_prompt),
                 "extract_metadata" : ChatPromptTemplate.from_messages(cze_extract_metadata_from_question_template),
                 "hyde" : ChatPromptTemplate.from_messages(cze_hyde_prompt_template),
+                "consider_web" : ChatPromptTemplate.from_messages(cze_consider_web_search_prompt)
             },
             "eng" : {
                 "history_transformation" : ChatPromptTemplate.from_messages(eng_refrase_question_from_history_prompt_template), #rewrite
@@ -104,7 +105,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 20")
+            print("Adaptive RAG version 21")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -157,6 +158,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         workflow.add_node("grade_context", self.node_grade_context)
         workflow.add_node("generate", self.node_generate)
         workflow.add_node("grade_generation", self.node_grade_generation)
+        workflow.add_node("web_router", self.node_web_router)
         workflow.add_node("web_search", self.node_web_search)
 
         #define edges
@@ -190,9 +192,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             "grade_context",
             self.after_context_grade,
             {
-                "generate" : "generate",
-                "web_search" : "web_search",
-                "transform" : "start_retrieval_branch"
+                "generate" : "generate"
             }
         )
 
@@ -201,8 +201,17 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             self.decide_after_generation,
             {
                 "finish": END,
-                "web_search" : "web_search",
+                "web_search" : "web_router",
                 "retry" : "start_retrieval_branch"
+            }
+        )
+
+        workflow.add_conditional_edges(
+            "web_router",
+            lambda x: x["feedback"],
+            {
+                "web_search": "web_search",
+                "finish": END
             }
         )
 
@@ -580,6 +589,20 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         
         return "finish"
     
+    async def node_web_router(self, state: AdaptiveRagState):
+        if not self.web_search_enabled:
+            return {"feedback": "finish"}
+        language = state.get("language", "cze")
+        prompt = self._get_prompt_by_language("consider_web", language)
+        chain = self._create_chain(model=self.model, prompt=prompt)
+        result = await chain.ainvoke(prompt.format(question=state["question"]))
+
+        decision = "web_search" if "web" in result.lower() else "finish"
+
+        if (DEBUG_PRINT): 
+            print(f"WEB ROUTER DECISION: {decision}")
+        return {"feedback": decision}
+
     async def node_web_search (self, state: AdaptiveRagState):
         if (DEBUG_PRINT):
             print(f"Extracting keyword for the internet search.")
