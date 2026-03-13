@@ -192,6 +192,47 @@ extract_metadata_from_question_template = [
     ("user", "{question_string}")
     ]
 
+cze_extract_metadata_from_question_template = [
+    ("system",
+    """
+    Jsi expert na historii. Analyzuj otázku a extrahuj filtry v JSON formátu.
+
+    PŘÍKLADY:
+    Otázka: "Důsledky zákona z roku 1863 na chudé obce"
+    Výstup: {{"min_year": 1863, "max_year": 1863, "language": "ces"}}
+
+    Otázka: "Průmysl v českých zemích v polovině 19. století"
+    Výstup: {{"min_year": 1840, "max_year": 1860, "language": "ces"}}
+
+    Otázka: {question_string}
+    Výstup:
+    """)
+    ]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+hyde_prompt_template = [
+    ("system",
+    """
+    Please write a short passage to answer the question. Focus on factual content. This passage will be used for search in vector database. Respond in the language of the question.
+    """),
+    ("user", "{question_string}")
+    ]
+
+cze_hyde_prompt_template = [
+    ("system",
+    """
+    Napiš stručný faktografický odstavec v češtině, který by mohl být ideální odpovědí na tuto otázku. 
+    Soustřeď se na historický styl, jména a data. 
+    Otázka: {question_string}
+    """)
+    ]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
 
 multiquery_retry = (
             "\nCRITICAL NOTE: The previous search variations failed to find relevant documents. "
@@ -204,13 +245,7 @@ generation_retry = (
     "\nCRITICAL NOTE: Your previous answer had issues, correct it. Feedback: {feedback}."
 )
 
-hyde_prompt_template = [
-    ("system",
-    """
-    Please write a short passage to answer the question. Focus on factual content. This passage will be used for search in vector database. Respond in the language of the question.
-    """),
-    ("user", "{question_string}")
-    ]
+
 
 hyde_retry = (
     "\nCRITICAL NOTE: The previous search variations failed to find relevant documents. "

@@ -60,7 +60,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "multiquery" : ChatPromptTemplate.from_messages(cze_multiquery_prompt_template), #rewrite
                 "grade_context" : ChatPromptTemplate.from_messages(cze_context_grader_prompt_template), #rewrite
                 "grade_generation" : ChatPromptTemplate.from_messages(cze_generation_grader_prompt_template), #rewrite
-                "extract_keyword" : ChatPromptTemplate.from_messages(cze_extract_keyword_prompt)
+                "extract_keyword" : ChatPromptTemplate.from_messages(cze_extract_keyword_prompt),
+                "extract_metadata" : ChatPromptTemplate.from_messages(cze_extract_metadata_from_question_template),
+                "hyde" : ChatPromptTemplate.from_messages(cze_hyde_prompt_template),
             },
             "eng" : {
                 "history_transformation" : ChatPromptTemplate.from_messages(eng_refrase_question_from_history_prompt_template), #rewrite
@@ -244,9 +246,20 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     async def node_retrieve(self, state: AdaptiveRagState):
         #get metadata
         metadata = state.get("metadata", {})
+        iteration = state.get("retrieval_iteration_counter", 0)
 
-        #is used strategy hyde --> use document embedding instead of query embedding
-        use_hyde_embedding = True if self.qt_strategy == "hyde" else False
+        limit = self.chunk_limit
+        alpha = self.alpha
+        use_hyde_embedding = False
+        if (iteration == 0):
+            limit = 5
+        elif (iteration == 1):
+            limit = self.chunk_limit
+        elif (iteration == 2):  # hyde
+            #use document embedding instead of query embedding
+            limit = 10
+            use_hyde_embedding = True
+            alpha = 0.9
 
         if (DEBUG_PRINT):
             print(f"Is used hyde embedding: {use_hyde_embedding}.")
@@ -261,8 +274,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             search_request = SearchRequest(
                 query = query,
                 type = self.search_type,
-                hybrid_search_alpha = self.alpha,
-                limit = 5 if state.get("retrieval_iteration_counter", 0) == 0 else self.chunk_limit,
+                hybrid_search_alpha = alpha,
+                limit = limit,
                 min_year = metadata.get("min_year"),
                 max_year = metadata.get("max_year"),
                 min_date = metadata.get("min_date"),
@@ -382,6 +395,30 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             return "insufficient"
 
     async def node_extract_metadata(self, state: AdaptiveRagState):
+        if state.get("retrieval_iteration_counter", 0) == 1:
+            if (state["metadata_extraction_allowed"] == True):
+                if (DEBUG_PRINT): 
+                    print("Extrackting metadata in Multi-query iteration")
+                language = state.get("language", "cze")
+                prompt = self._get_prompt_by_language("extract_metadata", language)
+                chain =  self._create_chain (model=self.extract_model, prompt=prompt)
+                result = await chain.ainvoke({"question_string" : state["question"]})
+                clean_result = re.sub(r'```json|```', '', result).strip()
+                try:
+                    metadata = json.loads(clean_result)
+                    metadata_structured = {
+                        "min_year" : (int(metadata.get("min_year")) - 5) if metadata.get("min_year") else None,
+                        "max_year" : (int(metadata.get("max_year")) + 5) if metadata.get("max_year") else None,
+                        "language" : metadata.get("language")
+                    }
+                    if (DEBUG_PRINT):
+                        print(f"metadata_structured: {metadata_structured}")
+                    return {"metadata" : metadata_structured}
+                except Exception:
+                    return {"metadata" : {}}
+        if state.get("metadata", {}) != {}:
+            return {"metadata" : state["metadata"]}
+
         return {"metadata" : {}}
         
     async def node_multi_query(self, state: AdaptiveRagState):
@@ -391,6 +428,16 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         if (iteration == 0):
             return {"queries" : [state["question"]]}
         
+        elif (iteration == 2): # hyde
+            if (DEBUG_PRINT):
+                print(f"HYDE MODE")
+
+            prompt = self._get_prompt_by_language("hyde", language)
+            chain = self._create_chain(model = self.model, prompt = prompt)
+            hyde = await chain.ainvoke({"question_string" : state["question"]})
+
+            return {"queries" : [hyde]}
+
         else:
             #multiple query generation
             if (DEBUG_PRINT):
@@ -526,7 +573,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             return "finish"
         if (retrieval_count < self.max_retries):
             if (DEBUG_PRINT): 
-                print("Retrying with multiquery.")
+                print("Retrying with multiquery or hyde.")
             return "retry"
         if (web_search_done == False and self.web_search_enabled == True):
             return "web_search"
