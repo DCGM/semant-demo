@@ -105,7 +105,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 22")
+            print("Adaptive RAG version 23")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -192,7 +192,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             "grade_context",
             self.after_context_grade,
             {
-                "generate" : "generate"
+                "generate" : "generate",
+                "web_search" : "web_search",
+                "transform" : "start_retrieval_branch"
             }
         )
 
@@ -512,6 +514,19 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         return {"documents" : filtered_documents}
     
     def after_context_grade (self, state: AdaptiveRagState):
+        ret_count = state.get("retrieval_iteration_counter", 0)
+        if (state["documents"] and len(state["documents"]) > 0):
+            return "generate"
+        
+        if (DEBUG_PRINT): 
+            print(f"ROUTER: 0 relevant documents in iteration {ret_count}")
+
+        if ret_count < self.max_retries: 
+            return "transform"
+        
+        if self.web_search_enabled and not state.get("web_search_performed"):
+            return "web_search"
+
         return "generate"
 
     # generate an answer
