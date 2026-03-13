@@ -105,7 +105,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 21")
+            print("Adaptive RAG version 22")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -201,19 +201,19 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             self.decide_after_generation,
             {
                 "finish": END,
-                "web_search" : "web_router",
+                "web_search" : "web_search",
                 "retry" : "start_retrieval_branch"
             }
         )
 
-        workflow.add_conditional_edges(
-            "web_router",
-            lambda x: x["feedback"],
-            {
-                "web_search": "web_search",
-                "finish": END
-            }
-        )
+        # workflow.add_conditional_edges(
+        #     "web_router",
+        #     lambda x: x["feedback"],
+        #     {
+        #         "web_search": "web_search",
+        #         "finish": END
+        #     }
+        # )
 
         return workflow
     
@@ -307,13 +307,13 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         #remove duplicities and put it together
         unique_chunks = {}
         for response in search_responses:
-            for chunk in response.results:
+            for chunk in response.results[:3]:
                 chunk_id = getattr(chunk, "id", None)
                 if chunk_id not in unique_chunks:
                     unique_chunks[chunk_id] = chunk
 
         all_chunks = list(unique_chunks.values())
-        all_chunks = all_chunks[:10]
+        #all_chunks = all_chunks[:10]
 
         counter_value = state.get("retrieval_iteration_counter", 0) + 1
 
@@ -502,11 +502,13 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         #remove None
         filtered_documents = [doc for doc in doc_responses if doc is not None]
-        filtered_documents = filtered_documents[:5]
+        
 
         #if relevant return documents (in original textchunk format)
         if (DEBUG_PRINT):
             print(f"Relevant documents number: " + str(len(filtered_documents)), " original doc number: " + str(len(state["documents"])))
+        
+        filtered_documents = filtered_documents[:5]
         return {"documents" : filtered_documents}
     
     def after_context_grade (self, state: AdaptiveRagState):
@@ -590,18 +592,20 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         return "finish"
     
     async def node_web_router(self, state: AdaptiveRagState):
-        if not self.web_search_enabled:
-            return {"feedback": "finish"}
-        language = state.get("language", "cze")
-        prompt = self._get_prompt_by_language("consider_web", language)
-        chain = self._create_chain(model=self.model, prompt=prompt)
-        result = await chain.ainvoke(prompt.format(question=state["question"]))
+        # if not self.web_search_enabled:
+        #     return {"feedback": "finish"}
+        # language = state.get("language", "cze")
+        # prompt = self._get_prompt_by_language("consider_web", language)
+        # chain = self._create_chain(model=self.model, prompt=prompt)
+        # result = await chain.ainvoke(prompt.format(question=state["question"]))
 
-        decision = "web_search" if "web" in result.lower() else "finish"
+        # decision = "web_search" if "web" in result.lower() else "finish"
 
-        if (DEBUG_PRINT): 
-            print(f"WEB ROUTER DECISION: {decision}")
-        return {"feedback": decision}
+        # if (DEBUG_PRINT): 
+        #     print(f"WEB ROUTER DECISION: {decision}")
+        # return {"feedback": decision}
+        return {"feedback": "web_search"}
+
 
     async def node_web_search (self, state: AdaptiveRagState):
         if (DEBUG_PRINT):
@@ -629,7 +633,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     for q in queries:
                         if (DEBUG_PRINT): 
                             print(f"Searching web: {q}")
-                        results = [r["body"] for r in ddgs.text(q, max_results = 6)]
+                        results = [r["body"] for r in ddgs.text(q, max_results = 8)]
                         all_results.extend(list(set(results)))
 
                 unique_results = list(dict.fromkeys(all_results))
@@ -692,7 +696,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "web_search_performed" : False
             }
             
-            config = {"recursion_limit" : 25}
+            config = {"recursion_limit" : 50}
 
             generated_result = await self.rag.ainvoke(intial_state_values, config=config)
 
