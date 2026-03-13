@@ -105,7 +105,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 23")
+            print("Adaptive RAG version 24")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -648,7 +648,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     for q in queries:
                         if (DEBUG_PRINT): 
                             print(f"Searching web: {q}")
-                        results = [r["body"] for r in ddgs.text(q, max_results = 8)]
+                        results = [r["body"] for r in ddgs.text(q, max_results = 6)]    # TODO changed from 8 to 6 (try web search in next version)
                         all_results.extend(list(set(results)))
 
                 unique_results = list(dict.fromkeys(all_results))

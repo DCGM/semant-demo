@@ -342,42 +342,25 @@ eng_generation_grader_prompt_template = [
 #     ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
 # ]
 
-# cze_generation_grader_prompt_template = [
-#     ("system", 
-#     """
-#     Jsi auditor kvality historického informačního systému.
-#     Tvým úkolem je posoudit, zda je Odpověď dostatečná a PODLOŽENÁ.
-
-#     CÍL:
-#     Urči, zda odpověď poskytuje užitečné faktické informace. Chceme se vyhnout zbytečnému opakování hledání, pokud je jádro otázky již zodpovězeno.
-    
-#     Označ "is_complete": "yes", pokud:
-#     - Odpověď přímo a věcně odpovídá na hlavní jádro otázky.
-
-#     Označ "is_complete": "no", pokud:
-#     - Odpověď obsahuje věty jako "informace nejsou k dispozici" nebo "dokumenty neuvádějí".
-#     - Odpověď pokrývá jen malou část komplexní otázky.
-
-#     Odpověz POUZE platným JSON objektem:
-#     {{"is_complete": "yes"}} nebo {{"is_complete": "no"}}
-    
-#     """),
-#     ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
-# ]
-
 cze_generation_grader_prompt_template = [
-    ("system", """Jsi přísný auditor informační hodnoty. Tvým úkolem je posoudit, zda je Odpověď dostatečná a PODLOŽENÁ.
-    
-    Označ "is_complete": "no", pokud:
-    1. Odpověď neobsahuje téměř žádné citace [doc X]. (Znamená to, že model odpovídal z hlavy, ne z dodaných dat!)
-    2. Odpověď obsahuje fráze jako "v dokumentech se nepodařilo nalézt" nebo "informace chybí".
-    3. Odpověď je příliš stručná a neodpovídá na všechny části otázky.
+    ("system", 
+    """
+    Jsi auditor kvality historického informačního systému.
+    Tvým úkolem je posoudit, zda je Odpověď dostatečná a PODLOŽENÁ.
 
+    CÍL:
+    Urči, zda odpověď poskytuje užitečné faktické informace. Chceme se vyhnout zbytečnému opakování hledání, pokud je jádro otázky již zodpovězeno.
+    
     Označ "is_complete": "yes", pokud:
-    - Odpověď je věcná, obsahuje fakta a je řádně ocitována pomocí [doc X] na základě dodaných materiálů.
+    - Odpověď přímo a věcně odpovídá na hlavní jádro otázky.
+
+    Označ "is_complete": "no", pokud:
+    - Odpověď obsahuje věty jako "informace nejsou k dispozici" nebo "dokumenty neuvádějí".
+    - Odpověď pokrývá jen malou část komplexní otázky.
 
     Odpověz POUZE platným JSON objektem:
     {{"is_complete": "yes"}} nebo {{"is_complete": "no"}}
+    
     """),
     ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
 ]
