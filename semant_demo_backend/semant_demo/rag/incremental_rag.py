@@ -105,7 +105,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 25")
+            print("Adaptive RAG version 25_2")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -309,13 +309,14 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         #remove duplicities and put it together
         unique_chunks = {}
         for response in search_responses:
-            for chunk in response.results[:3]:
+            # for chunk in response.results[:3]:
+            for chunk in response.results:
                 chunk_id = getattr(chunk, "id", None)
                 if chunk_id not in unique_chunks:
                     unique_chunks[chunk_id] = chunk
 
         all_chunks = list(unique_chunks.values())
-        #all_chunks = all_chunks[:10]
+        all_chunks = all_chunks[:10]
 
         counter_value = state.get("retrieval_iteration_counter", 0) + 1
 

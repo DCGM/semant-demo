@@ -318,52 +318,52 @@ eng_generation_grader_prompt_template = [
     ("user", "QUESTION: {question}\n\nANSWER: {answer}")
 ]
 
-cze_generation_grader_prompt_template = [
-    ("system",
-    """
-    Jsi auditor kvality historického informačního systému.
-    Analyzuj níže uvedenou Odpověď vzhledem k zadané Otázce.
-    
-    CÍL:
-    Urči, zda odpověď poskytuje užitečné faktické informace. Chceme se vyhnout zbytečnému opakování hledání, pokud je jádro otázky již zodpovězeno.
-    
-
-    Označ "is_complete": "yes", pokud:
-    - Odpověď obsahuje alespoň některá přímá fakta z kontextu vztahující se k otázce.
-    - Odpověď je informativní, i když připouští, že některé drobné detaily chybí.
-
-    Označ "is_complete": "no" POUZE, pokud:
-    - Odpověď je pouze prázdná omluva (např. "Nevím", "Informace nebyly nalezeny").
-    - Odpověď se vůbec netýká tématu otázky
-
-    Odpověz POUZE platným JSON objektem:
-    {{"is_complete": "yes"}} nebo {{"is_complete": "no"}}
-    """),
-    ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
-]
-
 # cze_generation_grader_prompt_template = [
-#     ("system", 
+#     ("system",
 #     """
 #     Jsi auditor kvality historického informačního systému.
-#     Tvým úkolem je posoudit, zda je Odpověď dostatečná.
-
+#     Analyzuj níže uvedenou Odpověď vzhledem k zadané Otázce.
+    
 #     CÍL:
 #     Urči, zda odpověď poskytuje užitečné faktické informace. Chceme se vyhnout zbytečnému opakování hledání, pokud je jádro otázky již zodpovězeno.
     
-#     Označ "is_complete": "yes", pokud:
-#     - Odpověď přímo a věcně odpovídá na hlavní jádro otázky.
 
-#     Označ "is_complete": "no", pokud:
-#     - Odpověď obsahuje věty jako "informace nejsou k dispozici" nebo "dokumenty neuvádějí".
-#     - Odpověď pokrývá jen malou část komplexní otázky.
+#     Označ "is_complete": "yes", pokud:
+#     - Odpověď obsahuje alespoň některá přímá fakta z kontextu vztahující se k otázce.
+#     - Odpověď je informativní, i když připouští, že některé drobné detaily chybí.
+
+#     Označ "is_complete": "no" POUZE, pokud:
+#     - Odpověď je pouze prázdná omluva (např. "Nevím", "Informace nebyly nalezeny").
+#     - Odpověď se vůbec netýká tématu otázky
 
 #     Odpověz POUZE platným JSON objektem:
 #     {{"is_complete": "yes"}} nebo {{"is_complete": "no"}}
-    
 #     """),
 #     ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
 # ]
+
+cze_generation_grader_prompt_template = [
+    ("system", 
+    """
+    Jsi auditor kvality historického informačního systému.
+    Tvým úkolem je posoudit, zda je Odpověď dostatečná.
+
+    CÍL:
+    Urči, zda odpověď poskytuje užitečné faktické informace. Chceme se vyhnout zbytečnému opakování hledání, pokud je jádro otázky již zodpovězeno.
+    
+    Označ "is_complete": "yes", pokud:
+    - Odpověď přímo a věcně odpovídá na hlavní jádro otázky.
+
+    Označ "is_complete": "no", pokud:
+    - Odpověď obsahuje věty jako "informace nejsou k dispozici" nebo "dokumenty neuvádějí".
+    - Odpověď pokrývá jen malou část komplexní otázky.
+
+    Odpověz POUZE platným JSON objektem:
+    {{"is_complete": "yes"}} nebo {{"is_complete": "no"}}
+    
+    """),
+    ("user", "OTÁZKA: {question}\n\nODPOVĚĎ: {answer}")
+]
 
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
