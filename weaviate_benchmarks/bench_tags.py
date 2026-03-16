@@ -165,7 +165,8 @@ async def bench_read_batch(
 ) -> dict:
     """Read all chunks in batches of *batch_size* using contains_any ID filter."""
     chunks_col = client.collections.get(cfg.CHUNKS_COLLECTION)
-    latencies = []
+    batch_latencies: list[float] = []
+    actual_batch_sizes: list[int] = []
     for i in range(0, len(chunk_uuids), batch_size):
         batch = chunk_uuids[i : i + batch_size]
         t0 = time.perf_counter()
@@ -174,15 +175,23 @@ async def bench_read_batch(
             return_references=[QueryReference(link_on="automaticTag", return_properties=["tag_name"])],
             limit=batch_size,
         )
-        latencies.append(time.perf_counter() - t0)
-    stats = compute_stats(latencies)
+        batch_latencies.append(time.perf_counter() - t0)
+        actual_batch_sizes.append(len(batch))
+    # Convert per-batch latencies to per-chunk latencies for meaningful stats
+    per_chunk_latencies = [lat / sz for lat, sz in zip(batch_latencies, actual_batch_sizes) if sz > 0]
+    stats = compute_stats(per_chunk_latencies)
+    # Throughput: total chunks processed divided by total elapsed wall time.
+    # This overrides the value produced by compute_stats (which counts batches, not chunks).
+    total_time = sum(batch_latencies)
+    throughput = len(chunk_uuids) / total_time if total_time > 0 else 0.0
     return {
         "operation": "read_batch",
         "fullness": fullness,
         "batch_size": batch_size,
         "n_chunks": len(chunk_uuids),
-        "n_batches": len(latencies),
+        "n_batches": len(batch_latencies),
         **stats.to_dict(),
+        "throughput_chunks_sec": round(throughput, 2),
     }
 
 
