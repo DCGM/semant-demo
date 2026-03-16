@@ -10,7 +10,7 @@ The tests should be performed with:
 
 Reported values should be:
 - mean, median, P90, P99 for both individual operations and batch operations
-- thoughput should be measure in chunks per second and it should sum all the concurrent operations together
+- throughput should be measure in chunks per second and it should sum all the concurrent operations together
 
 Parameters of the test should be:
 - Names of all the collections - Chunks, Tag - these can have specific names in a specific database.
