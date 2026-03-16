@@ -29,6 +29,12 @@
 ```
 semant-demo/
 ├── docs/                          # project documentation (see below)
+├── deploy/                        # Docker Compose stack management
+│   ├── docker-compose.yaml        # Container definitions for the full stack
+│   ├── Dockerfile                 # Multi-stage build for backend & embedding service
+│   ├── update.sh                  # Helper script to run docker compose with .env
+│   ├── .env.example               # Environment variables template
+│   └── README.md                  # Deployment instructions
 ├── embedding_service/             # Gemma embedding microservice (FastAPI, port 8001)
 ├── semant_demo_backend/           # main API server (FastAPI, port 8000)
 │   ├── semant_demo/
@@ -93,53 +99,60 @@ flowchart LR
 
 ## Quick Start
 
+### Starting the Stack
+
 ```bash
-# 1. Start Weaviate
-cd weaviate_utils && docker compose up -d
+cd deploy
+./update.sh up -d --build
+```
+**Note:** Requires `.env` file configured in `deploy/` directory. 
 
-# 2. Start the embedding service (needs GPU recommended)
-cd embedding_service
-pip install -r requirements.txt
-python run.py                       # listens on :8001
+### Stopping the Stack
 
-# 3. Load data into Weaviate
-cd weaviate_utils
-pip install -r requirements.txt
-python db_insert_jsonl.py --source-dir /path/to/jsonl_data --delete-old
-
-# 4. Start the backend
-cd semant_demo_backend
-pip install -r requirements.txt
-python run.py                       # listens on :8000
-
-# 5. Start the frontend (dev mode)
-cd semant_demo_frontend
-npm install
-npx quasar dev                      # listens on :9000
+```bash
+cd deploy
+./update.sh down
 ```
 
-### Environment Variables (Backend)
+For detailed setup instructions, advanced options, and data management, see [deploy/README.md](deploy/README.md).
+
+### Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `WEAVIATE_HOST` | `localhost` | Weaviate hostname |
+| **Build arguments** | | |
+| `REPO` | `https://github.com/DCGM/semant-demo.git` | Git repository to clone |
+| `BRANCH` | `main` | Branch to build from |
+| `BACKEND_URL` | `https://demo.semant.cz` | Public backend URL baked into the frontend bundle at build time |
+| `DOMAIN` | `demo.semant.cz` | Domain name for the Traefik Host rule |
+| **Weaviate** | | |
+| `WEAVIATE_HOST` | `weaviate` | Weaviate hostname (in Docker Compose network) |
 | `WEAVIATE_REST_PORT` | `8080` | Weaviate HTTP port |
 | `WEAVIATE_GRPC_PORT` | `50051` | Weaviate gRPC port |
+| **Embedding service** | | |
+| `EMBEDDING_SERVICE_HOST` | `embedding-service` | Embedding service hostname (in Docker Compose network) |
+| `EMBEDDING_SERVICE_PORT` | `8001` | Embedding service port |
+| `GEMMA_MODEL` | `BAAI/bge-multilingual-gemma2` | HuggingFace embedding model name |
+| `GPU_DEVICE` | `0` | GPU index visible to the container (`CUDA_VISIBLE_DEVICES`) |
+| **Ollama** | | |
 | `OLLAMA_URLS` | `http://localhost:11434` | Comma-separated Ollama endpoints |
-| `OLLAMA_MODEL` | `gemma3:12b` | Default Ollama model |
+| `OLLAMA_MODEL` | `gemma3:12b` | Ollama model |
+| **OpenAI / OpenRouter** | | |
 | `OPENAI_API_KEY` | _(empty)_ | OpenAI key (for OpenAI-based RAG configs) |
+| `OPENROUTER_URL` | `https://openrouter.ai/api/v1` | URL endpoint pro OpenRouter API |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Default OpenAI model |
+| **Google** | | |
 | `GOOGLE_API_KEY` | _(empty)_ | Google Gemini key |
-| `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin for frontend |
-| `PORT` | `8000` | Backend listen port |
-| `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
+| `GOOGLE_MODEL` | `gemini-2.5-pro` | Default Google model |
+| **Shared LLM** | | |
 | `RAG_CONFIGS_PATH` | `rag/rag_configs/configs` | Directory with RAG YAML configs |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summariser config path |
-| `GOOGLE_MODEL` | `gemini-2.5-pro` | Default Google model |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Default OpenAI model |
 | `MODEL_TEMPERATURE` | `0.0` | Default LLM temperature |
-| `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key |
-
-> **Note:** `GEMMA_URL` (embedding service URL) is currently hardcoded to `http://localhost:8001` in `config.py` and is not configurable via environment variable.
+| `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
+| **Application** | | |
+| `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
+| `PORT` | `8000` | Backend listen port |
+| `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
 
 ## API Endpoints
 
