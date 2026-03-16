@@ -31,14 +31,14 @@ python -m weaviate_benchmarks --cleanup  # remove stale benchmark data
 | `BENCH_RESULTS_DIR`   | `./results` | Where JSON results go    |
 | `BENCH_PLOTS_DIR`     | `./plots`   | Where PNG/SVG plots go   |
 
-Tune benchmark parameters in `config.py`:
-- `CONCURRENCY_LEVELS` — concurrency sweep values (default: 1, 2, 4, 8, 16, 32)
-- `OPERATION_COUNT` — refs inserted / deleted per measurement (default: 50)
-- `FULLNESS_LEVELS` — pre-existing refs per chunk (default: 0, 1, 5, 10, 25, 50)
-- `CHUNK_SAMPLE_SIZE` — chunks sampled for benchmarks (default: 500)
-- `CHUNKS_COLLECTION` — name of the chunks collection (default: `Chunks_test`)
-- `TAG_COLLECTION` — name of the tag collection (default: `Tag_test`)
-- `READ_BATCH_SIZE` — chunks per batch-read call (default: 100)
+Tune benchmark parameters in `config.py` (defaults are defined there):
+- `CONCURRENCY_LEVELS` — concurrency sweep values
+- `OPERATION_COUNT` — refs inserted / deleted per measurement
+- `FULLNESS_LEVELS` — pre-existing refs per chunk
+- `CHUNK_SAMPLE_SIZE` — chunks sampled for benchmarks
+- `CHUNKS_COLLECTION` — name of the chunks collection
+- `TAG_COLLECTION` — name of the tag collection
+- `READ_BATCH_SIZE` — chunks per batch-read call
 
 ## What is benchmarked
 
