@@ -15,11 +15,9 @@ import argparse
 import json
 import os
 import subprocess
-import sys
 from typing import Any
 
 from . import config as cfg
-from .utils import ensure_dirs
 
 REPORT_DIR = os.path.join(os.path.dirname(__file__), "report")
 
