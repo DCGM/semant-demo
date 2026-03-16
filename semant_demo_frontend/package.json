@@ -8,7 +8,7 @@
   "scripts": {
     "lint": "eslint --ext .js,.ts,.vue ./",
     "test": "echo \"No test specified\" && exit 0",
-    "get-openapi-json": "curl -s http://127.0.0.1:8000/openapi.json -o src/generated/openapi.json",
+    "get-openapi-json": "curl -s http://localhost:8000/openapi.json -o src/generated/openapi.json",
     "generate-client": "openapi-generator-cli generate -i ./src/generated/openapi.json -g typescript-fetch -o src/generated/api --additional-properties=supportsES6=true,typescriptThreePlus=true,modelPropertyNaming=camelCase,enumPropertyNaming=camelCase,withoutPrefixEnums=true,withInterfaces=true,useSingleRequestParameter=true",
     "sync-client": "npm run get-openapi-json && npm run generate-client"
   },
