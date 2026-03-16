@@ -122,8 +122,6 @@ cd deploy
 ./update.sh restart container_name
 ```
 
-> **NEVER use `down -v`** — it permanently deletes all Weaviate data from the volume!
-
 ### Build only (without starting)
 
 ```bash
