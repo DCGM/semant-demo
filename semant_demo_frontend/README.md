@@ -31,3 +31,14 @@ quasar build
 
 ### Customize the configuration
 See [Configuring quasar.config.js](https://v2.quasar.dev/quasar-cli-vite/quasar-config-js).
+
+
+### Generating functions and types from backend
+
+`npm run sync-client` (requires running backend) will generate types and function to "/src/generated" folder
+
+For calling the API, use hook `useApi()` in your components, for example:
+
+```ts
+const api = useApi()
+```
