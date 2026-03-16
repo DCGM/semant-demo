@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { provide } from 'vue'
-import { ApiKey, type ApiClients } from 'src/composables/useApi'
+import { ApiClientInjectionKey, type ApiClients } from 'src/composables/useApi'
 import { Configuration, DefaultApi } from 'src/generated/api'
 
 const config = new Configuration({
@@ -11,7 +11,7 @@ const apiClients: ApiClients = {
   default: new DefaultApi(config)
 }
 
-provide(ApiKey, apiClients)
+provide(ApiClientInjectionKey, apiClients)
 </script>
 
 <template>
