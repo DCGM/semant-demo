@@ -1,2 +1,2 @@
-src/generated/
-openapitools.json
+src/generated/api/
+openapi.json
