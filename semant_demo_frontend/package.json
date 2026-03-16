@@ -8,7 +8,8 @@
   "scripts": {
     "lint": "eslint --ext .js,.ts,.vue ./",
     "test": "echo \"No test specified\" && exit 0",
-    "sync-client": "python ../semant_demo_backend/export_openapi.py --output src/generated/openapi.json && openapi-generator-cli generate -i ./src/generated/openapi.json -g typescript-fetch -o src/generated/api --additional-properties=supportsES6=true,typescriptThreePlus=true,modelPropertyNaming=camelCase,enumPropertyNaming=camelCase,withoutPrefixEnums=true,withInterfaces=true,useSingleRequestParameter=true"
+    "sync-client": "openapi-generator-cli generate -i ../semant_demo_backend/openapi.json -g typescript-fetch -o src/generated/api --additional-properties=supportsES6=true,typescriptThreePlus=true,modelPropertyNaming=camelCase,enumPropertyNaming=camelCase,withoutPrefixEnums=true,withInterfaces=true,useSingleRequestParameter=true",
+    "sync-client-dev": "python ../semant_demo_backend/export_openapi.py --output ../semant_demo_backend/openapi.json && npm run sync-client"
   },
   "dependencies": {
     "@quasar/extras": "^1.0.0",
