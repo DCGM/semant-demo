@@ -18,7 +18,6 @@ from .bench_tags import run_tag_benchmarks
 from .plotting import generate_all_plots
 from .report import generate_report, compile_report
 from .utils import ensure_dirs, log, get_client, full_cleanup
-from . import config as cfg
 
 
 def _print_summary(results: list[dict], title: str):
