@@ -36,8 +36,8 @@ Tune benchmark parameters in `config.py`:
 - `OPERATION_COUNT` — refs inserted / deleted per measurement (default: 50)
 - `FULLNESS_LEVELS` — pre-existing refs per chunk (default: 0, 1, 5, 10, 25, 50)
 - `CHUNK_SAMPLE_SIZE` — chunks sampled for benchmarks (default: 500)
-- `CHUNKS_COLLECTION` — name of the chunks collection (default: `Chunks`)
-- `TAG_COLLECTION` — name of the tag collection (default: `Tag`)
+- `CHUNKS_COLLECTION` — name of the chunks collection (default: `Chunks_test`)
+- `TAG_COLLECTION` — name of the tag collection (default: `Tag_test`)
 - `READ_BATCH_SIZE` — chunks per batch-read call (default: 100)
 
 ## What is benchmarked
