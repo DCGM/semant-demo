@@ -1,4 +1,4 @@
-# deploy — container management
+# deploy — Docker Compose service management
 
 This folder manages the full application stack — backend, embedding service, and Weaviate database.
 
@@ -106,7 +106,23 @@ cd deploy
 ./update.sh down
 ```
 
-> ⚠️ **NEVER use `down -v`** — it permanently deletes all Weaviate data from the volume!
+### Commands for individual containers
+
+```bash
+# Stop only a container
+./update.sh stop container_name
+
+# Start only a container
+./update.sh up -d container_name
+
+# Stop multiple containers
+./update.sh stop container_name1 container_name2
+
+# Restart a single container
+./update.sh restart container_name
+```
+
+> **NEVER use `down -v`** — it permanently deletes all Weaviate data from the volume!
 
 ### Build only (without starting)
 
@@ -129,3 +145,25 @@ cd deploy
 ```bash
 ./update.sh ps
 ```
+
+### Recovering / Rebuilding the Database
+
+If the Weaviate database is corrupted or deleted, you can restore it while keeping the rest of the stack running:
+
+```bash
+# 1. Stop and remove Weaviate container (other services keep running)
+cd deploy
+./update.sh stop weaviate
+
+# 2. Clear the database storage
+rm -r /mnt/ssd2/weaviate_semant/*
+
+# 3. Restart Weaviate in the stack (it initializes fresh)
+./update.sh up -d weaviate
+
+# 4. Reload data (stack is running in the background)
+cd ../weaviate_utils
+python db_insert_jsonl.py --source-dir /path/to/jsonl_data --delete-old
+```
+
+The script connects to `localhost:8080` while the stack continues running—nothing breaks.
