@@ -21,6 +21,31 @@ from . import config as cfg
 
 REPORT_DIR = os.path.join(os.path.dirname(__file__), "report")
 
+# Translation table for LaTeX-escaping plain-text strings.
+# str.translate() performs a single pass so replacement values are never
+# re-processed — this avoids double-escaping and is more efficient than
+# sequential str.replace() calls.  Backslash must be the first entry so
+# that all other replacements (which start with \) are not subsequently
+# re-escaped when sequential replacement is used; with translate() the
+# ordering is irrelevant, but it is kept first for clarity.
+_LATEX_TRANS = str.maketrans({
+    "\\": r"\textbackslash{}",
+    "{":  r"\{",
+    "}":  r"\}",
+    "&":  r"\&",
+    "%":  r"\%",
+    "$":  r"\$",
+    "#":  r"\#",
+    "_":  r"\_",
+    "^":  r"\^{}",
+    "~":  r"\textasciitilde{}",
+})
+
+
+def _latex_escape(s: str) -> str:
+    """Escape LaTeX special characters in a plain-text string."""
+    return s.translate(_LATEX_TRANS)
+
 
 def _load_results(filename: str) -> list[dict]:
     path = os.path.join(cfg.RESULTS_DIR, filename)
@@ -136,14 +161,18 @@ operations together.
 
 
 def _section_setup() -> str:
+    host = _latex_escape(cfg.WEAVIATE_HOST)
+    chunks_col = _latex_escape(cfg.CHUNKS_COLLECTION)
+    tag_col = _latex_escape(cfg.TAG_COLLECTION)
+    bench_prefix = _latex_escape(cfg.BENCH_PREFIX)
     return r"""
 \section{Experimental Setup}
 \label{sec:setup}
 
 \subsection{Environment}
 \begin{itemize}
-    \item \textbf{Weaviate}: Instance on \texttt{""" + cfg.WEAVIATE_HOST + r"""}, REST port \texttt{""" + str(cfg.WEAVIATE_REST_PORT) + r"""}, gRPC port \texttt{""" + str(cfg.WEAVIATE_GRPC_PORT) + r"""}.
-    \item \textbf{Collections}: Chunks = \texttt{""" + cfg.CHUNKS_COLLECTION + r"""}, Tags = \texttt{""" + cfg.TAG_COLLECTION + r"""}.
+    \item \textbf{Weaviate}: Instance on \texttt{""" + host + r"""}, REST port \texttt{""" + str(cfg.WEAVIATE_REST_PORT) + r"""}, gRPC port \texttt{""" + str(cfg.WEAVIATE_GRPC_PORT) + r"""}.
+    \item \textbf{Collections}: Chunks = \texttt{""" + chunks_col + r"""}, Tags = \texttt{""" + tag_col + r"""}.
     \item \textbf{Client}: Python \texttt{weaviate-client} v4.x (async).
     \item \textbf{Operation count}: """ + str(cfg.OPERATION_COUNT) + r""" refs inserted/deleted per measurement.
     \item \textbf{Chunk sample size}: """ + str(cfg.CHUNK_SAMPLE_SIZE) + r""" (shuffled to avoid order bias).
@@ -162,7 +191,7 @@ For each fullness level the test:
     \item Adds then removes """ + str(cfg.OPERATION_COUNT) + r""" tag references using batch operations.
 \end{enumerate}
 
-All benchmark tags use the prefix \texttt{""" + cfg.BENCH_PREFIX + r"""} and are
+All benchmark tags use the prefix \texttt{""" + bench_prefix + r"""} and are
 cleaned up at the end. Throughput is wall-clock-based and counts all concurrent
 operations, giving true aggregate throughput.
 """
