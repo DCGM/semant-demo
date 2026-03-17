@@ -46,11 +46,18 @@
       </div>
       <!-- dislike dialog  -->
       <q-dialog v-model="showFeedbackDialog">
-        <q-card style="min-width: 350px">
+        <q-card style="min-width: 400px">
           <q-card-section>
             <div class="text-subtitle1 text-weight-bold">Why didn't you like the answer? / Proč se Vám odpověď nelíbila?</div>
           </q-card-section>
           <q-card-section class="q-pt-none">
+            <div class="text-caption q-mb-sm text-grey-8">Please select the type of error: / Vyberte prosím typ chyby:</div>
+            <q-option-group
+              v-model="selectedErrorTypes"
+              :options="feedbackOptions"
+              type="checkbox"
+              color="primary"
+          />
             <q-input v-model="feedbackComment" autogrow outlined label="Your comment (optional) / Váš komentář (nepovinné)" />
           </q-card-section>
           <q-card-actions align="right">
@@ -252,6 +259,14 @@ const showFeedbackDialog = ref(false)
 const feedbackComment = ref('')
 const currentFeedbackIndex = ref(-1)
 const currentRating = ref(0)
+
+const feedbackOptions = [
+  { label: 'Factually incorrect / Fakticky nesprávné', value: 'fact_error' },
+  { label: 'Irrelevant / Neodpovídá na otázku', value: 'not_relevant' },
+  { label: 'Citation issues / Chybějící nebo špatné zdroje', value: 'citation_error' },
+  { label: 'Wrong language or formatting / Chybný jazyk nebo formátování', value: 'language_issue' }
+]
+const selectedErrorTypes = ref([])
 
 // ----------------------Load RAGs----------------------
 
@@ -529,7 +544,8 @@ const submitFeedback = async () => {
       answer: msg.text,
       sources: msg.sources,
       rating: currentRating.value,
-      comment: feedbackComment.value
+      comment: feedbackComment.value,
+      error_types: selectedErrorTypes.value
     })
 
     // popup/alert window
