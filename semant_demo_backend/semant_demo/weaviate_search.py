@@ -3,7 +3,7 @@ from time import time
 import weaviate
 import weaviate.collections.classes.internal
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, QueryNested
 
 from semant_demo import schemas
 from semant_demo.config import Config
@@ -46,12 +46,13 @@ class WeaviateSearch:
 
     async def set_chunk_spans_separate(self, chunk_id: str, spans: list[schemas.TagSpan]):
         """
-        Add new TagSpan to TagSpan_test table with reference to chunk.
+        Add new TagSpan to TagSpan2_test table with Chunk ID (not as reference)
         """
         if not self.tagspan_col:
-            raise RuntimeError("TagSpan_test collection not available")
+            raise RuntimeError("TagSpan2_test collection not available")
+
         # clear existing for this chunk
-        await self.tagspan_col.data.delete_many(where=Filter.by_ref("chunk").by_id().equal(chunk_id))
+        await self.tagspan_col.data.delete_many(where=Filter.by_property("chunkId").equal(chunk_id))
 
         for s in spans:
             await self.tagspan_col.data.insert(
@@ -59,33 +60,19 @@ class WeaviateSearch:
                     "tagId": s.tagId,
                     "start": s.start,
                     "end": s.end,
-                },
-                references={"chunk": chunk_id},
+                    "chunkId": chunk_id
+                }
             )
-
-    async def get_tag_spans(self, chunk_id: str, mode: schemas.SpanStoreMode) -> list[schemas.TagSpan]:
-        """
-        Get TagSpans
-        """
-        if mode == schemas.SpanStoreMode.embedded:
-            return await self.get_chunk_spans_embedded(chunk_id)
-
-        if mode == schemas.SpanStoreMode.separate:
-            return await self.get_chunk_spans_separate(chunk_id)
-
-        raise ValueError(
-            "Idnetify a mode: embedded or separate.")
 
     async def get_chunk_spans_separate(self, chunk_id: str) -> list[schemas.TagSpan]:
         """
-        Get TagSpans from TagSpans_test table by chunk id.
+        Get TagSpans from TagSpans2_test table by chunk id.
         """
         if not self.tagspan_col:
-            raise RuntimeError("TagSpan_test collection not available")
+            raise RuntimeError("TagSpan2_test collection not available")
 
-        # reference chunk
         response = await self.tagspan_col.query.fetch_objects(
-            filters=Filter.by_ref("chunk").by_id().equal(chunk_id),
+            filters=Filter.by_property("chunkId").equal(chunk_id),
             return_properties=["tagId", "start", "end"]
         )
 
@@ -165,7 +152,7 @@ class WeaviateSearch:
         Update TagSpan's informations like start, end, ...
         """
         if not self.tagspan_col:
-            raise RuntimeError("Kolekce TagSpan_test není dostupná")
+            raise RuntimeError("Kolekce TagSpan2_test není dostupná")
 
         await self.tagspan_col.data.update(
             uuid=span_id,

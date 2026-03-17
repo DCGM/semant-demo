@@ -287,7 +287,7 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
 # """
 # Two variants controlled by "mode"
 # - embedded - spans are stored in "Chunks_test -> tagSpansArr" list of spans
-# - separate - spans are stored in separate collection "TagSpan_test", which has reference to chunk and tag
+# - separate - spans are stored in separate collection "TagSpan2_test" which has Chunk ID and Tag ID
 # """
 
 
@@ -316,7 +316,14 @@ async def read_tag_spans(
     """
     Get stored TagSpans for a given chunk ID.
     """
-    return await tagger.get_tag_spans(chunk_id, mode)
+    if mode == schemas.SpanStoreMode.embedded:
+        return await tagger.get_chunk_spans_embedded(chunk_id)
+
+    if mode == schemas.SpanStoreMode.separate:
+        return await tagger.get_chunk_spans_separate(chunk_id)
+
+    raise ValueError(
+        "Idnetify a mode: embedded or separate.")
 
 
 @exp_router.patch("/api/tag_spans/update", response_model=dict)
@@ -349,6 +356,11 @@ async def update_tag_span(
             if span_id is None:
                 raise HTTPException(
                     status_code=400, detail="For separate mode, span_id is required")
+
+            if "chunkId" in update_fields:
+                raise HTTPException(
+                    status_code=400, detail="Cannot change chunkId")
+
             await tagger.update_tag_span_separate(span_id, update_fields)
 
         return {"status": "success", "updated_fields": list(update_fields.keys())}
