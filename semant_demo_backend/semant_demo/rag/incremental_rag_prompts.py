@@ -1,6 +1,6 @@
 from langchain_core.prompts import  MessagesPlaceholder
 # prompt
-# will be probably changed in v27 back to english prompt - 5 rule remove
+
 cze_answer_question_prompt_template = [
     ("system", """
     Jsi odborný historik. Odpovídej plynule v češtině.
@@ -9,10 +9,8 @@ cze_answer_question_prompt_template = [
     1) Odpověď začni PŘÍMO fakty. Nepoužívej úvody jako "Ohledně...", "Na základě..." nebo "V kontextu...".
     2) Piš v odstavcích, buď věcný, ale ne strohý.
     3) Každé tvrzení cituj pomocí [doc X].
-    4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. 
-       Jen pokud v kontextu není VŮBEC NIC k tématu, napiš jedinou větu: "K tomuto tématu chybí v dostupných pramenech podklady."
-    5) Pro větší přehlednost formátujte svou odpověď pomocí Markdownu (např. odrážky pro seznamy, tučné písmo pro klíčové pojmy).
-      
+    4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. Soustřeď se pouze na fakta, která tam jsou."
+     
     Kontext: \n {context_string} \n
     """),
     ("user", "{question_string}")
@@ -70,7 +68,7 @@ eng_answer_question_with_history_prompt_template = [
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "User's current query: {original_question}\nTechnical version to answer: {question_string}")
 ]
-# will be probably changed in v27 back to english prompt - 5 rule remove
+
 cze_answer_question_with_history_prompt_template = [
     ("system",
     """
@@ -85,8 +83,7 @@ cze_answer_question_with_history_prompt_template = [
     3) Každé tvrzení cituj pomocí [doc X].
     4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. 
        Jen pokud v kontextu není VŮBEC NIC k tématu, napiš jedinou větu: "K tomuto tématu chybí v dostupných pramenech podklady."
-    5) Pro větší přehlednost formátujte svou odpověď pomocí Markdownu (např. odrážky pro seznamy, tučné písmo pro klíčové pojmy).
-       
+
     Kontext: \n {context_string} \n  
     """),
     MessagesPlaceholder(variable_name="prompt_history"),
@@ -295,28 +292,25 @@ eng_context_grader_prompt_template =[
     2. Even if the document only partially answers the question, grade it as 'yes'.
     3. Grade as 'no' ONLY if the document is completely unrelated to the topic.
     
-    Output ONLY valid JSON with a single key 'binary_score':
-    {{ "binary_score": "yes" }} or {{ "binary_score": "no" }}
+    Output ONLY valid JSON with a single key 'binary_score' (yes/no).
     """),
     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
 ]
 
-# will be probably changed in v27 back to english prompt
 cze_context_grader_prompt_template =[
     ("system", 
      """
-    Jsi mírný revizor relevance.
-    Tvým úkolem je odfiltrovat POUZE zcela nesouvisející šum.
+    You are a lenient relevance auditor. 
+    Your task is to filter out ONLY completely unrelated noise.
 
-    PRAVIDLA:
-    1. Pokud dokument obsahuje JAKÁKOLIV fakta, jména, data nebo kontext, který byť jen vzdáleně souvisí s otázkou, označ jej jako 'yes'.
-    2. I když dokument odpovídá na otázku jen částečně, označ jej jako 'yes'.
-    3. Označ jako 'no' POUZE dokumenty, které jsou naprosto mimo téma.
+    RULES:
+    1. If the document contains ANY facts, names, dates, or context even slightly related to the user's question, grade it as 'yes'.
+    2. Even if the document only partially answers the question, grade it as 'yes'.
+    3. Grade as 'no' ONLY if the document is completely unrelated to the topic.
     
-    Odpověz POUZE platným JSON objektem s klíčem 'binary_score':
-    {{ "binary_score": "yes" }} nebo {{ "binary_score": "no" }}
+    Output ONLY valid JSON with a single key 'binary_score' (yes/no).
     """),
-    ("user", "Nalezený dokument: \n {document} \n Otázka uživatele: {question_string}")
+    ("user", "Retrieved document: \n {document} \n User question: {question_string}")
 ]
 
 #-------------------------------------------------------------------------------------------------------------------------
