@@ -19,14 +19,28 @@ class WeaviateSearch:
     def __init__(self, client: WeaviateAsyncClient):
         self.client = client
         # collections.get() is synchronous, no await needed
-        self.chunk_col = self.client.collections.get("Chunks")
+        self.chunk_col = self.client.collections.get("Chunks_test")
 
         try:
-            self.tagspan_col = self.client.collections.get("TagSpan_test")
+            self.tagspan_col = self.client.collections.get("TagSpan2_test")
         except Exception:
             self.tagspan_col = None
 
     # TagSpans
+    async def get_first_chunk(self):
+        """
+        Get first chunk from Chunks_test collection. Used for testing.
+        """
+        obj = await self.chunk_col.query.fetch_object_by_id(
+            uuid='0000005a-85f2-42a5-8f26-d1d9102e24ea',
+            return_properties=[
+                "text"
+            ]
+        )
+        print("First chunk retrieved:", obj)
+
+        return obj
+
     async def set_chunk_spans_embedded(self, chunk_id: str, spans: list[schemas.TagSpan]):
         """
         Add new TagSpan to Chunks_test's 'tagSpansArr'.
@@ -52,7 +66,7 @@ class WeaviateSearch:
             raise RuntimeError("TagSpan2_test collection not available")
 
         # clear existing for this chunk
-        await self.tagspan_col.data.delete_many(where=Filter.by_property("chunkId").equal(chunk_id))
+        # await self.tagspan_col.data.delete_many(where=Filter.by_property("chunkId").equal(chunk_id))
 
         for s in spans:
             await self.tagspan_col.data.insert(
@@ -73,7 +87,7 @@ class WeaviateSearch:
 
         response = await self.tagspan_col.query.fetch_objects(
             filters=Filter.by_property("chunkId").equal(chunk_id),
-            return_properties=["tagId", "start", "end"]
+            return_properties=["tagId", "start", "end", "chunkId"]
         )
 
         # add TagSpan ID
@@ -82,7 +96,8 @@ class WeaviateSearch:
                 id=str(obj.uuid),
                 tagId=obj.properties.get("tagId"),
                 start=obj.properties.get("start"),
-                end=obj.properties.get("end")
+                end=obj.properties.get("end"),
+                chunkId=obj.properties.get("chunkId")
             )
             for obj in response.objects
         ]

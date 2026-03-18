@@ -379,12 +379,14 @@ class SpanStoreMode(str, Enum):
 
 class TagSpan(BaseModel):
     id: str | None = None
+    chunkId: str
     tagId: str
     start: int
     end: int
 
 class TagSpanWriteRequest(BaseModel):
     chunk_id: str
+    tag_id: str
     spans: list[TagSpan]
     mode: SpanStoreMode = SpanStoreMode.embedded
 

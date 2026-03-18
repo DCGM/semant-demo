@@ -290,6 +290,10 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
 # - separate - spans are stored in separate collection "TagSpan2_test" which has Chunk ID and Tag ID
 # """
 
+# TODO remove this func - test purposes only
+@exp_router.get("/api/get_first_chunk")
+async def get_first_chunk(tagger: WeaviateSearchAndTag = Depends(get_search)):
+    return await tagger.get_first_chunk()
 
 @exp_router.post("/api/tag_spans", response_model=schemas.TagSpanWriteResponse)
 async def upsert_tag_spans(body: schemas.TagSpanWriteRequest, tagger: WeaviateSearchAndTag = Depends(get_search)) -> schemas.TagSpanWriteResponse:
