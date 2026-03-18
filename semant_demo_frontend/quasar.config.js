@@ -16,7 +16,11 @@ module.exports = configure(function (/* ctx */) {
       // fix: true,
       // include = [],
       // exclude = [],
-      // rawOptions = {},
+      rawOptions: {
+        rules: {
+          'space-before-function-paren': 'off'
+        }
+      },
       warnings: true,
       errors: true
     },
