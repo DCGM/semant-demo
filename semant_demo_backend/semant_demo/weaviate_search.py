@@ -211,4 +211,253 @@ class WeaviateSearch:
         )
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
+
+    def fetch_chunks(filters):
+        """
+        Fetches chunks with filters - tag, user-collection
+        """
+        # TODO use instead of:
+        # fetch chunks from specific collection (currently used in get_tagged_chunks_paged, get_collection_chunks_paged)
+        # fetch chunks by tags (currently used in filterChunksByTags)
+        pass
+
+    def fetch_tags(filters=None, ids=None):
+        """
+        Fetches tag collection
+        - with specific name OR
+        - by list of uuids OR 
+        - without filter return all tags
+        """
+        # TODO use instead of:
+        # with specific name (current add_or_get_tag) OR by list of uuids (current get_tagged_chunks_paged) OR without filter return all tags (current get_all_tags)
+        pass
+
+    def create_tag():
+        """
+        Adds new tag to tag-collection. Use fetch_tags.
+        """
+        # TODO like current add_or_get_tag, but use fetch_tags
+        pass
+
+    def create_reference(object, property_name, target_id):
+        """
+        Creates reference from wevaiate object to other object defined by id
+        """
+        pass
+
+    def remove_reference(object, reference_to_remove): 
+     """
+     Removes reference between objects
+     """
+     pass
+
+    """
+    - change get_tagged_chunks_paged
+        - call fetch_tags - fetch specific mode, fetch_chunks
+        - keep preparing filters, chunk selection logic
+
+    - change get_collection_chunks_paged 
+        - call fetch_chunks
+
+    - change tag_chunks_with_llm_paged 
+        - keep separate llm calling and config
+        - will call fetch_tags, fetch_chunks, create_reference
+
+    - change filterChunksByTags
+        - keep filter preparation and result processing
+        - will call fetch_chunks
+
+    - change approve_tag
+        - will call fetch_chunks, remove_reference, create_reference
+        
+    - instead add_chunk_to_collection call create_reference
+
+    - change add_or_get_tag to create_tag
     
+    - change get_all_tags 
+        - calls fetch_tags - fetch all mode
+        - keep parse result
+    """
+
+    # Some functions can stay unchanged:
+
+    ### moved here TODO: fix reference from rest of the code
+    async def add_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
+        """
+        Create user collection (contains chunks user choose)
+        """
+        logging.info(f"Adding user collection\nUser: {req.user_id}\nCollection name: {req.collection_name}")
+        # check if user collection with same properties already exists
+        filters = (
+                Filter.by_property("name").equal(req.collection_name) &
+                Filter.by_property("user_id").equal(req.user_id)
+        )
+        results = await self.client.collections.get("UserCollection").query.fetch_objects(
+            filters=filters
+        )
+        if results.objects is not None:
+            if len(results.objects) > 0:
+                return results.objects[0].uuid
+
+        # if no match found, create new collection
+        new_collection_uuid = await self.client.collections.get("UserCollection").data.insert(
+            properties={
+                "name": req.collection_name,
+                "user_id": req.user_id
+            }
+        )
+        return new_collection_uuid
+
+    ### moved here TODO: fix reference from rest of the code
+    async def fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
+        """
+        Retrieves all collections for given user
+        """
+        # filter collections by user
+        filters = (
+            Filter.by_property("user_id").equal(userId)
+        )
+        results = await self.client.collections.get("UserCollection").query.fetch_objects(
+            filters=filters
+        )
+        logging.info(f"User Id: {userId}\nRaw results: {results}")
+        collections = []
+        collections_respone = []
+        if results.objects is not None:
+            if len(results.objects) > 0:
+                collections = results.objects
+                # map collection data to expected response format
+                for o in collections:
+                    collections_respone.append(
+                        {'id': str(o.uuid), 'name': o.properties['name'], 'user_id': o.properties.get('user_id')})
+
+        return {"collections": collections_respone, "userId": userId}   
+
+    ### moved here TODO: fix reference from rest of the code
+    async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
+        """
+        Removes tags by:
+         - remove all cross-references from Chunks
+         - remove the Tag object itself
+        """
+        try:
+            # get tags for collection names
+            tag_collection = self.client.collections.get("Tag")
+            filters = Filter.by_id().contains_any([str(uuid) for uuid in chosenTagUUIDs.tag_uuids])
+
+            results = await tag_collection.query.fetch_objects(filters=filters)
+
+            # get different collection names
+            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+
+            # iterate over the collections and retrieve text chunks and corresponding tags
+            for collection_name in collection_names:
+                # get all chunks
+                chunks = self.client.collections.get(collection_name)
+                # fetch chunks with hasTags
+                res = await chunks.query.fetch_objects(
+                    return_references=QueryReference(
+                        link_on="automaticTag",
+                        return_properties=[]
+                    )
+                )
+
+                tagsToRemove = set(chosenTagUUIDs.tag_uuids)
+                tagsToRemove = [str(tagID) for tagID in tagsToRemove]
+
+                # replace hasTags with remaining refs
+                for obj in res.objects:
+                    refs = obj.references or {}
+                    current = refs.get("automaticTag")
+                    currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
+                    remaining = list(filter(lambda tid: tid not in tagsToRemove, currentIDs))
+                    logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+                    logging.info(f"To remove {tagsToRemove}")
+                    if len(remaining) != len(currentIDs):
+                        logging.info(f"Replacing {currentIDs} {remaining}")
+                        await chunks.data.reference_replace(
+                            from_uuid=obj.uuid,
+                            from_property="automaticTag",
+                            to=remaining
+                        )
+                    check = await chunks.query.fetch_object_by_id(
+                        obj.uuid,
+                        return_references=[QueryReference(link_on="automaticTag", return_properties=[])]
+                    )
+                    got = [str(r.uuid) for r in (check.references.get("automaticTag").objects if check.references and check.references.get("hasTags") else [])]
+                    logging.info(f"after: {got}")
+                logging.info("deleted references from chunks to tags")
+
+            # remove the Tag objects itself
+            result = await tag_collection.data.delete_many(
+                where=Filter.by_id().contains_any(tagsToRemove)
+            )
+            logging.info(result)
+
+            return {"successful": True}
+        except Exception as e:
+            logging.error(f"{e}")
+            return {"successful": False}
+    
+    ### moved here 
+    # TODO rename to remove_tag_refs
+    # TODO fix reference from rest of the code
+    # TODO make it not only automatic but select which reference type should be removed
+    async def remove_automatic_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
+        """
+        Removes automatic tags
+        """
+        try:
+            # remove all automatic cross-references from Chunks
+
+            # get tags for collection names
+            tag_collection = self.client.collections.get("Tag")
+            filters = Filter.by_id().contains_any([str(uuid) for uuid in chosenTagUUIDs.tag_uuids])
+
+            results = await tag_collection.query.fetch_objects(filters=filters)
+
+            # get different collection names
+            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+
+            # iterate over the collections and retrieve text chunks and corresponding tags
+            for collection_name in collection_names:
+                # get all chunks
+                chunks = self.client.collections.get(collection_name)
+                # fetch chunks with hasTags
+                res = await chunks.query.fetch_objects(
+                    return_references=QueryReference(
+                        link_on="automaticTag",
+                        return_properties=[]
+                    )
+                )
+
+                tagsToRemove = set(chosenTagUUIDs.tag_uuids)
+                tagsToRemove = [str(tagID) for tagID in tagsToRemove]
+
+                # replace hasTags with remaining refs
+                for obj in res.objects:
+                    refs = obj.references or {}
+                    current = refs.get("automaticTag")
+                    currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
+                    remaining = list(filter(lambda tid: tid not in tagsToRemove, currentIDs))
+                    logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+                    logging.info(f"To remove {tagsToRemove}")
+                    if len(remaining) != len(currentIDs):
+                        logging.info(f"Replacing {currentIDs} {remaining}")
+                        await chunks.data.reference_replace(
+                            from_uuid=obj.uuid,
+                            from_property="automaticTag",
+                            to=remaining
+                        )
+                    check = await chunks.query.fetch_object_by_id(
+                        obj.uuid,
+                        return_references=[QueryReference(link_on="automaticTag", return_properties=[])]
+                    )
+                    got = [str(r.uuid) for r in (check.references.get("automaticTag").objects if check.references and check.references.get("hasTags") else [])]
+                    logging.info(f"after: {got}")
+                logging.info("deleted references from chunks to tags")
+
+            return {"successful": True}
+        except Exception as e:
+            logging.error(f"{e}")
+            return {"successful": False}
