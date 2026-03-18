@@ -212,44 +212,127 @@ class WeaviateSearch:
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
 
-    def fetch_chunks(filters):
+    def fetch_chunks(filters: Filter):
         """
-        Fetches chunks with filters - tag, user-collection
+        Fetches chunks with filters - tag, user-collection. Fetch subset of text chunks given by filters.
+        
+        Filters are built by the public methods using inline like:
+            filters = Filter.by_property("name").equal("value")
+            
+        Args:
+            filters: Weaviate Filter object for querying chunks
+        
+        Returns:
+            List of chunk objects matching the filters
+
+        Raises:
+            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateFilterError: Invalid filter specification or malformed Filter object
+            WeaviateQueryError: Query execution failed or query syntax error
+            WeaviateQueryTimeoutError: Query execution exceeded timeout threshold
+            WeaviateNotFoundError: No chunks found matching the filters
+            WeaviateSerializationError: Cannot deserialize response from Weaviate
+            WeaviateServerError: Weaviate server returned an error
         """
         # TODO use instead of:
         # fetch chunks from specific collection (currently used in get_tagged_chunks_paged, get_collection_chunks_paged)
         # fetch chunks by tags (currently used in filterChunksByTags)
         pass
 
-    def fetch_tags(filters=None, ids=None):
+    def fetch_tags(filters: Filter|None = None, ids=None):
         """
         Fetches tag collection
         - with specific name OR
         - by list of uuids OR 
         - without filter return all tags
+
+        Filters are built by the public methods using inline like:
+            filters = Filter.by_property("name").equal("value")
+        
+        Args:
+            filters: Optional Weaviate Filter object for property matching (by name)
+            ids: Optional list of tag UUIDs to fetch specific tags
+        
+        Returns:
+            List of tag objects matching criteria. Returns empty list if no matches found.
+            
+        Raises:
+            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateFilterError: Invalid filter specification or malformed Filter object
+            WeaviateQueryError: Query execution failed or query syntax error
+            WeaviateQueryTimeoutError: Query execution exceeded timeout threshold
+            WeaviateDataValidationError: Invalid UUID format in ids parameter
+            WeaviateNotFoundError: No tags found matching the criteria
+            WeaviateSerializationError: Cannot deserialize response from Weaviate
+            WeaviateServerError: Weaviate server returned an error
         """
         # TODO use instead of:
         # with specific name (current add_or_get_tag) OR by list of uuids (current get_tagged_chunks_paged) OR without filter return all tags (current get_all_tags)
         pass
 
-    def create_tag():
+    def create_tag(tag: schemas.TagData, collection_name):
         """
         Adds new tag to tag-collection. Use fetch_tags.
+
+        Args:
+            name: schemas.TagData of the tag
+            collection_name: Name of the collection this tag belongs to
+            
+        Returns:
+            Created tag object with UUID
+            
+        Raises:
+            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateDataValidationError: Invalid input data (empty name, invalid UUID format, etc.)
+            WeaviateDuplicateError: Tag with same name already exists for this user in this collection
+            WeaviateSerializationError: Cannot serialize tag data to JSON
+            WeaviateServerError: Weaviate server returned an error
         """
         # TODO like current add_or_get_tag, but use fetch_tags
         pass
 
-    def create_reference(object, property_name, target_id):
+    def create_reference(src_id, property_name, target_id):
         """
-        Creates reference from wevaiate object to other object defined by id
+        Creates reference from weviate object fetched by its id to other object defined by id.
+
+        Args:
+            src_id: weaviate source object id (e.g., chunk id)
+            property_name: Name of reference property (e.g., "tagged_with", "inCollection")
+            target_id: UUID of target object (e.g., tag UUID)
+            
+        Returns:
+            True if reference created successfully
+            
+        Raises:
+            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateDataValidationError: Invalid UUID format in source_id or target_id
+            WeaviateObjectNotFoundError: Source object does not exist
+            WeaviateReferencedObjectNotFoundError: Target object does not exist
+            WeaviateReferencePropertyError: Reference property does not exist in schema or is not a reference 
         """
         pass
 
-    def remove_reference(object, reference_to_remove): 
-     """
-     Removes reference between objects
-     """
-     pass
+    def remove_reference(src_id, reference_to_remove): 
+        """
+        Removes reference between objects.
+
+        Args:
+            source_id: UUID of source object (e.g., chunk UUID)
+            property_name: Name of reference property to remove from (e.g., "tagged_with", "inCollection")
+            
+        Returns:
+            True if reference removed successfully
+            
+        Raises:
+            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateDataValidationError: Invalid UUID format in source_id or target_id
+            WeaviateObjectNotFoundError: Source object does not exist
+            WeaviateReferencePropertyError: Reference property does not exist in schema
+            WeaviateStateError: Reference does not exist or cannot be removed
+            WeaviateSerializationError: Cannot serialize removal data
+            WeaviateServerError: Weaviate server returned an error
+        """
+        pass
 
     """
     - change get_tagged_chunks_paged
@@ -281,8 +364,8 @@ class WeaviateSearch:
 
     # Some functions can stay unchanged:
 
-    ### moved here TODO: fix reference from rest of the code
-    async def add_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
+    ### moved here TODO: fix reference from rest of the code (renamed from add_collection)
+    async def create_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
         """
         Create user collection (contains chunks user choose)
         """
