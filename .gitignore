@@ -68,6 +68,9 @@ db.sqlite3-journal
 # SQL stuff
 semant_demo_backend/tasks.db
 
+# OpenAPI
+semant_demo_backend/openapi.json
+
 # Flask stuff:
 instance/
 .webassets-cache

@@ -220,6 +220,7 @@ class FeedbackRequest(BaseModel):
     sources: list[TextChunkWithDocument]
     answer: str
     rating: int                                     # should be: 1 - like / -1 - dislike
+    error_types: list[str] | None = None
     comment: str | None = None
 
 class CreateResponse(BaseModel):
@@ -443,5 +444,6 @@ class RagUserFeedback(TasksBase):
     question = Column(Text, nullable=False) 
     answer = Column(Text, nullable=False)
     rating = Column(Integer, nullable=False) # 1 - like, -1 - dislike
+    error_types = Column(JSON, nullable=True) # list of error types, if rating is -1
     comment = Column(Text, nullable=True)
     sources = Column(JSON, nullable=True)
