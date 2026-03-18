@@ -38,41 +38,38 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     def __init__(self, global_config: Config, param_config):
         super().__init__(global_config, param_config)
         self.searcher = None
-        #this can be part of config in future
-        self.extract_prompt = ChatPromptTemplate.from_messages(extract_metadata_from_question_template)
-        self.hyde_prompt = ChatPromptTemplate.from_messages(hyde_prompt_template)
-
-        #TODO add to language prompts and rewrite it
-        self.check_sufficient_context_prompt = ChatPromptTemplate.from_messages(check_sufficient_context_prompt_template)
-        
+   
         #multilanguage prompt
         self.identify_language_prompt = ChatPromptTemplate.from_messages(identify_language_prompt_template)
-
-        #TODO rewrite prompt and add functionality to select language in explain function as well
-        self.explain_selected_text_prompt = ChatPromptTemplate.from_messages(explain_selected_text_prompt_template)
-        
+        self.identify_language_prompt_answer = ChatPromptTemplate.from_messages(identify_language_answer_prompt_template)
 
         self.prompts = {
             "cze" : {
-                "history_transformation" : ChatPromptTemplate.from_messages(cze_refrase_question_from_history_prompt_template), #rewrite
+                "explain_selected_text" : ChatPromptTemplate.from_messages(cze_explain_selected_text_prompt_template),
+                "check_sufficient_context" : ChatPromptTemplate.from_messages(cze_check_sufficient_context_prompt_template),
+                "history_transformation" : ChatPromptTemplate.from_messages(cze_refrase_question_from_history_prompt_template),
                 "generate_no_history" : ChatPromptTemplate.from_messages(cze_answer_question_prompt_template),
-                "generate_with_history" : ChatPromptTemplate.from_messages(cze_answer_question_with_history_prompt_template), #rewrite
-                "multiquery" : ChatPromptTemplate.from_messages(cze_multiquery_prompt_template), #rewrite
-                "grade_context" : ChatPromptTemplate.from_messages(cze_context_grader_prompt_template), #rewrite
-                "grade_generation" : ChatPromptTemplate.from_messages(cze_generation_grader_prompt_template), #rewrite
+                "generate_with_history" : ChatPromptTemplate.from_messages(cze_answer_question_with_history_prompt_template),
+                "multiquery" : ChatPromptTemplate.from_messages(cze_multiquery_prompt_template),
+                "grade_context" : ChatPromptTemplate.from_messages(cze_context_grader_prompt_template),
+                "grade_generation" : ChatPromptTemplate.from_messages(cze_generation_grader_prompt_template),
                 "extract_keyword" : ChatPromptTemplate.from_messages(cze_extract_keyword_prompt),
                 "extract_metadata" : ChatPromptTemplate.from_messages(cze_extract_metadata_from_question_template),
-                "hyde" : ChatPromptTemplate.from_messages(cze_hyde_prompt_template),
-                "consider_web" : ChatPromptTemplate.from_messages(cze_consider_web_search_prompt)
+                "hyde" : ChatPromptTemplate.from_messages(cze_hyde_prompt_template)
             },
             "eng" : {
-                "history_transformation" : ChatPromptTemplate.from_messages(eng_refrase_question_from_history_prompt_template), #rewrite
+                "explain_selected_text" : ChatPromptTemplate.from_messages(eng_explain_selected_text_prompt_template),
+                "check_sufficient_context" : ChatPromptTemplate.from_messages(eng_check_sufficient_context_prompt_template),
+                "history_transformation" : ChatPromptTemplate.from_messages(eng_refrase_question_from_history_prompt_template),
                 "generate_no_history" : ChatPromptTemplate.from_messages(eng_answer_question_prompt_template),
-                "generate_with_history" : ChatPromptTemplate.from_messages(eng_answer_question_with_history_prompt_template), #rewrite
-                "multiquery" : ChatPromptTemplate.from_messages(eng_multiquery_prompt_template), #rewrite
-                "grade_context" : ChatPromptTemplate.from_messages(eng_context_grader_prompt_template), #rewrite
-                "grade_generation" : ChatPromptTemplate.from_messages(eng_generation_grader_prompt_template), #rewrite
-                "extract_keyword" : ChatPromptTemplate.from_messages(eng_extract_keyword_prompt)
+                "generate_with_history" : ChatPromptTemplate.from_messages(eng_answer_question_with_history_prompt_template),
+                "multiquery" : ChatPromptTemplate.from_messages(eng_multiquery_prompt_template),
+                "grade_context" : ChatPromptTemplate.from_messages(eng_context_grader_prompt_template),
+                "grade_generation" : ChatPromptTemplate.from_messages(eng_generation_grader_prompt_template), 
+                "extract_keyword" : ChatPromptTemplate.from_messages(eng_extract_keyword_prompt),
+                "extract_metadata" : ChatPromptTemplate.from_messages(eng_extract_metadata_from_question_template),
+                "hyde" : ChatPromptTemplate.from_messages(eng_hyde_prompt_template)
+
             }
         }
 
@@ -94,18 +91,16 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.search_type = param_config.get("search_type", "hybrid")
         #load and build graph
         #load
-        self.qt_strategy = param_config.get("qt_strategy", "multi_query") #step_back / hyde / multi_query / nothing
         self.max_retries = param_config.get("max_retries", 3)
-        self.additional_tries_with_web_search = param_config.get("additional_tries_with_web_search", 2)
         self.web_search_enabled = param_config.get("web_search_enabled", False)
+        self.max_web_result = param_config.get("max_web_result", 8)
         self.metadata_extraction_allowed = param_config.get("metadata_extraction_allowed", True)
-        self.self_reflection = param_config.get("self_reflection", True)
         #build
         self.workflow = self._build_rag()
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 25_2")
+            print("Adaptive RAG version 26")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -158,7 +153,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         workflow.add_node("grade_context", self.node_grade_context)
         workflow.add_node("generate", self.node_generate)
         workflow.add_node("grade_generation", self.node_grade_generation)
-        workflow.add_node("web_router", self.node_web_router)
         workflow.add_node("web_search", self.node_web_search)
 
         #define edges
@@ -207,16 +201,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "retry" : "start_retrieval_branch"
             }
         )
-
-        # workflow.add_conditional_edges(
-        #     "web_router",
-        #     lambda x: x["feedback"],
-        #     {
-        #         "web_search": "web_search",
-        #         "finish": END
-        #     }
-        # )
-
         return workflow
     
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -383,7 +367,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         
     async def node_check_context(self, state: AdaptiveRagState):
         if (state["history"] and state["documents"]):
-            chain = self._create_chain(model=self.model, prompt=self.check_sufficient_context_prompt)
+            language = state.get("language", "cze")
+            prompt = self._get_prompt_by_language("check_sufficient_context", language)
+            chain = self._create_chain(model=self.model, prompt=prompt)
             context = self._format_weaviate_context(state["documents"])
             result  = await chain.ainvoke({
                 "context_string" : context,
@@ -607,22 +593,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         
         return "finish"
     
-    async def node_web_router(self, state: AdaptiveRagState):
-        # if not self.web_search_enabled:
-        #     return {"feedback": "finish"}
-        # language = state.get("language", "cze")
-        # prompt = self._get_prompt_by_language("consider_web", language)
-        # chain = self._create_chain(model=self.model, prompt=prompt)
-        # result = await chain.ainvoke(prompt.format(question=state["question"]))
-
-        # decision = "web_search" if "web" in result.lower() else "finish"
-
-        # if (DEBUG_PRINT): 
-        #     print(f"WEB ROUTER DECISION: {decision}")
-        # return {"feedback": decision}
-        return {"feedback": "web_search"}
-
-
     async def node_web_search (self, state: AdaptiveRagState):
         if (DEBUG_PRINT):
             print(f"Extracting keyword for the internet search.")
@@ -649,7 +619,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     for q in queries:
                         if (DEBUG_PRINT): 
                             print(f"Searching web: {q}")
-                        results = [r["body"] for r in ddgs.text(q, max_results = 8)]    # TODO changed from 8 to 6 (try web search in next version)
+                        results = [r["body"] for r in ddgs.text(q, max_results = self.max_web_result)]
                         all_results.extend(list(set(results)))
 
                 unique_results = list(dict.fromkeys(all_results))
@@ -750,7 +720,24 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         if (full_answer and sources_raw and selected_text):
             context = self._format_weaviate_context(sources_raw)
-            chain = self._create_chain(model=self.model, prompt=self.explain_selected_text_prompt)
+            
+            # detect language
+            language = "eng"
+            chain = self._create_chain(model=self.model, prompt=self.identify_language_prompt_answer)
+            result = await chain.ainvoke({"text_string" : full_answer})
+            clean_result = re.sub(r'```json|```', '', result).strip()
+            try:
+                graded_doc = json.loads(clean_result)
+                language = graded_doc.get("language", "eng").lower()
+                if (DEBUG_PRINT):
+                    print(f"Detected language: {language}")
+            except Exception:
+                language = "eng"
+
+            # explain selection
+            prompt = self._get_prompt_by_language("explain_selected_text", language)
+
+            chain = self._create_chain(model=self.model, prompt=prompt)
             result = await chain.ainvoke({
                 "full_answer" : full_answer,
                 "context_string" : context,
