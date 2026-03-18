@@ -17,8 +17,10 @@ module.exports = configure(function (/* ctx */) {
       // include = [],
       // exclude = [],
       rawOptions: {
-        rules: {
-          'space-before-function-paren': 'off'
+        overrideConfig: {
+          rules: {
+            'space-before-function-paren': 'off'
+          }
         }
       },
       warnings: true,
