@@ -1,6 +1,5 @@
 from langchain_core.prompts import  MessagesPlaceholder
 # prompt
-
 cze_answer_question_prompt_template = [
     ("system", """
     Jsi odborný historik. Odpovídej plynule v češtině.
@@ -9,7 +8,8 @@ cze_answer_question_prompt_template = [
     1) Odpověď začni PŘÍMO fakty. Nepoužívej úvody jako "Ohledně...", "Na základě..." nebo "V kontextu...".
     2) Piš v odstavcích, buď věcný, ale ne strohý.
     3) Každé tvrzení cituj pomocí [doc X].
-    4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. Soustřeď se pouze na fakta, která tam jsou."
+    4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. 
+       Jen pokud v kontextu není VŮBEC NIC k tématu, napiš jedinou větu: "K tomuto tématu chybí v dostupných pramenech podklady."
      
     Kontext: \n {context_string} \n
     """),
@@ -94,10 +94,8 @@ cze_answer_question_with_history_prompt_template = [
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 
-eng_check_sufficient_context_prompt_template = [
-    ("system", 
-     """
-     You are a retrieval optimizer. Your task is to determine if the PROVIDED CONTEXT contains enough factual information to answer the NEW QUESTION.
+check_sufficient_context_prompt_template = [
+    ("system", """You are a retrieval optimizer. Your task is to determine if the PROVIDED CONTEXT contains enough factual information to answer the NEW QUESTION.
 
     RULES:
     1. Respond ONLY with the word 'yes' or 'no'.
@@ -109,23 +107,6 @@ eng_check_sufficient_context_prompt_template = [
     Context: 'He lives in Prague.' | Question: 'When was he born?' | Answer: no
     """),
     ("user", "CONTEXT: \n {context_string} \n NEW QUESTION: {question_string} \n Is the information sufficient? (yes/no):")
-]
-
-cze_check_sufficient_context_prompt_template = [
-    ("system", 
-     """
-    Jsi optimalizátor vyhledávání. Tvým úkolem je určit, zda POSKYTNUTÝ KONTEXT obsahuje dostatek faktických informací pro úplné zodpovězení NOVÉ OTÁZKY.
-
-    PRAVIDLA:
-    1. Odpověz POUZE slovem 'yes' nebo 'no'.
-    2. Odpověď NEPŘEKLÁDEJ. Musí to být přesně 'yes' nebo 'no'.
-    3. Nepiš žádné vysvětlování ani celé věty.
-
-    PŘÍKLADY:
-    Kontext: 'Franz Kafka byl spisovatel.' | Otázka: 'Kdo byl Kafka?' | Odpověď: yes
-    Kontext: 'Žije v Praze.' | Otázka: 'Kdy se narodil?' | Odpověď: no
-    """),
-    ("user", "KONTEXT: \n {context_string} \n NOVÁ OTÁZKA: {question_string} \n Jsou informace dostatečné? (yes/no):")
 ]
 
 #-------------------------------------------------------------------------------------------------------------------------
@@ -151,12 +132,14 @@ eng_refrase_question_from_history_prompt_template = [
 cze_refrase_question_from_history_prompt_template = [
     ("system",
     """
-    Na základě historie chatu a poslední otázky uživatele, která může odkazovat na dřívější kontext, zformuluj samostatnou otázku, která je pochopitelná i bez historie chatu. 
-    PRAVIDLA:
-    1. Neodpovídej na otázku! Pouze ji přeformuluj.
-    2. Udělej otázku konkrétnější tím, že do ní vložíš relevantní klíčová slova, jména, místa nebo data z historie chatu.
-    3. Pokud není potřeba nic měnit, vrať otázku v původním znění.
-    4. Samostatná otázka MUSÍ být ve stejném jazyce jako poslední dotaz uživatele
+    Given a chat history and the latest user question \
+    which might reference context in the chat history, formulate a standalone question which can be understood \
+    without the chat history. Do NOT answer the question, Your goal is to make the question more specific by incorporating \
+    relevant keywords and entities (like names, locations, or dates) from the chat history. \
+    CRITICAL RULE: The standalone question MUST be in the SAME LANGUAGE as the latest user question. 
+    If the user asks in Czech, the reformulated question must be in Czech.
+    
+    Just reformulate it if needed and otherwise return it as is. 
     """),
     MessagesPlaceholder(variable_name="prompt_history"),
     ("user", "{question_string}")
@@ -196,21 +179,17 @@ cze_multiquery_prompt_template = [
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 
-eng_extract_metadata_from_question_template = [
+extract_metadata_from_question_template = [
     ("system",
     """
-    You are an expert in history. Analyze the question and extract the filters in JSON format.
-
-    EXAMPLES:
-    Question: "The consequences of the 1863 law on poor communities"
-    Output: {{"min_year": 1863, "max_year": 1863, "language": "ces"}}
-
-    Question: "Industry in the Czech lands in the mid-19th century"
-    Output: {{"min_year": 1840, "max_year": 1860, "language": "ces"}}
-
-    Question: {question_string}
-    Output:
+    You are an expert metadata extractor for a historical document archive.
+    Your task is to analyze the user's query (which may be in Czech, German, or other languages) and extract relevant filtering criteria into a strict JSON format. 
+    Data to extract:
+    - min_year: The earliest year mentioned or implied (as an integer).
+    - max_year: The latest year mentioned or implied (as an integer).
+    - language: The requested language of the documents. Use  ISO 639-2/T codes (e.g., 'ces', 'deu', 'eng', 'rus', 'slk').
     """),
+    ("user", "{question_string}")
     ]
 
 cze_extract_metadata_from_question_template = [
@@ -233,13 +212,12 @@ cze_extract_metadata_from_question_template = [
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
-eng_hyde_prompt_template = [
+hyde_prompt_template = [
     ("system",
     """
-    Write a brief factual paragraph in English that would serve as the ideal answer to this question. 
-    Focus on historical style, names, and dates. 
-    Question: {question_string}
-    """)
+    Please write a short passage to answer the question. Focus on factual content. This passage will be used for search in vector database. Respond in the language of the question.
+    """),
+    ("user", "{question_string}")
     ]
 
 cze_hyde_prompt_template = [
@@ -327,11 +305,12 @@ eng_generation_grader_prompt_template = [
     Determine if the answer provides enough factual information to be useful. We want to avoid unnecessary retries if the core of the question is already answered.
 
     Mark "is_complete": "yes" if:
-    - The answer directly and substantively addresses the core of the question.
+    - The answer provides at least some direct facts related to the question.
+    - The answer is informative, even if it admits that some minor details are missing.
 
-    Mark "is_complete": "no" if:
-    - The answer contains phrases such as "information is not available" or "the documents do not specify."
-    - The answer covers only a small part of the complex question.
+    Mark "is_complete": "no" ONLY if:
+    - The answer is a complete apology (e.g., "I don't know", "Information not found").
+    - The answer is completely irrelevant to the subject of the question.
 
     Respond ONLY with a JSON object:
     {{"is_complete": "yes"}} or {{"is_complete": "no"}}
@@ -386,6 +365,7 @@ identify_language_answer_prompt_template = [
     ("user", "{text_string}")
 ]
 
+
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
@@ -410,6 +390,25 @@ cze_extract_keyword_prompt = [
     """
     ),
     ("user", "Otázka: {question}")
+]
+
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------
+
+cze_consider_web_search_prompt = [
+    ("system",
+    """
+    Jsi inteligentní směrovač dotazů.
+    Analyzuj otázku a rozhodni, zda je vhodné hledat odpověď na moderním internetu.
+        
+    Pravidla:
+    - Odpověz 'WEB', pokud: Otázka se týká moderní doby, technologií, známých osobností, obecných definic, sportu nebo jakéhokoliv tématu, které by mohlo být na Wikipedii či ve zpravodajství.
+    - Odpověz 'FINISH', POUZE pokud: Je otázka extrémně specifická na vnitřní detaily historických listin, které na moderním webu zaručeně nebudou (např. konkrétní číslo jednací zapomenutého úředníka z roku 1850).
+    
+    Pokud si nejsi jistý, zvol 'WEB'. Raději zkusit hledat, než vzdát odpověď.
+    """),
+    ("user", "Otázka: {question}\nRozhodnutí:")
 ]
 
 #-------------------------------------------------------------------------------------------------------------------------
