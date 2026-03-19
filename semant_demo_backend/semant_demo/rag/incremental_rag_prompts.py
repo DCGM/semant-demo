@@ -179,7 +179,7 @@ cze_multiquery_prompt_template = [
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 
-extract_metadata_from_question_template = [
+eng_extract_metadata_from_question_template = [
     ("system",
     """
     You are an expert metadata extractor for a historical document archive.
@@ -212,7 +212,7 @@ cze_extract_metadata_from_question_template = [
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
-hyde_prompt_template = [
+eng_hyde_prompt_template = [
     ("system",
     """
     Please write a short passage to answer the question. Focus on factual content. This passage will be used for search in vector database. Respond in the language of the question.
@@ -228,32 +228,6 @@ cze_hyde_prompt_template = [
     Otázka: {question_string}
     """)
     ]
-
-#-------------------------------------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------------------------------------
-
-
-multiquery_retry = (
-            "\nCRITICAL NOTE: The previous search variations failed to find relevant documents. "
-            "For this attempt, provide SIGNIFICANTLY DIFFERENT and BROADER search terms. "
-            "Avoid terms used previously if possible and focus on different synonyms or related concepts."
-            "Previous queries: {queries}"
-        )
-
-generation_retry = (
-    "\nCRITICAL NOTE: Your previous answer had issues, correct it. Feedback: {feedback}."
-)
-
-
-
-hyde_retry = (
-    "\nCRITICAL NOTE: The previous search variations failed to find relevant documents. "
-    "For this attempt, provide SIGNIFICANTLY DIFFERENT hypothetical document. "
-    "Avoid terms used previously if possible and focus on different synonyms or related concepts."
-    "Previous document: {hyde_doc}"
-)
-
 
 #-------------------------------------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------------------------------------
