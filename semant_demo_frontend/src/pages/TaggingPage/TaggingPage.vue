@@ -10,29 +10,47 @@
         <q-card>
           <q-card-section>
             <div class="text-subtitle2 text-grey-7 q-mb-sm">
-              Highlight text to select, or click an existing tag to edit
+              Highlight text to select, or click an existing tag to edit. Drag
+              the handles to adjust.
             </div>
 
             <div
               ref="textContainer"
               class="text-container"
+              :class="{ 'is-dragging': draggingHandle }"
               @mouseup="handleMouseUp"
             >
               <span
                 v-for="(seg, idx) in renderedSegments"
                 :key="idx"
+                :data-start="seg.start"
+                :data-end="seg.end"
                 :style="getSegmentStyle(seg)"
                 class="text-segment"
                 @click="handleSegmentClick(seg)"
+                ><span
+                  v-if="seg.isSelectionStart"
+                  class="selection-handle handle-start"
+                  :style="getHandleStyle()"
+                  @mousedown.prevent.stop="startDrag($event, 'start')"
+                  @touchstart.prevent.stop="startDrag($event, 'start')"
+                ></span
                 >{{ seg.text
-                }}<q-tooltip
+                }}<span
+                  v-if="seg.isSelectionEnd"
+                  class="selection-handle handle-end"
+                  :style="getHandleStyle()"
+                  @mousedown.prevent.stop="startDrag($event, 'end')"
+                  @touchstart.prevent.stop="startDrag($event, 'end')"
+                ></span
+                ><q-tooltip
                   v-if="seg.tags.length > 0 && !currentSelection?.editingId"
                 >
                   <div v-for="tag in seg.tags" :key="tag.tagId">
                     {{ getTagName(tag.tagId) }}
                   </div>
-                </q-tooltip></span
-              >
+                </q-tooltip>
+              </span>
             </div>
           </q-card-section>
         </q-card>
@@ -40,70 +58,24 @@
 
       <!-- Tagging & Adjustments Panel -->
       <div class="col-12 col-md-4">
-        <!-- Active Selection / Edit Menu -->
         <q-card v-if="currentSelection" class="bg-blue-grey-1">
           <q-card-section>
             <div class="text-h6">
-              {{
-                currentSelection.editingId
-                  ? 'Edit Tag Boundaries'
-                  : 'New Selection'
-              }}
+              {{ currentSelection.editingId ? 'Edit Tag' : 'New Selection' }}
             </div>
 
-            <div class="q-mt-md">
+            <div class="q-mt-md hidden">
               <div class="row items-center q-gutter-x-sm q-mb-md">
                 <span style="width: 50px" class="text-weight-bold">Start:</span>
-                <q-btn
-                  dense
-                  flat
-                  round
-                  icon="remove"
-                  @click="adjustStart(-1)"
-                  :disable="currentSelection.start <= 0 || isProcessing"
-                />
-                <q-badge color="primary" class="text-subtitle1 q-px-sm">{{
+                <q-badge color="primary" class="text-subtitle1 q-px-md">{{
                   currentSelection.start
                 }}</q-badge>
-                <q-btn
-                  dense
-                  flat
-                  round
-                  icon="add"
-                  @click="adjustStart(1)"
-                  :disable="
-                    currentSelection.start >= currentSelection.end - 1 ||
-                    isProcessing
-                  "
-                />
               </div>
               <div class="row items-center q-gutter-x-sm">
                 <span style="width: 50px" class="text-weight-bold">End:</span>
-                <q-btn
-                  dense
-                  flat
-                  round
-                  icon="remove"
-                  @click="adjustEnd(-1)"
-                  :disable="
-                    currentSelection.end <= currentSelection.start + 1 ||
-                    isProcessing
-                  "
-                />
-                <q-badge color="primary" class="text-subtitle1 q-px-sm">{{
+                <q-badge color="primary" class="text-subtitle1 q-px-md">{{
                   currentSelection.end
                 }}</q-badge>
-                <q-btn
-                  dense
-                  flat
-                  round
-                  icon="add"
-                  @click="adjustEnd(1)"
-                  :disable="
-                    currentSelection.end >= (chunk?.text?.length || 0) ||
-                    isProcessing
-                  "
-                />
               </div>
             </div>
           </q-card-section>
@@ -112,9 +84,7 @@
 
           <q-card-section>
             <div class="text-subtitle1 text-weight-bold q-mb-sm">
-              {{
-                currentSelection.editingId ? 'Change Tag Type' : 'Assign Tag'
-              }}
+              {{ currentSelection.editingId ? 'Tag Type' : 'Assign Tag' }}
             </div>
             <div class="row q-gutter-sm">
               <q-btn
@@ -192,27 +162,20 @@
 </template>
 
 <script setup lang="ts">
-import { useApi } from 'src/composables/useApi'
-import {
-  ReadTagSpansApiTagSpansChunkIdGetRequest,
-  UpsertTagSpansApiTagSpansPostRequest
-} from 'src/generated/api'
-import { onMounted, ref, computed } from 'vue'
-// Assumes you have useApi exported appropriately:
-// import { useApi } from 'src/api'
+import { computed, onMounted, ref } from 'vue'
+import { useTagging } from './composables/useTagging'
+import { TagSpan } from 'src/generated/api'
+import { snapToWordBoundary } from './utils'
 
 // --- Types ---
-interface TextChunk {
-  id: string
-  text: string
-}
-
 interface RenderSegment {
   text: string
-  tags: any[] // Based on your API's TagSpan shape
+  tags: TagSpan[]
   isSelected: boolean
   start: number
   end: number
+  isSelectionStart?: boolean
+  isSelectionEnd?: boolean
 }
 
 interface SelectionState {
@@ -222,33 +185,25 @@ interface SelectionState {
   tagId?: string
 }
 
-const api = useApi().default
-
 // --- State ---
-const isProcessing = ref(false)
 const currentSelection = ref<SelectionState | null>(null)
 const textContainer = ref<HTMLElement | null>(null)
 
-// API-driven array of spans
-const tagSpans = ref<any[]>([])
+const snapToWords = true
 
-// const chunk = ref<Partial<TextChunk>>({
-//   id: '0000005a-85f2-42a5-8f26-d1d9102e24ea',
-//   text: 'Reslaurant Wagner\nSTRADA MÄRASESTI 28\nist vollkommen renoviert und bietet den Gästen\nein erstklasiges Buffet, Gratar und Mittagstisch.\nReichhaltige Auswahl aller Getränke. Billigste\nPreise.\nUm zahlreichen Zuspruch wird gebeten.\n\nDr. Josef Sandberg\nInternist und Venerolog.\nTel. 922\nCernaufl. str. Reg. Ferdinand 31 Tel. 922\nBehandlung für\nInnere Krankheiten\nGeschlechtskrankheiten\n\nfür Gonorrhoc u. Suphilis : Pauschalhonorare\nElcktro-Endoskopische Untersuchung u. Be-\nhandlung der Harnröhre (Kauterisation)\n\nInfolge selbständiger Erzeugung\nsämtlicher\n\nSilber- und Goldwarengegenstände\nsind wir in der Lage, unsere Ware um 20%\nbilliger als überall zu verkaufen. Es überzeuge\nsich jeder durch einen einmaligen Besuch in\nunserer Werkstätte\nKreiner & Horowitz. str. I. Flondor 29 im Hofe'
-// })
+const draggingHandle = ref<'start' | 'end' | null>(null)
+let justFinishedDrag = false
 
-type ChResponse = {
-  uuid: string
-  properties: {
-    text: string
-  }
-}
-
-type Ch = {
-  id: string
-  text: string
-}
-const chunk = ref<Ch | null>(null)
+const {
+  chunk,
+  tagSpans,
+  isProcessing,
+  getChunk,
+  getTagSpans,
+  createTagSpan,
+  updateTagSpan,
+  deleteTagSpan
+} = useTagging()
 
 const availableTags = ref([
   {
@@ -272,91 +227,6 @@ const availableTags = ref([
     tagUuid: '025a38bf-81cf-41c3-aa10-74e24f362bb9'
   }
 ])
-
-// --- API Functions ---
-const deleteTagSpan = async (spanId: string) => {
-  // try {
-  //   // NOTE: You didn't provide a delete API call snippet,
-  //   // so update this to match your OpenAPI client signature.
-  //   await api.deleteTagSpanApiTagSpansSpanIdDelete({ spanId })
-  //   console.log('Tag deleted successfully')
-  // } catch (error) {
-  //   console.error('Error deleting tag:', error)
-  // }
-}
-
-const getChunk = async () => {
-  await api
-    .getFirstChunkApiGetFirstChunkGet()
-    .then((response: ChResponse) => {
-      chunk.value = {
-        id: response.uuid,
-        text: response.properties.text
-      }
-      console.log('Fetched chunk:', response)
-    })
-    .catch((error) => {
-      console.error('Error fetching chunk:', error)
-    })
-}
-
-const getTagSpans = async (
-  chunkId: ReadTagSpansApiTagSpansChunkIdGetRequest['chunkId']
-) => {
-  await api
-    .readTagSpansApiTagSpansChunkIdGet({ chunkId, mode: 'separate' })
-    .then((response) => {
-      tagSpans.value = response
-      console.log('Fetched tag spans:', response)
-    })
-    .catch((error) => {
-      console.error('Error fetching tag spans:', error)
-    })
-}
-const createTagSpan = async (
-  data: UpsertTagSpansApiTagSpansPostRequest['tagSpanWriteRequest']
-) => {
-  await api
-    .upsertTagSpansApiTagSpansPost({
-      tagSpanWriteRequest: {
-        chunkId: data.chunkId,
-        spans: data.spans,
-        mode: 'separate',
-        tagId: data.spans[0].tagId
-      }
-    })
-    .then((response) => {
-      console.log('Tag span(s) created successfully:', response)
-    })
-    .catch((error) => {
-      console.error('Error creating tag span(s):', error)
-    })
-}
-const updateTagSpan = async (
-  chunkId: string,
-  spanId: string,
-  tagId: string,
-  start: number,
-  end: number
-) => {
-  await api
-    .updateTagSpanApiTagSpansUpdatePatch({
-      tagSpanUpdateRequest: {
-        mode: 'separate',
-        chunkId,
-        spanId,
-        tagId,
-        start,
-        end
-      }
-    })
-    .then((response) => {
-      console.log('Tag updated successfully:', response)
-    })
-    .catch((error) => {
-      console.error('Error updating tag:', error)
-    })
-}
 
 // --- Segment Builder Logic ---
 const renderedSegments = computed(() => {
@@ -391,6 +261,12 @@ const renderedSegments = computed(() => {
     ) {
       if (currentSeg) {
         currentSeg.end = i
+        currentSeg.isSelectionStart =
+          currentSeg.isSelected &&
+          currentSeg.start === currentSelection.value?.start
+        currentSeg.isSelectionEnd =
+          currentSeg.isSelected &&
+          currentSeg.end === currentSelection.value?.end
         segments.push(currentSeg)
       }
       currentSeg = {
@@ -408,82 +284,227 @@ const renderedSegments = computed(() => {
   }
   if (currentSeg) {
     currentSeg.end = text.length
+    currentSeg.isSelectionStart =
+      currentSeg.isSelected &&
+      currentSeg.start === currentSelection.value?.start
+    currentSeg.isSelectionEnd =
+      currentSeg.isSelected && currentSeg.end === currentSelection.value?.end
     segments.push(currentSeg)
   }
   return segments
 })
 
-// --- Actions & Handlers ---
+// --- DOM Index Resolution Helper ---
+// Maps any arbitrary DOM node and its offset perfectly back to your raw string index based on `data-start`
+const getAbsoluteIndex = (node: Node | null, offset: number): number | null => {
+  if (!node) return null
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    const parent = node.parentElement
+    const segment = parent?.closest('.text-segment')
+
+    if (segment) {
+      const start = parseInt(segment.getAttribute('data-start') || '0', 10)
+
+      // If the node is the main text segment itself
+      if (parent === segment) {
+        return start + offset
+      }
+      // If they dragged onto the end handle
+      if (parent?.classList.contains('handle-end')) {
+        return parseInt(segment.getAttribute('data-end') || '0', 10)
+      }
+      return start
+    }
+  } else if (node.nodeType === Node.ELEMENT_NODE) {
+    const el = node as HTMLElement
+
+    // Fallback: If they clicked entirely outside segments but within container
+    if (el.classList.contains('text-container')) {
+      const child = el.childNodes[offset] as HTMLElement | undefined
+      if (
+        child &&
+        child.nodeType === Node.ELEMENT_NODE &&
+        child.hasAttribute('data-start')
+      ) {
+        return parseInt(child.getAttribute('data-start') || '0', 10)
+      } else if (offset > 0) {
+        const prev = el.childNodes[offset - 1] as HTMLElement | undefined
+        if (
+          prev &&
+          prev.nodeType === Node.ELEMENT_NODE &&
+          prev.hasAttribute('data-end')
+        ) {
+          return parseInt(prev.getAttribute('data-end') || '0', 10)
+        }
+      }
+    }
+
+    // Fallback: Clicked directly on a segment wrapper or handle span
+    const segment = el.closest('.text-segment')
+    if (segment) {
+      if (el.classList.contains('handle-end')) {
+        return parseInt(segment.getAttribute('data-end') || '0', 10)
+      }
+      return parseInt(segment.getAttribute('data-start') || '0', 10)
+    }
+  }
+  return null
+}
+
+// --- Native Selection Handler ---
 const handleMouseUp = () => {
-  if (isProcessing.value) return // Block changes while loading
+  if (isProcessing.value || justFinishedDrag || draggingHandle.value) return
 
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
 
   const range = sel.getRangeAt(0)
-  const container = textContainer.value
-  if (
-    !container ||
-    (!container.contains(range.startContainer) &&
-      !container.contains(range.endContainer))
-  )
-    return
 
-  const preSelectionRange = range.cloneRange()
-  preSelectionRange.selectNodeContents(container)
-  preSelectionRange.setEnd(range.startContainer, range.startOffset)
-  let start = preSelectionRange.toString().length
+  // Instantly grab precision boundaries safely
+  let start = getAbsoluteIndex(range.startContainer, range.startOffset)
+  let end = getAbsoluteIndex(range.endContainer, range.endOffset)
 
-  const postSelectionRange = range.cloneRange()
-  postSelectionRange.selectNodeContents(container)
-  postSelectionRange.setEnd(range.endContainer, range.endOffset)
-  let end = postSelectionRange.toString().length
+  if (start === null || end === null) return
 
   if (start > end) [start, end] = [end, start]
+
+  if (snapToWords) {
+    if (chunk.value?.text) {
+      start = snapToWordBoundary(start, 'start', chunk.value.text)
+      end = snapToWordBoundary(end, 'end', chunk.value.text)
+    }
+  }
 
   currentSelection.value = { start, end }
   sel.removeAllRanges()
 }
 
+// --- Drag Handle Logic (Mouse & Touch) ---
+const startDrag = (e: MouseEvent | TouchEvent, type: 'start' | 'end') => {
+  draggingHandle.value = type
+
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+  document.addEventListener('touchmove', onDrag, { passive: false })
+  document.addEventListener('touchend', stopDrag)
+}
+
+const onDrag = (e: MouseEvent | TouchEvent) => {
+  if (!draggingHandle.value || !currentSelection.value || !chunk.value?.text)
+    return
+
+  e.preventDefault()
+  window.getSelection()?.removeAllRanges()
+
+  let clientX, clientY
+  if ('touches' in e) {
+    clientX = e.touches[0].clientX
+    clientY = e.touches[0].clientY
+  } else {
+    clientX = e.clientX
+    clientY = e.clientY
+  }
+
+  let range = null
+
+  // Standard (Blink/Webkit)
+  if (typeof document.caretRangeFromPoint !== 'undefined') {
+    range = document.caretRangeFromPoint(clientX, clientY)
+  }
+
+  // Firefox Fallback
+  if (typeof (document as any).caretPositionFromPoint !== 'undefined') {
+    const pos = (document as any).caretPositionFromPoint(clientX, clientY)
+    if (pos && pos.offsetNode) {
+      range = document.createRange()
+      range.setStart(pos.offsetNode, pos.offset)
+    }
+  }
+
+  if (!range) return
+
+  let newIndex = getAbsoluteIndex(range.startContainer, range.startOffset)
+  if (newIndex === null) return
+
+  if (snapToWords) {
+    newIndex = snapToWordBoundary(
+      newIndex,
+      draggingHandle.value,
+      chunk.value.text
+    )
+
+    if (draggingHandle.value === 'start') {
+      if (newIndex < currentSelection.value.end) {
+        currentSelection.value.start = newIndex
+      }
+    } else {
+      if (newIndex > currentSelection.value.start) {
+        currentSelection.value.end = newIndex
+      }
+    }
+  } else {
+    const newIndex = getAbsoluteIndex(range.startContainer, range.startOffset)
+    if (newIndex === null) return
+
+    if (draggingHandle.value === 'start') {
+      if (newIndex < currentSelection.value.end) {
+        currentSelection.value.start = newIndex
+      }
+    } else {
+      if (newIndex > currentSelection.value.start) {
+        currentSelection.value.end = newIndex
+      }
+    }
+  }
+}
+
+const stopDrag = () => {
+  if (draggingHandle.value) {
+    justFinishedDrag = true
+    setTimeout(() => {
+      justFinishedDrag = false
+    }, 100)
+  }
+  draggingHandle.value = null
+
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
+}
+
+// --- Click Handlers & Display ---
 const handleSegmentClick = (seg: RenderSegment) => {
-  if (currentSelection.value !== null || isProcessing.value) return
+  if (currentSelection.value !== null || isProcessing.value || justFinishedDrag)
+    return
 
   if (seg.tags.length > 0) {
     const tagToEdit = seg.tags[0]
     currentSelection.value = {
       start: tagToEdit.start,
       end: tagToEdit.end,
-      editingId: tagToEdit.id,
+      editingId: tagToEdit.id as string | undefined,
       tagId: tagToEdit.tagId
     }
   }
 }
 
-// --- CRUD Actions ---
 const handleTagClick = async (tagId: string) => {
-  if (!currentSelection.value) return
-
-  if (!chunk.value?.id) return
+  if (!currentSelection.value || !chunk.value?.id) return
 
   if (currentSelection.value.editingId) {
     currentSelection.value.tagId = tagId
   } else {
-    // API Call: Create Mode
     isProcessing.value = true
     await createTagSpan({
-      chunkId: chunk.value.id!,
-      tagId,
-      spans: [
-        {
-          id: '',
-          tagId,
-          start: currentSelection.value.start,
-          end: currentSelection.value.end,
-          chunkId: chunk.value.id!
-        }
-      ]
+      span: {
+        tagId,
+        chunkId: chunk.value.id!,
+        start: currentSelection.value.start,
+        end: currentSelection.value.end
+      }
     })
-
     await getTagSpans(chunk.value.id!)
     clearSelection()
     isProcessing.value = false
@@ -491,27 +512,33 @@ const handleTagClick = async (tagId: string) => {
 }
 
 const saveEditedTag = async () => {
-  if (!currentSelection.value || !currentSelection.value.editingId) return
-  if (!chunk.value?.id) return
-
-  isProcessing.value = true
-  await updateTagSpan(
-    chunk.value.id!,
-    currentSelection.value.editingId,
-    currentSelection.value.tagId!,
-    currentSelection.value.start,
-    currentSelection.value.end
+  if (
+    !currentSelection.value ||
+    !currentSelection.value.editingId ||
+    !chunk.value?.id
   )
-
+    return
+  isProcessing.value = true
+  await updateTagSpan({
+    spanId: currentSelection.value.editingId,
+    tagSpan: {
+      tagId: currentSelection.value.tagId!,
+      start: currentSelection.value.start,
+      end: currentSelection.value.end
+    }
+  })
   await getTagSpans(chunk.value.id!)
   clearSelection()
   isProcessing.value = false
 }
 
 const deleteEditedTag = async () => {
-  if (!currentSelection.value || !currentSelection.value.editingId) return
-  if (!chunk.value?.id) return
-
+  if (
+    !currentSelection.value ||
+    !currentSelection.value.editingId ||
+    !chunk.value?.id
+  )
+    return
   isProcessing.value = true
   await deleteTagSpan(currentSelection.value.editingId)
   await getTagSpans(chunk.value.id!)
@@ -519,30 +546,10 @@ const deleteEditedTag = async () => {
   isProcessing.value = false
 }
 
-// --- Boundary Adjustment Actions ---
-const adjustStart = (delta: number) => {
-  if (!currentSelection.value) return
-  const newStart = currentSelection.value.start + delta
-  if (newStart >= 0 && newStart < currentSelection.value.end) {
-    currentSelection.value.start = newStart
-  }
-}
-
-const adjustEnd = (delta: number) => {
-  if (!chunk.value?.text) return
-  if (!currentSelection.value) return
-  const newEnd = currentSelection.value.end + delta
-  const maxLen = chunk.value.text?.length || 0
-  if (newEnd > currentSelection.value.start && newEnd <= maxLen) {
-    currentSelection.value.end = newEnd
-  }
-}
-
 const clearSelection = () => {
   currentSelection.value = null
 }
 
-// --- Display Helpers ---
 const getTagName = (tagId: string) => {
   const tag = availableTags.value.find((t) => t.tagUuid === tagId)
   return tag ? tag.tagName : 'Unknown Tag'
@@ -554,13 +561,12 @@ const getSegmentStyle = (seg: RenderSegment) => {
       const draftTag = availableTags.value.find(
         (t) => t.tagUuid === currentSelection.value!.tagId
       )
-      if (draftTag) {
+      if (draftTag)
         return {
           backgroundColor: draftTag.tagColor + '60',
           borderBottom: `2px solid ${draftTag.tagColor}`,
           color: '#000'
         }
-      }
     }
     return {
       backgroundColor: '#ffe082',
@@ -581,21 +587,20 @@ const getSegmentStyle = (seg: RenderSegment) => {
   return {}
 }
 
-// Initial Data Load
-onMounted(async () => {
-  console.log('TaggingPage mounted')
-
-  await getChunk()
-
-  console.log('Chunk:', chunk.value)
-
-  if (chunk.value?.id) {
-    await getTagSpans(chunk.value.id)
+const getHandleStyle = () => {
+  let color = '#1976d2'
+  if (currentSelection.value?.tagId) {
+    const draftTag = availableTags.value.find(
+      (t) => t.tagUuid === currentSelection.value!.tagId
+    )
+    if (draftTag) color = draftTag.tagColor
   }
+  return { '--handle-color': color }
+}
 
-  // if (chunk.value.id) {
-  //   getTagSpans(chunk.value.id)
-  // }
+onMounted(async () => {
+  await getChunk()
+  if (chunk.value?.id) await getTagSpans(chunk.value.id)
 })
 </script>
 
@@ -617,5 +622,47 @@ onMounted(async () => {
     border-bottom 0.15s;
   border-bottom: 2px solid transparent;
   border-radius: 2px;
+}
+
+/* Base style for Native-feeling Drag Handles */
+.selection-handle {
+  display: inline-block;
+  position: relative;
+  width: 4px;
+  height: 1.1em;
+  background-color: var(--handle-color);
+  cursor: ew-resize;
+  vertical-align: text-bottom;
+  margin: 0 -2px;
+  z-index: 10;
+}
+
+/* Dots at top/bottom mimicking iOS/Android selections */
+.handle-start::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: -3px;
+  width: 10px;
+  height: 10px;
+  background-color: var(--handle-color);
+  border-radius: 50%;
+}
+
+.handle-end::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: -3px;
+  width: 10px;
+  height: 10px;
+  background-color: var(--handle-color);
+  border-radius: 50%;
+}
+
+.text-container.is-dragging,
+.text-container.is-dragging * {
+  cursor: ew-resize !important;
+  user-select: none !important; /* Prevents native text-selection flashes */
 }
 </style>

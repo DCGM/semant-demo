@@ -58,25 +58,21 @@ class WeaviateSearch:
             properties={"tagSpansArr": payloads}
         )
 
-    async def set_chunk_spans_separate(self, chunk_id: str, spans: list[schemas.TagSpan]):
+    async def set_chunk_spans_separate(self, chunk_id: str, span: schemas.TagSpan):
         """
         Add new TagSpan to TagSpan2_test table with Chunk ID (not as reference)
         """
         if not self.tagspan_col:
             raise RuntimeError("TagSpan2_test collection not available")
 
-        # clear existing for this chunk
-        # await self.tagspan_col.data.delete_many(where=Filter.by_property("chunkId").equal(chunk_id))
-
-        for s in spans:
-            await self.tagspan_col.data.insert(
-                properties={
-                    "tagId": s.tagId,
-                    "start": s.start,
-                    "end": s.end,
-                    "chunkId": chunk_id
-                }
-            )
+        await self.tagspan_col.data.insert(
+            properties={
+                "tagId": span.tagId,
+                "start": span.start,
+                "end": span.end,
+                "chunkId": chunk_id,
+            }
+        )
 
     async def get_chunk_spans_separate(self, chunk_id: str) -> list[schemas.TagSpan]:
         """
@@ -87,7 +83,7 @@ class WeaviateSearch:
 
         response = await self.tagspan_col.query.fetch_objects(
             filters=Filter.by_property("chunkId").equal(chunk_id),
-            return_properties=["tagId", "start", "end", "chunkId"]
+            return_properties=["tagId", "chunkId", "start", "end"]
         )
 
         # add TagSpan ID
@@ -95,9 +91,9 @@ class WeaviateSearch:
             schemas.TagSpan(
                 id=str(obj.uuid),
                 tagId=obj.properties.get("tagId"),
+                chunkId=obj.properties.get("chunkId"),
                 start=obj.properties.get("start"),
-                end=obj.properties.get("end"),
-                chunkId=obj.properties.get("chunkId")
+                end=obj.properties.get("end")
             )
             for obj in response.objects
         ]
@@ -124,22 +120,36 @@ class WeaviateSearch:
         return [
             schemas.TagSpan(
                 tagId=s.get("tagId"),
+                chunkId="",
                 start=s.get("start"),
                 end=s.get("end")
             )
             for s in raw_spans
         ]
 
-    async def update_tag_span_embedded(self, chunk_id: str, index: int, update_data: dict):
+    async def update_tag_span_embedded(
+        self,
+        chunk_id: str,
+        index: int,
+        update_fields: schemas.TagSpanUpdate
+    ):
         """
-        Update TagSpan's informations like start, end, ...
+        Update TagSpan inside chunk (embedded mode)
         """
-        # load TagSpan
+
+        update_fields = update_fields.model_dump(exclude_none=True)
+
+        if not update_fields:
+            raise ValueError("No fields provided for update")
+
+        # load chunk with spans
         obj = await self.chunk_col.query.fetch_object_by_id(
             uuid=chunk_id,
             return_properties=[
-                QueryNested(name="tagSpansArr", properties=[
-                            "tagId", "start", "end", "confidence", "note"])
+                QueryNested(
+                    name="tagSpansArr",
+                    properties=["tagId", "start", "end", "confidence", "note"]
+                )
             ]
         )
 
@@ -149,29 +159,41 @@ class WeaviateSearch:
         spans = obj.properties["tagSpansArr"]
 
         if index < 0 or index >= len(spans):
-            raise IndexError("Index out of boundries")
+            raise IndexError("Index out of boundaries")
 
-        # update necessary fields
-        for key, value in update_data.items():
-            if value is not None:
-                spans[index][key] = value
+        # update only allowed fields
+        for key, value in update_fields.items():
+            if key not in spans[index]:
+                raise ValueError(f"Invalid field: {key}")
 
-        # update in db
+            spans[index][key] = value
+
+        # persist
         await self.chunk_col.data.update(
             uuid=chunk_id,
             properties={"tagSpansArr": spans}
         )
 
-    async def update_tag_span_separate(self, span_id: str, update_data: dict):
+    async def update_tag_span_separate(
+        self,
+        span_id: str,
+        update_fields: schemas.TagSpanUpdate
+    ):
         """
-        Update TagSpan's informations like start, end, ...
+        Update standalone TagSpan (separate mode)
         """
+
         if not self.tagspan_col:
-            raise RuntimeError("Kolekce TagSpan2_test není dostupná")
+            raise RuntimeError("TagSpan collection is not available")
+
+        update_fields = update_fields.model_dump(exclude_none=True)
+
+        if not update_fields:
+            raise ValueError("No fields provided for update")
 
         await self.tagspan_col.data.update(
             uuid=span_id,
-            properties=update_data
+            properties=update_fields
         )
     # /TagSpans
 

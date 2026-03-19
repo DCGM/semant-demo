@@ -384,25 +384,30 @@ class TagSpan(BaseModel):
     start: int
     end: int
 
-class TagSpanWriteRequest(BaseModel):
+class TagSpanUpdate(BaseModel):
+    tagId: str | None = None
+    start: int | None = None
+    end: int | None = None
+
+class TagSpanCreateSeparateRequest(BaseModel):
+    span: TagSpan
+
+class TagSpanCreateEmbeddedRequest(BaseModel):
     chunk_id: str
     tag_id: str
     spans: list[TagSpan]
-    mode: SpanStoreMode = SpanStoreMode.embedded
 
 class TagSpanWriteResponse(BaseModel):
     stored_in: list[SpanStoreMode]
 
-class TagSpanUpdateRequest(BaseModel):
-    mode: SpanStoreMode
-    chunk_id: str | None = None  # required for embedded
-    index: int | None = None     # required for embedded
-    span_id: str | None = None   # required for separate
+class TagSpanUpdateSeparateRequest(BaseModel):
+    span_id: str
+    tagSpan: TagSpanUpdate
 
-    # updateable fields
-    tagId: str | None = None
-    start: int | None = None
-    end: int | None = None
+class TagSpanUpdateEmbeddedRequest(BaseModel):
+    chunk_id: str | None = None
+    index: int | None = None
+    tagSpan: TagSpanUpdate
 # /TagSpans
 
 # Task Model

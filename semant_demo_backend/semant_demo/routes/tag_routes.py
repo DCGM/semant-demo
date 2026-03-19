@@ -295,79 +295,105 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
 async def get_first_chunk(tagger: WeaviateSearchAndTag = Depends(get_search)):
     return await tagger.get_first_chunk()
 
-@exp_router.post("/api/tag_spans", response_model=schemas.TagSpanWriteResponse)
-async def upsert_tag_spans(body: schemas.TagSpanWriteRequest, tagger: WeaviateSearchAndTag = Depends(get_search)) -> schemas.TagSpanWriteResponse:
+
+@exp_router.post("/api/tag_spans_embedded", response_model=schemas.TagSpanWriteResponse)
+async def upsert_tag_spans_embedded(body: schemas.TagSpanCreateEmbeddedRequest, tagger: WeaviateSearchAndTag = Depends(get_search)) -> schemas.TagSpanWriteResponse:
     """
-    Adds new TagSpan to Chunk
+    Adds new TagSpan to Chunk -- embedded
     """
-    stored = []
-    if body.mode in (schemas.SpanStoreMode.embedded, schemas.SpanStoreMode.both):
-        await tagger.set_chunk_spans_embedded(body.chunk_id, body.spans)
-        stored.append(schemas.SpanStoreMode.embedded)
-    if body.mode in (schemas.SpanStoreMode.separate, schemas.SpanStoreMode.both):
-        await tagger.set_chunk_spans_separate(body.chunk_id, body.spans)
-        stored.append(schemas.SpanStoreMode.separate)
-    return schemas.TagSpanWriteResponse(stored_in=stored)
+    await tagger.set_chunk_spans_embedded(body.chunk_id, body.spans)
+    return schemas.TagSpanWriteResponse(stored_in=[schemas.SpanStoreMode.embedded])
 
 
-@exp_router.get("/api/tag_spans/{chunk_id}", response_model=list[schemas.TagSpan])
-async def read_tag_spans(
+@exp_router.post("/api/tag_spans_separate", response_model=schemas.TagSpanWriteResponse)
+async def upsert_tag_spans_separate(body: schemas.TagSpanCreateSeparateRequest, tagger: WeaviateSearchAndTag = Depends(get_search)) -> schemas.TagSpanWriteResponse:
+    """
+    Adds new TagSpan -- separate
+    """
+    await tagger.set_chunk_spans_separate(body.span.chunkId, body.span)
+    return schemas.TagSpanWriteResponse(stored_in=[schemas.SpanStoreMode.separate])
+
+
+@exp_router.get("/api/tag_spans_embedded/{chunk_id}", response_model=list[schemas.TagSpan])
+async def read_tag_spans_embedded(
     chunk_id: str,
-    mode: schemas.SpanStoreMode = Query(
-        default=schemas.SpanStoreMode.separate),
     tagger: WeaviateSearchAndTag = Depends(get_search)
 ) -> list[schemas.TagSpan]:
     """
     Get stored TagSpans for a given chunk ID.
     """
-    if mode == schemas.SpanStoreMode.embedded:
-        return await tagger.get_chunk_spans_embedded(chunk_id)
-
-    if mode == schemas.SpanStoreMode.separate:
-        return await tagger.get_chunk_spans_separate(chunk_id)
-
-    raise ValueError(
-        "Idnetify a mode: embedded or separate.")
+    return await tagger.get_chunk_spans_embedded(chunk_id)
 
 
-@exp_router.patch("/api/tag_spans/update", response_model=dict)
-async def update_tag_span(
-    body: schemas.TagSpanUpdateRequest,
+@exp_router.get("/api/tag_spans_separate/{chunk_id}", response_model=list[schemas.TagSpan])
+async def read_tag_spans(
+    chunk_id: str,
+    tagger: WeaviateSearchAndTag = Depends(get_search)
+) -> list[schemas.TagSpan]:
+    """
+    Get stored TagSpans for a given chunk ID.
+    """
+    return await tagger.get_chunk_spans_separate(chunk_id)
+
+
+@exp_router.patch("/api/tag_spans/update_embedded", response_model=dict)
+async def update_tag_span_embedded(
+    body: schemas.TagSpanUpdateEmbeddedRequest,
     tagger: WeaviateSearchAndTag = Depends(get_search)
 ):
     """
     Update TagSpan's information (start, end, tagId, ...)
     """
-    all_data = body.model_dump(exclude_none=True)
-
-    # identifiers
-    mode = all_data.pop("mode")
-    chunk_id = all_data.pop("chunk_id", None)
-    index = all_data.pop("index", None)
-    span_id = all_data.pop("span_id", None)
-
-    # fields to update
-    update_fields = all_data
-
     try:
-        if mode == schemas.SpanStoreMode.embedded:
-            if chunk_id is None or index is None:
-                raise HTTPException(
-                    status_code=400, detail="For embedded mode, chunk_id and index are required")
-            await tagger.update_tag_span_embedded(chunk_id, index, update_fields)
+        update_fields = body.tagSpan.model_dump(exclude_none=True)
 
-        elif mode == schemas.SpanStoreMode.separate:
-            if span_id is None:
-                raise HTTPException(
-                    status_code=400, detail="For separate mode, span_id is required")
+        if not update_fields:
+            raise HTTPException(
+                status_code=400,
+                detail="No fields provided for update"
+            )
 
-            if "chunkId" in update_fields:
-                raise HTTPException(
-                    status_code=400, detail="Cannot change chunkId")
+        await tagger.update_tag_span_embedded(
+            chunk_id=body.chunk_id,
+            index=body.index,
+            update_fields=update_fields
+        )
 
-            await tagger.update_tag_span_separate(span_id, update_fields)
+        return {
+            "status": "success",
+            "updated_fields": list(update_fields.keys())
+        }
 
-        return {"status": "success", "updated_fields": list(update_fields.keys())}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@exp_router.patch("/api/tag_spans/update_separate", response_model=dict)
+async def update_tag_span_separate(
+    body: schemas.TagSpanUpdateSeparateRequest,
+    tagger: WeaviateSearchAndTag = Depends(get_search)
+):
+    """
+    Update TagSpan's information (start, end, tagId, ...)
+    """
+    try:
+        update_fields = body.tagSpan
+
+        if not update_fields:
+            raise HTTPException(
+                status_code=400,
+                detail="No fields provided for update"
+            )
+
+        await tagger.update_tag_span_separate(
+            span_id=body.span_id,
+            update_fields=update_fields
+        )
+
+        return {
+            "status": "success",
+            "updated_fields": update_fields
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
