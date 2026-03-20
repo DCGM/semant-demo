@@ -66,6 +66,7 @@ cp .env.example .env
 | `OLLAMA_MODEL` | `gemma3:12b` | Ollama model |
 | **OpenAI / OpenRouter** | | |
 | `OPENAI_API_KEY` | _(empty)_ | OpenAI key (for OpenAI-based RAG configs) |
+| `OPENROUTER_API_KEY` | _(empty)_ | OpenRouter key  |
 | `OPENROUTER_URL` | `https://openrouter.ai/api/v1` | URL endpoint pro OpenRouter API |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Default OpenAI model |
 | **Google** | | |
