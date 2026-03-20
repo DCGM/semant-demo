@@ -8,6 +8,7 @@ SCRIPT_PATH = Path(__file__).parent
 class Config:
     def __init__(self):
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+        self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
         self.OPENROUTER_URL = os.getenv("OPENROUTER_URL", "https://openrouter.ai/api/v1")
         self.WEAVIATE_HOST = os.getenv("WEAVIATE_HOST", "localhost")
 
