@@ -119,6 +119,13 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 temperature = 0.0,
                 num_ctx = 16384
             )
+        elif (model_type == "OPENROUTER"):
+            return ChatOpenAI(
+                model = model_name if model_name else self.global_config.OPENAI_MODEL,
+                api_key = api_key if api_key else self.global_config.OPENROUTER_API_KEY,
+                base_url = self.global_config.OPENROUTER_URL,
+                temperature = temperature
+            )
         else:       #OPENAI
             return ChatOpenAI(
                 model = model_name if model_name else self.global_config.OPENAI_MODEL,

@@ -112,6 +112,13 @@ class AdaptiveRagGenerator(BaseRag):
                 base_url = self.global_config.OLLAMA_URLS[0],
                 temperature = temperature
             )
+        elif (model_type == "OPENROUTER"):
+            return ChatOpenAI(
+                model = model_name if model_name else self.global_config.OPENAI_MODEL,
+                api_key = api_key if api_key else self.global_config.OPENROUTER_API_KEY,
+                base_url = self.global_config.OPENROUTER_URL,
+                temperature = temperature
+            )
         else:       #OPENAI
             return ChatOpenAI(
                 model = model_name if model_name else self.global_config.OPENAI_MODEL,
@@ -603,28 +610,6 @@ class AdaptiveRagGenerator(BaseRag):
             if (DEBUG_PRINT):
                 print(f"Retrying generation with feedback ({gen_iteration}/{self.max_retries}).")
             return "not_supported"
-        # else:   #not supported
-            # #case where no relevant documents were found --> search web if allowed
-            # if (state["feedback"] == "" or state["documents"] == []):
-            #     if self.web_search_enabled == True:
-            #         if (DEBUG_PRINT):
-            #             print(f"No relevant documents found, searching on the web.")
-            #         return "web_search"
-            #     else: #return "sorry answer"
-            #         return "supported"
-                
-            #retry based on the feedback
-            #if (state.get("generation_iteration_counter") < self.max_retries):
-            # if(False):
-            #     if (DEBUG_PRINT):
-            #         print(f"Retrying with additional feedback.")
-            #     return "not_supported"
-            
-            # #retried enaught times --> search web if allowed
-            # if (self.web_search_enabled == True and state["documents"] == []):
-            #     if (DEBUG_PRINT):
-            #         print(f"Searching on the web.")
-            #     return "web_search"
         return "supported"
     
     async def node_web_search (self, state: AdaptiveRagState):
