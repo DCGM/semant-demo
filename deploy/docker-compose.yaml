@@ -1,0 +1,90 @@
+services:
+  semant-demo:
+    restart: always
+    build:
+      context: .
+      target: backend
+      dockerfile: Dockerfile
+      args:
+        - REPO=${REPO}
+        - BRANCH=${BRANCH}
+        - BACKEND_URL=${BACKEND_URL}
+        - NOW=${now}
+    env_file:
+      - path: .env
+        required: true
+    depends_on:
+      - weaviate
+      - embedding-service
+    networks:
+      - web
+      - default
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.semant-demo.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.semant-demo.entrypoints=websecure
+      - traefik.http.services.semant-demo.loadbalancer.server.port=8000
+
+  embedding-service:
+    build:
+      context: .
+      target: embedding-service
+      dockerfile: Dockerfile
+      args:
+        - REPO=${REPO}
+        - BRANCH=${BRANCH}
+    environment:
+      - CUDA_VISIBLE_DEVICES=${GPU_DEVICE:-0}
+      - GEMMA_MODEL=${GEMMA_MODEL}
+    ports:
+      - "127.0.0.1:8001:8001"
+    volumes:
+      - /mnt/ssd2/huggingface_cache:/root/.cache/huggingface:rw
+    depends_on:
+      - weaviate
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    networks:
+      - default
+    restart: always
+
+  weaviate:
+    command:
+      # tento command neni treba, udajne je to takto nastavene defaultne
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --scheme
+      - http
+    image: cr.weaviate.io/semitechnologies/weaviate:1.34.4
+    ports:
+      - "127.0.0.1:8080:8080" # REST only on localhost
+      - "127.0.0.1:50051:50051" # gRPC only on localhost
+    volumes:
+      - /mnt/ssd2/weaviate_semant:/var/lib/weaviate
+    restart: always
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      ENABLE_API_BASED_MODULES: 'true'
+      CLUSTER_HOSTNAME: 'node1'
+      DISK_USE_READONLY_PERCENTAGE: "75"
+      DISK_USE_WARNING_PERCENTAGE: "50"
+    mem_limit: 128g
+    memswap_limit: 0g
+    networks:
+      - default
+
+networks:
+  default:
+    name: semant_demo_network
+    driver: bridge
+  web:
+    external: true

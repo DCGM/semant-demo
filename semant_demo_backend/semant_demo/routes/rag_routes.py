@@ -55,6 +55,7 @@ async def save_feedback(request : schemas.FeedbackRequest, db: AsyncSession = De
         if (ex_feedback):   #update
             ex_feedback.rating = request.rating
             ex_feedback.comment = request.comment
+            ex_feedback.error_types = ",".join(request.error_types) if request.rating == -1 else None
             ex_feedback.timestamp = datetime.datetime.now(datetime.timezone.utc)
         else:               #create new 
             serialized_sources = [doc.model_dump(mode='json') for doc in request.sources] if request.sources else []
@@ -64,6 +65,7 @@ async def save_feedback(request : schemas.FeedbackRequest, db: AsyncSession = De
                 question=request.question,
                 answer=request.answer,
                 rating=request.rating,
+                error_types= ",".join(request.error_types) if request.rating == -1 else None,
                 comment=request.comment,
                 sources=serialized_sources
             )
