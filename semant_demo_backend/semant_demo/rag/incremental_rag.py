@@ -16,12 +16,9 @@ import uuid
 
 from langgraph.graph import StateGraph, START, END
 
-from pydantic import BaseModel, Field
-
 import logging
 import re
 import json
-from datetime import datetime
 import asyncio
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
@@ -616,7 +613,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     for q in queries:
                         if (DEBUG_PRINT): 
                             print(f"Searching web: {q}")
-                        results = [r["body"] for r in ddgs.text(q, max_results = 8)]    # TODO changed from 8 to 6 (try web search in next version)
+                        results = [r["body"] for r in ddgs.text(q, max_results = 8)]
                         all_results.extend(list(set(results)))
 
                 unique_results = list(dict.fromkeys(all_results))
