@@ -65,9 +65,8 @@ cp .env.example .env
 | `OLLAMA_URLS` | `http://localhost:11434` | Comma-separated Ollama endpoints |
 | `OLLAMA_MODEL` | `gemma3:12b` | Ollama model |
 | **OpenAI / OpenRouter** | | |
-| `OPENAI_API_KEY` | _(empty)_ | OpenAI key (for OpenAI-based RAG configs) |
-| `OPENROUTER_API_KEY` | _(empty)_ | OpenRouter key  |
-| `OPENROUTER_URL` | `https://openrouter.ai/api/v1` | URL endpoint pro OpenRouter API |
+| `OPENAI_API_KEY` | _(empty)_ | OpenAI API key (works with both OpenAI and OpenRouter endpoints) |
+| `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | API endpoint URL (OpenAI, OpenRouter) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Default OpenAI model |
 | **Google** | | |
 | `GOOGLE_API_KEY` | _(empty)_ | Google Gemini key |
@@ -83,6 +82,8 @@ cp .env.example .env
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
 
 ---
+
+> **ℹ️ Universal Configuration:** Methods using the OpenAI Python package use `OPENAI_API_KEY` and `OPENAI_API_URL`. Set `OPENAI_API_URL=https://openrouter.ai/api/v1` to use OpenRouter, or the OpenAI endpoint to use OpenAI directly. Seamless integration via `ChatOpenAI` in LangChain.
 
 ## Commands
 
