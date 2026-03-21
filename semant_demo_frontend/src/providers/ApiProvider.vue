@@ -3,8 +3,10 @@ import { provide } from 'vue'
 import { ApiClientInjectionKey, type ApiClients } from 'src/composables/useApi'
 import { Configuration, DefaultApi } from 'src/generated/api'
 
+const basePath = (process.env.BACKEND_URL || 'http://pcvaskom.fit.vutbr.cz:8024')
+
 const config = new Configuration({
-  basePath: 'http://localhost:8000'
+  basePath
 })
 
 const apiClients: ApiClients = {
