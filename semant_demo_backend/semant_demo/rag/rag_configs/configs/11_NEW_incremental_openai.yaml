@@ -1,10 +1,10 @@
-id: "xandry12_IncrementalAdaptiveRagGenerator_openrouter_default_multiquery"
-name: "Incremental Adaptive RAG using OPENAI with multi query and web search"
+id: "xandry12_IncrementalAdaptiveRagGenerator_openai_default_multiquery_big_model"
+name: "Incremental Adaptive RAG using OPENAI GPT 5.1 with multi query and web search"
 description: "NEW Incremental Adaptive RAG Generator configuration using OPENAI with multi query strategy and web search enabled."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
-  model_type: "OPENROUTER"
-  model_name: "gpt-4o-mini"
+  model_type: "OPENAI"
+  model_name: "gpt-5.1"
   temperature: 0.0
   search_type : "hybrid"
   alpha: 0.5
