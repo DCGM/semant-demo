@@ -8,9 +8,9 @@ SCRIPT_PATH = Path(__file__).parent
 class Config:
     def __init__(self):
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-        self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1") #API endpoint URL ( https://api.openai.com/v1 for OpenAI, https://openrouter.ai/api/v1 for OpenRouter)
+        self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://openrouter.ai/api/v1")
+        
         self.WEAVIATE_HOST = os.getenv("WEAVIATE_HOST", "localhost")
-
         self.WEAVIATE_REST_PORT = os.getenv("WEAVIATE_REST_PORT", 8080)
         self.WEAVIATE_GRPC_PORT = os.getenv("WEAVIATE_GRPC_PORT", 50051)
 
