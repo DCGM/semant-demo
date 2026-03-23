@@ -212,7 +212,7 @@ class WeaviateSearch:
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
 
-    def fetch_chunks(filters: Filter):
+    def _fetch_chunks(self, filters: Filter) -> list:
         """
         Fetches chunks with filters - tag, user-collection. Fetch subset of text chunks given by filters.
         
@@ -239,7 +239,7 @@ class WeaviateSearch:
         # fetch chunks by tags (currently used in filterChunksByTags)
         pass
 
-    def fetch_tags(filters: Filter|None = None, ids=None):
+    def _fetch_tags(self, filters: Filter|None = None, ids=None) -> list:
         """
         Fetches tag collection
         - with specific name OR
@@ -270,16 +270,16 @@ class WeaviateSearch:
         # with specific name (current add_or_get_tag) OR by list of uuids (current get_tagged_chunks_paged) OR without filter return all tags (current get_all_tags)
         pass
 
-    def create_tag(tag: schemas.TagData, collection_name):
+    def _create_tag(self, tag: schemas.TagData, collection_name:str) -> str:
         """
-        Adds new tag to tag-collection. Use fetch_tags.
+        Adds new tag to tag-collection. This function calls fetch_tags to prevent duplicates.
 
         Args:
             name: schemas.TagData of the tag
             collection_name: Name of the collection this tag belongs to
             
         Returns:
-            Created tag object with UUID
+            Created tag object UUID
             
         Raises:
             WeaviateConnectionError: Cannot connect to Weaviate instance
@@ -291,7 +291,7 @@ class WeaviateSearch:
         # TODO like current add_or_get_tag, but use fetch_tags
         pass
 
-    def create_reference(src_id, property_name, target_id):
+    def _create_reference(self, src_id:str, property_name:str, target_id:str) -> bool:
         """
         Creates reference from weviate object fetched by its id to other object defined by id.
 
@@ -312,7 +312,7 @@ class WeaviateSearch:
         """
         pass
 
-    def remove_reference(src_id, reference_to_remove): 
+    def _remove_reference(self, src_id: str, reference_to_remove: str) -> bool: 
         """
         Removes reference between objects.
 
@@ -334,6 +334,7 @@ class WeaviateSearch:
         """
         pass
 
+    # TODO
     """
     - change get_tagged_chunks_paged
         - call fetch_tags - fetch specific mode, fetch_chunks
