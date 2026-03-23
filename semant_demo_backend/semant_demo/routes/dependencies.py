@@ -1,6 +1,7 @@
 from semant_demo.config import config
 from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.weaviate_tag import WeaviateSearchAndTag
+from semant_demo.weaviate_client import WeaviateClient
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from typing import AsyncGenerator
@@ -13,6 +14,7 @@ _async_session_maker = None
 _searcher = None
 _tagger = None
 _summarizer = None
+_weaviate_client = None
 
 def get_engine():
     global _engine, _async_session_maker
@@ -50,3 +52,9 @@ async def get_summarizer() -> TemplatedSearchResultsSummarizer:
     if _summarizer is None:
         _summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
     return _summarizer
+
+async def get_weaviate_client() -> WeaviateClient:
+    global _weaviate_client
+    if _weaviate_client is None:
+        _weaviate_client = await WeaviateClient.create(config)
+    return _weaviate_client
