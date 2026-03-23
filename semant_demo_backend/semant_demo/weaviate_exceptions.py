@@ -39,6 +39,19 @@ class WeaviateDuplicateError(WeaviateOperationError):
     """
     pass
 
+class WeaviateDataValidationError(WeaviateOperationError):
+    """
+    Raised when input data validation fails.
+    
+    Common causes:
+    - Empty required field (name, UUID, etc.)
+    - Invalid UUID format
+    - Invalid data type
+    - Conflicting parameters
+    - Missing required fields
+    """
+    pass
+
 class WeaviateFilterError(WeaviateOperationError):
     """
     Raised when filter specification is invalid.

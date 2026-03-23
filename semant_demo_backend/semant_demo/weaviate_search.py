@@ -14,12 +14,19 @@ from .config import config
 import logging
 
 from weaviate.collections.classes.grpc import QueryReference
+from weaviate_exceptions import *
+
+import uuid
 
 class WeaviateSearch:
-    def __init__(self, client: WeaviateAsyncClient):
+    def __init__(self, client: WeaviateAsyncClient, 
+                 chunks_collection: str = "Chunks", 
+                 tag_collection_name: str = "Tag"):
         self.client = client
         # collections.get() is synchronous, no await needed
         self.chunk_col = self.client.collections.get("Chunks")
+        self.chunks_collection = chunks_collection
+        self.tag_collection_name = tag_collection_name
 
     @classmethod
     async def create(cls, config:Config) -> "WeaviateSearch":
@@ -211,8 +218,8 @@ class WeaviateSearch:
         )
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
-
-    def _fetch_chunks(self, filters: Filter) -> list:
+    
+    async def _fetch_chunks(self, filters: Filter) -> list:
         """
         Fetches chunks with filters - tag, user-collection. Fetch subset of text chunks given by filters.
         
@@ -221,7 +228,7 @@ class WeaviateSearch:
             
         Args:
             filters: Weaviate Filter object for querying chunks
-        
+            
         Returns:
             List of chunk objects matching the filters
 
@@ -229,7 +236,6 @@ class WeaviateSearch:
             WeaviateConnectionError: Cannot connect to Weaviate instance
             WeaviateFilterError: Invalid filter specification or malformed Filter object
             WeaviateQueryError: Query execution failed or query syntax error
-            WeaviateQueryTimeoutError: Query execution exceeded timeout threshold
             WeaviateNotFoundError: No chunks found matching the filters
             WeaviateSerializationError: Cannot deserialize response from Weaviate
             WeaviateServerError: Weaviate server returned an error
@@ -237,9 +243,42 @@ class WeaviateSearch:
         # TODO use instead of:
         # fetch chunks from specific collection (currently used in get_tagged_chunks_paged, get_collection_chunks_paged)
         # fetch chunks by tags (currently used in filterChunksByTags)
-        pass
 
-    def _fetch_tags(self, filters: Filter|None = None, ids=None) -> list:
+        try:
+            # prepare references to fetch in the query (set to None if you do not want to return any)
+            references=[
+                            QueryReference(
+                                link_on="automaticTag",  # the reference property
+                                return_properties=["uuid", "tag_name"]  # properties from the referenced tags
+                            ),
+                            QueryReference(
+                                link_on="positiveTag",
+                                return_properties=["uuid", "tag_name"]
+                            ),
+                            QueryReference(
+                                link_on="negativeTag",
+                                return_properties=["uuid", "tag_name"]
+                            ),
+                        ],
+            # returns all properties (except blobs) and specified references
+            response = await self.client.collections.get(self.chunks_collection).query.fetch_objects(
+                return_references=references,
+                filters=filters
+            )
+            if response.objects is None:
+                return []
+            return response.objects
+        except (WeaviateConnectionError, WeaviateFilterError, WeaviateNotFoundError,
+                WeaviateQueryError, WeaviateSerializationError) as e:
+            # log the error for debugging
+            logging.error(f"Failed to fetch chunks from {self.chunks_collection}: {str(e)}")
+            raise
+        except Exception as e:
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(f"Failed to fetch chunks: {str(e)}")
+
+    async def _fetch_tags(self, filters: Filter|None = None, ids: list[str]|None = None) -> list:
         """
         Fetches tag collection
         - with specific name OR
@@ -268,7 +307,50 @@ class WeaviateSearch:
         """
         # TODO use instead of:
         # with specific name (current add_or_get_tag) OR by list of uuids (current get_tagged_chunks_paged) OR without filter return all tags (current get_all_tags)
-        pass
+        try:
+            # check for conflict of defining both filters and IDs
+            if filters is not None and ids is not None:
+                raise WeaviateDataValidationError("Cannot specify both filters and ids. Use one or the other.")
+
+            # build filter from given IDs
+            if ids:
+                # validate UUID format
+                if not isinstance(ids, list):
+                    raise WeaviateDataValidationError("ids must be a list of strings (UUIDs)")
+                converted_ids = []
+                for uid in ids:
+                    if isinstance(uid, uuid.UUID):
+                        converted_ids.append(str(uid))
+                    elif isinstance(uid, str):
+                        converted_ids.append(uid)
+                    else:
+                        raise WeaviateDataValidationError(
+                            f"UUID must be UUID object or string, got {type(uid).__name__}"
+                        )
+                filters = Filter.by_id().contains_any(converted_ids)
+
+            results = await self.client.collections.get(self.tag_collection_name).query.fetch_objects(
+                filters=filters
+            )
+            if results.objects is None:
+                return []
+            return results.objects
+        except (WeaviateFilterError, WeaviateQueryError, WeaviateSerializationError) as e:
+            # Log expected Weaviate errors
+            logging.error(f"Failed to fetch tags from {self.tag_collection_name}: {str(e)}")
+            raise
+        except WeaviateDataValidationError as e:
+            # Log validation errors
+            logging.error(f"Invalid input for tag fetch: {str(e)}")
+            raise
+        except WeaviateConnectionError as e:
+            # Log connection errors
+            logging.error(f"Cannot connect to Weaviate: {str(e)}")
+            raise
+        except Exception as e:
+            # Catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching tags: {str(e)}")
+            raise WeaviateServerError(f"Failed to fetch tags: {str(e)}")
 
     def _create_tag(self, tag: schemas.TagData, collection_name:str) -> str:
         """
