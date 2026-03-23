@@ -272,7 +272,7 @@ Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
 | `/rag/` | RagPage | Multi-turn RAG chat with source citations |
 | `/tag/` | TaggingPage | Tagging interface (referenced in routes but **file missing**) |
 | `/tag_manage/` | TagManagementPage | Create tags, start/monitor tagging tasks |
-| `/collection_manage/` | UserCollectionManagementPage | Manage user document collections |
+| `/collections` | UserCollectionsPage | Manage user document collections |
 | `/about/` | AboutPage | Project information |
 
 State management via Pinia stores (`user-store`, `chunk_collection-store`). API communication through a shared Axios instance with configurable `BACKEND_URL`.
