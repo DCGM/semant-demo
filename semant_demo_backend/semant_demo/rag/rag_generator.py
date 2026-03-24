@@ -92,10 +92,11 @@ class RagGenerator(BaseRag):
                 base_url = self.global_config.OLLAMA_URLS[0],
                 temperature = temperature
             )
-        else:       #OPENAI
+        else:       #OPENAI / OPENROUTER
             return ChatOpenAI(
                 model = model_name if model_name else self.global_config.OPENAI_MODEL,
                 api_key = api_key if api_key else self.global_config.OPENAI_API_KEY,
+                base_url = self.global_config.OPENAI_API_URL,
                 temperature = temperature
             )
 

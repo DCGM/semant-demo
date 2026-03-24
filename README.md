@@ -11,7 +11,7 @@
 |---|---|
 | **Hybrid search** | BM25 + vector (HNSW) with configurable alpha; metadata & tag filters |
 | **Summarisation** | Per-result titles, per-result summaries and overall query summary via configurable LLM |
-| **RAG chat** | Multi-turn question answering with source citations; simple & adaptive (LangGraph) pipelines |
+| **RAG chat** | Multi-turn question answering with source citations; little/pipeline variants: `rag_generator`, `adaptive_rag`, `adaptive_rag_og`, `incremental_rag`, `agentic_rag` (recommended: incremental variant) |
 | **Tagging** | Manual & LLM-assisted tag propagation across document collections |
 | **User collections** | Group chunks into named collections per user |
 

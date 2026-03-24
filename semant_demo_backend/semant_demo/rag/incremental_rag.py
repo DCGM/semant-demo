@@ -16,12 +16,9 @@ import uuid
 
 from langgraph.graph import StateGraph, START, END
 
-from pydantic import BaseModel, Field
-
 import logging
 import re
 import json
-from datetime import datetime
 import asyncio
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
@@ -29,35 +26,50 @@ from semant_demo.config import Config
 from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState, TextChunkWithDocument, Document, ExplainRequest
 from semant_demo.weaviate_search import WeaviateSearch
 #import prompts from prompt file
-from semant_demo.rag.adaptive_rag_prompts import *
+from semant_demo.rag.incremental_rag_prompts import *
 
 DEBUG_PRINT = True
 
-#graders
-#grade relevancy of retrived documents
-class GraderChunkRelevance(BaseModel):
-    binary_score: str = Field(description="Documents are relevant to the question, 'yes' or 'no'")
-
-#grade relevancy of the answer
-class GraderAnswerRelevance(BaseModel):
-    binary_score: str = Field(description="Is an answer base on the context, 'yes' or 'no'")
-
 @register_rag_class
-class AdaptiveRagGenerator(BaseRag):
+class IncrementalAdaptiveRagGenerator(BaseRag):
     def __init__(self, global_config: Config, param_config):
         super().__init__(global_config, param_config)
         self.searcher = None
-        #this can be part of config in future
-        self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
-        self.main_prompt_history = ChatPromptTemplate.from_messages(answer_question_with_history_prompt_template)
-        self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
-        self.extract_prompt = ChatPromptTemplate.from_messages(extract_metadata_from_question_template)
-        self.multiquery_prompt = ChatPromptTemplate.from_messages(multiquery_prompt_template)
-        self.hyde_prompt = ChatPromptTemplate.from_messages(hyde_prompt_template)
-        self.context_grader_prompt = ChatPromptTemplate.from_messages(context_grader_prompt_template)
-        self.generation_grader_prompt = ChatPromptTemplate.from_messages(generation_grader_prompt_template)
+
+        #multilanguage prompt
+        self.identify_language_prompt = ChatPromptTemplate.from_messages(identify_language_prompt_template)
+        self.identify_language_prompt_answer = ChatPromptTemplate.from_messages(identify_language_answer_prompt_template)
         self.check_sufficient_context_prompt = ChatPromptTemplate.from_messages(check_sufficient_context_prompt_template)
-        self.explain_selected_text_prompt = ChatPromptTemplate.from_messages(explain_selected_text_prompt_template)
+        
+        self.prompts = {
+            "ces" : {
+                "history_transformation" : ChatPromptTemplate.from_messages(cze_refrase_question_from_history_prompt_template),
+                "generate_no_history" : ChatPromptTemplate.from_messages(cze_answer_question_prompt_template),
+                "generate_with_history" : ChatPromptTemplate.from_messages(cze_answer_question_with_history_prompt_template),
+                "multiquery" : ChatPromptTemplate.from_messages(cze_multiquery_prompt_template),
+                "grade_context" : ChatPromptTemplate.from_messages(cze_context_grader_prompt_template),
+                "grade_generation" : ChatPromptTemplate.from_messages(cze_generation_grader_prompt_template),
+                "extract_keyword" : ChatPromptTemplate.from_messages(cze_extract_keyword_prompt),
+                "extract_metadata" : ChatPromptTemplate.from_messages(cze_extract_metadata_from_question_template),
+                "hyde" : ChatPromptTemplate.from_messages(cze_hyde_prompt_template),
+                "consider_web" : ChatPromptTemplate.from_messages(cze_consider_web_search_prompt),
+                "explain_selected_text" : ChatPromptTemplate.from_messages(cze_explain_selected_text_prompt_template)
+
+            },
+            "eng" : {
+                "history_transformation" : ChatPromptTemplate.from_messages(eng_refrase_question_from_history_prompt_template),
+                "generate_no_history" : ChatPromptTemplate.from_messages(eng_answer_question_prompt_template),
+                "generate_with_history" : ChatPromptTemplate.from_messages(eng_answer_question_with_history_prompt_template),
+                "multiquery" : ChatPromptTemplate.from_messages(eng_multiquery_prompt_template),
+                "grade_context" : ChatPromptTemplate.from_messages(eng_context_grader_prompt_template), 
+                "grade_generation" : ChatPromptTemplate.from_messages(eng_generation_grader_prompt_template),
+                "extract_keyword" : ChatPromptTemplate.from_messages(eng_extract_keyword_prompt),
+                "explain_selected_text" : ChatPromptTemplate.from_messages(eng_explain_selected_text_prompt_template),
+                "extract_metadata" : ChatPromptTemplate.from_messages(eng_extract_metadata_from_question_template),
+                "hyde" : ChatPromptTemplate.from_messages(eng_hyde_prompt_template)
+            }
+        }
+
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
         model_type = param_config.get("model_type")
@@ -75,21 +87,15 @@ class AdaptiveRagGenerator(BaseRag):
         self.alpha = param_config.get("alpha", 0.5)
         self.search_type = param_config.get("search_type", "hybrid")
         #load and build graph
-        #load
-        self.qt_strategy = param_config.get("qt_strategy", "multi_query") #step_back / hyde / multi_query / nothing
         self.max_retries = param_config.get("max_retries", 3)
-        self.additional_tries_with_web_search = param_config.get("additional_tries_with_web_search", 2)
         self.web_search_enabled = param_config.get("web_search_enabled", False)
         self.metadata_extraction_allowed = param_config.get("metadata_extraction_allowed", True)
-        self.self_reflection = param_config.get("self_reflection", True)
         #build
         self.workflow = self._build_rag()
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 9")
-
-#--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+            print("Adaptive RAG version 25_4_3")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -110,7 +116,8 @@ class AdaptiveRagGenerator(BaseRag):
             return OllamaLLM(
                 model = model_name if model_name else self.global_config.OLLAMA_MODEL,
                 base_url = self.global_config.OLLAMA_URLS[0],
-                temperature = temperature
+                temperature = 0.0,
+                num_ctx = 16384
             )
         else:       #OPENAI / OPENROUTER
             return ChatOpenAI(
@@ -123,11 +130,17 @@ class AdaptiveRagGenerator(BaseRag):
     def _create_extract_model(self):
         #TODO can add optional model to config
         return self.model
+    
+    def _get_prompt_by_language(self, node_type: str, language: str):
+        lang_dict = self.prompts.get(language, self.prompts.get("ces"))
+        return lang_dict.get(node_type, self.prompts["ces"].get(node_type))
 
-    # create the graph
+
+     # create the graph
     def _build_rag(self):
         #define nodes
         workflow = StateGraph(AdaptiveRagState)
+        workflow.add_node("detect_language", self.node_detect_language)
         workflow.add_node("transform_history", self.node_history_transformation)
         workflow.add_node("check_context", self.node_check_context)
         workflow.add_node("start_retrieval_branch", lambda state: state)
@@ -140,10 +153,11 @@ class AdaptiveRagGenerator(BaseRag):
         workflow.add_node("web_search", self.node_web_search)
 
         #define edges
-        workflow.add_edge(START, "transform_history")
+        workflow.add_edge(START, "detect_language")
 
+        workflow.add_edge("detect_language", "transform_history")
         workflow.add_edge("transform_history", "check_context")
-
+    
         workflow.add_edge("start_retrieval_branch", "multi_query")
         workflow.add_edge("start_retrieval_branch", "extract_metadata")
 
@@ -179,18 +193,16 @@ class AdaptiveRagGenerator(BaseRag):
             "grade_generation",
             self.decide_after_generation,
             {
-                "supported": END,
-                "not_supported": "generate",
+                "finish": END,
                 "web_search" : "web_search",
-                "retry_search" : "start_retrieval_branch"
+                "retry" : "start_retrieval_branch"
             }
         )
-
         return workflow
-
+    
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-    # creation of the chain
+# creation of the chain
     def _create_chain(self, model, prompt):    
         return prompt | model | self.output_parser
     
@@ -223,13 +235,23 @@ class AdaptiveRagGenerator(BaseRag):
         return ("\n".join(snippets))
     
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
-
     async def node_retrieve(self, state: AdaptiveRagState):
         #get metadata
         metadata = state.get("metadata", {})
+        iteration = state.get("retrieval_iteration_counter", 0)
 
-        #is used strategy hyde --> use document embedding instead of query embedding
-        use_hyde_embedding = True if self.qt_strategy == "hyde" else False
+        limit = self.chunk_limit
+        alpha = self.alpha
+        use_hyde_embedding = False
+        if (iteration == 0):
+            limit = 5
+        elif (iteration == 1):
+            limit = self.chunk_limit
+        elif (iteration == 2):  # hyde
+            #use document embedding instead of query embedding
+            limit = 10
+            use_hyde_embedding = True
+            alpha = 0.9
 
         if (DEBUG_PRINT):
             print(f"Is used hyde embedding: {use_hyde_embedding}.")
@@ -244,8 +266,8 @@ class AdaptiveRagGenerator(BaseRag):
             search_request = SearchRequest(
                 query = query,
                 type = self.search_type,
-                hybrid_search_alpha = self.alpha,
-                limit = 5 if state.get("retrieval_iteration_counter", 0) == 0 else self.chunk_limit,
+                hybrid_search_alpha = alpha,
+                limit = limit,
                 min_year = metadata.get("min_year"),
                 max_year = metadata.get("max_year"),
                 min_date = metadata.get("min_date"),
@@ -268,9 +290,9 @@ class AdaptiveRagGenerator(BaseRag):
         #remove duplicities and put it together
         unique_chunks = {}
         for response in search_responses:
+            # for chunk in response.results[:3]:
             for chunk in response.results:
                 chunk_id = getattr(chunk, "id", None)
-                print(f"chunk id: {chunk_id}")
                 if chunk_id not in unique_chunks:
                     unique_chunks[chunk_id] = chunk
 
@@ -283,11 +305,26 @@ class AdaptiveRagGenerator(BaseRag):
                  "retrieval_iteration_counter" : counter_value
                  }
     
+    async def node_detect_language(self, state: AdaptiveRagState):
+        chain = self._create_chain(model=self.model, prompt=self.identify_language_prompt)
+        result = await chain.ainvoke({"question_string" : state["question"]})
+        clean_result = re.sub(r'```json|```', '', result).strip()
+        try:
+            graded_doc = json.loads(clean_result)
+            language = graded_doc.get("language", "eng").lower()
+            if (DEBUG_PRINT):
+                print(f"Detected language: {language}")
+        except Exception:
+            return {"language" : "eng"}
+        return {"language" : language}
+
+
     #rephrase question to search desired data in database
     async def node_history_transformation(self, state: AdaptiveRagState):
         if (state["history"]):
             #create desired chain
-            chain = self._create_chain(model=self.model, prompt=self.history_prompt)
+            prompt = self._get_prompt_by_language("history_transformation", state["language"])
+            chain = self._create_chain(model=self.model, prompt=prompt)
 
             #convert history into desired format
             prompt_history = self._get_prompt_history(state["history"])
@@ -319,7 +356,6 @@ class AdaptiveRagGenerator(BaseRag):
         return {"context_sufficient" : False}
             
 
-
     def decide_after_check(self, state: AdaptiveRagState):
         if (state["context_sufficient"] == True):
             if (DEBUG_PRINT):
@@ -331,103 +367,83 @@ class AdaptiveRagGenerator(BaseRag):
             return "insufficient"
 
     async def node_extract_metadata(self, state: AdaptiveRagState):
-        if state.get("retrieval_iteration_counter", 0) == 0:
-            if (DEBUG_PRINT): print("Skipping metadata extraction in Iteration 0")
-            return {"metadata": {}}
-        if (state["metadata_extraction_allowed"] == True):
-            chain =  self._create_chain (model=self.extract_model, prompt=self.extract_prompt)
-            result = await chain.ainvoke({"question_string" : state["question"]})
-            clean_result = re.sub(r'```json|```', '', result).strip()
-            if (DEBUG_PRINT):
-                print(f"metadata_clean_result: {clean_result}")
-            try:
-                metadata = json.loads(clean_result)
-                metadata_structured = {
-                    "min_year" : int(metadata.get("min_year")) if metadata.get("min_year") else None,
-                    "max_year" : (int(metadata.get("max_year")) + 100) if metadata.get("max_year") else None,
-                    "language" : metadata.get("language")
-                }
-                if (DEBUG_PRINT):
-                    print(f"metadata_structured: {metadata_structured}")
-                return {"metadata" : metadata_structured}
-            except Exception:
-                return {"metadata" : {}}
-        else:
-            return {"metadata" : {}}
+        if state.get("retrieval_iteration_counter", 0) == 1:
+            if (state["metadata_extraction_allowed"] == True):
+                if (DEBUG_PRINT): 
+                    print("Extrackting metadata in Multi-query iteration")
+                language = state.get("language", "ces")
+                prompt = self._get_prompt_by_language("extract_metadata", language)
+                chain =  self._create_chain (model=self.extract_model, prompt=prompt)
+                result = await chain.ainvoke({"question_string" : state["question"]})
+                clean_result = re.sub(r'```json|```', '', result).strip()
+                try:
+                    metadata = json.loads(clean_result)
+                    metadata_structured = {
+                        "min_year" : (int(metadata.get("min_year")) - 5) if metadata.get("min_year") else None,
+                        "max_year" : (int(metadata.get("max_year")) + 5) if metadata.get("max_year") else None,
+                        "language" : metadata.get("language")
+                    }
+                    if (DEBUG_PRINT):
+                        print(f"metadata_structured: {metadata_structured}")
+                    return {"metadata" : metadata_structured}
+                except Exception:
+                    return {"metadata" : {}}
+        if state.get("metadata", {}) != {}:
+            return {"metadata" : state["metadata"]}
+
+        return {"metadata" : {}}
         
     async def node_multi_query(self, state: AdaptiveRagState):
-        retry_additional_text = ""
         iteration = state.get("retrieval_iteration_counter", 0)
-        
+        language = state.get("language", "ces")
         #first time try simple retrieve
         if (iteration == 0):
             return {"queries" : [state["question"]]}
-
-        if self.qt_strategy == "multi_query":
+        
+        elif (iteration == 2): # hyde
             if (DEBUG_PRINT):
-                print(f"Multi query mode")
+                print(f"HYDE MODE")
 
-            if (iteration > 0):
-                joint_queries = "\n".join(state["queries"])
-                retry_additional_text = multiquery_retry.format(queries = joint_queries)
-                if (DEBUG_PRINT):
-                    print(f"Retrying multi-query feedback: {retry_additional_text}")
-            
-            chain = self._create_chain(model = self.model, prompt=self.multiquery_prompt)
-            result_raw = await chain.ainvoke({"question_string" : state["question"] + retry_additional_text})
+            prompt = self._get_prompt_by_language("hyde", language)
+            chain = self._create_chain(model = self.model, prompt = prompt)
+            hyde = await chain.ainvoke({"question_string" : state["question"]})
 
-            forbidden_starts = ["here are", "tady jsou", "otázky", "variations", "sure", "ok", "následující"]
+            return {"queries" : [hyde]}
 
-            queries = []
-            for line in result_raw.split("\n"):
-                q = line.strip().strip('"').strip("'").lstrip("0123456789.- ")
-                if not q:
-                    continue
-                if any(q.lower().startswith(phrase) for phrase in forbidden_starts):
-                    continue
-                if len(q) > 300:
-                    continue
-                queries.append(q)
+        else:
+            #multiple query generation
+            if (DEBUG_PRINT):
+                print(f"MULTI QUERY MODE")
 
+            prompt = self._get_prompt_by_language("multiquery", language)
+            chain = self._create_chain(model = self.model, prompt = prompt)
+            result_raw = await chain.ainvoke({"question_string" : state["question"]})
+
+            # simple parser
+            queries = [line.strip().lstrip("0123456789.- ") for line in result_raw.split("\n") if len(line.strip()) > 5]
+            queries = queries[:3]
 
             if state["question"] not in queries:
-                queries.append(state["question"])
-
-            if (DEBUG_PRINT):
-                print(f"Queries: {queries}")
+                    queries.append(state["question"])
 
             return {"queries" : queries}
-        elif self.qt_strategy == "hyde":
-            if (DEBUG_PRINT):
-                print(f"HyDe mode")
 
-            if (iteration > 0):
-                last_hyde_doc = state["queries"][0] if state["queries"] else ""
-                retry_additional_text = hyde_retry.format(hyde_doc = last_hyde_doc)
-                if (DEBUG_PRINT):
-                    print(f"Retrying HyDe feedback: {retry_additional_text}")
 
-            chain = self._create_chain(model = self.model, prompt=self.hyde_prompt)
-            hypothetical_doc = await chain.ainvoke({"question_string" : state["question"] + retry_additional_text})
-
-            if (DEBUG_PRINT):
-                print(f"Hypothetical doc (first 100 char): {hypothetical_doc[:100]}...")
-
-            return {"queries" : [hypothetical_doc]}
-        else:
-            return {"queries" : [state["question"]]}
 
     async def node_grade_context(self, state: AdaptiveRagState):
-        iteration = state.get("retrieval_iteration_counter", 0)
-        if (iteration <= 1):
-            if (DEBUG_PRINT): print("GRADE CONTEXT - skipping firtst iteration grading")
+        #first basic rag query
+        if (len(state["documents"]) <= 5 or state["retrieval_iteration_counter"] == 1):
             return {"documents": state["documents"]}
+        
+        if (DEBUG_PRINT): 
+            print(f"GRADING RETRIEVED CONTEXT: ({len(state['documents'])} docs)")
 
-        chain = self._create_chain(model=self.model, prompt=self.context_grader_prompt)
+        language = state.get("language", "ces")
+        prompt = self._get_prompt_by_language("grade_context", language)
+        chain = self._create_chain(model=self.model, prompt=prompt)
 
         async def grader_single_doc(doc):
             clean_doc = self._get_clean_doc(doc)
-            print(f"Doc to be graded: {clean_doc}")
             result_raw = await chain.ainvoke({
                 "question_string" : state["question"],
                 "document" : clean_doc
@@ -446,65 +462,60 @@ class AdaptiveRagGenerator(BaseRag):
         #call in parallel
         grade_tasks = [grader_single_doc(doc) for doc in state["documents"]]
         doc_responses = await asyncio.gather(*grade_tasks)
+
         #remove None
         filtered_documents = [doc for doc in doc_responses if doc is not None]
-        filtered_documents = filtered_documents[:5]
-
-        #not relevant documents found
-        if filtered_documents == []:
-            return {"documents" : [],
-                    "metadata_extraction_allowed": False }
+        
 
         #if relevant return documents (in original textchunk format)
         if (DEBUG_PRINT):
             print(f"Relevant documents number: " + str(len(filtered_documents)), " original doc number: " + str(len(state["documents"])))
+        
+        filtered_documents = filtered_documents[:5]
         return {"documents" : filtered_documents}
     
     def after_context_grade (self, state: AdaptiveRagState):
-        #generate if there are relevant documents
-        if (state["documents"]):
+        ret_count = state.get("retrieval_iteration_counter", 0)
+        if (state["documents"] and len(state["documents"]) > 0):
             return "generate"
-        else:
-            if (state.get("retrieval_iteration_counter", 0) < self.max_retries):
-                print(f"No documents found, transformig query. Turning metadata extraction OFF.")
-                return "transform"
-            if self.web_search_enabled:
-                if (DEBUG_PRINT): 
-                    print("MQ/HyDe failed. Falling back to Web Search ---")
-                return "web_search"
+        
+        if (DEBUG_PRINT): 
+            print(f"ROUTER: 0 relevant documents in iteration {ret_count}")
+
+        if ret_count < self.max_retries: 
+            return "transform"
+        
+        if self.web_search_enabled and not state.get("web_search_performed"):
+            return "web_search"
+
         return "generate"
 
     # generate an answer
     async def node_generate(self, state: AdaptiveRagState):
-        #no relevant chunks found -> skip generation
-        if (state["documents"] == []):
-            return {"generation": "Sorry, I can't answer the question."} 
-
-        #feedback
-        feedback = state.get("feedback", "")
-        feedback_prompt_add = ""
-        if (feedback != "" and feedback != "supported"):
-            feedback_prompt_add = generation_retry.format(feedback=feedback)
-
-
+        language = state.get("language", "ces")
+        
         #join snippets
         final_context = self._format_weaviate_context(state["documents"])
+        if (DEBUG_PRINT):
+            print(f"DEBUG: Context length (chars): {len(final_context)}")
 
         if (state["history"]):
-            chain = self._create_chain(model=self.model, prompt=self.main_prompt_history)
+            prompt = self._get_prompt_by_language("generate_with_history", language)
+            chain = self._create_chain(model=self.model, prompt=prompt)
             #get history in desired format
             prompt_history = self._get_prompt_history(state["history"])
 
             answer = await chain.ainvoke({
-                "context_string" : final_context + feedback_prompt_add,
+                "context_string" : final_context,
                 "original_question" : state["original_question"],
                 "question_string" : state["question"],
                 "prompt_history" : prompt_history
             })
         else:
-            chain = self._create_chain(model=self.model, prompt=self.main_prompt)
+            prompt = self._get_prompt_by_language("generate_no_history", language)
+            chain = self._create_chain(model=self.model, prompt=prompt)
             answer = await chain.ainvoke({
-                "context_string" : final_context + feedback_prompt_add,
+                "context_string" : final_context,
                 "question_string" : state["question"]
             })
 
@@ -514,107 +525,83 @@ class AdaptiveRagGenerator(BaseRag):
         return {"generation": answer}
     
     async def node_grade_generation (self, state: AdaptiveRagState):
-        counter_value = state.get("generation_iteration_counter", 0) + 1
-        ret_iteration = state.get("retrieval_iteration_counter", 0)  + 1
-        #in case self reflection is of or web search was performed there is no reason to generate feedback because it will be ignored anyway
-        if (self.self_reflection == False or state["web_search_performed"] == True):
-            if (DEBUG_PRINT):
-                print(f"Self reflection mode is OFF")
-            return {"feedback" : "supported", "generation_iteration_counter": counter_value}
-        else:
-            if (DEBUG_PRINT):
-                print(f"Self reflection mode is ON")
+        gen_value = state.get("generation_iteration_counter", 0) + 1
+        language = state.get("language", "ces")
+        prompt = self._get_prompt_by_language("grade_generation", language)
+        chain = self._create_chain(model=self.model, prompt=prompt)
 
-            #check if ansfer is "sorry answer"
-            answer_text = state["generation"].lower()
-            apology_phrases =["sorry", "omlouvám", "nemohu odpovědět", "nelze odpovědět", 
-                               "nemám dostatek informací", "neposkytuje informace", 
-                               "chybí", "neuvádí", "není uvedeno", "neobsahuje", 
-                               "missing", "not provided"]
-            if any(phrase in answer_text for phrase in apology_phrases):
-                #no relevant documents/chunks found -> do not grade (try web search if enabled)
-                #if (self.web_search_enabled == True):
-                return {"feedback" : "", "generation_iteration_counter": counter_value}#, "retrieval_iteration_counter": ret_iteration}
+        #this is grading base on question and answer --> should effect answer relevancy metrics and maybe context recall/precision
+        try:
+            result_raw = await chain.ainvoke({
+                "question": state["question"],
+                "answer": state["generation"]
+            })
+            clean_result = re.sub(r'```json|```', '', result_raw).strip()
+            decision = json.loads(clean_result)
             
-            #grade answer and get feedback
-            chain = self._create_chain(model=self.model, prompt=self.generation_grader_prompt)
-            context = self._format_weaviate_context(state["documents"])
-
-            raw_result = ""
-
-            try:
-                raw_result = await asyncio.wait_for(
-                chain.ainvoke({
-                    "documents": context,
-                    "answer": state["generation"]
-                }),
-                timeout=45.0
-            )
-            except asyncio.TimeoutError:
-                if (DEBUG_PRINT): 
-                    print("Grader freezed. Skipping grading.")
-
-            clean_result = re.sub(r'```json|```', '', raw_result).strip()
-            is_supported = True
-            feedback = "supported"
-            try:
-                graded_answer = json.loads(clean_result)
-                score = graded_answer.get("binary_score", "no").lower()
-                feedback = graded_answer.get("feedback", "")
-                if "no" in score:
-                    is_supported = False
-            except Exception:
-                feedback = ""
+            if decision.get("is_complete") == "no":
+                if (DEBUG_PRINT):
+                    print("GRADE GENERATION: Answer incomplete. Routing to Retry.")
+                return {"feedback": "insufficient", "generation_iteration_counter": gen_value}
+            else:
+                return {"feedback": "supported", "generation_iteration_counter": gen_value}
             
-            if (is_supported == True):
-                if (DEBUG_PRINT):
-                    print(f"Answer is supported.")
-                return {"feedback" : "supported", "generation_iteration_counter": counter_value}
-            else: # not supported
-                if (DEBUG_PRINT):
-                    print(f"Answer is not supported, feedback: {feedback}")
-                return {"feedback" : feedback, "generation_iteration_counter": counter_value}
+        except Exception as e:
+            if (DEBUG_PRINT): 
+                print(f"GRADER ERROR: {e}. Defaulting to finish.")
+            return {"feedback": "supported", "generation_iteration_counter": gen_value}
 
     def decide_after_generation (self, state: AdaptiveRagState):
-        feedback = state.get("feedback", "")
-        gen_iteration = state.get("generation_iteration_counter", 0)
-        ret_iteration = state.get("retrieval_iteration_counter", 0) 
-        web_done = state.get("web_search_performed", False)
-
-        #supported answer --> finish
-        if (feedback == "supported"):
-            return "supported"
+        retrieval_count = state.get("retrieval_iteration_counter", 0)
+        web_search_done = state.get("web_search_performed", False)
+        if state["feedback"] == "supported":
+            if (DEBUG_PRINT): 
+                print("FINISHING: Answer satisfactory.")
+            return "finish"
+        if (retrieval_count < self.max_retries):
+            if (DEBUG_PRINT): 
+                print("Retrying with multiquery or hyde.")
+            return "retry"
+        if (web_search_done == False and self.web_search_enabled == True):
+            return "web_search"
         
-        # #case where no relevant documents were found --> multiquary --> search web if allowed
-        elif (feedback == "" or state["documents"] == []):
-            #try multiquary/hyde aproach
-            if (ret_iteration < self.max_retries):
-                if (DEBUG_PRINT): 
-                    print("Basic Search failed to answer. Starting Adaptive Multi-Query Retry")
-                return "retry_search"
-            #web search
-            if (self.web_search_enabled and not state.get("web_search_performed")):
-                return "web_search"
-            return "supported"
-        elif (web_done == True): #search only once
-            return "supported"
-        
-        #try generate again with feedback
-        if (not web_done and gen_iteration < self.max_retries):
-            if (DEBUG_PRINT):
-                print(f"Retrying generation with feedback ({gen_iteration}/{self.max_retries}).")
-            return "not_supported"
-        return "supported"
+        return "finish"
     
     async def node_web_search (self, state: AdaptiveRagState):
+        if (DEBUG_PRINT):
+            print(f"Extracting keyword for the internet search.")
+
         try:
-            def ddg(query):
+            language = state.get("language", "ces")
+            prompt = self._get_prompt_by_language("extract_keyword", language)
+            chain = self._create_chain(model=self.model, prompt=prompt)
+
+            keywords_raw = await chain.ainvoke({"question": state["question"]})
+            keywords = keywords_raw.replace(",", " ").strip()
+
+            search_queries = [keywords, state["question"]]
+        except Exception as e:
+            print(f"Rewriting web search queries, Error: {e}")
+
+        if (DEBUG_PRINT):
+            print(f"Trying to search web using DuckDuckGo")
+
+        try:
+            def ddg(queries):
+                all_results = []
                 with DDGS() as ddgs:
-                    results = [r["body"] for r in ddgs.text(query, max_results= 5)]
-                    return "\n".join(results)
-                
+                    for q in queries:
+                        if (DEBUG_PRINT): 
+                            print(f"Searching web: {q}")
+                        results = [r["body"] for r in ddgs.text(q, max_results = 8)]
+                        all_results.extend(list(set(results)))
+
+                unique_results = list(dict.fromkeys(all_results))
+                return "\n".join(unique_results)
+  
             uuid_tmp = uuid.uuid4()
-            search_result = await asyncio.to_thread(ddg, state["question"])
+            search_result = await asyncio.to_thread(ddg, search_queries)
+
             search_chunk = TextChunkWithDocument(
                 id=uuid_tmp,
                 title="DuckDuckGo Search",
@@ -627,12 +614,12 @@ class AdaptiveRagGenerator(BaseRag):
             )
             if (DEBUG_PRINT):
                 print(f"Internet search result: {search_chunk}")
-            return {"documents" : state["documents"] + [search_chunk], "web_search_performed" : True}
+            return {"documents" : [search_chunk], "web_search_performed" : True, "feedback" : "supported"}
                 
         except Exception as e:
             if (DEBUG_PRINT):
                 print(f"Web search failed. Error: {e}")
-            return {"web_search_performed" : True}
+            return {"web_search_performed" : True, "feedback" : "supported"}
 
 
     #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -669,7 +656,7 @@ class AdaptiveRagGenerator(BaseRag):
                 "web_search_performed" : False
             }
             
-            config = {"recursion_limit" : 25}
+            config = {"recursion_limit" : 50}
 
             generated_result = await self.rag.ainvoke(intial_state_values, config=config)
 
@@ -707,7 +694,24 @@ class AdaptiveRagGenerator(BaseRag):
 
         if (full_answer and sources_raw and selected_text):
             context = self._format_weaviate_context(sources_raw)
-            chain = self._create_chain(model=self.model, prompt=self.explain_selected_text_prompt)
+            
+            # detect language
+            language = "eng"
+            chain = self._create_chain(model=self.model, prompt=self.identify_language_prompt_answer)
+            result = await chain.ainvoke({"text_string" : full_answer})
+            clean_result = re.sub(r'```json|```', '', result).strip()
+            try:
+                graded_doc = json.loads(clean_result)
+                language = graded_doc.get("language", "eng").lower()
+                if (DEBUG_PRINT):
+                    print(f"Detected language: {language}")
+            except Exception:
+                language = "eng"
+
+            # explain selection
+            prompt = self._get_prompt_by_language("explain_selected_text", language)
+
+            chain = self._create_chain(model=self.model, prompt=prompt)
             result = await chain.ainvoke({
                 "full_answer" : full_answer,
                 "context_string" : context,

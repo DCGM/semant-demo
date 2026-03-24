@@ -18,6 +18,16 @@ from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSearch, RagRequest, RagResponse
 
 
+def create_async_openai_client(model_type: str, global_config: Config) -> AsyncOpenAI:
+    """Create an AsyncOpenAI client routed to the correct API endpoint."""
+
+    return AsyncOpenAI(
+        api_key=global_config.OPENAI_API_KEY,
+        base_url=global_config.OPENAI_API_URL,
+    )
+    # Default: standard OpenAI
+
+
 IMPROVED_RAG_SYSTEM_PROMPT = """
 You are a STRICT Agentic Retrieval-Augmented Generation (RAG) agent with strategic tool usage.
 
@@ -148,8 +158,8 @@ def lc_messages_to_openai(messages):
 
 
 class LangchainLLM:
-    def __init__(self, model: str):
-        self.client = AsyncOpenAI()
+    def __init__(self, model: str, client: AsyncOpenAI):
+        self.client = client
         self.model = model
 
     async def invoke(self, messages: list, temperature: float = 0.6):
@@ -286,8 +296,8 @@ class WeaviateToolWrapper:
 
 
 class AssessRetrievalQualityTool:
-    def __init__(self, model: str):
-        self.client = AsyncOpenAI()
+    def __init__(self, model: str, client: AsyncOpenAI):
+        self.client = client
         self.model = model
 
     async def assess_retrieval_quality(self, question: str, retrieved_documents: str) -> str:
@@ -329,8 +339,8 @@ Guidelines:
 
 
 class ExpandQueryTool:
-    def __init__(self, model: str):
-        self.client = AsyncOpenAI()
+    def __init__(self, model: str, client: AsyncOpenAI):
+        self.client = client
         self.model = model
 
     async def expand_query(self, original_query: str, context: str) -> str:
@@ -373,8 +383,8 @@ Focus on semantic variations and synonyms, not just word replacements.
 
 
 class DecomposeQuestionTool:
-    def __init__(self, model: str):
-        self.client = AsyncOpenAI()
+    def __init__(self, model: str, client: AsyncOpenAI):
+        self.client = client
         self.model = model
 
     async def decompose_question(self, question: str) -> str:
@@ -417,8 +427,8 @@ If not multi-part, set is_multi_part=false and sub_queries=[].
 
 
 class SynthesizeEvidenceTool:
-    def __init__(self, model: str):
-        self.client = AsyncOpenAI()
+    def __init__(self, model: str, client: AsyncOpenAI):
+        self.client = client
         self.model = model
 
     async def synthesize_evidence(self, question: str, retrieved_documents: str) -> str:
@@ -463,8 +473,10 @@ class xmartiAgentRag(BaseRag):
 
     def __init__(self, global_config: Config, param_config):
         super().__init__(global_config, param_config)
-        self.model_type = param_config.get("model_name", "gpt-4o-mini")
-        self.llm = LangchainLLM(self.model_type)
+        self.model_name = param_config.get("model_name", "gpt-4o-mini")
+        self.model_type = param_config.get("model_type", "OPENAI")
+        self._client = create_async_openai_client(self.model_type, global_config)
+        self.llm = LangchainLLM(self.model_name, self._client)
         self.search_type = param_config.get("search_type")
         self.alpha = param_config.get("alpha")
         self.chunk_limit = param_config.get("chunk_limit")
@@ -487,10 +499,10 @@ class xmartiAgentRag(BaseRag):
             alpha=self.alpha,
             chunk_limit=self.chunk_limit
         )
-        assess_tool = AssessRetrievalQualityTool(self.model_type)
-        expand_tool = ExpandQueryTool(self.model_type)
-        decompose_tool = DecomposeQuestionTool(self.model_type)
-        synthesize_tool = SynthesizeEvidenceTool(self.model_type)
+        assess_tool = AssessRetrievalQualityTool(self.model_name, self._client)
+        expand_tool = ExpandQueryTool(self.model_name, self._client)
+        decompose_tool = DecomposeQuestionTool(self.model_name, self._client)
+        synthesize_tool = SynthesizeEvidenceTool(self.model_name, self._client)
 
         retrieved_sources = []
 
