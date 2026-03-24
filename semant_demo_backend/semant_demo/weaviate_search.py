@@ -352,13 +352,13 @@ class WeaviateSearch:
             logging.error(f"Unexpected error fetching tags: {str(e)}")
             raise WeaviateServerError(f"Failed to fetch tags: {str(e)}")
 
-    def _create_tag(self, tag: schemas.TagData, collection_name:str) -> str:
+    async def _create_tag(self, tag: schemas.TagData, collection_name:str) -> str:
         """
         Adds new tag to tag-collection. This function calls fetch_tags to prevent duplicates.
 
         Args:
-            name: schemas.TagData of the tag
-            collection_name: Name of the collection this tag belongs to
+            tag: structure containing tag data defined in schemas.TagData,
+                 also contains name of the collection this tag belongs to
             
         Returns:
             Created tag object UUID
@@ -371,9 +371,59 @@ class WeaviateSearch:
             WeaviateServerError: Weaviate server returned an error
         """
         # TODO like current add_or_get_tag, but use fetch_tags
-        pass
+        # check if tag with same properties already exists
+        # prepare filter
+        try:
+            # Validate input
+            if not tag.tag_name or not isinstance(tag.tag_name, str):
+                raise WeaviateDataValidationError("tag_name must be a non-empty string")
+            if not tag.tag_shorthand or not isinstance(tag.tag_shorthand, str):
+                raise WeaviateDataValidationError("tag_shorthand must be a non-empty string")
+            if not tag.tag_color or not isinstance(tag.tag_color, str):
+                raise WeaviateDataValidationError("tag_color must be a non-empty string")
+            filters =(
+                Filter.by_property("tag_name").equal(tag.tag_name) &
+                Filter.by_property("tag_shorthand").equal(tag.tag_shorthand)&
+                Filter.by_property("tag_color").equal(tag.tag_color)
+            )
+            # query weaviate
+            existing_tags = await self._fetch_tags(filters)
+            # iterate over fetched results and check for equality
+            for existing_tag in existing_tags:
+                if (existing_tag.properties["tag_name"] == tag.tag_name and
+                    existing_tag.properties["tag_shorthand"] == tag.tag_shorthand and
+                    existing_tag.properties["tag_color"] == tag.tag_color):
+                    return existing_tag.uuid # return existing tag UUID
+            # no exact match found, create new tag
+            new_tag_uuid = await self.client.collections.get("Tag").data.insert(
+                properties={
+                    "tag_name": tag.tag_name,
+                    "tag_shorthand": tag.tag_shorthand,
+                    "tag_color": tag.tag_color,
+                    "tag_pictogram": tag.tag_pictogram,
+                    "tag_definition": tag.tag_definition,
+                    "tag_examples": tag.tag_examples,
+                    "collection_name": tag.collection_name
+                }
+            )
+            return new_tag_uuid  
+        except WeaviateDataValidationError as e:
+            logging.error(f"Invalid input for tag creation: {str(e)}")
+            raise
+        except WeaviateConnectionError as e:
+            logging.error(f"Cannot connect to Weaviate: {str(e)}")
+            raise
+        except WeaviateServerError as e:
+            logging.error(f"Weaviate server error: {str(e)}")
+            raise
+        except ( WeaviateLimitError, WeaviateOperationError) as e:
+            logging.error(f"Failed to fetch tags from {self.tag_collection_name}: {str(e)}")
+            raise
+        except Exception as e:
+            logging.error(f"Unexpected error creating tag: {str(e)}")
+            raise WeaviateServerError(f"Failed to create tag: {str(e)}")    
 
-    def _create_reference(self, src_id:str, property_name:str, target_id:str) -> bool:
+    async def _create_reference(self, src_id:str, property_name:str, target_id:str) -> bool:
         """
         Creates reference from weviate object fetched by its id to other object defined by id.
 
@@ -392,7 +442,49 @@ class WeaviateSearch:
             WeaviateReferencedObjectNotFoundError: Target object does not exist
             WeaviateReferencePropertyError: Reference property does not exist in schema or is not a reference 
         """
-        pass
+        try:
+            # make this more general
+            chunks = self.client.collections.get(self.chunks_collection)
+            async def getChunkObj(chunkID):
+                obj = await chunks.query.fetch_object_by_id(chunkID,
+                    return_references=[
+                    QueryReference(
+                        link_on="userCollection"
+                    )]
+                )
+                return obj
+
+            obj = await getChunkObj(req.chunkId)
+            refs = obj.references or {}
+
+            # helper to extract UUID strings from reference block
+            def ref_uuids(ref_block):
+                if not ref_block:
+                    return []
+                return [str(r.uuid) for r in ref_block.objects]
+
+            collection_ids = ref_uuids(refs.get("userCollection"))
+            new_collection_id = str(req.collectionId)
+
+            updatedCollectionIds = sorted(set(collection_ids + [new_collection_id]))
+            await chunks.data.reference_replace(
+                    from_uuid=obj.uuid,
+                    from_property="userCollection",
+                    to=updatedCollectionIds,
+            )
+
+            # test
+            updated_obj = await getChunkObj(req.chunkId)
+            updated_refs = updated_obj.references or {}
+            updated_collection_ids = ref_uuids(updated_refs.get("userCollection"))
+
+            print("Test - References after update:", updated_collection_ids)
+            assert new_collection_id in updated_collection_ids, "Reference was not added properly"
+            # reference added
+            return True # TODO fix in other parts now is switched before False on success
+        except Exception as e:
+            logging.info(e)
+            return False
 
     def _remove_reference(self, src_id: str, reference_to_remove: str) -> bool: 
         """
