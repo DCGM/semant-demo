@@ -14,10 +14,10 @@
         />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
-          name="documents"
-          label="Documents"
+          name="documents_tagging"
+          label="Documents & tagging"
           icon="library_books"
-          :to="{ name: 'collectionDocuments' }"
+          :to="{ name: 'collectionDocumentsTagging' }"
         />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
