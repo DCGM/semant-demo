@@ -14,7 +14,7 @@ from .config import config
 import logging
 
 from weaviate.collections.classes.grpc import QueryReference
-from weaviate_exceptions import *
+from weaviate_exceptions import WeaviateConnectionError, WeaviateDataValidationError, WeaviateLimitError, WeaviateServerError, WeaviateOperationError 
 
 import uuid
 
@@ -268,8 +268,8 @@ class WeaviateSearch:
             if response.objects is None:
                 return []
             return response.objects
-        except (WeaviateConnectionError, WeaviateFilterError, WeaviateNotFoundError,
-                WeaviateQueryError, WeaviateSerializationError) as e:
+        except (WeaviateConnectionError, WeaviateDataValidationError, 
+                WeaviateLimitError, WeaviateOperationError ) as e:
             # log the error for debugging
             logging.error(f"Failed to fetch chunks from {self.chunks_collection}: {str(e)}")
             raise
@@ -335,7 +335,7 @@ class WeaviateSearch:
             if results.objects is None:
                 return []
             return results.objects
-        except (WeaviateFilterError, WeaviateQueryError, WeaviateSerializationError) as e:
+        except ( WeaviateLimitError, WeaviateOperationError) as e:
             # Log expected Weaviate errors
             logging.error(f"Failed to fetch tags from {self.tag_collection_name}: {str(e)}")
             raise

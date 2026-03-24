@@ -1,45 +1,16 @@
-class WeaviateOperationError(Exception):
+class WeaviateError(Exception):
     """Base exception for all weaviate errors."""
     pass
 
 # Specific exceptions
-
-class WeaviateConnectionError(WeaviateOperationError):
+class WeaviateConnectionError(WeaviateError):
     """
     Raised when unable to connect to Weaviate instance.
     """
     pass
 
-class WeaviateSchemaError(WeaviateOperationError):
-    """
-    Raised when Weaviate client calls invalid schema.
-    
-    Causes:
-    - Collection schema doesn't exist
-    - Collection schema is invalid
-    """
-    pass
 
-class WeaviateDeleteError(WeaviateOperationError):
-    """
-    Raised when deletion cannot be performed due to not existing object.
-    
-    Common causes:
-    - Attempting to delete already-deleted object
-    """
-    pass
-
-class WeaviateDuplicateError(WeaviateOperationError):
-    """
-    Raised when attempting to create a duplicate that should be unique.
-    
-    Causes:
-    - Creating tag with name that already exists for user
-    - Creating collection with duplicate name
-    """
-    pass
-
-class WeaviateDataValidationError(WeaviateOperationError):
+class WeaviateDataValidationError(WeaviateError):
     """
     Raised when input data validation fails.
     
@@ -52,55 +23,7 @@ class WeaviateDataValidationError(WeaviateOperationError):
     """
     pass
 
-class WeaviateFilterError(WeaviateOperationError):
-    """
-    Raised when filter specification is invalid.
-    
-    Common causes:
-    - Invalid filter syntax
-    - Filtering on non-existent property
-    - Invalid operator for property type
-    - Malformed Filter object
-    """
-    pass
- 
- 
-class WeaviateQueryError(WeaviateOperationError):
-    """
-    Raised when query execution fails.
-    
-    Common causes:
-    - Query timeout
-    - Invalid query structure
-    - Query syntax error
-    """
-    pass
- 
- 
-class WeaviateReferenceError(WeaviateOperationError):
-    """
-    Raised when reference operation fails.
-    
-    Common causes:
-    - Creating reference to non-existent object
-    - Invalid reference property
-    - Reference already exists
-    """
-    pass
- 
-class WeaviateNotFoundError(WeaviateOperationError):
-    """
-    Raised when requested object/s cannot be found.
-    
-    Common causes:
-    - Query returns no results
-    - Object UUID doesn't exist
-    - Collection name doesn't exist
-    - Tag name doesn't exist
-    """
-    pass 
- 
-class WeaviateLimitError(WeaviateOperationError):
+class WeaviateLimitError(WeaviateError):
     """
     Raised when Weaviate limit is exceeded.
     
@@ -110,8 +33,8 @@ class WeaviateLimitError(WeaviateOperationError):
     - Insufficient resources on Weaviate server
     """
     pass
- 
-class WeaviateServerError(WeaviateOperationError):
+
+class WeaviateServerError(WeaviateError):
     """
     Raised when Weaviate server returns an error.
     
@@ -121,19 +44,19 @@ class WeaviateServerError(WeaviateOperationError):
     - Protocol error
     """
     pass
- 
- 
-class WeaviateSerializationError(WeaviateOperationError):
+
+class WeaviateOperationError(WeaviateError):
     """
-    Raised when serializing/deserializing data fails.
+    Raised when invalid weaviate operation is called
+    like attemting to create a duplicate that should be unique or object not found error.
     
-    Common causes:
-    - Non-JSON-serializable object
-    - Invalid response format from server
-    - Date/time format mismatch
+    Causes:
+    - Creating tag with name that already exists for user
+    - Creating collection with duplicate name
+    - Calling object which does not exist
     """
     pass
- 
+
 class WeaviateErrorContext:
     """
     Context manager for unified Weaviate error handling and logging.
