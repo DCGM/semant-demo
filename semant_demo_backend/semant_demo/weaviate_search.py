@@ -355,7 +355,7 @@ class WeaviateSearch:
             logging.error(f"Unexpected error fetching tags: {str(e)}")
             raise WeaviateServerError(f"Failed to fetch tags: {str(e)}")
 
-    async def _create_tag(self, tag: schemas.TagData, collection_name:str) -> str:
+    async def _create_tag(self, tag: schemas.TagData) -> str:
         """
         Adds new tag to tag-collection. This function calls fetch_tags to prevent duplicates.
 

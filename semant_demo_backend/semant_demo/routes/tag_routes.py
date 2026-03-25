@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from semant_demo import schemas
+from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.weaviate_tag import WeaviateSearchAndTag
 # from semant_demo.rag.rag_generator import RagGenerator
 import asyncio
@@ -29,7 +30,7 @@ from semant_demo.tagging.sql_utils import DBError, update_task_status
 from semant_demo.tagging.tagging_task import getTaskByName
 
 #import dependencies
-from semant_demo.routes.dependencies import get_async_session, get_tag, get_engine
+from semant_demo.routes.dependencies import get_async_session, get_tag, get_engine, get_search
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,13 +41,24 @@ TAG_CONFIG_DIR = BASE_DIR / "tagging" / "configs"
 exp_router = APIRouter()
 
 @exp_router.post("/api/tag", response_model=schemas.CreateResponse)
-async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearchAndTag = Depends(get_tag),
-                     session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
+async def create_tag(tagReq: schemas.TagReqTemplate, 
+                     searcher: WeaviateSearch = Depends(get_search)) -> schemas.CreateResponse:
     """
     Creates tag in weaviate db, or not if the same tag already exists
     """
     try:
-        tag_id = await tagger.add_or_get_tag(tagReq)
+        # convert tag request to tag data
+        tagData = schemas.TagData(
+                tag_name = tagReq.tag_name,
+                tag_shorthand = tagReq.tag_shorthand,
+                tag_color = tagReq.tag_color,
+                tag_pictogram = tagReq.tag_pictogram,
+                tag_definition = tagReq.tag_definition,
+                tag_examples = tagReq.tag_examples,
+                collection_name = tagReq.collection_name,
+                tag_uuid = None
+        )
+        tag_id = await searcher._create_tag(tag=tagData)
         return {"created": True, "message": f"Tag {tagReq.tag_name} created with tag id {tag_id}"}
     except Exception as e:
         logging.error(e)
