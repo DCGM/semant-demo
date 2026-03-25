@@ -2,10 +2,10 @@
 from datetime import datetime, timezone
 
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.schemas import CollectionResponse, PatchCollectionRequest, PostCollectionRequest
+from semant_demo.schemas import CollectionResponse, PatchCollectionRequest, PostCollectionRequest, DocumentResponse, DocumentBrowseResponse
 from uuid import UUID
 
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, Sort
 import logging
 
 
@@ -91,4 +91,113 @@ class WeaviateClient(WeaviateSearch):
                 "color": collection.color,
                 "updated_at": now
             }
+        )
+        
+    async def get_document_by_id(self, document_id: str) -> DocumentResponse | None:
+        """
+        Retrieves document by its id, returns None if document with given id does not exist
+        """
+        document_collection = self.client.collections.get("Documents")
+        response = await document_collection.query.fetch_object_by_id(document_id)
+        if response is None:
+            return None
+        props = response.properties
+        return DocumentResponse(
+            id=response.uuid,
+            **props
+        )
+        
+    async def get_all_documents(self, collection_id: str | None = None) -> list[DocumentResponse]:
+        """
+        Retrieves all documents - optionally can be filtered by collection id
+        """
+        document_collection = self.client.collections.get("Documents")
+        filters = None
+        if collection_id is not None:
+            filters = (
+                Filter.by_ref("collection").by_id().equal(UUID(collection_id))
+            )
+        response = await document_collection.query.fetch_objects(
+            filters=filters
+        )
+        documents = []
+        for obj in response.objects:
+            props = obj.properties
+            documents.append(DocumentResponse(
+                id=obj.uuid,
+                **props
+            ))
+        return documents
+
+    async def browse_documents(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: str | None = None,
+        sort_desc: bool = False,
+        collection_id: UUID | None = None,
+        title: str | None = None,
+        author: str | None = None,
+        publisher: str | None = None,
+        document_type: str | None = None
+    ) -> DocumentBrowseResponse:
+        """
+        Retrieves documents in pages with optional filters for browsing large datasets.
+        """
+        document_collection = self.client.collections.get("Documents")
+        filters = None
+
+        def append_filter(current_filter, new_filter):
+            return new_filter if current_filter is None else current_filter & new_filter
+
+        if collection_id is not None:
+            filters = append_filter(
+                filters,
+                Filter.by_ref("collection").by_id().equal(collection_id)
+            )
+
+        if title:
+            filters = append_filter(filters, Filter.by_property("title").like(f"*{title}*"))
+        if author:
+            filters = append_filter(filters, Filter.by_property("author").like(f"*{author}*"))
+        if publisher:
+            filters = append_filter(filters, Filter.by_property("publisher").like(f"*{publisher}*"))
+        if document_type:
+            filters = append_filter(filters, Filter.by_property("documentType").like(f"*{document_type}*"))
+
+        sort = None
+        if sort_by:
+            sort = Sort.by_property(sort_by, ascending=not sort_desc)
+
+        count_response = await document_collection.aggregate.over_all(
+            filters=filters,
+            total_count=True,
+        )
+        total_count = count_response.total_count or 0
+
+        response = await document_collection.query.fetch_objects(
+            filters=filters,
+            limit=limit + 1,
+            offset=offset,
+            sort=sort,
+        )
+
+        objects = response.objects
+        has_more = len(objects) > limit
+        if has_more:
+            objects = objects[:limit]
+
+        items = [
+            DocumentResponse(
+                id=obj.uuid,
+                **obj.properties
+            )
+            for obj in objects
+        ]
+
+        return DocumentBrowseResponse(
+            items=items,
+            hasMore=has_more,
+            nextOffset=(offset + limit) if has_more else None,
+            totalCount=total_count,
         )
