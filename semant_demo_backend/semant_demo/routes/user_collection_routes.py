@@ -31,13 +31,12 @@ exp_router = APIRouter()
 
 @exp_router.post("/api/user_collection", response_model=schemas.CreateResponse)
 async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplate,
-                                 tagger: WeaviateSearchAndTag = Depends(get_tag),
-                                 session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
+                                 searcher: WeaviateSearchAndTag = Depends(get_search)) -> schemas.CreateResponse:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
     """
     try:
-        collection_id = await tagger.add_collection(collectionReq)
+        collection_id = await searcher._create_collection(collectionReq)
         if collection_id is None:
             raise Exception("weaviate error")
         return {"created": True,
@@ -47,33 +46,36 @@ async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplat
         return {"created": False,
                 "message": f"Collection {collectionReq.collection_name} not created becacause of: {e}"}
 
-
 @exp_router.get("/api/collections", response_model=schemas.GetCollectionsResponse)
 async def fetch_collections(userId: str,
-                            tagger: WeaviateSearchAndTag = Depends(get_tag)) -> schemas.GetCollectionsResponse:
+                            searcher: WeaviateSearch = Depends(get_search)) -> schemas.GetCollectionsResponse:
     """
     Retrieves all collections for given user
     """
-    response = await tagger.fetch_all_collections(userId)
+    response = await searcher._fetch_all_collections(userId)
     return response
 
 
 @exp_router.post("/api/chunk_2_collection", response_model=schemas.CreateResponse)
-async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: WeaviateSearchAndTag = Depends(get_tag),
-                                 session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
+async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, 
+                                 searcher: WeaviateSearch = Depends(get_search),
+                                 ) -> schemas.CreateResponse:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
     """
     try:
-        err = await tagger.add_chunk_to_collection(req)
-        if err:
-            raise Exception("weaviate error")
+        
+        err = await searcher._create_reference(src_id=req.chunkId, 
+                                   src_collection_name=searcher.chunks_collection,
+                                   property_name="userCollection",
+                                   target_collection_id=req.collectionId)
+        if err == False:
+            raise Exception(f"weaviate error, reference not created")
         return {"created": True, "message": f"Chunk added to collection"}
     except Exception as e:
         logging.error(e)
         return {"created": False, "message": f"Chunk not added to collection becacause of: {e}"}
-
-
+    
 @exp_router.get("/api/chunks_of_collection", response_model=schemas.GetCollectionChunksResponse)
 async def get_collection_chunks(collectionId: str, 
                                 searcher: WeaviateSearch = Depends(get_search)

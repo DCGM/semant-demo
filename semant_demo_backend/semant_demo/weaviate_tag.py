@@ -845,6 +845,7 @@ class WeaviateSearchAndTag(WeaviateSearch):
         return {"collections": collections_respone, "userId": userId}   
 
     ### moved here TODO: fix reference from rest of the code
+    '''
     async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
         """
         Removes tags by:
@@ -972,3 +973,4 @@ class WeaviateSearchAndTag(WeaviateSearch):
         except Exception as e:
             logging.error(f"{e}")
             return {"successful": False}
+    '''

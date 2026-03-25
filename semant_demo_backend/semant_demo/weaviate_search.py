@@ -533,7 +533,7 @@ class WeaviateSearch:
             updatedCollectionIds = sorted(set(target_collection_ids + [target_collection_id]))
             # update weaviate with the new list
             try:
-                await self.client.collections.get(src_collection_name).query.data.reference_replace(
+                await self.client.collections.get(src_collection_name).data.reference_replace(
                         from_uuid=obj.uuid,
                         from_property=property_name,
                         to=updatedCollectionIds,
@@ -678,10 +678,7 @@ class WeaviateSearch:
         - keep parse result
     """
 
-    # Some functions can stay unchanged:
-    '''
-    ### moved here TODO: fix reference from rest of the code (renamed from add_collection)
-    async def create_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
+    async def _create_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
         """
         Create user collection (contains chunks user choose)
         """
@@ -707,8 +704,7 @@ class WeaviateSearch:
         )
         return new_collection_uuid
 
-    ### moved here TODO: fix reference from rest of the code
-    async def fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
+    async def _fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
         """
         Retrieves all collections for given user
         """
@@ -860,4 +856,3 @@ class WeaviateSearch:
         except Exception as e:
             logging.error(f"{e}")
             return {"successful": False}
-    '''
