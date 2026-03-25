@@ -14,7 +14,7 @@ from .config import config
 import logging
 
 from weaviate.collections.classes.grpc import QueryReference
-from weaviate_exceptions import WeaviateConnectionError, WeaviateDataValidationError, WeaviateLimitError, WeaviateServerError, WeaviateOperationError 
+from semant_demo.weaviate_exceptions import WeaviateConnectionError, WeaviateDataValidationError, WeaviateLimitError, WeaviateServerError, WeaviateOperationError 
 
 import uuid
 
@@ -259,7 +259,10 @@ class WeaviateSearch:
                                 link_on="negativeTag",
                                 return_properties=["uuid", "tag_name"]
                             ),
-                        ],
+                            QueryReference(
+                                link_on="userCollection"
+                            ),
+                        ]
             # returns all properties (except blobs) and specified references
             response = await self.client.collections.get(self.chunks_collection).query.fetch_objects(
                 return_references=references,
@@ -423,14 +426,65 @@ class WeaviateSearch:
             logging.error(f"Unexpected error creating tag: {str(e)}")
             raise WeaviateServerError(f"Failed to create tag: {str(e)}")    
 
-    async def _create_reference(self, src_id:str, property_name:str, target_id:str) -> bool:
+    async def _fetch_object_by_id(self, object_id: str, collection_name: str = None, 
+                               return_references: list = None) -> object:
+        """
+        Fetches a single Weaviate object by its UUID.
+        
+        Args:
+            object_id: UUID of the object to fetch
+            collection_name: Name of collection (defaults to chunks collection)
+            return_references: Optional list of QueryReference objects to include
+            
+        Returns:
+            Weaviate object with properties and optionally references
+            
+        Raises:
+            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateDataValidationError: Invalid UUID format
+            WeaviateObjectNotFoundError: Object with given ID does not exist
+            WeaviateServerError: Weaviate server error
+        """
+        try:
+            if not collection_name:
+                collection_name = self.chunks_collection
+                
+            # Validate UUID format
+            if not isinstance(object_id, str):
+                raise WeaviateDataValidationError(f"object_id must be string, got {type(object_id).__name__}")
+            
+            obj = await self.client.collections.get(collection_name).query.fetch_object_by_id(
+                object_id,
+                return_references=return_references
+            )
+            
+            if obj is None:
+                raise WeaviateOperationError(f"Object with ID '{object_id}' not found in collection '{collection_name}'")
+            
+            return obj
+        
+        except WeaviateDataValidationError as e:
+            logging.error(f"Invalid input for object fetch: {str(e)}")
+            raise
+        except WeaviateOperationError as e:
+            logging.error(f"Object not found: {str(e)}")
+            raise
+        except WeaviateConnectionError as e:
+            logging.error(f"Cannot connect to Weaviate: {str(e)}")
+            raise
+        except Exception as e:
+            logging.error(f"Failed to fetch object by ID: {str(e)}")
+            raise WeaviateServerError(f"Failed to fetch object: {str(e)}")
+
+    async def _create_reference(self, src_id:str, src_collection_name:str, property_name:str, target_collection_id:str) -> bool:
         """
         Creates reference from weviate object fetched by its id to other object defined by id.
 
         Args:
             src_id: weaviate source object id (e.g., chunk id)
+            src_collection_name: Name of collection where is weaviate source object
             property_name: Name of reference property (e.g., "tagged_with", "inCollection")
-            target_id: UUID of target object (e.g., tag UUID)
+            target_collection_id: UUID of target object (e.g., tag UUID)
             
         Returns:
             True if reference created successfully
@@ -438,23 +492,32 @@ class WeaviateSearch:
         Raises:
             WeaviateConnectionError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid UUID format in source_id or target_id
-            WeaviateObjectNotFoundError: Source object does not exist
             WeaviateReferencedObjectNotFoundError: Target object does not exist
-            WeaviateReferencePropertyError: Reference property does not exist in schema or is not a reference 
         """
         try:
-            # make this more general
-            chunks = self.client.collections.get(self.chunks_collection)
-            async def getChunkObj(chunkID):
-                obj = await chunks.query.fetch_object_by_id(chunkID,
-                    return_references=[
-                    QueryReference(
-                        link_on="userCollection"
-                    )]
-                )
-                return obj
+            # Validate inputs
+            if not src_id or not isinstance(src_id, str):
+                raise WeaviateDataValidationError("src_id must be a non-empty string")
+            if not src_collection_name or not isinstance(src_collection_name, str):
+                raise WeaviateDataValidationError("src_collection_name must be a non-empty string")
+            if not property_name or not isinstance(property_name, str):
+                raise WeaviateDataValidationError("property_name must be a non-empty string")
+            if not target_collection_id or not isinstance(target_collection_id, str):
+                raise WeaviateDataValidationError("target_collection_id must be a non-empty string")
 
-            obj = await getChunkObj(req.chunkId)
+            # prepare references list
+            return_references=[
+                    QueryReference(
+                        link_on=property_name
+                    )]
+            # fetch the source object by id
+            try:
+                obj = await self._fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
+                                return_references=return_references)
+            except WeaviateOperationError:
+                logging.error(f"Source object '{src_id}' not found in collection '{src_collection_name}'")
+                raise
+            # extract references
             refs = obj.references or {}
 
             # helper to extract UUID strings from reference block
@@ -462,52 +525,130 @@ class WeaviateSearch:
                 if not ref_block:
                     return []
                 return [str(r.uuid) for r in ref_block.objects]
-
-            collection_ids = ref_uuids(refs.get("userCollection"))
-            new_collection_id = str(req.collectionId)
-
-            updatedCollectionIds = sorted(set(collection_ids + [new_collection_id]))
-            await chunks.data.reference_replace(
-                    from_uuid=obj.uuid,
-                    from_property="userCollection",
-                    to=updatedCollectionIds,
-            )
+            
+            # extract ids of referenced objects
+            target_collection_ids = ref_uuids(refs.get(property_name))
+            target_collection_id = str(target_collection_id)
+            # add new collection id to list of already referenced collection ids
+            updatedCollectionIds = sorted(set(target_collection_ids + [target_collection_id]))
+            # update weaviate with the new list
+            try:
+                await self.client.collections.get(src_collection_name).query.data.reference_replace(
+                        from_uuid=obj.uuid,
+                        from_property=property_name,
+                        to=updatedCollectionIds,
+                )
+            except Exception as e:
+                logging.error(f"Failed to update reference in Weaviate: {str(e)}")
+                raise WeaviateServerError(f"Failed to update reference: {str(e)}")
 
             # test
-            updated_obj = await getChunkObj(req.chunkId)
-            updated_refs = updated_obj.references or {}
-            updated_collection_ids = ref_uuids(updated_refs.get("userCollection"))
+            try:
+                updated_obj = await self._fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
+                                return_references=return_references)
+                updated_refs = updated_obj.references or {}
+                updated_collection_ids = ref_uuids(updated_refs.get(property_name))
 
-            print("Test - References after update:", updated_collection_ids)
-            assert new_collection_id in updated_collection_ids, "Reference was not added properly"
-            # reference added
+                logging.debug("Test - References after update:", updated_collection_ids)
+                assert target_collection_id in updated_collection_ids, "Reference was not added properly"
+                # reference added
+            except WeaviateServerError:
+                raise
+            except Exception as e:
+                logging.error(f"Failed to verify reference: {str(e)}")
+                raise WeaviateServerError(f"Failed to verify reference: {str(e)}") 
+            # proper end
             return True # TODO fix in other parts now is switched before False on success
+        except WeaviateDataValidationError as e:
+            logging.error(f"Invalid input for reference creation: {str(e)}")
+            raise
+        except WeaviateOperationError as e:
+            logging.error(f"Operation error: {str(e)}")
+            raise
+        except WeaviateConnectionError as e:
+            logging.error(f"Cannot connect to Weaviate: {str(e)}")
+            raise
+        except WeaviateServerError as e:
+            logging.error(f"Weaviate server error: {str(e)}")
+            raise
         except Exception as e:
-            logging.info(e)
-            return False
+            logging.error(f"Unexpected error creating reference: {str(e)}")
+            raise WeaviateServerError(f"Failed to create reference: {str(e)}")
 
-    def _remove_reference(self, src_id: str, reference_to_remove: str) -> bool: 
+    async def _remove_reference(self, src_id: str, src_collection_name:str, property_name: str, target_collection_id:str) -> bool: 
         """
         Removes reference between objects.
 
         Args:
-            source_id: UUID of source object (e.g., chunk UUID)
-            property_name: Name of reference property to remove from (e.g., "tagged_with", "inCollection")
-            
+            src_id: weaviate source object id (e.g., chunk id)
+            src_collection_name: Name of collection where is weaviate source object
+            property_name: Name of reference property (e.g., "tagged_with", "inCollection")
+            target_collection_id: UUID of target object (e.g., tag UUID)
+
         Returns:
             True if reference removed successfully
             
         Raises:
             WeaviateConnectionError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid UUID format in source_id or target_id
-            WeaviateObjectNotFoundError: Source object does not exist
-            WeaviateReferencePropertyError: Reference property does not exist in schema
-            WeaviateStateError: Reference does not exist or cannot be removed
-            WeaviateSerializationError: Cannot serialize removal data
             WeaviateServerError: Weaviate server returned an error
+            WeaviateOperationError: Cannot perform operation over weaviate
         """
-        pass
+        try:
+            # Validate inputs
+            if not src_id or not isinstance(src_id, str):
+                raise WeaviateDataValidationError("src_id must be a non-empty string")
+            if not src_collection_name or not isinstance(src_collection_name, str):
+                raise WeaviateDataValidationError("src_collection_name must be a non-empty string")
+            if not property_name or not isinstance(property_name, str):
+                raise WeaviateDataValidationError("property_name must be a non-empty string")
+            if not target_collection_id or not isinstance(target_collection_id, str):
+                raise WeaviateDataValidationError("target_collection_id must be a non-empty string")
 
+            # prepare references list
+            return_references=[
+                    QueryReference(
+                        link_on=property_name
+                    )]
+            # fetch the source object by id
+            try:
+                obj = await self._fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
+                                return_references=return_references)
+            except WeaviateOperationError:
+                logging.error(f"Source object '{src_id}' not found in collection '{src_collection_name}'")
+                raise
+            # extract references
+            refs = obj.references or {}
+
+            current = refs.get(property_name)
+            currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
+            remaining = [tid for tid in currentIDs if tid != target_collection_id]
+            logging.debug(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+            logging.debug(f"To remove {target_collection_id}")
+            # check length if the id was removed
+            if len(remaining) != len(currentIDs):
+                logging.info(f"Replacing {currentIDs} {remaining}")
+                await self.client.collections.get(src_collection_name).data.reference_replace(
+                        from_uuid=obj.uuid,
+                        from_property=property_name,
+                        to=remaining
+                    )
+            return True
+        except WeaviateDataValidationError as e:
+            logging.error(f"Invalid input for reference removal: {str(e)}")
+            raise
+        except WeaviateOperationError as e:
+            logging.error(f"Operation error: {str(e)}")
+            raise
+        except WeaviateConnectionError as e:
+            logging.error(f"Cannot connect to Weaviate: {str(e)}")
+            raise
+        except WeaviateServerError as e:
+            logging.error(f"Weaviate server error: {str(e)}")
+            raise
+        except Exception as e:
+            logging.error(f"Unexpected error removing reference: {str(e)}")
+            raise WeaviateServerError(f"Failed to remove reference: {str(e)}")
     # TODO
     """
     - change get_tagged_chunks_paged
@@ -538,7 +679,7 @@ class WeaviateSearch:
     """
 
     # Some functions can stay unchanged:
-
+    '''
     ### moved here TODO: fix reference from rest of the code (renamed from add_collection)
     async def create_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
         """
@@ -719,3 +860,4 @@ class WeaviateSearch:
         except Exception as e:
             logging.error(f"{e}")
             return {"successful": False}
+    '''

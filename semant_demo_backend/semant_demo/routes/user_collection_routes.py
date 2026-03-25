@@ -11,6 +11,7 @@ import openai
 from semant_demo import schemas
 import logging
 from semant_demo.weaviate_tag import WeaviateSearchAndTag
+from semant_demo.weaviate_tag import WeaviateSearch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,10 +21,11 @@ import logging
 from semant_demo.schemas import TasksBase
 
 #import dependencies
-from semant_demo.routes.dependencies import get_async_session, get_tag
+from semant_demo.routes.dependencies import get_async_session, get_tag, get_search
 
 logging.basicConfig(level=logging.INFO)
 
+from semant_demo.tagging.tagging_utils import fetch_chunks_by_collection
 
 exp_router = APIRouter()
 
@@ -73,14 +75,15 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, tagger: Weavi
 
 
 @exp_router.get("/api/chunks_of_collection", response_model=schemas.GetCollectionChunksResponse)
-async def get_collection_chunks(collectionId: str,
-                                tagger: WeaviateSearchAndTag = Depends(get_tag)) -> schemas.GetCollectionChunksResponse:
+async def get_collection_chunks(collectionId: str, 
+                                searcher: WeaviateSearch = Depends(get_search)
+                                ) -> schemas.GetCollectionChunksResponse:
     """
     Returns chunks which belong to collection given by id
     """
     try:
         logging.info(f"In get collection chunks {collectionId}")
-        response = await tagger.get_collection_chunks_paged(collectionId)
+        response = await fetch_chunks_by_collection(collectionId, searcher=searcher)
         return response
     except Exception as e:
         logging.error(f"{e}")
