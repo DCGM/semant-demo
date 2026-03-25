@@ -1,11 +1,11 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { Collection, PostCollection, PatchCollection } from 'src/models/collection'
+import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collection'
 import CollectionRepository from 'src/repositories/CollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 
-export const useCollectionsStore = defineStore('collections', () => {
-  const collections = ref<Collection[]>([])
+export const useCollectionsStore = defineStore('userCollections', () => {
+  const collections = ref<Collections>([])
   const activeCollection = ref<Collection | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)

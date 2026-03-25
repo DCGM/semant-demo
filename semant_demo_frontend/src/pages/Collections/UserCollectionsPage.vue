@@ -71,19 +71,11 @@ const { currentPage, pageCount, paginatedItems } = usePagination(collections, it
 const { openCollectionDialog } = useCollectionDialog()
 
 onMounted(async () => {
-  try {
-    await loadCollections('xjuric')
-  } catch (error) {
-    console.error(error)
-  }
+  await loadCollections('xjuric')
 })
 
 const handleRefresh = async () => {
-  try {
-    await loadCollections('xjuric')
-  } catch (error) {
-    console.error(error)
-  }
+  await loadCollections('xjuric')
 }
 
 const handleCreate = () => {
