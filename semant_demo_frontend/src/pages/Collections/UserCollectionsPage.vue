@@ -87,7 +87,6 @@ const handleCreate = () => {
 }
 
 const handleEnter = async (collectionId: string) => {
-  console.log('Entering collection with id: ', collectionId)
   await $router.push({ name: 'collectionDetail', params: { collectionId } })
 }
 
