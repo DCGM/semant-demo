@@ -91,6 +91,13 @@ class WeaviateClient(WeaviateSearch):
                 "updated_at": now
             }
         )
+
+    async def delete_collection(self, collection_id: UUID) -> None:
+        """
+        Deletes collection with given id.
+        """
+        usercollection_collection = self.client.collections.get("UserCollection")
+        await usercollection_collection.data.delete_by_id(collection_id)
         
     async def get_document_by_id(self, document_id: str) -> DocumentResponse | None:
         """
