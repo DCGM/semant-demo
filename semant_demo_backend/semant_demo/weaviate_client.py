@@ -207,3 +207,19 @@ class WeaviateClient(WeaviateSearch):
             nextOffset=(offset + limit) if has_more else None,
             totalCount=total_count,
         )
+
+    async def add_document_to_collection(self, document_id: UUID, collection_id: UUID) -> bool:
+        """
+        Adds a document to a collection by creating a reference between them.
+        """
+        document_collection = self.client.collections.get("Documents")
+        try:
+            await document_collection.data.reference_add(
+                from_uuid=document_id,
+                from_property="collection",
+                to=collection_id,
+            )
+            return True
+        except Exception as e:
+            logging.error(f"Failed to add document {document_id} to collection {collection_id}: {e}")
+            return False

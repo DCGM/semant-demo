@@ -578,3 +578,8 @@ class DocumentBrowseResponse(BaseModel):
         from_attributes=True,
         populate_by_name=True
     )
+
+
+class AddDocumentToCollectionRequest(BaseModel):
+    documentId: UUID
+    collectionId: UUID

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from uuid import UUID
 from semant_demo.routes.dependencies import get_weaviate_client
 from semant_demo.weaviate_client import WeaviateClient
-from semant_demo.schemas import DocumentBrowseResponse, DocumentResponse
+from semant_demo.schemas import DocumentBrowseResponse, DocumentResponse, AddDocumentToCollectionRequest
 
 router = APIRouter()
 
@@ -41,3 +41,18 @@ async def get_documents(collection_id: UUID | None = None, wv_client: WeaviateCl
 async def get_document(document_id: str, wv_client: WeaviateClient = Depends(get_weaviate_client)) -> DocumentResponse:
     document = await wv_client.get_document_by_id(document_id)
     return document.model_dump(by_alias=False)
+
+
+@router.post("/api/v1/documents/add-to-collection")
+async def add_document_to_collection(
+    request: AddDocumentToCollectionRequest,
+    wv_client: WeaviateClient = Depends(get_weaviate_client),
+) -> dict:
+    success = await wv_client.add_document_to_collection(
+        document_id=request.documentId,
+        collection_id=request.collectionId,
+    )
+    return {
+        "success": success,
+        "message": "Document added to collection" if success else "Failed to add document to collection"
+    }
