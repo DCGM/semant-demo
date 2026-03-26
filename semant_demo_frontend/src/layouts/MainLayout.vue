@@ -53,7 +53,7 @@
             </q-item>
           </router-link>
 
-          <router-link to="/collection_manage/" style="text-decoration: none; color: inherit;">
+          <router-link :to="{ name: 'collections' }" style="text-decoration: none; color: inherit;">
             <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/news') }" v-ripple
               clickable>
               <q-item-section avatar>

@@ -1,0 +1,33 @@
+import { ref } from 'vue'
+
+const useColorPicker = (color: string) => {
+  const currentColor = ref<string>(color)
+  const tempColor = ref<string>(color)
+  const showColorPicker = ref<boolean>(false)
+
+  const openColorPicker = () => {
+    tempColor.value = currentColor.value
+    showColorPicker.value = true
+  }
+
+  const confirmColor = () => {
+    currentColor.value = tempColor.value
+    showColorPicker.value = false
+  }
+
+  const cancelColor = () => {
+    showColorPicker.value = false
+  }
+
+  return {
+    currentColor,
+    tempColor,
+    showColorPicker,
+
+    openColorPicker,
+    confirmColor,
+    cancelColor
+  }
+}
+
+export default useColorPicker

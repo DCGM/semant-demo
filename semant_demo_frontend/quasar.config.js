@@ -16,7 +16,13 @@ module.exports = configure(function (/* ctx */) {
       // fix: true,
       // include = [],
       // exclude = [],
-      // rawOptions = {},
+      rawOptions: {
+        overrideConfig: {
+          rules: {
+            'space-before-function-paren': 'off'
+          }
+        }
+      },
       warnings: true,
       errors: true
     },
@@ -117,7 +123,8 @@ module.exports = configure(function (/* ctx */) {
       // Quasar plugins
       plugins: [
         'Notify',
-        'Loading'
+        'Loading',
+        'Dialog'
       ]
     },
 

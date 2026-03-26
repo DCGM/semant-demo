@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Literal, TypedDict, Any
 from datetime import datetime
 import uuid
+from uuid import UUID
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, String, JSON, Integer, DateTime, Text
@@ -454,3 +455,23 @@ class RagUserFeedback(TasksBase):
     error_types = Column(JSON, nullable=True) # list of error types, if rating is -1
     comment = Column(Text, nullable=True)
     sources = Column(JSON, nullable=True)
+
+class CollectionResponse(BaseModel):
+    id: UUID
+    name: str
+    user_id: str
+    description: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    color: str | None = None
+    
+class PostCollectionRequest(BaseModel):
+    name: str
+    user_id: str
+    description: str | None = None
+    color: str | None = None
+    
+class PatchCollectionRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    color: str | None = None
