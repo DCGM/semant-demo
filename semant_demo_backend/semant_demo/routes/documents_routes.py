@@ -32,7 +32,7 @@ async def browse_documents(
     )
 
 @router.get("/api/v1/documents", response_model=list[DocumentResponse], response_model_exclude_none=True)
-async def get_documents(collection_id: str | None = None, wv_client: WeaviateClient = Depends(get_weaviate_client)) -> list[DocumentResponse]:
+async def get_documents(collection_id: UUID | None = None, wv_client: WeaviateClient = Depends(get_weaviate_client)) -> list[DocumentResponse]:
     documents = await wv_client.get_all_documents(collection_id=collection_id)
     return [document.model_dump(by_alias=False) for document in documents]
 

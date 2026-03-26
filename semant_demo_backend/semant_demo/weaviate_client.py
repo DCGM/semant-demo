@@ -106,7 +106,7 @@ class WeaviateClient(WeaviateSearch):
             **props
         )
         
-    async def get_all_documents(self, collection_id: str | None = None) -> list[DocumentResponse]:
+    async def get_all_documents(self, collection_id: UUID | None = None) -> list[DocumentResponse]:
         """
         Retrieves all documents - optionally can be filtered by collection id
         """
@@ -114,7 +114,7 @@ class WeaviateClient(WeaviateSearch):
         filters = None
         if collection_id is not None:
             filters = (
-                Filter.by_ref("collection").by_id().equal(UUID(collection_id))
+                Filter.by_ref("collection").by_id().equal(collection_id)
             )
         response = await document_collection.query.fetch_objects(
             filters=filters

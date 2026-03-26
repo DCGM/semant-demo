@@ -1,6 +1,7 @@
 # Richard Juřica's version of API for handling user collections
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
+from uuid import UUID
 from semant_demo.schemas import CollectionResponse, PostCollectionRequest, PatchCollectionRequest
 from semant_demo.routes.dependencies import get_weaviate_client
 from semant_demo.weaviate_client import WeaviateClient
