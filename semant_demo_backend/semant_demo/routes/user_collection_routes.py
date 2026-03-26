@@ -36,7 +36,7 @@ async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplat
     Creates user collection in weaviate db, or not if the same user collection already exists
     """
     try:
-        collection_id = await searcher._create_collection(collectionReq)
+        collection_id = await searcher.create_collection(collectionReq)
         if collection_id is None:
             raise Exception("weaviate error")
         return {"created": True,
@@ -52,7 +52,7 @@ async def fetch_collections(userId: str,
     """
     Retrieves all collections for given user
     """
-    response = await searcher._fetch_all_collections(userId)
+    response = await searcher.fetch_all_collections(userId)
     return response
 
 
@@ -65,7 +65,7 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
     """
     try:
         
-        err = await searcher._create_reference(src_id=req.chunkId, 
+        err = await searcher.create_reference(src_id=req.chunkId, 
                                    src_collection_name=searcher.chunks_collection,
                                    property_name="userCollection",
                                    target_collection_id=req.collectionId)

@@ -476,7 +476,7 @@ class WeaviateSearch:
             logging.error(f"Failed to fetch object by ID: {str(e)}")
             raise WeaviateServerError(f"Failed to fetch object: {str(e)}")
 
-    async def _create_reference(self, src_id:str, src_collection_name:str, property_name:str, target_collection_id:str) -> bool:
+    async def create_reference(self, src_id:str, src_collection_name:str, property_name:str, target_collection_id:str) -> bool:
         """
         Creates reference from weviate object fetched by its id to other object defined by id.
 
@@ -575,7 +575,7 @@ class WeaviateSearch:
             logging.error(f"Unexpected error creating reference: {str(e)}")
             raise WeaviateServerError(f"Failed to create reference: {str(e)}")
 
-    async def _remove_reference(self, src_id: str, src_collection_name:str, property_name: str, target_collection_id:str) -> bool: 
+    async def remove_reference(self, src_id: str, src_collection_name:str, property_name: str, target_collection_id:str) -> bool: 
         """
         Removes reference between objects.
 
@@ -678,7 +678,7 @@ class WeaviateSearch:
         - keep parse result
     """
 
-    async def _create_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
+    async def create_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
         """
         Create user collection (contains chunks user choose)
         """
@@ -704,7 +704,7 @@ class WeaviateSearch:
         )
         return new_collection_uuid
 
-    async def _fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
+    async def fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
         """
         Retrieves all collections for given user
         """
