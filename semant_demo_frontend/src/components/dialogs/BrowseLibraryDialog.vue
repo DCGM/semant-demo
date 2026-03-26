@@ -157,28 +157,38 @@
 </template>
 
 <script setup lang="ts">
-import { useDialogPluginComponent, type QTableColumn, type QTableProps } from 'quasar'
-import { Document, Documents } from 'src/models/documents'
+import {
+  useDialogPluginComponent,
+  type QTableColumn,
+  type QTableProps
+} from 'quasar'
+import { Document } from 'src/models/documents'
 import DocumentsRepository from 'src/repositories/DocumentsRepository'
+import {
+  errorNotification,
+  successNotification,
+  warningNotification
+} from 'src/utils/notification'
 import { onMounted, reactive, ref } from 'vue'
 import { BrowseLibraryDialogProps } from './BrowseLibraryDialogTypes'
 
-const props = defineProps<BrowseLibraryDialogProps>()
 defineEmits([...useDialogPluginComponent.emits])
+const props = defineProps<BrowseLibraryDialogProps>()
 
 const { dialogRef, onDialogHide, onDialogCancel } = useDialogPluginComponent()
 
 const PAGE_SIZE = 50
 
 const filters = reactive({
-  title: '',
-  author: '',
-  publisher: '',
-  documentType: ''
+  title: '' as string | null,
+  author: '' as string | null,
+  publisher: '' as string | null,
+  documentType: '' as string | null
 })
 
-const rows = ref<Documents>([])
 const loading = ref(false)
+const isTableFullscreen = ref(false)
+const rows = ref<Document[]>([])
 const pagination = ref<NonNullable<QTableProps['pagination']>>({
   page: 1,
   rowsPerPage: PAGE_SIZE,
@@ -188,6 +198,12 @@ const pagination = ref<NonNullable<QTableProps['pagination']>>({
 })
 
 const columns: QTableColumn<Document>[] = [
+  {
+    name: 'actions',
+    label: '',
+    field: () => '',
+    align: 'left'
+  },
   {
     name: 'title',
     label: 'Title',
@@ -222,21 +238,32 @@ const columns: QTableColumn<Document>[] = [
   }
 ]
 
-const trimmed = (value: string): string | undefined => {
+const trimmed = (value: string | null | undefined): string | undefined => {
+  if (!value) {
+    return undefined
+  }
+
   const v = value.trim()
   return v.length > 0 ? v : undefined
 }
 
-const fetchPage = async (tablePagination: NonNullable<QTableProps['pagination']>) => {
+const fetchPage = async (
+  tablePagination: NonNullable<QTableProps['pagination']>
+) => {
   const page = tablePagination.page ?? 1
-  const rowsPerPage = tablePagination.rowsPerPage && tablePagination.rowsPerPage > 0 ? tablePagination.rowsPerPage : PAGE_SIZE
+  const rowsPerPage =
+    tablePagination.rowsPerPage && tablePagination.rowsPerPage > 0
+      ? tablePagination.rowsPerPage
+      : PAGE_SIZE
   const offset = (page - 1) * rowsPerPage
 
   const response = await DocumentsRepository.browse({
-    collectionId: props.collectionId,
     limit: rowsPerPage,
     offset,
-    sortBy: typeof tablePagination.sortBy === 'string' ? tablePagination.sortBy : undefined,
+    sortBy:
+      typeof tablePagination.sortBy === 'string'
+        ? tablePagination.sortBy
+        : undefined,
     sortDesc: tablePagination.descending === true,
     title: trimmed(filters.title),
     author: trimmed(filters.author),
@@ -245,6 +272,7 @@ const fetchPage = async (tablePagination: NonNullable<QTableProps['pagination']>
   })
 
   rows.value = response.items
+
   pagination.value = {
     ...tablePagination,
     rowsNumber: response.totalCount
@@ -265,7 +293,9 @@ const applyFilters = async () => {
   }
 }
 
-const onRequest = async (props: { pagination: NonNullable<QTableProps['pagination']> }) => {
+const onRequest = async (props: {
+  pagination: NonNullable<QTableProps['pagination']>
+}) => {
   loading.value = true
   try {
     await fetchPage(props.pagination)

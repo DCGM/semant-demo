@@ -5,7 +5,7 @@ import { BrowseLibraryDialogProps } from 'src/components/dialogs/BrowseLibraryDi
 const useBrowseLibraryDialog = () => {
   const $q = useQuasar()
 
-  const openBrowseLibraryDialog = (props: BrowseLibraryDialogProps = {}) => {
+  const openBrowseLibraryDialog = (props: BrowseLibraryDialogProps) => {
     return $q.dialog({
       component: BrowseLibraryDialog,
       componentProps: props

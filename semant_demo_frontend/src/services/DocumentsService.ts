@@ -17,7 +17,11 @@ const DocumentsService = {
       document_type: params.documentType
     }
   }),
-  getDocumentById: async (documentId: string) => await api.get<Document>(`${ENDPOINTS.DOCUMENTS}/${documentId}`)
+  getDocumentById: async (documentId: string) => await api.get<Document>(`${ENDPOINTS.DOCUMENTS}/${documentId}`),
+  addDocumentToCollection: async (documentId: string, collectionId: string) => await api.post<{ success: boolean; message: string }>(`${ENDPOINTS.DOCUMENTS}/add-to-collection`, {
+    documentId,
+    collectionId
+  })
 }
 
 export default DocumentsService

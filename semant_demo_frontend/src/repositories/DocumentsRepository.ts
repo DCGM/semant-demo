@@ -50,6 +50,11 @@ const DocumentsRepository = {
     }
 
     return parsedData.data
+  },
+
+  addToCollection: async (documentId: string, collectionId: string): Promise<boolean> => {
+    const response = await DocumentsService.addDocumentToCollection(documentId, collectionId)
+    return response.data.success
   }
 }
 

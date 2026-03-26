@@ -1,3 +1,4 @@
+import { DocumentBrowseParams } from 'src/models/documents'
 import { useDocumentsStore } from 'src/stores/documents_store'
 import { computed } from 'vue'
 
@@ -6,6 +7,7 @@ const useDocuments = () => {
 
   const loadDocuments = (collectionId?: string) => documentsStore.fetchDocuments(collectionId)
   const loadDocument = (documentId: string) => documentsStore.fetchDocument(documentId)
+  const browseDocuments = (params: DocumentBrowseParams) => documentsStore.browseDocuments(params)
 
   const documents = computed(() => documentsStore.documents)
   const activeDocument = computed(() => documentsStore.activeDocument)
@@ -15,6 +17,7 @@ const useDocuments = () => {
   return {
     loadDocuments,
     loadDocument,
+    browseDocuments,
 
     documents,
     activeDocument,

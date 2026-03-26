@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { Documents, Document } from 'src/models/documents'
+import { Documents, Document, DocumentBrowseParams } from 'src/models/documents'
 import { ongoingNotification } from 'src/utils/notification'
 import DocumentsRepository from 'src/repositories/DocumentsRepository'
 
@@ -42,6 +42,31 @@ export const useDocumentsStore = defineStore('documents', () => {
       loading.value = false
     }
   }
+  const browseDocuments = async (params: DocumentBrowseParams) => {
+    const notif = ongoingNotification('Browsing documents...')
+    loading.value = true
+    error.value = null
+    try {
+      const data = await DocumentsRepository.browse(params)
+      documents.value = data.items
+      notif.success('Documents loaded')
+      return data
+    } catch (err) {
+      error.value = 'Failed to browse documents'
+      console.error('Error browsing documents:', err)
+      notif.error('Failed to load documents')
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const appendDocumentIfMissing = (document: Document) => {
+    const exists = documents.value.some((doc) => doc.id === document.id)
+    if (!exists) {
+      documents.value = [document, ...documents.value]
+    }
+  }
 
   return {
     documents,
@@ -50,6 +75,8 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading,
 
     fetchDocuments,
-    fetchDocument
+    fetchDocument,
+    browseDocuments,
+    appendDocumentIfMissing
   }
 })
