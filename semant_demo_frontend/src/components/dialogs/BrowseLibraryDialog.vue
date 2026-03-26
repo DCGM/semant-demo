@@ -1,11 +1,12 @@
 <template>
-  <q-dialog ref="dialogRef" @hide="onDialogHide" persistent>
+  <q-dialog ref="dialogRef" @hide="onDialogHide">
     <q-card style="width: 1500px; max-width: 95vw">
       <q-card-section class="row items-center q-col-gutter-md">
         <div class="col-grow">
           <div class="text-h5">Browse Library</div>
           <div class="text-caption text-grey-7">
-            Browse documents stored in the library and add them to the collection. Use the filters to narrow down the results.
+            Browse documents stored in the library and add them to the
+            collection. Use the filters to narrow down the results.
           </div>
         </div>
         <div class="col-auto">
@@ -68,8 +69,20 @@
         </div>
 
         <div class="row q-mt-md q-gutter-sm">
-          <q-btn unelevated color="primary" label="Search" :loading="loading" @click="applyFilters" />
-          <q-btn flat color="primary" label="Reset" :disable="loading" @click="resetFilters" />
+          <q-btn
+            unelevated
+            color="primary"
+            label="Search"
+            :loading="loading"
+            @click="applyFilters"
+          />
+          <q-btn
+            flat
+            color="primary"
+            label="Reset"
+            :disable="loading"
+            @click="resetFilters"
+          />
         </div>
       </q-card-section>
 
@@ -77,19 +90,51 @@
 
       <q-card-section>
         <q-table
+          class="my-sticky-virtscroll-table"
           flat
           dense
           :rows="rows"
           :columns="columns"
           row-key="id"
+          v-model:fullscreen="isTableFullscreen"
           v-model:pagination="pagination"
           :rows-per-page-options="[25, 50, 100]"
           :loading="loading"
           @request="onRequest"
-          style="max-height: 55vh"
+          virtual-scroll
+          :virtual-scroll-item-size="24"
+          :virtual-scroll-sticky-size-start="48"
+          :style="{ maxHeight: isTableFullscreen ? undefined : '60vh' }"
         >
+          <template v-slot:top="props">
+            <q-space />
+            <q-btn
+              flat
+              round
+              dense
+              :icon="props.inFullscreen ? 'fullscreen_exit' : 'fullscreen'"
+              @click="props.toggleFullscreen"
+              class="q-ml-md"
+            />
+          </template>
+          <template #body-cell-actions="tableProps">
+            <q-td :props="tableProps" class="q-pa-xs">
+              <q-btn
+                dense
+                flat
+                round
+                color="primary"
+                icon="add"
+                aria-label="Add document to current collection"
+                :disable="!props.collectionId"
+                @click="addDocumentToCurrentCollection(tableProps.row.id)"
+              />
+            </q-td>
+          </template>
           <template #no-data>
-            <div class="full-width row flex-center text-grey-7 q-gutter-sm q-py-lg">
+            <div
+              class="full-width row flex-center text-grey-7 q-gutter-sm q-py-lg"
+            >
               <q-icon name="menu_book" size="1.2rem" />
               <span>No documents found for current filters.</span>
             </div>
@@ -98,9 +143,13 @@
 
         <div class="row items-center justify-between q-mt-md">
           <div class="text-caption text-grey-7">
-            Showing {{ rows.length }} of {{ pagination.rowsNumber }} document{{ pagination.rowsNumber === 1 ? '' : 's' }}
+            Showing {{ rows.length }} of {{ pagination.rowsNumber }} document{{
+              pagination.rowsNumber === 1 ? '' : 's'
+            }}
           </div>
-          <div class="text-caption text-grey-7">Use table pagination and column sorting.</div>
+          <div class="text-caption text-grey-7">
+            Use table pagination and column sorting.
+          </div>
         </div>
       </q-card-section>
     </q-card>
@@ -233,7 +282,50 @@ const resetFilters = async () => {
   await applyFilters()
 }
 
+const addDocumentToCurrentCollection = async (documentId: string) => {
+  if (!props.collectionId) {
+    warningNotification('Collection is not selected')
+    return
+  }
+
+  try {
+    const added = await DocumentsRepository.addToCollection(documentId, props.collectionId)
+    if (added) {
+      successNotification('Document was added to your collection')
+      return
+    }
+    errorNotification('Failed to add document to collection')
+  } catch (error) {
+    console.error('Add document to collection failed:', error)
+    errorNotification('Failed to add document to collection')
+  }
+}
+
 onMounted(async () => {
   await applyFilters()
 })
 </script>
+
+<style lang="sass">
+.my-sticky-virtscroll-table
+
+  .q-table__top,
+  .q-table__bottom,
+  thead tr:first-child th /* bg color is important for th; just specify one */
+    background-color: rgb(230, 230, 230)
+
+  thead tr th
+    position: sticky
+    z-index: 1
+  /* this will be the loading indicator */
+  thead tr:last-child th
+    /* height of all previous header rows */
+    top: 48px
+  thead tr:first-child th
+    top: 0
+
+  /* prevent scrolling behind sticky top row on focus */
+  tbody
+    /* height of all previous header rows */
+    scroll-margin-top: 48px
+</style>
