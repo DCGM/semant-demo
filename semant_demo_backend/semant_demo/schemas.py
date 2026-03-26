@@ -519,16 +519,16 @@ class RagUserFeedback(TasksBase):
 class CollectionResponse(BaseModel):
     id: UUID
     name: str
-    user_id: str
+    userId: str
     description: str | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    createdAt: datetime | None = None
+    updatedAt: datetime | None = None
     color: str | None = None
 
 
 class PostCollectionRequest(BaseModel):
     name: str
-    user_id: str
+    userId: str
     description: str | None = None
     color: str | None = None
 

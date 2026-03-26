@@ -22,17 +22,16 @@ class WeaviateClient(WeaviateSearch):
         response = await usercollection_collection.query.fetch_objects(
             filters=filters
         )
-        logging.info(f"User Id: {user_id}\nRaw results: {response}")
         collections = []
         for obj in response.objects:
             props = obj.properties
             collections.append(CollectionResponse(
                 id=obj.uuid,
                 name=props.get("name"),
-                user_id=props.get("user_id"),
+                userId=props.get("user_id"),
                 description=props.get("description"),
-                created_at=props.get("created_at"),
-                updated_at=props.get("updated_at"),
+                createdAt=props.get("created_at"),
+                updatedAt=props.get("updated_at"),
                 color=props.get("color")
             ))
         return collections
@@ -50,10 +49,10 @@ class WeaviateClient(WeaviateSearch):
         return CollectionResponse(
             id=response.uuid,
             name=props.get("name"),
-            user_id=props.get("user_id"),
+            userId=props.get("user_id"),
             description=props.get("description"),
-            created_at=props.get("created_at"),
-            updated_at=props.get("updated_at"),
+            createdAt=props.get("created_at"),
+            updatedAt=props.get("updated_at"),
             color=props.get("color")
         )
     
