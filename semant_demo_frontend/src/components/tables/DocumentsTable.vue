@@ -77,24 +77,33 @@
 import { Document } from 'src/models/documents'
 import useDocuments from 'src/composables/useDocuments'
 import useBrowseLibraryDialog from 'src/composables/dialogs/useBrowseLibraryDialog'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import RefreshButton from '../custom/RefreshButton.vue'
 import AddDocumentDropdownBtn from '../custom/AddDocumentDropdownBtn.vue'
 import { QTableColumn } from 'quasar'
+import { useRoute } from 'vue-router'
 
 const { documents, loadDocuments } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
 
+const route = useRoute()
+const collectionId = computed(() => {
+  const value = route.params.collectionId
+  return typeof value === 'string' ? value : undefined
+})
+
 onMounted(() => {
-  loadDocuments()
+  loadDocuments(collectionId.value)
 })
 
 const handleRefresh = async () => {
-  await loadDocuments()
+  await loadDocuments(collectionId.value)
 }
 
 const handleBrowseLibrary = () => {
-  openBrowseLibraryDialog()
+  openBrowseLibraryDialog({ collectionId: collectionId.value }).onDismiss(() => {
+    loadDocuments(collectionId.value)
+  })
 }
 
 const handleCreateDocument = () => {
