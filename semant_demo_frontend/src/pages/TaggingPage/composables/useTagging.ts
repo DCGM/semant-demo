@@ -78,14 +78,15 @@ export function useTagging() {
 
   const updateTagSpan = async (
     data: Parameters<
-      typeof api.updateTagSpanApiTagSpansUpdateSeparatePatch
+      typeof api.updateTagSpanSeparateApiTagSpansUpdateSeparatePatch
     >[0]['tagSpanUpdateSeparateRequest']
   ) => {
     isProcessing.value = true
     try {
-      const response = await api.updateTagSpanApiTagSpansUpdateSeparatePatch({
-        tagSpanUpdateSeparateRequest: data
-      })
+      const response =
+        await api.updateTagSpanSeparateApiTagSpansUpdateSeparatePatch({
+          tagSpanUpdateSeparateRequest: data
+        })
       console.log('Tag updated successfully:', response)
     } catch (error) {
       console.error('Error updating tag:', error)
@@ -94,9 +95,21 @@ export function useTagging() {
     }
   }
 
-  // TODO
-  const deleteTagSpan = async (spanId: string) => {
-    return null
+  const deleteTagSpan = async (
+    spanId: Parameters<
+      typeof api.deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete
+    >[0]['spanId']
+  ) => {
+    await api
+      .deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete({
+        spanId
+      })
+      .then(() => {
+        console.log('Tag span deleted successfully')
+      })
+      .catch((error) => {
+        console.error('Error deleting tag span:', error)
+      })
   }
 
   return {
