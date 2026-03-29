@@ -193,15 +193,24 @@ flowchart TD
     subgraph Implementations
         RG[RagGenerator] -->|extends| BASE[BaseRag]
         ARG[AdaptiveRagGenerator] -->|extends| BASE
+        AOG[AdaptiveRagGeneratorOg] -->|extends| BASE
+        IR[IncrementalAdaptiveRagGenerator] -->|extends| BASE
+        AR[xmartiAgentRag] -->|extends| BASE
         TR[TestRag] -->|extends| BASE
     end
 
-    REGISTRY --- RG & ARG & TR
+    REGISTRY --- RG & ARG & AOG & IR & AR & TR
 ```
 
 **RagGenerator** — Simple single-pass RAG: reformulate question with history → search → generate answer with citations.
 
-**AdaptiveRagGenerator** — LangGraph-based stateful workflow:
+**AdaptiveRagGenerator** — LangGraph-based stateful workflow with iterative search and answer grading.
+
+**AdaptiveRagGeneratorOg** — Original AdaptiveRAG variant; stable base for experimentation.
+
+**IncrementalAdaptiveRagGenerator** — Latest recommended variant that incrementally expands context & retrieval, with best accuracy/tuning in this branch.
+
+**xmartiAgentRag** — Agentic workflow with tool orchestration (query expand, decomposition, retrieval quality assessment, evidence synthesis). OpenAI-based models in all RAG implementations (`rag_generator`, `adaptive_rag`, `adaptive_rag_og`, `incremental_rag`, `agentic_rag`) use `OPENAI_API_URL` for endpoint routing.
 
 ```mermaid
 flowchart TD

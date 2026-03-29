@@ -1,28 +1,44 @@
 from langchain_core.prompts import  MessagesPlaceholder
 # prompt
-answer_question_prompt_template = [
-    ("system",
-    """
-    You are a precise and helpful chatbot. Your main task is to answer the user's \
-    question based STRICTLY on the provided context.
+# answer_question_prompt_template = [
+#     ("system",
+#     """
+#     You are a precise and helpful chatbot. Your main task is to answer the user's \
+#     question based STRICTLY on the provided context.
 
-    STRICT RULES:
-    1) Use ONLY the following pieces of context to answer the question.
-    2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
-    3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
-    4) Don't make up any new information. If you can not provide answer based on the context, answer only \"Sorry, I can´t answer the question.\".
-    5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
-    6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
+#     STRICT RULES:
+#     1) Use ONLY the following pieces of context to answer the question.
+#     2) MANDATORY CITATIONS: You MUST append `[doc X]` to every sentence or claim.
+#     3) MULTIPLE SOURCES: If more docs support a claim, use `[doc 1], [doc 2]`.
+#     4) Don't make up any new information. If the context does not contain the complete answer, provide a PARTIAL ANSWER based on what IS in the context, and explicitly state what information is missing.
+#     5) Format your answer using Markdown for clarity (e.g., bullet points for lists, bold for key terms).
+#     6) LANGUAGE: You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Czech, answer in Czech. If in German, answer in German.
 
-    EXAMPLE OF CORRECT CITATION:
-    Context: [doc 1] Franz Kafka was a writer. [doc 2] He was born in Prague.
-    Question: Kdo byl Franz Kafka a kde se narodil?
-    Answer: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2].
+#     EXAMPLE OF CORRECT CITATION:
+#     Context: [doc 1] Franz Kafka was a writer. [doc 2] He was born in Prague.
+#     Question: Kdo byl Franz Kafka a kde se narodil?
+#     Answer: Franz Kafka byl významný spisovatel [doc 1], který se narodil v Praze [doc 2].
     
-    Context: \n {context_string} \n
+#     Context: \n {context_string} \n
+#     """),
+#     ("user", "{question_string}")
+#     ]
+
+answer_question_prompt_template = [
+    ("system", """
+    Jsi odborný historik. Odpovídej plynule v češtině.
+    
+    PRAVIDLA:
+    1) Odpověď začni PŘÍMO fakty. Nepoužívej úvody jako "Ohledně...", "Na základě..." nebo "V kontextu...".
+    2) Piš v odstavcích, buď věcný, ale ne strohý.
+    3) Každé tvrzení cituj pomocí [doc X].
+    4) Pokud kontext neobsahuje informaci, v odpovědi ji úplně VYNECHEJ. Nepiš o tom, co v textu není. 
+       Jen pokud v kontextu není VŮBEC NIC k tématu, napiš jedinou větu: "K tomuto tématu chybí v dostupných pramenech podklady."
+     
+    Kontext: \n {context_string} \n
     """),
     ("user", "{question_string}")
-    ]
+]
 
 answer_question_with_history_prompt_template = [
     ("system",
@@ -95,19 +111,32 @@ extract_metadata_from_question_template = [
     ("user", "{question_string}")
     ]
 
+# multiquery_prompt_template = [
+#     ("system",
+#     """
+#     You are an expert search query assistant for a historical archive. 
+#     Your task is to generate 3 to 5 different versions of the user's question to retrieve relevant documents from a vector database. 
+#     By providing multiple perspectives on the same question, your goal is to overcome issues with keyword-based or semantic search limitations.
+    
+#     Follow these rules exactly:
+#     1) Generate 3 to 5 variations of the question.
+#     2) Keep the original meaning but use different synonyms or phrasing.
+#     3) Output each question on a NEW LINE.
+#     4) Do NOT include numbers, bullet points, or any introductory text.
+#     5) Respond in the SAME LANGUAGE as the user's question.
+#     """),
+#     ("user", "{question_string}")
+#     ]
+
 multiquery_prompt_template = [
     ("system",
     """
-    You are an expert search query assistant for a historical archive. 
-    Your task is to generate 3 to 5 different versions of the user's question to retrieve relevant documents from a vector database. 
-    By providing multiple perspectives on the same question, your goal is to overcome issues with keyword-based or semantic search limitations.
+    You are an expert search assistant. Generate 3 variations of the user question.
     
-    Follow these rules exactly:
-    1) Generate 3 to 5 variations of the question.
-    2) Keep the original meaning but use different synonyms or phrasing.
-    3) Output each question on a NEW LINE.
-    4) Do NOT include numbers, bullet points, or any introductory text.
-    5) Respond in the SAME LANGUAGE as the user's question.
+    STRICT RULES:
+    1) PRESERVE ENTITIES: You MUST keep all dates (e.g., '10. 12. 1863'), specific law names, and proper nouns EXACTLY as they appear.
+    2) NO DATA LOSS: Do not simplify the question so much that these identifiers are lost.
+    3) Respond in the SAME LANGUAGE as the user.
     """),
     ("user", "{question_string}")
     ]
@@ -138,33 +167,86 @@ hyde_retry = (
     "Previous document: {hyde_doc}"
 )
 
-context_grader_prompt_template = [
+# context_grader_prompt_template = [
+#     ("system", 
+#      """
+#     You are a grader assessing relevance of a retrieved document to a user question. 
+#     If the document contains keywords or semantic meaning related to the user question, grade it as relevant. 
+#     Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+    
+#     Output ONLY valid JSON with a single key 'binary_score'.
+#     """),
+#     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
+# ]
+
+context_grader_prompt_template =[
     ("system", 
      """
-    You are a grader assessing relevance of a retrieved document to a user question. 
-    If the document contains keywords or semantic meaning related to the user question, grade it as relevant. 
-    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+    You are a lenient relevance auditor. 
+    Your task is to filter out ONLY completely unrelated noise.
+
+    RULES:
+    1. If the document contains ANY facts, names, dates, or context even slightly related to the user's question, grade it as 'yes'.
+    2. Even if the document only partially answers the question, grade it as 'yes'.
+    3. Grade as 'no' ONLY if the document is completely unrelated to the topic.
     
-    Output ONLY valid JSON with a single key 'binary_score'.
+    Output ONLY valid JSON with a single key 'binary_score' (yes/no).
     """),
     ("user", "Retrieved document: \n {document} \n User question: {question_string}")
 ]
 
-generation_grader_prompt_template = [
+# generation_grader_prompt_template = [
+#     ("system", 
+#      """
+#     You are a strict quality controller. 
+#     Your task is to check if the generated answer is fully supported by the provided context.
+    
+#     Follow these rules exactly:
+#     1. If the answer contains information NOT present in the context, it is a hallucination and 'binary_score' have to be 'no'.
+#     2. Respond in JSON format with two keys:
+#        - 'binary_score': 'yes' if supported, 'no' if not.
+#        - 'feedback': A short explanation of what is wrong or missing. It should be useful for generating improved responses.
+#     """),
+#     ("user", "Context: \n {documents} \n Generated answer: {answer}")
+# ]
+
+# generation_grader_prompt_template = [
+#     ("system", 
+#      """
+#     You are a strict factual auditor. 
+#     Compare the Generated Answer against the Context.
+    
+#     CRITERIA:
+#     1. If the answer contains ANY fact not present in the context, it is a hallucination.
+#     2. Be very strict about dates and numbers.
+    
+#     Respond in JSON format:
+#     {{
+#        "binary_score": "yes" (if fully supported) or "no" (if there is a hallucination),
+#        "feedback": "Identify the specific hallucinated sentence."
+#     }}
+#     """),
+#     ("user", "Context: \n {documents} \n Generated answer: {answer}")
+# ]
+
+generation_grader_prompt_template =[
     ("system", 
      """
-    You are a strict quality controller. 
-    Your task is to check if the generated answer is fully supported by the provided context.
+    You are a factual auditor. Compare the Generated Answer against the Context.
     
-    Follow these rules exactly:
-    1. If the answer contains information NOT present in the context, it is a hallucination and 'binary_score' have to be 'no'.
-    2. Respond in JSON format with two keys:
-       - 'binary_score': 'yes' if supported, 'no' if not.
-       - 'feedback': A short explanation of what is wrong or missing. It should be useful for generating improved responses.
+    CRITERIA:
+    1. If the answer contains a material fact clearly NOT present in the context, it is a hallucination ('no').
+    2. Consider the context as a WHOLE. Facts might be distributed across multiple documents. Do not penalize the model for correctly synthesizing dates or common knowledge equivalents (e.g., resolving a holiday to a specific date if supported by another chunk).
+    3. If the answer provides a PARTIAL response and explicitly states that some information is missing (as instructed by its system prompt), grade it as 'yes' (supported), because admitting lack of info based on context is factually correct behavior.
+    
+    Respond in strict JSON format without any markdown wrappers:
+    {{
+       "binary_score": "yes" (if supported) or "no" (if hallucinated),
+       "feedback": "Identify the specific hallucinated sentence or write 'supported'."
+    }}
     """),
     ("user", "Context: \n {documents} \n Generated answer: {answer}")
 ]
-
 
 explain_selected_text_prompt_template = [
         ("system",

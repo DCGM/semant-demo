@@ -139,6 +139,7 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` â
 | `OLLAMA_URLS` | `http://localhost:11434` | No | Comma-separated Ollama endpoints |
 | `OLLAMA_MODEL` | `gemma3:12b` | No | Default Ollama model |
 | `OPENAI_API_KEY` | _(empty)_ | If using OpenAI RAG | OpenAI API key |
+| `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | No | OpenAI-compatible endpoint for RAG/OpenAI requests (OpenAI or OpenRouter) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | No | Default OpenAI model |
 | `GOOGLE_API_KEY` | _(empty)_ | If using Google RAG | Google Gemini API key |
 | `GOOGLE_MODEL` | `gemini-2.5-pro` | No | Default Google model |
