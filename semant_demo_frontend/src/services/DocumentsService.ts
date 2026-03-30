@@ -20,6 +20,9 @@ const DocumentsService = {
   getDocumentById: async (documentId: string) => await api.get<Document>(`${ENDPOINTS.DOCUMENTS}/${documentId}`),
   addDocumentToCollection: async (documentId: string, collectionId: string) => await api.post<{ success: boolean; message: string }>(
     `${ENDPOINTS.COLLECTIONS}/${collectionId}/documents/${documentId}`
+  ),
+  removeDocumentFromCollection: async (documentId: string, collectionId: string) => await api.delete<{ success: boolean; message: string }>(
+    `${ENDPOINTS.COLLECTIONS}/${collectionId}/documents/${documentId}`
   )
 }
 

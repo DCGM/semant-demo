@@ -55,6 +55,11 @@ const DocumentsRepository = {
   addToCollection: async (documentId: string, collectionId: string): Promise<boolean> => {
     const response = await DocumentsService.addDocumentToCollection(documentId, collectionId)
     return response.data.success
+  },
+
+  removeFromCollection: async (documentId: string, collectionId: string): Promise<boolean> => {
+    const response = await DocumentsService.removeDocumentFromCollection(documentId, collectionId)
+    return response.data.success
   }
 }
 

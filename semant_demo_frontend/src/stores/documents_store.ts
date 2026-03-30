@@ -68,6 +68,64 @@ export const useDocumentsStore = defineStore('documents', () => {
     }
   }
 
+  const removeFromCollection = async (documentId: string, collectionId: string) => {
+    const notif = ongoingNotification('Removing document from collection...')
+    error.value = null
+    try {
+      const success = await DocumentsRepository.removeFromCollection(documentId, collectionId)
+      if (success) {
+        documents.value = documents.value.filter((doc) => doc.id !== documentId)
+        notif.success('Document removed from collection')
+      } else {
+        error.value = 'Failed to remove document from collection'
+        notif.error('Failed to remove document from collection')
+      }
+      return success
+    } catch (err) {
+      error.value = 'Failed to remove document from collection'
+      console.error('Error removing document from collection:', err)
+      notif.error('Failed to remove document from collection')
+      return false
+    }
+  }
+
+  const removeManyFromCollection = async (documentIds: string[], collectionId: string) => {
+    if (documentIds.length === 0) {
+      return
+    }
+
+    const notif = ongoingNotification('Removing selected documents from collection...')
+    error.value = null
+
+    try {
+      const results = await Promise.all(
+        documentIds.map((documentId) => DocumentsRepository.removeFromCollection(documentId, collectionId))
+      )
+
+      const removedIds = documentIds.filter((_, index) => results[index])
+      const removed = removedIds.length
+      const failed = documentIds.length - removed
+
+      if (removed > 0) {
+        const removedIdSet = new Set(removedIds)
+        documents.value = documents.value.filter((doc) => !removedIdSet.has(doc.id))
+      }
+
+      if (failed === 0) {
+        notif.success(`Removed ${removed} selected document${removed === 1 ? '' : 's'}`)
+      } else if (removed > 0) {
+        notif.error(`Removed ${removed}, failed to remove ${failed}`)
+      } else {
+        error.value = 'Failed to remove selected documents from collection'
+        notif.error('Failed to remove selected documents from collection')
+      }
+    } catch (err) {
+      error.value = 'Failed to remove selected documents from collection'
+      console.error('Error removing selected documents from collection:', err)
+      notif.error('Failed to remove selected documents from collection')
+    }
+  }
+
   return {
     documents,
     activeDocument,
@@ -77,6 +135,8 @@ export const useDocumentsStore = defineStore('documents', () => {
     fetchDocuments,
     fetchDocument,
     browseDocuments,
-    appendDocumentIfMissing
+    appendDocumentIfMissing,
+    removeFromCollection,
+    removeManyFromCollection
   }
 })
