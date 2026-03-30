@@ -1,5 +1,5 @@
 import { api } from 'src/boot/axios'
-import { ENDPOINTS } from 'src/constants/ednpoints'
+import { ENDPOINTS } from 'src/constants/endpoints'
 import { Document, DocumentBrowseParams, DocumentBrowseResponse, Documents } from 'src/models/documents'
 
 const DocumentsService = {

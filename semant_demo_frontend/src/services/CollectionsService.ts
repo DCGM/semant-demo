@@ -1,5 +1,5 @@
 import { api } from 'src/boot/axios'
-import { ENDPOINTS } from 'src/constants/ednpoints'
+import { ENDPOINTS } from 'src/constants/endpoints'
 import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collection'
 
 const CollectionsService = {
