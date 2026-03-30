@@ -82,14 +82,13 @@ class WeaviateClient(WeaviateSearch):
         usercollection_collection = self.client.collections.get("UserCollection")
         now = datetime.now(timezone.utc)
 
+        # PATCH semantics: update only fields that were actually sent by the client.
+        properties = collection.model_dump(exclude_unset=True)
+        properties["updated_at"] = now
+
         await usercollection_collection.data.update(
             uuid=collection_id,
-            properties={
-                "name": collection.name,
-                "description": collection.description,
-                "color": collection.color,
-                "updated_at": now
-            }
+            properties=properties
         )
 
     async def delete_collection(self, collection_id: UUID) -> None:
