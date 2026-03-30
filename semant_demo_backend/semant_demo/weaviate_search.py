@@ -41,6 +41,20 @@ class WeaviateSearch:
 
         return obj
 
+    async def get_few_chunks(self, limit: int = 5):
+        """
+        Get a few chunks from Chunks_test collection. Used for testing.
+        """
+        objs = await self.chunk_col.query.fetch_objects(
+            limit=limit,
+            return_properties=[
+                "text"
+            ]
+        )
+        print("Few chunks retrieved:", objs)
+
+        return objs
+
     async def set_chunk_spans_embedded(self, chunk_id: str, spans: list[schemas.TagSpan]):
         """
         Add new TagSpan to Chunks_test's 'tagSpansArr'.
