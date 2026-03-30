@@ -14,12 +14,98 @@
           >
             <q-tooltip>Back to Collections</q-tooltip>
           </q-btn>
-          <q-icon name="folder_open" size="24px" color="primary" class="collection-title-icon" />
-          <h1 class="collection-page-title">{{ activeCollectionLabel }}</h1>
+          <button
+            v-if="activeCollectionColor"
+            type="button"
+            class="collection-color-button"
+            aria-label="Edit collection color"
+            @click="openCollectionColorPicker"
+          >
+            <span
+              class="collection-color-dot"
+              :style="{ backgroundColor: activeCollectionColor }"
+              aria-label="Collection color"
+            />
+            <q-tooltip>Click to edit color</q-tooltip>
+          </button>
+          <q-dialog v-model="showColorPicker">
+            <q-card>
+              <q-card-section>
+                <q-color v-model="tempColor" format="hex" />
+              </q-card-section>
+              <q-card-section align="right">
+                <q-btn
+                  flat
+                  label="Cancel"
+                  color="primary"
+                  :disable="isSavingColor"
+                  @click="closeColor"
+                />
+                <q-btn
+                  unelevated
+                  label="Confirm"
+                  color="primary"
+                  :loading="isSavingColor"
+                  :disable="isSavingColor"
+                  @click="submitColorEdit"
+                />
+              </q-card-section>
+            </q-card>
+          </q-dialog>
+          <q-input
+            v-if="isEditingName"
+            v-model="editableCollectionName"
+            dense
+            outlined
+            autofocus
+            class="collection-title-input"
+            :disable="isSavingName"
+            @keyup.enter="submitNameEdit"
+            @keyup.esc="cancelNameEdit"
+          >
+            <template #append>
+              <q-btn
+                flat
+                round
+                dense
+                icon="check"
+                color="positive"
+                :disable="isNameSaveDisabled"
+                :loading="isSavingName"
+                @click="submitNameEdit"
+              />
+              <q-btn
+                flat
+                round
+                dense
+                icon="close"
+                color="negative"
+                :disable="isSavingName"
+                @click="cancelNameEdit"
+              />
+            </template>
+          </q-input>
+          <button
+            v-else
+            type="button"
+            class="collection-title-button"
+            :disabled="!activeCollectionLabel"
+            @click="startNameEdit"
+          >
+            <h1 class="collection-page-title">{{ activeCollectionLabel }}</h1>
+            <q-tooltip v-if="activeCollectionLabel">Click to edit</q-tooltip>
+          </button>
         </div>
       </div>
 
-      <q-tabs indicator-color="primary" active-class="active-tab text-primary" narrow-indicator inline-label class="collection-tabs" align="justify">
+      <q-tabs
+        indicator-color="primary"
+        active-class="active-tab text-primary"
+        narrow-indicator
+        inline-label
+        class="collection-tabs"
+        align="justify"
+      >
         <q-route-tab
           name="documents_tagging"
           label="Documents & tagging"
@@ -56,12 +142,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import useCollections from 'src/composables/useCollections'
+import useColorPicker from 'src/composables/useColorPicker'
 
 const $route = useRoute()
-const { activeCollection, loadCollection } = useCollections()
+const { activeCollection, loadCollection, updateCollection } = useCollections()
+
+const isEditingName = ref(false)
+const isSavingName = ref(false)
+const isSavingColor = ref(false)
+const editableCollectionName = ref('')
+
+const {
+  currentColor,
+  tempColor,
+  showColorPicker,
+  openColorPicker,
+  confirmColor,
+  closeColor
+} = useColorPicker('#1976d2')
 
 const collectionId = computed(() => {
   const value = $route.params.collectionId
@@ -69,19 +170,71 @@ const collectionId = computed(() => {
 })
 
 const activeCollectionLabel = computed(() =>
-  activeCollection.value?.id === collectionId.value ? activeCollection.value.name : ''
+  activeCollection.value?.id === collectionId.value
+    ? activeCollection.value.name
+    : ''
 )
 
-onMounted(() => {
-  if (collectionId.value) {
-    loadCollection(collectionId.value)
-  }
-})
+const activeCollectionColor = computed(() =>
+  activeCollection.value?.id === collectionId.value
+    ? activeCollection.value.color
+    : null
+)
 
-watch(collectionId, (newId) => {
-  if (newId) {
-    loadCollection(newId)
+const normalizedEditedName = computed(() => editableCollectionName.value.trim())
+
+const isNameSaveDisabled = computed(() =>
+  isSavingName.value ||
+  !normalizedEditedName.value ||
+  normalizedEditedName.value === activeCollectionLabel.value
+)
+
+const startNameEdit = () => {
+  if (!activeCollectionLabel.value) return
+  editableCollectionName.value = activeCollectionLabel.value
+  isEditingName.value = true
+}
+
+const cancelNameEdit = () => {
+  isEditingName.value = false
+  editableCollectionName.value = activeCollectionLabel.value
+}
+
+const submitNameEdit = async () => {
+  if (!collectionId.value || isNameSaveDisabled.value) return
+
+  const updatedName = normalizedEditedName.value
+  isSavingName.value = true
+  await updateCollection(collectionId.value, { name: updatedName })
+  await loadCollection(collectionId.value)
+  isSavingName.value = false
+
+  isEditingName.value = false
+}
+
+const openCollectionColorPicker = () => {
+  if (!activeCollectionColor.value) return
+  currentColor.value = activeCollectionColor.value
+  openColorPicker()
+}
+
+const submitColorEdit = async () => {
+  confirmColor()
+
+  if (currentColor.value === activeCollectionColor.value) {
+    return
   }
+
+  isSavingColor.value = true
+  await updateCollection(collectionId.value, { color: currentColor.value })
+  isSavingColor.value = false
+
+  closeColor()
+  await loadCollection(collectionId.value)
+}
+
+onMounted(async () => {
+  await loadCollection(collectionId.value)
 })
 </script>
 
@@ -118,12 +271,42 @@ watch(collectionId, (newId) => {
   gap: 8px;
 }
 
+.collection-title-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: text;
+  text-align: left;
+}
+
+.collection-title-button:disabled {
+  cursor: default;
+}
+
+.collection-title-input {
+  width: min(420px, 65vw);
+}
+
 .collection-back-btn {
   color: rgba(0, 0, 0, 0.72);
 }
 
-.collection-title-icon {
+.collection-color-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+}
+
+.collection-color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
   flex: 0 0 auto;
+  cursor: pointer;
 }
 
 .collection-page-title {
