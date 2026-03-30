@@ -46,3 +46,19 @@ async def add_document_to_collection(
         "success": success,
         "message": "Document added to collection" if success else "Failed to add document to collection"
     }
+
+
+@router.delete("/api/v1/collections/{collection_id}/documents/{document_id}")
+async def remove_document_from_collection(
+    collection_id: UUID,
+    document_id: UUID,
+    wv_client: WeaviateClient = Depends(get_weaviate_client),
+) -> dict:
+    success = await wv_client.remove_document_from_collection(
+        document_id=document_id,
+        collection_id=collection_id,
+    )
+    return {
+        "success": success,
+        "message": "Document removed from collection" if success else "Failed to remove document from collection"
+    }

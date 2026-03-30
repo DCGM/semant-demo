@@ -223,3 +223,19 @@ class WeaviateClient(WeaviateSearch):
         except Exception as e:
             logging.error(f"Failed to add document {document_id} to collection {collection_id}: {e}")
             return False
+
+    async def remove_document_from_collection(self, document_id: UUID, collection_id: UUID) -> bool:
+        """
+        Removes a document from a collection by deleting the reference between them.
+        """
+        document_collection = self.client.collections.get("Documents")
+        try:
+            await document_collection.data.reference_delete(
+                from_uuid=document_id,
+                from_property="collection",
+                to=collection_id,
+            )
+            return True
+        except Exception as e:
+            logging.error(f"Failed to remove document {document_id} from collection {collection_id}: {e}")
+            return False
