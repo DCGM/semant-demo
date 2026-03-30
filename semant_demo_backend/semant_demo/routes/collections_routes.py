@@ -1,6 +1,7 @@
 # Richard Juřica's version of API for handling user collections
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
+from uuid import UUID
 from semant_demo.schemas import CollectionResponse, PostCollectionRequest, PatchCollectionRequest
 from semant_demo.routes.dependencies import get_weaviate_client
 from semant_demo.weaviate_client import WeaviateClient
@@ -23,3 +24,9 @@ async def update_collection(collection_id: str, collectionReq: PatchCollectionRe
     await wv_client.update_collection(collection_id, collectionReq)
     response = await wv_client.get_collection_by_id(collection_id)
     return response
+
+
+@router.delete("/api/v1/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_collection(collection_id: UUID, wv_client: WeaviateClient = Depends(get_weaviate_client)) -> Response:
+    await wv_client.delete_collection(collection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

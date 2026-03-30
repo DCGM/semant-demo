@@ -233,7 +233,6 @@ class WeaviateSearchAndTag(WeaviateSearch):
         results = await self.client.collections.get("UserCollection").query.fetch_objects(
             filters=filters
         )
-        logging.info(f"User Id: {userId}\nRaw results: {results}")
         collections = []
         collections_respone = []
         if results.objects is not None:

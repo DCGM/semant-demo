@@ -4,20 +4,12 @@ import { z } from 'zod'
 const CollectionSchema = z.object({
   id: z.uuid(),
   name: z.string(),
-  user_id: z.string(),
+  userId: z.string(),
   description: z.string().nullable(),
-  created_at: z.iso.datetime(),
-  updated_at: z.iso.datetime(),
+  createdAt: z.iso.datetime().transform((date) => new Date(date)),
+  updatedAt: z.iso.datetime().transform((date) => new Date(date)),
   color: z.string()
-}).transform((collection) => ({
-  id: collection.id,
-  name: collection.name,
-  userId: collection.user_id,
-  description: collection.description,
-  createdAt: new Date(collection.created_at),
-  updatedAt: new Date(collection.updated_at),
-  color: collection.color
-}))
+})
 
 // For list of collections, we can reuse the same schema and just wrap it in an array
 const CollectionsSchema = z.array(CollectionSchema)
@@ -27,11 +19,7 @@ const PostCollectionSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   color: z.string()
-}).transform((collection) => ({
-  name: collection.name,
-  description: collection.description,
-  color: collection.color
-}))
+})
 
 // Request body for updating a collection - all fields are optional, but we still want to validate their types
 const PatchCollectionSchema = z.object({

@@ -1,5 +1,6 @@
 const ENDPOINTS = {
-  COLLECTIONS: 'v1/collections'
+  COLLECTIONS: 'v1/collections',
+  DOCUMENTS: 'v1/documents'
 } as const
 
 type Endpoint = typeof ENDPOINTS[keyof typeof ENDPOINTS];
