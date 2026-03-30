@@ -112,10 +112,15 @@
       <ChunkTagAnnotator
         :chunk-id="chunk.id"
         :chunk-text="chunk.text"
-        :tag-spans="tagSpansByChunkId[chunk.id] || []"
+        :tag-spans="getDisplayedTagSpans(chunk.id)"
         :available-tags="availableTags"
         :is-processing="pageLoading"
         :selection="getChunkSelection(chunk.id)"
+        :show-selection-start-handle="selectionBoundaryChunkIds.startChunkId === chunk.id"
+        :show-selection-end-handle="selectionBoundaryChunkIds.endChunkId === chunk.id"
+        :selection-start-boundary="globalSelectionBoundaries.startBoundary"
+        :selection-end-boundary="globalSelectionBoundaries.endBoundary"
+        :editing-span-id="globalSelection?.editingId || null"
         @selection-change="handleSelectionChange"
       />
     </q-card>
@@ -140,6 +145,16 @@ interface SelectionState {
   end: number
   editingId?: string
   tagId?: string
+}
+
+interface DisplayedTagSpan extends TagSpan {
+  sourceStart?: number
+  sourceEnd?: number
+}
+
+interface SelectionBoundary {
+  chunkId: string
+  index: number
 }
 
 interface GlobalSelection extends SelectionState {
@@ -169,6 +184,10 @@ interface DeletePayload {
 interface SelectionPayload {
   chunkId: string
   selection: SelectionState | null
+  startBoundary?: SelectionBoundary
+  endBoundary?: SelectionBoundary
+  source?: 'mouse' | 'drag'
+  dragHandle?: 'start' | 'end'
 }
 
 const {
@@ -187,6 +206,95 @@ const isPreloading = ref(false)
 const globalSelection = ref<GlobalSelection | null>(null)
 
 const pageLoading = computed(() => isProcessing.value || isPreloading.value)
+
+const chunkIndexById = computed(() => {
+  return chunks.value.reduce<Record<string, number>>((acc, chunk, index) => {
+    acc[chunk.id] = index
+    return acc
+  }, {})
+})
+
+const selectionBoundaryChunkIds = computed(() => {
+  if (!globalSelection.value) {
+    return {
+      startChunkId: null as string | null,
+      endChunkId: null as string | null
+    }
+  }
+
+  const startChunkId = globalSelection.value.chunkId
+  const startChunkIndex = chunkIndexById.value[startChunkId]
+  if (startChunkIndex === undefined) {
+    return {
+      startChunkId: null,
+      endChunkId: null
+    }
+  }
+
+  let remaining = globalSelection.value.end
+  let endChunkIndex = startChunkIndex
+  while (
+    endChunkIndex < chunks.value.length &&
+    remaining > chunks.value[endChunkIndex].text.length
+  ) {
+    remaining -= chunks.value[endChunkIndex].text.length
+    endChunkIndex += 1
+  }
+
+  if (endChunkIndex >= chunks.value.length) {
+    endChunkIndex = chunks.value.length - 1
+  }
+
+  return {
+    startChunkId,
+    endChunkId: chunks.value[endChunkIndex]?.id || startChunkId
+  }
+})
+
+const globalSelectionBoundaries = computed(() => {
+  if (!globalSelection.value) {
+    return {
+      startBoundary: null as SelectionBoundary | null,
+      endBoundary: null as SelectionBoundary | null
+    }
+  }
+
+  const startChunkId = globalSelection.value.chunkId
+  const startChunkIndex = chunkIndexById.value[startChunkId]
+
+  if (startChunkIndex === undefined) {
+    return {
+      startBoundary: null,
+      endBoundary: null
+    }
+  }
+
+  let remaining = globalSelection.value.end
+  let endChunkIndex = startChunkIndex
+  while (
+    endChunkIndex < chunks.value.length &&
+    remaining > chunks.value[endChunkIndex].text.length
+  ) {
+    remaining -= chunks.value[endChunkIndex].text.length
+    endChunkIndex += 1
+  }
+
+  if (endChunkIndex >= chunks.value.length) {
+    endChunkIndex = chunks.value.length - 1
+    remaining = chunks.value[endChunkIndex].text.length
+  }
+
+  return {
+    startBoundary: {
+      chunkId: startChunkId,
+      index: globalSelection.value.start
+    },
+    endBoundary: {
+      chunkId: chunks.value[endChunkIndex].id,
+      index: remaining
+    }
+  }
+})
 
 const availableTags = ref([
   {
@@ -274,6 +382,55 @@ const handleDeleteTagSpan = async (payload: DeletePayload) => {
 }
 
 const handleSelectionChange = (payload: SelectionPayload) => {
+  if (payload.startBoundary && payload.endBoundary) {
+    if (payload.source === 'drag' && payload.dragHandle) {
+      const compareBoundaries = (
+        left: SelectionBoundary,
+        right: SelectionBoundary
+      ) => {
+        const leftIndex = chunkIndexById.value[left.chunkId]
+        const rightIndex = chunkIndexById.value[right.chunkId]
+        if (leftIndex === undefined || rightIndex === undefined) return 0
+        if (leftIndex !== rightIndex) return leftIndex - rightIndex
+        return left.index - right.index
+      }
+
+      const anchorStart =
+        globalSelectionBoundaries.value.startBoundary || payload.startBoundary
+      const anchorEnd =
+        globalSelectionBoundaries.value.endBoundary || payload.endBoundary
+
+      if (payload.dragHandle === 'end') {
+        if (compareBoundaries(payload.endBoundary, anchorStart) <= 0) {
+          return
+        }
+      }
+
+      if (payload.dragHandle === 'start') {
+        if (compareBoundaries(payload.startBoundary, anchorEnd) >= 0) {
+          return
+        }
+      }
+    }
+
+    const normalizedSelection = normalizeCrossChunkSelection(
+      payload.startBoundary,
+      payload.endBoundary
+    )
+
+    if (
+      normalizedSelection &&
+      payload.source === 'drag' &&
+      globalSelection.value?.editingId
+    ) {
+      normalizedSelection.editingId = globalSelection.value.editingId
+      normalizedSelection.tagId = globalSelection.value.tagId
+    }
+
+    globalSelection.value = normalizedSelection
+    return
+  }
+
   if (!payload.selection) {
     if (globalSelection.value?.chunkId === payload.chunkId) {
       globalSelection.value = null
@@ -284,6 +441,53 @@ const handleSelectionChange = (payload: SelectionPayload) => {
   globalSelection.value = {
     chunkId: payload.chunkId,
     ...payload.selection
+  }
+}
+
+const normalizeCrossChunkSelection = (
+  startBoundary: SelectionBoundary,
+  endBoundary: SelectionBoundary
+): GlobalSelection | null => {
+  const startChunkIndex = chunkIndexById.value[startBoundary.chunkId]
+  const endChunkIndex = chunkIndexById.value[endBoundary.chunkId]
+
+  if (startChunkIndex === undefined || endChunkIndex === undefined) {
+    return null
+  }
+
+  let first = startBoundary
+  let second = endBoundary
+  let firstIndex = startChunkIndex
+  let secondIndex = endChunkIndex
+
+  if (
+    firstIndex > secondIndex ||
+    (firstIndex === secondIndex && first.index > second.index)
+  ) {
+    first = endBoundary
+    second = startBoundary
+    firstIndex = endChunkIndex
+    secondIndex = startChunkIndex
+  }
+
+  if (firstIndex === secondIndex) {
+    return {
+      chunkId: first.chunkId,
+      start: first.index,
+      end: second.index
+    }
+  }
+
+  let end = chunks.value[firstIndex].text.length
+  for (let idx = firstIndex + 1; idx < secondIndex; idx += 1) {
+    end += chunks.value[idx].text.length
+  }
+  end += second.index
+
+  return {
+    chunkId: first.chunkId,
+    start: first.index,
+    end
   }
 }
 
@@ -335,16 +539,93 @@ const deleteEditedTag = async () => {
 }
 
 const getChunkSelection = (chunkId: string): SelectionState | null => {
-  if (!globalSelection.value || globalSelection.value.chunkId !== chunkId) {
+  if (!globalSelection.value) {
+    return null
+  }
+
+  const baseChunkIndex = chunkIndexById.value[globalSelection.value.chunkId]
+  const targetChunkIndex = chunkIndexById.value[chunkId]
+
+  if (baseChunkIndex === undefined || targetChunkIndex === undefined) {
+    return null
+  }
+
+  if (targetChunkIndex < baseChunkIndex) {
+    return null
+  }
+
+  let offsetFromBase = 0
+  for (let idx = baseChunkIndex; idx < targetChunkIndex; idx += 1) {
+    offsetFromBase += chunks.value[idx].text.length
+  }
+
+  const targetChunkLength = chunks.value[targetChunkIndex].text.length
+  const localStart = Math.max(0, globalSelection.value.start - offsetFromBase)
+  const localEnd = Math.min(
+    targetChunkLength,
+    globalSelection.value.end - offsetFromBase
+  )
+
+  if (localEnd <= localStart) {
     return null
   }
 
   return {
-    start: globalSelection.value.start,
-    end: globalSelection.value.end,
+    start: localStart,
+    end: localEnd,
     editingId: globalSelection.value.editingId,
     tagId: globalSelection.value.tagId
   }
+}
+
+const getDisplayedTagSpans = (targetChunkId: string): DisplayedTagSpan[] => {
+  const targetChunkIndex = chunkIndexById.value[targetChunkId]
+  if (targetChunkIndex === undefined) {
+    return []
+  }
+
+  const targetChunkLength = chunks.value[targetChunkIndex].text.length
+  const displayed: DisplayedTagSpan[] = []
+
+  for (let sourceIndex = 0; sourceIndex <= targetChunkIndex; sourceIndex += 1) {
+    const sourceChunk = chunks.value[sourceIndex]
+    const sourceSpans = tagSpansByChunkId.value[sourceChunk.id] || []
+    if (!sourceSpans.length) continue
+
+    let offsetFromSourceToTarget = 0
+    for (let idx = sourceIndex; idx < targetChunkIndex; idx += 1) {
+      offsetFromSourceToTarget += chunks.value[idx].text.length
+    }
+
+    for (const span of sourceSpans) {
+      if (sourceIndex === targetChunkIndex) {
+        displayed.push({
+          ...span,
+          sourceStart: span.start,
+          sourceEnd: span.end
+        })
+        continue
+      }
+
+      const localStart = Math.max(0, span.start - offsetFromSourceToTarget)
+      const localEnd = Math.min(
+        targetChunkLength,
+        span.end - offsetFromSourceToTarget
+      )
+
+      if (localEnd <= localStart) continue
+
+      displayed.push({
+        ...span,
+        start: localStart,
+        end: localEnd,
+        sourceStart: span.start,
+        sourceEnd: span.end
+      })
+    }
+  }
+
+  return displayed
 }
 
 onMounted(async () => {

@@ -8,6 +8,7 @@
     <span
       v-for="seg in renderedSegments"
       :key="`${seg.start}-${seg.end}`"
+      :data-chunk-id="chunkId"
       :data-start="seg.start"
       :data-end="seg.end"
       :style="getSegmentStyle(seg)"
@@ -60,11 +61,21 @@ interface SelectionState {
   tagId?: string
 }
 
+interface SelectionBoundary {
+  chunkId: string
+  index: number
+}
+
 interface AvailableTag {
   tagName: string
   tagColor: string
   tagPictogram: string
   tagUuid: string
+}
+
+interface SpanWithSourceMeta extends TagSpan {
+  sourceStart?: number
+  sourceEnd?: number
 }
 
 const props = withDefaults(
@@ -76,16 +87,33 @@ const props = withDefaults(
     isProcessing: boolean
     snapToWords?: boolean
     selection?: SelectionState | null
+    showSelectionStartHandle?: boolean
+    showSelectionEndHandle?: boolean
+    selectionStartBoundary?: SelectionBoundary | null
+    selectionEndBoundary?: SelectionBoundary | null
+    editingSpanId?: string | null
   }>(),
   {
     snapToWords: true,
-    selection: null
+    selection: null,
+    showSelectionStartHandle: true,
+    showSelectionEndHandle: true,
+    selectionStartBoundary: null,
+    selectionEndBoundary: null,
+    editingSpanId: null
   }
 )
 
 const emit = defineEmits<{
   selectionChange: [
-    payload: { chunkId: string; selection: SelectionState | null }
+    payload: {
+      chunkId: string
+      selection: SelectionState | null
+      startBoundary?: SelectionBoundary
+      endBoundary?: SelectionBoundary
+      source?: 'mouse' | 'drag'
+      dragHandle?: 'start' | 'end'
+    }
   ]
 }>()
 
@@ -106,10 +134,34 @@ watch(
   { immediate: true }
 )
 
-const emitSelection = () => {
+const emitSelection = (
+  overrideChunkId?: string,
+  overrideSelection?: SelectionState | null
+) => {
+  const selectionToEmit =
+    overrideSelection === undefined
+      ? currentSelection.value
+      : overrideSelection
+
+  emit('selectionChange', {
+    chunkId: overrideChunkId || props.chunkId,
+    selection: selectionToEmit ? { ...selectionToEmit } : null
+  })
+}
+
+const emitBoundaries = (
+  startBoundary: SelectionBoundary,
+  endBoundary: SelectionBoundary,
+  source: 'mouse' | 'drag',
+  dragHandle?: 'start' | 'end'
+) => {
   emit('selectionChange', {
     chunkId: props.chunkId,
-    selection: currentSelection.value ? { ...currentSelection.value } : null
+    selection: null,
+    startBoundary,
+    endBoundary,
+    source,
+    dragHandle
   })
 }
 
@@ -127,7 +179,7 @@ const renderedSegments = computed(() => {
 
     const activeTags = props.tagSpans.filter(
       (t) =>
-        i >= t.start && i < t.end && t.id !== currentSelection.value?.editingId
+        i >= t.start && i < t.end && t.id !== props.editingSpanId
     )
 
     activeTags.sort((a, b) => a.tagId.localeCompare(b.tagId))
@@ -147,9 +199,11 @@ const renderedSegments = computed(() => {
         currentSeg.end = i
         currentSeg.isSelectionStart =
           currentSeg.isSelected &&
+          props.showSelectionStartHandle &&
           currentSeg.start === currentSelection.value?.start
         currentSeg.isSelectionEnd =
           currentSeg.isSelected &&
+          props.showSelectionEndHandle &&
           currentSeg.end === currentSelection.value?.end
         segments.push(currentSeg)
       }
@@ -172,17 +226,34 @@ const renderedSegments = computed(() => {
     currentSeg.end = text.length
     currentSeg.isSelectionStart =
       currentSeg.isSelected &&
+      props.showSelectionStartHandle &&
       currentSeg.start === currentSelection.value?.start
     currentSeg.isSelectionEnd =
-      currentSeg.isSelected && currentSeg.end === currentSelection.value?.end
+      currentSeg.isSelected &&
+      props.showSelectionEndHandle &&
+      currentSeg.end === currentSelection.value?.end
     segments.push(currentSeg)
   }
 
   return segments
 })
 
-const getAbsoluteIndex = (node: Node | null, offset: number): number | null => {
+const getAbsoluteBoundary = (
+  node: Node | null,
+  offset: number
+): SelectionBoundary | null => {
   if (!node) return null
+
+  const parseBoundaryFromSegment = (
+    segment: Element,
+    index: number
+  ): SelectionBoundary => {
+    const chunkId = segment.getAttribute('data-chunk-id') || props.chunkId
+    return {
+      chunkId,
+      index
+    }
+  }
 
   if (node.nodeType === Node.TEXT_NODE) {
     const parent = node.parentElement
@@ -191,12 +262,15 @@ const getAbsoluteIndex = (node: Node | null, offset: number): number | null => {
     if (segment) {
       const start = parseInt(segment.getAttribute('data-start') || '0', 10)
       if (parent === segment) {
-        return start + offset
+        return parseBoundaryFromSegment(segment, start + offset)
       }
       if (parent?.classList.contains('handle-end')) {
-        return parseInt(segment.getAttribute('data-end') || '0', 10)
+        return parseBoundaryFromSegment(
+          segment,
+          parseInt(segment.getAttribute('data-end') || '0', 10)
+        )
       }
-      return start
+      return parseBoundaryFromSegment(segment, start)
     }
   } else if (node.nodeType === Node.ELEMENT_NODE) {
     const el = node as HTMLElement
@@ -208,7 +282,10 @@ const getAbsoluteIndex = (node: Node | null, offset: number): number | null => {
         child.nodeType === Node.ELEMENT_NODE &&
         child.hasAttribute('data-start')
       ) {
-        return parseInt(child.getAttribute('data-start') || '0', 10)
+        return parseBoundaryFromSegment(
+          child,
+          parseInt(child.getAttribute('data-start') || '0', 10)
+        )
       } else if (offset > 0) {
         const prev = el.childNodes[offset - 1] as HTMLElement | undefined
         if (
@@ -216,7 +293,10 @@ const getAbsoluteIndex = (node: Node | null, offset: number): number | null => {
           prev.nodeType === Node.ELEMENT_NODE &&
           prev.hasAttribute('data-end')
         ) {
-          return parseInt(prev.getAttribute('data-end') || '0', 10)
+          return parseBoundaryFromSegment(
+            prev,
+            parseInt(prev.getAttribute('data-end') || '0', 10)
+          )
         }
       }
     }
@@ -224,12 +304,24 @@ const getAbsoluteIndex = (node: Node | null, offset: number): number | null => {
     const segment = el.closest('.text-segment')
     if (segment) {
       if (el.classList.contains('handle-end')) {
-        return parseInt(segment.getAttribute('data-end') || '0', 10)
+        return parseBoundaryFromSegment(
+          segment,
+          parseInt(segment.getAttribute('data-end') || '0', 10)
+        )
       }
-      return parseInt(segment.getAttribute('data-start') || '0', 10)
+      return parseBoundaryFromSegment(
+        segment,
+        parseInt(segment.getAttribute('data-start') || '0', 10)
+      )
     }
   }
   return null
+}
+
+const getAbsoluteIndex = (node: Node | null, offset: number): number | null => {
+  const boundary = getAbsoluteBoundary(node, offset)
+  if (!boundary || boundary.chunkId !== props.chunkId) return null
+  return boundary.index
 }
 
 const handleMouseUp = () => {
@@ -240,10 +332,26 @@ const handleMouseUp = () => {
 
   const range = sel.getRangeAt(0)
 
-  let start = getAbsoluteIndex(range.startContainer, range.startOffset)
-  let end = getAbsoluteIndex(range.endContainer, range.endOffset)
+  const startBoundary = getAbsoluteBoundary(
+    range.startContainer,
+    range.startOffset
+  )
+  const endBoundary = getAbsoluteBoundary(range.endContainer, range.endOffset)
 
-  if (start === null || end === null) return
+  if (!startBoundary || !endBoundary) return
+
+  if (
+    startBoundary.chunkId !== props.chunkId ||
+    endBoundary.chunkId !== props.chunkId
+  ) {
+    currentSelection.value = null
+    emitBoundaries(startBoundary, endBoundary, 'mouse')
+    sel.removeAllRanges()
+    return
+  }
+
+  let start = startBoundary.index
+  let end = endBoundary.index
 
   if (start > end) [start, end] = [end, start]
 
@@ -267,8 +375,14 @@ const startDrag = (_e: MouseEvent | TouchEvent, type: 'start' | 'end') => {
 }
 
 const onDrag = (e: MouseEvent | TouchEvent) => {
-  if (!draggingHandle.value || !currentSelection.value || !props.chunkText)
+  if (!draggingHandle.value) return
+
+  const hasGlobalBoundaries =
+    !!props.selectionStartBoundary && !!props.selectionEndBoundary
+
+  if (!hasGlobalBoundaries && (!currentSelection.value || !props.chunkText)) {
     return
+  }
 
   e.preventDefault()
   window.getSelection()?.removeAllRanges()
@@ -288,9 +402,8 @@ const onDrag = (e: MouseEvent | TouchEvent) => {
     range = document.caretRangeFromPoint(clientX, clientY)
   }
 
-  const caretPositionFromPoint = document.caretPositionFromPoint
-  if (typeof caretPositionFromPoint !== 'undefined') {
-    const pos = caretPositionFromPoint(clientX, clientY)
+  if (typeof document.caretPositionFromPoint !== 'undefined') {
+    const pos = document.caretPositionFromPoint(clientX, clientY)
     if (pos && pos.offsetNode) {
       range = document.createRange()
       range.setStart(pos.offsetNode, pos.offset)
@@ -298,6 +411,33 @@ const onDrag = (e: MouseEvent | TouchEvent) => {
   }
 
   if (!range) return
+
+  const boundaryAtCursor = getAbsoluteBoundary(
+    range.startContainer,
+    range.startOffset
+  )
+  if (!boundaryAtCursor) return
+
+  if (props.selectionStartBoundary && props.selectionEndBoundary) {
+    if (draggingHandle.value === 'start') {
+      emitBoundaries(
+        boundaryAtCursor,
+        props.selectionEndBoundary,
+        'drag',
+        'start'
+      )
+    } else {
+      emitBoundaries(
+        props.selectionStartBoundary,
+        boundaryAtCursor,
+        'drag',
+        'end'
+      )
+    }
+    return
+  }
+
+  if (!currentSelection.value) return
 
   let newIndex = getAbsoluteIndex(range.startContainer, range.startOffset)
   if (newIndex === null) return
@@ -313,9 +453,11 @@ const onDrag = (e: MouseEvent | TouchEvent) => {
   if (draggingHandle.value === 'start') {
     if (newIndex < currentSelection.value.end) {
       currentSelection.value.start = newIndex
+      emitSelection()
     }
   } else if (newIndex > currentSelection.value.start) {
     currentSelection.value.end = newIndex
+    emitSelection()
   }
 }
 
@@ -339,14 +481,29 @@ const handleSegmentClick = (seg: RenderSegment) => {
     return
 
   if (seg.tags.length > 0) {
-    const tagToEdit = seg.tags[0]
-    currentSelection.value = {
-      start: tagToEdit.start,
-      end: tagToEdit.end,
+    const tagToEdit = seg.tags[0] as SpanWithSourceMeta | undefined
+    if (!tagToEdit) return
+
+    const sourceChunkId = tagToEdit.chunkId || props.chunkId
+    const sourceStart =
+      sourceChunkId === props.chunkId
+        ? tagToEdit.start
+        : (tagToEdit.sourceStart ?? tagToEdit.start)
+    const sourceEnd =
+      sourceChunkId === props.chunkId
+        ? tagToEdit.end
+        : (tagToEdit.sourceEnd ?? tagToEdit.end)
+
+    const nextSelection = {
+      start: sourceStart,
+      end: sourceEnd,
       editingId: tagToEdit.id as string | undefined,
       tagId: tagToEdit.tagId
     }
-    emitSelection()
+
+    currentSelection.value =
+      sourceChunkId === props.chunkId ? nextSelection : null
+    emitSelection(sourceChunkId, nextSelection)
   }
 }
 
