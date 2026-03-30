@@ -61,13 +61,13 @@
                   flat
                   label="Cancel"
                   color="primary"
-                  @click="cancelColor"
+                  @click="closeColor"
                 />
                 <q-btn
                   unelevated
                   label="Confirm"
                   color="primary"
-                  @click="confirmColor"
+                  @click="handleConfirmColor"
                 />
               </q-card-section>
             </q-card>
@@ -104,7 +104,7 @@ const {
   tempColor,
   openColorPicker,
   confirmColor,
-  cancelColor
+  closeColor
 } = useColorPicker(props.collection?.color ?? '#1976d2')
 
 defineEmits([...useDialogPluginComponent.emits])
@@ -130,6 +130,11 @@ const handleSubmit = async () => {
     description: description.value?.trim() ?? '',
     color: currentColor.value
   })
+}
+
+const handleConfirmColor = () => {
+  confirmColor()
+  closeColor()
 }
 
 const handleCancel = () => {

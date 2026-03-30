@@ -12,10 +12,9 @@ const useColorPicker = (color: string) => {
 
   const confirmColor = () => {
     currentColor.value = tempColor.value
-    showColorPicker.value = false
   }
 
-  const cancelColor = () => {
+  const closeColor = () => {
     showColorPicker.value = false
   }
 
@@ -26,7 +25,7 @@ const useColorPicker = (color: string) => {
 
     openColorPicker,
     confirmColor,
-    cancelColor
+    closeColor
   }
 }
 
