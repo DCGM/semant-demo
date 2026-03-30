@@ -397,4 +397,23 @@ async def update_tag_span_separate(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@exp_router.delete("/api/tag_spans_separate/{span_id}", response_model=dict)
+async def delete_tag_span_separate(
+    span_id: str,
+    tagger: WeaviateSearchAndTag = Depends(get_search)
+):
+    """
+    Delete a TagSpan's information (separate mode)
+    """
+    try:
+        await tagger.delete_tag_span_separate(span_id=span_id)
+
+        return {
+            "status": "success",
+            "deleted_span_id": span_id
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 # /TagSpans
