@@ -87,9 +87,12 @@ const { documents, loadDocuments } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
 
 const route = useRoute()
-const collectionId = computed(() => {
+const collectionId = computed<string>(() => {
   const value = route.params.collectionId
-  return typeof value === 'string' ? value : undefined
+  if (typeof value !== 'string') {
+    throw new Error('Missing required route param: collectionId')
+  }
+  return value
 })
 
 onMounted(() => {

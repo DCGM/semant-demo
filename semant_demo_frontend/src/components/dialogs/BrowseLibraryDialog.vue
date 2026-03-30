@@ -119,16 +119,22 @@
           </template>
           <template #body-cell-actions="tableProps">
             <q-td :props="tableProps" class="q-pa-xs">
-              <q-btn
-                dense
-                flat
-                round
-                color="primary"
-                icon="add"
-                aria-label="Add document to current collection"
-                :disable="!props.collectionId"
-                @click="addDocumentToCurrentCollection(tableProps.row.id)"
-              />
+              <div class="row items-center q-gutter-xs">
+                <q-btn
+                  dense
+                  flat
+                  round
+                  :color="isDocumentInCollection(tableProps.row.id) ? 'positive' : 'primary'"
+                  :icon="isDocumentInCollection(tableProps.row.id) ? 'check_circle' : 'add'"
+                  :aria-label="
+                    isDocumentInCollection(tableProps.row.id)
+                      ? 'Document already in collection'
+                      : 'Add document to current collection'
+                  "
+                  :disable="isDocumentInCollection(tableProps.row.id)"
+                  @click="addDocumentToCurrentCollection(tableProps.row.id)"
+                />
+              </div>
             </q-td>
           </template>
           <template #no-data>
@@ -164,31 +170,35 @@ import {
 } from 'quasar'
 import { Document } from 'src/models/documents'
 import DocumentsRepository from 'src/repositories/DocumentsRepository'
+import useDocuments from 'src/composables/useDocuments'
 import {
   errorNotification,
-  successNotification,
-  warningNotification
+  successNotification
 } from 'src/utils/notification'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { BrowseLibraryDialogProps } from './BrowseLibraryDialogTypes'
 
 defineEmits([...useDialogPluginComponent.emits])
 const props = defineProps<BrowseLibraryDialogProps>()
 
 const { dialogRef, onDialogHide, onDialogCancel } = useDialogPluginComponent()
+const { documents: collectionDocuments, loadDocuments } = useDocuments()
 
 const PAGE_SIZE = 50
 
 const filters = reactive({
-  title: '' as string | null,
-  author: '' as string | null,
-  publisher: '' as string | null,
-  documentType: '' as string | null
+  title: null as string | null,
+  author: null as string | null,
+  publisher: null as string | null,
+  documentType: null as string | null
 })
 
 const loading = ref(false)
 const isTableFullscreen = ref(false)
 const rows = ref<Document[]>([])
+const collectionDocumentIds = computed(() => {
+  return new Set(collectionDocuments.value.map((doc) => doc.id))
+})
 const pagination = ref<NonNullable<QTableProps['pagination']>>({
   page: 1,
   rowsPerPage: PAGE_SIZE,
@@ -305,33 +315,34 @@ const onRequest = async (props: {
 }
 
 const resetFilters = async () => {
-  filters.title = ''
-  filters.author = ''
-  filters.publisher = ''
-  filters.documentType = ''
+  filters.title = null
+  filters.author = null
+  filters.publisher = null
+  filters.documentType = null
   await applyFilters()
 }
 
-const addDocumentToCurrentCollection = async (documentId: string) => {
-  if (!props.collectionId) {
-    warningNotification('Collection is not selected')
-    return
-  }
+const isDocumentInCollection = (documentId: string): boolean => {
+  return collectionDocumentIds.value.has(documentId)
+}
 
+const addDocumentToCurrentCollection = async (documentId: string) => {
   try {
     const added = await DocumentsRepository.addToCollection(documentId, props.collectionId)
     if (added) {
       successNotification('Document was added to your collection')
+      // Reload the collection documents
+      await loadDocuments(props.collectionId)
       return
     }
     errorNotification('Failed to add document to collection')
   } catch (error) {
-    console.error('Add document to collection failed:', error)
     errorNotification('Failed to add document to collection')
   }
 }
 
 onMounted(async () => {
+  await loadDocuments(props.collectionId)
   await applyFilters()
 })
 </script>

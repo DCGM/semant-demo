@@ -7,18 +7,18 @@
       <q-separator vertical size="1.8px" inset />
       <q-tabs indicator-color="primary" active-class="active-tab text-primary" narrow-indicator inline-label style="flex:1" align="justify">
         <q-route-tab
+          name="documents_tagging"
+          label="Documents & tagging"
+          icon="library_books"
+          :to="{ name: 'collectionDocumentsTagging' }"
+        />
+        <q-route-tab
           name="overview"
           label="Overview"
           icon="dashboard"
           :to="{ name: 'collectionOverview' }"
         />
         <q-separator vertical size="1.8px" inset />
-        <q-route-tab
-          name="documents_tagging"
-          label="Documents & tagging"
-          icon="library_books"
-          :to="{ name: 'collectionDocumentsTagging' }"
-        />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
           name="tags"

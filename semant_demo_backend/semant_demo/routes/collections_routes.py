@@ -30,3 +30,19 @@ async def update_collection(collection_id: str, collectionReq: PatchCollectionRe
 async def delete_collection(collection_id: UUID, wv_client: WeaviateClient = Depends(get_weaviate_client)) -> Response:
     await wv_client.delete_collection(collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/api/v1/collections/{collection_id}/documents/{document_id}")
+async def add_document_to_collection(
+    collection_id: UUID,
+    document_id: UUID,
+    wv_client: WeaviateClient = Depends(get_weaviate_client),
+) -> dict:
+    success = await wv_client.add_document_to_collection(
+        document_id=document_id,
+        collection_id=collection_id,
+    )
+    return {
+        "success": success,
+        "message": "Document added to collection" if success else "Failed to add document to collection"
+    }

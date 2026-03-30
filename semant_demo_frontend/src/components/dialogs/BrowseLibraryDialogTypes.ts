@@ -1,3 +1,3 @@
 export interface BrowseLibraryDialogProps {
-  collectionId?: string
+  collectionId: string
 }

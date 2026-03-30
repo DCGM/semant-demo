@@ -32,7 +32,7 @@ const routes: RouteRecordRaw[] = [
         path: '/collections/:collectionId',
         component: () => import('layouts/CollectionDetailLayout.vue'),
         props: true,
-        redirect: { name: 'collectionOverview' },
+        redirect: { name: 'collectionDocumentsTagging' },
         children: [
           {
             name: 'collectionOverview',
