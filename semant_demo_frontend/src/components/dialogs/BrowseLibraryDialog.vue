@@ -133,7 +133,11 @@
                   "
                   :disable="isDocumentInCollection(tableProps.row.id)"
                   @click="addDocumentToCurrentCollection(tableProps.row.id)"
-                />
+                >
+                  <q-tooltip v-if="isDocumentInCollection(tableProps.row.id)">
+                    Already in collection
+                  </q-tooltip>
+                </q-btn>
               </div>
             </q-td>
           </template>

@@ -109,8 +109,8 @@ const handleDelete = (collection: Collection) => {
       color: 'negative'
     },
     cancel: true
-  }).onOk(() => {
-    deleteCollection(collection.id)
+  }).onOk(async () => {
+    await deleteCollection(collection.id)
   })
 }
 
