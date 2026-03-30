@@ -15,20 +15,6 @@
   >
     <template #top>
       <div class="text-h5 text-weight-medium">Project Documents</div>
-      <q-input
-        class="q-ml-md"
-        v-model="filter"
-        placeholder="Search"
-        dense
-        debounce="300"
-        outlined
-        clearable
-      >
-        <template #prepend>
-          <q-icon name="search" />
-        </template>
-      </q-input>
-
       <q-space />
 
       <q-select
@@ -61,13 +47,26 @@
           </q-item>
         </template>
       </q-select>
-      <div style="width: 100%" class="q-mt-sm">
+      <div style="width: 100%" class="row items-center q-my-sm">
         <RefreshButton @click="handleRefresh" />
         <AddDocumentDropdownBtn
           @browse-library="handleBrowseLibrary"
           @create-document="handleCreateDocument"
           @upload-document="handleUploadDocument"
         />
+        <q-input
+          class="q-ml-md"
+          v-model="filter"
+          placeholder="Search"
+          dense
+          debounce="300"
+          outlined
+          clearable
+        >
+          <template #prepend>
+            <q-icon name="search" />
+          </template>
+        </q-input>
       </div>
     </template>
     <template #body-cell-actions="props">
@@ -157,9 +156,11 @@ const handleRefresh = async () => {
 }
 
 const handleBrowseLibrary = () => {
-  openBrowseLibraryDialog({ collectionId: collectionId.value }).onDismiss(() => {
-    loadDocuments(collectionId.value)
-  })
+  openBrowseLibraryDialog({ collectionId: collectionId.value }).onDismiss(
+    () => {
+      loadDocuments(collectionId.value)
+    }
+  )
 }
 
 const handleCreateDocument = () => {
