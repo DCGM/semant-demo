@@ -70,7 +70,58 @@
         />
       </div>
     </template>
+    <template #body-cell-actions="props">
+      <q-td :props="props" class="q-pa-xs">
+        <div class="row items-center q-gutter-xs">
+          <q-btn
+            dense
+            flat
+            round
+            color="primary"
+            icon="border_color"
+            aria-label="Tag document"
+            @click="handleTagDocument(props.row.id)"
+          >
+            <q-tooltip>Tag document</q-tooltip>
+          </q-btn>
+          <q-btn
+            dense
+            flat
+            round
+            color="negative"
+            icon="cancel"
+            aria-label="Remove document from collection"
+            @click="handleRemoveFromCollection(props.row)"
+          >
+            <q-tooltip>Remove from collection</q-tooltip>
+          </q-btn>
+        </div>
+      </q-td>
+    </template>
   </q-table>
+
+  <transition name="fade-slide-up">
+    <q-page-sticky
+      v-if="selected.length > 0"
+      position="bottom"
+      :offset="[0, 30]"
+    >
+      <q-card class="bulk-actions-card q-px-md q-py-sm">
+        <div class="row items-center q-gutter-md">
+          <div class="text-body1 text-weight-medium">
+            Selected: {{ selected.length }}
+          </div>
+          <q-space />
+          <q-btn
+            color="negative"
+            icon="delete_sweep"
+            label="Remove Selected"
+            @click="handleBulkRemoveFromCollection"
+          />
+        </div>
+      </q-card>
+    </q-page-sticky>
+  </transition>
 </template>
 
 <script setup lang="ts">
@@ -80,15 +131,17 @@ import useBrowseLibraryDialog from 'src/composables/dialogs/useBrowseLibraryDial
 import { computed, onMounted, ref } from 'vue'
 import RefreshButton from '../custom/RefreshButton.vue'
 import AddDocumentDropdownBtn from '../custom/AddDocumentDropdownBtn.vue'
-import { QTableColumn } from 'quasar'
-import { useRoute } from 'vue-router'
+import { QTableColumn, useQuasar } from 'quasar'
+import { useRoute, useRouter } from 'vue-router'
 
-const { documents, loadDocuments } = useDocuments()
+const { documents, loadDocuments, removeDoc, removeManyDocs } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
 
-const route = useRoute()
+const $q = useQuasar()
+const $route = useRoute()
+const $router = useRouter()
 const collectionId = computed<string>(() => {
-  const value = route.params.collectionId
+  const value = $route.params.collectionId
   if (typeof value !== 'string') {
     throw new Error('Missing required route param: collectionId')
   }
@@ -117,7 +170,57 @@ const handleUploadDocument = () => {
   console.log('Upload document - not implemented yet')
 }
 
-const selected = ref<number[]>([])
+const handleTagDocument = (documentId: string) => {
+  $router.push({
+    name: 'documentTagging',
+    params: {
+      collectionId: collectionId.value,
+      documentId
+    }
+  })
+}
+
+const handleRemoveFromCollection = async (document: Document) => {
+  $q.dialog({
+    title: 'Remove Document',
+    html: true,
+    message: `Are you sure you want to remove document <strong>${document.title}</strong> from the collection?`,
+    cancel: true,
+    ok: {
+      label: 'Delete',
+      color: 'negative'
+    },
+    persistent: true
+  }).onOk(async () => {
+    await removeDoc(document.id, collectionId.value)
+  })
+}
+
+const handleBulkRemoveFromCollection = () => {
+  if (selected.value.length === 0) {
+    return
+  }
+
+  const selectedIds = selected.value.map((doc) => doc.id)
+  const count = selectedIds.length
+
+  $q.dialog({
+    title: 'Remove Selected Documents',
+    html: true,
+    message: `Are you sure you want to remove <strong>${count}</strong> selected document${count === 1 ? '' : 's'} from the collection?`,
+    cancel: true,
+    ok: {
+      label: 'Delete selected',
+      color: 'negative'
+    },
+    persistent: true
+  }).onOk(async () => {
+    await removeManyDocs(selectedIds, collectionId.value)
+    selected.value = []
+  })
+}
+
+const selected = ref<Document[]>([])
 const filter = ref<string>('')
 const initialPagination = {
   sortBy: 'documentTitle',
@@ -126,9 +229,9 @@ const initialPagination = {
   rowsPerPage: 12
 }
 const visibleColumns = ref<string[]>([
+  'actions',
   'documentTitle',
   'author',
-  'documentType',
   'yearIssued',
   'language',
   'publisher',
@@ -136,6 +239,13 @@ const visibleColumns = ref<string[]>([
 ])
 
 const columns: QTableColumn<Document>[] = [
+  {
+    name: 'actions',
+    label: 'Actions',
+    field: () => '',
+    align: 'center' as const,
+    required: true
+  },
   {
     name: 'documentTitle',
     label: 'Document Title',
@@ -198,3 +308,25 @@ const columns: QTableColumn<Document>[] = [
 
 const columnOptions = columns.filter((col) => !col.required)
 </script>
+
+<style scoped>
+.bulk-actions-card {
+  min-width: 360px;
+  width: min(92vw, 550px);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+  backdrop-filter: saturate(120%) blur(2px);
+}
+
+.fade-slide-up-enter-active,
+.fade-slide-up-leave-active {
+  transition: all 0.2s ease;
+}
+
+.fade-slide-up-enter-from,
+.fade-slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+</style>
