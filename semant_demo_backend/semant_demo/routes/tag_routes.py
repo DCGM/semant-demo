@@ -295,6 +295,10 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
 async def get_first_chunk(tagger: WeaviateSearchAndTag = Depends(get_search)):
     return await tagger.get_first_chunk()
 
+@exp_router.get("/api/get_few_chunks")
+async def get_few_chunks(tagger: WeaviateSearchAndTag = Depends(get_search)):
+    return await tagger.get_few_chunks()
+
 
 @exp_router.post("/api/tag_spans_embedded", response_model=schemas.TagSpanWriteResponse)
 async def upsert_tag_spans_embedded(body: schemas.TagSpanCreateEmbeddedRequest, tagger: WeaviateSearchAndTag = Depends(get_search)) -> schemas.TagSpanWriteResponse:

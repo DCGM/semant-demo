@@ -211,6 +211,28 @@ export function useTaggingPageState() {
     }
   }
 
+  const refreshSelectedChunkSpans = async (chunkIds: string[]) => {
+    const uniqueChunkIds = [...new Set(chunkIds)].filter(Boolean)
+    if (!uniqueChunkIds.length) return {}
+
+    const loadedMap = await fetchTagSpansMapForChunks(uniqueChunkIds)
+    tagSpansByChunkId.value = {
+      ...tagSpansByChunkId.value,
+      ...loadedMap
+    }
+
+    return loadedMap
+  }
+
+  const findSpanOwnerChunkId = (spanId: string): string | null => {
+    for (const [chunkId, spans] of Object.entries(tagSpansByChunkId.value)) {
+      if (spans.some((span) => span.id === spanId)) {
+        return chunkId
+      }
+    }
+    return null
+  }
+
   const loadChunks = async () => {
     await getFewChunks()
     tagSpansByChunkId.value = {}
@@ -230,6 +252,23 @@ export function useTaggingPageState() {
   }
 
   const handleUpdateTagSpan = async (payload: UpdatePayload) => {
+    const previousOwnerChunkId = findSpanOwnerChunkId(payload.spanId)
+
+    if (previousOwnerChunkId && previousOwnerChunkId !== payload.chunkId) {
+      await deleteTagSpan(payload.spanId)
+      await createTagSpan({
+        span: {
+          chunkId: payload.chunkId,
+          tagId: payload.tagId,
+          start: payload.start,
+          end: payload.end
+        }
+      })
+
+      await refreshSelectedChunkSpans([previousOwnerChunkId, payload.chunkId])
+      return
+    }
+
     await updateTagSpan({
       spanId: payload.spanId,
       tagSpan: {
@@ -238,7 +277,19 @@ export function useTaggingPageState() {
         end: payload.end
       }
     })
-    await refreshChunkSpans(payload.chunkId)
+
+    const refreshedMap = await refreshSelectedChunkSpans([
+      payload.chunkId,
+      previousOwnerChunkId || ''
+    ])
+
+    const spanStillVisibleInRefreshedChunks = Object.values(refreshedMap).some(
+      (spans) => spans.some((span) => span.id === payload.spanId)
+    )
+
+    if (!spanStillVisibleInRefreshedChunks) {
+      await preloadAllChunkSpans()
+    }
   }
 
   const handleDeleteTagSpan = async (payload: DeletePayload) => {
