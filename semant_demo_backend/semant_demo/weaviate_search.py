@@ -195,6 +195,18 @@ class WeaviateSearch:
             uuid=span_id,
             properties=update_fields
         )
+
+    async def delete_tag_span_separate(
+        self,
+        span_id: str
+    ):
+        """
+        Delete standalone TagSpan (separate mode)
+        """
+        if not self.tagspan_col:
+            raise RuntimeError("TagSpan collection is not available")
+
+        await self.tagspan_col.data.delete_by_id(uuid=span_id)
     # /TagSpans
 
     @classmethod
