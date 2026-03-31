@@ -14,7 +14,7 @@
     style="border-bottom: 1px solid rgba(0, 0, 0, 0.25)"
   >
     <template #top>
-      <div class="text-h5 text-weight-medium">Project Documents</div>
+      <div class="text-h5 text-weight-medium">Documents ({{ documents.length }} items)</div>
       <q-space />
 
       <q-select
