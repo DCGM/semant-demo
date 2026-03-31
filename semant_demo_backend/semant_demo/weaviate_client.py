@@ -5,7 +5,7 @@ from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.schemas import CollectionResponse, CollectionStatsResponse, PatchCollectionRequest, PostCollectionRequest, DocumentResponse, DocumentBrowseResponse
 from uuid import UUID
 
-from weaviate.classes.query import Filter, Sort, QueryReference
+from weaviate.classes.query import Filter, Sort
 import logging
 
 
@@ -60,89 +60,80 @@ class WeaviateClient(WeaviateSearch):
         """
         Computes aggregate statistics for one collection.
         """
+
         collection = await self.get_collection_by_id(collection_id)
         if collection is None:
             return None
 
+        # Compute documents count
         documents_collection = self.client.collections.get("Documents")
-        document_filters = Filter.by_ref("collection").by_id().equal(collection_id)
-        document_count_response = await documents_collection.aggregate.over_all(
-            filters=document_filters,
-            total_count=True,
+        documents_filters = (
+            Filter.by_ref("collection").by_id().equal(collection_id)
         )
-        documents_count = document_count_response.total_count or 0
+
+        documents_count_response = await documents_collection.aggregate.over_all(
+            total_count=True,
+            filters=documents_filters
+        )
+        documents_count = documents_count_response.total_count or 0
+
+        # Compute chunks count
+        chunks_filters = (
+            Filter.by_ref("userCollection").by_id().equal(collection_id)
+        )
 
         chunks_collection = self.client.collections.get("Chunks")
-        chunk_filters = Filter.by_ref("userCollection").by_id().equal(collection_id)
+        chunks_count_response = await chunks_collection.aggregate.over_all(
+            total_count=True,
+            filters=chunks_filters
+        )
+        chunks_count = chunks_count_response.total_count or 0
+        
+        # Compute tags count
+        tags_collection = self.client.collections.get("Tag")
+        tags_filters = (
+            Filter.by_ref("userCollection").by_id().equal(collection_id)
+        )
+        tags_count_response = await tags_collection.aggregate.over_all(
+            total_count=True,
+            filters=tags_filters
+        )
+        tags_count = tags_count_response.total_count or 0
 
-        chunks_count = 0
-        annotations_count = 0
-        tagged_chunks_count = 0
+        # Compute annotation stats from Span collection.
+        # One annotation = one span object.
+        # Span belongs to selected collection if linked chunk OR linked tag belongs to that collection.
 
-        limit = 500
-        offset = 0
-        while True:
-            chunk_response = await chunks_collection.query.fetch_objects(
-                filters=chunk_filters,
-                limit=limit,
-                offset=offset,
-                return_references=[
-                    QueryReference(link_on="automaticTag", return_properties=[]),
-                    QueryReference(link_on="positiveTag", return_properties=[]),
-                    QueryReference(link_on="negativeTag", return_properties=[]),
-                ]
-            )
+        spans_collection = self.client.collections.get("Span_test")
 
-            chunk_objects = chunk_response.objects
-            if not chunk_objects:
-                break
+        spans_filters = (
+            Filter.by_ref("text_chunk").by_ref("userCollection").by_id().equal(collection_id)
+            |
+            Filter.by_ref("tag").by_ref("userCollection").by_id().equal(collection_id)
+        )
 
-            chunks_count += len(chunk_objects)
-
-            for chunk in chunk_objects:
-                refs = chunk.references
-                chunk_annotations = 0
-
-                if refs:
-                    for ref_name in ["automaticTag", "positiveTag", "negativeTag"]:
-                        ref_values = refs.get(ref_name)
-                        if ref_values and getattr(ref_values, "objects", None):
-                            chunk_annotations += len(ref_values.objects)
-
-                annotations_count += chunk_annotations
-                if chunk_annotations > 0:
-                    tagged_chunks_count += 1
-
-            offset += limit
-
-        untagged_chunks_count = chunks_count - tagged_chunks_count
-
-        tags_count = 0
-        if collection.name:
-            tags_collection = self.client.collections.get("Tag")
-            tag_count_response = await tags_collection.aggregate.over_all(
-                filters=Filter.by_property("collection_name").equal(collection.name),
-                total_count=True,
-            )
-            tags_count = tag_count_response.total_count or 0
+        annotations_count_response = await spans_collection.aggregate.over_all(
+            total_count=True,
+            filters=spans_filters,
+        )
+        annotations_count = annotations_count_response.total_count or 0
 
         return CollectionStatsResponse(
             collectionId=collection_id,
             documentsCount=documents_count,
             chunksCount=chunks_count,
-            annotationsCount=annotations_count,
-            taggedChunksCount=tagged_chunks_count,
-            untaggedChunksCount=untagged_chunks_count,
             tagsCount=tags_count,
+            annotationsCount=annotations_count,
         )
-    
+
     async def create_collection(self, collection: PostCollectionRequest) -> UUID:
         """
         Creates new collection and returns its id
         """
-        usercollection_collection = self.client.collections.get("UserCollection")
+        usercollection_collection = self.client.collections.get(
+            "UserCollection")
         now = datetime.now(timezone.utc)
-        
+
         uuid = await usercollection_collection.data.insert(
             properties={
                 "name": collection.name,
