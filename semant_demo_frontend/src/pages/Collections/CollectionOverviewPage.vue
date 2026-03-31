@@ -311,6 +311,14 @@ const statCards = computed(() => {
       helper: 'Defined tags for this collection',
       icon: 'label',
       color: 'teal'
+    },
+    {
+      key: 'annotations',
+      label: 'Annotations in Collection',
+      value: stats?.annotationsCount ?? 0,
+      helper: 'Number of spans in this collection',
+      icon: 'sell',
+      color: 'accent'
     }
   ]
 })
