@@ -27,34 +27,6 @@ class WeaviateSearch:
             self.tagspan_col = None
 
     # TagSpans
-    async def get_first_chunk(self):
-        """
-        Get first chunk from Chunks_test collection. Used for testing.
-        """
-        obj = await self.chunk_col.query.fetch_object_by_id(
-            uuid='0000005a-85f2-42a5-8f26-d1d9102e24ea',
-            return_properties=[
-                "text"
-            ]
-        )
-        print("First chunk retrieved:", obj)
-
-        return obj
-
-    async def get_few_chunks(self, limit: int = 5):
-        """
-        Get a few chunks from Chunks_test collection. Used for testing.
-        """
-        objs = await self.chunk_col.query.fetch_objects(
-            limit=limit,
-            return_properties=[
-                "text"
-            ]
-        )
-        print("Few chunks retrieved:", objs)
-
-        return objs
-
     async def set_chunk_spans_embedded(self, chunk_id: str, spans: list[schemas.TagSpan]):
         """
         Add new TagSpan to Chunks_test's 'tagSpansArr'.
