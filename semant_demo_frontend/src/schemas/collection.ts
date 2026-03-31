@@ -28,4 +28,14 @@ const PatchCollectionSchema = z.object({
   color: z.string().optional()
 })
 
-export { CollectionSchema, CollectionsSchema, PostCollectionSchema, PatchCollectionSchema }
+const CollectionStatsSchema = z.object({
+  collectionId: z.uuid(),
+  documentsCount: z.number().int().nonnegative(),
+  chunksCount: z.number().int().nonnegative(),
+  annotationsCount: z.number().int().nonnegative(),
+  taggedChunksCount: z.number().int().nonnegative(),
+  untaggedChunksCount: z.number().int().nonnegative(),
+  tagsCount: z.number().int().nonnegative()
+})
+
+export { CollectionSchema, CollectionsSchema, PostCollectionSchema, PatchCollectionSchema, CollectionStatsSchema }
