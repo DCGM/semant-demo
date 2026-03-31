@@ -25,7 +25,7 @@
             label="Collection Description"
             type="textarea"
             counter
-            maxlength="300"
+            maxlength="1000"
           />
         </q-form>
         <div class="q-mt-md flex items-center">
