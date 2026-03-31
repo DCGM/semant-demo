@@ -29,7 +29,7 @@ async def get_collection_stats(collection_id: UUID, wv_client: WeaviateClient = 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     return response
 
-@router.post("/api/v1/collections")
+@router.post("/api/v1/collections", status_code=status.HTTP_201_CREATED)
 async def create_collection(collectionReq: PostCollectionRequest, wv_client: WeaviateClient = Depends(get_weaviate_client)) -> CollectionResponse:
     collection_id = await wv_client.create_collection(collectionReq)
     response = await wv_client.get_collection_by_id(collection_id)
