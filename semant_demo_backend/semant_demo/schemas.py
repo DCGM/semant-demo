@@ -532,8 +532,6 @@ class CollectionStatsResponse(BaseModel):
     documentsCount: int
     chunksCount: int
     annotationsCount: int
-    taggedChunksCount: int
-    untaggedChunksCount: int
     tagsCount: int
 
 

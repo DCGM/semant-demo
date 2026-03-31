@@ -33,8 +33,6 @@ const CollectionStatsSchema = z.object({
   documentsCount: z.number().int().nonnegative(),
   chunksCount: z.number().int().nonnegative(),
   annotationsCount: z.number().int().nonnegative(),
-  taggedChunksCount: z.number().int().nonnegative(),
-  untaggedChunksCount: z.number().int().nonnegative(),
   tagsCount: z.number().int().nonnegative()
 })
 

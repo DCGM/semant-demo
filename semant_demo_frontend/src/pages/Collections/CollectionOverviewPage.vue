@@ -305,30 +305,6 @@ const statCards = computed(() => {
       color: 'secondary'
     },
     {
-      key: 'annotations',
-      label: 'Annotations in Collection',
-      value: stats?.annotationsCount ?? 0,
-      helper: 'Sum of chunk-tag annotation links',
-      icon: 'sell',
-      color: 'accent'
-    },
-    {
-      key: 'taggedChunks',
-      label: 'Tagged Chunks',
-      value: stats?.taggedChunksCount ?? 0,
-      helper: 'Chunks with at least one annotation',
-      icon: 'task_alt',
-      color: 'positive'
-    },
-    {
-      key: 'untaggedChunks',
-      label: 'Untagged Chunks',
-      value: stats?.untaggedChunksCount ?? 0,
-      helper: 'Chunks without annotations',
-      icon: 'do_not_disturb_on',
-      color: 'warning'
-    },
-    {
       key: 'tags',
       label: 'Tags in Collection',
       value: stats?.tagsCount ?? 0,
