@@ -44,6 +44,7 @@ docs/SearchResponseInput.md
 docs/SearchResponseOutput.md
 docs/SearchType.md
 docs/SpanStoreMode.md
+docs/SpanType.md
 docs/SummaryResponse.md
 docs/TagData.md
 docs/TagReqTemplate.md
@@ -109,6 +110,7 @@ models/SearchResponseInput.ts
 models/SearchResponseOutput.ts
 models/SearchType.ts
 models/SpanStoreMode.ts
+models/SpanType.ts
 models/SummaryResponse.ts
 models/TagData.ts
 models/TagReqTemplate.ts

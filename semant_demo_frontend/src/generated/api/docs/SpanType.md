@@ -1,28 +1,20 @@
 
-# TagSpanUpdate
+# SpanType
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`tagId` | string
-`start` | number
-`end` | number
-`type` | [SpanType](SpanType.md)
 
 ## Example
 
 ```typescript
-import type { TagSpanUpdate } from ''
+import type { SpanType } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "tagId": null,
-  "start": null,
-  "end": null,
-  "type": null,
-} satisfies TagSpanUpdate
+} satisfies SpanType
 
 console.log(example)
 
@@ -31,7 +23,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as TagSpanUpdate
+const exampleParsed = JSON.parse(exampleJSON) as SpanType
 console.log(exampleParsed)
 ```
 

@@ -43,6 +43,7 @@ export * from './SearchResponseInput';
 export * from './SearchResponseOutput';
 export * from './SearchType';
 export * from './SpanStoreMode';
+export * from './SpanType';
 export * from './SummaryResponse';
 export * from './TagData';
 export * from './TagReqTemplate';

@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { SpanType } from './SpanType';
+import {
+    SpanTypeFromJSON,
+    SpanTypeFromJSONTyped,
+    SpanTypeToJSON,
+    SpanTypeToJSONTyped,
+} from './SpanType';
+
 /**
  * 
  * @export
@@ -49,7 +57,15 @@ export interface TagSpan {
      * @memberof TagSpan
      */
     end: number;
+    /**
+     * 
+     * @type {SpanType}
+     * @memberof TagSpan
+     */
+    type: SpanType;
 }
+
+
 
 /**
  * Check if a given object implements the TagSpan interface.
@@ -59,6 +75,7 @@ export function instanceOfTagSpan(value: object): value is TagSpan {
     if (!('tagId' in value) || value['tagId'] === undefined) return false;
     if (!('start' in value) || value['start'] === undefined) return false;
     if (!('end' in value) || value['end'] === undefined) return false;
+    if (!('type' in value) || value['type'] === undefined) return false;
     return true;
 }
 
@@ -77,6 +94,7 @@ export function TagSpanFromJSONTyped(json: any, ignoreDiscriminator: boolean): T
         'tagId': json['tagId'],
         'start': json['start'],
         'end': json['end'],
+        'type': SpanTypeFromJSON(json['type']),
     };
 }
 
@@ -96,6 +114,7 @@ export function TagSpanToJSONTyped(value?: TagSpan | null, ignoreDiscriminator: 
         'tagId': value['tagId'],
         'start': value['start'],
         'end': value['end'],
+        'type': SpanTypeToJSON(value['type']),
     };
 }
 

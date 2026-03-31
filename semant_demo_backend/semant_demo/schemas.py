@@ -425,7 +425,10 @@ class SpanStoreMode(str, Enum):
     embedded = "embedded"
     separate = "separate"
     both = "both"
-
+class SpanType(str, Enum):
+    pos = "pos"
+    neg = "neg"
+    auto = "auto"
 
 class TagSpan(BaseModel):
     id: str | None = None
@@ -433,13 +436,13 @@ class TagSpan(BaseModel):
     tagId: str
     start: int
     end: int
-
+    type: SpanType | None = None
 
 class TagSpanUpdate(BaseModel):
     tagId: str | None = None
     start: int | None = None
     end: int | None = None
-
+    type: SpanType | None = None
 
 class TagSpanCreateSeparateRequest(BaseModel):
     span: TagSpan
@@ -450,15 +453,12 @@ class TagSpanCreateEmbeddedRequest(BaseModel):
     tag_id: str
     spans: list[TagSpan]
 
-
 class TagSpanWriteResponse(BaseModel):
     stored_in: list[SpanStoreMode]
-
 
 class TagSpanUpdateSeparateRequest(BaseModel):
     span_id: str
     tagSpan: TagSpanUpdate
-
 
 class TagSpanUpdateEmbeddedRequest(BaseModel):
     chunk_id: str | None = None

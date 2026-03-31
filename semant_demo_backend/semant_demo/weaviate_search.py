@@ -22,7 +22,7 @@ class WeaviateSearch:
         self.chunk_col = self.client.collections.get("Chunks_test")
 
         try:
-            self.tagspan_col = self.client.collections.get("TagSpan2_test")
+            self.tagspan_col = self.client.collections.get("Span_test")
         except Exception:
             self.tagspan_col = None
 
@@ -46,43 +46,58 @@ class WeaviateSearch:
 
     async def set_chunk_spans_separate(self, chunk_id: str, span: schemas.TagSpan):
         """
-        Add new TagSpan to TagSpan2_test table with Chunk ID (not as reference)
+        Add new TagSpan to Span_test table with Chunk ID (not as reference)
         """
         if not self.tagspan_col:
-            raise RuntimeError("TagSpan2_test collection not available")
+            raise RuntimeError("Span_test collection not available")
 
         await self.tagspan_col.data.insert(
             properties={
-                "tagId": span.tagId,
                 "start": span.start,
                 "end": span.end,
-                "chunkId": chunk_id,
+                "type": span.type.value if span.type is not None else None,
+            },
+            references={
+                "tag": span.tagId,
+                "text_chunk": chunk_id
             }
         )
 
     async def get_chunk_spans_separate(self, chunk_id: str) -> list[schemas.TagSpan]:
         """
-        Get TagSpans from TagSpans2_test table by chunk id.
+        Get TagSpans from Span_test table by chunk id.
         """
         if not self.tagspan_col:
-            raise RuntimeError("TagSpan2_test collection not available")
+            raise RuntimeError("Span_test collection not available")
+
+        filters = Filter.by_ref("text_chunk").by_id().equal(chunk_id)
 
         response = await self.tagspan_col.query.fetch_objects(
-            filters=Filter.by_property("chunkId").equal(chunk_id),
-            return_properties=["tagId", "chunkId", "start", "end"]
+            filters=filters,
+            return_properties=["start", "end", "type"],
+            return_references=[
+                QueryReference(link_on="tag")
+            ]
         )
 
-        # add TagSpan ID
-        return [
-            schemas.TagSpan(
-                id=str(obj.uuid),
-                tagId=obj.properties.get("tagId"),
-                chunkId=obj.properties.get("chunkId"),
-                start=obj.properties.get("start"),
-                end=obj.properties.get("end")
+        spans = []
+        for obj in response.objects:
+            tag_ref = obj.references.get("tag")
+            tag_id = str(
+                tag_ref.objects[0].uuid) if tag_ref and tag_ref.objects else ""
+
+            spans.append(
+                schemas.TagSpan(
+                    id=str(obj.uuid),
+                    chunkId=chunk_id,
+                    tagId=tag_id,
+                    start=obj.properties.get("start"),
+                    end=obj.properties.get("end"),
+                    type=obj.properties.get("type")
+                )
             )
-            for obj in response.objects
-        ]
+
+        return spans
 
     async def get_chunk_spans_embedded(self, chunk_id: str) -> list[schemas.TagSpan]:
         """
@@ -168,19 +183,34 @@ class WeaviateSearch:
         """
         Update standalone TagSpan (separate mode)
         """
-
         if not self.tagspan_col:
-            raise RuntimeError("TagSpan collection is not available")
+            raise RuntimeError("Span_test collection is not available")
 
-        update_fields = update_fields.model_dump(exclude_none=True)
+        dumped_fields = update_fields.model_dump(exclude_none=True)
 
-        if not update_fields:
+        if not dumped_fields:
             raise ValueError("No fields provided for update")
 
-        await self.tagspan_col.data.update(
-            uuid=span_id,
-            properties=update_fields
-        )
+        props_to_update = {}
+        if "start" in dumped_fields:
+            props_to_update["start"] = dumped_fields["start"]
+        if "end" in dumped_fields:
+            props_to_update["end"] = dumped_fields["end"]
+        if "type" in dumped_fields:
+            props_to_update["type"] = update_fields.type.value if update_fields.type is not None else None
+
+        if props_to_update:
+            await self.tagspan_col.data.update(
+                uuid=span_id,
+                properties=props_to_update
+            )
+
+        if "tagId" in dumped_fields:
+            await self.tagspan_col.data.reference_replace(
+                from_uuid=span_id,
+                from_property="tag",
+                to=dumped_fields["tagId"],
+            )
 
     async def delete_tag_span_separate(
         self,

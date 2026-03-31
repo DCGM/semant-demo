@@ -842,48 +842,6 @@ export interface DefaultApiInterface {
     getDocumentsApiV1DocumentsGet(requestParameters: GetDocumentsApiV1DocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<DocumentResponse>>;
 
     /**
-     * Creates request options for getFewChunksApiGetFewChunksGet without sending the request
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getFewChunksApiGetFewChunksGetRequestOpts(): Promise<runtime.RequestOpts>;
-
-    /**
-     * 
-     * @summary Get Few Chunks
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getFewChunksApiGetFewChunksGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
-
-    /**
-     * Get Few Chunks
-     */
-    getFewChunksApiGetFewChunksGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
-
-    /**
-     * Creates request options for getFirstChunkApiGetFirstChunkGet without sending the request
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getFirstChunkApiGetFirstChunkGetRequestOpts(): Promise<runtime.RequestOpts>;
-
-    /**
-     * 
-     * @summary Get First Chunk
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getFirstChunkApiGetFirstChunkGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
-
-    /**
-     * Get First Chunk
-     */
-    getFirstChunkApiGetFirstChunkGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
-
-    /**
      * Creates request options for getSelectedTagsChunksApiTaggedTextsPost without sending the request
      * @param {GetTaggedChunksReq} getTaggedChunksReq 
      * @throws {RequiredError}
@@ -2398,88 +2356,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getDocumentsApiV1DocumentsGet(requestParameters: GetDocumentsApiV1DocumentsGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<DocumentResponse>> {
         const response = await this.getDocumentsApiV1DocumentsGetRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getFewChunksApiGetFewChunksGet without sending the request
-     */
-    async getFewChunksApiGetFewChunksGetRequestOpts(): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/api/get_few_chunks`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Get Few Chunks
-     */
-    async getFewChunksApiGetFewChunksGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
-        const requestOptions = await this.getFewChunksApiGetFewChunksGetRequestOpts();
-        const response = await this.request(requestOptions, initOverrides);
-
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<any>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
-    }
-
-    /**
-     * Get Few Chunks
-     */
-    async getFewChunksApiGetFewChunksGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
-        const response = await this.getFewChunksApiGetFewChunksGetRaw(initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getFirstChunkApiGetFirstChunkGet without sending the request
-     */
-    async getFirstChunkApiGetFirstChunkGetRequestOpts(): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/api/get_first_chunk`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Get First Chunk
-     */
-    async getFirstChunkApiGetFirstChunkGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
-        const requestOptions = await this.getFirstChunkApiGetFirstChunkGetRequestOpts();
-        const response = await this.request(requestOptions, initOverrides);
-
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<any>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
-    }
-
-    /**
-     * Get First Chunk
-     */
-    async getFirstChunkApiGetFirstChunkGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
-        const response = await this.getFirstChunkApiGetFirstChunkGetRaw(initOverrides);
         return await response.value();
     }
 
