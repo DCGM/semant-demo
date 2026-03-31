@@ -85,10 +85,10 @@ export function CollectionResponseFromJSONTyped(json: any, ignoreDiscriminator: 
         
         'id': json['id'],
         'name': json['name'],
-        'userId': json['user_id'],
+        'userId': json['userId'],
         'description': json['description'] == null ? undefined : json['description'],
-        'createdAt': json['created_at'] == null ? undefined : (new Date(json['created_at'])),
-        'updatedAt': json['updated_at'] == null ? undefined : (new Date(json['updated_at'])),
+        'createdAt': json['createdAt'] == null ? undefined : (new Date(json['createdAt'])),
+        'updatedAt': json['updatedAt'] == null ? undefined : (new Date(json['updatedAt'])),
         'color': json['color'] == null ? undefined : json['color'],
     };
 }
@@ -106,10 +106,10 @@ export function CollectionResponseToJSONTyped(value?: CollectionResponse | null,
         
         'id': value['id'],
         'name': value['name'],
-        'user_id': value['userId'],
+        'userId': value['userId'],
         'description': value['description'],
-        'created_at': value['createdAt'] == null ? value['createdAt'] : value['createdAt'].toISOString(),
-        'updated_at': value['updatedAt'] == null ? value['updatedAt'] : value['updatedAt'].toISOString(),
+        'createdAt': value['createdAt'] == null ? value['createdAt'] : value['createdAt'].toISOString(),
+        'updatedAt': value['updatedAt'] == null ? value['updatedAt'] : value['updatedAt'].toISOString(),
         'color': value['color'],
     };
 }

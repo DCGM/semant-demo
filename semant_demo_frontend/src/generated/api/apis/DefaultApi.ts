@@ -20,7 +20,10 @@ import type {
   CancelTaskResponse,
   Chunk2CollectionReq,
   CollectionResponse,
+  CollectionStatsResponse,
   CreateResponse,
+  DocumentBrowseResponse,
+  DocumentResponse,
   ExplainRequest,
   FeedbackRequest,
   FilterChunksByTagsRequest,
@@ -65,8 +68,14 @@ import {
     Chunk2CollectionReqToJSON,
     CollectionResponseFromJSON,
     CollectionResponseToJSON,
+    CollectionStatsResponseFromJSON,
+    CollectionStatsResponseToJSON,
     CreateResponseFromJSON,
     CreateResponseToJSON,
+    DocumentBrowseResponseFromJSON,
+    DocumentBrowseResponseToJSON,
+    DocumentResponseFromJSON,
+    DocumentResponseToJSON,
     ExplainRequestFromJSON,
     ExplainRequestToJSON,
     FeedbackRequestFromJSON,
@@ -146,6 +155,18 @@ export interface ApproveSelectedTagChunkApiTagApprovalPutRequest {
     approveTagReq: ApproveTagReq;
 }
 
+export interface BrowseDocumentsApiV1DocumentsBrowseGetRequest {
+    limit?: number;
+    offset?: number;
+    sortBy?: string | null;
+    sortDesc?: boolean;
+    collectionId?: string | null;
+    title?: string | null;
+    author?: string | null;
+    publisher?: string | null;
+    documentType?: string | null;
+}
+
 export interface CancelTaskApiTaggingTaskTaskIdDeleteRequest {
     taskId: string;
 }
@@ -166,6 +187,10 @@ export interface CreateUserCollectionApiUserCollectionPostRequest {
     userCollectionReqTemplate: UserCollectionReqTemplate;
 }
 
+export interface DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest {
+    collectionId: string;
+}
+
 export interface DeleteTagSpanSeparateApiTagSpansSeparateSpanIdDeleteRequest {
     spanId: string;
 }
@@ -182,12 +207,28 @@ export interface FilterChunksByTagsApiFilterTagsPostRequest {
     filterChunksByTagsRequest: FilterChunksByTagsRequest;
 }
 
+export interface GetCollectionByIdApiV1CollectionsCollectionIdGetRequest {
+    collectionId: string;
+}
+
 export interface GetCollectionChunksApiChunksOfCollectionGetRequest {
+    collectionId: string;
+}
+
+export interface GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest {
     collectionId: string;
 }
 
 export interface GetCollectionsApiV1CollectionsGetRequest {
     userId: string;
+}
+
+export interface GetDocumentApiV1DocumentsDocumentIdGetRequest {
+    documentId: string;
+}
+
+export interface GetDocumentsApiV1DocumentsGetRequest {
+    collectionId?: string | null;
 }
 
 export interface GetSelectedTagsChunksApiTaggedTextsPostRequest {
@@ -213,6 +254,11 @@ export interface ReadTagSpansEmbeddedApiTagSpansEmbeddedChunkIdGetRequest {
 
 export interface RemoveAutomaticTagsApiAutomaticTagsDeleteRequest {
     removeTagReq: RemoveTagReq;
+}
+
+export interface RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest {
+    collectionId: string;
+    documentId: string;
 }
 
 export interface RemoveTagsApiWholeTagsDeleteRequest {
@@ -298,7 +344,7 @@ export interface DefaultApiInterface {
     addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequestOpts(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Endpoint to link an existing Document to a User Collection.
+     * 
      * @summary Add Document To Collection
      * @param {string} collectionId 
      * @param {string} documentId 
@@ -306,13 +352,12 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+    addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>>;
 
     /**
-     * Endpoint to link an existing Document to a User Collection.
      * Add Document To Collection
      */
-    addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+    addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }>;
 
     /**
      * Creates request options for approveSelectedTagChunkApiTagApprovalPut without sending the request
@@ -337,6 +382,45 @@ export interface DefaultApiInterface {
      * Approve Selected Tag Chunk
      */
     approveSelectedTagChunkApiTagApprovalPut(requestParameters: ApproveSelectedTagChunkApiTagApprovalPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse>;
+
+    /**
+     * Creates request options for browseDocumentsApiV1DocumentsBrowseGet without sending the request
+     * @param {number} [limit] 
+     * @param {number} [offset] 
+     * @param {string} [sortBy] 
+     * @param {boolean} [sortDesc] 
+     * @param {string} [collectionId] 
+     * @param {string} [title] 
+     * @param {string} [author] 
+     * @param {string} [publisher] 
+     * @param {string} [documentType] 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    browseDocumentsApiV1DocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Browse Documents
+     * @param {number} [limit] 
+     * @param {number} [offset] 
+     * @param {string} [sortBy] 
+     * @param {boolean} [sortDesc] 
+     * @param {string} [collectionId] 
+     * @param {string} [title] 
+     * @param {string} [author] 
+     * @param {string} [publisher] 
+     * @param {string} [documentType] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    browseDocumentsApiV1DocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowseResponse>>;
+
+    /**
+     * Browse Documents
+     */
+    browseDocumentsApiV1DocumentsBrowseGet(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowseResponse>;
 
     /**
      * Creates request options for cancelTaskApiTaggingTaskTaskIdDelete without sending the request
@@ -458,6 +542,29 @@ export interface DefaultApiInterface {
     createUserCollectionApiUserCollectionPost(requestParameters: CreateUserCollectionApiUserCollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
 
     /**
+     * Creates request options for deleteCollectionApiV1CollectionsCollectionIdDelete without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteCollectionApiV1CollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Delete Collection
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteCollectionApiV1CollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Delete Collection
+     */
+    deleteCollectionApiV1CollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
      * Creates request options for deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete without sending the request
      * @param {string} spanId 
      * @throws {RequiredError}
@@ -574,6 +681,29 @@ export interface DefaultApiInterface {
     getAvalaibleRagConfigurationsApiRagConfigurationsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RagRouteConfig>>;
 
     /**
+     * Creates request options for getCollectionByIdApiV1CollectionsCollectionIdGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionByIdApiV1CollectionsCollectionIdGetRequestOpts(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Get Collection By Id
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionByIdApiV1CollectionsCollectionIdGetRaw(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionResponse>>;
+
+    /**
+     * Get Collection By Id
+     */
+    getCollectionByIdApiV1CollectionsCollectionIdGet(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionResponse>;
+
+    /**
      * Creates request options for getCollectionChunksApiChunksOfCollectionGet without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
@@ -596,6 +726,29 @@ export interface DefaultApiInterface {
      * Get Collection Chunks
      */
     getCollectionChunksApiChunksOfCollectionGet(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse>;
+
+    /**
+     * Creates request options for getCollectionStatsApiV1CollectionsCollectionIdStatsGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionStatsApiV1CollectionsCollectionIdStatsGetRequestOpts(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Get Collection Stats
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionStatsApiV1CollectionsCollectionIdStatsGetRaw(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionStatsResponse>>;
+
+    /**
+     * Get Collection Stats
+     */
+    getCollectionStatsApiV1CollectionsCollectionIdStatsGet(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionStatsResponse>;
 
     /**
      * Creates request options for getCollectionsApiV1CollectionsGet without sending the request
@@ -641,6 +794,52 @@ export interface DefaultApiInterface {
      * Get Configs
      */
     getConfigsApiConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse>;
+
+    /**
+     * Creates request options for getDocumentApiV1DocumentsDocumentIdGet without sending the request
+     * @param {string} documentId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getDocumentApiV1DocumentsDocumentIdGetRequestOpts(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Get Document
+     * @param {string} documentId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getDocumentApiV1DocumentsDocumentIdGetRaw(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentResponse>>;
+
+    /**
+     * Get Document
+     */
+    getDocumentApiV1DocumentsDocumentIdGet(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentResponse>;
+
+    /**
+     * Creates request options for getDocumentsApiV1DocumentsGet without sending the request
+     * @param {string} [collectionId] 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getDocumentsApiV1DocumentsGetRequestOpts(requestParameters: GetDocumentsApiV1DocumentsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Get Documents
+     * @param {string} [collectionId] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getDocumentsApiV1DocumentsGetRaw(requestParameters: GetDocumentsApiV1DocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<DocumentResponse>>>;
+
+    /**
+     * Get Documents
+     */
+    getDocumentsApiV1DocumentsGet(requestParameters: GetDocumentsApiV1DocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<DocumentResponse>>;
 
     /**
      * Creates request options for getFewChunksApiGetFewChunksGet without sending the request
@@ -871,6 +1070,31 @@ export interface DefaultApiInterface {
      * Remove Automatic Tags
      */
     removeAutomaticTagsApiAutomaticTagsDelete(requestParameters: RemoveAutomaticTagsApiAutomaticTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse>;
+
+    /**
+     * Creates request options for removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete without sending the request
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequestOpts(requestParameters: RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Remove Document From Collection
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters: RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>>;
+
+    /**
+     * Remove Document From Collection
+     */
+    removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }>;
 
     /**
      * Creates request options for removeTagsApiWholeTagsDelete without sending the request
@@ -1204,25 +1428,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Endpoint to link an existing Document to a User Collection.
      * Add Document To Collection
      */
-    async addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+    async addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
         const requestOptions = await this.addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<any>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
+        return new runtime.JSONApiResponse<any>(response);
     }
 
     /**
-     * Endpoint to link an existing Document to a User Collection.
      * Add Document To Collection
      */
-    async addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+    async addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -1273,6 +1491,79 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async approveSelectedTagChunkApiTagApprovalPut(requestParameters: ApproveSelectedTagChunkApiTagApprovalPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse> {
         const response = await this.approveSelectedTagChunkApiTagApprovalPutRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for browseDocumentsApiV1DocumentsBrowseGet without sending the request
+     */
+    async browseDocumentsApiV1DocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        if (requestParameters['offset'] != null) {
+            queryParameters['offset'] = requestParameters['offset'];
+        }
+
+        if (requestParameters['sortBy'] != null) {
+            queryParameters['sort_by'] = requestParameters['sortBy'];
+        }
+
+        if (requestParameters['sortDesc'] != null) {
+            queryParameters['sort_desc'] = requestParameters['sortDesc'];
+        }
+
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
+        if (requestParameters['title'] != null) {
+            queryParameters['title'] = requestParameters['title'];
+        }
+
+        if (requestParameters['author'] != null) {
+            queryParameters['author'] = requestParameters['author'];
+        }
+
+        if (requestParameters['publisher'] != null) {
+            queryParameters['publisher'] = requestParameters['publisher'];
+        }
+
+        if (requestParameters['documentType'] != null) {
+            queryParameters['document_type'] = requestParameters['documentType'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/v1/documents/browse`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Browse Documents
+     */
+    async browseDocumentsApiV1DocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowseResponse>> {
+        const requestOptions = await this.browseDocumentsApiV1DocumentsBrowseGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentBrowseResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Browse Documents
+     */
+    async browseDocumentsApiV1DocumentsBrowseGet(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowseResponse> {
+        const response = await this.browseDocumentsApiV1DocumentsBrowseGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1520,6 +1811,50 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for deleteCollectionApiV1CollectionsCollectionIdDelete without sending the request
+     */
+    async deleteCollectionApiV1CollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling deleteCollectionApiV1CollectionsCollectionIdDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/v1/collections/{collection_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Delete Collection
+     */
+    async deleteCollectionApiV1CollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.deleteCollectionApiV1CollectionsCollectionIdDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Delete Collection
+     */
+    async deleteCollectionApiV1CollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.deleteCollectionApiV1CollectionsCollectionIdDeleteRaw(requestParameters, initOverrides);
+    }
+
+    /**
      * Creates request options for deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete without sending the request
      */
     async deleteTagSpanSeparateApiTagSpansSeparateSpanIdDeleteRequestOpts(requestParameters: DeleteTagSpanSeparateApiTagSpansSeparateSpanIdDeleteRequest): Promise<runtime.RequestOpts> {
@@ -1754,6 +2089,51 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for getCollectionByIdApiV1CollectionsCollectionIdGet without sending the request
+     */
+    async getCollectionByIdApiV1CollectionsCollectionIdGetRequestOpts(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getCollectionByIdApiV1CollectionsCollectionIdGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/v1/collections/{collection_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get Collection By Id
+     */
+    async getCollectionByIdApiV1CollectionsCollectionIdGetRaw(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionResponse>> {
+        const requestOptions = await this.getCollectionByIdApiV1CollectionsCollectionIdGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Get Collection By Id
+     */
+    async getCollectionByIdApiV1CollectionsCollectionIdGet(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionResponse> {
+        const response = await this.getCollectionByIdApiV1CollectionsCollectionIdGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getCollectionChunksApiChunksOfCollectionGet without sending the request
      */
     async getCollectionChunksApiChunksOfCollectionGetRequestOpts(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest): Promise<runtime.RequestOpts> {
@@ -1800,6 +2180,51 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getCollectionChunksApiChunksOfCollectionGet(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse> {
         const response = await this.getCollectionChunksApiChunksOfCollectionGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getCollectionStatsApiV1CollectionsCollectionIdStatsGet without sending the request
+     */
+    async getCollectionStatsApiV1CollectionsCollectionIdStatsGetRequestOpts(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getCollectionStatsApiV1CollectionsCollectionIdStatsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/v1/collections/{collection_id}/stats`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get Collection Stats
+     */
+    async getCollectionStatsApiV1CollectionsCollectionIdStatsGetRaw(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionStatsResponse>> {
+        const requestOptions = await this.getCollectionStatsApiV1CollectionsCollectionIdStatsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionStatsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Get Collection Stats
+     */
+    async getCollectionStatsApiV1CollectionsCollectionIdStatsGet(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionStatsResponse> {
+        const response = await this.getCollectionStatsApiV1CollectionsCollectionIdStatsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1887,6 +2312,92 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getConfigsApiConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse> {
         const response = await this.getConfigsApiConfigsGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getDocumentApiV1DocumentsDocumentIdGet without sending the request
+     */
+    async getDocumentApiV1DocumentsDocumentIdGetRequestOpts(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling getDocumentApiV1DocumentsDocumentIdGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/v1/documents/{document_id}`;
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get Document
+     */
+    async getDocumentApiV1DocumentsDocumentIdGetRaw(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentResponse>> {
+        const requestOptions = await this.getDocumentApiV1DocumentsDocumentIdGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Get Document
+     */
+    async getDocumentApiV1DocumentsDocumentIdGet(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentResponse> {
+        const response = await this.getDocumentApiV1DocumentsDocumentIdGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getDocumentsApiV1DocumentsGet without sending the request
+     */
+    async getDocumentsApiV1DocumentsGetRequestOpts(requestParameters: GetDocumentsApiV1DocumentsGetRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/v1/documents`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get Documents
+     */
+    async getDocumentsApiV1DocumentsGetRaw(requestParameters: GetDocumentsApiV1DocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<DocumentResponse>>> {
+        const requestOptions = await this.getDocumentsApiV1DocumentsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(DocumentResponseFromJSON));
+    }
+
+    /**
+     * Get Documents
+     */
+    async getDocumentsApiV1DocumentsGet(requestParameters: GetDocumentsApiV1DocumentsGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<DocumentResponse>> {
+        const response = await this.getDocumentsApiV1DocumentsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -2345,6 +2856,59 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async removeAutomaticTagsApiAutomaticTagsDelete(requestParameters: RemoveAutomaticTagsApiAutomaticTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse> {
         const response = await this.removeAutomaticTagsApiAutomaticTagsDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete without sending the request
+     */
+    async removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequestOpts(requestParameters: RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete().'
+            );
+        }
+
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/v1/collections/{collection_id}/documents/{document_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Remove Document From Collection
+     */
+    async removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters: RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+        const requestOptions = await this.removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Remove Document From Collection
+     */
+    async removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
+        const response = await this.removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

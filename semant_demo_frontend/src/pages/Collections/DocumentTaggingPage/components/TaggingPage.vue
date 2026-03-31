@@ -1,40 +1,24 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="row justify-between items-center q-mb-md q-col-gutter-md">
-      <!-- <div class="col-auto">
-        <span class="text-h5">Text Tagging</span>
-      </div> -->
-      <div class="col-auto">
-        <q-btn
-          icon="refresh"
-          color="primary"
-          outline
-          label="Reload Chunks"
-          :loading="pageLoading"
-          @click="loadChunks"
-        />
-      </div>
-    </div>
-
     <div class="row q-col-gutter-lg">
       <div class="col-12 col-md-8">
         <q-card
           v-for="chunk in chunks"
-          :key="chunk.id"
+          :key="chunk.chunkId"
           flat
           bordered
           class="q-mb-lg"
         >
           <ChunkTagAnnotator
-            :chunk-id="chunk.id"
-            :chunk-text="chunk.text"
-            :tag-spans="getDisplayedTagSpans(chunk.id)"
+            :chunk-id="chunk.chunkId"
+            :chunk-text="chunk.textChunk"
+            :tag-spans="getDisplayedTagSpans(chunk.chunkId)"
             :available-tags="availableTags"
             :is-processing="pageLoading"
             :snap-to-words="useWordSnapping"
-            :selection="getChunkSelection(chunk.id)"
-            :show-selection-start-handle="selectionBoundaryChunkIds.startChunkId === chunk.id"
-            :show-selection-end-handle="selectionBoundaryChunkIds.endChunkId === chunk.id"
+            :selection="getChunkSelection(chunk.chunkId)"
+            :show-selection-start-handle="selectionBoundaryChunkIds.startChunkId === chunk.chunkId"
+            :show-selection-end-handle="selectionBoundaryChunkIds.endChunkId === chunk.chunkId"
             :selection-start-boundary="globalSelectionBoundaries.startBoundary"
             :selection-end-boundary="globalSelectionBoundaries.endBoundary"
             :editing-span-id="globalSelection?.editingId || null"
@@ -146,8 +130,14 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import ChunkTagAnnotator from './components/ChunkTagAnnotator.vue'
-import { useTaggingPageState } from './composables/useTaggingPageState'
+import ChunkTagAnnotator from './ChunkTagAnnotator.vue'
+import { useTaggingPageState } from '../composables/useTaggingPageState'
+
+interface Props {
+  collectionId: string
+}
+
+const props = defineProps<Props>()
 
 const {
   chunks,
@@ -168,7 +158,7 @@ const {
 } = useTaggingPageState()
 
 onMounted(async () => {
-  await loadChunks()
+  await loadChunks(props.collectionId)
 })
 </script>
 

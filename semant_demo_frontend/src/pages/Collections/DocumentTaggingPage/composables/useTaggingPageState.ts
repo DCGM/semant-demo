@@ -55,9 +55,9 @@ interface SelectionPayload {
 
 export function useTaggingPageState() {
   const {
-    chunks,
+    collectionChunks,
     isProcessing,
-    getFewChunks,
+    getCollectionChunksPaged,
     fetchTagSpansForChunk,
     fetchTagSpansMapForChunks,
     createTagSpan,
@@ -73,8 +73,8 @@ export function useTaggingPageState() {
   const pageLoading = computed(() => isProcessing.value || isPreloading.value)
 
   const chunkIndexById = computed(() => {
-    return chunks.value.reduce<Record<string, number>>((acc, chunk, index) => {
-      acc[chunk.id] = index
+    return collectionChunks.value.reduce<Record<string, number>>((acc, chunk, index) => {
+      acc[chunk.chunkId] = index
       return acc
     }, {})
   })
@@ -99,20 +99,20 @@ export function useTaggingPageState() {
     let remaining = globalSelection.value.end
     let endChunkIndex = startChunkIndex
     while (
-      endChunkIndex < chunks.value.length &&
-      remaining > chunks.value[endChunkIndex].text.length
+      endChunkIndex < collectionChunks.value.length &&
+      remaining > collectionChunks.value[endChunkIndex].textChunk.length
     ) {
-      remaining -= chunks.value[endChunkIndex].text.length
+      remaining -= collectionChunks.value[endChunkIndex].textChunk.length
       endChunkIndex += 1
     }
 
-    if (endChunkIndex >= chunks.value.length) {
-      endChunkIndex = chunks.value.length - 1
+    if (endChunkIndex >= collectionChunks.value.length) {
+      endChunkIndex = collectionChunks.value.length - 1
     }
 
     return {
       startChunkId,
-      endChunkId: chunks.value[endChunkIndex]?.id || startChunkId
+      endChunkId: collectionChunks.value[endChunkIndex]?.chunkId || startChunkId
     }
   })
 
@@ -137,16 +137,16 @@ export function useTaggingPageState() {
     let remaining = globalSelection.value.end
     let endChunkIndex = startChunkIndex
     while (
-      endChunkIndex < chunks.value.length &&
-      remaining > chunks.value[endChunkIndex].text.length
+      endChunkIndex < collectionChunks.value.length &&
+      remaining > collectionChunks.value[endChunkIndex].textChunk.length
     ) {
-      remaining -= chunks.value[endChunkIndex].text.length
+      remaining -= collectionChunks.value[endChunkIndex].textChunk.length
       endChunkIndex += 1
     }
 
-    if (endChunkIndex >= chunks.value.length) {
-      endChunkIndex = chunks.value.length - 1
-      remaining = chunks.value[endChunkIndex].text.length
+    if (endChunkIndex >= collectionChunks.value.length) {
+      endChunkIndex = collectionChunks.value.length - 1
+      remaining = collectionChunks.value[endChunkIndex].textChunk.length
     }
 
     return {
@@ -155,7 +155,7 @@ export function useTaggingPageState() {
         index: globalSelection.value.start
       },
       endBoundary: {
-        chunkId: chunks.value[endChunkIndex].id,
+        chunkId: collectionChunks.value[endChunkIndex].chunkId,
         index: remaining
       }
     }
@@ -185,8 +185,8 @@ export function useTaggingPageState() {
   ])
 
   const preloadAllChunkSpans = async () => {
-    const missingChunkIds = chunks.value
-      .map((chunk) => chunk.id)
+    const missingChunkIds = collectionChunks.value
+      .map((chunk) => chunk.chunkId)
       .filter((chunkId) => !tagSpansByChunkId.value[chunkId])
 
     if (!missingChunkIds.length) return
@@ -233,8 +233,8 @@ export function useTaggingPageState() {
     return null
   }
 
-  const loadChunks = async () => {
-    await getFewChunks()
+  const loadChunks = async (collectionId: string) => {
+    await getCollectionChunksPaged(collectionId)
     tagSpansByChunkId.value = {}
     await preloadAllChunkSpans()
   }
@@ -331,9 +331,9 @@ export function useTaggingPageState() {
       }
     }
 
-    let end = chunks.value[firstIndex].text.length
+    let end = collectionChunks.value[firstIndex].textChunk.length
     for (let idx = firstIndex + 1; idx < secondIndex; idx += 1) {
-      end += chunks.value[idx].text.length
+      end += collectionChunks.value[idx].textChunk.length
     }
     end += second.index
 
@@ -358,7 +358,7 @@ export function useTaggingPageState() {
           index: snapToWordBoundary(
             boundary.index,
             type,
-            chunks.value[chunkIndex].text
+            collectionChunks.value[chunkIndex].textChunk
           )
         }
       }
@@ -496,10 +496,10 @@ export function useTaggingPageState() {
 
     let offsetFromBase = 0
     for (let idx = baseChunkIndex; idx < targetChunkIndex; idx += 1) {
-      offsetFromBase += chunks.value[idx].text.length
+      offsetFromBase += collectionChunks.value[idx].textChunk.length
     }
 
-    const targetChunkLength = chunks.value[targetChunkIndex].text.length
+    const targetChunkLength = collectionChunks.value[targetChunkIndex].textChunk.length
     const localStart = Math.max(0, globalSelection.value.start - offsetFromBase)
     const localEnd = Math.min(
       targetChunkLength,
@@ -524,7 +524,7 @@ export function useTaggingPageState() {
       return []
     }
 
-    const targetChunkLength = chunks.value[targetChunkIndex].text.length
+    const targetChunkLength = collectionChunks.value[targetChunkIndex].textChunk.length
     const displayed: DisplayedTagSpan[] = []
 
     for (
@@ -532,13 +532,13 @@ export function useTaggingPageState() {
       sourceIndex <= targetChunkIndex;
       sourceIndex += 1
     ) {
-      const sourceChunk = chunks.value[sourceIndex]
-      const sourceSpans = tagSpansByChunkId.value[sourceChunk.id] || []
+      const sourceChunk = collectionChunks.value[sourceIndex]
+      const sourceSpans = tagSpansByChunkId.value[sourceChunk.chunkId] || []
       if (!sourceSpans.length) continue
 
       let offsetFromSourceToTarget = 0
       for (let idx = sourceIndex; idx < targetChunkIndex; idx += 1) {
-        offsetFromSourceToTarget += chunks.value[idx].text.length
+        offsetFromSourceToTarget += collectionChunks.value[idx].textChunk.length
       }
 
       for (const span of sourceSpans) {
@@ -573,7 +573,7 @@ export function useTaggingPageState() {
   }
 
   return {
-    chunks,
+    chunks: collectionChunks,
     pageLoading,
     globalSelection,
     useWordSnapping,

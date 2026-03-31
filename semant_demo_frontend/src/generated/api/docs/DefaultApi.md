@@ -7,19 +7,25 @@ All URIs are relative to *http://localhost*
 | [**addChunk2CollectionApiChunk2CollectionPost**](DefaultApi.md#addchunk2collectionapichunk2collectionpost) | **POST** /api/chunk_2_collection | Add Chunk 2 Collection |
 | [**addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapiv1collectionscollectioniddocumentsdocumentidpost) | **POST** /api/v1/collections/{collection_id}/documents/{document_id} | Add Document To Collection |
 | [**approveSelectedTagChunkApiTagApprovalPut**](DefaultApi.md#approveselectedtagchunkapitagapprovalput) | **PUT** /api/tag_approval | Approve Selected Tag Chunk |
+| [**browseDocumentsApiV1DocumentsBrowseGet**](DefaultApi.md#browsedocumentsapiv1documentsbrowseget) | **GET** /api/v1/documents/browse | Browse Documents |
 | [**cancelTaskApiTaggingTaskTaskIdDelete**](DefaultApi.md#canceltaskapitaggingtasktaskiddelete) | **DELETE** /api/tagging_task/{taskId} | Cancel Task |
 | [**checkStatusApiTagStatusTaskIdGet**](DefaultApi.md#checkstatusapitagstatustaskidget) | **GET** /api/tag_status/{taskId} | Check Status |
 | [**createCollectionApiV1CollectionsPost**](DefaultApi.md#createcollectionapiv1collectionspost) | **POST** /api/v1/collections | Create Collection |
 | [**createTagApiTagPost**](DefaultApi.md#createtagapitagpost) | **POST** /api/tag | Create Tag |
 | [**createUserCollectionApiUserCollectionPost**](DefaultApi.md#createusercollectionapiusercollectionpost) | **POST** /api/user_collection | Create User Collection |
+| [**deleteCollectionApiV1CollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiv1collectionscollectioniddelete) | **DELETE** /api/v1/collections/{collection_id} | Delete Collection |
 | [**deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete**](DefaultApi.md#deletetagspanseparateapitagspansseparatespaniddelete) | **DELETE** /api/tag_spans_separate/{span_id} | Delete Tag Span Separate |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
 | [**fetchCollectionsApiCollectionsGet**](DefaultApi.md#fetchcollectionsapicollectionsget) | **GET** /api/collections | Fetch Collections |
 | [**filterChunksByTagsApiFilterTagsPost**](DefaultApi.md#filterchunksbytagsapifiltertagspost) | **POST** /api/filter_tags | Filter Chunks By Tags |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
+| [**getCollectionByIdApiV1CollectionsCollectionIdGet**](DefaultApi.md#getcollectionbyidapiv1collectionscollectionidget) | **GET** /api/v1/collections/{collection_id} | Get Collection By Id |
 | [**getCollectionChunksApiChunksOfCollectionGet**](DefaultApi.md#getcollectionchunksapichunksofcollectionget) | **GET** /api/chunks_of_collection | Get Collection Chunks |
+| [**getCollectionStatsApiV1CollectionsCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiv1collectionscollectionidstatsget) | **GET** /api/v1/collections/{collection_id}/stats | Get Collection Stats |
 | [**getCollectionsApiV1CollectionsGet**](DefaultApi.md#getcollectionsapiv1collectionsget) | **GET** /api/v1/collections | Get Collections |
 | [**getConfigsApiConfigsGet**](DefaultApi.md#getconfigsapiconfigsget) | **GET** /api/configs | Get Configs |
+| [**getDocumentApiV1DocumentsDocumentIdGet**](DefaultApi.md#getdocumentapiv1documentsdocumentidget) | **GET** /api/v1/documents/{document_id} | Get Document |
+| [**getDocumentsApiV1DocumentsGet**](DefaultApi.md#getdocumentsapiv1documentsget) | **GET** /api/v1/documents | Get Documents |
 | [**getFewChunksApiGetFewChunksGet**](DefaultApi.md#getfewchunksapigetfewchunksget) | **GET** /api/get_few_chunks | Get Few Chunks |
 | [**getFirstChunkApiGetFirstChunkGet**](DefaultApi.md#getfirstchunkapigetfirstchunkget) | **GET** /api/get_first_chunk | Get First Chunk |
 | [**getSelectedTagsChunksApiTaggedTextsPost**](DefaultApi.md#getselectedtagschunksapitaggedtextspost) | **POST** /api/tagged_texts | Get Selected Tags Chunks |
@@ -30,6 +36,7 @@ All URIs are relative to *http://localhost*
 | [**readTagSpansApiTagSpansSeparateChunkIdGet**](DefaultApi.md#readtagspansapitagspansseparatechunkidget) | **GET** /api/tag_spans_separate/{chunk_id} | Read Tag Spans |
 | [**readTagSpansEmbeddedApiTagSpansEmbeddedChunkIdGet**](DefaultApi.md#readtagspansembeddedapitagspansembeddedchunkidget) | **GET** /api/tag_spans_embedded/{chunk_id} | Read Tag Spans Embedded |
 | [**removeAutomaticTagsApiAutomaticTagsDelete**](DefaultApi.md#removeautomatictagsapiautomatictagsdelete) | **DELETE** /api/automatic_tags | Remove Automatic Tags |
+| [**removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapiv1collectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/v1/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**removeTagsApiWholeTagsDelete**](DefaultApi.md#removetagsapiwholetagsdelete) | **DELETE** /api/whole_tags | Remove Tags |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
@@ -113,11 +120,9 @@ No authorization required
 
 ## addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost
 
-> any addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost(collectionId, documentId)
+> { [key: string]: any; } addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost(collectionId, documentId)
 
 Add Document To Collection
-
-Endpoint to link an existing Document to a User Collection.
 
 ### Example
 
@@ -161,7 +166,7 @@ example().catch(console.error);
 
 ### Return type
 
-**any**
+**{ [key: string]: any; }**
 
 ### Authorization
 
@@ -238,6 +243,96 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## browseDocumentsApiV1DocumentsBrowseGet
+
+> DocumentBrowseResponse browseDocumentsApiV1DocumentsBrowseGet(limit, offset, sortBy, sortDesc, collectionId, title, author, publisher, documentType)
+
+Browse Documents
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { BrowseDocumentsApiV1DocumentsBrowseGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // number (optional)
+    limit: 56,
+    // number (optional)
+    offset: 56,
+    // string (optional)
+    sortBy: sortBy_example,
+    // boolean (optional)
+    sortDesc: true,
+    // string (optional)
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // string (optional)
+    title: title_example,
+    // string (optional)
+    author: author_example,
+    // string (optional)
+    publisher: publisher_example,
+    // string (optional)
+    documentType: documentType_example,
+  } satisfies BrowseDocumentsApiV1DocumentsBrowseGetRequest;
+
+  try {
+    const data = await api.browseDocumentsApiV1DocumentsBrowseGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **limit** | `number` |  | [Optional] [Defaults to `50`] |
+| **offset** | `number` |  | [Optional] [Defaults to `0`] |
+| **sortBy** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **sortDesc** | `boolean` |  | [Optional] [Defaults to `false`] |
+| **collectionId** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **title** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **author** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **publisher** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **documentType** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**DocumentBrowseResponse**](DocumentBrowseResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 
@@ -446,7 +541,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
+| **201** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -583,6 +678,72 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## deleteCollectionApiV1CollectionsCollectionIdDelete
+
+> deleteCollectionApiV1CollectionsCollectionIdDelete(collectionId)
+
+Delete Collection
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest;
+
+  try {
+    const data = await api.deleteCollectionApiV1CollectionsCollectionIdDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -915,6 +1076,72 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## getCollectionByIdApiV1CollectionsCollectionIdGet
+
+> CollectionResponse getCollectionByIdApiV1CollectionsCollectionIdGet(collectionId)
+
+Get Collection By Id
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetCollectionByIdApiV1CollectionsCollectionIdGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies GetCollectionByIdApiV1CollectionsCollectionIdGetRequest;
+
+  try {
+    const data = await api.getCollectionByIdApiV1CollectionsCollectionIdGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**CollectionResponse**](CollectionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## getCollectionChunksApiChunksOfCollectionGet
 
 > GetCollectionChunksResponse getCollectionChunksApiChunksOfCollectionGet(collectionId)
@@ -963,6 +1190,72 @@ example().catch(console.error);
 ### Return type
 
 [**GetCollectionChunksResponse**](GetCollectionChunksResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getCollectionStatsApiV1CollectionsCollectionIdStatsGet
+
+> CollectionStatsResponse getCollectionStatsApiV1CollectionsCollectionIdStatsGet(collectionId)
+
+Get Collection Stats
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest;
+
+  try {
+    const data = await api.getCollectionStatsApiV1CollectionsCollectionIdStatsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**CollectionStatsResponse**](CollectionStatsResponse.md)
 
 ### Authorization
 
@@ -1104,6 +1397,138 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getDocumentApiV1DocumentsDocumentIdGet
+
+> DocumentResponse getDocumentApiV1DocumentsDocumentIdGet(documentId)
+
+Get Document
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetDocumentApiV1DocumentsDocumentIdGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    documentId: documentId_example,
+  } satisfies GetDocumentApiV1DocumentsDocumentIdGetRequest;
+
+  try {
+    const data = await api.getDocumentApiV1DocumentsDocumentIdGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**DocumentResponse**](DocumentResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getDocumentsApiV1DocumentsGet
+
+> Array&lt;DocumentResponse&gt; getDocumentsApiV1DocumentsGet(collectionId)
+
+Get Documents
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetDocumentsApiV1DocumentsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string (optional)
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies GetDocumentsApiV1DocumentsGetRequest;
+
+  try {
+    const data = await api.getDocumentsApiV1DocumentsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;DocumentResponse&gt;**](DocumentResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -1735,6 +2160,75 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete
+
+> { [key: string]: any; } removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete(collectionId, documentId)
+
+Remove Document From Collection
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // string
+    documentId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest;
+
+  try {
+    const data = await api.removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+**{ [key: string]: any; }**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 

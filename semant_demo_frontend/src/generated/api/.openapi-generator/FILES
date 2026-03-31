@@ -8,9 +8,12 @@ docs/Chunk2CollectionReq.md
 docs/Collection.md
 docs/CollectionChunks.md
 docs/CollectionResponse.md
+docs/CollectionStatsResponse.md
 docs/CreateResponse.md
 docs/DefaultApi.md
 docs/Document.md
+docs/DocumentBrowseResponse.md
+docs/DocumentResponse.md
 docs/ExplainRequest.md
 docs/FeedbackRequest.md
 docs/FilterChunksByTagsRequest.md
@@ -71,8 +74,11 @@ models/Chunk2CollectionReq.ts
 models/Collection.ts
 models/CollectionChunks.ts
 models/CollectionResponse.ts
+models/CollectionStatsResponse.ts
 models/CreateResponse.ts
 models/Document.ts
+models/DocumentBrowseResponse.ts
+models/DocumentResponse.ts
 models/ExplainRequest.ts
 models/FeedbackRequest.ts
 models/FilterChunksByTagsRequest.ts

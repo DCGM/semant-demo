@@ -2,55 +2,32 @@ import { useApi } from 'src/composables/useApi'
 import type { TagSpan } from 'src/generated/api'
 import { ref } from 'vue'
 
-export type ChResponse = {
-  uuid: string
-  properties: {
-    text: string
-  }
-}
-
-export type Ch = {
-  id: string
-  text: string
-}
-
 export function useTagging() {
   const api = useApi().default
-
-  const chunk = ref<Ch | null>(null)
-  const chunks = ref<Ch[]>([])
+  const collectionChunks =
+    ref<
+      Awaited<
+        ReturnType<typeof api.getCollectionChunksApiChunksOfCollectionGet>
+      >['chunksOfCollection']
+    >([])
   const tagSpans = ref<TagSpan[]>([])
   const isProcessing = ref(false)
 
-  const getChunk = async () => {
+  const getCollectionChunksPaged = async (
+    collectionId: Parameters<
+      typeof api.getCollectionChunksApiChunksOfCollectionGet
+    >[0]['collectionId']
+  ) => {
     isProcessing.value = true
     try {
-      const response =
-        (await api.getFirstChunkApiGetFirstChunkGet()) as unknown as ChResponse
-      chunk.value = {
-        id: response.uuid,
-        text: response.properties.text
-      }
-      console.log('Fetched chunk:', response)
+      const response = await api.getCollectionChunksApiChunksOfCollectionGet({
+        collectionId
+      })
+      collectionChunks.value = response.chunksOfCollection
+      collectionChunks.value = response.chunksOfCollection
+      return response.chunksOfCollection
     } catch (error) {
-      console.error('Error fetching chunk:', error)
-    } finally {
-      isProcessing.value = false
-    }
-  }
-
-  const getFewChunks = async () => {
-    isProcessing.value = true
-    try {
-      const response = (await api.getFewChunksApiGetFewChunksGet()) as unknown as any
-      chunks.value = response?.objects.map((item: any) => ({
-        id: item.uuid,
-        text: item.properties.text
-      }))
-      console.log('Fetched chunks:', response)
-      return chunks.value
-    } catch (error) {
-      console.error('Error fetching chunks:', error)
+      console.error('Error fetching collection chunks:', error)
       return []
     } finally {
       isProcessing.value = false
@@ -165,14 +142,12 @@ export function useTagging() {
 
   return {
     // State
-    chunk,
-    chunks,
+    collectionChunks,
     tagSpans,
     isProcessing,
 
     // Methods
-    getChunk,
-    getFewChunks,
+    getCollectionChunksPaged,
     fetchTagSpansForChunk,
     fetchTagSpansMapForChunks,
     getTagSpans,
