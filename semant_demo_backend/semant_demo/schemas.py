@@ -527,6 +527,16 @@ class CollectionResponse(BaseModel):
     color: str | None = None
 
 
+class CollectionStatsResponse(BaseModel):
+    collectionId: UUID
+    documentsCount: int
+    chunksCount: int
+    annotationsCount: int
+    taggedChunksCount: int
+    untaggedChunksCount: int
+    tagsCount: int
+
+
 class PostCollectionRequest(BaseModel):
     name: str
     userId: str

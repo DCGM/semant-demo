@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from uuid import UUID
-from semant_demo.schemas import CollectionResponse, PostCollectionRequest, PatchCollectionRequest
+from semant_demo.schemas import CollectionResponse, CollectionStatsResponse, PostCollectionRequest, PatchCollectionRequest
 from semant_demo.routes.dependencies import get_weaviate_client
 from semant_demo.weaviate_client import WeaviateClient
 
@@ -17,6 +17,14 @@ async def get_collections(user_id: str, wv_client: WeaviateClient = Depends(get_
 @router.get("/api/v1/collections/{collection_id}")
 async def get_collection_by_id(collection_id: UUID, wv_client: WeaviateClient = Depends(get_weaviate_client)) -> CollectionResponse:
     response = await wv_client.get_collection_by_id(collection_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+    return response
+
+
+@router.get("/api/v1/collections/{collection_id}/stats")
+async def get_collection_stats(collection_id: UUID, wv_client: WeaviateClient = Depends(get_weaviate_client)) -> CollectionStatsResponse:
+    response = await wv_client.get_collection_stats(collection_id)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     return response
