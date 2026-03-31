@@ -1,5 +1,5 @@
-import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collection'
-import { CollectionsSchema, CollectionSchema } from 'src/schemas/collection'
+import { Collection, CollectionStats, Collections, PostCollection, PatchCollection } from 'src/models/collection'
+import { CollectionsSchema, CollectionSchema, CollectionStatsSchema } from 'src/schemas/collection'
 import CollectionsService from 'src/services/CollectionsService'
 
 const CollectionRepository = {
@@ -24,6 +24,19 @@ const CollectionRepository = {
 
     if (!parsedData.success) {
       throw new Error('Failed to parse collection data from API')
+    }
+
+    return parsedData.data
+  },
+
+  getStats: async (collectionId: string): Promise<CollectionStats> => {
+    const response = await CollectionsService.getCollectionStats(collectionId)
+    const data = response.data
+
+    const parsedData = CollectionStatsSchema.safeParse(data)
+
+    if (!parsedData.success) {
+      throw new Error('Failed to parse collection stats data from API')
     }
 
     return parsedData.data

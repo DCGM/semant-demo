@@ -1,12 +1,13 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collection'
+import { Collection, CollectionStats, Collections, PostCollection, PatchCollection } from 'src/models/collection'
 import CollectionRepository from 'src/repositories/CollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 
 export const useCollectionsStore = defineStore('userCollections', () => {
   const collections = ref<Collections>([])
   const activeCollection = ref<Collection | null>(null)
+  const activeCollectionStats = ref<CollectionStats | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
 
@@ -38,6 +39,22 @@ export const useCollectionsStore = defineStore('userCollections', () => {
       error.value = 'Failed to fetch collection'
       console.error('Error fetching collection:', err)
       notif.error('Failed to load collection')
+    } finally {
+      loading.value = false
+    }
+  }
+  const fetchCollectionStats = async (collectionId: string) => {
+    const notif = ongoingNotification('Loading collection statistics...')
+    loading.value = true
+    error.value = null
+    try {
+      const data = await CollectionRepository.getStats(collectionId)
+      activeCollectionStats.value = data
+      notif.success('Collection statistics loaded')
+    } catch (err) {
+      error.value = 'Failed to fetch collection statistics'
+      console.error('Error fetching collection statistics:', err)
+      notif.error('Failed to load collection statistics')
     } finally {
       loading.value = false
     }
@@ -97,10 +114,12 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   return {
     collections,
     activeCollection,
+    activeCollectionStats,
     error,
     loading,
     fetchCollections,
     fetchCollection,
+    fetchCollectionStats,
     createCollection,
     updateCollection,
     deleteCollection
