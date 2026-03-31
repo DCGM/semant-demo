@@ -14,7 +14,8 @@ class WeaviateClient(WeaviateSearch):
         """
         Retrieves all collections for given user
         """
-        usercollection_collection = self.client.collections.get("UserCollection")
+        usercollection_collection = self.client.collections.get(
+            "UserCollection")
 
         filters = (
             Filter.by_property("user_id").equal(user_id)
@@ -35,13 +36,14 @@ class WeaviateClient(WeaviateSearch):
                 color=props.get("color")
             ))
         return collections
-    
+
     async def get_collection_by_id(self, collection_id: UUID) -> CollectionResponse | None:
         """
         Retrieves collection by its id, returns None if collection with given id does not exist
         """
-        
-        usercollection_collection = self.client.collections.get("UserCollection")
+
+        usercollection_collection = self.client.collections.get(
+            "UserCollection")
         response = await usercollection_collection.query.fetch_object_by_id(collection_id)
         if response is None:
             return None
@@ -150,7 +152,8 @@ class WeaviateClient(WeaviateSearch):
         """"
         Updates collection with given id, raises exception if collection with given id does not exist
         """
-        usercollection_collection = self.client.collections.get("UserCollection")
+        usercollection_collection = self.client.collections.get(
+            "UserCollection")
         now = datetime.now(timezone.utc)
 
         # PATCH semantics: update only fields that were actually sent by the client.
@@ -166,9 +169,10 @@ class WeaviateClient(WeaviateSearch):
         """
         Deletes collection with given id.
         """
-        usercollection_collection = self.client.collections.get("UserCollection")
+        usercollection_collection = self.client.collections.get(
+            "UserCollection")
         await usercollection_collection.data.delete_by_id(collection_id)
-        
+
     async def get_document_by_id(self, document_id: str) -> DocumentResponse | None:
         """
         Retrieves document by its id, returns None if document with given id does not exist
@@ -182,7 +186,7 @@ class WeaviateClient(WeaviateSearch):
             id=response.uuid,
             **props
         )
-        
+
     async def get_all_documents(self, collection_id: UUID | None = None) -> list[DocumentResponse]:
         """
         Retrieves all documents - optionally can be filtered by collection id
@@ -233,13 +237,17 @@ class WeaviateClient(WeaviateSearch):
             )
 
         if title:
-            filters = append_filter(filters, Filter.by_property("title").like(f"*{title}*"))
+            filters = append_filter(
+                filters, Filter.by_property("title").like(f"*{title}*"))
         if author:
-            filters = append_filter(filters, Filter.by_property("author").like(f"*{author}*"))
+            filters = append_filter(
+                filters, Filter.by_property("author").like(f"*{author}*"))
         if publisher:
-            filters = append_filter(filters, Filter.by_property("publisher").like(f"*{publisher}*"))
+            filters = append_filter(filters, Filter.by_property(
+                "publisher").like(f"*{publisher}*"))
         if document_type:
-            filters = append_filter(filters, Filter.by_property("documentType").like(f"*{document_type}*"))
+            filters = append_filter(filters, Filter.by_property(
+                "documentType").like(f"*{document_type}*"))
 
         sort = None
         if sort_by:
@@ -291,7 +299,8 @@ class WeaviateClient(WeaviateSearch):
             )
             return True
         except Exception as e:
-            logging.error(f"Failed to add document {document_id} to collection {collection_id}: {e}")
+            logging.error(
+                f"Failed to add document {document_id} to collection {collection_id}: {e}")
             return False
 
     async def remove_document_from_collection(self, document_id: UUID, collection_id: UUID) -> bool:
@@ -307,5 +316,6 @@ class WeaviateClient(WeaviateSearch):
             )
             return True
         except Exception as e:
-            logging.error(f"Failed to remove document {document_id} from collection {collection_id}: {e}")
+            logging.error(
+                f"Failed to remove document {document_id} from collection {collection_id}: {e}")
             return False
