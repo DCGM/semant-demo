@@ -1,0 +1,16 @@
+id: "xandry12_AdaptiveRagGenerator_openai_gpt51_web_search"
+name: "RAG using OpenAI GPT5.1 with multi query and web search."
+description: "Adaptive RAG pipeline using GPT-5.1 with multi-query retrieval and integrated web search (DuckDuckGo). Supports conversation history and self-reflection. Slower but more flexible. Answers in Czech."
+class_name: "AdaptiveRagGenerator"
+params:
+  model_type: "OPENAI"
+  model_name: "gpt-5.1"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 5
+  qt_strategy : "multi_query"
+  max_retries : 3
+  web_search_enabled : True
+  metadata_extraction_allowed : True
+  self_reflection : True
