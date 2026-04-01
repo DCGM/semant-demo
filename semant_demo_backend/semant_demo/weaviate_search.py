@@ -14,19 +14,31 @@ from .config import config
 import logging
 
 from weaviate.collections.classes.grpc import QueryReference
-from semant_demo.weaviate_exceptions import WeaviateConnectionError, WeaviateDataValidationError, WeaviateLimitError, WeaviateServerError, WeaviateOperationError 
+from weaviate.exceptions import (
+    WeaviateConnectionError,
+    WeaviateTimeoutError,
+    WeaviateQueryError,
+    WeaviateInvalidInputError,
+    UnexpectedStatusCodeError,
+    ResponseCannotBeDecodedError,
+    WeaviateClosedClientError,
+    InsufficientPermissionsError,
+)
+from semant_demo.weaviate_exceptions import WeaviateConnectError, WeaviateDataValidationError, WeaviateLimitError, WeaviateServerError, WeaviateOperationError 
 
 import uuid
 
 class WeaviateSearch:
     def __init__(self, client: WeaviateAsyncClient, 
                  chunks_collection: str = "Chunks", 
-                 tag_collection_name: str = "Tag"):
+                 tag_collection_name: str = "Tag",
+                 user_collection_link_name: str = "userCollection"):
         self.client = client
         # collections.get() is synchronous, no await needed
-        self.chunk_col = self.client.collections.get("Chunks")
-        self.chunks_collection = chunks_collection
+        self.chunk_collection = self.client.collections.get("Chunks")
+        self.chunks_collection_name = chunks_collection
         self.tag_collection_name = tag_collection_name
+        self.user_collection_link_name = user_collection_link_name
 
     @classmethod
     async def create(cls, config:Config) -> "WeaviateSearch":
@@ -99,7 +111,7 @@ class WeaviateSearch:
                 q_vector = await get_hyde_document_embedding(search_request.query)
 
             # Execute hybrid search
-            result = await self.chunk_col.query.hybrid(
+            result = await self.chunk_collection.query.hybrid(
                 query=search_request.query,
                 alpha=search_request.hybrid_search_alpha,
                 vector=q_vector,
@@ -119,7 +131,7 @@ class WeaviateSearch:
             )
         elif search_request.type == schemas.SearchType.text:
             # Execute text search
-            result = await self.chunk_col.query.bm25(
+            result = await self.chunk_collection.query.bm25(
                 query=search_request.query,
                 limit=search_request.limit,
                 filters=combined_filter,
@@ -140,7 +152,7 @@ class WeaviateSearch:
             else:
                 q_vector = await get_hyde_document_embedding(search_request.query)
 
-            result = await self.chunk_col.query.near_vector(
+            result = await self.chunk_collection.query.near_vector(
                 near_vector=q_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
@@ -219,7 +231,7 @@ class WeaviateSearch:
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
     
-    async def _fetch_chunks(self, filters: Filter) -> list:
+    async def fetch_chunks(self, filters: Filter) -> list:
         """
         Fetches chunks with filters - tag, user-collection. Fetch subset of text chunks given by filters.
         
@@ -233,7 +245,7 @@ class WeaviateSearch:
             List of chunk objects matching the filters
 
         Raises:
-            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateFilterError: Invalid filter specification or malformed Filter object
             WeaviateQueryError: Query execution failed or query syntax error
             WeaviateNotFoundError: No chunks found matching the filters
@@ -264,24 +276,34 @@ class WeaviateSearch:
                             ),
                         ]
             # returns all properties (except blobs) and specified references
-            response = await self.client.collections.get(self.chunks_collection).query.fetch_objects(
+            response = await self.client.collections.get(self.chunks_collection_name).query.fetch_objects(
                 return_references=references,
                 filters=filters
             )
             if response.objects is None:
                 return []
             return response.objects
-        except (WeaviateConnectionError, WeaviateDataValidationError, 
-                WeaviateLimitError, WeaviateOperationError ) as e:
-            # log the error for debugging
-            logging.error(f"Failed to fetch chunks from {self.chunks_collection}: {str(e)}")
-            raise
+        except WeaviateConnectionError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
         except Exception as e:
             # catch unexpected errors and wrap them
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
-            raise WeaviateServerError(f"Failed to fetch chunks: {str(e)}")
+            raise WeaviateServerError(str(e))
 
-    async def _fetch_tags(self, filters: Filter|None = None, ids: list[str]|None = None) -> list:
+    async def fetch_tags(self, filters: Filter|None = None, ids: list[str]|None = None) -> list:
         """
         Fetches tag collection
         - with specific name OR
@@ -299,7 +321,7 @@ class WeaviateSearch:
             List of tag objects matching criteria. Returns empty list if no matches found.
             
         Raises:
-            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateFilterError: Invalid filter specification or malformed Filter object
             WeaviateQueryError: Query execution failed or query syntax error
             WeaviateQueryTimeoutError: Query execution exceeded timeout threshold
@@ -310,11 +332,10 @@ class WeaviateSearch:
         """
         # TODO use instead of:
         # with specific name (current add_or_get_tag) OR by list of uuids (current get_tagged_chunks_paged) OR without filter return all tags (current get_all_tags)
+        # check for conflict of defining both filters and IDs
+        if filters is not None and ids is not None:
+            raise WeaviateDataValidationError("Cannot specify both filters and ids. Use one or the other.")
         try:
-            # check for conflict of defining both filters and IDs
-            if filters is not None and ids is not None:
-                raise WeaviateDataValidationError("Cannot specify both filters and ids. Use one or the other.")
-
             # build filter from given IDs
             if ids:
                 # validate UUID format
@@ -338,24 +359,30 @@ class WeaviateSearch:
             if results.objects is None:
                 return []
             return results.objects
-        except ( WeaviateLimitError, WeaviateOperationError) as e:
-            # Log expected Weaviate errors
-            logging.error(f"Failed to fetch tags from {self.tag_collection_name}: {str(e)}")
-            raise
-        except WeaviateDataValidationError as e:
-            # Log validation errors
-            logging.error(f"Invalid input for tag fetch: {str(e)}")
-            raise
         except WeaviateConnectionError as e:
-            # Log connection errors
-            logging.error(f"Cannot connect to Weaviate: {str(e)}")
-            raise
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateDataValidationError as e:
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
         except Exception as e:
-            # Catch unexpected errors and wrap them
-            logging.error(f"Unexpected error fetching tags: {str(e)}")
-            raise WeaviateServerError(f"Failed to fetch tags: {str(e)}")
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(str(e))
 
-    async def _create_tag(self, tag: schemas.TagData) -> str:
+
+    async def create_tag(self, tag: schemas.TagData) -> str:
         """
         Adds new tag to tag-collection. This function calls fetch_tags to prevent duplicates.
 
@@ -367,30 +394,29 @@ class WeaviateSearch:
             Created tag object UUID
             
         Raises:
-            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid input data (empty name, invalid UUID format, etc.)
             WeaviateDuplicateError: Tag with same name already exists for this user in this collection
             WeaviateSerializationError: Cannot serialize tag data to JSON
             WeaviateServerError: Weaviate server returned an error
         """
-        # TODO like current add_or_get_tag, but use fetch_tags
         # check if tag with same properties already exists
         # prepare filter
-        try:
-            # Validate input
-            if not tag.tag_name or not isinstance(tag.tag_name, str):
+        # Validate input
+        if not tag.tag_name or not isinstance(tag.tag_name, str):
                 raise WeaviateDataValidationError("tag_name must be a non-empty string")
-            if not tag.tag_shorthand or not isinstance(tag.tag_shorthand, str):
+        if not tag.tag_shorthand or not isinstance(tag.tag_shorthand, str):
                 raise WeaviateDataValidationError("tag_shorthand must be a non-empty string")
-            if not tag.tag_color or not isinstance(tag.tag_color, str):
+        if not tag.tag_color or not isinstance(tag.tag_color, str):
                 raise WeaviateDataValidationError("tag_color must be a non-empty string")
+        try:
             filters =(
                 Filter.by_property("tag_name").equal(tag.tag_name) &
                 Filter.by_property("tag_shorthand").equal(tag.tag_shorthand)&
                 Filter.by_property("tag_color").equal(tag.tag_color)
             )
             # query weaviate
-            existing_tags = await self._fetch_tags(filters)
+            existing_tags = await self.fetch_tags(filters)
             # iterate over fetched results and check for equality
             for existing_tag in existing_tags:
                 if (existing_tag.properties["tag_name"] == tag.tag_name and
@@ -410,23 +436,28 @@ class WeaviateSearch:
                 }
             )
             return new_tag_uuid  
-        except WeaviateDataValidationError as e:
-            logging.error(f"Invalid input for tag creation: {str(e)}")
-            raise
         except WeaviateConnectionError as e:
-            logging.error(f"Cannot connect to Weaviate: {str(e)}")
-            raise
-        except WeaviateServerError as e:
-            logging.error(f"Weaviate server error: {str(e)}")
-            raise
-        except ( WeaviateLimitError, WeaviateOperationError) as e:
-            logging.error(f"Failed to fetch tags from {self.tag_collection_name}: {str(e)}")
-            raise
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
         except Exception as e:
-            logging.error(f"Unexpected error creating tag: {str(e)}")
-            raise WeaviateServerError(f"Failed to create tag: {str(e)}")    
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(str(e))
 
-    async def _fetch_object_by_id(self, object_id: str, collection_name: str = None, 
+
+    async def fetch_object_by_id(self, object_id: str, collection_name: str = None, 
                                return_references: list = None) -> object:
         """
         Fetches a single Weaviate object by its UUID.
@@ -440,14 +471,14 @@ class WeaviateSearch:
             Weaviate object with properties and optionally references
             
         Raises:
-            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid UUID format
             WeaviateObjectNotFoundError: Object with given ID does not exist
             WeaviateServerError: Weaviate server error
         """
         try:
             if not collection_name:
-                collection_name = self.chunks_collection
+                collection_name = self.chunks_collection_name
                 
             # Validate UUID format
             if not isinstance(object_id, str):
@@ -463,18 +494,25 @@ class WeaviateSearch:
             
             return obj
         
-        except WeaviateDataValidationError as e:
-            logging.error(f"Invalid input for object fetch: {str(e)}")
-            raise
-        except WeaviateOperationError as e:
-            logging.error(f"Object not found: {str(e)}")
-            raise
         except WeaviateConnectionError as e:
-            logging.error(f"Cannot connect to Weaviate: {str(e)}")
-            raise
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
         except Exception as e:
-            logging.error(f"Failed to fetch object by ID: {str(e)}")
-            raise WeaviateServerError(f"Failed to fetch object: {str(e)}")
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(str(e))
 
     async def create_reference(self, src_id:str, src_collection_name:str, property_name:str, target_collection_id:str) -> bool:
         """
@@ -490,7 +528,7 @@ class WeaviateSearch:
             True if reference created successfully
             
         Raises:
-            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid UUID format in source_id or target_id
             WeaviateReferencedObjectNotFoundError: Target object does not exist
         """
@@ -512,7 +550,7 @@ class WeaviateSearch:
                     )]
             # fetch the source object by id
             try:
-                obj = await self._fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
+                obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
                                 return_references=return_references)
             except WeaviateOperationError:
                 logging.error(f"Source object '{src_id}' not found in collection '{src_collection_name}'")
@@ -544,7 +582,7 @@ class WeaviateSearch:
 
             # test
             try:
-                updated_obj = await self._fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
+                updated_obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
                                 return_references=return_references)
                 updated_refs = updated_obj.references or {}
                 updated_collection_ids = ref_uuids(updated_refs.get(property_name))
@@ -559,21 +597,26 @@ class WeaviateSearch:
                 raise WeaviateServerError(f"Failed to verify reference: {str(e)}") 
             # proper end
             return True # TODO fix in other parts now is switched before False on success
-        except WeaviateDataValidationError as e:
-            logging.error(f"Invalid input for reference creation: {str(e)}")
-            raise
-        except WeaviateOperationError as e:
-            logging.error(f"Operation error: {str(e)}")
-            raise
         except WeaviateConnectionError as e:
-            logging.error(f"Cannot connect to Weaviate: {str(e)}")
-            raise
-        except WeaviateServerError as e:
-            logging.error(f"Weaviate server error: {str(e)}")
-            raise
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
         except Exception as e:
-            logging.error(f"Unexpected error creating reference: {str(e)}")
-            raise WeaviateServerError(f"Failed to create reference: {str(e)}")
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(str(e))
+
 
     async def remove_reference(self, src_id: str, src_collection_name:str, property_name: str, target_collection_id:str) -> bool: 
         """
@@ -589,7 +632,7 @@ class WeaviateSearch:
             True if reference removed successfully
             
         Raises:
-            WeaviateConnectionError: Cannot connect to Weaviate instance
+            WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid UUID format in source_id or target_id
             WeaviateServerError: Weaviate server returned an error
             WeaviateOperationError: Cannot perform operation over weaviate
@@ -612,11 +655,11 @@ class WeaviateSearch:
                     )]
             # fetch the source object by id
             try:
-                obj = await self._fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
+                obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
                                 return_references=return_references)
-            except WeaviateOperationError:
+            except WeaviateQueryError as e:
                 logging.error(f"Source object '{src_id}' not found in collection '{src_collection_name}'")
-                raise
+                raise WeaviateConnectError(str(e))
             # extract references
             refs = obj.references or {}
 
@@ -634,49 +677,25 @@ class WeaviateSearch:
                         to=remaining
                     )
             return True
-        except WeaviateDataValidationError as e:
-            logging.error(f"Invalid input for reference removal: {str(e)}")
-            raise
-        except WeaviateOperationError as e:
-            logging.error(f"Operation error: {str(e)}")
-            raise
         except WeaviateConnectionError as e:
-            logging.error(f"Cannot connect to Weaviate: {str(e)}")
-            raise
-        except WeaviateServerError as e:
-            logging.error(f"Weaviate server error: {str(e)}")
-            raise
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
         except Exception as e:
-            logging.error(f"Unexpected error removing reference: {str(e)}")
-            raise WeaviateServerError(f"Failed to remove reference: {str(e)}")
-    # TODO
-    """
-    - change get_tagged_chunks_paged
-        - call fetch_tags - fetch specific mode, fetch_chunks
-        - keep preparing filters, chunk selection logic
-
-    - change get_collection_chunks_paged 
-        - call fetch_chunks
-
-    - change tag_chunks_with_llm_paged 
-        - keep separate llm calling and config
-        - will call fetch_tags, fetch_chunks, create_reference
-
-    - change filterChunksByTags
-        - keep filter preparation and result processing
-        - will call fetch_chunks
-
-    - change approve_tag
-        - will call fetch_chunks, remove_reference, create_reference
-        
-    - instead add_chunk_to_collection call create_reference
-
-    - change add_or_get_tag to create_tag
-    
-    - change get_all_tags 
-        - calls fetch_tags - fetch all mode
-        - keep parse result
-    """
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(str(e))
 
     async def create_collection(self, req: schemas.UserCollectionReqTemplate) -> str:
         """
@@ -708,25 +727,45 @@ class WeaviateSearch:
         """
         Retrieves all collections for given user
         """
-        # filter collections by user
-        filters = (
-            Filter.by_property("user_id").equal(userId)
-        )
-        results = await self.client.collections.get("UserCollection").query.fetch_objects(
-            filters=filters
-        )
-        logging.info(f"User Id: {userId}\nRaw results: {results}")
-        collections = []
-        collections_respone = []
-        if results.objects is not None:
-            if len(results.objects) > 0:
-                collections = results.objects
-                # map collection data to expected response format
-                for o in collections:
-                    collections_respone.append(
-                        {'id': str(o.uuid), 'name': o.properties['name'], 'user_id': o.properties.get('user_id')})
+        try:
+            # filter collections by user
+            filters = (
+                Filter.by_property("user_id").equal(userId)
+            )
+            results = await self.client.collections.get("UserCollection").query.fetch_objects(
+                filters=filters
+            )
+            logging.info(f"User Id: {userId}\nRaw results: {results}")
+            collections = []
+            collections_respone = []
+            if results.objects is not None:
+                if len(results.objects) > 0:
+                    collections = results.objects
+                    # map collection data to expected response format
+                    for o in collections:
+                        collections_respone.append(
+                            {'id': str(o.uuid), 'name': o.properties['name'], 'user_id': o.properties.get('user_id')})
 
-        return {"collections": collections_respone, "userId": userId}   
+            return {"collections": collections_respone, "userId": userId}   
+        except WeaviateConnectionError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
+        except Exception as e:
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(str(e))
 
     ### moved here TODO: fix reference from rest of the code
     async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
@@ -790,17 +829,29 @@ class WeaviateSearch:
             logging.info(result)
 
             return {"successful": True}
+        except WeaviateConnectionError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
         except Exception as e:
-            logging.error(f"{e}")
-            return {"successful": False}
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(str(e))
     
-    ### moved here 
-    # TODO rename to remove_tag_refs
-    # TODO fix reference from rest of the code
-    # TODO make it not only automatic but select which reference type should be removed
-    async def remove_automatic_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
+    async def remove_tag_refs(self, chosenTagUUIDs: schemas.GetTaggedChunksReq, tag_type: str)->schemas.RemoveTagsResponse:
         """
-        Removes automatic tags
+        Removes selected type of tags and their references
         """
         try:
             # remove all automatic cross-references from Chunks
@@ -821,7 +872,7 @@ class WeaviateSearch:
                 # fetch chunks with hasTags
                 res = await chunks.query.fetch_objects(
                     return_references=QueryReference(
-                        link_on="automaticTag",
+                        link_on=tag_type,
                         return_properties=[]
                     )
                 )
@@ -832,7 +883,7 @@ class WeaviateSearch:
                 # replace hasTags with remaining refs
                 for obj in res.objects:
                     refs = obj.references or {}
-                    current = refs.get("automaticTag")
+                    current = refs.get(tag_type)
                     currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
                     remaining = list(filter(lambda tid: tid not in tagsToRemove, currentIDs))
                     logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
@@ -841,18 +892,34 @@ class WeaviateSearch:
                         logging.info(f"Replacing {currentIDs} {remaining}")
                         await chunks.data.reference_replace(
                             from_uuid=obj.uuid,
-                            from_property="automaticTag",
+                            from_property=tag_type,
                             to=remaining
                         )
                     check = await chunks.query.fetch_object_by_id(
                         obj.uuid,
-                        return_references=[QueryReference(link_on="automaticTag", return_properties=[])]
+                        return_references=[QueryReference(link_on=tag_type, return_properties=[])]
                     )
-                    got = [str(r.uuid) for r in (check.references.get("automaticTag").objects if check.references and check.references.get("hasTags") else [])]
+                    got = [str(r.uuid) for r in (check.references.get(tag_type).objects if check.references and check.references.get("hasTags") else [])]
                     logging.info(f"after: {got}")
                 logging.info("deleted references from chunks to tags")
 
             return {"successful": True}
+        except WeaviateConnectionError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
         except Exception as e:
-            logging.error(f"{e}")
-            return {"successful": False}
+            # catch unexpected errors and wrap them
+            logging.error(f"Unexpected error fetching chunks: {str(e)}")
+            raise WeaviateServerError(str(e))

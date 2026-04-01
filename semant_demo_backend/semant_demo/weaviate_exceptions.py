@@ -3,7 +3,7 @@ class WeaviateError(Exception):
     pass
 
 # Specific exceptions
-class WeaviateConnectionError(WeaviateError):
+class WeaviateConnectError(WeaviateError):
     """
     Raised when unable to connect to Weaviate instance.
     """

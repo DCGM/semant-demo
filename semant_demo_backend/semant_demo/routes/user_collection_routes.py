@@ -10,7 +10,6 @@ import os
 import openai
 from semant_demo import schemas
 import logging
-from semant_demo.weaviate_tag import WeaviateSearchAndTag
 from semant_demo.weaviate_tag import WeaviateSearch
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +30,7 @@ exp_router = APIRouter()
 
 @exp_router.post("/api/user_collection", response_model=schemas.CreateResponse)
 async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplate,
-                                 searcher: WeaviateSearchAndTag = Depends(get_search)) -> schemas.CreateResponse:
+                                 searcher: WeaviateSearch = Depends(get_search)) -> schemas.CreateResponse:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
     """
@@ -66,7 +65,7 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
     try:
         
         err = await searcher.create_reference(src_id=req.chunkId, 
-                                   src_collection_name=searcher.chunks_collection,
+                                   src_collection_name=searcher.chunks_collection_name,
                                    property_name="userCollection",
                                    target_collection_id=req.collectionId)
         if err == False:

@@ -32,12 +32,6 @@ async def get_search() -> WeaviateSearch:
         _searcher = await WeaviateSearch.create(config)
     return _searcher
 
-async def get_tag() -> WeaviateSearchAndTag:
-    global _tagger
-    if _tagger is None:
-        _tagger = await WeaviateSearchAndTag.create(config)
-    return _tagger
-
 async def cleanup_dependencies():
     global _engine, _async_session_maker, _searcher
     if _searcher:
