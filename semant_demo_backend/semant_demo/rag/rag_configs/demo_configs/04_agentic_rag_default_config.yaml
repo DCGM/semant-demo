@@ -1,0 +1,16 @@
+id: "xmarti96 default agent rag"
+name: "Default Agentic RAG"
+description: "Default agentic rag implementation (worse than basic RAG at the moment). OpenAI API key needed."
+class_name: "xmartiAgentRag"
+params:
+  model_type: "OPENAI"
+  model_name: "gpt-4o-mini"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 5
+  agent_iterations: 5
+
+### TODO ###
+# More params
+# Move prompts here

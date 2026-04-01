@@ -41,7 +41,7 @@ class Config:
         self.SQL_DB_URL = "sqlite+aiosqlite:///tasks.db"
         
         # path to rag configs
-        default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "configs"
+        default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
         test_configs_path = SCRIPT_PATH / "rag" / "rag_configs" / "tests"
         self.RAG_CONFIGS_PATH = os.getenv("RAG_CONFIGS_PATH", default_config_path)
 
