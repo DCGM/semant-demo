@@ -986,3 +986,34 @@ class WeaviateSearchAndTag(WeaviateSearch):
             'tag_uuid': obj.uuid,
             })
         return tag_data
+
+
+    async def get_tags_by_collection(self, collection_id: str) -> schemas.GetTagsResponse:
+        """
+        Get all tags that belong to the specified collection ID.
+        """
+        try:
+            tags_col = self.client.collections.get("Tag_test")
+            filters = Filter.by_ref("userCollection").by_id().equal(collection_id)
+            response = await tags_col.query.fetch_objects(
+                filters=filters,
+                limit=1000
+            )
+
+            tags_lst = []
+            for obj in response.objects:
+                tags_lst.append({
+                    "tag_id": str(obj.uuid),
+                    "tag_name": obj.properties.get("tag_name"),
+                    "tag_shorthand": obj.properties.get("tag_shorthand"),
+                    "tag_color": obj.properties.get("tag_color"),
+                    "tag_pictogram": obj.properties.get("tag_pictogram"),
+                    "tag_definition": obj.properties.get("tag_definition"),
+                    "tag_examples": obj.properties.get("tag_examples", []),
+                })
+
+            return schemas.GetTagsResponse(tags_lst=tags_lst)
+
+        except Exception as e:
+            logging.error(f"Weaviate Error fetching tags for collection {collection_id}: {e}")
+            return schemas.GetTagsResponse(tags_lst=[])

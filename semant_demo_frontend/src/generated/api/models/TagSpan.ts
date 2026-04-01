@@ -62,7 +62,7 @@ export interface TagSpan {
      * @type {SpanType}
      * @memberof TagSpan
      */
-    type: SpanType;
+    type?: SpanType | null;
 }
 
 
@@ -75,7 +75,6 @@ export function instanceOfTagSpan(value: object): value is TagSpan {
     if (!('tagId' in value) || value['tagId'] === undefined) return false;
     if (!('start' in value) || value['start'] === undefined) return false;
     if (!('end' in value) || value['end'] === undefined) return false;
-    if (!('type' in value) || value['type'] === undefined) return false;
     return true;
 }
 
@@ -94,7 +93,7 @@ export function TagSpanFromJSONTyped(json: any, ignoreDiscriminator: boolean): T
         'tagId': json['tagId'],
         'start': json['start'],
         'end': json['end'],
-        'type': SpanTypeFromJSON(json['type']),
+        'type': json['type'] == null ? undefined : SpanTypeFromJSON(json['type']),
     };
 }
 

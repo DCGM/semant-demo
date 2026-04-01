@@ -1,10 +1,19 @@
 # Richard Juřica's version of API for handling user collections
-
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from uuid import UUID
-from semant_demo.schemas import CollectionResponse, CollectionStatsResponse, PostCollectionRequest, PatchCollectionRequest
+from semant_demo.schemas import (
+    CollectionResponse,
+    CollectionStatsResponse,
+    PostCollectionRequest,
+    PatchCollectionRequest,
+    GetTagsResponse,
+    TagData,
+)
 from semant_demo.routes.dependencies import get_weaviate_client
 from semant_demo.weaviate_client import WeaviateClient
+from semant_demo.weaviate_tag import WeaviateSearchAndTag
+from semant_demo.routes.dependencies import get_tag
 
 router = APIRouter()
 
@@ -78,3 +87,18 @@ async def remove_document_from_collection(
         "success": success,
         "message": "Document removed from collection" if success else "Failed to remove document from collection"
     }
+
+@router.get("/api/collections/{collection_id}/tags", response_model=GetTagsResponse)
+async def get_tags_for_collection(
+    collection_id: str,
+    tagger: WeaviateSearchAndTag = Depends(get_tag)
+) -> GetTagsResponse:
+    """
+    Retrieve all tags belonging to a specific collection
+    """
+    try:
+        response = await tagger.get_tags_by_collection(collection_id)
+        return GetTagsResponse(tags_lst=response.tags_lst)
+    except Exception as e:
+        logging.error(f"Error fetching tags for collection {collection_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
