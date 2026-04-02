@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { TagSpan } from 'src/generated/api'
+import { SpanType, type TagSpan } from 'src/generated/api'
 import { snapToWordBoundary } from '../utils'
 
 interface RenderSegment {
@@ -59,6 +59,7 @@ interface SelectionState {
   end: number
   editingId?: string
   tagId?: string
+  spanType?: TagSpan['type']
 }
 
 interface SelectionBoundary {
@@ -498,7 +499,8 @@ const handleSegmentClick = (seg: RenderSegment) => {
       start: sourceStart,
       end: sourceEnd,
       editingId: tagToEdit.id as string | undefined,
-      tagId: tagToEdit.tagId
+      tagId: tagToEdit.tagId,
+      spanType: tagToEdit.type
     }
 
     currentSelection.value =
@@ -539,6 +541,15 @@ const getSegmentStyle = (seg: RenderSegment) => {
       (item) => item.tagUuid === seg.tags[0].tagId
     )
     const color = tag ? tag.tagColor : '#cccccc'
+
+    if (seg.tags[0].type === SpanType.auto) {
+      return {
+        backgroundColor: `${color}24`,
+        borderBottom: `2px dashed ${color}`,
+        cursor: 'pointer'
+      }
+    }
+
     return {
       backgroundColor: `${color}40`,
       borderBottom: `2px solid ${color}`,

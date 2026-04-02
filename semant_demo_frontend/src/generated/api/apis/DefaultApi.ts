@@ -929,13 +929,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getTagsForCollectionApiCollectionsCollectionIdTagsGetRaw(requestParameters: GetTagsForCollectionApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+    getTagsForCollectionApiCollectionsCollectionIdTagsGetRaw(requestParameters: GetTagsForCollectionApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTagsResponse>>;
 
     /**
      * Retrieve all tags belonging to a specific collection
      * Get Tags For Collection
      */
-    getTagsForCollectionApiCollectionsCollectionIdTagsGet(requestParameters: GetTagsForCollectionApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+    getTagsForCollectionApiCollectionsCollectionIdTagsGet(requestParameters: GetTagsForCollectionApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse>;
 
     /**
      * Creates request options for questionApiQuestionQuestionTextPost without sending the request
@@ -2549,22 +2549,18 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieve all tags belonging to a specific collection
      * Get Tags For Collection
      */
-    async getTagsForCollectionApiCollectionsCollectionIdTagsGetRaw(requestParameters: GetTagsForCollectionApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+    async getTagsForCollectionApiCollectionsCollectionIdTagsGetRaw(requestParameters: GetTagsForCollectionApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTagsResponse>> {
         const requestOptions = await this.getTagsForCollectionApiCollectionsCollectionIdTagsGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<any>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
+        return new runtime.JSONApiResponse(response, (jsonValue) => GetTagsResponseFromJSON(jsonValue));
     }
 
     /**
      * Retrieve all tags belonging to a specific collection
      * Get Tags For Collection
      */
-    async getTagsForCollectionApiCollectionsCollectionIdTagsGet(requestParameters: GetTagsForCollectionApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+    async getTagsForCollectionApiCollectionsCollectionIdTagsGet(requestParameters: GetTagsForCollectionApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse> {
         const response = await this.getTagsForCollectionApiCollectionsCollectionIdTagsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }

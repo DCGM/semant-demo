@@ -1720,7 +1720,7 @@ No authorization required
 
 ## getTagsForCollectionApiCollectionsCollectionIdTagsGet
 
-> any getTagsForCollectionApiCollectionsCollectionIdTagsGet(collectionId)
+> GetTagsResponse getTagsForCollectionApiCollectionsCollectionIdTagsGet(collectionId)
 
 Get Tags For Collection
 
@@ -1765,7 +1765,7 @@ example().catch(console.error);
 
 ### Return type
 
-**any**
+[**GetTagsResponse**](GetTagsResponse.md)
 
 ### Authorization
 

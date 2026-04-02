@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import type { TagSpan } from 'src/generated/api'
+import { SpanType, type TagSpan } from 'src/generated/api'
 import { useTagging } from './useTagging'
 import { snapToWordBoundary } from '../utils'
 
@@ -8,6 +8,7 @@ interface SelectionState {
   end: number
   editingId?: string
   tagId?: string
+  spanType?: TagSpan['type']
 }
 
 interface DisplayedTagSpan extends TagSpan {
@@ -37,6 +38,7 @@ interface UpdatePayload {
   tagId: string
   start: number
   end: number
+  spanType?: TagSpan['type']
 }
 
 interface DeletePayload {
@@ -56,13 +58,15 @@ interface SelectionPayload {
 export function useTaggingPageState() {
   const {
     collectionChunks,
+    availableTags,
     isProcessing,
     getCollectionChunksPaged,
     fetchTagSpansForChunk,
     fetchTagSpansMapForChunks,
     createTagSpan,
     updateTagSpan,
-    deleteTagSpan
+    deleteTagSpan,
+    getTagsForCollection
   } = useTagging()
 
   const tagSpansByChunkId = ref<Record<string, TagSpan[]>>({})
@@ -73,10 +77,13 @@ export function useTaggingPageState() {
   const pageLoading = computed(() => isProcessing.value || isPreloading.value)
 
   const chunkIndexById = computed(() => {
-    return collectionChunks.value.reduce<Record<string, number>>((acc, chunk, index) => {
-      acc[chunk.chunkId] = index
-      return acc
-    }, {})
+    return collectionChunks.value.reduce<Record<string, number>>(
+      (acc, chunk, index) => {
+        acc[chunk.chunkId] = index
+        return acc
+      },
+      {}
+    )
   })
 
   const selectionBoundaryChunkIds = computed(() => {
@@ -161,29 +168,6 @@ export function useTaggingPageState() {
     }
   })
 
-  const availableTags = ref([
-    {
-      tagName: 'Reproduktory',
-      tagShorthand: 'repr',
-      tagColor: '#e91e63',
-      tagPictogram: 'square',
-      tagDefinition: 'Reproduktory je věc, která produkuje zvuk',
-      tagExamples: ['repráky'],
-      collectionName: 'repraky_collection',
-      tagUuid: '01f490ee-5b1b-46b4-b0e9-73476fa9c123'
-    },
-    {
-      tagName: 'Prezident',
-      tagShorthand: 'p',
-      tagColor: '#4caf50',
-      tagPictogram: 'circle',
-      tagDefinition: 'Hlava statu',
-      tagExamples: ['EU Cesko'],
-      collectionName: 'MojeKolekce',
-      tagUuid: '025a38bf-81cf-41c3-aa10-74e24f362bb9'
-    }
-  ])
-
   const preloadAllChunkSpans = async () => {
     const missingChunkIds = collectionChunks.value
       .map((chunk) => chunk.chunkId)
@@ -245,7 +229,8 @@ export function useTaggingPageState() {
         chunkId: payload.chunkId,
         tagId: payload.tagId,
         start: payload.start,
-        end: payload.end
+        end: payload.end,
+        type: SpanType.pos
       }
     })
     await refreshChunkSpans(payload.chunkId)
@@ -261,7 +246,8 @@ export function useTaggingPageState() {
           chunkId: payload.chunkId,
           tagId: payload.tagId,
           start: payload.start,
-          end: payload.end
+          end: payload.end,
+          type: payload.spanType ?? SpanType.pos
         }
       })
 
@@ -274,7 +260,8 @@ export function useTaggingPageState() {
       tagSpan: {
         tagId: payload.tagId,
         start: payload.start,
-        end: payload.end
+        end: payload.end,
+        type: payload.spanType
       }
     })
 
@@ -412,6 +399,7 @@ export function useTaggingPageState() {
       ) {
         normalizedSelection.editingId = globalSelection.value.editingId
         normalizedSelection.tagId = globalSelection.value.tagId
+        normalizedSelection.spanType = globalSelection.value.spanType
       }
 
       globalSelection.value = normalizedSelection
@@ -441,7 +429,8 @@ export function useTaggingPageState() {
     if (globalSelection.value.editingId) {
       globalSelection.value = {
         ...globalSelection.value,
-        tagId
+        tagId,
+        spanType: globalSelection.value.spanType ?? SpanType.pos
       }
       return
     }
@@ -456,16 +445,42 @@ export function useTaggingPageState() {
   }
 
   const saveEditedTag = async () => {
-    if (!globalSelection.value?.editingId || !globalSelection.value.tagId) return
+    if (!globalSelection.value?.editingId || !globalSelection.value.tagId)
+      return
 
     await handleUpdateTagSpan({
       chunkId: globalSelection.value.chunkId,
       spanId: globalSelection.value.editingId,
       tagId: globalSelection.value.tagId,
       start: globalSelection.value.start,
-      end: globalSelection.value.end
+      end: globalSelection.value.end,
+      spanType: globalSelection.value.spanType
     })
     clearSelection()
+  }
+
+  const updateSelectedAutoSpanType = async (
+    nextType: typeof SpanType.pos | typeof SpanType.neg
+  ) => {
+    if (!globalSelection.value?.editingId) return
+    if (globalSelection.value.spanType !== SpanType.auto) return
+
+    await updateTagSpan({
+      spanId: globalSelection.value.editingId,
+      tagSpan: {
+        type: nextType
+      }
+    })
+    await refreshChunkSpans(globalSelection.value.chunkId)
+    clearSelection()
+  }
+
+  const approveSelectedAutoSpan = async () => {
+    await updateSelectedAutoSpanType(SpanType.pos)
+  }
+
+  const declineSelectedAutoSpan = async () => {
+    await updateSelectedAutoSpanType(SpanType.neg)
   }
 
   const deleteEditedTag = async () => {
@@ -499,7 +514,8 @@ export function useTaggingPageState() {
       offsetFromBase += collectionChunks.value[idx].textChunk.length
     }
 
-    const targetChunkLength = collectionChunks.value[targetChunkIndex].textChunk.length
+    const targetChunkLength =
+      collectionChunks.value[targetChunkIndex].textChunk.length
     const localStart = Math.max(0, globalSelection.value.start - offsetFromBase)
     const localEnd = Math.min(
       targetChunkLength,
@@ -514,7 +530,8 @@ export function useTaggingPageState() {
       start: localStart,
       end: localEnd,
       editingId: globalSelection.value.editingId,
-      tagId: globalSelection.value.tagId
+      tagId: globalSelection.value.tagId,
+      spanType: globalSelection.value.spanType
     }
   }
 
@@ -524,7 +541,8 @@ export function useTaggingPageState() {
       return []
     }
 
-    const targetChunkLength = collectionChunks.value[targetChunkIndex].textChunk.length
+    const targetChunkLength =
+      collectionChunks.value[targetChunkIndex].textChunk.length
     const displayed: DisplayedTagSpan[] = []
 
     for (
@@ -542,6 +560,8 @@ export function useTaggingPageState() {
       }
 
       for (const span of sourceSpans) {
+        if (span.type === SpanType.neg) continue
+
         if (sourceIndex === targetChunkIndex) {
           displayed.push({
             ...span,
@@ -574,19 +594,22 @@ export function useTaggingPageState() {
 
   return {
     chunks: collectionChunks,
+    availableTags,
     pageLoading,
     globalSelection,
     useWordSnapping,
     selectionBoundaryChunkIds,
     globalSelectionBoundaries,
-    availableTags,
     loadChunks,
     clearSelection,
     handleTagClick,
     saveEditedTag,
     deleteEditedTag,
+    approveSelectedAutoSpan,
+    declineSelectedAutoSpan,
     handleSelectionChange,
     getChunkSelection,
-    getDisplayedTagSpans
+    getDisplayedTagSpans,
+    getTagsForCollection
   }
 }

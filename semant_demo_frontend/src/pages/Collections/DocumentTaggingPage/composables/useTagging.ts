@@ -4,14 +4,20 @@ import { ref } from 'vue'
 
 export function useTagging() {
   const api = useApi().default
-  const collectionChunks =
-    ref<
-      Awaited<
-        ReturnType<typeof api.getCollectionChunksApiChunksOfCollectionGet>
-      >['chunksOfCollection']
-    >([])
+  const collectionChunks = ref<
+    Awaited<
+      ReturnType<typeof api.getCollectionChunksApiChunksOfCollectionGet>
+    >['chunksOfCollection']
+  >([])
   const tagSpans = ref<TagSpan[]>([])
   const isProcessing = ref(false)
+  const availableTags = ref<
+    Awaited<
+      ReturnType<
+        typeof api.getTagsForCollectionApiCollectionsCollectionIdTagsGet
+      >
+    >['tagsLst']
+  >([])
 
   const getCollectionChunksPaged = async (
     collectionId: Parameters<
@@ -140,11 +146,33 @@ export function useTagging() {
     }
   }
 
+  const getTagsForCollection = async (
+    collectionId: Parameters<
+      typeof api.getTagsForCollectionApiCollectionsCollectionIdTagsGet
+    >[0]['collectionId']
+  ) => {
+    isProcessing.value = true
+    try {
+      const response =
+        await api.getTagsForCollectionApiCollectionsCollectionIdTagsGet({
+          collectionId
+        })
+      console.log('Fetched tags for collection:', response)
+      availableTags.value = response.tagsLst
+    } catch (error) {
+      console.error('Error fetching tags for collection:', error)
+      availableTags.value = []
+    } finally {
+      isProcessing.value = false
+    }
+  }
+
   return {
     // State
     collectionChunks,
     tagSpans,
     isProcessing,
+    availableTags,
 
     // Methods
     getCollectionChunksPaged,
@@ -153,6 +181,7 @@ export function useTagging() {
     getTagSpans,
     createTagSpan,
     updateTagSpan,
-    deleteTagSpan
+    deleteTagSpan,
+    getTagsForCollection
   }
 }

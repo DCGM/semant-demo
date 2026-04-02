@@ -17,8 +17,12 @@
             :is-processing="pageLoading"
             :snap-to-words="useWordSnapping"
             :selection="getChunkSelection(chunk.chunkId)"
-            :show-selection-start-handle="selectionBoundaryChunkIds.startChunkId === chunk.chunkId"
-            :show-selection-end-handle="selectionBoundaryChunkIds.endChunkId === chunk.chunkId"
+            :show-selection-start-handle="
+              selectionBoundaryChunkIds.startChunkId === chunk.chunkId
+            "
+            :show-selection-end-handle="
+              selectionBoundaryChunkIds.endChunkId === chunk.chunkId
+            "
             :selection-start-boundary="globalSelectionBoundaries.startBoundary"
             :selection-end-boundary="globalSelectionBoundaries.endBoundary"
             :editing-span-id="globalSelection?.editingId || null"
@@ -59,7 +63,13 @@
 
           <q-card-section>
             <div class="text-subtitle1 text-weight-bold q-mb-sm">
-              {{ globalSelection?.editingId ? 'Tag Type' : 'Assign Tag' }}
+              {{
+                isAutoSelection
+                  ? 'Review Suggested Tag'
+                  : globalSelection?.editingId
+                    ? 'Tag Type'
+                    : 'Assign Tag'
+              }}
             </div>
             <div class="row q-gutter-sm">
               <q-btn
@@ -67,7 +77,7 @@
                 :key="tag.tagUuid"
                 :label="tag.tagName"
                 :icon="tag.tagPictogram"
-                :disable="!globalSelection || pageLoading"
+                :disable="!globalSelection || pageLoading || isAutoSelection"
                 :style="{
                   backgroundColor: tag.tagColor,
                   color: '#fff',
@@ -88,6 +98,27 @@
                   class="q-ml-xs"
                 />
               </q-btn>
+
+              <p v-if="availableTags.length === 0" class="text-grey-7 q-mt-sm">
+                No tags available for this collection. Add some.
+              </p>
+            </div>
+
+            <div v-if="isAutoSelection" class="row q-gutter-sm q-mt-md">
+              <q-btn
+                color="positive"
+                icon="thumb_up"
+                label="Approve"
+                :loading="pageLoading"
+                @click="approveSelectedAutoSpan"
+              />
+              <q-btn
+                color="negative"
+                icon="thumb_down"
+                label="Decline"
+                :loading="pageLoading"
+                @click="declineSelectedAutoSpan"
+              />
             </div>
           </q-card-section>
 
@@ -114,7 +145,7 @@
                 :disable="!globalSelection || pageLoading"
               />
               <q-btn
-                v-if="globalSelection?.editingId"
+                v-if="globalSelection?.editingId && !isAutoSelection"
                 label="Save Changes"
                 color="primary"
                 :loading="pageLoading"
@@ -129,7 +160,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { SpanType } from 'src/generated/api'
 import ChunkTagAnnotator from './ChunkTagAnnotator.vue'
 import { useTaggingPageState } from '../composables/useTaggingPageState'
 
@@ -152,13 +184,24 @@ const {
   handleTagClick,
   saveEditedTag,
   deleteEditedTag,
+  approveSelectedAutoSpan,
+  declineSelectedAutoSpan,
   handleSelectionChange,
   getChunkSelection,
-  getDisplayedTagSpans
+  getDisplayedTagSpans,
+  getTagsForCollection
 } = useTaggingPageState()
+
+const isAutoSelection = computed(() => {
+  return (
+    !!globalSelection.value?.editingId &&
+    globalSelection.value.spanType === SpanType.auto
+  )
+})
 
 onMounted(async () => {
   await loadChunks(props.collectionId)
+  await getTagsForCollection(props.collectionId)
 })
 </script>
 
