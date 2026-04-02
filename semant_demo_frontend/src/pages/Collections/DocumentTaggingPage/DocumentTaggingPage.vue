@@ -13,22 +13,6 @@
       </q-btn>
     </div>
 
-    <q-card class="q-mb-lg">
-      <q-card-section class="bg-grey-2">
-        <div class="text-h6">TODO: Tagging functionality</div>
-        <p class="text-grey-7">
-          Tagging functionality will be implemented here. Users will be able to
-          tag the document with various labels and attributes.
-        </p>
-
-        <code>
-          <pre>
-            {{ JSON.stringify(collectionChunks, null, 2) }}
-          </pre>
-        </code>
-      </q-card-section>
-    </q-card>
-
   <TaggingPage :collection-id="props.collectionId" />
 
     <q-separator class="q-my-md" />

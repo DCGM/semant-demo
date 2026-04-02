@@ -578,7 +578,6 @@ const getHandleStyle = () => {
   font-size: 16px;
   line-height: 1.8;
   padding: 16px;
-  border: 1px solid #e0e0e0;
   border-radius: 8px;
   cursor: text;
   background-color: #fafafa;
