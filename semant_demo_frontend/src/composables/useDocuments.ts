@@ -1,5 +1,5 @@
 import { DocumentBrowseParams } from 'src/models/documents'
-import { useDocumentsStore } from 'src/stores/documents_store'
+import { useDocumentsStore } from 'src/stores/documentsStore'
 import { computed } from 'vue'
 
 const useDocuments = () => {
