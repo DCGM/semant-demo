@@ -34,7 +34,7 @@
         </q-card-section>
         <q-separator vertical />
         <q-card-actions vertical class="justify-around no-wrap">
-          <q-btn round flat icon="input" color="primary" @click="handleEnterProject(props.collection.id)">
+          <q-btn round flat icon="input" color="primary" @click.stop="handleEnterProject(props.collection.id)">
             <q-tooltip> Enter project </q-tooltip>
           </q-btn>
           <q-btn
@@ -103,6 +103,7 @@ const handleDeleteProject = () => {
 
 const handleEnterProject = (collectionId: string) => {
   emit('enter', collectionId)
+  console.log('Entering collection with id: ', collectionId)
 }
 
 </script>
