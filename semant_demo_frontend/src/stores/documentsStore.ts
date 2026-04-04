@@ -68,9 +68,33 @@ export const useDocumentsStore = defineStore('documents', () => {
     }
   }
 
+  const addToCollection = async (documentId: string, collectionId: string) => {
+    const notif = ongoingNotification('Adding document to collection...')
+    error.value = null
+    loading.value = true
+    try {
+      const success = await DocumentsRepository.addToCollection(documentId, collectionId)
+      if (success) {
+        notif.success('Document added to collection')
+      } else {
+        error.value = 'Failed to add document to collection'
+        notif.error('Failed to add document to collection')
+      }
+      return success
+    } catch (err) {
+      error.value = 'Failed to add document to collection'
+      console.error('Error adding document to collection:', err)
+      notif.error('Failed to add document to collection')
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
   const removeFromCollection = async (documentId: string, collectionId: string) => {
     const notif = ongoingNotification('Removing document from collection...')
     error.value = null
+    loading.value = true
     try {
       const success = await DocumentsRepository.removeFromCollection(documentId, collectionId)
       if (success) {
@@ -86,6 +110,8 @@ export const useDocumentsStore = defineStore('documents', () => {
       console.error('Error removing document from collection:', err)
       notif.error('Failed to remove document from collection')
       return false
+    } finally {
+      loading.value = false
     }
   }
 
@@ -96,7 +122,7 @@ export const useDocumentsStore = defineStore('documents', () => {
 
     const notif = ongoingNotification('Removing selected documents from collection...')
     error.value = null
-
+    loading.value = true
     try {
       const results = await Promise.all(
         documentIds.map((documentId) => DocumentsRepository.removeFromCollection(documentId, collectionId))
@@ -123,6 +149,8 @@ export const useDocumentsStore = defineStore('documents', () => {
       error.value = 'Failed to remove selected documents from collection'
       console.error('Error removing selected documents from collection:', err)
       notif.error('Failed to remove selected documents from collection')
+    } finally {
+      loading.value = false
     }
   }
 
@@ -136,6 +164,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     fetchDocument,
     browseDocuments,
     appendDocumentIfMissing,
+    addToCollection,
     removeFromCollection,
     removeManyFromCollection
   }
