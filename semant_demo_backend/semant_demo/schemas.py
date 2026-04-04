@@ -227,6 +227,13 @@ class CreateResponse(BaseModel):
     created: bool
     message: str
 
+# Weaviate collections
+class CollectionNames(BaseModel):
+    chunks_collection_name: str
+    tag_collection_name: str
+    user_collection_name: str
+    user_collection_link_name: str
+
 # Tagging configuration
 class TaggingConfigParams(BaseModel):
     model_type: APIType

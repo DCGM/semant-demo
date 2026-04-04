@@ -12,7 +12,7 @@ from sqlalchemy import update
 from sqlalchemy import exc
 from semant_demo.schemas import Task, TasksBase
 import asyncio
-from semant_demo.weaviate_tag import WeaviateSearchAndTag
+#from semant_demo.weaviate_tag import WeaviateSearchAndTag
 from semant_demo.config import config
 import logging
 from semant_demo.tagging.sql_utils import update_task_status
@@ -139,7 +139,6 @@ async def tag_chunks_with_llm(searcher: WeaviateSearch, tag_request: schemas.Tag
         except Exception as e:
             logging.error(f"Error fetching texts from collection: {e}")
             return {}
-        
 
 async def tag_and_store(tagReq: schemas.TaggingTaskReqTemplate, task_id: str, searcher: WeaviateSearch, sessionmaker):
     try:

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from semant_demo.schemas import CollectionNames
 
 
 TRUE_VALUES = {"true", "1"}
@@ -41,5 +42,12 @@ class Config:
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "configs"
         test_configs_path = SCRIPT_PATH / "rag" / "rag_configs" / "tests"
         self.RAG_CONFIGS_PATH = os.getenv("RAG_CONFIGS_PATH", default_config_path)
+
+        self.collectionNames = CollectionNames(
+            chunks_collection_name = "Chunks",
+            tag_collection_name = "Tag",
+            user_collection_name = "UserCollection",
+            user_collection_link_name = "userCollection"
+        )
 
 config = Config()
