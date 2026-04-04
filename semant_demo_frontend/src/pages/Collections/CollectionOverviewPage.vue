@@ -87,8 +87,8 @@
                   </div>
                 </div>
                 <div v-else class="readonly-cell description-row">
-                  <span class="description-inline" :class="{ 'description-empty': !normalizedDescription }">
-                    {{ normalizedDescription || 'No description yet.' }}
+                  <span class="description-inline">
+                    {{ activeCollection?.description || '-' }}
                   </span>
                   <q-btn
                     flat
@@ -412,11 +412,6 @@ onMounted(() => {
 .panel-card,
 .stat-card {
   border-radius: 12px;
-}
-
-.description-empty {
-  color: #7f8b98;
-  font-style: italic;
 }
 
 .overview-table :deep(th),
