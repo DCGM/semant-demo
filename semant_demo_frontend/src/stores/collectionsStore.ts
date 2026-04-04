@@ -1,13 +1,12 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { Collection, CollectionStats, Collections, PostCollection, PatchCollection } from 'src/models/collection'
+import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collection'
 import CollectionRepository from 'src/repositories/CollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 
 export const useCollectionsStore = defineStore('userCollections', () => {
   const collections = ref<Collections>([])
   const activeCollection = ref<Collection | null>(null)
-  const activeCollectionStats = ref<CollectionStats | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
 
@@ -43,22 +42,6 @@ export const useCollectionsStore = defineStore('userCollections', () => {
       loading.value = false
     }
   }
-  const fetchCollectionStats = async (collectionId: string) => {
-    const notif = ongoingNotification('Loading collection statistics...')
-    loading.value = true
-    error.value = null
-    try {
-      const data = await CollectionRepository.getStats(collectionId)
-      activeCollectionStats.value = data
-      notif.success('Collection statistics loaded')
-    } catch (err) {
-      error.value = 'Failed to fetch collection statistics'
-      console.error('Error fetching collection statistics:', err)
-      notif.error('Failed to load collection statistics')
-    } finally {
-      loading.value = false
-    }
-  }
   const createCollection = async (userId: string, collectionData: PostCollection) => {
     const notif = ongoingNotification('Creating collection...')
     loading.value = true
@@ -84,6 +67,9 @@ export const useCollectionsStore = defineStore('userCollections', () => {
       const index = collections.value.findIndex((c) => c.id === collectionId)
       if (index !== -1) {
         collections.value[index] = data
+      }
+      if (activeCollection.value?.id === collectionId) {
+        activeCollection.value = data
       }
       notif.success('Collection updated')
     } catch (err) {
@@ -114,12 +100,10 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   return {
     collections,
     activeCollection,
-    activeCollectionStats,
     error,
     loading,
     fetchCollections,
     fetchCollection,
-    fetchCollectionStats,
     createCollection,
     updateCollection,
     deleteCollection
