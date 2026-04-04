@@ -126,18 +126,11 @@
 
 <script setup lang="ts">
 import MiniStateButton from 'src/components/MiniStateButton.vue'
-import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref } from 'vue'
 
 const drawerMiniState = ref(false)
 
-const route = useRoute()
-
 const leftDrawerOpen = ref(true)
-
-const currentRoute = computed(() => {
-  return route.path ? route.path : ''
-})
 
 const drawerLinks1 = [
   { label: 'Document search', icon: 'search', to: { name: 'search' } },
@@ -154,7 +147,7 @@ const drawerLinks3 = [
   { label: 'Send feedback', icon: '', to: { name: 'feedback' } }
 ]
 
-const drawerLinks4 = [{ icon: 'logout', label: 'Sign out', to: { name: 'sign-out' } }]
+const drawerLinks4 = [{ icon: 'logout', label: 'Sign out' }]
 
 function toggleLeftDrawer () {
   leftDrawerOpen.value = !leftDrawerOpen.value

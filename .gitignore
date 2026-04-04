@@ -71,6 +71,9 @@ semant_demo_backend/tasks.db
 # OpenAPI
 semant_demo_backend/openapi.json
 
+# Feedback logs
+feedback.log.jsonl
+
 # Flask stuff:
 instance/
 .webassets-cache

@@ -259,6 +259,13 @@ class FeedbackRequest(BaseModel):
     comment: str | None = None
 
 
+class AppFeedbackRequest(BaseModel):
+    type: str
+    subject: str | None = None
+    message: str
+    email: str | None = None
+
+
 class CreateResponse(BaseModel):
     created: bool
     message: str

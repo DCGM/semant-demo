@@ -39,6 +39,10 @@ class Config:
 
         # SQL db
         self.SQL_DB_URL = "sqlite+aiosqlite:///tasks.db"
+
+        # app feedback delivery
+        self.FEEDBACK_WEBHOOK_URL = os.getenv("FEEDBACK_WEBHOOK_URL", "")
+        self.FEEDBACK_LOG_PATH = os.getenv("FEEDBACK_LOG_PATH", str(SCRIPT_PATH / "feedback.log.jsonl"))
         
         # path to rag configs
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "configs"
