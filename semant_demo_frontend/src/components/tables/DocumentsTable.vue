@@ -133,7 +133,7 @@ import AddDocumentDropdownBtn from '../custom/AddDocumentDropdownBtn.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 
-const { documents, loadDocuments, removeDoc, removeManyDocs } = useDocuments()
+const { documents, loadDocuments, removeDoc, removeManyDocs, loading } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
 
 const $q = useQuasar()
