@@ -90,7 +90,7 @@ class WeaviateClient(WeaviateSearch):
             filters=chunks_filters
         )
         chunks_count = chunks_count_response.total_count or 0
-        
+
         # Compute tags count
         tags_collection = self.client.collections.get("Tag")
         tags_filters = (
@@ -109,9 +109,11 @@ class WeaviateClient(WeaviateSearch):
         spans_collection = self.client.collections.get("Span_test")
 
         spans_filters = (
-            Filter.by_ref("text_chunk").by_ref("userCollection").by_id().equal(collection_id)
+            Filter.by_ref("text_chunk").by_ref(
+                "userCollection").by_id().equal(collection_id)
             |
-            Filter.by_ref("tag").by_ref("userCollection").by_id().equal(collection_id)
+            Filter.by_ref("tag").by_ref(
+                "userCollection").by_id().equal(collection_id)
         )
 
         annotations_count_response = await spans_collection.aggregate.over_all(
@@ -341,12 +343,6 @@ class WeaviateClient(WeaviateSearch):
             already_linked_chunks = 0
             added_chunks = 0
 
-            await document_collection.data.reference_add(
-                from_uuid=document_id,
-                from_property="collection",
-                to=collection_id,
-            )
-
             # Add collection reference to every chunk that belongs to the document.
             chunk_filter = Filter.by_ref("document").by_id().equal(document_id)
             offset = 0
@@ -355,7 +351,8 @@ class WeaviateClient(WeaviateSearch):
             while True:
                 chunks_response = await chunks_collection.query.fetch_objects(
                     filters=chunk_filter,
-                    return_references=[QueryReference(link_on="userCollection")],
+                    return_references=[QueryReference(
+                        link_on="userCollection")],
                     limit=page_size,
                     offset=offset,
                 )
@@ -365,8 +362,10 @@ class WeaviateClient(WeaviateSearch):
 
                 for chunk in chunks_response.objects:
                     matched_chunks += 1
-                    current_refs = chunk.references.get("userCollection") if chunk.references else None
-                    current_collection_ids = [ref.uuid for ref in (current_refs.objects if current_refs else [])]
+                    current_refs = chunk.references.get(
+                        "userCollection") if chunk.references else None
+                    current_collection_ids = [ref.uuid for ref in (
+                        current_refs.objects if current_refs else [])]
 
                     if collection_id in current_collection_ids:
                         already_linked_chunks += 1
@@ -383,6 +382,12 @@ class WeaviateClient(WeaviateSearch):
                     break
 
                 offset += page_size
+
+            await document_collection.data.reference_add(
+                from_uuid=document_id,
+                from_property="collection",
+                to=collection_id,
+            )
 
             logging.info(
                 "add_document_to_collection summary for document %s and collection %s: matched_chunks=%d, already_linked=%d, added=%d",

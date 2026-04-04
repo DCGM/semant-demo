@@ -18,11 +18,6 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/RagPage.vue')
       },
       {
-        name: 'tag',
-        path: '/tag',
-        component: () => import('pages/TaggingPage.vue')
-      },
-      {
         name: 'collections',
         path: '/collections',
         component: () => import('pages/Collections/UserCollectionsPage.vue')
@@ -61,11 +56,6 @@ const routes: RouteRecordRaw[] = [
             props: true
           }
         ]
-      },
-      {
-        name: 'tagging',
-        path: '/tagging',
-        component: () => import('pages/TaggingPage/TaggingPage.vue')
       },
       {
         name: 'tagManagement',

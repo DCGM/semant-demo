@@ -414,6 +414,12 @@ onMounted(() => {
   border-radius: 12px;
 }
 
+.panel-card > .q-card__section:first-child .text-subtitle1 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1f2a37;
+}
+
 .overview-table :deep(th),
 .overview-table :deep(td) {
   vertical-align: top;
@@ -423,10 +429,12 @@ onMounted(() => {
   width: 170px;
   color: #758195;
   font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .details-value {
   color: #1f2a37;
+  font-size: 0.95rem;
 }
 
 .edit-cell {
@@ -483,13 +491,19 @@ onMounted(() => {
   gap: 2px;
 }
 
+.statistics-header .text-subtitle1 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1f2a37;
+}
+
 .statistics-subtitle {
   color: #758195;
-  font-size: 0.86rem;
+  font-size: 0.9rem;
 }
 
 .stat-value {
-  font-size: 1.8rem;
+  font-size: 2rem;
   line-height: 1;
   font-weight: 700;
   color: #1f2a37;
@@ -498,6 +512,6 @@ onMounted(() => {
 .stat-helper {
   margin-top: 8px;
   color: #758195;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
 }
 </style>

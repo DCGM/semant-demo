@@ -12,6 +12,8 @@
     square
     table-header-style="background-color: rgba(0, 0, 0, 0.04)"
     style="border-bottom: 1px solid rgba(0, 0, 0, 0.25)"
+    :row-class="() => 'cursor-pointer'"
+    @row-click="(_evt, row) => handleTagDocument(row.id)"
     :loading="loading"
   >
     <template #top>
@@ -72,7 +74,7 @@
     </template>
     <template #body-cell-actions="props">
       <q-td :props="props" class="q-pa-xs">
-        <div class="row items-center q-gutter-xs">
+        <div class="row no-wrap items-center q-gutter-xs" @click.stop>
           <q-btn
             dense
             flat
@@ -157,11 +159,7 @@ const handleRefresh = async () => {
 }
 
 const handleBrowseLibrary = () => {
-  openBrowseLibraryDialog({ collectionId: collectionId.value }).onDismiss(
-    () => {
-      loadDocuments(collectionId.value)
-    }
-  )
+  openBrowseLibraryDialog({ collectionId: collectionId.value })
 }
 
 const handleCreateDocument = () => {
@@ -246,7 +244,9 @@ const columns: QTableColumn<Document>[] = [
     label: 'Actions',
     field: () => '',
     align: 'center' as const,
-    required: true
+    required: true,
+    headerStyle: 'width: 1%; white-space: nowrap;',
+    style: 'width: 1%; white-space: nowrap;'
   },
   {
     name: 'documentTitle',
