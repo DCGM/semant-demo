@@ -20,83 +20,11 @@ from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSe
 
 def create_async_openai_client(model_type: str, global_config: Config) -> AsyncOpenAI:
     """Create an AsyncOpenAI client routed to the correct API endpoint."""
-
     return AsyncOpenAI(
         api_key=global_config.OPENAI_API_KEY,
         base_url=global_config.OPENAI_API_URL,
     )
-    # Default: standard OpenAI
 
-
-IMPROVED_RAG_SYSTEM_PROMPT = """
-You are a STRICT Agentic Retrieval-Augmented Generation (RAG) agent with strategic tool usage.
-
-AVAILABLE TOOLS & WHEN TO USE THEM:
-
-1. weaviate_search(query: str)
-   USE WHEN: You need to retrieve documents from the vector database
-   - Initial query processing → search immediately
-   - After assess_retrieval_quality suggests retry → search with new query from expand_query
-
-2. assess_retrieval_quality(question: str, retrieved_documents: str)
-   USE WHEN: You have retrieved documents and need to check if they answer the question
-   - IMMEDIATELY after weaviate_search, BEFORE attempting to answer
-   - Returns: relevance_score (0-1), coverage (complete/partial/none), should_retry (bool)
-   - Scores >= 0.6 → Proceed to answer
-   - Scores < 0.6 → Call expand_query for alternatives
-
-3. expand_query(original_query: str, context: str)
-   USE WHEN: assess_retrieval_quality shows low scores or YOU want alternative search angles
-   - context: "too_specific", "too_general", or "no_results"
-   - Returns: list of alternative query formulations
-   - Use top alternative with weaviate_search
-
-4. decompose_question(question: str)
-   USE WHEN: The question has multiple distinct parts or asks about cause-and-effect
-   - Examples: "What is X and how does it affect Y?"
-   - Returns: sub_queries list for searching separately
-   - Search each sub-query, then synthesize results
-
-5. synthesize_evidence(question: str, retrieved_documents: str)
-   USE WHEN: You have good quality retrieval and need to generate final answer
-   - Consolidates information across documents
-   - Detects contradictions
-   - Provides consolidated answer with proper citations
-
-STRICT RULES:
-1) You CANNOT answer without retrieving relevant context first via weaviate_search
-2) You MUST use ONLY retrieved context in your answer
-3) MANDATORY CITATIONS: Every sentence MUST end with [doc X]
-4) MULTIPLE SOURCES: If claiming multiple docs support a statement, cite them: [doc 1], [doc 2]
-5) Response language MUST match the user's question language
-6) Use Markdown formatting for clarity
-
-AGENT STRATEGY:
-Step 1: Receive question
-Step 2: Decide: Is question clear? → If vague, consider decompose_question first
-Step 3: Call weaviate_search with initial question
-Step 4: IMMEDIATELY call assess_retrieval_quality on results
-Step 5: Based on assessment:
-   - If coverage >= partial AND relevance_score >= 0.6 → Proceed to answer
-   - If coverage == none OR relevance_score < 0.6 → Call expand_query, get alternatives, try new search
-   - If multiple question parts → Call decompose_question, search each part separately
-Step 6: Once quality is acceptable OR you've exhausted alternatives → Call synthesize_evidence for final answer
-Step 7: Provide final answer with proper citations, if unable to fully answer the question, answer it partially and disclose it is not an complete answer.
-
-ITERATION BUDGET: You have {remaining_iterations} iterations remaining.
-Count carefully: search=2 step, assess=1 step, expand=1 step, decompose=1 step, synthesize=1 step
-
-FAILURE RECOVERY:
-- assess_retrieval_quality returns coverage="none"?
-  → Try expand_query with context="no_results"
-- Still no good results after expand_query?
-  → Question might not be answerable from current KB
-  → Check with decompose_question if it's multi-part
-  → If all attempts exhausted, respond with final answer or:
-  → "Sorry, I can´t answer the question."
-
-IMPORTANT: Do NOT guess or use external knowledge. ONLY use retrieved documents or fall back to refuse.
-"""
 
 def extract_text_from_openai_message(msg):
     if isinstance(msg.content, str):
@@ -276,7 +204,6 @@ class WeaviateToolWrapper:
 
     # @tool
     async def weaviate_search(self, query: str) -> str:
-        # print("Searching...")
         self.rag_search.search_query = query
 
         response = await self._call_weaviate_search(
@@ -286,7 +213,6 @@ class WeaviateToolWrapper:
 
         self.last_results = response.results
 
-        # texts = [hit.text for hit in response.results]
         formatted_chunks = []
 
         for i, hit in enumerate(response.results, start=1):
@@ -296,41 +222,21 @@ class WeaviateToolWrapper:
 
 
 class AssessRetrievalQualityTool:
-    def __init__(self, model: str, client: AsyncOpenAI):
+    def __init__(self, model: str, client: AsyncOpenAI, system_prompt: str):
         self.client = client
         self.model = model
+        self.system_prompt = system_prompt
 
     async def assess_retrieval_quality(self, question: str, retrieved_documents: str) -> str:
         """
         Assesses whether retrieved documents answer the question.
         Returns JSON with relevance_score, coverage, and should_retry flag.
         """
-        system_prompt = """
-You are a retrieval quality assessment expert.
-
-Analyze if the retrieved documents answer the given question.
-
-Provide a JSON response with:
-{
-  "relevance_score": <float 0-1>,
-  "coverage": "<complete|partial|none>",
-  "missing_aspects": [<list of what's missing>],
-  "should_retry": <bool>,
-  "reasoning": "<brief explanation>"
-}
-
-Guidelines:
-- relevance_score >= 0.6 and coverage >= partial = good retrieval
-- relevance_score < 0.6 or coverage = none = poor retrieval, should_retry = true
-- List specific gaps if coverage is partial
-- Be strict: only mark complete if documents fully address the question
-"""
-
         response = await self.client.chat.completions.create(
             model=self.model,
             temperature=0.3,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": f"Question: {question}\n\nRetrieved Documents:\n{retrieved_documents}"}
             ],
         )
@@ -339,42 +245,21 @@ Guidelines:
 
 
 class ExpandQueryTool:
-    def __init__(self, model: str, client: AsyncOpenAI):
+    def __init__(self, model: str, client: AsyncOpenAI, system_prompt: str):
         self.client = client
         self.model = model
+        self.system_prompt = system_prompt
 
     async def expand_query(self, original_query: str, context: str) -> str:
         """
         Generates alternative query formulations for better retrieval.
         Context indicates why alternative is needed: "too_specific", "too_general", "no_results"
         """
-        system_prompt = """
-You are a query expansion specialist for semantic search.
-
-Given an original query and a context indicating why it needs improvement,
-generate 3-5 alternative query formulations that might better match relevant documents.
-These alternative queries have to be in the same language as the original query.
-
-Context meanings:
-- "too_specific": Original query too narrow, needs broader formulations
-- "too_general": Original query too broad, needs more specific angles
-- "no_results": Original query retrieves nothing, needs completely different angles
-
-Provide JSON response:
-{
-  "alternatives": ["query1", "query2", "query3", ...],
-  "reasoning": "<brief explanation of why these alternatives help>"
-}
-
-Return ONLY the JSON, no other text.
-Focus on semantic variations and synonyms, not just word replacements.
-"""
-
         response = await self.client.chat.completions.create(
             model=self.model,
             temperature=0.7,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": f"Original Query: {original_query}\nContext: {context}"}
             ],
         )
@@ -383,42 +268,20 @@ Focus on semantic variations and synonyms, not just word replacements.
 
 
 class DecomposeQuestionTool:
-    def __init__(self, model: str, client: AsyncOpenAI):
+    def __init__(self, model: str, client: AsyncOpenAI, system_prompt: str):
         self.client = client
         self.model = model
+        self.system_prompt = system_prompt
 
     async def decompose_question(self, question: str) -> str:
         """
         Decomposes multi-part questions into separate sub-queries for targeted searching.
         """
-        system_prompt = """
-You are a question decomposition expert.
-
-Analyze the question to identify if it has multiple distinct parts or asks about relationships.
-
-Provide JSON response:
-{
-  "is_multi_part": <bool>,
-  "num_parts": <int>,
-  "sub_queries": ["sub_q1", "sub_q2", ...],
-  "reasoning": "<explanation of decomposition>",
-  "suggested_strategy": "<how to combine answers>"
-}
-
-Examples of multi-part questions:
-- "How is X made and what are its uses?" → 2 parts
-- "Why did X happen and what were the consequences?" → 2 parts
-- "What is X, how does it compare to Y, and when should it be used?" → 3 parts
-
-Return ONLY the JSON, no other text.
-If not multi-part, set is_multi_part=false and sub_queries=[].
-"""
-
         response = await self.client.chat.completions.create(
             model=self.model,
             temperature=0.5,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": question}
             ],
         )
@@ -427,41 +290,21 @@ If not multi-part, set is_multi_part=false and sub_queries=[].
 
 
 class SynthesizeEvidenceTool:
-    def __init__(self, model: str, client: AsyncOpenAI):
+    def __init__(self, model: str, client: AsyncOpenAI, system_prompt: str):
         self.client = client
         self.model = model
+        self.system_prompt = system_prompt
 
     async def synthesize_evidence(self, question: str, retrieved_documents: str) -> str:
         """
         Synthesizes evidence from retrieved documents into a coherent answer with citations.
         Consolidates key information in the same language as the question.
         """
-        system_prompt = """
-You are an evidence synthesis expert for RAG systems.
-
-Your task:
-1. Consolidate information from the retrieved documents
-2. Generate a comprehensive answer with proper citations
-
-Requirements:
-- EVERY sentence MUST end with [doc X] citation
-- If multiple docs support a claim, cite them: [doc 1], [doc 2]
-- Use Markdown formatting
-- Do NOT add information not in the documents
-- RESPOND IN THE SAME LANGUAGE AS THE QUESTION
-- Output ONLY the consolidated answer with citations - nothing else
-
-Do NOT include:
-- Sections about contradictions
-- Confidence levels
-- Any explanatory text beyond the answer itself
-"""
-
         response = await self.client.chat.completions.create(
             model=self.model,
             temperature=0.2,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": f"Question: {question}\n\nRetrieved Documents:\n{retrieved_documents}"}
             ],
         )
@@ -481,6 +324,12 @@ class xmartiAgentRag(BaseRag):
         self.alpha = param_config.get("alpha")
         self.chunk_limit = param_config.get("chunk_limit")
         self.agent_iterations = param_config.get("agent_iterations", 7)
+        prompts = param_config.get("prompts", {})
+        self.system_prompt_template = prompts.get("system_prompt_template")
+        self.assess_prompt = prompts.get("assess_retrieval_quality_prompt")
+        self.expand_prompt = prompts.get("expand_query_prompt")
+        self.decompose_prompt = prompts.get("decompose_question_prompt")
+        self.synthesize_prompt = prompts.get("synthesize_evidence_prompt")
 
 
     async def rag_request(
@@ -499,14 +348,12 @@ class xmartiAgentRag(BaseRag):
             alpha=self.alpha,
             chunk_limit=self.chunk_limit
         )
-        assess_tool = AssessRetrievalQualityTool(self.model_name, self._client)
-        expand_tool = ExpandQueryTool(self.model_name, self._client)
-        decompose_tool = DecomposeQuestionTool(self.model_name, self._client)
-        synthesize_tool = SynthesizeEvidenceTool(self.model_name, self._client)
+        assess_tool = AssessRetrievalQualityTool(self.model_name, self._client, self.assess_prompt)
+        expand_tool = ExpandQueryTool(self.model_name, self._client, self.expand_prompt)
+        decompose_tool = DecomposeQuestionTool(self.model_name, self._client, self.decompose_prompt)
+        synthesize_tool = SynthesizeEvidenceTool(self.model_name, self._client, self.synthesize_prompt)
 
         retrieved_sources = []
-
-        # Initialize all new tools
 
 
         tools = {
@@ -519,17 +366,15 @@ class xmartiAgentRag(BaseRag):
 
         messages = [
             SystemMessage(
-                content=IMPROVED_RAG_SYSTEM_PROMPT.format(remaining_iterations=iteration_limit)
+                content=self.system_prompt_template.format(remaining_iterations=iteration_limit)
             ),
             HumanMessage(content=request.question)
         ]
 
-        last_tool_called = None  # Track the last tool called
-
         for i in range(iteration_limit):
 
-            # Use higher temperature for reasoning, lower for final answer
-            temperature = 0.6 if i < iteration_limit - 1 else 0.2
+            # Use low temperature for consistent, focused tool usage
+            temperature = 0.3 if i < iteration_limit - 1 else 0.2
 
             ai_msg = await self.llm.invoke(messages, temperature=temperature)
             print(f"LLM response at iteration {i+1}:\nTool Calls: {ai_msg.tool_calls}\n{'-'*50}")
@@ -541,8 +386,6 @@ class xmartiAgentRag(BaseRag):
                 tool_name = tool_call.function.name
                 tool_args = json.loads(tool_call.function.arguments)
 
-                # Track the last tool called
-                last_tool_called = tool_name
 
                 tool_fn = tools.get(tool_name)
                 if tool_fn is None:
@@ -581,23 +424,35 @@ class xmartiAgentRag(BaseRag):
                         )
                     )
 
-                    # Check if assessment indicates good retrieval quality
-                    # If so, signals to agent that it should proceed to synthesis instead of more searches
+                    # Check if assessment indicates any retrieval quality
+                    # If so, strongly guide agent to proceed to synthesis
                     try:
                         assessment_obj = json.loads(observation)
                         relevance_score = assessment_obj.get("relevance_score", 0)
                         coverage = assessment_obj.get("coverage", "none")
 
-                        # If assessment is good, add guidance message to encourage synthesis
-                        if relevance_score >= 0.65 and coverage in ["complete", "partial"]:
+                        # If assessment shows any relevant content, push toward synthesis
+                        if relevance_score >= 0.3 and coverage in ["complete", "partial"]:
                             messages.append(
                                 AIMessage(
-                                    content="Assessment shows good quality retrieval. I should now generate the final answer using synthesize_evidence."
+                                    content="Assessment shows relevant retrieval. I should now generate the final answer using synthesize_evidence. A partial answer is better than no answer."
+                                )
+                            )
+                        elif retrieved_sources:
+                            # Even if assessment is low, if we have sources, encourage answering
+                            messages.append(
+                                AIMessage(
+                                    content="Even though assessment scores are low, I have retrieved documents. I should attempt to answer using synthesize_evidence rather than refusing."
                                 )
                             )
                     except (json.JSONDecodeError, ValueError):
-                        # If parsing fails, let agent decide normally
-                        pass
+                        # If parsing fails, encourage synthesis if we have sources
+                        if retrieved_sources:
+                            messages.append(
+                                AIMessage(
+                                    content="Assessment parsing failed, but I have retrieved documents. I should attempt to answer using synthesize_evidence."
+                                )
+                            )
 
                 elif tool_name in ["expand_query", "decompose_question"]:
                     # These tools return structured info for the agent to use
@@ -625,12 +480,14 @@ class xmartiAgentRag(BaseRag):
                             content=observation
                         )
                     )
-                if tool_name != "weaviate_search":
-                    print(f"Tool response for {tool_name}:\n{observation}\n{'-'*50}")
+                # if tool_name != "weaviate_search":
+                #     print(f"Tool response for {tool_name}:\n{observation}\n{'-'*50}")
 
                 continue
 
             final_answer = extract_text_from_openai_message(ai_msg)
+
+            # print("Returning final answer normally:", final_answer)
 
             return RagResponse(
                 response_id = str(uuid.uuid4()),
@@ -640,73 +497,35 @@ class xmartiAgentRag(BaseRag):
             )
 
 
-        # Final attempt: if last tool was weaviate_search, try to answer with available results
-        if last_tool_called == "weaviate_search" and retrieved_sources:
-            # print("Attempting final answer synthesis from last search results...")
-
-            # Format the retrieved sources for assessment
+        # Final attempt: if we have ANY retrieved sources, always try to synthesize an answer
+        if retrieved_sources:
             formatted_chunks = []
             for i, hit in enumerate(retrieved_sources[:5], start=1):
                 formatted_chunks.append(f"[doc {i}] {hit.text}")
             retrieved_docs_text = "\n\n".join(formatted_chunks)
 
             try:
-                # Assess the retrieval quality one last time
-                assessment = await assess_tool.assess_retrieval_quality(
+                final_synthesis = await synthesize_tool.synthesize_evidence(
                     request.question,
                     retrieved_docs_text
                 )
-                # print(f"Final assessment: {assessment}\nType: {type(assessment)}\n{'-'*50}")
 
-                # Parse assessment score and only generate answer if quality is acceptable
-                try:
-                    assessment_obj = json.loads(assessment)
-                    relevance_score = assessment_obj.get("relevance_score", 0)
-                    coverage = assessment_obj.get("coverage", "none")
-
-                    # Only generate answer if assessment meets quality threshold
-                    if relevance_score >= 0.5 and coverage != "none":
-                        # Try to synthesize evidence from the retrieved documents
-                        final_synthesis = await synthesize_tool.synthesize_evidence(
-                            request.question,
-                            retrieved_docs_text
-                        )
-                        # print(f"Final synthesis: {final_synthesis}\n{'-'*50}")
-
-                        return RagResponse(
-                            response_id=str(uuid.uuid4()),
-                            rag_answer=final_synthesis,
-                            sources=weaviate_tool.last_results or [],
-                            time_spent=time.perf_counter() - start_time
-                        )
-                    else:
-                        # Assessment indicates poor retrieval quality
-                        return RagResponse(
-                            response_id=str(uuid.uuid4()),
-                            rag_answer="Sorry, I can´t answer the question based on the retrieved information.",
-                            sources=weaviate_tool.last_results or [],
-                            time_spent=time.perf_counter() - start_time
-                        )
-                except json.JSONDecodeError:
-                    # If assessment JSON parsing fails, fall back to synthesizing anyway
-                    final_synthesis = await synthesize_tool.synthesize_evidence(
-                        request.question,
-                        retrieved_docs_text
-                    )
-                    return RagResponse(
-                        response_id=str(uuid.uuid4()),
-                        rag_answer=final_synthesis,
-                        sources=weaviate_tool.last_results or [],
-                        time_spent=time.perf_counter() - start_time
-                    )
+                print("Returning final answer after synthesis:", final_synthesis)
+                return RagResponse(
+                    response_id=str(uuid.uuid4()),
+                    rag_answer=final_synthesis,
+                    sources=weaviate_tool.last_results or [],
+                    time_spent=time.perf_counter() - start_time
+                )
             except Exception as e:
-                print(f"Error during final synthesis: {e}")
+                pass
+                # print(f"Error during final synthesis: {e}")
                 # Fall through to default response if synthesis fails
 
-        # Fallback if loop ends without final answer
+        # Fallback if loop ends without final answer AND no sources were retrieved
         return RagResponse(
             response_id = str(uuid.uuid4()),
             rag_answer="Sorry, I can´t answer the question based on the retrieved information.",
-            sources=[],
+            sources=weaviate_tool.last_results or [],
             time_spent=time.perf_counter() - start_time
         )
