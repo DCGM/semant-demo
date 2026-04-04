@@ -173,6 +173,8 @@
           </tbody>
         </q-markup-table>
       </q-card-section>
+      <ErrorDisplay class="q-mt-md" :error="collectionError" />
+      <q-inner-loading :showing="collectionLoading" />
     </q-card>
 
     <q-card flat bordered class="panel-card q-mt-lg">
@@ -203,29 +205,30 @@
           </div>
       </div>
       </q-card-section>
+      <ErrorDisplay class="q-mt-md" :error="collectionStatsError" />
+      <q-inner-loading :showing="collectionStatsLoading" />
     </q-card>
-    <ErrorDisplay class="q-mt-md" :error="error" />
-    <q-inner-loading :showing="loading" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import useCollections from 'src/composables/useCollections'
 import useColorPicker from 'src/composables/useColorPicker'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
+import useCollectionStats from 'src/composables/useCollectionStats'
 
 const $route = useRoute()
 const {
   activeCollection,
-  activeCollectionStats,
+  loading: collectionLoading,
+  error: collectionError,
   loadCollection,
-  loadCollectionStats,
-  updateCollection,
-  loading,
-  error
+  updateCollection
 } = useCollections()
+
+const { collectionStats, loading: collectionStatsLoading, error: collectionStatsError, loadCollectionStats } = useCollectionStats()
 
 const isEditingDescription = ref(false)
 const isSavingDescription = ref(false)
@@ -267,7 +270,6 @@ const isDescriptionSaveDisabled = computed(() =>
 )
 
 const refreshOverviewData = async () => {
-  if (!collectionId.value) return
   await loadCollection(collectionId.value)
   await loadCollectionStats(collectionId.value)
 }
@@ -285,7 +287,7 @@ const updatedAtText = computed(() =>
 )
 
 const statCards = computed(() => {
-  const stats = activeCollectionStats.value
+  const stats = collectionStats.value
 
   return [
     {
@@ -353,7 +355,7 @@ const submitDescriptionEdit = async () => {
   await refreshOverviewData()
 
   isSavingDescription.value = false
-  if (!error.value) {
+  if (!collectionStatsError.value) {
     isEditingDescription.value = false
   }
 }
@@ -366,7 +368,7 @@ const submitNameEdit = async () => {
   await refreshOverviewData()
 
   isSavingName.value = false
-  if (!error.value) {
+  if (!collectionStatsError.value) {
     isEditingName.value = false
   }
 }
@@ -392,22 +394,14 @@ const submitColorEdit = async () => {
   await refreshOverviewData()
   isSavingColor.value = false
 
-  if (!error.value) {
+  if (!collectionStatsError.value) {
     closeColor()
   }
 }
 
-watch(collectionId, async (id) => {
-  isEditingDescription.value = false
-  isEditingName.value = false
-  editableDescription.value = ''
-  editableName.value = ''
-  if (!id) return
-
-  await refreshOverviewData()
-  editableName.value = activeCollection.value?.name ?? ''
-  editableDescription.value = activeCollection.value?.description ?? ''
-}, { immediate: true })
+onMounted(() => {
+  refreshOverviewData()
+})
 </script>
 
 <style scoped lang="scss">
