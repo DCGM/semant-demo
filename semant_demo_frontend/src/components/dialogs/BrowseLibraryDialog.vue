@@ -124,6 +124,7 @@
                   dense
                   flat
                   round
+                  :loading="addingDocumentIds.has(tableProps.row.id)"
                   :color="isDocumentInCollection(tableProps.row.id) ? 'positive' : 'primary'"
                   :icon="isDocumentInCollection(tableProps.row.id) ? 'check_circle' : 'add'"
                   :aria-label="
@@ -176,8 +177,7 @@ import { Document } from 'src/models/documents'
 import DocumentsRepository from 'src/repositories/DocumentsRepository'
 import useDocuments from 'src/composables/useDocuments'
 import {
-  errorNotification,
-  successNotification
+  errorNotification
 } from 'src/utils/notification'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { BrowseLibraryDialogProps } from './BrowseLibraryDialogTypes'
@@ -186,7 +186,7 @@ defineEmits([...useDialogPluginComponent.emits])
 const props = defineProps<BrowseLibraryDialogProps>()
 
 const { dialogRef, onDialogHide, onDialogCancel } = useDialogPluginComponent()
-const { documents: collectionDocuments, loadDocuments } = useDocuments()
+const { documents: collectionDocuments, loadDocuments, addDoc } = useDocuments()
 
 const PAGE_SIZE = 50
 
@@ -200,6 +200,7 @@ const filters = reactive({
 const loading = ref(false)
 const isTableFullscreen = ref(false)
 const rows = ref<Document[]>([])
+const addingDocumentIds = ref(new Set<string>())
 const collectionDocumentIds = computed(() => {
   return new Set(collectionDocuments.value.map((doc) => doc.id))
 })
@@ -332,9 +333,9 @@ const isDocumentInCollection = (documentId: string): boolean => {
 
 const addDocumentToCurrentCollection = async (documentId: string) => {
   try {
-    const added = await DocumentsRepository.addToCollection(documentId, props.collectionId)
+    addingDocumentIds.value.add(documentId)
+    const added = await addDoc(documentId, props.collectionId)
     if (added) {
-      successNotification('Document was added to your collection')
       // Reload the collection documents
       await loadDocuments(props.collectionId)
       return
@@ -342,6 +343,8 @@ const addDocumentToCurrentCollection = async (documentId: string) => {
     errorNotification('Failed to add document to collection')
   } catch (error) {
     errorNotification('Failed to add document to collection')
+  } finally {
+    addingDocumentIds.value.delete(documentId)
   }
 }
 
