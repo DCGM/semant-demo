@@ -83,22 +83,13 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
-import axios from 'axios'
 import PageTitle from 'src/components/custom/PageTitle.vue'
-
-type FeedbackType = 'general' | 'bug' | 'feature'
-
-interface FeedbackForm {
-  type: FeedbackType
-  subject: string | null
-  message: string | null
-  email: string | null
-}
+import FeedbackRepository from 'src/repositories/FeedbackRepository'
+import type { Feedback } from 'src/models/feedback'
 
 const $q = useQuasar()
 const feedbackForm = ref()
 const isSubmitting = ref(false)
-const backendUrl = process.env.BACKEND_URL || 'http://pcvaskom.fit.vutbr.cz:8024'
 
 const feedbackTypeOptions = [
   { label: 'General', value: 'general' },
@@ -106,18 +97,18 @@ const feedbackTypeOptions = [
   { label: 'Feature Request', value: 'feature' }
 ]
 
-const form = reactive<FeedbackForm>({
+const form = reactive<Feedback>({
   type: 'general',
-  subject: null,
-  message: null,
-  email: null
+  subject: '',
+  message: '',
+  email: ''
 })
 
 const resetForm = () => {
   form.type = 'general'
-  form.subject = null
-  form.message = null
-  form.email = null
+  form.subject = ''
+  form.message = ''
+  form.email = ''
   feedbackForm.value?.resetValidation()
 }
 
@@ -129,7 +120,7 @@ const submitFeedback = async () => {
   isSubmitting.value = true
 
   try {
-    await axios.post(`${backendUrl}/api/feedback`, {
+    await FeedbackRepository.submit({
       type: form.type,
       subject: form.subject || null,
       message: form.message,

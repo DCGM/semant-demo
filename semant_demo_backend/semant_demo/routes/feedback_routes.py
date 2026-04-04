@@ -34,7 +34,7 @@ def _send_feedback_webhook(payload: dict) -> None:
         pass
 
 
-@exp_router.post('/api/feedback')
+@exp_router.post('/api/v1/feedback')
 async def save_app_feedback(payload: schemas.AppFeedbackRequest, req: Request):
     if not payload.message or not payload.message.strip():
         raise HTTPException(status_code=400, detail='Message cannot be empty.')
