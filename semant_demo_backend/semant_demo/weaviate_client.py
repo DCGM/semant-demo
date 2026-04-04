@@ -5,7 +5,7 @@ from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.schemas import CollectionResponse, CollectionStatsResponse, PatchCollectionRequest, PostCollectionRequest, DocumentResponse, DocumentBrowseResponse
 from uuid import UUID
 
-from weaviate.classes.query import Filter, Sort
+from weaviate.classes.query import Filter, Sort, QueryReference
 import logging
 
 
@@ -168,9 +168,53 @@ class WeaviateClient(WeaviateSearch):
     async def delete_collection(self, collection_id: UUID) -> None:
         """
         Deletes collection with given id.
+        Before deleting the collection object itself, remove references to it
+        from chunks, documents, and tags.
         """
+        documents_collection = self.client.collections.get("Documents")
+        chunks_collection = self.client.collections.get("Chunks")
+        tags_collection = self.client.collections.get("Tag")
         usercollection_collection = self.client.collections.get(
             "UserCollection")
+
+        page_size = 100
+
+        async def remove_collection_refs(objects_collection, filters, from_property: str) -> None:
+            while True:
+                response = await objects_collection.query.fetch_objects(
+                    filters=filters,
+                    limit=page_size,
+                )
+
+                if not response.objects:
+                    break
+
+                for obj in response.objects:
+                    await objects_collection.data.reference_delete(
+                        from_uuid=obj.uuid,
+                        from_property=from_property,
+                        to=collection_id,
+                    )
+
+                if len(response.objects) < page_size:
+                    break
+
+        await remove_collection_refs(
+            chunks_collection,
+            Filter.by_ref("userCollection").by_id().equal(collection_id),
+            "userCollection",
+        )
+        await remove_collection_refs(
+            documents_collection,
+            Filter.by_ref("collection").by_id().equal(collection_id),
+            "collection",
+        )
+        await remove_collection_refs(
+            tags_collection,
+            Filter.by_ref("userCollection").by_id().equal(collection_id),
+            "userCollection",
+        )
+
         await usercollection_collection.data.delete_by_id(collection_id)
 
     async def get_document_by_id(self, document_id: str) -> DocumentResponse | None:
@@ -288,15 +332,67 @@ class WeaviateClient(WeaviateSearch):
 
     async def add_document_to_collection(self, document_id: UUID, collection_id: UUID) -> bool:
         """
-        Adds a document to a collection by creating a reference between them.
+        Adds a document to a collection and also links all its chunks to that collection.
         """
         document_collection = self.client.collections.get("Documents")
+        chunks_collection = self.client.collections.get("Chunks")
         try:
+            matched_chunks = 0
+            already_linked_chunks = 0
+            added_chunks = 0
+
             await document_collection.data.reference_add(
                 from_uuid=document_id,
                 from_property="collection",
                 to=collection_id,
             )
+
+            # Add collection reference to every chunk that belongs to the document.
+            chunk_filter = Filter.by_ref("document").by_id().equal(document_id)
+            offset = 0
+            page_size = 100
+
+            while True:
+                chunks_response = await chunks_collection.query.fetch_objects(
+                    filters=chunk_filter,
+                    return_references=[QueryReference(link_on="userCollection")],
+                    limit=page_size,
+                    offset=offset,
+                )
+
+                if not chunks_response.objects:
+                    break
+
+                for chunk in chunks_response.objects:
+                    matched_chunks += 1
+                    current_refs = chunk.references.get("userCollection") if chunk.references else None
+                    current_collection_ids = [ref.uuid for ref in (current_refs.objects if current_refs else [])]
+
+                    if collection_id in current_collection_ids:
+                        already_linked_chunks += 1
+                        continue
+
+                    await chunks_collection.data.reference_add(
+                        from_uuid=chunk.uuid,
+                        from_property="userCollection",
+                        to=collection_id,
+                    )
+                    added_chunks += 1
+
+                if len(chunks_response.objects) < page_size:
+                    break
+
+                offset += page_size
+
+            logging.info(
+                "add_document_to_collection summary for document %s and collection %s: matched_chunks=%d, already_linked=%d, added=%d",
+                document_id,
+                collection_id,
+                matched_chunks,
+                already_linked_chunks,
+                added_chunks,
+            )
+
             return True
         except Exception as e:
             logging.error(
@@ -308,12 +404,41 @@ class WeaviateClient(WeaviateSearch):
         Removes a document from a collection by deleting the reference between them.
         """
         document_collection = self.client.collections.get("Documents")
+        chunks_collection = self.client.collections.get("Chunks")
         try:
             await document_collection.data.reference_delete(
                 from_uuid=document_id,
                 from_property="collection",
                 to=collection_id,
             )
+
+            # Remove collection reference only from chunks that belong to the document
+            # and currently reference the target collection.
+            chunk_filter = (
+                Filter.by_ref("document").by_id().equal(document_id)
+                & Filter.by_ref("userCollection").by_id().equal(collection_id)
+            )
+            page_size = 100
+
+            while True:
+                chunks_response = await chunks_collection.query.fetch_objects(
+                    filters=chunk_filter,
+                    limit=page_size,
+                )
+
+                if not chunks_response.objects:
+                    break
+
+                for chunk in chunks_response.objects:
+                    await chunks_collection.data.reference_delete(
+                        from_uuid=chunk.uuid,
+                        from_property="userCollection",
+                        to=collection_id,
+                    )
+
+                if len(chunks_response.objects) < page_size:
+                    break
+
             return True
         except Exception as e:
             logging.error(
