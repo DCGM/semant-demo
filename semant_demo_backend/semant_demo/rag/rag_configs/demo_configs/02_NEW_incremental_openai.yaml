@@ -1,6 +1,6 @@
 id: "xandry12_IncrementalAdaptiveRagGenerator_openai_default_multiquery"
 name: "RAG using OPENAI GPT-4o-mini with multi query and web search"
-description: "Incremental adaptive RAG using GPT-4o-mini with a multi-query retrieval strategy and integrated web search. Maintains conversation history across messages. Fast and efficient. Answers in Czech."
+description: "Incremental adaptive RAG using GPT-4o-mini with a multi-query retrieval strategy and integrated web search. Maintains conversation history across messages. Fast and efficient. Answers in Czech. Supports an \"Explain\" feature."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
   model_type: "OPENAI"

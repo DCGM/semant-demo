@@ -1,6 +1,6 @@
 id: "xandry12_IncrementalAdaptiveRagGenerator_gemma_default_multiquery"
 name: "Incremental Adaptive RAG using Gemma 3 12B with multi query and web search"
-description: "Incremental adaptive RAG powered by (Gemma 3 12B) with multi-query retrieval and web search support. Maintains conversational context across messages. Fast and suitable for Czech responses."
+description: "Incremental adaptive RAG powered by (Gemma 3 12B) with multi-query retrieval and web search support. Maintains conversational context across messages. Fast and suitable for Czech responses. Supports an \"Explain\" feature."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
   model_type: "OPENAI"
