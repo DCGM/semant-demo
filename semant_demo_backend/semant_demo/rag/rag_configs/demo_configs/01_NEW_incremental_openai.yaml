@@ -1,6 +1,6 @@
 id: "xandry12_IncrementalAdaptiveRagGenerator_openai_default_multiquery_big_model"
 name: "RAG using OPENAI GPT 5.1 with multi query and web search"
-description: "Advanced adaptive RAG pipeline powered by OpenAI GPT-5.1 with an enhanced multi-query retrieval strategy and optional web search. Supports conversational context across messages. Optimized for fast responses. Answers in Czech."
+description: "Advanced adaptive RAG pipeline powered by OpenAI GPT-5.1 with an enhanced multi-query retrieval strategy and optional web search. Supports conversational context across messages. Optimized for fast responses. Answers in Czech. Supports an \"Explain\" feature."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
   model_type: "OPENAI"
