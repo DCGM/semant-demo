@@ -75,6 +75,9 @@
       :pagination="initialPagination"
     >
     <template #top>
+      <div class="text-h5 text-weight-medium">
+        Collections ({{ collections.length }} {{ collections.length === 1 ? 'item' : 'items' }})
+      </div>
       <q-space />
       <q-select
         v-model="visibleColumns"
@@ -135,6 +138,14 @@
               @click="handleDelete(tableProps.row)"
             />
           </div>
+        </q-td>
+      </template>
+      <template #body-cell-color="tableProps">
+        <q-td :props="tableProps" class="text-center">
+          <div
+            class="color-swatch"
+            :style="{ backgroundColor: tableProps.row.color || 'transparent' }"
+          />
         </q-td>
       </template>
     </q-table>
@@ -220,7 +231,14 @@ const collectionTableColumns: QTableColumn<Collection>[] = [
     label: 'Name',
     field: (row) => row.name,
     align: 'left',
-    sortable: true
+    sortable: true,
+    required: true
+  },
+  {
+    name: 'color',
+    label: 'Color',
+    field: (row) => row.color,
+    align: 'center'
   },
   {
     name: 'description',
@@ -233,6 +251,13 @@ const collectionTableColumns: QTableColumn<Collection>[] = [
     label: 'Owner',
     field: (row) => row.userId,
     align: 'left'
+  },
+  {
+    name: 'createdAt',
+    label: 'Created',
+    field: (row) => row.createdAt.toLocaleDateString(),
+    align: 'left',
+    sortable: true
   },
   {
     name: 'updatedAt',
@@ -292,7 +317,17 @@ const handleDelete = (collection: Collection) => {
   })
 }
 
-const visibleColumns = ref<string[]>(['name', 'description', 'owner', 'updatedAt'])
+const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
 const columnOptions = collectionTableColumns.filter(col => !col.required)
 
 </script>
+
+<style scoped>
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  margin: 0 auto;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+</style>

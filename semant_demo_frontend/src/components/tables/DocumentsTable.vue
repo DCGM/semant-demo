@@ -17,7 +17,7 @@
     :loading="loading"
   >
     <template #top>
-      <div class="text-h5 text-weight-medium">Documents ({{ documents.length }} items)</div>
+      <div class="text-h5 text-weight-medium">Documents ({{ documents.length }} {{ documents.length === 1 ? 'item' : 'items' }})</div>
       <q-space />
 
       <q-select

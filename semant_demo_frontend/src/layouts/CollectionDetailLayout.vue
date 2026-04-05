@@ -103,7 +103,7 @@
         active-class="active-tab text-primary"
         narrow-indicator
         inline-label
-        class="collection-tabs"
+        class="collection-tabs q-pl-md"
         align="justify"
         >
         <q-route-tab
@@ -112,6 +112,7 @@
           icon="dashboard"
           :to="{ name: 'collectionOverview' }"
         />
+        <q-separator vertical size="1.8px" inset />
         <q-route-tab
           name="documents_tagging"
           label="Documents & tagging"
@@ -119,12 +120,18 @@
           :to="{ name: 'collectionDocumentsTagging' }"
         />
         <q-separator vertical size="1.8px" inset />
-        <q-separator vertical size="1.8px" inset />
         <q-route-tab
           name="tags"
           label="Tags"
           icon="label"
           :to="{ name: 'collectionTags' }"
+        />
+        <q-separator vertical size="1.8px" inset />
+        <q-route-tab
+          name="taggingJobs"
+          label="Tagging Jobs"
+          icon="assignment"
+          :to="{ name: 'collectionTaggingJobs' }"
         />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
@@ -262,7 +269,7 @@ onMounted(async () => {
 
 .collection-header {
   padding: 2px 0;
-  flex: 0 1 420px;
+  flex: 0 1 auto;
 }
 
 .collection-title-row {
@@ -284,7 +291,7 @@ onMounted(async () => {
 }
 
 .collection-title-input {
-  width: min(420px, 65vw);
+  width: min(350px, 65vw);
 }
 
 .collection-back-btn {
