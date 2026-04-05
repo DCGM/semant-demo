@@ -32,7 +32,7 @@ class WeaviateHelpers:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
-    async def fetch_chunks(self, filters: Filter, chunks_collection_name: str) -> list:
+    async def fetch_chunks(self, filters: Filter) -> list:
         """
         Fetches chunks with filters - tag, user-collection. Fetch subset of text chunks given by filters.
         
@@ -77,7 +77,7 @@ class WeaviateHelpers:
                             ),
                         ]
             # returns all properties (except blobs) and specified references
-            response = await self.client.collections.get(chunks_collection_name).query.fetch_objects(
+            response = await self.client.collections.get(self.collectionNames.chunks_collection_name).query.fetch_objects(
                 return_references=references,
                 filters=filters
             )
@@ -154,7 +154,7 @@ class WeaviateHelpers:
                         )
                 filters = Filter.by_id().contains_any(converted_ids)
 
-            results = await self.client.collections.get(self.tag_collection_name).query.fetch_objects(
+            results = await self.client.collections.get(self.collectionNames.tag_collection_name).query.fetch_objects(
                 filters=filters
             )
             if results.objects is None:
@@ -568,7 +568,6 @@ class WeaviateHelpers:
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
 
-    ### moved here TODO: fix reference from rest of the code
     async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
         """
         Removes tags by:
@@ -577,52 +576,24 @@ class WeaviateHelpers:
         """
         try:
             # get tags for collection names
-            tag_collection = self.client.collections.get("Tag")
-            filters = Filter.by_id().contains_any([str(uuid) for uuid in chosenTagUUIDs.tag_uuids])
-
+            tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+            tag_ids = [str(uuid) for uuid in chosenTagUUIDs.tag_uuids]
+            filters = Filter.by_id().contains_any(tag_ids)
+            
             results = await tag_collection.query.fetch_objects(filters=filters)
-
+            
             # get different collection names
             collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            print(collection_names)
+            
+            self.remove_tag_refs(tag_ids, tag_type="automaticTag")
+            self.remove_tag_refs(tag_ids, tag_type="positiveTag")
+            self.remove_tag_refs(tag_ids, tag_type="negativeTag")
+            
+            tagsToRemove = set(chosenTagUUIDs.tag_uuids)
+            tagsToRemove = [str(tagID) for tagID in tagsToRemove]
 
-            # iterate over the collections and retrieve text chunks and corresponding tags
-            for collection_name in collection_names:
-                # get all chunks
-                chunks = self.client.collections.get(collection_name)
-                # fetch chunks with hasTags
-                res = await chunks.query.fetch_objects(
-                    return_references=QueryReference(
-                        link_on="automaticTag",
-                        return_properties=[]
-                    )
-                )
-
-                tagsToRemove = set(chosenTagUUIDs.tag_uuids)
-                tagsToRemove = [str(tagID) for tagID in tagsToRemove]
-
-                # replace hasTags with remaining refs
-                for obj in res.objects:
-                    refs = obj.references or {}
-                    current = refs.get("automaticTag")
-                    currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
-                    remaining = list(filter(lambda tid: tid not in tagsToRemove, currentIDs))
-                    logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
-                    logging.info(f"To remove {tagsToRemove}")
-                    if len(remaining) != len(currentIDs):
-                        logging.info(f"Replacing {currentIDs} {remaining}")
-                        await chunks.data.reference_replace(
-                            from_uuid=obj.uuid,
-                            from_property="automaticTag",
-                            to=remaining
-                        )
-                    check = await chunks.query.fetch_object_by_id(
-                        obj.uuid,
-                        return_references=[QueryReference(link_on="automaticTag", return_properties=[])]
-                    )
-                    got = [str(r.uuid) for r in (check.references.get("automaticTag").objects if check.references and check.references.get("hasTags") else [])]
-                    logging.info(f"after: {got}")
-                logging.info("deleted references from chunks to tags")
-
+            logging.info("deleted references from chunks to tags")
             # remove the Tag objects itself
             result = await tag_collection.data.delete_many(
                 where=Filter.by_id().contains_any(tagsToRemove)
@@ -874,7 +845,7 @@ class WeaviateHelpers:
             # prepare filter for collection ID
             filters = Filter.by_ref(self.collectionNames.user_collection_link_name).by_id().equal(collectionId)
             # iterate over all chunks find the reference to the user collection
-            chunks = await self.fetch_chunks(filters=filters, chunks_collection_name=self.collectionNames.chunks_collection_name)
+            chunks = await self.fetch_chunks(filters=filters)
             chunk_lst_with_tags.extend([
                     {
                         'text_chunk': chunk_obj.properties.get('text', ''),

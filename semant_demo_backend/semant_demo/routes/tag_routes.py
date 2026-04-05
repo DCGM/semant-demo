@@ -58,7 +58,7 @@ async def create_tag(tagReq: schemas.TagReqTemplate,
                 collection_name = tagReq.collection_name,
                 tag_uuid = None
         )
-        tag_id = await searcher.create_tag(tag=tagData)
+        tag_id = await searcher.tag.create(tag=tagData)
         return {"created": True, "message": f"Tag {tagReq.tag_name} created with tag id {tag_id}"}
     except Exception as e:
         logging.error(e)
@@ -211,13 +211,12 @@ async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_ses
         return {"message": f"Task retrieving failed {taskId}", "taskCanceled": False}
     return {"message": f"No running task {taskId}", "taskCanceled": False}
 
-
 @exp_router.get("/api/all_tags", response_model=schemas.GetTagsResponse)
 async def get_tags(searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
     """
     Retrieve all tags
     """
-    response = await searcher.get_all_tags()
+    response = await searcher.tag.read()
     return {"tags_lst": response}
 
 @exp_router.delete("/api/whole_tags", response_model=schemas.RemoveTagsResponse)
@@ -227,7 +226,7 @@ async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq,
     Removes whole tags
     """
     try:
-        response = await searcher.remove_tags(chosenTagUUIDs)
+        response = await searcher.tag.delete(chosenTagUUIDs)
         return response
     except Exception as e:
         logging.error(f"{e}")
@@ -239,7 +238,7 @@ async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq,
     Removes automatic tags
     """
     try:
-        response = await searcher.remove_tag_refs(chosenTagUUIDs, tag_type="automaticTag")
+        response = await searcher.tag.helpers.remove_tag_refs(chosenTagUUIDs, tag_type="automaticTag")
         return response
     except Exception as e:
         logging.error(f"{e}")
@@ -276,7 +275,7 @@ async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
     """
     try:
         logging.info(f"In get tagged text {chosenTagUUIDs}")
-        response = await get_tagged_chunks(chosenTagUUIDs, searcher)
+        response = await searcher.textChunk.get_chunks_by_tags(chosenTagUUIDs)
         return response
     except Exception as e:
         logging.error(f"{e}")

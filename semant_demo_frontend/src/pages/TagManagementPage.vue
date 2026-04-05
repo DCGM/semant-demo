@@ -332,8 +332,11 @@
             dense
           />
 
-           <div class="col-auto flex justify-end">
-            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loadingSpinnerRemoveTags" @click="removeSelectedTags" />
+           <div class="col-auto flex justify-end q-gutter-sm">
+            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete"
+              :loading="loadingSpinnerRemoveTags" @click="removeSelectedTags" />
+            <q-btn type="button" color="negative" label="Delete Tags Entirely" icon="delete_forever"
+              :loading="loadingSpinnerDeleteTags" @click="deleteWholeTags" />
           </div>
         </div>
         <div class="row items-center" style="width: 100%;">
@@ -559,6 +562,7 @@ const tags = ref<TagData[]>([])
 const loadingSpinnerTags = ref(false)
 const loadingSpinnerTaggedChunks = ref(false)
 const loadingSpinnerRemoveTags = ref(false)
+const loadingSpinnerDeleteTags = ref(false)
 const loadingSpinnerUserCollection = ref(false)
 const loadingSpinnerConfigs = ref(false)
 
@@ -883,6 +887,23 @@ async function removeSelectedTags () {
     console.error('Tag removing error:', e)
   } finally {
     loadingSpinnerRemoveTags.value = false
+  }
+}
+
+async function deleteWholeTags () {
+  try {
+    loadingSpinnerDeleteTags.value = true
+    const payload = { tag_uuids: tagFormManage.value.tag_uuids }
+    const { data } = await api.delete<RemoveTagsResponse>('/whole_tags', { data: payload })
+    console.log('Removing response received:', data)
+    if (data.successful) {
+      // window.location.reload()
+      await onTagManage()
+    }
+  } catch (e) {
+    console.error('Tag removing error:', e)
+  } finally {
+    loadingSpinnerDeleteTags.value = false
   }
 }
 
