@@ -615,7 +615,8 @@ const removeTag = (index: number) => {
 // approve tag pass true to approve or false to diapprove
 async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string) {
   const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
-  const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
+  const endpoint = approved ? '/tag/approve' : '/tag/disapprove'
+  const { data } = await api.put<ApproveTagResponse>(endpoint, payload)
   if (data.successful) {
     await onTagManage() // may use lighter version to refetch the state
   } else {

@@ -131,9 +131,6 @@ class WeaviateHelpers:
             WeaviateSerializationError: Cannot deserialize response from Weaviate
             WeaviateServerError: Weaviate server returned an error
         """
-        # TODO use instead of:
-        # with specific name (current add_or_get_tag) OR by list of uuids (current get_tagged_chunks_paged) OR without filter return all tags (current get_all_tags)
-        # check for conflict of defining both filters and IDs
         if filters is not None and ids is not None:
             raise WeaviateDataValidationError("Cannot specify both filters and ids. Use one or the other.")
         try:
@@ -859,38 +856,9 @@ class WeaviateHelpers:
             logging.error(f"Error: {e}")
             return {'chunks_of_collection': []}
 
-    async def approve_tag(self, data: schemas.ApproveTagReq, searcher):
-        try:
-            logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
-            # get chunk
-            return_references=[
-                    QueryReference(
-                        link_on="automaticTag"
-                    ),
-                    QueryReference(
-                        link_on="positiveTag"
-                    ),
-                    QueryReference(
-                        link_on="negativeTag"
-                    )]
-            obj = await searcher.fetch_object_by_id(data.chunkID, self.collectionNames.chunks_collection_name, return_references)
-            refs = obj.references or {}
-
-            # helper to extract UUID strings from reference block
-            def ref_uuids(ref_block):
-                if not ref_block:
-                    return []
-                return [str(r.uuid) for r in ref_block.objects]
-
-            auto_ids = ref_uuids(refs.get("automaticTag"))
-            pos_ids = ref_uuids(refs.get("positiveTag"))
-            neg_ids = ref_uuids(refs.get("negativeTag"))
-
-            tag_id = str(data.tagID)
-
-            # helper to remove tag from disapproved and automatic tags
-            async def removeTagRef(refName, data):
-                obj = await searcher.fetch_object_by_id(data.chunkID, self.collectionNames.chunks_collection_name, return_references)
+    # helper to remove tag from disapproved and automatic tags
+    async def removeTagRef(self, refName, data: schemas.ApproveTagReq, return_references):
+                obj = await self.fetch_object_by_id(data.chunkID, self.collectionNames.chunks_collection_name, return_references)
                 refs = obj.references or {}
                 current = refs.get(refName)
                 currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
@@ -899,82 +867,11 @@ class WeaviateHelpers:
                 logging.info(f"To remove {data.tagID}")
                 if len(remaining) != len(currentIDs):
                     logging.info(f"Replacing {currentIDs} {remaining}")
-                    await searcher.remove_reference(src_id=obj.uuid, 
+                    await self.remove_reference(src_id=str(obj.uuid), 
                                             src_collection_name=self.collectionNames.chunks_collection_name, 
                                             property_name=refName,
-                                            target_collection_id=remaining)
+                                            target_collection_id=self.collectionNames.tag_collection_name)
 
-            # create the reference for approved tag
-            if data.approved: # positive tags
-
-                updatedTags = sorted(set(pos_ids + [tag_id]))
-                await searcher.create_reference(src_id=obj.uuid, 
-                                            src_collection_name=self.collectionNames.chunks_collection_name, 
-                                            property_name="positiveTag",
-                                            target_collection_id=updatedTags)
-                # remove the reference from the negative tags just in case
-                await removeTagRef("negativeTag", data)
-            else: # negative tags
-
-                updatedTags = sorted(set(neg_ids + [tag_id]))
-                await searcher.create_reference(src_id=obj.uuid, 
-                                            src_collection_name=self.collectionNames.chunks_collection_name, 
-                                            property_name="negativeTag",
-                                            target_collection_id=updatedTags)
-                # remove the reference from the positive tags just in case
-                await removeTagRef("positiveTag", data)
-
-            # remove the reference from the automatic tags
-            await removeTagRef("automaticTag", data)
-            return True
-        except Exception as e:
-            logging.error(f"Not changed approval state. Error: {e}")
-            return False
-        
-    async def filterChunksByTags(requestedData: schemas.FilterChunksByTagsRequest):
-        """
-        Filters chunks by tags - for search results filtration after initial search
-        get tag objects, chunk objects,
-        then filter the chunks that has positive tags and automatic tags referces to any of
-        the selected tags and return the data
-        """
-        try:
-            # get all chunks from the list and filter them by the tag
-            filters = [Filter.by_id().contains_any([str(uuid) for uuid in requestedData.chunkIds])]
-            if requestedData.positive:
-                filters.append(Filter.by_ref("automaticTag").by_id().contains_any(requestedData.tagIds))
-            if requestedData.automatic:
-                filters.append(Filter.by_ref("positiveTag").by_id().contains_any(requestedData.tagIds))
-            combinedFilters = filters[0]
-            for f in filters[1:]:
-                combinedFilters |= f
-
-            chunk_results = await searcher.fetch_chunks(filters=combinedFilters)
-
-            # helper to extract UUID strings from reference block
-            def ref_uuids(ref_block):
-                if not ref_block:
-                    return []
-                return [str(r.uuid) for r in ref_block.objects]
-
-            resultLst = []
-            for chunk in chunk_results:
-                refs = chunk.references or {}
-
-                auto_ids = ref_uuids(refs.get("automaticTag"))
-                pos_ids = ref_uuids(refs.get("positiveTag"))
-
-                requested_ids = requestedData.tagIds
-
-                auto_ids = list(set(auto_ids) & set(requested_ids))
-                pos_ids = list(set(pos_ids) & set(requested_ids))
-                resultLst.append({'chunk_id': str(chunk.uuid), 'positive_tags_ids': pos_ids, 'automatic_tags_ids': auto_ids})
-            logging.info(f'"chunkTags": {resultLst} ')
-            return { "chunkTags": resultLst }
-        except Exception as e:
-            logging.error(f"Error in chunk filtering: {e}")
-            return { "chunkTags": [] }
-        
     async def get_tagged_chunks(getChunksReq: schemas.GetTaggedChunksReq) -> schemas.GetTaggedChunksResponse:
         """
         Get tag objects from them extract collection names, in these collections

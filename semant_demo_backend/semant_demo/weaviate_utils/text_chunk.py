@@ -44,8 +44,9 @@ class TextChunk():
     #######
     # API #
     #######
-    def read():
-        pass
+    async def read(self):
+        filters = Filter()
+        return await self.helpers.fetch_chunks(filters=filters)
 
     async def search(self, search_request: schemas.SearchRequest) -> schemas.SearchResponse:
         # Build filters
@@ -226,11 +227,117 @@ class TextChunk():
     def untag():
         pass
 
-    def approve_tag():
-        pass
+    async def approve_tag(self, data: schemas.ApproveTagReq) -> bool:
+        """
+        Output:
+            bool value if operation successfull
+        """
+        try:
+            logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
+            # get chunk
+            return_references=[
+                    QueryReference(
+                        link_on="automaticTag"
+                    ),
+                    QueryReference(
+                        link_on="positiveTag"
+                    ),
+                    QueryReference(
+                        link_on="negativeTag"
+                    )]
+            print("HERE 1")
+            print(data.chunkID)
+            obj = await self.helpers.fetch_object_by_id(data.chunkID, self.helpers.collectionNames.chunks_collection_name, return_references)
+            refs = obj.references or {}
+            print("Here 2")
+            # helper to extract UUID strings from reference block
+            def ref_uuids(ref_block):
+                if not ref_block:
+                    return []
+                return [str(r.uuid) for r in ref_block.objects]
 
-    def disapprove_tag():
-        pass
+            pos_ids = ref_uuids(refs.get("positiveTag"))
+            tag_id = str(data.tagID)
+            print("Here 3")
+            # create the reference for approved tag
+            # positive tags
+            print(obj.uuid)
+            updatedTags = sorted(set(pos_ids + [tag_id]))
+            for targetId in updatedTags:
+                await self.helpers.create_reference(src_id=str(obj.uuid), 
+                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
+                                        property_name="positiveTag",
+                                        target_collection_id=targetId)
+            print("Here 4")
+            # remove the reference from the negative tags
+            await self.helpers.remove_reference(src_id=str(obj.uuid), 
+                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
+                                        property_name="negativeTag",
+                                        target_collection_id=targetId)
+            print("Here 5")
+            # remove the reference from the automatic tags
+            await self.helpers.remove_reference(src_id=str(obj.uuid), 
+                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
+                                        property_name="automaticTag",
+                                        target_collection_id=targetId)
+            return True
+        except Exception as e:
+            logging.error(f"Not changed approval state. Error: {e}")
+            return False
+
+    async def disapprove_tag(self, data: schemas.ApproveTagReq) -> bool:
+        """
+        Output:
+            bool value if operation successfull
+        """
+        try:
+            logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
+            # get chunk
+            return_references=[
+                    QueryReference(
+                        link_on="automaticTag"
+                    ),
+                    QueryReference(
+                        link_on="positiveTag"
+                    ),
+                    QueryReference(
+                        link_on="negativeTag"
+                    )]
+            obj = await self.helpers.fetch_object_by_id(data.chunkID, self.helpers.collectionNames.chunks_collection_name, return_references)
+            refs = obj.references or {}
+
+            # helper to extract UUID strings from reference block
+            def ref_uuids(ref_block):
+                if not ref_block:
+                    return []
+                return [str(r.uuid) for r in ref_block.objects]
+
+            neg_ids = ref_uuids(refs.get("negativeTag"))
+            tag_id = str(data.tagID)
+
+            # create the reference for disapproved tag
+            # negative tags
+            updatedTags = sorted(set(neg_ids + [tag_id]))
+            for targetId in updatedTags:
+                await self.helpers.create_reference(src_id=str(obj.uuid), 
+                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
+                                        property_name="negativeTag",
+                                        target_collection_id=targetId)
+            # remove the reference from the positive tags
+            await self.helpers.remove_reference(src_id=str(obj.uuid), 
+                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
+                                        property_name="positiveTag",
+                                        target_collection_id=targetId)
+            
+            # remove the reference from the automatic tags
+            await self.helpers.remove_reference(src_id=str(obj.uuid), 
+                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
+                                        property_name="automaticTag",
+                                        target_collection_id=targetId)
+            return True
+        except Exception as e:
+            logging.error(f"Not changed approval state. Error: {e}")
+            return False
 
     def get_tags():
         pass
@@ -288,6 +395,50 @@ class TextChunk():
         except Exception as e:
             logging.error(f"No tags assigned yet. {e}")
             return {'chunks_with_tags': []}
+
+    async def filterChunksByTags(self, requestedData: schemas.FilterChunksByTagsRequest):
+        """
+        Filters chunks by tags - for search results filtration after initial search
+        get tag objects, chunk objects,
+        then filter the chunks that has positive tags and automatic tags referces to any of
+        the selected tags and return the data
+        """
+        try:
+            # get all chunks from the list and filter them by the tag
+            filters = [Filter.by_id().contains_any([str(uuid) for uuid in requestedData.chunkIds])]
+            if requestedData.positive:
+                filters.append(Filter.by_ref("automaticTag").by_id().contains_any(requestedData.tagIds))
+            if requestedData.automatic:
+                filters.append(Filter.by_ref("positiveTag").by_id().contains_any(requestedData.tagIds))
+            combinedFilters = filters[0]
+            for f in filters[1:]:
+                combinedFilters |= f
+
+            chunk_results = await self.helpers.fetch_chunks(filters=combinedFilters)
+
+            # helper to extract UUID strings from reference block
+            def ref_uuids(ref_block):
+                if not ref_block:
+                    return []
+                return [str(r.uuid) for r in ref_block.objects]
+
+            resultLst = []
+            for chunk in chunk_results:
+                refs = chunk.references or {}
+
+                auto_ids = ref_uuids(refs.get("automaticTag"))
+                pos_ids = ref_uuids(refs.get("positiveTag"))
+
+                requested_ids = requestedData.tagIds
+
+                auto_ids = list(set(auto_ids) & set(requested_ids))
+                pos_ids = list(set(pos_ids) & set(requested_ids))
+                resultLst.append({'chunk_id': str(chunk.uuid), 'positive_tags_ids': pos_ids, 'automatic_tags_ids': auto_ids})
+            logging.info(f'"chunkTags": {resultLst} ')
+            return { "chunkTags": resultLst }
+        except Exception as e:
+            logging.error(f"Error in chunk filtering: {e}")
+            return { "chunkTags": [] }
 
     ###########
     # Helpers #

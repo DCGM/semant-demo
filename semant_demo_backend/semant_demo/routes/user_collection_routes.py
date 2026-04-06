@@ -24,8 +24,6 @@ from semant_demo.routes.dependencies import get_async_session, get_search
 
 logging.basicConfig(level=logging.INFO)
 
-from semant_demo.tagging.tagging_utils import fetch_chunks_by_collection
-
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
 exp_router = APIRouter()

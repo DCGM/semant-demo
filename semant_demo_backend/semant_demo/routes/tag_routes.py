@@ -27,7 +27,7 @@ import json
 import yaml
 
 from semant_demo.tagging.sql_utils import DBError, update_task_status
-from semant_demo.tagging.tagging_utils import getTaskByName, approve_tag, filterChunksByTags, get_tagged_chunks
+from semant_demo.tagging.tagging_utils import getTaskByName
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
@@ -243,15 +243,30 @@ async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq,
     except Exception as e:
         logging.error(f"{e}")
 
-@exp_router.put("/api/tag_approval", response_model=schemas.ApproveTagResponse)
+@exp_router.put("/api/tag/approve", response_model=schemas.ApproveTagResponse)
 async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
                                      searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.ApproveTagResponse:
     """
-    User approve or disapprove a tag, changes the reference of the tag
+    User approve a tag, changes the reference of the tag
     """
     try:
         logging.info("Approving...")
-        response = await approve_tag(approveData, searcher=searcher)
+        response = await searcher.textChunk.approve_tag(approveData)
+        logging.info(f"{response}")
+        return {"successful": response, "approved": approveData.approved}
+    except Exception as e:
+        logging.error(f"{e}")
+        return {"successful": False, "approved": approveData.approved}
+    
+@exp_router.put("/api/tag/disapprove", response_model=schemas.ApproveTagResponse)
+async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
+                                     searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.ApproveTagResponse:
+    """
+    User disapprove a tag, changes the reference of the tag
+    """
+    try:
+        logging.info("Approving...")
+        response = await searcher.textChunk.disapprove_tag(approveData)
         logging.info(f"{response}")
         return {"successful": response, "approved": approveData.approved}
     except Exception as e:
@@ -264,7 +279,7 @@ async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest
     """
     Filter chunks by given tags and positive or/and automatic flags
     """
-    response = await filterChunksByTags(requestedData, searcher)
+    response = await searcher.textChunk.filterChunksByTags(requestedData, searcher)
     return response
 
 @exp_router.post("/api/tagged_texts", response_model=schemas.GetTaggedChunksResponse)
