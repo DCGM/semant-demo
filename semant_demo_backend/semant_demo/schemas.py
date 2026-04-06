@@ -548,9 +548,9 @@ class CollectionResponse(BaseModel):
     name: str
     userId: str
     description: str | None = None
-    createdAt: datetime | None = None
-    updatedAt: datetime | None = None
-    color: str | None = None
+    createdAt: datetime
+    updatedAt: datetime
+    color: str
 
 
 class CollectionStatsResponse(BaseModel):
