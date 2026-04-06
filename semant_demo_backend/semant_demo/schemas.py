@@ -355,6 +355,25 @@ class GetTagsResponse(BaseModel):
     tags_lst: list[TagData]
 
 
+class Tag(BaseModel):
+    tagName: str
+    tagShorthand: str
+    tagColor: str
+    tagPictogram: str
+    tagDefinition: str
+    tagExamples: list[str]
+    tagUuid: uuid.UUID
+
+
+class TagCreateRequest(BaseModel):
+    tagName: str
+    tagShorthand: str
+    tagColor: str
+    tagPictogram: str
+    tagDefinition: str
+    tagExamples: list[str] = []
+
+
 class GetTaggedChunksReq(BaseModel):
     tag_uuids: list[uuid.UUID]
     tag_type: TagType
