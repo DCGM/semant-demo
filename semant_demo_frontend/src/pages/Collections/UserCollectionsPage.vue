@@ -58,97 +58,15 @@
         @delete="handleDelete"
       />
     </div>
-    <q-table
+    <CollectionsTable
       v-else
-      class="q-mt-sm"
-      flat
-      square
-      :rows="collections"
+      :collections="collections"
       :filter="searchQuery"
-      :columns="collectionTableColumns"
-      :visible-columns="visibleColumns"
-      row-key="id"
-      :row-class="() => 'cursor-pointer'"
-      @row-click="handleRowClick"
-      style="border-bottom: 1px solid rgba(0, 0, 0, 0.25)"
-      table-header-style="background-color: rgba(0, 0, 0, 0.04)"
-      :pagination="initialPagination"
-    >
-    <template #top>
-      <div class="text-h5 text-weight-medium">
-        Collections ({{ collections.length }} {{ collections.length === 1 ? 'item' : 'items' }})
-      </div>
-      <q-space />
-      <q-select
-        v-model="visibleColumns"
-        multiple
-        outlined
-        options-dense
-        dense
-        :display-value="$q.lang.table.columns"
-        :options="columnOptions"
-        option-value="name"
-        emit-value
-        style="min-width: 150px"
-        transition-hide="scale"
-        transition-show="scale"
-        color="primary"
-        class="text-grey-2"
-      >
-      <template #option="{ itemProps, opt, selected, toggleOption }">
-          <q-item v-bind="itemProps">
-            <q-item-section>
-              <q-item-label>{{ opt.label }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-toggle
-                :model-value="selected"
-                @update:model-value="toggleOption(opt)"
-              />
-            </q-item-section>
-          </q-item>
-        </template>
-      </q-select>
-    </template>
-      <template #body-cell-actions="tableProps">
-        <q-td :props="tableProps">
-          <div class="row no-wrap items-center q-gutter-xs" @click.stop>
-            <q-btn
-              flat
-              dense
-              round
-              icon="open_in_new"
-              color="primary"
-              @click="handleEnter(tableProps.row.id)"
-            />
-            <q-btn
-              flat
-              dense
-              round
-              icon="edit"
-              color="primary"
-              @click="handleEdit(tableProps.row)"
-            />
-            <q-btn
-              flat
-              dense
-              round
-              icon="delete"
-              color="negative"
-              @click="handleDelete(tableProps.row)"
-            />
-          </div>
-        </q-td>
-      </template>
-      <template #body-cell-color="tableProps">
-        <q-td :props="tableProps" class="text-center">
-          <div
-            class="color-swatch"
-            :style="{ backgroundColor: tableProps.row.color || 'transparent' }"
-          />
-        </q-td>
-      </template>
-    </q-table>
+      :loading="loading"
+      @enter="handleEnter"
+      @edit="handleEdit"
+      @delete="handleDelete"
+    />
     <div class="row justify-center q-mt-md lt-md">
       <q-pagination
         v-model="currentPage"
@@ -169,6 +87,7 @@
 import PageTitle from 'src/components/custom/PageTitle.vue'
 import RefreshButton from 'src/components/custom/RefreshButton.vue'
 import CreateCollectionCard from 'src/components/custom/CreateCollectionCard.vue'
+import CollectionsTable from 'src/components/tables/CollectionsTable.vue'
 
 import usePagination from 'src/composables/usePagination'
 import useCollections from 'src/composables/useCollections'
@@ -176,7 +95,7 @@ import useCollectionDialog from 'src/composables/dialogs/useCollectionDialog'
 import CreateButton from 'src/components/custom/CreateButton.vue'
 
 import { onMounted, computed, ref, watch } from 'vue'
-import { useQuasar, type QTableColumn } from 'quasar'
+import { useQuasar } from 'quasar'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
 import CollectionCard from 'src/components/custom/CollectionCard.vue'
 import { Collection, PatchCollection, PostCollection } from 'src/models/collection'
@@ -209,65 +128,6 @@ watch(viewMode, (mode) => {
   localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
 })
 
-const initialPagination = {
-  sortBy: 'collectionName',
-  descending: false,
-  page: 1,
-  rowsPerPage: 12
-}
-
-const collectionTableColumns: QTableColumn<Collection>[] = [
-  {
-    name: 'actions',
-    label: 'Actions',
-    field: () => '',
-    align: 'center' as const,
-    required: true,
-    headerStyle: 'width: 1%; white-space: nowrap;',
-    style: 'width: 1%; white-space: nowrap;'
-  },
-  {
-    name: 'collectionName',
-    label: 'Name',
-    field: (row) => row.name,
-    align: 'left',
-    sortable: true,
-    required: true
-  },
-  {
-    name: 'color',
-    label: 'Color',
-    field: (row) => row.color,
-    align: 'center'
-  },
-  {
-    name: 'description',
-    label: 'Description',
-    field: (row) => row.description ?? '-',
-    align: 'left'
-  },
-  {
-    name: 'owner',
-    label: 'Owner',
-    field: (row) => row.userId,
-    align: 'left'
-  },
-  {
-    name: 'createdAt',
-    label: 'Created',
-    field: (row) => row.createdAt.toLocaleDateString(),
-    align: 'left',
-    sortable: true
-  },
-  {
-    name: 'updatedAt',
-    label: 'Updated',
-    field: (row) => row.updatedAt.toLocaleDateString(),
-    align: 'left',
-    sortable: true
-  }
-]
-
 onMounted(async () => {
   searchQuery.value = ''
   await loadCollections('xjuric')
@@ -287,10 +147,6 @@ const handleCreate = () => {
 
 const handleEnter = async (collectionId: string) => {
   await $router.push({ name: 'collectionDetail', params: { collectionId } })
-}
-
-const handleRowClick = (_evt: Event, row: Collection) => {
-  void handleEnter(row.id)
 }
 
 const handleEdit = (collection: Collection) => {
@@ -316,18 +172,4 @@ const handleDelete = (collection: Collection) => {
     await deleteCollection(collection.id)
   })
 }
-
-const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
-const columnOptions = collectionTableColumns.filter(col => !col.required)
-
 </script>
-
-<style scoped>
-.color-swatch {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  margin: 0 auto;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-}
-</style>
