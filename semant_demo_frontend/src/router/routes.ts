@@ -45,6 +45,11 @@ const routes: RouteRecordRaw[] = [
             component: () => import('pages/Collections/CollectionTagsPage.vue')
           },
           {
+            name: 'collectionTaggingJobs',
+            path: 'tagging_jobs',
+            component: () => import('pages/Collections/CollectionTaggingJobsPage.vue')
+          },
+          {
             name: 'collectionMembers',
             path: 'members',
             component: () => import('pages/Collections/CollectionMembersPage.vue')
