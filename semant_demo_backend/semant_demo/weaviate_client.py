@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.schemas import CollectionResponse, CollectionStatsResponse, PatchCollectionRequest, PostCollectionRequest, DocumentResponse, DocumentBrowseResponse
+from semant_demo.schemas import CollectionResponse, CollectionStatsResponse, PatchCollectionRequest, PostCollectionRequest, DocumentResponse, DocumentBrowseResponse, Tag, TagCreateRequest
 from uuid import UUID
 
 from weaviate.classes.query import Filter, Sort, QueryReference
@@ -330,6 +330,115 @@ class WeaviateClient(WeaviateSearch):
             hasMore=has_more,
             nextOffset=(offset + limit) if has_more else None,
             totalCount=total_count,
+        )
+
+    async def get_all_tags(self, collection_id: UUID | None = None) -> list[Tag]:
+        """
+        Retrieves all tags - optionally filtered by collection id.
+        """
+        tag_collection = self.client.collections.get("Tag")
+        filters = None
+        if collection_id is not None:
+            filters = Filter.by_ref("userCollection").by_id().equal(collection_id)
+
+        response = await tag_collection.query.fetch_objects(
+            filters=filters,
+            limit=1000,
+            return_references=[QueryReference(link_on="userCollection", return_properties=["name"])],
+        )
+
+        tags: list[Tag] = []
+        for obj in response.objects:
+            props = obj.properties or {}
+
+            tag_examples = [str(item) for item in props.get("tag_examples", [])]
+
+            tags.append(
+                Tag(
+                    tagName=str(props.get("tag_name") or ""),
+                    tagShorthand=str(props.get("tag_shorthand") or ""),
+                    tagColor=str(props.get("tag_color") or ""),
+                    tagPictogram=str(props.get("tag_pictogram") or ""),
+                    tagDefinition=str(props.get("tag_definition") or ""),
+                    tagExamples=tag_examples,
+                    tagUuid=obj.uuid,
+                )
+            )
+
+        return tags
+
+    async def create_tag(self, collection_id: UUID, tag: TagCreateRequest) -> Tag:
+        """
+        Creates a new tag under given collection and links the tag to that collection.
+        If an exact same tag already exists in the same collection, returns existing one.
+        """
+        collection = await self.get_collection_by_id(collection_id)
+        if collection is None:
+            raise ValueError("Collection not found")
+
+        tag_collection = self.client.collections.get("Tag")
+
+        filters = Filter.by_ref("userCollection").by_id().equal(collection_id)
+        existing = await tag_collection.query.fetch_objects(
+            filters=filters,
+            limit=1000,
+            return_references=[QueryReference(link_on="userCollection", return_properties=["name"])],
+        )
+
+        normalized_examples = [example for example in tag.tagExamples if example.strip()]
+        normalized_examples_set = set(normalized_examples)
+        tag_name = tag.tagName.strip()
+        tag_shorthand = tag.tagShorthand.strip()
+        tag_color = tag.tagColor.strip()
+        tag_pictogram = tag.tagPictogram.strip()
+        tag_definition = tag.tagDefinition.strip()
+
+        for obj in existing.objects:
+            props = obj.properties or {}
+            existing_examples = [str(item) for item in (props.get("tag_examples") or [])]
+            if (
+                str(props.get("tag_name") or "").strip() == tag_name
+                and str(props.get("tag_shorthand") or "").strip() == tag_shorthand
+                and str(props.get("tag_color") or "").strip() == tag_color
+                and str(props.get("tag_pictogram") or "").strip() == tag_pictogram
+                and str(props.get("tag_definition") or "").strip() == tag_definition
+                and set(existing_examples) == normalized_examples_set
+            ):
+                return Tag(
+                    tagName=str(props.get("tag_name") or ""),
+                    tagShorthand=str(props.get("tag_shorthand") or ""),
+                    tagColor=str(props.get("tag_color") or ""),
+                    tagPictogram=str(props.get("tag_pictogram") or ""),
+                    tagDefinition=str(props.get("tag_definition") or ""),
+                    tagExamples=[str(item) for item in existing_examples],
+                    tagUuid=obj.uuid,
+                )
+
+        new_tag_uuid = await tag_collection.data.insert(
+            properties={
+                "tag_name": tag.tagName,
+                "tag_shorthand": tag.tagShorthand,
+                "tag_color": tag.tagColor,
+                "tag_pictogram": tag.tagPictogram,
+                "tag_definition": tag.tagDefinition,
+                "tag_examples": normalized_examples,
+            }
+        )
+
+        await tag_collection.data.reference_add(
+            from_uuid=new_tag_uuid,
+            from_property="userCollection",
+            to=collection_id,
+        )
+
+        return Tag(
+            tagName=tag.tagName,
+            tagShorthand=tag.tagShorthand,
+            tagColor=tag.tagColor,
+            tagPictogram=tag.tagPictogram,
+            tagDefinition=tag.tagDefinition,
+            tagExamples=normalized_examples,
+            tagUuid=new_tag_uuid,
         )
 
     async def add_document_to_collection(self, document_id: UUID, collection_id: UUID) -> bool:
