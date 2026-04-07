@@ -44,7 +44,7 @@ exp_router = APIRouter()
 async def create_tag(tagReq: schemas.TagReqTemplate, 
                      searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.CreateResponse:
     """
-    Creates tag in weaviate db, or not if the same tag already exists
+    Creates a tag in weaviate db, or not if the same tag already exists
     """
     try:
         # convert tag request to tag data
@@ -64,7 +64,7 @@ async def create_tag(tagReq: schemas.TagReqTemplate,
         logging.error(e)
         return {"created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
 
-@exp_router.post("/api/tagging_task", response_model=schemas.TagStartResponse)
+@exp_router.post("/api/tag/task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
                         searcher: WeaviateAbstraction = Depends(get_search),
                         session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
@@ -103,7 +103,7 @@ async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
         logging.error(e)
         raise HTTPException(status_code=500, detail=str(e))
 
-@exp_router.get("/api/configs", response_model=schemas.GetConfigsResponse)
+@exp_router.get("/api/tag/configs", response_model=schemas.GetConfigsResponse)
 async def get_configs() -> schemas.GetConfigsResponse:
     """
     Load all config files
@@ -118,7 +118,7 @@ async def get_configs() -> schemas.GetConfigsResponse:
     
     return {"configs": configs}
 
-@exp_router.get("/api/all_tasks")
+@exp_router.get("/api/tag/tasks/info")
 async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
     """
     Get task info to see history of tasks
@@ -154,7 +154,7 @@ async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
         logging.exception(f'Failed loading object from database. While loading all tasks ids.')
         raise DBError(f'Failed loading all tasks ids from database.') from e
 
-@exp_router.get("/api/tag_status/{taskId}")
+@exp_router.get("/api/tag/task/status/{taskId}")
 async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session)):
     """
     Polling to check task status
@@ -182,7 +182,7 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
             "tag_processing_data": task.tag_processing_data}
 
 
-@exp_router.delete("/api/tagging_task/{taskId}", response_model=schemas.CancelTaskResponse)
+@exp_router.delete("/api/tag/task/{taskId}", response_model=schemas.CancelTaskResponse)
 async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session)) -> schemas.CancelTaskResponse:
     """
     Cancel running task
@@ -211,7 +211,7 @@ async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_ses
         return {"message": f"Task retrieving failed {taskId}", "taskCanceled": False}
     return {"message": f"No running task {taskId}", "taskCanceled": False}
 
-@exp_router.get("/api/all_tags", response_model=schemas.GetTagsResponse)
+@exp_router.get("/api/tags", response_model=schemas.GetTagsResponse)
 async def get_tags(searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
     """
     Retrieve all tags
@@ -219,7 +219,7 @@ async def get_tags(searcher: WeaviateAbstraction = Depends(get_search)) -> schem
     response = await searcher.tag.read()
     return {"tags_lst": response}
 
-@exp_router.delete("/api/whole_tags", response_model=schemas.RemoveTagsResponse)
+@exp_router.delete("/api/tags", response_model=schemas.RemoveTagsResponse)
 async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq,
                       searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.RemoveTagsResponse:
     """
@@ -231,7 +231,7 @@ async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq,
     except Exception as e:
         logging.error(f"{e}")
 
-@exp_router.delete("/api/automatic_tags", response_model=schemas.RemoveTagsResponse)
+@exp_router.delete("/api/tags/automatic", response_model=schemas.RemoveTagsResponse)
 async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq,
                                 searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.RemoveTagsResponse:
     """
@@ -273,7 +273,7 @@ async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
         logging.error(f"{e}")
         return {"successful": False, "approved": approveData.approved}
 
-@exp_router.post("/api/filter_tags", response_model=schemas.FilterChunksByTagsResponse)
+@exp_router.post("/api/tags/filter", response_model=schemas.FilterChunksByTagsResponse)
 async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest,
                                 searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.FilterChunksByTagsResponse:
     """
@@ -282,7 +282,7 @@ async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest
     response = await searcher.textChunk.filterChunksByTags(requestedData, searcher)
     return response
 
-@exp_router.post("/api/tagged_texts", response_model=schemas.GetTaggedChunksResponse)
+@exp_router.post("/api/tag/textChunks", response_model=schemas.GetTaggedChunksResponse)
 async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
                                    searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
     """
