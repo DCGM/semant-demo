@@ -11,7 +11,7 @@
 |---|---|
 | **Hybrid search** | BM25 + vector (HNSW) with configurable alpha; metadata & tag filters |
 | **Summarisation** | Per-result titles, per-result summaries and overall query summary via configurable LLM |
-| **RAG chat** | Multi-turn question answering with source citations; simple & adaptive (LangGraph) pipelines |
+| **RAG chat** | Multi-turn question answering with source citations; little/pipeline variants: `rag_generator`, `adaptive_rag`, `adaptive_rag_og`, `incremental_rag`, `agentic_rag` (recommended: incremental variant) |
 | **Tagging** | Manual & LLM-assisted tag propagation across document collections |
 | **User collections** | Group chunks into named collections per user |
 
@@ -200,8 +200,8 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `OLLAMA_URLS` | `http://localhost:11434` | Comma-separated Ollama endpoints |
 | `OLLAMA_MODEL` | `gemma3:12b` | Ollama model |
 | **OpenAI / OpenRouter** | | |
-| `OPENAI_API_KEY` | _(empty)_ | OpenAI key (for OpenAI-based RAG configs) |
-| `OPENROUTER_URL` | `https://openrouter.ai/api/v1` | URL endpoint pro OpenRouter API |
+| `OPENAI_API_KEY` | _(empty)_ | OpenAI API key (works with both OpenAI and OpenRouter endpoints) |
+| `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | API endpoint URL ( https://api.openai.com/v1 for OpenAI, https://openrouter.ai/api/v1 for OpenRouter) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Default OpenAI model |
 | **Google** | | |
 | `GOOGLE_API_KEY` | _(empty)_ | Google Gemini key |
@@ -215,6 +215,10 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
+
+---
+
+> **ℹ️ Universal Configuration:** Methods using the OpenAI Python package use `OPENAI_API_KEY` and `OPENAI_API_URL`. Set `OPENAI_API_URL=https://openrouter.ai/api/v1` to use OpenRouter, or the OpenAI endpoint to use OpenAI directly. Seamless integration via `ChatOpenAI` in LangChain.
 
 ## API Endpoints
 

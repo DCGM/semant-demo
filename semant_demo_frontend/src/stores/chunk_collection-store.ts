@@ -1,37 +1,36 @@
-import { api } from 'boot/axios'
 import { defineStore } from 'pinia'
-import { Collection, GetUserCollectionsResponse } from 'src/models'
-import { actionNotification } from 'src/utils/notification'
+import { computed, ref } from 'vue'
+import { useApi } from 'src/composables/useApi'
+import type { Collection } from 'src/generated/api'
 
-interface CollectionStoreState {
-    collections: Collection[]
-    userId: string
-}
+export const useCollectionStore = defineStore('collections', () => {
+  const api = useApi().default
 
-export const useCollectionStore = defineStore('collections', {
-  state: (): CollectionStoreState => ({
-    collections: [],
-    userId: ""
-  }),
-  getters: {
-    isEmpty: (state) => {
-      return state.collections.length === 0
+  const collections = ref<Collection[]>([])
+  const userId = ref('')
+
+  const isEmpty = computed(() => collections.value.length === 0)
+
+  const setUser = (newUserId: string) => {
+    userId.value = newUserId
+  }
+
+  const fetchCollections = async (currentUserId: string) => {
+    // fetches all collections for current user from weaviate
+    try {
+      const response = await api.fetchCollectionsApiCollectionsGet({ userId: currentUserId })
+      console.log('Collections fetched:', response)
+      collections.value = response.collections
+    } catch (error) {
+      console.error('Error fetching collections:', error)
     }
-  },
-  actions: {
-    setUser (userId: string) {
-      this.userId = userId
-    },
+  }
 
-    async fetchCollections (userId: string) {
-      // fetches all collections for current user from weaviate
-      try {
-        const { data } = await api.get<CollectionStoreState>('/user_collection/all', { params: { userId } })
-        console.log('Collections fetched:', data)
-        this.collections = data.collections
-      } catch (error) {
-        console.error('Error fetching collections:', error)
-      }
-    }
+  return {
+    collections,
+    userId,
+    isEmpty,
+    setUser,
+    fetchCollections
   }
 })

@@ -356,7 +356,8 @@ const sendMessage = async () => {
       messages.value.push({
         sender: 'AI',
         text: 'Sorry we have no information about this topick.',
-        sources: []
+        sources: [],
+        response_id: crypto.randomUUID()
       })
       return
     }
