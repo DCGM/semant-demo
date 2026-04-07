@@ -66,7 +66,7 @@ export interface TagData {
      * @type {string}
      * @memberof TagData
      */
-    tagUuid: string;
+    tagUuid: string | null;
 }
 
 /**
