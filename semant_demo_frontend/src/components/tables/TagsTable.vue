@@ -48,13 +48,7 @@
 
       <div style="width: 100%" class="row items-center q-my-sm">
         <RefreshButton @click="$emit('refresh')" />
-        <q-btn
-          class="q-ml-sm"
-          color="primary"
-          icon="add"
-          label="Add Tag"
-          @click="$emit('create')"
-        />
+        <CreateButton @click="$emit('create')" />
         <q-input
           class="q-ml-md"
           v-model="filter"
@@ -122,6 +116,7 @@ import { QTableColumn, useQuasar } from 'quasar'
 
 import { Tag, Tags } from 'src/models/tags'
 import RefreshButton from '../custom/RefreshButton.vue'
+import CreateButton from '../custom/CreateButton.vue'
 
 defineEmits<{
   refresh: []
