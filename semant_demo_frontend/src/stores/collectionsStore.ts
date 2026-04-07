@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collection'
+import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collections'
 import CollectionRepository from 'src/repositories/CollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 

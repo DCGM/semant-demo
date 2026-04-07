@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { Collection } from 'src/models/collection'
+import { Collection } from 'src/models/collections'
 import { computed } from 'vue'
 
 interface Props {

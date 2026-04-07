@@ -98,7 +98,7 @@ import { onMounted, computed, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
 import CollectionCard from 'src/components/custom/CollectionCard.vue'
-import { Collection, PatchCollection, PostCollection } from 'src/models/collection'
+import { Collection, PatchCollection, PostCollection } from 'src/models/collections'
 import { useRouter } from 'vue-router'
 
 const $router = useRouter()

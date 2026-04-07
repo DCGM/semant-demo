@@ -1,6 +1,6 @@
 import { api } from 'src/boot/axios'
 import { ENDPOINTS } from 'src/constants/endpoints'
-import { Collection, CollectionStats, Collections, PostCollection, PatchCollection } from 'src/models/collection'
+import { Collection, CollectionStats, Collections, PostCollection, PatchCollection } from 'src/models/collections'
 
 const CollectionsService = {
   getCollections: async (userId: string) => await api.get<Collections>(ENDPOINTS.COLLECTIONS, { params: { user_id: userId } }),

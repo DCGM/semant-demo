@@ -1,5 +1,5 @@
 import { useCollectionsStore } from 'src/stores/collectionsStore'
-import { PostCollection, PatchCollection } from 'src/models/collection'
+import { PostCollection, PatchCollection } from 'src/models/collections'
 import { computed } from 'vue'
 
 const useCollections = () => {

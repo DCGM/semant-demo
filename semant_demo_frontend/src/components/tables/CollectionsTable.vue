@@ -95,7 +95,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
-import { Collection } from 'src/models/collection'
+import { Collection } from 'src/models/collections'
 
 interface Props {
   collections: Collection[]

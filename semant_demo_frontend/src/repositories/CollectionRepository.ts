@@ -1,4 +1,4 @@
-import { Collection, CollectionStats, Collections, PostCollection, PatchCollection } from 'src/models/collection'
+import { Collection, CollectionStats, Collections, PostCollection, PatchCollection } from 'src/models/collections'
 import { CollectionsSchema, CollectionSchema, CollectionStatsSchema } from 'src/schemas/collection'
 import CollectionsService from 'src/services/CollectionsService'
 

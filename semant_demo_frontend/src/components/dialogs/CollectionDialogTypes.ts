@@ -1,4 +1,4 @@
-import { Collection } from 'src/models/collection'
+import { Collection } from 'src/models/collections'
 
 type DialogType = 'CREATE' | 'EDIT'
 

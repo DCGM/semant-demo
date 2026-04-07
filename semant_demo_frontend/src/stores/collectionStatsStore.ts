@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { CollectionStats } from 'src/models/collection'
+import { CollectionStats } from 'src/models/collections'
 import CollectionRepository from 'src/repositories/CollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 import { ref } from 'vue'
