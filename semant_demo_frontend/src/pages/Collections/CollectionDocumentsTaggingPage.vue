@@ -1,5 +1,7 @@
 <template>
-  <DocumentsTable />
+  <q-page>
+    <DocumentsTable />
+  </q-page>
 </template>
 
 <script setup lang="ts">
