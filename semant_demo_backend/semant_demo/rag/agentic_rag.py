@@ -14,7 +14,7 @@ from typing import Dict, List, Any
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
-from semant_demo.weaviate_search import WeaviateSearch
+from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSearch, RagRequest, RagResponse
 
 
@@ -237,7 +237,7 @@ class LangchainLLM:
 
 
 class WeaviateToolWrapper:
-    def __init__(self, searcher: WeaviateSearch, rag_search: RagSearch, alpha: float, chunk_limit: int):
+    def __init__(self, searcher: WeaviateAbstraction, rag_search: RagSearch, alpha: float, chunk_limit: int):
         self.searcher = searcher
         self.rag_search = rag_search
         self.alpha = alpha
@@ -261,7 +261,7 @@ class WeaviateToolWrapper:
             automatic = False
         )
 
-        search_response = await self.searcher.search(search_request)
+        search_response = await self.searcher.textChunk.search(search_request)
         return search_response
 
     # @tool
@@ -474,7 +474,7 @@ class xmartiAgentRag(BaseRag):
     async def rag_request(
         self,
         request: RagRequest,
-        searcher: WeaviateSearch
+        searcher: WeaviateAbstraction
     ) -> RagResponse:
 
         start_time = time.perf_counter()
