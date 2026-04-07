@@ -1056,7 +1056,7 @@ const loadCollections = async () => {
 
 async function addChunkToCollection (currentChunkId: string) {
   const payload = { collectionId: selectedCollectionId.value, chunkId: currentChunkId }
-  const { data } = await api.post<CreateResponse>('/chunk_2_collection', payload)
+  const { data } = await api.post<CreateResponse>('/user_collection/chunks', payload)
   if (data.created) {
     Notify.create({ message: 'Chunk added to collection', position: 'top', color: 'positive' })
   } else {

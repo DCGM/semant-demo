@@ -45,7 +45,7 @@ async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplat
         return {"created": False,
                 "message": f"Collection {collectionReq.collection_name} not created becacause of: {e}"}
 
-@exp_router.get("/api/collections", response_model=schemas.GetCollectionsResponse)
+@exp_router.get("/api/user_collection/all", response_model=schemas.GetCollectionsResponse)
 async def fetch_collections(userId: str,
                             searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetCollectionsResponse:
     """
@@ -55,12 +55,12 @@ async def fetch_collections(userId: str,
     return response
 
 
-@exp_router.post("/api/chunk_2_collection", response_model=schemas.CreateResponse)
+@exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
 async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, 
                                  searcher: WeaviateAbstraction = Depends(get_search),
                                  ) -> schemas.CreateResponse:
     """
-    Creates user collection in weaviate db, or not if the same user collection already exists
+    Connects chunk with user collection
     """
     try:
         
@@ -73,7 +73,7 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
         logging.error(e)
         return {"created": False, "message": f"Chunk not added to collection becacause of: {e}"}
     
-@exp_router.get("/api/chunks_of_collection", response_model=schemas.GetCollectionChunksResponse)
+@exp_router.get("/api/user_collection/chunks", response_model=schemas.GetCollectionChunksResponse)
 async def get_collection_chunks(collectionId: str, 
                                 searcher: WeaviateAbstraction = Depends(get_search)
                                 ) -> schemas.GetCollectionChunksResponse:

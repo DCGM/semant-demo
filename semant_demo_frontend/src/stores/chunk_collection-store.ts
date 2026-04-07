@@ -26,7 +26,7 @@ export const useCollectionStore = defineStore('collections', {
     async fetchCollections (userId: string) {
       // fetches all collections for current user from weaviate
       try {
-        const { data } = await api.get<CollectionStoreState>('/collections', { params: { userId } })
+        const { data } = await api.get<CollectionStoreState>('/user_collection/all', { params: { userId } })
         console.log('Collections fetched:', data)
         this.collections = data.collections
       } catch (error) {

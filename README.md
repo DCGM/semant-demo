@@ -176,9 +176,9 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `POST` | `/api/filter_tags` | Filter chunks by tag UUIDs |
 | `POST` | `/api/tagged_texts` | Get chunks tagged with specific tags |
 | `POST` | `/api/user_collection` | Create user collection |
-| `GET`  | `/api/collections` | List collections for a user |
-| `POST` | `/api/chunk_2_collection` | Add chunk to collection |
-| `GET`  | `/api/chunks_of_collection` | List chunks in a collection |
+| `GET`  | `/api/user_collection/all` | List collections for a user |
+| `POST` | `/api/user_collection/chunks` | Add chunk to collection |
+| `GET`  | `/api/user_collection/chunks` | List chunks in a collection |
 
 ## Testing
 
