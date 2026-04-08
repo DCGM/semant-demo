@@ -87,9 +87,10 @@ class Tag():
             )
             print(f"Collection name: {tag.collection_name}")
             # create connection to the user collection
-            #self.helpers.create_reference(src_id=str(new_tag_uuid),
-            #                              src_collection_name=self.collectionNames.tag_collection_name,
-            #                              property_name=self.collectionNames.)
+            self.helpers.create_reference(src_id=str(new_tag_uuid),
+                                          src_collection_name=self.collectionNames.tag_collection_name,
+                                          property_name=self.collectionNames.tag_to_user_collection_link_name,
+                                          target_collection_id=self.collectionNames.user_collection_name)
             return new_tag_uuid  
         except WeaviateConnectionError as e:
             logging.error(f"Error: {str(e)}")

@@ -18,6 +18,7 @@ class Config:
         embedding_service_host = os.getenv("EMBEDDING_SERVICE_HOST","embedding-service")
         embedding_service_port = os.getenv("EMBEDDING_SERVICE_PORT",8001)
         self.GEMMA_URL = f"http://{embedding_service_host}:{embedding_service_port}"
+        #self.GEMMA_URL = "http://localhost:8001"
 
         self.PRODUCTION = os.getenv("PRODUCTION", str(False)).lower() in TRUE_VALUES
         self.MODEL_NAME = os.getenv("MODEL_NAME", 'clip-ViT-L-14')
@@ -50,7 +51,8 @@ class Config:
             chunks_collection_name = "Chunks",
             tag_collection_name = "Tag",
             user_collection_name = "UserCollection",
-            user_collection_link_name = "userCollection"
+            user_collection_link_name = "userCollection",
+            tag_to_user_collection_link_name= "tagToUserCollection"
         )
 
 config = Config()
