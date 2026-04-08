@@ -31,7 +31,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import useDocuments from 'src/composables/useDocuments'
-import DocumentsRepository from 'src/repositories/DocumentsRepository'
+import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
 import { successNotification, errorNotification } from 'src/utils/notification'
 import { onMounted } from 'vue'
 import TaggingPage from './components/TaggingPage.vue'
@@ -44,6 +44,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const router = useRouter()
+const documentsRepository = useDocumentsRepository()
 const { loadDocuments } = useDocuments()
 const { collectionChunks, getCollectionChunksPaged } = useTagging()
 
@@ -60,7 +61,7 @@ const goBack = () => {
 
 const handleRemoveFromCollection = async () => {
   try {
-    const removed = await DocumentsRepository.removeFromCollection(
+    const removed = await documentsRepository.removeFromCollection(
       props.documentId,
       props.collectionId
     )

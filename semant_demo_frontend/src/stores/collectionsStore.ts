@@ -1,10 +1,11 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collections'
-import CollectionRepository from 'src/repositories/CollectionRepository'
+import { useCollectionRepository } from 'src/repositories/useCollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 
 export const useCollectionsStore = defineStore('userCollections', () => {
+  const collectionRepository = useCollectionRepository()
   const collections = ref<Collections>([])
   const activeCollection = ref<Collection | null>(null)
   const error = ref<string | null>(null)
@@ -15,7 +16,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await CollectionRepository.getAll(userId)
+      const data = await collectionRepository.getAll(userId)
       collections.value = data
       notif.success('Collections loaded')
     } catch (err) {
@@ -31,7 +32,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await CollectionRepository.getById(collectionId)
+      const data = await collectionRepository.getById(collectionId)
       activeCollection.value = data
       notif.success('Collection loaded')
     } catch (err) {
@@ -42,12 +43,12 @@ export const useCollectionsStore = defineStore('userCollections', () => {
       loading.value = false
     }
   }
-  const createCollection = async (userId: string, collectionData: PostCollection) => {
+  const createCollection = async (collectionData: PostCollection) => {
     const notif = ongoingNotification('Creating collection...')
     loading.value = true
     error.value = null
     try {
-      const data = await CollectionRepository.create(userId, collectionData)
+      const data = await collectionRepository.create(collectionData)
       collections.value.push(data)
       notif.success('Collection created')
     } catch (err) {
@@ -63,7 +64,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await CollectionRepository.update(collectionId, collectionData)
+      const data = await collectionRepository.update(collectionId, collectionData)
       const index = collections.value.findIndex((c) => c.id === collectionId)
       if (index !== -1) {
         collections.value[index] = data
@@ -85,7 +86,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     loading.value = true
     error.value = null
     try {
-      await CollectionRepository.remove(collectionId)
+      await collectionRepository.remove(collectionId)
       collections.value = collections.value.filter((c) => c.id !== collectionId)
       notif.success('Collection deleted')
     } catch (err) {

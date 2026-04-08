@@ -162,12 +162,12 @@ export interface ProcessedTagData {
 }
 
 export interface TagData {
-    tag_name: string           
-    tag_shorthand: string          
-    tag_color: string              
-    tag_pictogram: string         
-    tag_definition: string     
-    tag_examples: string[] 
+    tag_name: string
+    tag_shorthand: string
+    tag_color: string
+    tag_pictogram: string
+    tag_definition: string
+    tag_examples: string[]
     collection_name: string
     tag_uuid: string
 }

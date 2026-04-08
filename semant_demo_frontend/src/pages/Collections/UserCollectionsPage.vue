@@ -141,7 +141,10 @@ const handleCreate = () => {
   openCollectionDialog({
     dialogType: 'CREATE'
   }).onOk((collectionData: PostCollection) => {
-    createCollection('xjuric', collectionData)
+    createCollection({
+      ...collectionData,
+      userId: 'xjuric'
+    })
   })
 }
 

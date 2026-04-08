@@ -174,7 +174,7 @@ import {
   type QTableProps
 } from 'quasar'
 import { Document } from 'src/models/documents'
-import DocumentsRepository from 'src/repositories/DocumentsRepository'
+import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
 import useDocuments from 'src/composables/useDocuments'
 import {
   errorNotification
@@ -186,6 +186,7 @@ defineEmits([...useDialogPluginComponent.emits])
 const props = defineProps<BrowseLibraryDialogProps>()
 
 const { dialogRef, onDialogHide, onDialogCancel } = useDialogPluginComponent()
+const documentsRepository = useDocumentsRepository()
 const { documents: collectionDocuments, loadDocuments, addDoc } = useDocuments()
 
 const PAGE_SIZE = 50
@@ -272,7 +273,7 @@ const fetchPage = async (
       : PAGE_SIZE
   const offset = (page - 1) * rowsPerPage
 
-  const response = await DocumentsRepository.browse({
+  const response = await documentsRepository.browse({
     limit: rowsPerPage,
     offset,
     sortBy:

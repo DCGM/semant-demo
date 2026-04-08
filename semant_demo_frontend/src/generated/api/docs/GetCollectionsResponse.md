@@ -6,7 +6,7 @@
 
 Name | Type
 ------------ | -------------
-`collections` | [Array&lt;Collection&gt;](Collection.md)
+`collections` | [Array&lt;CollectionSchema&gt;](CollectionSchema.md)
 `userId` | string
 
 ## Example

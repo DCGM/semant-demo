@@ -1,7 +1,5 @@
-import { z } from 'zod'
+import { Tag, PostTag } from 'src/generated/api'
 
-import { TagCreateSchema, TagSchema, TagsSchema } from 'src/schemas/tags'
+type Tags = Tag[]
 
-export type Tag = z.infer<typeof TagSchema>
-export type Tags = z.infer<typeof TagsSchema>
-export type TagCreate = z.infer<typeof TagCreateSchema>
+export type { Tag, PostTag, Tags }

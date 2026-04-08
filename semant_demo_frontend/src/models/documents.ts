@@ -1,8 +1,17 @@
-import { z } from 'zod'
+import type { SemantDemoSchemaDocumentsDocument, DocumentBrowse } from 'src/generated/api'
 
-import { DocumentBrowseParamsSchema, DocumentBrowseResponseSchema, DocumentSchema, DocumentsSchema } from 'src/schemas/documents'
+type Document = SemantDemoSchemaDocumentsDocument
+type Documents = Document[]
+type DocumentBrowseParams = {
+  collectionId?: string
+  limit: number
+  offset: number
+  sortBy?: string
+  sortDesc?: boolean
+  title?: string
+  author?: string
+  publisher?: string
+  documentType?: string
+}
 
-export type Document = z.infer<typeof DocumentSchema>
-export type Documents = z.infer<typeof DocumentsSchema>
-export type DocumentBrowseParams = z.infer<typeof DocumentBrowseParamsSchema>
-export type DocumentBrowseResponse = z.infer<typeof DocumentBrowseResponseSchema>
+export type { Document, Documents, DocumentBrowse, DocumentBrowseParams }

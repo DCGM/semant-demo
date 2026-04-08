@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
-import { CollectionStats } from 'src/models/collections'
-import CollectionRepository from 'src/repositories/CollectionRepository'
+import { CollectionStats } from 'src/models/collection_stats'
+import { useCollectionRepository } from 'src/repositories/useCollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 import { ref } from 'vue'
 
 export const useCollectionStatsStore = defineStore('collectionStats', () => {
+  const collectionRepository = useCollectionRepository()
   const collectionStats = ref<CollectionStats | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
@@ -14,7 +15,7 @@ export const useCollectionStatsStore = defineStore('collectionStats', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await CollectionRepository.getStats(collectionId)
+      const data = await collectionRepository.getStats(collectionId)
       collectionStats.value = data
       notif.success('Collection statistics loaded')
     } catch (err) {

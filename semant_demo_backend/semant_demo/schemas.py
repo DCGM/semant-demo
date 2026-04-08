@@ -213,7 +213,7 @@ class ExtractedMeradata(BaseModel):
 
 
 class AdaptiveRagState(TypedDict):
-    language: str | None #ces, des, eng, ...
+    language: str | None  # ces, des, eng, ...
     question: str
     original_question: str
     queries: list[str]
@@ -355,25 +355,6 @@ class GetTagsResponse(BaseModel):
     tags_lst: list[TagData]
 
 
-class Tag(BaseModel):
-    tagName: str
-    tagShorthand: str
-    tagColor: str
-    tagPictogram: str
-    tagDefinition: str
-    tagExamples: list[str]
-    tagUuid: uuid.UUID
-
-
-class TagCreateRequest(BaseModel):
-    tagName: str
-    tagShorthand: str
-    tagColor: str
-    tagPictogram: str
-    tagDefinition: str
-    tagExamples: list[str] = []
-
-
 class GetTaggedChunksReq(BaseModel):
     tag_uuids: list[uuid.UUID]
     tag_type: TagType
@@ -419,14 +400,14 @@ class UserCollectionReqTemplate(BaseModel):
     user_id: str  # user id
 
 
-class Collection(BaseModel):
+class CollectionSchema(BaseModel):
     id: str
     name: str
     user_id: str
 
 
 class GetCollectionsResponse(BaseModel):
-    collections: list[Collection]
+    collections: list[CollectionSchema]
     userId: str
 
 
@@ -451,10 +432,13 @@ class SpanStoreMode(str, Enum):
     embedded = "embedded"
     separate = "separate"
     both = "both"
+
+
 class SpanType(str, Enum):
     pos = "pos"
     neg = "neg"
     auto = "auto"
+
 
 class TagSpan(BaseModel):
     id: str | None = None
@@ -464,11 +448,13 @@ class TagSpan(BaseModel):
     end: int
     type: SpanType | None = None
 
+
 class TagSpanUpdate(BaseModel):
     tagId: str | None = None
     start: int | None = None
     end: int | None = None
     type: SpanType | None = None
+
 
 class TagSpanCreateSeparateRequest(BaseModel):
     span: TagSpan
@@ -479,12 +465,15 @@ class TagSpanCreateEmbeddedRequest(BaseModel):
     tag_id: str
     spans: list[TagSpan]
 
+
 class TagSpanWriteResponse(BaseModel):
     stored_in: list[SpanStoreMode]
+
 
 class TagSpanUpdateSeparateRequest(BaseModel):
     span_id: str
     tagSpan: TagSpanUpdate
+
 
 class TagSpanUpdateEmbeddedRequest(BaseModel):
     chunk_id: str | None = None
@@ -541,80 +530,3 @@ class RagUserFeedback(TasksBase):
     error_types = Column(JSON, nullable=True)
     comment = Column(Text, nullable=True)
     sources = Column(JSON, nullable=True)
-
-
-class CollectionResponse(BaseModel):
-    id: UUID
-    name: str
-    userId: str
-    description: str | None = None
-    createdAt: datetime
-    updatedAt: datetime
-    color: str
-
-
-class CollectionStatsResponse(BaseModel):
-    collectionId: UUID
-    documentsCount: int
-    chunksCount: int
-    annotationsCount: int
-    tagsCount: int
-
-
-class PostCollectionRequest(BaseModel):
-    name: str
-    userId: str
-    description: str | None = None
-    color: str | None = None
-
-
-class PatchCollectionRequest(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    color: str | None = None
-
-
-class DocumentResponse(BaseModel):
-    id: UUID
-
-    title: str | None = None
-    public: bool | None = None
-    documentType: str | None = None
-    partNumber: str | None = None
-    dateIssued: datetime | None = None
-    yearIssued: int | None = None
-    language: str | None = None
-    publisher: str | None = None
-    placeOfPublication: str | None = None
-    subtitle: str | None = None
-    editors: list[str] | None = None
-    partName: str | None = None
-    seriesName: str | None = None
-    edition: str | None = None
-    author: list[str] | None = None
-    illustrators: list[str] | None = None
-    translators: list[str] | None = None
-    redaktors: list[str] | None = None
-    seriesNumber: str | None = None
-    keywords: list[str] | None = None
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        populate_by_name=True
-    )
-
-class DocumentBrowseResponse(BaseModel):
-    items: list[DocumentResponse]
-    nextOffset: int | None = None
-    hasMore: bool
-    totalCount: int
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        populate_by_name=True
-    )
-
-
-class AddDocumentToCollectionRequest(BaseModel):
-    documentId: UUID
-    collectionId: UUID

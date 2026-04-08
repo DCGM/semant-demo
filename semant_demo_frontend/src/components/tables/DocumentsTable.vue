@@ -150,8 +150,8 @@ const collectionId = computed<string>(() => {
   return value
 })
 
-onMounted(() => {
-  loadDocuments(collectionId.value)
+onMounted(async () => {
+  await loadDocuments(collectionId.value)
 })
 
 const handleRefresh = async () => {

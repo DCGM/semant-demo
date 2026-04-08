@@ -37,7 +37,7 @@ const routes: RouteRecordRaw[] = [
           {
             name: 'collectionDocumentsTagging',
             path: 'documents',
-            component: () => import('pages/Collections/CollectionDocumentsTaggingPage.vue')
+            component: () => import('src/pages/Collections/CollectionDocumentsTPage.vue')
           },
           {
             name: 'collectionTags',
@@ -58,6 +58,12 @@ const routes: RouteRecordRaw[] = [
             name: 'documentTagging',
             path: 'documents/:documentId/tagging',
             component: () => import('pages/Collections/DocumentTaggingPage/DocumentTaggingPage.vue'),
+            props: true
+          },
+          {
+            name: 'documentDetail',
+            path: 'documents/:documentId',
+            component: () => import('pages/Collections/DocumentDetailPage.vue'),
             props: true
           }
         ]

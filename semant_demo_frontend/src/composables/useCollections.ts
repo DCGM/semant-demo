@@ -7,7 +7,7 @@ const useCollections = () => {
 
   const loadCollections = (userId: string) => collectionsStore.fetchCollections(userId)
   const loadCollection = (collectionId: string) => collectionsStore.fetchCollection(collectionId)
-  const createCollection = (userId: string, collectionData: PostCollection) => collectionsStore.createCollection(userId, collectionData)
+  const createCollection = (collectionData: PostCollection) => collectionsStore.createCollection(collectionData)
   const updateCollection = (collectionId: string, collectionData: PatchCollection) => collectionsStore.updateCollection(collectionId, collectionData)
   const deleteCollection = (collectionId: string) => collectionsStore.deleteCollection(collectionId)
 

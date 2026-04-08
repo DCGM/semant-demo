@@ -1,9 +1,3 @@
 <template>
-  <ApiProvider>
-    <router-view />
-  </ApiProvider>
+  <router-view />
 </template>
-
-<script setup lang="ts">
-import ApiProvider from './providers/ApiProvider.vue'
-</script>

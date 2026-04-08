@@ -2,7 +2,10 @@
 from datetime import datetime, timezone
 
 from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.schemas import CollectionResponse, CollectionStatsResponse, PatchCollectionRequest, PostCollectionRequest, DocumentResponse, DocumentBrowseResponse, Tag, TagCreateRequest
+from semant_demo.schema.tags import Tag, PostTag, PatchTag
+from semant_demo.schema.collections import Collection, PostCollection, PatchCollection
+from semant_demo.schema.documents import Document, DocumentBrowse
+from semant_demo.schema.collection_stats import CollectionStats
 from uuid import UUID
 
 from weaviate.classes.query import Filter, Sort, QueryReference
@@ -10,7 +13,7 @@ import logging
 
 
 class WeaviateClient(WeaviateSearch):
-    async def get_all_collections(self, user_id: str) -> list[CollectionResponse]:
+    async def get_all_collections(self, user_id: str) -> list[Collection]:
         """
         Retrieves all collections for given user
         """
@@ -26,7 +29,7 @@ class WeaviateClient(WeaviateSearch):
         collections = []
         for obj in response.objects:
             props = obj.properties
-            collections.append(CollectionResponse(
+            collections.append(Collection(
                 id=obj.uuid,
                 name=props.get("name"),
                 userId=props.get("user_id"),
@@ -37,7 +40,7 @@ class WeaviateClient(WeaviateSearch):
             ))
         return collections
 
-    async def get_collection_by_id(self, collection_id: UUID) -> CollectionResponse | None:
+    async def get_collection_by_id(self, collection_id: UUID) -> Collection | None:
         """
         Retrieves collection by its id, returns None if collection with given id does not exist
         """
@@ -48,7 +51,7 @@ class WeaviateClient(WeaviateSearch):
         if response is None:
             return None
         props = response.properties
-        return CollectionResponse(
+        return Collection(
             id=response.uuid,
             name=props.get("name"),
             userId=props.get("user_id"),
@@ -58,7 +61,7 @@ class WeaviateClient(WeaviateSearch):
             color=props.get("color")
         )
 
-    async def get_collection_stats(self, collection_id: UUID) -> CollectionStatsResponse | None:
+    async def get_collection_stats(self, collection_id: UUID) -> CollectionStats | None:
         """
         Computes aggregate statistics for one collection.
         """
@@ -122,7 +125,7 @@ class WeaviateClient(WeaviateSearch):
         )
         annotations_count = annotations_count_response.total_count or 0
 
-        return CollectionStatsResponse(
+        return CollectionStats(
             collectionId=collection_id,
             documentsCount=documents_count,
             chunksCount=chunks_count,
@@ -130,7 +133,7 @@ class WeaviateClient(WeaviateSearch):
             annotationsCount=annotations_count,
         )
 
-    async def create_collection(self, collection: PostCollectionRequest) -> UUID:
+    async def create_collection(self, collection: PostCollection) -> UUID:
         """
         Creates new collection and returns its id
         """
@@ -150,7 +153,7 @@ class WeaviateClient(WeaviateSearch):
         )
         return uuid
 
-    async def update_collection(self, collection_id: UUID, collection: PatchCollectionRequest):
+    async def update_collection(self, collection_id: UUID, collection: PatchCollection):
         """"
         Updates collection with given id, raises exception if collection with given id does not exist
         """
@@ -219,7 +222,7 @@ class WeaviateClient(WeaviateSearch):
 
         await usercollection_collection.data.delete_by_id(collection_id)
 
-    async def get_document_by_id(self, document_id: str) -> DocumentResponse | None:
+    async def get_document_by_id(self, document_id: str) -> Document | None:
         """
         Retrieves document by its id, returns None if document with given id does not exist
         """
@@ -228,12 +231,12 @@ class WeaviateClient(WeaviateSearch):
         if response is None:
             return None
         props = response.properties
-        return DocumentResponse(
+        return Document(
             id=response.uuid,
             **props
         )
 
-    async def get_all_documents(self, collection_id: UUID | None = None) -> list[DocumentResponse]:
+    async def get_all_documents(self, collection_id: UUID | None = None) -> list[Document]:
         """
         Retrieves all documents - optionally can be filtered by collection id
         """
@@ -249,7 +252,7 @@ class WeaviateClient(WeaviateSearch):
         documents = []
         for obj in response.objects:
             props = obj.properties
-            documents.append(DocumentResponse(
+            documents.append(Document(
                 id=obj.uuid,
                 **props
             ))
@@ -266,7 +269,7 @@ class WeaviateClient(WeaviateSearch):
         author: str | None = None,
         publisher: str | None = None,
         document_type: str | None = None
-    ) -> DocumentBrowseResponse:
+    ) -> DocumentBrowse:
         """
         Retrieves documents in pages with optional filters for browsing large datasets.
         """
@@ -318,14 +321,14 @@ class WeaviateClient(WeaviateSearch):
             objects = objects[:limit]
 
         items = [
-            DocumentResponse(
+            Document(
                 id=obj.uuid,
                 **obj.properties
             )
             for obj in objects
         ]
 
-        return DocumentBrowseResponse(
+        return DocumentBrowse(
             items=items,
             hasMore=has_more,
             nextOffset=(offset + limit) if has_more else None,
@@ -355,19 +358,49 @@ class WeaviateClient(WeaviateSearch):
 
             tags.append(
                 Tag(
-                    tagName=str(props.get("tag_name") or ""),
-                    tagShorthand=str(props.get("tag_shorthand") or ""),
-                    tagColor=str(props.get("tag_color") or ""),
-                    tagPictogram=str(props.get("tag_pictogram") or ""),
-                    tagDefinition=str(props.get("tag_definition") or ""),
-                    tagExamples=tag_examples,
-                    tagUuid=obj.uuid,
+                    name=str(props.get("tag_name") or ""),
+                    shorthand=str(props.get("tag_shorthand") or ""),
+                    color=str(props.get("tag_color") or ""),
+                    pictogram=str(props.get("tag_pictogram") or ""),
+                    definition=str(props.get("tag_definition") or ""),
+                    examples=tag_examples,
+                    id=obj.uuid,
                 )
             )
 
         return tags
 
-    async def create_tag(self, collection_id: UUID, tag: TagCreateRequest) -> Tag:
+    async def get_tag_by_id(self, collection_id: UUID, tag_uuid: UUID) -> Tag | None:
+        """
+        Retrieves one tag by id, scoped to a collection.
+        Returns None if not found or if the tag is not linked to the collection.
+        """
+        tag_collection = self.client.collections.get("Tag")
+        response = await tag_collection.query.fetch_object_by_id(
+            tag_uuid,
+            return_references=[QueryReference(link_on="userCollection")],
+        )
+
+        if response is None:
+            return None
+
+        refs = response.references or {}
+        collection_refs = refs.get("userCollection")
+        if not collection_refs or not any(ref.uuid == collection_id for ref in collection_refs.objects):
+            return None
+
+        props = response.properties or {}
+        return Tag(
+            name=str(props.get("tag_name") or ""),
+            shorthand=str(props.get("tag_shorthand") or ""),
+            color=str(props.get("tag_color") or ""),
+            pictogram=str(props.get("tag_pictogram") or ""),
+            definition=str(props.get("tag_definition") or ""),
+            examples=[str(item) for item in props.get("tag_examples", [])],
+            id=response.uuid,
+        )
+
+    async def create_tag(self, collection_id: UUID, tag: PostTag) -> Tag:
         """
         Creates a new tag under given collection and links the tag to that collection.
         If an exact same tag already exists in the same collection, returns existing one.
@@ -385,13 +418,13 @@ class WeaviateClient(WeaviateSearch):
             return_references=[QueryReference(link_on="userCollection", return_properties=["name"])],
         )
 
-        normalized_examples = [example for example in tag.tagExamples if example.strip()]
+        normalized_examples = [example for example in tag.examples if example.strip()]
         normalized_examples_set = set(normalized_examples)
-        tag_name = tag.tagName.strip()
-        tag_shorthand = tag.tagShorthand.strip()
-        tag_color = tag.tagColor.strip()
-        tag_pictogram = tag.tagPictogram.strip()
-        tag_definition = tag.tagDefinition.strip()
+        tag_name = tag.name.strip()
+        tag_shorthand = tag.shorthand.strip()
+        tag_color = tag.color.strip()
+        tag_pictogram = tag.pictogram.strip()
+        tag_definition = tag.definition.strip()
 
         for obj in existing.objects:
             props = obj.properties or {}
@@ -405,22 +438,22 @@ class WeaviateClient(WeaviateSearch):
                 and set(existing_examples) == normalized_examples_set
             ):
                 return Tag(
-                    tagName=str(props.get("tag_name") or ""),
-                    tagShorthand=str(props.get("tag_shorthand") or ""),
-                    tagColor=str(props.get("tag_color") or ""),
-                    tagPictogram=str(props.get("tag_pictogram") or ""),
-                    tagDefinition=str(props.get("tag_definition") or ""),
-                    tagExamples=[str(item) for item in existing_examples],
-                    tagUuid=obj.uuid,
+                    name=str(props.get("tag_name") or ""),
+                    shorthand=str(props.get("tag_shorthand") or ""),
+                    color=str(props.get("tag_color") or ""),
+                    pictogram=str(props.get("tag_pictogram") or ""),
+                    definition=str(props.get("tag_definition") or ""),
+                    examples=[str(item) for item in existing_examples],
+                    id=obj.uuid,
                 )
 
         new_tag_uuid = await tag_collection.data.insert(
             properties={
-                "tag_name": tag.tagName,
-                "tag_shorthand": tag.tagShorthand,
-                "tag_color": tag.tagColor,
-                "tag_pictogram": tag.tagPictogram,
-                "tag_definition": tag.tagDefinition,
+                "tag_name": tag.name,
+                "tag_shorthand": tag.shorthand,
+                "tag_color": tag.color,
+                "tag_pictogram": tag.pictogram,
+                "tag_definition": tag.definition,
                 "tag_examples": normalized_examples,
             }
         )
@@ -432,13 +465,137 @@ class WeaviateClient(WeaviateSearch):
         )
 
         return Tag(
-            tagName=tag.tagName,
-            tagShorthand=tag.tagShorthand,
-            tagColor=tag.tagColor,
-            tagPictogram=tag.tagPictogram,
-            tagDefinition=tag.tagDefinition,
-            tagExamples=normalized_examples,
-            tagUuid=new_tag_uuid,
+            name=tag.name,
+            shorthand=tag.shorthand,
+            color=tag.color,
+            pictogram=tag.pictogram,
+            definition=tag.definition,
+            examples=normalized_examples,
+            id=new_tag_uuid,
+        )
+
+    async def delete_tag(self, collection_id: UUID, tag_uuid: UUID) -> None:
+        """
+        Deletes a tag after removing every reference to it from Span and Chunk collections.
+        """
+        tag_collection = self.client.collections.get("Tag")
+        span_collection = self.client.collections.get("Span_test")
+        chunk_collection = self.client.collections.get("Chunks")
+
+        tag_response = await tag_collection.query.fetch_object_by_id(
+            tag_uuid,
+            return_references=[QueryReference(link_on="userCollection")],
+        )
+        if tag_response is None:
+            raise ValueError("Tag not found")
+
+        tag_refs = tag_response.references or {}
+        collection_refs = tag_refs.get("userCollection")
+        if not collection_refs or not any(ref.uuid == collection_id for ref in collection_refs.objects):
+            raise ValueError("Tag not found")
+
+        page_size = 100
+
+        span_filter = Filter.by_ref("tag").by_id().equal(tag_uuid)
+        while True:
+            span_response = await span_collection.query.fetch_objects(
+                filters=span_filter,
+                limit=page_size,
+                return_references=[QueryReference(link_on="tag")],
+            )
+
+            if not span_response.objects:
+                break
+
+            for span_obj in span_response.objects:
+                await span_collection.data.reference_delete(
+                    from_uuid=span_obj.uuid,
+                    from_property="tag",
+                    to=tag_uuid,
+                )
+
+            if len(span_response.objects) < page_size:
+                break
+
+        chunk_filter = (
+            Filter.by_ref("automaticTag").by_id().equal(tag_uuid)
+            | Filter.by_ref("positiveTag").by_id().equal(tag_uuid)
+            | Filter.by_ref("negativeTag").by_id().equal(tag_uuid)
+        )
+        chunk_reference_names = ("automaticTag", "positiveTag", "negativeTag")
+
+        while True:
+            chunk_response = await chunk_collection.query.fetch_objects(
+                filters=chunk_filter,
+                limit=page_size,
+                return_references=[
+                    QueryReference(link_on=ref_name)
+                    for ref_name in chunk_reference_names
+                ],
+            )
+
+            if not chunk_response.objects:
+                break
+
+            for chunk_obj in chunk_response.objects:
+                refs = chunk_obj.references or {}
+                for ref_name in chunk_reference_names:
+                    current_refs = refs.get(ref_name)
+                    if current_refs and any(ref.uuid == tag_uuid for ref in current_refs.objects):
+                        await chunk_collection.data.reference_delete(
+                            from_uuid=chunk_obj.uuid,
+                            from_property=ref_name,
+                            to=tag_uuid,
+                        )
+
+            if len(chunk_response.objects) < page_size:
+                break
+
+        await tag_collection.data.delete_by_id(tag_uuid)
+
+    async def update_tag(self, collection_id: UUID, tag_uuid: UUID, updated_tag: PatchTag) -> None:
+        """
+        Updates an existing tag in a collection.
+        """
+        tag_collection = self.client.collections.get("Tag")
+
+        tag_response = await tag_collection.query.fetch_object_by_id(
+            tag_uuid,
+            return_references=[QueryReference(link_on="userCollection")],
+        )
+        if tag_response is None:
+            raise ValueError("Tag not found")
+
+        tag_refs = tag_response.references or {}
+        collection_refs = tag_refs.get("userCollection")
+        if not collection_refs or not any(ref.uuid == collection_id for ref in collection_refs.objects):
+            raise ValueError("Tag not found")
+
+
+        patch_data = updated_tag.model_dump(exclude_unset=True, exclude_none=True)
+        if not patch_data:
+            raise ValueError("No fields provided for update")
+
+        properties_to_update: dict[str, str | list[str]] = {}
+
+        if "name" in patch_data:
+            properties_to_update["tag_name"] = str(patch_data["name"])
+        if "shorthand" in patch_data:
+            properties_to_update["tag_shorthand"] = str(patch_data["shorthand"])
+        if "color" in patch_data:
+            properties_to_update["tag_color"] = str(patch_data["color"])
+        if "pictogram" in patch_data:
+            properties_to_update["tag_pictogram"] = str(patch_data["pictogram"])
+        if "definition" in patch_data:
+            properties_to_update["tag_definition"] = str(patch_data["definition"])
+        if "examples" in patch_data:
+            properties_to_update["tag_examples"] = [
+                str(example) for example in patch_data["examples"] if str(example).strip()
+            ]
+
+        await tag_collection.data.update(
+            uuid=tag_uuid,
+            properties=properties_to_update,
         )
 
     async def add_document_to_collection(self, document_id: UUID, collection_id: UUID) -> bool:

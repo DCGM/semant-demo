@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { Collection } from './Collection';
+import type { CollectionSchema } from './CollectionSchema';
 import {
-    CollectionFromJSON,
-    CollectionFromJSONTyped,
-    CollectionToJSON,
-    CollectionToJSONTyped,
-} from './Collection';
+    CollectionSchemaFromJSON,
+    CollectionSchemaFromJSONTyped,
+    CollectionSchemaToJSON,
+    CollectionSchemaToJSONTyped,
+} from './CollectionSchema';
 
 /**
  * 
@@ -29,10 +29,10 @@ import {
 export interface GetCollectionsResponse {
     /**
      * 
-     * @type {Array<Collection>}
+     * @type {Array<CollectionSchema>}
      * @memberof GetCollectionsResponse
      */
-    collections: Array<Collection>;
+    collections: Array<CollectionSchema>;
     /**
      * 
      * @type {string}
@@ -60,7 +60,7 @@ export function GetCollectionsResponseFromJSONTyped(json: any, ignoreDiscriminat
     }
     return {
         
-        'collections': ((json['collections'] as Array<any>).map(CollectionFromJSON)),
+        'collections': ((json['collections'] as Array<any>).map(CollectionSchemaFromJSON)),
         'userId': json['userId'],
     };
 }
@@ -76,7 +76,7 @@ export function GetCollectionsResponseToJSONTyped(value?: GetCollectionsResponse
 
     return {
         
-        'collections': ((value['collections'] as Array<any>).map(CollectionToJSON)),
+        'collections': ((value['collections'] as Array<any>).map(CollectionSchemaToJSON)),
         'userId': value['userId'],
     };
 }

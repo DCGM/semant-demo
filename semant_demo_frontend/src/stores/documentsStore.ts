@@ -2,9 +2,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { Documents, Document, DocumentBrowseParams } from 'src/models/documents'
 import { ongoingNotification } from 'src/utils/notification'
-import DocumentsRepository from 'src/repositories/DocumentsRepository'
+import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
 
 export const useDocumentsStore = defineStore('documents', () => {
+  const documentsRepository = useDocumentsRepository()
   const documents = ref<Documents>([])
   const activeDocument = ref<Document | null>(null)
   const error = ref<string | null>(null)
@@ -15,7 +16,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await DocumentsRepository.getAll(collectionId)
+      const data = await documentsRepository.getAll(collectionId)
       documents.value = data
       notif.success('Documents loaded')
     } catch (err) {
@@ -31,7 +32,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await DocumentsRepository.getById(documentId)
+      const data = await documentsRepository.getById(documentId)
       activeDocument.value = data
       notif.success('Document loaded')
     } catch (err) {
@@ -47,7 +48,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await DocumentsRepository.browse(params)
+      const data = await documentsRepository.browse(params)
       documents.value = data.items
       notif.success('Documents loaded')
       return data
@@ -73,7 +74,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     error.value = null
     loading.value = true
     try {
-      const success = await DocumentsRepository.addToCollection(documentId, collectionId)
+      const success = await documentsRepository.addToCollection(documentId, collectionId)
       if (success) {
         notif.success('Document added to collection')
       } else {
@@ -96,7 +97,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     error.value = null
     loading.value = true
     try {
-      const success = await DocumentsRepository.removeFromCollection(documentId, collectionId)
+      const success = await documentsRepository.removeFromCollection(documentId, collectionId)
       if (success) {
         documents.value = documents.value.filter((doc) => doc.id !== documentId)
         notif.success('Document removed from collection')
@@ -125,7 +126,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     try {
       const results = await Promise.all(
-        documentIds.map((documentId) => DocumentsRepository.removeFromCollection(documentId, collectionId))
+        documentIds.map((documentId) => documentsRepository.removeFromCollection(documentId, collectionId))
       )
 
       const removedIds = documentIds.filter((_, index) => results[index])

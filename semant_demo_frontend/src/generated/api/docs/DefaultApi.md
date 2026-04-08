@@ -11,9 +11,11 @@ All URIs are relative to *http://localhost*
 | [**cancelTaskApiTaggingTaskTaskIdDelete**](DefaultApi.md#canceltaskapitaggingtasktaskiddelete) | **DELETE** /api/tagging_task/{taskId} | Cancel Task |
 | [**checkStatusApiTagStatusTaskIdGet**](DefaultApi.md#checkstatusapitagstatustaskidget) | **GET** /api/tag_status/{taskId} | Check Status |
 | [**createCollectionApiV1CollectionsPost**](DefaultApi.md#createcollectionapiv1collectionspost) | **POST** /api/v1/collections | Create Collection |
+| [**createCollectionTagApiV1CollectionsCollectionIdTagsPost**](DefaultApi.md#createcollectiontagapiv1collectionscollectionidtagspost) | **POST** /api/v1/collections/{collection_id}/tags | Create Collection Tag |
 | [**createTagApiTagPost**](DefaultApi.md#createtagapitagpost) | **POST** /api/tag | Create Tag |
 | [**createUserCollectionApiUserCollectionPost**](DefaultApi.md#createusercollectionapiusercollectionpost) | **POST** /api/user_collection | Create User Collection |
 | [**deleteCollectionApiV1CollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiv1collectionscollectioniddelete) | **DELETE** /api/v1/collections/{collection_id} | Delete Collection |
+| [**deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete**](DefaultApi.md#deletecollectiontagapiv1collectionscollectionidtagstaguuiddelete) | **DELETE** /api/v1/collections/{collection_id}/tags/{tag_uuid} | Delete Collection Tag |
 | [**deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete**](DefaultApi.md#deletetagspanseparateapitagspansseparatespaniddelete) | **DELETE** /api/tag_spans_separate/{span_id} | Delete Tag Span Separate |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
 | [**fetchCollectionsApiCollectionsGet**](DefaultApi.md#fetchcollectionsapicollectionsget) | **GET** /api/collections | Fetch Collections |
@@ -22,6 +24,7 @@ All URIs are relative to *http://localhost*
 | [**getCollectionByIdApiV1CollectionsCollectionIdGet**](DefaultApi.md#getcollectionbyidapiv1collectionscollectionidget) | **GET** /api/v1/collections/{collection_id} | Get Collection By Id |
 | [**getCollectionChunksApiChunksOfCollectionGet**](DefaultApi.md#getcollectionchunksapichunksofcollectionget) | **GET** /api/chunks_of_collection | Get Collection Chunks |
 | [**getCollectionStatsApiV1CollectionsCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiv1collectionscollectionidstatsget) | **GET** /api/v1/collections/{collection_id}/stats | Get Collection Stats |
+| [**getCollectionTagsApiV1CollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapiv1collectionscollectionidtagsget) | **GET** /api/v1/collections/{collection_id}/tags | Get Collection Tags |
 | [**getCollectionsApiV1CollectionsGet**](DefaultApi.md#getcollectionsapiv1collectionsget) | **GET** /api/v1/collections | Get Collections |
 | [**getConfigsApiConfigsGet**](DefaultApi.md#getconfigsapiconfigsget) | **GET** /api/configs | Get Configs |
 | [**getDocumentApiV1DocumentsDocumentIdGet**](DefaultApi.md#getdocumentapiv1documentsdocumentidget) | **GET** /api/v1/documents/{document_id} | Get Document |
@@ -37,11 +40,13 @@ All URIs are relative to *http://localhost*
 | [**removeAutomaticTagsApiAutomaticTagsDelete**](DefaultApi.md#removeautomatictagsapiautomatictagsdelete) | **DELETE** /api/automatic_tags | Remove Automatic Tags |
 | [**removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapiv1collectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/v1/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**removeTagsApiWholeTagsDelete**](DefaultApi.md#removetagsapiwholetagsdelete) | **DELETE** /api/whole_tags | Remove Tags |
+| [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
 | [**startTaggingApiTaggingTaskPost**](DefaultApi.md#starttaggingapitaggingtaskpost) | **POST** /api/tagging_task | Start Tagging |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**updateCollectionApiV1CollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiv1collectionscollectionidpatch) | **PATCH** /api/v1/collections/{collection_id} | Update Collection |
+| [**updateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatch**](DefaultApi.md#updatecollectiontagapiv1collectionscollectionidtagstaguuidpatch) | **PATCH** /api/v1/collections/{collection_id}/tags/{tag_uuid} | Update Collection Tag |
 | [**updateTagSpanEmbeddedApiTagSpansUpdateEmbeddedPatch**](DefaultApi.md#updatetagspanembeddedapitagspansupdateembeddedpatch) | **PATCH** /api/tag_spans/update_embedded | Update Tag Span Embedded |
 | [**updateTagSpanSeparateApiTagSpansUpdateSeparatePatch**](DefaultApi.md#updatetagspanseparateapitagspansupdateseparatepatch) | **PATCH** /api/tag_spans/update_separate | Update Tag Span Separate |
 | [**upsertTagSpansEmbeddedApiTagSpansEmbeddedPost**](DefaultApi.md#upserttagspansembeddedapitagspansembeddedpost) | **POST** /api/tag_spans_embedded | Upsert Tag Spans Embedded |
@@ -256,7 +261,7 @@ No authorization required
 
 ## browseDocumentsApiV1DocumentsBrowseGet
 
-> DocumentBrowseResponse browseDocumentsApiV1DocumentsBrowseGet(limit, offset, sortBy, sortDesc, collectionId, title, author, publisher, documentType)
+> DocumentBrowse browseDocumentsApiV1DocumentsBrowseGet(limit, offset, sortBy, sortDesc, collectionId, title, author, publisher, documentType)
 
 Browse Documents
 
@@ -323,7 +328,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**DocumentBrowseResponse**](DocumentBrowseResponse.md)
+[**DocumentBrowse**](DocumentBrowse.md)
 
 ### Authorization
 
@@ -482,7 +487,7 @@ No authorization required
 
 ## createCollectionApiV1CollectionsPost
 
-> CollectionResponse createCollectionApiV1CollectionsPost(postCollectionRequest)
+> Collection createCollectionApiV1CollectionsPost(postCollection)
 
 Create Collection
 
@@ -500,8 +505,8 @@ async function example() {
   const api = new DefaultApi();
 
   const body = {
-    // PostCollectionRequest
-    postCollectionRequest: ...,
+    // PostCollection
+    postCollection: ...,
   } satisfies CreateCollectionApiV1CollectionsPostRequest;
 
   try {
@@ -521,11 +526,80 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **postCollectionRequest** | [PostCollectionRequest](PostCollectionRequest.md) |  | |
+| **postCollection** | [PostCollection](PostCollection.md) |  | |
 
 ### Return type
 
-[**CollectionResponse**](CollectionResponse.md)
+[**Collection**](Collection.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## createCollectionTagApiV1CollectionsCollectionIdTagsPost
+
+> Tag createCollectionTagApiV1CollectionsCollectionIdTagsPost(collectionId, postTag)
+
+Create Collection Tag
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CreateCollectionTagApiV1CollectionsCollectionIdTagsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // PostTag
+    postTag: ...,
+  } satisfies CreateCollectionTagApiV1CollectionsCollectionIdTagsPostRequest;
+
+  try {
+    const data = await api.createCollectionTagApiV1CollectionsCollectionIdTagsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **postTag** | [PostTag](PostTag.md) |  | |
+
+### Return type
+
+[**Tag**](Tag.md)
 
 ### Authorization
 
@@ -724,6 +798,75 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete
+
+> deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete(collectionId, tagUuid)
+
+Delete Collection Tag
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DeleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // string
+    tagUuid: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies DeleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDeleteRequest;
+
+  try {
+    const data = await api.deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **tagUuid** | `string` |  | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -1077,7 +1220,7 @@ No authorization required
 
 ## getCollectionByIdApiV1CollectionsCollectionIdGet
 
-> CollectionResponse getCollectionByIdApiV1CollectionsCollectionIdGet(collectionId)
+> Collection getCollectionByIdApiV1CollectionsCollectionIdGet(collectionId)
 
 Get Collection By Id
 
@@ -1120,7 +1263,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**CollectionResponse**](CollectionResponse.md)
+[**Collection**](Collection.md)
 
 ### Authorization
 
@@ -1211,7 +1354,7 @@ No authorization required
 
 ## getCollectionStatsApiV1CollectionsCollectionIdStatsGet
 
-> CollectionStatsResponse getCollectionStatsApiV1CollectionsCollectionIdStatsGet(collectionId)
+> CollectionStats getCollectionStatsApiV1CollectionsCollectionIdStatsGet(collectionId)
 
 Get Collection Stats
 
@@ -1254,7 +1397,73 @@ example().catch(console.error);
 
 ### Return type
 
-[**CollectionStatsResponse**](CollectionStatsResponse.md)
+[**CollectionStats**](CollectionStats.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getCollectionTagsApiV1CollectionsCollectionIdTagsGet
+
+> Array&lt;Tag&gt; getCollectionTagsApiV1CollectionsCollectionIdTagsGet(collectionId)
+
+Get Collection Tags
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetCollectionTagsApiV1CollectionsCollectionIdTagsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies GetCollectionTagsApiV1CollectionsCollectionIdTagsGetRequest;
+
+  try {
+    const data = await api.getCollectionTagsApiV1CollectionsCollectionIdTagsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;Tag&gt;**](Tag.md)
 
 ### Authorization
 
@@ -1277,7 +1486,7 @@ No authorization required
 
 ## getCollectionsApiV1CollectionsGet
 
-> Array&lt;CollectionResponse&gt; getCollectionsApiV1CollectionsGet(userId)
+> Array&lt;Collection&gt; getCollectionsApiV1CollectionsGet(userId)
 
 Get Collections
 
@@ -1320,7 +1529,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**Array&lt;CollectionResponse&gt;**](CollectionResponse.md)
+[**Array&lt;Collection&gt;**](Collection.md)
 
 ### Authorization
 
@@ -1402,7 +1611,7 @@ No authorization required
 
 ## getDocumentApiV1DocumentsDocumentIdGet
 
-> DocumentResponse getDocumentApiV1DocumentsDocumentIdGet(documentId)
+> SemantDemoSchemaDocumentsDocument getDocumentApiV1DocumentsDocumentIdGet(documentId)
 
 Get Document
 
@@ -1445,7 +1654,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**DocumentResponse**](DocumentResponse.md)
+[**SemantDemoSchemaDocumentsDocument**](SemantDemoSchemaDocumentsDocument.md)
 
 ### Authorization
 
@@ -1468,7 +1677,7 @@ No authorization required
 
 ## getDocumentsApiV1DocumentsGet
 
-> Array&lt;DocumentResponse&gt; getDocumentsApiV1DocumentsGet(collectionId)
+> Array&lt;SemantDemoSchemaDocumentsDocument&gt; getDocumentsApiV1DocumentsGet(collectionId)
 
 Get Documents
 
@@ -1511,7 +1720,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**Array&lt;DocumentResponse&gt;**](DocumentResponse.md)
+[**Array&lt;SemantDemoSchemaDocumentsDocument&gt;**](SemantDemoSchemaDocumentsDocument.md)
 
 ### Authorization
 
@@ -2262,6 +2471,72 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## saveAppFeedbackApiV1FeedbackPost
+
+> any saveAppFeedbackApiV1FeedbackPost(appFeedbackRequest)
+
+Save App Feedback
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SaveAppFeedbackApiV1FeedbackPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // AppFeedbackRequest
+    appFeedbackRequest: ...,
+  } satisfies SaveAppFeedbackApiV1FeedbackPostRequest;
+
+  try {
+    const data = await api.saveAppFeedbackApiV1FeedbackPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **appFeedbackRequest** | [AppFeedbackRequest](AppFeedbackRequest.md) |  | |
+
+### Return type
+
+**any**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## saveFeedbackApiRagFeedbackPost
 
 > any saveFeedbackApiRagFeedbackPost(feedbackRequest)
@@ -2533,7 +2808,7 @@ No authorization required
 
 ## updateCollectionApiV1CollectionsCollectionIdPatch
 
-> CollectionResponse updateCollectionApiV1CollectionsCollectionIdPatch(collectionId, patchCollectionRequest)
+> Collection updateCollectionApiV1CollectionsCollectionIdPatch(collectionId, patchCollection)
 
 Update Collection
 
@@ -2553,8 +2828,8 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-    // PatchCollectionRequest
-    patchCollectionRequest: ...,
+    // PatchCollection
+    patchCollection: ...,
   } satisfies UpdateCollectionApiV1CollectionsCollectionIdPatchRequest;
 
   try {
@@ -2575,11 +2850,83 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
-| **patchCollectionRequest** | [PatchCollectionRequest](PatchCollectionRequest.md) |  | |
+| **patchCollection** | [PatchCollection](PatchCollection.md) |  | |
 
 ### Return type
 
-[**CollectionResponse**](CollectionResponse.md)
+[**Collection**](Collection.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## updateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatch
+
+> Tag updateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatch(collectionId, tagUuid, patchTag)
+
+Update Collection Tag
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UpdateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatchRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // string
+    tagUuid: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // PatchTag
+    patchTag: ...,
+  } satisfies UpdateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatchRequest;
+
+  try {
+    const data = await api.updateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatch(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **tagUuid** | `string` |  | [Defaults to `undefined`] |
+| **patchTag** | [PatchTag](PatchTag.md) |  | |
+
+### Return type
+
+[**Tag**](Tag.md)
 
 ### Authorization
 

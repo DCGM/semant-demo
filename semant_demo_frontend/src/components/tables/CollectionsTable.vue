@@ -82,11 +82,23 @@
       </q-td>
     </template>
     <template #body-cell-color="tableProps">
-      <q-td :props="tableProps" class="text-center">
+      <q-td :props="tableProps">
         <div
           class="color-swatch"
           :style="{ backgroundColor: tableProps.row.color || 'transparent' }"
-        />
+        >
+          <q-tooltip>
+            {{ tableProps.row.color ? `Collection Color: ${tableProps.row.color}` : 'No color set' }}
+          </q-tooltip>
+        </div>
+      </q-td>
+    </template>
+    <template #body-cell-description="props">
+      <q-td :props="props" class="ellipsis">
+        {{ props.row.description || '-' }}
+        <q-tooltip v-if="props.row.description">
+          {{ props.row.description }}
+        </q-tooltip>
       </q-td>
     </template>
   </q-table>
@@ -151,7 +163,8 @@ const columns: QTableColumn<Collection>[] = [
     name: 'description',
     label: 'Description',
     field: (row) => row.description ?? '-',
-    align: 'left'
+    align: 'left',
+    style: 'max-width: 300px;'
   },
   {
     name: 'owner',

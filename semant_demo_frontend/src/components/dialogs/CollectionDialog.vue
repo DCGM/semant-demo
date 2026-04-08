@@ -120,7 +120,8 @@ const isDirty = computed(() => {
   return (
     (title.value ?? '').trim() !== (props.collection?.name ?? '').trim() ||
     (description.value ?? '').trim() !==
-      (props.collection?.description ?? '').trim()
+      (props.collection?.description ?? '').trim() ||
+    currentColor.value !== (props.collection?.color ?? '#1976d2')
   )
 })
 
