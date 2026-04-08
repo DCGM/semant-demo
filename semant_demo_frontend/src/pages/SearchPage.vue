@@ -829,7 +829,7 @@ function toggleSelectAll () {
 async function fetchTags () {
   loadingSpinner.value = true
   try {
-    const res = await api.get('/all_tags')
+    const res = await api.get('/tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
   } finally {
@@ -850,7 +850,7 @@ async function onFilterByTag () {
     positive: tagFilterModes.value.positive,
     automatic: tagFilterModes.value.automatic
   }
-  const { data } = await api.post('/filter_tags', payload)
+  const { data } = await api.post('/tags/filter', payload)
   // filter the current results
   const chunkTags = data?.chunkTags || []
   // map chunk_id -> tag info from backend
@@ -881,7 +881,8 @@ async function onFilterByTag () {
 // approve tag pass true to approve or false to diapprove
 async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string, pageReload = true) {
   const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
-  const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
+  const endpoint = approved ? '/tag/approve' : '/tag/disapprove'
+  const { data } = await api.put<ApproveTagResponse>(endpoint, payload)
   if (data.successful) {
     if (pageReload) {
       // Update results after approval
@@ -996,7 +997,7 @@ async function addUserTag (chunkID: string, tagID: string | null) {
 async function removeSelectedTags () {
   try {
     const payload = { tag_uuids: tagFormManage.value.tag_uuids }
-    const { data } = await api.delete<RemoveTagsResponse>('/automatic_tags', { data: payload })
+    const { data } = await api.delete<RemoveTagsResponse>('/tags/automatic', { data: payload })
     console.log('Removing response received:', data)
     if (data.successful) {
       // window.location.reload()
@@ -1055,7 +1056,7 @@ const loadCollections = async () => {
 
 async function addChunkToCollection (currentChunkId: string) {
   const payload = { collectionId: selectedCollectionId.value, chunkId: currentChunkId }
-  const { data } = await api.post<CreateResponse>('/chunk_2_collection', payload)
+  const { data } = await api.post<CreateResponse>('/user_collection/chunks', payload)
   if (data.created) {
     Notify.create({ message: 'Chunk added to collection', position: 'top', color: 'positive' })
   } else {
