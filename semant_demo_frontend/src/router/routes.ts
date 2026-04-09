@@ -69,6 +69,27 @@ const routes: RouteRecordRaw[] = [
         ]
       },
       {
+        name: 'documentDetailLayout',
+        path: '/collections/:collectionId/documents/:documentId',
+        component: () => import('layouts/DocumentDetailLayout.vue'),
+        props: true,
+        redirect: { name: 'documentDetailV1' },
+        children: [
+          {
+            name: 'documentDetailV1',
+            path: 'v1',
+            component: () => import('pages/Collections/DocumentDetailPageV1.vue'),
+            props: true
+          },
+          {
+            name: 'documentDetailV2',
+            path: 'v2',
+            component: () => import('pages/Collections/DocumentDetailPageV2.vue'),
+            props: true
+          }
+        ]
+      },
+      {
         name: 'tagManagement',
         path: '/tag_manage',
         component: () => import('pages/TagManagementPage.vue')
