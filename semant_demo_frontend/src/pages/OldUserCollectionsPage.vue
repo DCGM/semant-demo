@@ -448,7 +448,7 @@ async function fetchCollectionChunks () {
   loading.value = true
   try {
     console.log('selectedCollectionId.value =', selectedCollectionId.value)
-    const { data: data1 } = await api.get<GetCollectionChunksResponse>('/user_collection/chunks', {
+    const { data: data1 } = await api.get<GetCollectionChunksResponse>('/chunks_of_collection', {
       params: { collectionId: selectedCollection.value?.id }
     })
     console.log('Chunks response received:', data1)

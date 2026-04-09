@@ -332,11 +332,8 @@
             dense
           />
 
-           <div class="col-auto flex justify-end q-gutter-sm">
-            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete"
-              :loading="loadingSpinnerRemoveTags" @click="removeSelectedTags" />
-            <q-btn type="button" color="negative" label="Delete Tags Entirely" icon="delete_forever"
-              :loading="loadingSpinnerDeleteTags" @click="deleteWholeTags" />
+           <div class="col-auto flex justify-end">
+            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loadingSpinnerRemoveTags" @click="removeSelectedTags" />
           </div>
         </div>
         <div class="row items-center" style="width: 100%;">
@@ -562,7 +559,6 @@ const tags = ref<TagData[]>([])
 const loadingSpinnerTags = ref(false)
 const loadingSpinnerTaggedChunks = ref(false)
 const loadingSpinnerRemoveTags = ref(false)
-const loadingSpinnerDeleteTags = ref(false)
 const loadingSpinnerUserCollection = ref(false)
 const loadingSpinnerConfigs = ref(false)
 
@@ -615,8 +611,7 @@ const removeTag = (index: number) => {
 // approve tag pass true to approve or false to diapprove
 async function approveTag (approved: boolean, chunkID: string, tagID: string, chunkCollectionName: string) {
   const payload = { approved: approved, chunkID: chunkID, tagID: tagID, chunk_collection_name: chunkCollectionName }
-  const endpoint = approved ? '/tag/approve' : '/tag/disapprove'
-  const { data } = await api.put<ApproveTagResponse>(endpoint, payload)
+  const { data } = await api.put<ApproveTagResponse>('/tag_approval', payload)
   if (data.successful) {
     await onTagManage() // may use lighter version to refetch the state
   } else {
@@ -650,7 +645,7 @@ onMounted(async () => {
   loadingSpinner.value = true
   try {
     // load tags
-    const res = await axios.get('/tags')
+    const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
     await loadTaggingConfigs() // load configs
@@ -685,7 +680,7 @@ function getTaskIcon (status: string): string {
 async function loadExistingTagsList () {
   loadingSpinnerTags.value = true
   try {
-    const res = await axios.get('/tags')
+    const res = await axios.get('/api/all_tags')
     tags.value = res.data.tags_lst
     // filter based on currently selected collection
     if (selectedCollection.value?.name) {
@@ -729,7 +724,7 @@ async function onRunTask () {
       console.log('Tagging will start', tagValues)
       const payload = { ...tagValues, tag_examples: tagValues?.tag_examples.filter(example => example.trim() !== ''), task_config: selectedConfig.value }
       console.log('Payload: ', payload)
-      const { data } = await api.post<TagStartResponse>('/tag/task', payload)
+      const { data } = await api.post<TagStartResponse>('/tagging_task', payload)
       console.log('Tagging response received:', data)
       // Store task information
       const newTaskInfo: TaskInfo = {
@@ -767,9 +762,9 @@ async function onRunTask () {
 // cancel task
 async function cancelTask (taskID: string) {
   const payload = { params: { taskId: taskID } }
-  const { data: data1 } = await api.delete<CancelTaskResponse>(`/tag/task/${taskID}`, payload)
+  const { data: data1 } = await api.delete<CancelTaskResponse>(`/tagging_task/${taskID}`, payload)
   console.log("Canceled: ", data1.taskCanceled)
-  const { data } = await api.get<StatusResponse>(`/tag/task/status/${taskID}`)
+  const { data } = await api.get<StatusResponse>(`/tag_status/${taskID}`)
   stopPolling(taskID)
   updateTaskStatus(taskID, data.status, data.result, data.all_texts_count, data.processed_count, data.tag_processing_data)
 }
@@ -780,7 +775,7 @@ function startPolling (taskId: string) {
   const interval: ReturnType<typeof setInterval> = setInterval(async () => {
     try {
       // server response is inside data
-      const { data } = await api.get<StatusResponse>(`/tag/task/status/${taskId}`)
+      const { data } = await api.get<StatusResponse>(`/tag_status/${taskId}`)
       console.log('Polling response:', data) // Debug log
       console.log('processed count: ', data.processed_count, 'all count: ', data.all_texts_count)
       updateTaskStatus(taskId, data.status, data.result, data.all_texts_count, data.processed_count, data.tag_processing_data)
@@ -829,17 +824,17 @@ async function onTagManage () {
   try {
     loadingSpinnerTaggedChunks.value = true
     const payload = { tag_uuids: tagFormManage.value.tag_uuids, tag_type: "automatic" }
-    const { data: data1 } = await api.post<GetTaggedChunksResponse>('/tag/textChunks', payload)
+    const { data: data1 } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload)
     console.log('Tagging response received:', data1)
     chunkData.value = data1
     // positive
     const payload2 = { tag_uuids: tagFormManage.value.tag_uuids, tag_type: "positive" }
-    const { data: data2 } = await api.post<GetTaggedChunksResponse>('/tag/textChunks', payload2)
+    const { data: data2 } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload2)
     console.log('Tagging response received:', data2)
     chunkDataPositive.value = data2
     // negative
     const payload3 = { tag_uuids: tagFormManage.value.tag_uuids, tag_type: "negative" }
-    const { data: data3 } = await api.post<GetTaggedChunksResponse>('/tag/textChunks', payload3)
+    const { data: data3 } = await api.post<GetTaggedChunksResponse>('/tagged_texts', payload3)
     console.log('Tagging response received:', data3)
     chunkDataNegative.value = data3
 
@@ -878,7 +873,7 @@ async function removeSelectedTags () {
   try {
     loadingSpinnerRemoveTags.value = true
     const payload = { tag_uuids: tagFormManage.value.tag_uuids }
-    const { data } = await api.delete<RemoveTagsResponse>('/tags/automatic', { data: payload })
+    const { data } = await api.delete<RemoveTagsResponse>('/automatic_tags', { data: payload })
     console.log('Removing response received:', data)
     if (data.successful) {
       // window.location.reload()
@@ -891,28 +886,11 @@ async function removeSelectedTags () {
   }
 }
 
-async function deleteWholeTags () {
-  try {
-    loadingSpinnerDeleteTags.value = true
-    const payload = { tag_uuids: tagFormManage.value.tag_uuids }
-    const { data } = await api.delete<RemoveTagsResponse>('/tags', { data: payload })
-    console.log('Removing response received:', data)
-    if (data.successful) {
-      // window.location.reload()
-      await onTagManage()
-    }
-  } catch (e) {
-    console.error('Tag removing error:', e)
-  } finally {
-    loadingSpinnerDeleteTags.value = false
-  }
-}
-
 // fetch tag info
 async function fetchTags () {
   loadingSpinnerTags.value = true
   try {
-    const res = await api.get('/tags')
+    const res = await api.get('/all_tags')
     tags.value = res.data.tags_lst
     tagsLen.value = tags.value.length
     if (selectedCollectionId.value == null) {
@@ -924,7 +902,7 @@ async function fetchTags () {
 }
 
 async function onShowTasks () {
-  const res = await axios.get('/tag/tasks/info')
+  const res = await axios.get('/api/all_tasks')
   const tasks = res.data.taskData
   for (const task of tasks) {
     // skip if this task is already in allTaskInfo
@@ -1025,7 +1003,7 @@ const loadCollections = async () => {
 async function loadTaggingConfigs () {
   try {
     loadingSpinnerConfigs.value = true
-    const { data } = await api.get<GetConfigsResponse>('/tag/configs')
+    const { data } = await api.get<GetConfigsResponse>('/configs')
     taggingConfigs.value = data.configs
     console.log('Loaded tagging configs:', taggingConfigs.value)
   } catch (err) {

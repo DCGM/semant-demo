@@ -4,12 +4,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from semant_demo import schemas
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.weaviate_tag import WeaviateSearchAndTag
 # from semant_demo.rag.rag_generator import RagGenerator
 import asyncio
-#import aiofiles # load multiple files simultaneously
 
-from semant_demo.tagging.tagging_utils import tag_and_store
+from semant_demo.tagging.tagging_task import tag_and_store
 import uuid
 from pathlib import Path
 
@@ -33,10 +32,12 @@ import json
 import yaml
 
 from semant_demo.tagging.sql_utils import DBError, update_task_status
-from semant_demo.tagging.tagging_utils import getTaskByName
+from semant_demo.tagging.tagging_task import getTaskByName
 
-#import dependencies
-from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
+# import dependencies
+from semant_demo.routes.dependencies import get_async_session, get_search, get_engine
+# import dependencies
+from semant_demo.routes.dependencies import get_async_session, get_tag, get_engine
 
 logging.basicConfig(level=logging.INFO)
 
@@ -48,32 +49,21 @@ exp_router = APIRouter()
 
 
 @exp_router.post("/api/tag", response_model=schemas.CreateResponse)
-async def create_tag(tagReq: schemas.TagReqTemplate, 
-                     searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.CreateResponse:
+async def create_tag(tagReq: schemas.TagReqTemplate, tagger: WeaviateSearchAndTag = Depends(get_tag),
+                     session: AsyncSession = Depends(get_async_session)) -> schemas.CreateResponse:
     """
-    Creates a tag in weaviate db, or not if the same tag already exists
+    Creates tag in weaviate db, or not if the same tag already exists
     """
     try:
-        # convert tag request to tag data
-        tagData = schemas.TagData(
-                tag_name = tagReq.tag_name,
-                tag_shorthand = tagReq.tag_shorthand,
-                tag_color = tagReq.tag_color,
-                tag_pictogram = tagReq.tag_pictogram,
-                tag_definition = tagReq.tag_definition,
-                tag_examples = tagReq.tag_examples,
-                collection_name = tagReq.collection_name,
-                tag_uuid = None
-        )
-        tag_id = await searcher.tag.create(tag=tagData)
+        tag_id = await tagger.add_or_get_tag(tagReq)
         return {"created": True, "message": f"Tag {tagReq.tag_name} created with tag id {tag_id}"}
     except Exception as e:
         logging.error(e)
         return {"created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
 
-@exp_router.post("/api/tag/task", response_model=schemas.TagStartResponse)
+@exp_router.post("/api/tagging_task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
-                        searcher: WeaviateAbstraction = Depends(get_search),
+                        tagger: WeaviateSearchAndTag = Depends(get_tag),
                         session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
     """
     Starts tagging task in form of asyncio.create_task
@@ -91,7 +81,7 @@ async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
 
         _, global_async_session_maker = get_engine()
 
-        task = asyncio.create_task(tag_and_store(tagReq, taskId, searcher, global_async_session_maker))
+        task = asyncio.create_task(tag_and_store(tagReq, taskId, tagger, global_async_session_maker))
         taskName = task.get_name()
         # store the task name into DB
         try:
@@ -110,7 +100,7 @@ async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
         logging.error(e)
         raise HTTPException(status_code=500, detail=str(e))
 
-@exp_router.get("/api/tag/configs", response_model=schemas.GetConfigsResponse)
+@exp_router.get("/api/configs", response_model=schemas.GetConfigsResponse)
 async def get_configs() -> schemas.GetConfigsResponse:
     """
     Load all config files
@@ -125,7 +115,7 @@ async def get_configs() -> schemas.GetConfigsResponse:
     
     return {"configs": configs}
 
-@exp_router.get("/api/tag/tasks/info")
+@exp_router.get("/api/all_tasks")
 async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
     """
     Get task info to see history of tasks
@@ -161,7 +151,8 @@ async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
         logging.exception(f'Failed loading object from database. While loading all tasks ids.')
         raise DBError(f'Failed loading all tasks ids from database.') from e
 
-@exp_router.get("/api/tag/task/status/{taskId}")
+
+@exp_router.get("/api/tag_status/{taskId}")
 async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session)):
     """
     Polling to check task status
@@ -189,7 +180,7 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
             "tag_processing_data": task.tag_processing_data}
 
 
-@exp_router.delete("/api/tag/task/{taskId}", response_model=schemas.CancelTaskResponse)
+@exp_router.delete("/api/tagging_task/{taskId}", response_model=schemas.CancelTaskResponse)
 async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session)) -> schemas.CancelTaskResponse:
     """
     Cancel running task
@@ -218,86 +209,75 @@ async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_ses
         return {"message": f"Task retrieving failed {taskId}", "taskCanceled": False}
     return {"message": f"No running task {taskId}", "taskCanceled": False}
 
-@exp_router.get("/api/tags", response_model=schemas.GetTagsResponse)
-async def get_tags(searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
+
+@exp_router.get("/api/all_tags", response_model=schemas.GetTagsResponse)
+async def get_tags(tagger: WeaviateSearchAndTag = Depends(get_tag)) -> schemas.GetTagsResponse:
     """
     Retrieve all tags
     """
-    response = await searcher.tag.read()
+    response = await tagger.get_all_tags()
     return {"tags_lst": response}
 
-@exp_router.delete("/api/tags", response_model=schemas.RemoveTagsResponse)
+@exp_router.delete("/api/whole_tags", response_model=schemas.RemoveTagsResponse)
 async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq,
-                      searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.RemoveTagsResponse:
+                      tagger: WeaviateSearchAndTag = Depends(get_tag)) -> schemas.RemoveTagsResponse:
     """
     Removes whole tags
     """
     try:
-        response = await searcher.tag.delete(chosenTagUUIDs)
+        response = await tagger.remove_tags(chosenTagUUIDs)
         return response
     except Exception as e:
         logging.error(f"{e}")
 
-@exp_router.delete("/api/tags/automatic", response_model=schemas.RemoveTagsResponse)
+
+@exp_router.delete("/api/automatic_tags", response_model=schemas.RemoveTagsResponse)
 async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq,
-                                searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.RemoveTagsResponse:
+                                tagger: WeaviateSearchAndTag = Depends(get_tag)) -> schemas.RemoveTagsResponse:
     """
     Removes automatic tags
     """
     try:
-        response = await searcher.tag.helpers.remove_tag_refs(chosenTagUUIDs, tag_type="automaticTag")
+        response = await tagger.remove_automatic_tags(chosenTagUUIDs)
         return response
     except Exception as e:
         logging.error(f"{e}")
 
-@exp_router.put("/api/tag/approve", response_model=schemas.ApproveTagResponse)
+
+@exp_router.put("/api/tag_approval", response_model=schemas.ApproveTagResponse)
 async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
-                                     searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.ApproveTagResponse:
+                                     tagger: WeaviateSearchAndTag = Depends(get_tag)) -> schemas.ApproveTagResponse:
     """
-    User approve a tag, changes the reference of the tag
+    User approve or disapprove a tag, changes the reference of the tag
     """
     try:
         logging.info("Approving...")
-        response = await searcher.textChunk.approve_tag(approveData)
-        logging.info(f"{response}")
-        return {"successful": response, "approved": approveData.approved}
-    except Exception as e:
-        logging.error(f"{e}")
-        return {"successful": False, "approved": approveData.approved}
-    
-@exp_router.put("/api/tag/disapprove", response_model=schemas.ApproveTagResponse)
-async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
-                                     searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.ApproveTagResponse:
-    """
-    User disapprove a tag, changes the reference of the tag
-    """
-    try:
-        logging.info("Approving...")
-        response = await searcher.textChunk.disapprove_tag(approveData)
+        response = await tagger.approve_tag(approveData)
         logging.info(f"{response}")
         return {"successful": response, "approved": approveData.approved}
     except Exception as e:
         logging.error(f"{e}")
         return {"successful": False, "approved": approveData.approved}
 
-@exp_router.post("/api/tags/filter", response_model=schemas.FilterChunksByTagsResponse)
+
+@exp_router.post("/api/filter_tags", response_model=schemas.FilterChunksByTagsResponse)
 async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest,
-                                searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.FilterChunksByTagsResponse:
+                                tagger: WeaviateSearchAndTag = Depends(get_tag)) -> schemas.FilterChunksByTagsResponse:
     """
     Filter chunks by given tags and positive or/and automatic flags
     """
-    response = await searcher.textChunk.filterChunksByTags(requestedData, searcher)
+    response = await tagger.filterChunksByTags(requestedData)
     return response
 
-@exp_router.post("/api/tag/textChunks", response_model=schemas.GetTaggedChunksResponse)
+@exp_router.post("/api/tagged_texts", response_model=schemas.GetTaggedChunksResponse)
 async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
-                                   searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
+                                   tagger: WeaviateSearchAndTag = Depends(get_tag)) -> schemas.GetTagsResponse:
     """
     Returns chunks which are tagged by certain type of tag (automatic, positive, negative)
     """
     try:
         logging.info(f"In get tagged text {chosenTagUUIDs}")
-        response = await searcher.textChunk.get_chunks_by_tags(chosenTagUUIDs)
+        response = await tagger.get_tagged_chunks_paged(chosenTagUUIDs) #get_tagged_chunks_limited(chosenTagUUIDs)#
         return response
     except Exception as e:
         logging.error(f"{e}")

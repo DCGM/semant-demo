@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from semant_demo import schemas
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.weaviate_search import WeaviateSearch
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search #, get_engine
@@ -24,7 +24,7 @@ async def get_avalaible_rag_configurations():
     return get_all_rag_configurations()
 
 @exp_router.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagRequestMain, searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.RagResponse:
+async def rag(request: schemas.RagRequestMain, searcher: WeaviateSearch = Depends(get_search)) -> schemas.RagResponse:
     #find and check rag
     id = request.rag_id
     if id not in RAG_INSTANCES:

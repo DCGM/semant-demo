@@ -41,6 +41,7 @@ semant-demo/
 │   │   ├── main.py                # FastAPI app, startup, core endpoints
 │   │   ├── config.py              # env-based configuration (Config singleton)
 │   │   ├── schemas.py             # Pydantic models + SQLAlchemy Task model
+│   │   ├── weaviate_search.py     # Weaviate client: search, tag CRUD, collections
 │   │   ├── gemma_embedding.py     # HTTP client to embedding_service
 │   │   ├── ollama_proxy.py        # round-robin Ollama client
 │   │   ├── configs/               # YAML configs (summariser prompts)
@@ -49,14 +50,6 @@ semant-demo/
 │   │   ├── routes/                # FastAPI routers (rag, tags, collections)
 │   │   ├── summarization/         # search-result summariser (Jinja2 templates)
 │   │   ├── tagging/               # LLM-based tag propagation logic
-│   │   ├── weaviate_utils/        # Weaviate abstraction layer (CRUD operations per collection)
-│   │   │   ├── weaviate_abstraction.py  # Main abstraction class organizing all collections
-│   │   │   ├── document.py        # Document collection operations
-│   │   │   ├── text_chunk.py      # TextChunk collection operations
-│   │   │   ├── tag.py             # Tag collection operations
-│   │   │   ├── span.py            # Span collection operations
-│   │   │   ├── user_collection.py # UserCollection (user-defined grouping) operations
-│   │   │   └── helpers.py         # Shared utility functions
 │   │   └── utils/                 # Jinja2 template helpers
 │   └── tests/                     # unit tests (llm_api, summarization, utils)
 ├── semant_demo_frontend/          # Vue/Quasar SPA
@@ -85,7 +78,6 @@ flowchart LR
         RAG[RAG engines]
         SUM[Summariser]
         TAG[Tagging worker]
-        WA["WeaviateAbstraction<br/>(unified data layer)"]
     end
 
     EMB[Embedding Service :8001]
@@ -98,65 +90,11 @@ flowchart LR
     API --> SUM
     API --> TAG
     API -- embed query --> EMB
-    API --> WA
-    WA -- search/CRUD --> WV
+    API -- search/CRUD --> WV
     TAG -- status --> SQL
     RAG --> LLM
     SUM --> LLM
     TAG --> LLM
-```
-
-### Weaviate Abstraction Layer
-
-The **WeaviateAbstraction** class provides a unified, object-oriented interface to Weaviate collections. Instead of direct client calls scattered across the codebase, all database operations flow through organized collection handlers:
-
-- **Document**: document metadata and retrieval
-- **TextChunk**: text passages with embeddings, metadata and search
-- **Tag**: tagging definitions, CRUD, and search
-- **Span**: tag span markers within chunks
-- **UserCollection**: user-defined groupings of chunks (collections per user)
-- **helpers**: shared utility functions (tag reference management, filtering, transforms) used across handlers
-
-Each handler encapsulates:
-- **Query construction** (filters, references, properties)
-- **Error handling** (custom Weaviate exceptions)
-- **Schema consistency** (CRUD operations always respect the schema)
-- **Async/await patterns** (non-blocking database I/O)
-
-**Collection names** are centrally managed via the `CollectionNames` schema (Pydantic model) and initialized from `config.py`, allowing handlers to reference collections by name without hardcoding. This makes collection names easily configurable across the application:
-```python
-# In schemas.py: CollectionNames defines the structure
-class CollectionNames(BaseModel):
-    chunks_collection_name: str
-    tag_collection_name: str
-    user_collection_name: str
-    user_collection_link_name: str
-
-# In config.py: CollectionNames values are initialized
-self.collectionNames = CollectionNames(
-    chunks_collection_name = "Chunks",
-    tag_collection_name = "Tag",
-    user_collection_name = "UserCollection",
-    user_collection_link_name = "userCollection"
-)
-
-# In handlers: Access collection names consistently
-collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
-```
-
-**Usage example:**
-```python
-searcher = WeaviateAbstraction(client, collectionNames)  # initialized at startup
-
-# Create a tag
-tag_id = await searcher.tag.create(tagData)
-
-# Search chunks
-results = await searcher.textChunk.search(query, limit=10, filters=...)
-
-# Manage user collections
-collections = await searcher.userCollection.read(userId)
-await searcher.userCollection.add_chunks(chunk_id, collection_id)
 ```
 
 ## Quick Start
@@ -231,22 +169,20 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `POST` | `/api/rag` | RAG chat request |
 | `POST` | `/api/rag/explain` | Explain selected text in RAG context |
 | `POST` | `/api/tag` | Create a tag |
-| `POST` | `/api/tag/task` | Start async LLM tagging job |
-| `GET`  | `/api/tag/configs` | List available tagging configs |
-| `GET`  | `/api/tag/tasks/info` | List all tagging tasks |
-| `GET`  | `/api/tag/task/status/{id}` | Poll tagging task status |
-| `DELETE` | `/api/tag/task/{id}` | Cancel a running tagging task |
-| `GET`  | `/api/tags` | List all tags |
-| `DELETE` | `/api/tags` | Delete tags entirely |
-| `DELETE` | `/api/tags/automatic` | Remove automatic tag assignments |
-| `PUT` | `/api/tag/approve` | Approve a tag assignment |
-| `PUT` | `/api/tag/disapprove` | Reject a tag assignment |
-| `POST` | `/api/tags/filter` | Filter chunks by tag UUIDs |
-| `POST` | `/api/tag/textChunks` | Get chunks tagged with specific tags |
+| `POST` | `/api/tagging_task` | Start async LLM tagging job |
+| `GET`  | `/api/tag_status/{id}` | Poll tagging task status |
+| `GET`  | `/api/all_tasks` | List all tagging tasks |
+| `DELETE` | `/api/tagging_task/{id}` | Cancel a running tagging task |
+| `GET`  | `/api/all_tags` | List all tags |
+| `DELETE` | `/api/whole_tags` | Delete tags entirely |
+| `DELETE` | `/api/automatic_tags` | Remove automatic tag assignments |
+| `PUT` | `/api/tag_approval` | Approve or reject an automatic tag |
+| `POST` | `/api/filter_tags` | Filter chunks by tag UUIDs |
+| `POST` | `/api/tagged_texts` | Get chunks tagged with specific tags |
 | `POST` | `/api/user_collection` | Create user collection |
-| `GET`  | `/api/user_collection/all` | List collections for a user |
-| `POST` | `/api/user_collection/chunks` | Add chunk to collection |
-| `GET`  | `/api/user_collection/chunks` | List chunks in a collection |
+| `GET`  | `/api/collections` | List collections for a user |
+| `POST` | `/api/chunk_2_collection` | Add chunk to collection |
+| `GET`  | `/api/chunks_of_collection` | List chunks in a collection |
 
 ## Testing
 

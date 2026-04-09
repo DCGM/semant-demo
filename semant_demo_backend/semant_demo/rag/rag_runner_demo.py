@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv() #have to be called before config import
 
 from semant_demo.config import config
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.weaviate_search import WeaviateSearch
 from semant_demo.rag.rag_factory import rag_load_single_config
 from semant_demo.schemas import RagRequest, RagSearch
 
@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<
 warnings.filterwarnings("ignore",category=ResourceWarning, message="unclosed transport.*")
 
 async def main():
-    searcher = await WeaviateAbstraction.create(config=config)
+    searcher = await WeaviateSearch.create(config=config)
     # question/query
     question = "Vyskytly se v Praze neštovice po roce 1800?"
     print(f"Question: {question}\n")

@@ -27,7 +27,7 @@ import asyncio
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState, TextChunkWithDocument, Document, ExplainRequest
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.weaviate_search import WeaviateSearch
 #import prompts from prompt file
 from semant_demo.rag.adaptive_rag_og_prompts import *
 
@@ -255,7 +255,7 @@ class AdaptiveRagGeneratorOg(BaseRag):
             if (DEBUG_PRINT):
                 print(f"search_request: {search_request}")
             #call db search
-            return await self.searcher.textChunk.search(search_request)
+            return await self.searcher.search(search_request)
 
         #call in parallel
         search_tasks = [single_search(query) for query in queries]
@@ -592,7 +592,7 @@ class AdaptiveRagGeneratorOg(BaseRag):
     #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
     #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
-    async def rag_request(self, request: RagRequest, searcher: WeaviateAbstraction) -> RagResponse:
+    async def rag_request(self, request: RagRequest, searcher: WeaviateSearch) -> RagResponse:
         if (self.searcher == None):
             self.searcher = searcher
         
