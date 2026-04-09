@@ -1,0 +1,49 @@
+convertor:  # Convertor to batch file.
+  cls: ToOllamaBatchFile  # name of class that is subclass of Convertor
+  config: # configuration for defined class
+    loader: # Loader for the data.
+      cls: JSONLLoader  # name of class that is subclass of Loader
+      config: # configuration for defined class
+        path_to: chunks.jsonl # Path to the data.
+        config: # Configuration name.
+        split: "train" # Split of the dataset.
+    id_format: "{{id}}"  # Format string for custom id. You can use fields {{index}} and fields provided by the sample assembler.
+    model: qwen3.5:27b  # OpenAI model name.
+    options: # additional model parameters listed in the documentation for the Modelfile such as temperature
+      num_ctx: 1024
+      num_predict: 128
+    sample_assembler: # Sample assembler for API request.
+      cls: TextDatasetAssembler  # name of class that is subclass of APISampleAssembler
+      config: # configuration for defined class
+        id_fields: # List of additional dataset fields to use for sample ids
+            - "id"
+        input_template:
+          cls: MessagesTemplate
+          config:
+            messages:
+              - cls: OllamaMessageBuilder
+                config:
+                  role: system
+                  content: |-
+                    You are a history expert who generates concise titles for specific excerpts from larger historical documents. The title must not be longer than 10 words and must capture the main idea of only the provided excerpt, not the entire document. You must generate the title in the exact same language as the provided excerpt text. Respond absolutely only with the title itself, without quotes, without markdown formatting, and without any introductory or concluding phrases.
+              - cls: OllamaMessageBuilder
+                config:
+                  role: user
+                  content: |-
+                    Language code:
+                    {{language}}
+                    
+                    Original Document Title: 
+                    {{document_title}}
+                    
+                    Excerpt Text:
+                    {{text}}
+
+        direct: # Name of jsonl field that contains the sample. In that case, the template is not used.
+    format: # Format of the response.
+    format_path:
+    think: False
+
+
+
+

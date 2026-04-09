@@ -78,7 +78,7 @@ class Document(BaseModel):
 
 class TextChunk(BaseModel):
     id: uuid.UUID
-    title: str = "<N/A>"
+    title: str | None = "<N/A>"
     text: str
     start_page_id: uuid.UUID
     from_page: int
@@ -86,6 +86,7 @@ class TextChunk(BaseModel):
     end_paragraph: bool = True
     language: str | None = None
     document: uuid.UUID
+    order: int | None
 
     ner_P: list[str] | None = None  # Person entities
     ner_T: list[str] | None = None  # Temporal entities
