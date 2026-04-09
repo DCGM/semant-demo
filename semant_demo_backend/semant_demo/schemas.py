@@ -228,6 +228,14 @@ class CreateResponse(BaseModel):
     created: bool
     message: str
 
+# Weaviate collections
+class CollectionNames(BaseModel):
+    chunks_collection_name: str
+    tag_collection_name: str
+    user_collection_name: str
+    user_collection_link_name: str
+    tag_to_user_collection_link_name: str
+
 # Tagging configuration
 class TaggingConfigParams(BaseModel):
     model_type: APIType
@@ -275,12 +283,10 @@ class TagResponse(BaseModel):
     texts: list[str]
     tags: list[str]
 
-
 class TagType(str, Enum):
     positive = "positive"
     negative = "negative"
     automatic = "automatic"
-
 
 class TagData(BaseModel):
     tag_name: str  # name of the tag
@@ -290,7 +296,7 @@ class TagData(BaseModel):
     tag_definition: str  # description of the tag
     tag_examples: list[str]  # list of examples what should be tagged
     collection_name: str
-    tag_uuid: uuid.UUID
+    tag_uuid: uuid.UUID | None
 
 
 class TagTasksResponse(BaseModel):

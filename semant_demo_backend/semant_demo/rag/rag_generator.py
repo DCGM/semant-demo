@@ -16,7 +16,7 @@ import logging
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSearch, RagRouteConfig, RagRequest, RagResponse
-from semant_demo.weaviate_search import WeaviateSearch
+from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
 # prompt
 answer_question_prompt_template = [
@@ -141,7 +141,7 @@ class RagGenerator(BaseRag):
         #TODO DEBUG
         print(f"search_request: {search_request}")
         #call db search
-        search_response = await self.searcher.search(search_request)
+        search_response = await self.searcher.textChunk.search(search_request)
         return search_response
     
     #rephrase question to search desired data in database
@@ -202,7 +202,7 @@ class RagGenerator(BaseRag):
         }
     
     #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
-    async def rag_request(self, request: RagRequest, searcher: WeaviateSearch) -> RagResponse:
+    async def rag_request(self, request: RagRequest, searcher: WeaviateAbstraction) -> RagResponse:
         if (self.searcher == None):
             self.searcher = searcher
         if request.history:
