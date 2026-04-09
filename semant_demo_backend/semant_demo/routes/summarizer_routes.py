@@ -32,7 +32,7 @@ async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(
 
 @exp_router.post("/api/summarize/{summary_type}", response_model=schemas.SummaryResponse)
 async def summarize(search_response: schemas.SearchResponse, summary_type: str, summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> schemas.SummaryResponse:
-    start_time = time()
+    start_time = time.time()
     if summary_type != "results":
         # only "results" is supported now
         raise HTTPException(status_code=400, detail=f"Unknown summary type: {summary_type}")
@@ -41,7 +41,7 @@ async def summarize(search_response: schemas.SearchResponse, summary_type: str, 
         search_response.search_request.query,
         search_response.results,
     )
-    time_spent = time() - start_time
+    time_spent = time.time() - start_time
     return schemas.SummaryResponse(
         summary=summary,
         time_spent=time_spent,
