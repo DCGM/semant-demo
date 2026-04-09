@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from semant_demo.schemas import CollectionNames
 
 
 TRUE_VALUES = {"true", "1"}
@@ -17,6 +18,7 @@ class Config:
         embedding_service_host = os.getenv("EMBEDDING_SERVICE_HOST","embedding-service")
         embedding_service_port = os.getenv("EMBEDDING_SERVICE_PORT",8001)
         self.GEMMA_URL = f"http://{embedding_service_host}:{embedding_service_port}"
+        #self.GEMMA_URL = "http://localhost:8001"
 
         self.PRODUCTION = os.getenv("PRODUCTION", str(False)).lower() in TRUE_VALUES
         self.MODEL_NAME = os.getenv("MODEL_NAME", 'clip-ViT-L-14')
@@ -45,8 +47,16 @@ class Config:
         self.FEEDBACK_LOG_PATH = os.getenv("FEEDBACK_LOG_PATH", str(SCRIPT_PATH / "feedback.log.jsonl"))
         
         # path to rag configs
-        default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "configs"
+        default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
         test_configs_path = SCRIPT_PATH / "rag" / "rag_configs" / "tests"
         self.RAG_CONFIGS_PATH = os.getenv("RAG_CONFIGS_PATH", default_config_path)
+
+        self.collectionNames = CollectionNames(
+            chunks_collection_name = "Chunks",
+            tag_collection_name = "Tag",
+            user_collection_name = "UserCollection",
+            user_collection_link_name = "userCollection",
+            tag_to_user_collection_link_name= "tagToUserCollection"
+        )
 
 config = Config()

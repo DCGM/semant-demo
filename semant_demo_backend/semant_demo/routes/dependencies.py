@@ -1,7 +1,7 @@
 from semant_demo.config import config
-from semant_demo.weaviate_search import WeaviateSearch
-from semant_demo.weaviate_tag import WeaviateSearchAndTag
 from semant_demo.weaviate_client import WeaviateClient
+from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+#from semant_demo.weaviate_tag import WeaviateSearchAndTag
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from typing import AsyncGenerator
@@ -28,17 +28,11 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with _async_session_maker() as session:
         yield session
 
-async def get_search() -> WeaviateSearch:
+async def get_search() -> WeaviateAbstraction:
     global _searcher
     if _searcher is None:
-        _searcher = await WeaviateSearch.create(config)
+        _searcher = await WeaviateAbstraction.create(config)
     return _searcher
-
-async def get_tag() -> WeaviateSearchAndTag:
-    global _tagger
-    if _tagger is None:
-        _tagger = await WeaviateSearchAndTag.create(config)
-    return _tagger
 
 async def cleanup_dependencies():
     global _engine, _async_session_maker, _searcher

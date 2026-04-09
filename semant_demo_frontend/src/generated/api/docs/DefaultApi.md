@@ -4,46 +4,32 @@ All URIs are relative to *http://localhost*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**addChunk2CollectionApiChunk2CollectionPost**](DefaultApi.md#addchunk2collectionapichunk2collectionpost) | **POST** /api/chunk_2_collection | Add Chunk 2 Collection |
-| [**addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapiv1collectionscollectioniddocumentsdocumentidpost) | **POST** /api/v1/collections/{collection_id}/documents/{document_id} | Add Document To Collection |
-| [**approveSelectedTagChunkApiTagApprovalPut**](DefaultApi.md#approveselectedtagchunkapitagapprovalput) | **PUT** /api/tag_approval | Approve Selected Tag Chunk |
-| [**browseDocumentsApiV1DocumentsBrowseGet**](DefaultApi.md#browsedocumentsapiv1documentsbrowseget) | **GET** /api/v1/documents/browse | Browse Documents |
-| [**cancelTaskApiTaggingTaskTaskIdDelete**](DefaultApi.md#canceltaskapitaggingtasktaskiddelete) | **DELETE** /api/tagging_task/{taskId} | Cancel Task |
-| [**checkStatusApiTagStatusTaskIdGet**](DefaultApi.md#checkstatusapitagstatustaskidget) | **GET** /api/tag_status/{taskId} | Check Status |
-| [**createCollectionApiV1CollectionsPost**](DefaultApi.md#createcollectionapiv1collectionspost) | **POST** /api/v1/collections | Create Collection |
-| [**createCollectionTagApiV1CollectionsCollectionIdTagsPost**](DefaultApi.md#createcollectiontagapiv1collectionscollectionidtagspost) | **POST** /api/v1/collections/{collection_id}/tags | Create Collection Tag |
+| [**addChunk2CollectionApiUserCollectionChunksPost**](DefaultApi.md#addchunk2collectionapiusercollectionchunkspost) | **POST** /api/user_collection/chunks | Add Chunk 2 Collection |
+| [**approveSelectedTagChunkApiTagApprovePut**](DefaultApi.md#approveselectedtagchunkapitagapproveput) | **PUT** /api/tag/approve | Approve Selected Tag Chunk |
+| [**approveSelectedTagChunkApiTagDisapprovePut**](DefaultApi.md#approveselectedtagchunkapitagdisapproveput) | **PUT** /api/tag/disapprove | Approve Selected Tag Chunk |
+| [**cancelTaskApiTagTaskTaskIdDelete**](DefaultApi.md#canceltaskapitagtasktaskiddelete) | **DELETE** /api/tag/task/{taskId} | Cancel Task |
+| [**checkStatusApiTagTaskStatusTaskIdGet**](DefaultApi.md#checkstatusapitagtaskstatustaskidget) | **GET** /api/tag/task/status/{taskId} | Check Status |
 | [**createTagApiTagPost**](DefaultApi.md#createtagapitagpost) | **POST** /api/tag | Create Tag |
 | [**createUserCollectionApiUserCollectionPost**](DefaultApi.md#createusercollectionapiusercollectionpost) | **POST** /api/user_collection | Create User Collection |
 | [**deleteCollectionApiV1CollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiv1collectionscollectioniddelete) | **DELETE** /api/v1/collections/{collection_id} | Delete Collection |
 | [**deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete**](DefaultApi.md#deletecollectiontagapiv1collectionscollectionidtagstaguuiddelete) | **DELETE** /api/v1/collections/{collection_id}/tags/{tag_uuid} | Delete Collection Tag |
 | [**deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete**](DefaultApi.md#deletetagspanseparateapitagspansseparatespaniddelete) | **DELETE** /api/tag_spans_separate/{span_id} | Delete Tag Span Separate |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
-| [**fetchCollectionsApiCollectionsGet**](DefaultApi.md#fetchcollectionsapicollectionsget) | **GET** /api/collections | Fetch Collections |
-| [**filterChunksByTagsApiFilterTagsPost**](DefaultApi.md#filterchunksbytagsapifiltertagspost) | **POST** /api/filter_tags | Filter Chunks By Tags |
+| [**fetchCollectionsApiUserCollectionAllGet**](DefaultApi.md#fetchcollectionsapiusercollectionallget) | **GET** /api/user_collection/all | Fetch Collections |
+| [**filterChunksByTagsApiTagsFilterPost**](DefaultApi.md#filterchunksbytagsapitagsfilterpost) | **POST** /api/tags/filter | Filter Chunks By Tags |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
-| [**getCollectionByIdApiV1CollectionsCollectionIdGet**](DefaultApi.md#getcollectionbyidapiv1collectionscollectionidget) | **GET** /api/v1/collections/{collection_id} | Get Collection By Id |
-| [**getCollectionChunksApiChunksOfCollectionGet**](DefaultApi.md#getcollectionchunksapichunksofcollectionget) | **GET** /api/chunks_of_collection | Get Collection Chunks |
-| [**getCollectionStatsApiV1CollectionsCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiv1collectionscollectionidstatsget) | **GET** /api/v1/collections/{collection_id}/stats | Get Collection Stats |
-| [**getCollectionTagsApiV1CollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapiv1collectionscollectionidtagsget) | **GET** /api/v1/collections/{collection_id}/tags | Get Collection Tags |
-| [**getCollectionsApiV1CollectionsGet**](DefaultApi.md#getcollectionsapiv1collectionsget) | **GET** /api/v1/collections | Get Collections |
-| [**getConfigsApiConfigsGet**](DefaultApi.md#getconfigsapiconfigsget) | **GET** /api/configs | Get Configs |
-| [**getDocumentApiV1DocumentsDocumentIdGet**](DefaultApi.md#getdocumentapiv1documentsdocumentidget) | **GET** /api/v1/documents/{document_id} | Get Document |
-| [**getDocumentsApiV1DocumentsGet**](DefaultApi.md#getdocumentsapiv1documentsget) | **GET** /api/v1/documents | Get Documents |
-| [**getSelectedTagsChunksApiTaggedTextsPost**](DefaultApi.md#getselectedtagschunksapitaggedtextspost) | **POST** /api/tagged_texts | Get Selected Tags Chunks |
-| [**getTagTasksApiAllTasksGet**](DefaultApi.md#gettagtasksapialltasksget) | **GET** /api/all_tasks | Get Tag Tasks |
-| [**getTagsApiAllTagsGet**](DefaultApi.md#gettagsapialltagsget) | **GET** /api/all_tags | Get Tags |
-| [**getTagsForCollectionApiCollectionsCollectionIdTagsGet**](DefaultApi.md#gettagsforcollectionapicollectionscollectionidtagsget) | **GET** /api/collections/{collection_id}/tags | Get Tags For Collection |
+| [**getCollectionChunksApiUserCollectionChunksGet**](DefaultApi.md#getcollectionchunksapiusercollectionchunksget) | **GET** /api/user_collection/chunks | Get Collection Chunks |
+| [**getConfigsApiTagConfigsGet**](DefaultApi.md#getconfigsapitagconfigsget) | **GET** /api/tag/configs | Get Configs |
+| [**getSelectedTagsChunksApiTagTextChunksPost**](DefaultApi.md#getselectedtagschunksapitagtextchunkspost) | **POST** /api/tag/textChunks | Get Selected Tags Chunks |
+| [**getTagTasksApiTagTasksInfoGet**](DefaultApi.md#gettagtasksapitagtasksinfoget) | **GET** /api/tag/tasks/info | Get Tag Tasks |
+| [**getTagsApiTagsGet**](DefaultApi.md#gettagsapitagsget) | **GET** /api/tags | Get Tags |
 | [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
-| [**readTagSpansApiTagSpansSeparateChunkIdGet**](DefaultApi.md#readtagspansapitagspansseparatechunkidget) | **GET** /api/tag_spans_separate/{chunk_id} | Read Tag Spans |
-| [**readTagSpansEmbeddedApiTagSpansEmbeddedChunkIdGet**](DefaultApi.md#readtagspansembeddedapitagspansembeddedchunkidget) | **GET** /api/tag_spans_embedded/{chunk_id} | Read Tag Spans Embedded |
-| [**removeAutomaticTagsApiAutomaticTagsDelete**](DefaultApi.md#removeautomatictagsapiautomatictagsdelete) | **DELETE** /api/automatic_tags | Remove Automatic Tags |
-| [**removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapiv1collectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/v1/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
-| [**removeTagsApiWholeTagsDelete**](DefaultApi.md#removetagsapiwholetagsdelete) | **DELETE** /api/whole_tags | Remove Tags |
-| [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
+| [**removeAutomaticTagsApiTagsAutomaticDelete**](DefaultApi.md#removeautomatictagsapitagsautomaticdelete) | **DELETE** /api/tags/automatic | Remove Automatic Tags |
+| [**removeTagsApiTagsDelete**](DefaultApi.md#removetagsapitagsdelete) | **DELETE** /api/tags | Remove Tags |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
-| [**startTaggingApiTaggingTaskPost**](DefaultApi.md#starttaggingapitaggingtaskpost) | **POST** /api/tagging_task | Start Tagging |
+| [**startTaggingApiTagTaskPost**](DefaultApi.md#starttaggingapitagtaskpost) | **POST** /api/tag/task | Start Tagging |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**updateCollectionApiV1CollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiv1collectionscollectionidpatch) | **PATCH** /api/v1/collections/{collection_id} | Update Collection |
 | [**updateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatch**](DefaultApi.md#updatecollectiontagapiv1collectionscollectionidtagstaguuidpatch) | **PATCH** /api/v1/collections/{collection_id}/tags/{tag_uuid} | Update Collection Tag |
@@ -54,13 +40,13 @@ All URIs are relative to *http://localhost*
 
 
 
-## addChunk2CollectionApiChunk2CollectionPost
+## addChunk2CollectionApiUserCollectionChunksPost
 
-> CreateResponse addChunk2CollectionApiChunk2CollectionPost(chunk2CollectionReq)
+> CreateResponse addChunk2CollectionApiUserCollectionChunksPost(chunk2CollectionReq)
 
 Add Chunk 2 Collection
 
-Creates user collection in weaviate db, or not if the same user collection already exists
+Connects chunk with user collection
 
 ### Example
 
@@ -69,7 +55,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { AddChunk2CollectionApiChunk2CollectionPostRequest } from '';
+import type { AddChunk2CollectionApiUserCollectionChunksPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -78,10 +64,10 @@ async function example() {
   const body = {
     // Chunk2CollectionReq
     chunk2CollectionReq: ...,
-  } satisfies AddChunk2CollectionApiChunk2CollectionPostRequest;
+  } satisfies AddChunk2CollectionApiUserCollectionChunksPostRequest;
 
   try {
-    const data = await api.addChunk2CollectionApiChunk2CollectionPost(body);
+    const data = await api.addChunk2CollectionApiUserCollectionChunksPost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -122,82 +108,13 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost
+## approveSelectedTagChunkApiTagApprovePut
 
-> { [key: string]: any; } addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost(collectionId, documentId)
-
-Add Document To Collection
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-    // string
-    documentId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies AddDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPostRequest;
-
-  try {
-    const data = await api.addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Defaults to `undefined`] |
-| **documentId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-**{ [key: string]: any; }**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## approveSelectedTagChunkApiTagApprovalPut
-
-> ApproveTagResponse approveSelectedTagChunkApiTagApprovalPut(approveTagReq)
+> ApproveTagResponse approveSelectedTagChunkApiTagApprovePut(approveTagReq)
 
 Approve Selected Tag Chunk
 
-User approve or disapprove a tag, changes the reference of the tag
+User approve a tag, changes the reference of the tag
 
 ### Example
 
@@ -206,7 +123,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { ApproveSelectedTagChunkApiTagApprovalPutRequest } from '';
+import type { ApproveSelectedTagChunkApiTagApprovePutRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -215,10 +132,10 @@ async function example() {
   const body = {
     // ApproveTagReq
     approveTagReq: ...,
-  } satisfies ApproveSelectedTagChunkApiTagApprovalPutRequest;
+  } satisfies ApproveSelectedTagChunkApiTagApprovePutRequest;
 
   try {
-    const data = await api.approveSelectedTagChunkApiTagApprovalPut(body);
+    const data = await api.approveSelectedTagChunkApiTagApprovePut(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -259,11 +176,13 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## browseDocumentsApiV1DocumentsBrowseGet
+## approveSelectedTagChunkApiTagDisapprovePut
 
-> DocumentBrowse browseDocumentsApiV1DocumentsBrowseGet(limit, offset, sortBy, sortDesc, collectionId, title, author, publisher, documentType)
+> ApproveTagResponse approveSelectedTagChunkApiTagDisapprovePut(approveTagReq)
 
-Browse Documents
+Approve Selected Tag Chunk
+
+User disapprove a tag, changes the reference of the tag
 
 ### Example
 
@@ -272,35 +191,19 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { BrowseDocumentsApiV1DocumentsBrowseGetRequest } from '';
+import type { ApproveSelectedTagChunkApiTagDisapprovePutRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   const body = {
-    // number (optional)
-    limit: 56,
-    // number (optional)
-    offset: 56,
-    // string (optional)
-    sortBy: sortBy_example,
-    // boolean (optional)
-    sortDesc: true,
-    // string (optional)
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-    // string (optional)
-    title: title_example,
-    // string (optional)
-    author: author_example,
-    // string (optional)
-    publisher: publisher_example,
-    // string (optional)
-    documentType: documentType_example,
-  } satisfies BrowseDocumentsApiV1DocumentsBrowseGetRequest;
+    // ApproveTagReq
+    approveTagReq: ...,
+  } satisfies ApproveSelectedTagChunkApiTagDisapprovePutRequest;
 
   try {
-    const data = await api.browseDocumentsApiV1DocumentsBrowseGet(body);
+    const data = await api.approveSelectedTagChunkApiTagDisapprovePut(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -316,19 +219,11 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **limit** | `number` |  | [Optional] [Defaults to `50`] |
-| **offset** | `number` |  | [Optional] [Defaults to `0`] |
-| **sortBy** | `string` |  | [Optional] [Defaults to `undefined`] |
-| **sortDesc** | `boolean` |  | [Optional] [Defaults to `false`] |
-| **collectionId** | `string` |  | [Optional] [Defaults to `undefined`] |
-| **title** | `string` |  | [Optional] [Defaults to `undefined`] |
-| **author** | `string` |  | [Optional] [Defaults to `undefined`] |
-| **publisher** | `string` |  | [Optional] [Defaults to `undefined`] |
-| **documentType** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **approveTagReq** | [ApproveTagReq](ApproveTagReq.md) |  | |
 
 ### Return type
 
-[**DocumentBrowse**](DocumentBrowse.md)
+[**ApproveTagResponse**](ApproveTagResponse.md)
 
 ### Authorization
 
@@ -336,7 +231,7 @@ No authorization required
 
 ### HTTP request headers
 
-- **Content-Type**: Not defined
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 
@@ -349,9 +244,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## cancelTaskApiTaggingTaskTaskIdDelete
+## cancelTaskApiTagTaskTaskIdDelete
 
-> CancelTaskResponse cancelTaskApiTaggingTaskTaskIdDelete(taskId)
+> CancelTaskResponse cancelTaskApiTagTaskTaskIdDelete(taskId)
 
 Cancel Task
 
@@ -364,7 +259,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { CancelTaskApiTaggingTaskTaskIdDeleteRequest } from '';
+import type { CancelTaskApiTagTaskTaskIdDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -373,10 +268,10 @@ async function example() {
   const body = {
     // string
     taskId: taskId_example,
-  } satisfies CancelTaskApiTaggingTaskTaskIdDeleteRequest;
+  } satisfies CancelTaskApiTagTaskTaskIdDeleteRequest;
 
   try {
-    const data = await api.cancelTaskApiTaggingTaskTaskIdDelete(body);
+    const data = await api.cancelTaskApiTagTaskTaskIdDelete(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -417,9 +312,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## checkStatusApiTagStatusTaskIdGet
+## checkStatusApiTagTaskStatusTaskIdGet
 
-> any checkStatusApiTagStatusTaskIdGet(taskId)
+> any checkStatusApiTagTaskStatusTaskIdGet(taskId)
 
 Check Status
 
@@ -432,7 +327,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { CheckStatusApiTagStatusTaskIdGetRequest } from '';
+import type { CheckStatusApiTagTaskStatusTaskIdGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -441,10 +336,10 @@ async function example() {
   const body = {
     // string
     taskId: taskId_example,
-  } satisfies CheckStatusApiTagStatusTaskIdGetRequest;
+  } satisfies CheckStatusApiTagTaskStatusTaskIdGetRequest;
 
   try {
-    const data = await api.checkStatusApiTagStatusTaskIdGet(body);
+    const data = await api.checkStatusApiTagTaskStatusTaskIdGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -626,7 +521,7 @@ No authorization required
 
 Create Tag
 
-Creates tag in weaviate db, or not if the same tag already exists
+Creates a tag in weaviate db, or not if the same tag already exists
 
 ### Example
 
@@ -1025,9 +920,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## fetchCollectionsApiCollectionsGet
+## fetchCollectionsApiUserCollectionAllGet
 
-> GetCollectionsResponse fetchCollectionsApiCollectionsGet(userId)
+> GetCollectionsResponse fetchCollectionsApiUserCollectionAllGet(userId)
 
 Fetch Collections
 
@@ -1040,7 +935,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { FetchCollectionsApiCollectionsGetRequest } from '';
+import type { FetchCollectionsApiUserCollectionAllGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1049,10 +944,10 @@ async function example() {
   const body = {
     // string
     userId: userId_example,
-  } satisfies FetchCollectionsApiCollectionsGetRequest;
+  } satisfies FetchCollectionsApiUserCollectionAllGetRequest;
 
   try {
-    const data = await api.fetchCollectionsApiCollectionsGet(body);
+    const data = await api.fetchCollectionsApiUserCollectionAllGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1093,9 +988,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## filterChunksByTagsApiFilterTagsPost
+## filterChunksByTagsApiTagsFilterPost
 
-> FilterChunksByTagsResponse filterChunksByTagsApiFilterTagsPost(filterChunksByTagsRequest)
+> FilterChunksByTagsResponse filterChunksByTagsApiTagsFilterPost(filterChunksByTagsRequest)
 
 Filter Chunks By Tags
 
@@ -1108,7 +1003,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { FilterChunksByTagsApiFilterTagsPostRequest } from '';
+import type { FilterChunksByTagsApiTagsFilterPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1117,10 +1012,10 @@ async function example() {
   const body = {
     // FilterChunksByTagsRequest
     filterChunksByTagsRequest: ...,
-  } satisfies FilterChunksByTagsApiFilterTagsPostRequest;
+  } satisfies FilterChunksByTagsApiTagsFilterPostRequest;
 
   try {
-    const data = await api.filterChunksByTagsApiFilterTagsPost(body);
+    const data = await api.filterChunksByTagsApiTagsFilterPost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1218,75 +1113,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getCollectionByIdApiV1CollectionsCollectionIdGet
+## getCollectionChunksApiUserCollectionChunksGet
 
-> Collection getCollectionByIdApiV1CollectionsCollectionIdGet(collectionId)
-
-Get Collection By Id
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetCollectionByIdApiV1CollectionsCollectionIdGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies GetCollectionByIdApiV1CollectionsCollectionIdGetRequest;
-
-  try {
-    const data = await api.getCollectionByIdApiV1CollectionsCollectionIdGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**Collection**](Collection.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getCollectionChunksApiChunksOfCollectionGet
-
-> GetCollectionChunksResponse getCollectionChunksApiChunksOfCollectionGet(collectionId)
+> GetCollectionChunksResponse getCollectionChunksApiUserCollectionChunksGet(collectionId)
 
 Get Collection Chunks
 
@@ -1299,7 +1128,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetCollectionChunksApiChunksOfCollectionGetRequest } from '';
+import type { GetCollectionChunksApiUserCollectionChunksGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1308,10 +1137,10 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-  } satisfies GetCollectionChunksApiChunksOfCollectionGetRequest;
+  } satisfies GetCollectionChunksApiUserCollectionChunksGetRequest;
 
   try {
-    const data = await api.getCollectionChunksApiChunksOfCollectionGet(body);
+    const data = await api.getCollectionChunksApiUserCollectionChunksGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1352,207 +1181,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getCollectionStatsApiV1CollectionsCollectionIdStatsGet
+## getConfigsApiTagConfigsGet
 
-> CollectionStats getCollectionStatsApiV1CollectionsCollectionIdStatsGet(collectionId)
-
-Get Collection Stats
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest;
-
-  try {
-    const data = await api.getCollectionStatsApiV1CollectionsCollectionIdStatsGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**CollectionStats**](CollectionStats.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getCollectionTagsApiV1CollectionsCollectionIdTagsGet
-
-> Array&lt;Tag&gt; getCollectionTagsApiV1CollectionsCollectionIdTagsGet(collectionId)
-
-Get Collection Tags
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetCollectionTagsApiV1CollectionsCollectionIdTagsGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies GetCollectionTagsApiV1CollectionsCollectionIdTagsGetRequest;
-
-  try {
-    const data = await api.getCollectionTagsApiV1CollectionsCollectionIdTagsGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**Array&lt;Tag&gt;**](Tag.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getCollectionsApiV1CollectionsGet
-
-> Array&lt;Collection&gt; getCollectionsApiV1CollectionsGet(userId)
-
-Get Collections
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetCollectionsApiV1CollectionsGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    userId: userId_example,
-  } satisfies GetCollectionsApiV1CollectionsGetRequest;
-
-  try {
-    const data = await api.getCollectionsApiV1CollectionsGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **userId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**Array&lt;Collection&gt;**](Collection.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getConfigsApiConfigsGet
-
-> GetConfigsResponse getConfigsApiConfigsGet()
+> GetConfigsResponse getConfigsApiTagConfigsGet()
 
 Get Configs
 
@@ -1565,14 +1196,14 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetConfigsApiConfigsGetRequest } from '';
+import type { GetConfigsApiTagConfigsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   try {
-    const data = await api.getConfigsApiConfigsGet();
+    const data = await api.getConfigsApiTagConfigsGet();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1609,141 +1240,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getDocumentApiV1DocumentsDocumentIdGet
+## getSelectedTagsChunksApiTagTextChunksPost
 
-> SemantDemoSchemaDocumentsDocument getDocumentApiV1DocumentsDocumentIdGet(documentId)
-
-Get Document
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetDocumentApiV1DocumentsDocumentIdGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    documentId: documentId_example,
-  } satisfies GetDocumentApiV1DocumentsDocumentIdGetRequest;
-
-  try {
-    const data = await api.getDocumentApiV1DocumentsDocumentIdGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **documentId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**SemantDemoSchemaDocumentsDocument**](SemantDemoSchemaDocumentsDocument.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getDocumentsApiV1DocumentsGet
-
-> Array&lt;SemantDemoSchemaDocumentsDocument&gt; getDocumentsApiV1DocumentsGet(collectionId)
-
-Get Documents
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetDocumentsApiV1DocumentsGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string (optional)
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies GetDocumentsApiV1DocumentsGetRequest;
-
-  try {
-    const data = await api.getDocumentsApiV1DocumentsGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Optional] [Defaults to `undefined`] |
-
-### Return type
-
-[**Array&lt;SemantDemoSchemaDocumentsDocument&gt;**](SemantDemoSchemaDocumentsDocument.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getSelectedTagsChunksApiTaggedTextsPost
-
-> GetTaggedChunksResponse getSelectedTagsChunksApiTaggedTextsPost(getTaggedChunksReq)
+> GetTaggedChunksResponse getSelectedTagsChunksApiTagTextChunksPost(getTaggedChunksReq)
 
 Get Selected Tags Chunks
 
@@ -1756,7 +1255,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetSelectedTagsChunksApiTaggedTextsPostRequest } from '';
+import type { GetSelectedTagsChunksApiTagTextChunksPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1765,10 +1264,10 @@ async function example() {
   const body = {
     // GetTaggedChunksReq
     getTaggedChunksReq: ...,
-  } satisfies GetSelectedTagsChunksApiTaggedTextsPostRequest;
+  } satisfies GetSelectedTagsChunksApiTagTextChunksPostRequest;
 
   try {
-    const data = await api.getSelectedTagsChunksApiTaggedTextsPost(body);
+    const data = await api.getSelectedTagsChunksApiTagTextChunksPost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1809,9 +1308,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getTagTasksApiAllTasksGet
+## getTagTasksApiTagTasksInfoGet
 
-> any getTagTasksApiAllTasksGet()
+> any getTagTasksApiTagTasksInfoGet()
 
 Get Tag Tasks
 
@@ -1824,14 +1323,14 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetTagTasksApiAllTasksGetRequest } from '';
+import type { GetTagTasksApiTagTasksInfoGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   try {
-    const data = await api.getTagTasksApiAllTasksGet();
+    const data = await api.getTagTasksApiTagTasksInfoGet();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1868,9 +1367,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getTagsApiAllTagsGet
+## getTagsApiTagsGet
 
-> GetTagsResponse getTagsApiAllTagsGet()
+> GetTagsResponse getTagsApiTagsGet()
 
 Get Tags
 
@@ -1883,14 +1382,14 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetTagsApiAllTagsGetRequest } from '';
+import type { GetTagsApiTagsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   try {
-    const data = await api.getTagsApiAllTagsGet();
+    const data = await api.getTagsApiTagsGet();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2130,145 +1629,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## readTagSpansApiTagSpansSeparateChunkIdGet
+## removeAutomaticTagsApiTagsAutomaticDelete
 
-> Array&lt;TagSpan&gt; readTagSpansApiTagSpansSeparateChunkIdGet(chunkId)
-
-Read Tag Spans
-
-Get stored TagSpans for a given chunk ID.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { ReadTagSpansApiTagSpansSeparateChunkIdGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    chunkId: chunkId_example,
-  } satisfies ReadTagSpansApiTagSpansSeparateChunkIdGetRequest;
-
-  try {
-    const data = await api.readTagSpansApiTagSpansSeparateChunkIdGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **chunkId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**Array&lt;TagSpan&gt;**](TagSpan.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## readTagSpansEmbeddedApiTagSpansEmbeddedChunkIdGet
-
-> Array&lt;TagSpan&gt; readTagSpansEmbeddedApiTagSpansEmbeddedChunkIdGet(chunkId)
-
-Read Tag Spans Embedded
-
-Get stored TagSpans for a given chunk ID.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { ReadTagSpansEmbeddedApiTagSpansEmbeddedChunkIdGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    chunkId: chunkId_example,
-  } satisfies ReadTagSpansEmbeddedApiTagSpansEmbeddedChunkIdGetRequest;
-
-  try {
-    const data = await api.readTagSpansEmbeddedApiTagSpansEmbeddedChunkIdGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **chunkId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**Array&lt;TagSpan&gt;**](TagSpan.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## removeAutomaticTagsApiAutomaticTagsDelete
-
-> RemoveTagsResponse removeAutomaticTagsApiAutomaticTagsDelete(removeTagReq)
+> RemoveTagsResponse removeAutomaticTagsApiTagsAutomaticDelete(removeTagReq)
 
 Remove Automatic Tags
 
@@ -2281,7 +1644,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { RemoveAutomaticTagsApiAutomaticTagsDeleteRequest } from '';
+import type { RemoveAutomaticTagsApiTagsAutomaticDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -2290,10 +1653,10 @@ async function example() {
   const body = {
     // RemoveTagReq
     removeTagReq: ...,
-  } satisfies RemoveAutomaticTagsApiAutomaticTagsDeleteRequest;
+  } satisfies RemoveAutomaticTagsApiTagsAutomaticDeleteRequest;
 
   try {
-    const data = await api.removeAutomaticTagsApiAutomaticTagsDelete(body);
+    const data = await api.removeAutomaticTagsApiTagsAutomaticDelete(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2334,78 +1697,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete
+## removeTagsApiTagsDelete
 
-> { [key: string]: any; } removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete(collectionId, documentId)
-
-Remove Document From Collection
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-    // string
-    documentId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies RemoveDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDeleteRequest;
-
-  try {
-    const data = await api.removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Defaults to `undefined`] |
-| **documentId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-**{ [key: string]: any; }**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## removeTagsApiWholeTagsDelete
-
-> RemoveTagsResponse removeTagsApiWholeTagsDelete(removeTagReq)
+> RemoveTagsResponse removeTagsApiTagsDelete(removeTagReq)
 
 Remove Tags
 
@@ -2418,7 +1712,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { RemoveTagsApiWholeTagsDeleteRequest } from '';
+import type { RemoveTagsApiTagsDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -2427,10 +1721,10 @@ async function example() {
   const body = {
     // RemoveTagReq
     removeTagReq: ...,
-  } satisfies RemoveTagsApiWholeTagsDeleteRequest;
+  } satisfies RemoveTagsApiTagsDeleteRequest;
 
   try {
-    const data = await api.removeTagsApiWholeTagsDelete(body);
+    const data = await api.removeTagsApiTagsDelete(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2669,9 +1963,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## startTaggingApiTaggingTaskPost
+## startTaggingApiTagTaskPost
 
-> TagStartResponse startTaggingApiTaggingTaskPost(taggingTaskReqTemplate)
+> TagStartResponse startTaggingApiTagTaskPost(taggingTaskReqTemplate)
 
 Start Tagging
 
@@ -2684,7 +1978,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { StartTaggingApiTaggingTaskPostRequest } from '';
+import type { StartTaggingApiTagTaskPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -2693,10 +1987,10 @@ async function example() {
   const body = {
     // TaggingTaskReqTemplate
     taggingTaskReqTemplate: ...,
-  } satisfies StartTaggingApiTaggingTaskPostRequest;
+  } satisfies StartTaggingApiTagTaskPostRequest;
 
   try {
-    const data = await api.startTaggingApiTaggingTaskPost(body);
+    const data = await api.startTaggingApiTagTaskPost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
