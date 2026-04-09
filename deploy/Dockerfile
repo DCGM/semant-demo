@@ -1,5 +1,6 @@
 
 FROM alpine AS git
+LABEL project=semant-demo
 
 RUN apk add --no-cache git 
 

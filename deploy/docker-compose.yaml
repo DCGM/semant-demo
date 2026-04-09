@@ -75,7 +75,7 @@ services:
       PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
       ENABLE_API_BASED_MODULES: 'true'
       CLUSTER_HOSTNAME: 'node1'
-      DISK_USE_READONLY_PERCENTAGE: "75"
+      DISK_USE_READONLY_PERCENTAGE: "95"
       DISK_USE_WARNING_PERCENTAGE: "50"
     mem_limit: 128g
     memswap_limit: 0g

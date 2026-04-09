@@ -1,0 +1,95 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, 68-cicd]
+    tags: ["v*.*.*"]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.ref_name }}
+    runs-on: [self-hosted, semant-server]
+    environment: production
+    timeout-minutes: 30
+
+    steps:
+      - name: Prepare deploy directory
+        run: mkdir -p "${{ vars.DEPLOY_PATH }}"
+
+      - name: Update deploy/ files
+        run: |
+          set -e
+          REF=${{ github.ref_name }}
+          GIT_DIR="${{ vars.DEPLOY_PATH }}/.git-src"
+
+          if [ -d "$GIT_DIR" ]; then
+            git --git-dir="$GIT_DIR" fetch --tags origin
+          else
+            git clone --filter=blob:none --sparse --no-checkout \
+              https://github.com/DCGM/semant-demo.git "$GIT_DIR"
+            git --git-dir="$GIT_DIR" sparse-checkout set deploy
+          fi
+
+          git --git-dir="$GIT_DIR" --work-tree="${{ vars.DEPLOY_PATH }}" \
+            checkout "$REF" -- deploy/
+
+          shopt -s dotglob
+          mv -f "${{ vars.DEPLOY_PATH }}/deploy/"* "${{ vars.DEPLOY_PATH }}/"
+          rm -rf "${{ vars.DEPLOY_PATH }}/deploy"
+
+      - name: Create .env
+        run: |
+          cp "${{ vars.DEPLOY_PATH }}/.env.example" "${{ vars.DEPLOY_PATH }}/.env"
+          sed -i "s|^BRANCH=.*|BRANCH=${{ github.ref_name }}|" "${{ vars.DEPLOY_PATH }}/.env"
+          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}|" "${{ vars.DEPLOY_PATH }}/.env"
+
+      - name: Build and start
+        id: build
+        working-directory: ${{ vars.DEPLOY_PATH }}
+        run: |
+          OLD_BACKEND=$(docker compose images -q semant-demo 2>/dev/null || true)
+          OLD_EMBED=$(docker compose images -q embedding-service 2>/dev/null || true)
+          [ -n "$OLD_BACKEND" ] && docker tag "$OLD_BACKEND" semant-demo-rollback || true
+          [ -n "$OLD_EMBED"   ] && docker tag "$OLD_EMBED"   semant-demo-embedding-rollback || true
+
+          ./update.sh build --no-cache
+          ./update.sh up -d
+
+      - name: Health check
+        id: health
+        run: |
+          for i in $(seq 1 20); do
+            sleep 15
+            echo "Attempt $i/20..."
+            if curl --fail --silent --max-time 10 http://localhost:8000/health; then
+              echo "OK"
+              docker rmi semant-demo-rollback semant-demo-embedding-rollback 2>/dev/null || true
+              docker image prune -f --filter label=project=semant-demo
+              exit 0
+            fi
+          done
+          echo "Health check failed."
+          exit 1
+
+      - name: Rollback
+        if: failure() && steps.health.outcome == 'failure'
+        working-directory: ${{ vars.DEPLOY_PATH }}
+        run: |
+          PREV=$(grep "^BRANCH=" .env | cut -d= -f2)
+          if [ -z "$PREV" ]; then echo "First deploy – skipping rollback."; exit 1; fi
+          echo "Rolling back to $PREV..."
+
+          BACKEND_IMG=$(docker compose images semant-demo --format json 2>/dev/null \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['Image'])" 2>/dev/null || true)
+          EMBED_IMG=$(docker compose images embedding-service --format json 2>/dev/null \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['Image'])" 2>/dev/null || true)
+          [ -n "$BACKEND_IMG" ] && docker tag semant-demo-rollback "$BACKEND_IMG" || true
+          [ -n "$EMBED_IMG"   ] && docker tag semant-demo-embedding-rollback "$EMBED_IMG" || true
+
+          sed -i "s|^BRANCH=.*|BRANCH=$PREV|" .env
+          ./update.sh up -d
+          echo "Rollback complete."
