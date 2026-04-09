@@ -1,16 +1,47 @@
 
 from datetime import datetime, timezone
 
-from semant_demo.weaviate_search import WeaviateSearch
+from weaviate import WeaviateAsyncClient
+
 from semant_demo.schema.tags import Tag, PostTag, PatchTag
 from semant_demo.schema.collections import Collection, PostCollection, PatchCollection
 from semant_demo.schema.documents import Document, DocumentBrowse
 from semant_demo.schema.collection_stats import CollectionStats
 from uuid import UUID
+from semant_demo.config import Config
+import weaviate
 
 from weaviate.classes.query import Filter, Sort, QueryReference
 import logging
 
+class WeaviateSearch:
+    def __init__(self, client: WeaviateAsyncClient):
+        self.client = client
+        # collections.get() is synchronous, no await needed
+        self.chunk_col = self.client.collections.get("Chunks_test")
+
+        try:
+            self.tagspan_col = self.client.collections.get("Span_test")
+        except Exception:
+            self.tagspan_col = None
+    
+    @classmethod
+    async def create(cls, config: Config) -> "WeaviateSearch":
+        # Instantiate async client with custom params
+        async_client = weaviate.use_async_with_custom(
+            http_host=config.WEAVIATE_HOST, http_port=config.WEAVIATE_REST_PORT, http_secure=False,
+            grpc_host=config.WEAVIATE_HOST, grpc_port=config.WEAVIATE_GRPC_PORT, grpc_secure=False,
+        )
+        # Connect and verify readiness
+        await async_client.connect()  # :contentReference[oaicite:0]{index=0}
+        if not await async_client.is_ready():  # :contentReference[oaicite:1]{index=1}
+            logging.error("Weaviate is not ready.")
+            await async_client.close()
+            exit(-1)
+        return cls(async_client)
+
+    async def close(self):
+        await self.client.close()  # :contentReference[oaicite:2]{index=2}
 
 class WeaviateClient(WeaviateSearch):
     async def get_all_collections(self, user_id: str) -> list[Collection]:
