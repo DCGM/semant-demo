@@ -5,7 +5,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from semant_demo import schemas
-from semant_demo.weaviate_search import WeaviateSearch
+from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 from semant_demo.config import config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
@@ -19,11 +19,11 @@ exp_router = APIRouter()
 
 openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 @exp_router.post("/api/search", response_model=schemas.SearchResponse)
-async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(get_search),
+async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Depends(get_search),
                  summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> schemas.SearchResponse:
     start_time = time.time()
-
-    response = await searcher.search(req)
+    
+    response = await searcher.textChunk.search(req)
     await summarizer(req, response)
 
     response.time_spent = time.time() - start_time
@@ -32,7 +32,7 @@ async def search(req: schemas.SearchRequest, searcher: WeaviateSearch = Depends(
 
 @exp_router.post("/api/summarize/{summary_type}", response_model=schemas.SummaryResponse)
 async def summarize(search_response: schemas.SearchResponse, summary_type: str, summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> schemas.SummaryResponse:
-    start_time = time()
+    start_time = time.time()
     if summary_type != "results":
         # only "results" is supported now
         raise HTTPException(status_code=400, detail=f"Unknown summary type: {summary_type}")
@@ -41,7 +41,7 @@ async def summarize(search_response: schemas.SearchResponse, summary_type: str, 
         search_response.search_request.query,
         search_response.results,
     )
-    time_spent = time() - start_time
+    time_spent = time.time() - start_time
     return schemas.SummaryResponse(
         summary=summary,
         time_spent=time_spent,
