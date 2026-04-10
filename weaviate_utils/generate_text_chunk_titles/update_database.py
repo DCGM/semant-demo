@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("--http_port", type=int, default=8080, help="Weaviate HTTP port")
     parser.add_argument("--grpc_port", type=int, default=50051, help="Weaviate gRPC port")
     parser.add_argument("--secure", action="store_true", help="Use secure connection")
+    parser.add_argument("--from_doc", type=int, default=0, help="Starts updating from given document index")
 
     return parser.parse_args()
 
@@ -166,11 +167,15 @@ def main():
 
         document_file_paths = get_document_file_paths(args.chunks_directory)
 
+        cnt = -1
         for _, file_path in tqdm(
             document_file_paths.items(),
             total=len(document_file_paths),
             desc="Updating database",
         ):
+            cnt += 1
+            if cnt < args.from_doc:
+                continue
             update_chunk_records(chunk_collection, file_path, counters)
 
     finally:

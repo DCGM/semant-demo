@@ -4,5 +4,5 @@ api:  # API type
     api_key: ollama # API key.
     pool_interval: 300 # Interval in seconds for checking the status of the batch request.
     process_request_file_interval: 0 # Interval in seconds between sending requests in process_request_file.
-    base_url: http://athena19.fit.vutbr.cz:11433 # Base URL for API.
+    base_url: http://pcknot9.fit.vutbr.cz:11434 # Base URL for API.
     concurrency: 30

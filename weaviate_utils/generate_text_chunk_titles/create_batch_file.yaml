@@ -8,7 +8,7 @@ convertor:  # Convertor to batch file.
         config: # Configuration name.
         split: "train" # Split of the dataset.
     id_format: "{{id}}"  # Format string for custom id. You can use fields {{index}} and fields provided by the sample assembler.
-    model: qwen3.5:27b  # OpenAI model name.
+    model: qwen3.5:9b  # OpenAI model name.
     options: # additional model parameters listed in the documentation for the Modelfile such as temperature
       num_ctx: 1024
       num_predict: 128
