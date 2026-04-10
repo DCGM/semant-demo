@@ -86,6 +86,7 @@ class TextChunk(BaseModel):
     title: str | None = None
     end_paragraph: bool = True
     language: str | None = None
+    order: int | None
 
     ner_P: list[str] | None = None  # Person entities
     ner_T: list[str] | None = None  # Temporal entities
