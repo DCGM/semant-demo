@@ -106,19 +106,23 @@ import {
     UserCollectionReqTemplateToJSON,
 } from '../models/index';
 
-export interface AddChunk2CollectionApiChunk2CollectionPostRequest {
+export interface AddChunk2CollectionApiUserCollectionChunksPostRequest {
     chunk2CollectionReq: Chunk2CollectionReq;
 }
 
-export interface ApproveSelectedTagChunkApiTagApprovalPutRequest {
+export interface ApproveSelectedTagChunkApiTagApprovePutRequest {
     approveTagReq: ApproveTagReq;
 }
 
-export interface CancelTaskApiTaggingTaskTaskIdDeleteRequest {
+export interface ApproveSelectedTagChunkApiTagDisapprovePutRequest {
+    approveTagReq: ApproveTagReq;
+}
+
+export interface CancelTaskApiTagTaskTaskIdDeleteRequest {
     taskId: string;
 }
 
-export interface CheckStatusApiTagStatusTaskIdGetRequest {
+export interface CheckStatusApiTagTaskStatusTaskIdGetRequest {
     taskId: string;
 }
 
@@ -134,19 +138,19 @@ export interface ExplainSelectionApiRagExplainPostRequest {
     explainRequest: ExplainRequest;
 }
 
-export interface FetchCollectionsApiCollectionsGetRequest {
+export interface FetchCollectionsApiUserCollectionAllGetRequest {
     userId: string;
 }
 
-export interface FilterChunksByTagsApiFilterTagsPostRequest {
+export interface FilterChunksByTagsApiTagsFilterPostRequest {
     filterChunksByTagsRequest: FilterChunksByTagsRequest;
 }
 
-export interface GetCollectionChunksApiChunksOfCollectionGetRequest {
+export interface GetCollectionChunksApiUserCollectionChunksGetRequest {
     collectionId: string;
 }
 
-export interface GetSelectedTagsChunksApiTaggedTextsPostRequest {
+export interface GetSelectedTagsChunksApiTagTextChunksPostRequest {
     getTaggedChunksReq: GetTaggedChunksReq;
 }
 
@@ -159,11 +163,11 @@ export interface RagApiRagPostRequest {
     ragRequestMain: RagRequestMain;
 }
 
-export interface RemoveAutomaticTagsApiAutomaticTagsDeleteRequest {
+export interface RemoveAutomaticTagsApiTagsAutomaticDeleteRequest {
     removeTagReq: RemoveTagReq;
 }
 
-export interface RemoveTagsApiWholeTagsDeleteRequest {
+export interface RemoveTagsApiTagsDeleteRequest {
     removeTagReq: RemoveTagReq;
 }
 
@@ -175,7 +179,7 @@ export interface SearchApiSearchPostRequest {
     searchRequest: SearchRequest;
 }
 
-export interface StartTaggingApiTaggingTaskPostRequest {
+export interface StartTaggingApiTagTaskPostRequest {
     taggingTaskReqTemplate: TaggingTaskReqTemplate;
 }
 
@@ -192,60 +196,84 @@ export interface SummarizeApiSummarizeSummaryTypePostRequest {
  */
 export interface DefaultApiInterface {
     /**
-     * Creates request options for addChunk2CollectionApiChunk2CollectionPost without sending the request
+     * Creates request options for addChunk2CollectionApiUserCollectionChunksPost without sending the request
      * @param {Chunk2CollectionReq} chunk2CollectionReq 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    addChunk2CollectionApiChunk2CollectionPostRequestOpts(requestParameters: AddChunk2CollectionApiChunk2CollectionPostRequest): Promise<runtime.RequestOpts>;
+    addChunk2CollectionApiUserCollectionChunksPostRequestOpts(requestParameters: AddChunk2CollectionApiUserCollectionChunksPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Creates user collection in weaviate db, or not if the same user collection already exists
+     * Connects chunk with user collection
      * @summary Add Chunk 2 Collection
      * @param {Chunk2CollectionReq} chunk2CollectionReq 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    addChunk2CollectionApiChunk2CollectionPostRaw(requestParameters: AddChunk2CollectionApiChunk2CollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+    addChunk2CollectionApiUserCollectionChunksPostRaw(requestParameters: AddChunk2CollectionApiUserCollectionChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
 
     /**
-     * Creates user collection in weaviate db, or not if the same user collection already exists
+     * Connects chunk with user collection
      * Add Chunk 2 Collection
      */
-    addChunk2CollectionApiChunk2CollectionPost(requestParameters: AddChunk2CollectionApiChunk2CollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
+    addChunk2CollectionApiUserCollectionChunksPost(requestParameters: AddChunk2CollectionApiUserCollectionChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
 
     /**
-     * Creates request options for approveSelectedTagChunkApiTagApprovalPut without sending the request
+     * Creates request options for approveSelectedTagChunkApiTagApprovePut without sending the request
      * @param {ApproveTagReq} approveTagReq 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    approveSelectedTagChunkApiTagApprovalPutRequestOpts(requestParameters: ApproveSelectedTagChunkApiTagApprovalPutRequest): Promise<runtime.RequestOpts>;
+    approveSelectedTagChunkApiTagApprovePutRequestOpts(requestParameters: ApproveSelectedTagChunkApiTagApprovePutRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * User approve or disapprove a tag, changes the reference of the tag
+     * User approve a tag, changes the reference of the tag
      * @summary Approve Selected Tag Chunk
      * @param {ApproveTagReq} approveTagReq 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    approveSelectedTagChunkApiTagApprovalPutRaw(requestParameters: ApproveSelectedTagChunkApiTagApprovalPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ApproveTagResponse>>;
+    approveSelectedTagChunkApiTagApprovePutRaw(requestParameters: ApproveSelectedTagChunkApiTagApprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ApproveTagResponse>>;
 
     /**
-     * User approve or disapprove a tag, changes the reference of the tag
+     * User approve a tag, changes the reference of the tag
      * Approve Selected Tag Chunk
      */
-    approveSelectedTagChunkApiTagApprovalPut(requestParameters: ApproveSelectedTagChunkApiTagApprovalPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse>;
+    approveSelectedTagChunkApiTagApprovePut(requestParameters: ApproveSelectedTagChunkApiTagApprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse>;
 
     /**
-     * Creates request options for cancelTaskApiTaggingTaskTaskIdDelete without sending the request
+     * Creates request options for approveSelectedTagChunkApiTagDisapprovePut without sending the request
+     * @param {ApproveTagReq} approveTagReq 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    approveSelectedTagChunkApiTagDisapprovePutRequestOpts(requestParameters: ApproveSelectedTagChunkApiTagDisapprovePutRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * User disapprove a tag, changes the reference of the tag
+     * @summary Approve Selected Tag Chunk
+     * @param {ApproveTagReq} approveTagReq 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    approveSelectedTagChunkApiTagDisapprovePutRaw(requestParameters: ApproveSelectedTagChunkApiTagDisapprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ApproveTagResponse>>;
+
+    /**
+     * User disapprove a tag, changes the reference of the tag
+     * Approve Selected Tag Chunk
+     */
+    approveSelectedTagChunkApiTagDisapprovePut(requestParameters: ApproveSelectedTagChunkApiTagDisapprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse>;
+
+    /**
+     * Creates request options for cancelTaskApiTagTaskTaskIdDelete without sending the request
      * @param {string} taskId 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    cancelTaskApiTaggingTaskTaskIdDeleteRequestOpts(requestParameters: CancelTaskApiTaggingTaskTaskIdDeleteRequest): Promise<runtime.RequestOpts>;
+    cancelTaskApiTagTaskTaskIdDeleteRequestOpts(requestParameters: CancelTaskApiTagTaskTaskIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Cancel running task
@@ -255,21 +283,21 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    cancelTaskApiTaggingTaskTaskIdDeleteRaw(requestParameters: CancelTaskApiTaggingTaskTaskIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CancelTaskResponse>>;
+    cancelTaskApiTagTaskTaskIdDeleteRaw(requestParameters: CancelTaskApiTagTaskTaskIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CancelTaskResponse>>;
 
     /**
      * Cancel running task
      * Cancel Task
      */
-    cancelTaskApiTaggingTaskTaskIdDelete(requestParameters: CancelTaskApiTaggingTaskTaskIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CancelTaskResponse>;
+    cancelTaskApiTagTaskTaskIdDelete(requestParameters: CancelTaskApiTagTaskTaskIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CancelTaskResponse>;
 
     /**
-     * Creates request options for checkStatusApiTagStatusTaskIdGet without sending the request
+     * Creates request options for checkStatusApiTagTaskStatusTaskIdGet without sending the request
      * @param {string} taskId 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    checkStatusApiTagStatusTaskIdGetRequestOpts(requestParameters: CheckStatusApiTagStatusTaskIdGetRequest): Promise<runtime.RequestOpts>;
+    checkStatusApiTagTaskStatusTaskIdGetRequestOpts(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Polling to check task status
@@ -279,13 +307,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    checkStatusApiTagStatusTaskIdGetRaw(requestParameters: CheckStatusApiTagStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+    checkStatusApiTagTaskStatusTaskIdGetRaw(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
 
     /**
      * Polling to check task status
      * Check Status
      */
-    checkStatusApiTagStatusTaskIdGet(requestParameters: CheckStatusApiTagStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+    checkStatusApiTagTaskStatusTaskIdGet(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
      * Creates request options for createTagApiTagPost without sending the request
@@ -296,7 +324,7 @@ export interface DefaultApiInterface {
     createTagApiTagPostRequestOpts(requestParameters: CreateTagApiTagPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Creates tag in weaviate db, or not if the same tag already exists
+     * Creates a tag in weaviate db, or not if the same tag already exists
      * @summary Create Tag
      * @param {TagReqTemplate} tagReqTemplate 
      * @param {*} [options] Override http request option.
@@ -306,7 +334,7 @@ export interface DefaultApiInterface {
     createTagApiTagPostRaw(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
 
     /**
-     * Creates tag in weaviate db, or not if the same tag already exists
+     * Creates a tag in weaviate db, or not if the same tag already exists
      * Create Tag
      */
     createTagApiTagPost(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
@@ -359,12 +387,12 @@ export interface DefaultApiInterface {
     explainSelectionApiRagExplainPost(requestParameters: ExplainSelectionApiRagExplainPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
-     * Creates request options for fetchCollectionsApiCollectionsGet without sending the request
+     * Creates request options for fetchCollectionsApiUserCollectionAllGet without sending the request
      * @param {string} userId 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    fetchCollectionsApiCollectionsGetRequestOpts(requestParameters: FetchCollectionsApiCollectionsGetRequest): Promise<runtime.RequestOpts>;
+    fetchCollectionsApiUserCollectionAllGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Retrieves all collections for given user
@@ -374,21 +402,21 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    fetchCollectionsApiCollectionsGetRaw(requestParameters: FetchCollectionsApiCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionsResponse>>;
+    fetchCollectionsApiUserCollectionAllGetRaw(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionsResponse>>;
 
     /**
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    fetchCollectionsApiCollectionsGet(requestParameters: FetchCollectionsApiCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionsResponse>;
+    fetchCollectionsApiUserCollectionAllGet(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionsResponse>;
 
     /**
-     * Creates request options for filterChunksByTagsApiFilterTagsPost without sending the request
+     * Creates request options for filterChunksByTagsApiTagsFilterPost without sending the request
      * @param {FilterChunksByTagsRequest} filterChunksByTagsRequest 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    filterChunksByTagsApiFilterTagsPostRequestOpts(requestParameters: FilterChunksByTagsApiFilterTagsPostRequest): Promise<runtime.RequestOpts>;
+    filterChunksByTagsApiTagsFilterPostRequestOpts(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Filter chunks by given tags and positive or/and automatic flags
@@ -398,13 +426,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    filterChunksByTagsApiFilterTagsPostRaw(requestParameters: FilterChunksByTagsApiFilterTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FilterChunksByTagsResponse>>;
+    filterChunksByTagsApiTagsFilterPostRaw(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FilterChunksByTagsResponse>>;
 
     /**
      * Filter chunks by given tags and positive or/and automatic flags
      * Filter Chunks By Tags
      */
-    filterChunksByTagsApiFilterTagsPost(requestParameters: FilterChunksByTagsApiFilterTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FilterChunksByTagsResponse>;
+    filterChunksByTagsApiTagsFilterPost(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FilterChunksByTagsResponse>;
 
     /**
      * Creates request options for getAvalaibleRagConfigurationsApiRagConfigurationsGet without sending the request
@@ -428,12 +456,12 @@ export interface DefaultApiInterface {
     getAvalaibleRagConfigurationsApiRagConfigurationsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RagRouteConfig>>;
 
     /**
-     * Creates request options for getCollectionChunksApiChunksOfCollectionGet without sending the request
+     * Creates request options for getCollectionChunksApiUserCollectionChunksGet without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getCollectionChunksApiChunksOfCollectionGetRequestOpts(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest): Promise<runtime.RequestOpts>;
+    getCollectionChunksApiUserCollectionChunksGetRequestOpts(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Returns chunks which belong to collection given by id
@@ -443,20 +471,20 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getCollectionChunksApiChunksOfCollectionGetRaw(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionChunksResponse>>;
+    getCollectionChunksApiUserCollectionChunksGetRaw(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionChunksResponse>>;
 
     /**
      * Returns chunks which belong to collection given by id
      * Get Collection Chunks
      */
-    getCollectionChunksApiChunksOfCollectionGet(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse>;
+    getCollectionChunksApiUserCollectionChunksGet(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse>;
 
     /**
-     * Creates request options for getConfigsApiConfigsGet without sending the request
+     * Creates request options for getConfigsApiTagConfigsGet without sending the request
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getConfigsApiConfigsGetRequestOpts(): Promise<runtime.RequestOpts>;
+    getConfigsApiTagConfigsGetRequestOpts(): Promise<runtime.RequestOpts>;
 
     /**
      * Load all config files
@@ -465,21 +493,21 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getConfigsApiConfigsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetConfigsResponse>>;
+    getConfigsApiTagConfigsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetConfigsResponse>>;
 
     /**
      * Load all config files
      * Get Configs
      */
-    getConfigsApiConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse>;
+    getConfigsApiTagConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse>;
 
     /**
-     * Creates request options for getSelectedTagsChunksApiTaggedTextsPost without sending the request
+     * Creates request options for getSelectedTagsChunksApiTagTextChunksPost without sending the request
      * @param {GetTaggedChunksReq} getTaggedChunksReq 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getSelectedTagsChunksApiTaggedTextsPostRequestOpts(requestParameters: GetSelectedTagsChunksApiTaggedTextsPostRequest): Promise<runtime.RequestOpts>;
+    getSelectedTagsChunksApiTagTextChunksPostRequestOpts(requestParameters: GetSelectedTagsChunksApiTagTextChunksPostRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Returns chunks which are tagged by certain type of tag (automatic, positive, negative)
@@ -489,20 +517,20 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getSelectedTagsChunksApiTaggedTextsPostRaw(requestParameters: GetSelectedTagsChunksApiTaggedTextsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTaggedChunksResponse>>;
+    getSelectedTagsChunksApiTagTextChunksPostRaw(requestParameters: GetSelectedTagsChunksApiTagTextChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTaggedChunksResponse>>;
 
     /**
      * Returns chunks which are tagged by certain type of tag (automatic, positive, negative)
      * Get Selected Tags Chunks
      */
-    getSelectedTagsChunksApiTaggedTextsPost(requestParameters: GetSelectedTagsChunksApiTaggedTextsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTaggedChunksResponse>;
+    getSelectedTagsChunksApiTagTextChunksPost(requestParameters: GetSelectedTagsChunksApiTagTextChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTaggedChunksResponse>;
 
     /**
-     * Creates request options for getTagTasksApiAllTasksGet without sending the request
+     * Creates request options for getTagTasksApiTagTasksInfoGet without sending the request
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getTagTasksApiAllTasksGetRequestOpts(): Promise<runtime.RequestOpts>;
+    getTagTasksApiTagTasksInfoGetRequestOpts(): Promise<runtime.RequestOpts>;
 
     /**
      * Get task info to see history of tasks
@@ -511,20 +539,20 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getTagTasksApiAllTasksGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+    getTagTasksApiTagTasksInfoGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
 
     /**
      * Get task info to see history of tasks
      * Get Tag Tasks
      */
-    getTagTasksApiAllTasksGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+    getTagTasksApiTagTasksInfoGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
-     * Creates request options for getTagsApiAllTagsGet without sending the request
+     * Creates request options for getTagsApiTagsGet without sending the request
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getTagsApiAllTagsGetRequestOpts(): Promise<runtime.RequestOpts>;
+    getTagsApiTagsGetRequestOpts(): Promise<runtime.RequestOpts>;
 
     /**
      * Retrieve all tags
@@ -533,13 +561,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getTagsApiAllTagsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTagsResponse>>;
+    getTagsApiTagsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTagsResponse>>;
 
     /**
      * Retrieve all tags
      * Get Tags
      */
-    getTagsApiAllTagsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse>;
+    getTagsApiTagsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse>;
 
     /**
      * Creates request options for questionApiQuestionQuestionTextPost without sending the request
@@ -590,12 +618,12 @@ export interface DefaultApiInterface {
     ragApiRagPost(requestParameters: RagApiRagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RagResponse>;
 
     /**
-     * Creates request options for removeAutomaticTagsApiAutomaticTagsDelete without sending the request
+     * Creates request options for removeAutomaticTagsApiTagsAutomaticDelete without sending the request
      * @param {RemoveTagReq} removeTagReq 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    removeAutomaticTagsApiAutomaticTagsDeleteRequestOpts(requestParameters: RemoveAutomaticTagsApiAutomaticTagsDeleteRequest): Promise<runtime.RequestOpts>;
+    removeAutomaticTagsApiTagsAutomaticDeleteRequestOpts(requestParameters: RemoveAutomaticTagsApiTagsAutomaticDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Removes automatic tags
@@ -605,21 +633,21 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    removeAutomaticTagsApiAutomaticTagsDeleteRaw(requestParameters: RemoveAutomaticTagsApiAutomaticTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>>;
+    removeAutomaticTagsApiTagsAutomaticDeleteRaw(requestParameters: RemoveAutomaticTagsApiTagsAutomaticDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>>;
 
     /**
      * Removes automatic tags
      * Remove Automatic Tags
      */
-    removeAutomaticTagsApiAutomaticTagsDelete(requestParameters: RemoveAutomaticTagsApiAutomaticTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse>;
+    removeAutomaticTagsApiTagsAutomaticDelete(requestParameters: RemoveAutomaticTagsApiTagsAutomaticDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse>;
 
     /**
-     * Creates request options for removeTagsApiWholeTagsDelete without sending the request
+     * Creates request options for removeTagsApiTagsDelete without sending the request
      * @param {RemoveTagReq} removeTagReq 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    removeTagsApiWholeTagsDeleteRequestOpts(requestParameters: RemoveTagsApiWholeTagsDeleteRequest): Promise<runtime.RequestOpts>;
+    removeTagsApiTagsDeleteRequestOpts(requestParameters: RemoveTagsApiTagsDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Removes whole tags
@@ -629,13 +657,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    removeTagsApiWholeTagsDeleteRaw(requestParameters: RemoveTagsApiWholeTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>>;
+    removeTagsApiTagsDeleteRaw(requestParameters: RemoveTagsApiTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>>;
 
     /**
      * Removes whole tags
      * Remove Tags
      */
-    removeTagsApiWholeTagsDelete(requestParameters: RemoveTagsApiWholeTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse>;
+    removeTagsApiTagsDelete(requestParameters: RemoveTagsApiTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse>;
 
     /**
      * Creates request options for saveFeedbackApiRagFeedbackPost without sending the request
@@ -684,12 +712,12 @@ export interface DefaultApiInterface {
     searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponseOutput>;
 
     /**
-     * Creates request options for startTaggingApiTaggingTaskPost without sending the request
+     * Creates request options for startTaggingApiTagTaskPost without sending the request
      * @param {TaggingTaskReqTemplate} taggingTaskReqTemplate 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    startTaggingApiTaggingTaskPostRequestOpts(requestParameters: StartTaggingApiTaggingTaskPostRequest): Promise<runtime.RequestOpts>;
+    startTaggingApiTagTaskPostRequestOpts(requestParameters: StartTaggingApiTagTaskPostRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Starts tagging task in form of asyncio.create_task
@@ -699,13 +727,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    startTaggingApiTaggingTaskPostRaw(requestParameters: StartTaggingApiTaggingTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagStartResponse>>;
+    startTaggingApiTagTaskPostRaw(requestParameters: StartTaggingApiTagTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagStartResponse>>;
 
     /**
      * Starts tagging task in form of asyncio.create_task
      * Start Tagging
      */
-    startTaggingApiTaggingTaskPost(requestParameters: StartTaggingApiTaggingTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagStartResponse>;
+    startTaggingApiTagTaskPost(requestParameters: StartTaggingApiTagTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagStartResponse>;
 
     /**
      * Creates request options for summarizeApiSummarizeSummaryTypePost without sending the request
@@ -740,13 +768,13 @@ export interface DefaultApiInterface {
 export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
     /**
-     * Creates request options for addChunk2CollectionApiChunk2CollectionPost without sending the request
+     * Creates request options for addChunk2CollectionApiUserCollectionChunksPost without sending the request
      */
-    async addChunk2CollectionApiChunk2CollectionPostRequestOpts(requestParameters: AddChunk2CollectionApiChunk2CollectionPostRequest): Promise<runtime.RequestOpts> {
+    async addChunk2CollectionApiUserCollectionChunksPostRequestOpts(requestParameters: AddChunk2CollectionApiUserCollectionChunksPostRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['chunk2CollectionReq'] == null) {
             throw new runtime.RequiredError(
                 'chunk2CollectionReq',
-                'Required parameter "chunk2CollectionReq" was null or undefined when calling addChunk2CollectionApiChunk2CollectionPost().'
+                'Required parameter "chunk2CollectionReq" was null or undefined when calling addChunk2CollectionApiUserCollectionChunksPost().'
             );
         }
 
@@ -757,7 +785,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/chunk_2_collection`;
+        let urlPath = `/api/user_collection/chunks`;
 
         return {
             path: urlPath,
@@ -769,33 +797,33 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates user collection in weaviate db, or not if the same user collection already exists
+     * Connects chunk with user collection
      * Add Chunk 2 Collection
      */
-    async addChunk2CollectionApiChunk2CollectionPostRaw(requestParameters: AddChunk2CollectionApiChunk2CollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
-        const requestOptions = await this.addChunk2CollectionApiChunk2CollectionPostRequestOpts(requestParameters);
+    async addChunk2CollectionApiUserCollectionChunksPostRaw(requestParameters: AddChunk2CollectionApiUserCollectionChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
+        const requestOptions = await this.addChunk2CollectionApiUserCollectionChunksPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
     }
 
     /**
-     * Creates user collection in weaviate db, or not if the same user collection already exists
+     * Connects chunk with user collection
      * Add Chunk 2 Collection
      */
-    async addChunk2CollectionApiChunk2CollectionPost(requestParameters: AddChunk2CollectionApiChunk2CollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
-        const response = await this.addChunk2CollectionApiChunk2CollectionPostRaw(requestParameters, initOverrides);
+    async addChunk2CollectionApiUserCollectionChunksPost(requestParameters: AddChunk2CollectionApiUserCollectionChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
+        const response = await this.addChunk2CollectionApiUserCollectionChunksPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for approveSelectedTagChunkApiTagApprovalPut without sending the request
+     * Creates request options for approveSelectedTagChunkApiTagApprovePut without sending the request
      */
-    async approveSelectedTagChunkApiTagApprovalPutRequestOpts(requestParameters: ApproveSelectedTagChunkApiTagApprovalPutRequest): Promise<runtime.RequestOpts> {
+    async approveSelectedTagChunkApiTagApprovePutRequestOpts(requestParameters: ApproveSelectedTagChunkApiTagApprovePutRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['approveTagReq'] == null) {
             throw new runtime.RequiredError(
                 'approveTagReq',
-                'Required parameter "approveTagReq" was null or undefined when calling approveSelectedTagChunkApiTagApprovalPut().'
+                'Required parameter "approveTagReq" was null or undefined when calling approveSelectedTagChunkApiTagApprovePut().'
             );
         }
 
@@ -806,7 +834,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/tag_approval`;
+        let urlPath = `/api/tag/approve`;
 
         return {
             path: urlPath,
@@ -818,33 +846,82 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * User approve or disapprove a tag, changes the reference of the tag
+     * User approve a tag, changes the reference of the tag
      * Approve Selected Tag Chunk
      */
-    async approveSelectedTagChunkApiTagApprovalPutRaw(requestParameters: ApproveSelectedTagChunkApiTagApprovalPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ApproveTagResponse>> {
-        const requestOptions = await this.approveSelectedTagChunkApiTagApprovalPutRequestOpts(requestParameters);
+    async approveSelectedTagChunkApiTagApprovePutRaw(requestParameters: ApproveSelectedTagChunkApiTagApprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ApproveTagResponse>> {
+        const requestOptions = await this.approveSelectedTagChunkApiTagApprovePutRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => ApproveTagResponseFromJSON(jsonValue));
     }
 
     /**
-     * User approve or disapprove a tag, changes the reference of the tag
+     * User approve a tag, changes the reference of the tag
      * Approve Selected Tag Chunk
      */
-    async approveSelectedTagChunkApiTagApprovalPut(requestParameters: ApproveSelectedTagChunkApiTagApprovalPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse> {
-        const response = await this.approveSelectedTagChunkApiTagApprovalPutRaw(requestParameters, initOverrides);
+    async approveSelectedTagChunkApiTagApprovePut(requestParameters: ApproveSelectedTagChunkApiTagApprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse> {
+        const response = await this.approveSelectedTagChunkApiTagApprovePutRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for cancelTaskApiTaggingTaskTaskIdDelete without sending the request
+     * Creates request options for approveSelectedTagChunkApiTagDisapprovePut without sending the request
      */
-    async cancelTaskApiTaggingTaskTaskIdDeleteRequestOpts(requestParameters: CancelTaskApiTaggingTaskTaskIdDeleteRequest): Promise<runtime.RequestOpts> {
+    async approveSelectedTagChunkApiTagDisapprovePutRequestOpts(requestParameters: ApproveSelectedTagChunkApiTagDisapprovePutRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['approveTagReq'] == null) {
+            throw new runtime.RequiredError(
+                'approveTagReq',
+                'Required parameter "approveTagReq" was null or undefined when calling approveSelectedTagChunkApiTagDisapprovePut().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/tag/disapprove`;
+
+        return {
+            path: urlPath,
+            method: 'PUT',
+            headers: headerParameters,
+            query: queryParameters,
+            body: ApproveTagReqToJSON(requestParameters['approveTagReq']),
+        };
+    }
+
+    /**
+     * User disapprove a tag, changes the reference of the tag
+     * Approve Selected Tag Chunk
+     */
+    async approveSelectedTagChunkApiTagDisapprovePutRaw(requestParameters: ApproveSelectedTagChunkApiTagDisapprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ApproveTagResponse>> {
+        const requestOptions = await this.approveSelectedTagChunkApiTagDisapprovePutRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ApproveTagResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * User disapprove a tag, changes the reference of the tag
+     * Approve Selected Tag Chunk
+     */
+    async approveSelectedTagChunkApiTagDisapprovePut(requestParameters: ApproveSelectedTagChunkApiTagDisapprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse> {
+        const response = await this.approveSelectedTagChunkApiTagDisapprovePutRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for cancelTaskApiTagTaskTaskIdDelete without sending the request
+     */
+    async cancelTaskApiTagTaskTaskIdDeleteRequestOpts(requestParameters: CancelTaskApiTagTaskTaskIdDeleteRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['taskId'] == null) {
             throw new runtime.RequiredError(
                 'taskId',
-                'Required parameter "taskId" was null or undefined when calling cancelTaskApiTaggingTaskTaskIdDelete().'
+                'Required parameter "taskId" was null or undefined when calling cancelTaskApiTagTaskTaskIdDelete().'
             );
         }
 
@@ -853,7 +930,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/tagging_task/{taskId}`;
+        let urlPath = `/api/tag/task/{taskId}`;
         urlPath = urlPath.replace(`{${"taskId"}}`, encodeURIComponent(String(requestParameters['taskId'])));
 
         return {
@@ -868,8 +945,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Cancel running task
      * Cancel Task
      */
-    async cancelTaskApiTaggingTaskTaskIdDeleteRaw(requestParameters: CancelTaskApiTaggingTaskTaskIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CancelTaskResponse>> {
-        const requestOptions = await this.cancelTaskApiTaggingTaskTaskIdDeleteRequestOpts(requestParameters);
+    async cancelTaskApiTagTaskTaskIdDeleteRaw(requestParameters: CancelTaskApiTagTaskTaskIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CancelTaskResponse>> {
+        const requestOptions = await this.cancelTaskApiTagTaskTaskIdDeleteRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => CancelTaskResponseFromJSON(jsonValue));
@@ -879,19 +956,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Cancel running task
      * Cancel Task
      */
-    async cancelTaskApiTaggingTaskTaskIdDelete(requestParameters: CancelTaskApiTaggingTaskTaskIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CancelTaskResponse> {
-        const response = await this.cancelTaskApiTaggingTaskTaskIdDeleteRaw(requestParameters, initOverrides);
+    async cancelTaskApiTagTaskTaskIdDelete(requestParameters: CancelTaskApiTagTaskTaskIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CancelTaskResponse> {
+        const response = await this.cancelTaskApiTagTaskTaskIdDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for checkStatusApiTagStatusTaskIdGet without sending the request
+     * Creates request options for checkStatusApiTagTaskStatusTaskIdGet without sending the request
      */
-    async checkStatusApiTagStatusTaskIdGetRequestOpts(requestParameters: CheckStatusApiTagStatusTaskIdGetRequest): Promise<runtime.RequestOpts> {
+    async checkStatusApiTagTaskStatusTaskIdGetRequestOpts(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['taskId'] == null) {
             throw new runtime.RequiredError(
                 'taskId',
-                'Required parameter "taskId" was null or undefined when calling checkStatusApiTagStatusTaskIdGet().'
+                'Required parameter "taskId" was null or undefined when calling checkStatusApiTagTaskStatusTaskIdGet().'
             );
         }
 
@@ -900,7 +977,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/tag_status/{taskId}`;
+        let urlPath = `/api/tag/task/status/{taskId}`;
         urlPath = urlPath.replace(`{${"taskId"}}`, encodeURIComponent(String(requestParameters['taskId'])));
 
         return {
@@ -915,8 +992,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Polling to check task status
      * Check Status
      */
-    async checkStatusApiTagStatusTaskIdGetRaw(requestParameters: CheckStatusApiTagStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
-        const requestOptions = await this.checkStatusApiTagStatusTaskIdGetRequestOpts(requestParameters);
+    async checkStatusApiTagTaskStatusTaskIdGetRaw(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+        const requestOptions = await this.checkStatusApiTagTaskStatusTaskIdGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         if (this.isJsonMime(response.headers.get('content-type'))) {
@@ -930,8 +1007,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Polling to check task status
      * Check Status
      */
-    async checkStatusApiTagStatusTaskIdGet(requestParameters: CheckStatusApiTagStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
-        const response = await this.checkStatusApiTagStatusTaskIdGetRaw(requestParameters, initOverrides);
+    async checkStatusApiTagTaskStatusTaskIdGet(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+        const response = await this.checkStatusApiTagTaskStatusTaskIdGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -965,7 +1042,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates tag in weaviate db, or not if the same tag already exists
+     * Creates a tag in weaviate db, or not if the same tag already exists
      * Create Tag
      */
     async createTagApiTagPostRaw(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
@@ -976,7 +1053,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates tag in weaviate db, or not if the same tag already exists
+     * Creates a tag in weaviate db, or not if the same tag already exists
      * Create Tag
      */
     async createTagApiTagPost(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
@@ -1085,13 +1162,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for fetchCollectionsApiCollectionsGet without sending the request
+     * Creates request options for fetchCollectionsApiUserCollectionAllGet without sending the request
      */
-    async fetchCollectionsApiCollectionsGetRequestOpts(requestParameters: FetchCollectionsApiCollectionsGetRequest): Promise<runtime.RequestOpts> {
+    async fetchCollectionsApiUserCollectionAllGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['userId'] == null) {
             throw new runtime.RequiredError(
                 'userId',
-                'Required parameter "userId" was null or undefined when calling fetchCollectionsApiCollectionsGet().'
+                'Required parameter "userId" was null or undefined when calling fetchCollectionsApiUserCollectionAllGet().'
             );
         }
 
@@ -1104,7 +1181,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/collections`;
+        let urlPath = `/api/user_collection/all`;
 
         return {
             path: urlPath,
@@ -1118,8 +1195,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    async fetchCollectionsApiCollectionsGetRaw(requestParameters: FetchCollectionsApiCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionsResponse>> {
-        const requestOptions = await this.fetchCollectionsApiCollectionsGetRequestOpts(requestParameters);
+    async fetchCollectionsApiUserCollectionAllGetRaw(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionsResponse>> {
+        const requestOptions = await this.fetchCollectionsApiUserCollectionAllGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => GetCollectionsResponseFromJSON(jsonValue));
@@ -1129,19 +1206,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    async fetchCollectionsApiCollectionsGet(requestParameters: FetchCollectionsApiCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionsResponse> {
-        const response = await this.fetchCollectionsApiCollectionsGetRaw(requestParameters, initOverrides);
+    async fetchCollectionsApiUserCollectionAllGet(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionsResponse> {
+        const response = await this.fetchCollectionsApiUserCollectionAllGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for filterChunksByTagsApiFilterTagsPost without sending the request
+     * Creates request options for filterChunksByTagsApiTagsFilterPost without sending the request
      */
-    async filterChunksByTagsApiFilterTagsPostRequestOpts(requestParameters: FilterChunksByTagsApiFilterTagsPostRequest): Promise<runtime.RequestOpts> {
+    async filterChunksByTagsApiTagsFilterPostRequestOpts(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['filterChunksByTagsRequest'] == null) {
             throw new runtime.RequiredError(
                 'filterChunksByTagsRequest',
-                'Required parameter "filterChunksByTagsRequest" was null or undefined when calling filterChunksByTagsApiFilterTagsPost().'
+                'Required parameter "filterChunksByTagsRequest" was null or undefined when calling filterChunksByTagsApiTagsFilterPost().'
             );
         }
 
@@ -1152,7 +1229,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/filter_tags`;
+        let urlPath = `/api/tags/filter`;
 
         return {
             path: urlPath,
@@ -1167,8 +1244,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Filter chunks by given tags and positive or/and automatic flags
      * Filter Chunks By Tags
      */
-    async filterChunksByTagsApiFilterTagsPostRaw(requestParameters: FilterChunksByTagsApiFilterTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FilterChunksByTagsResponse>> {
-        const requestOptions = await this.filterChunksByTagsApiFilterTagsPostRequestOpts(requestParameters);
+    async filterChunksByTagsApiTagsFilterPostRaw(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FilterChunksByTagsResponse>> {
+        const requestOptions = await this.filterChunksByTagsApiTagsFilterPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => FilterChunksByTagsResponseFromJSON(jsonValue));
@@ -1178,8 +1255,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Filter chunks by given tags and positive or/and automatic flags
      * Filter Chunks By Tags
      */
-    async filterChunksByTagsApiFilterTagsPost(requestParameters: FilterChunksByTagsApiFilterTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FilterChunksByTagsResponse> {
-        const response = await this.filterChunksByTagsApiFilterTagsPostRaw(requestParameters, initOverrides);
+    async filterChunksByTagsApiTagsFilterPost(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FilterChunksByTagsResponse> {
+        const response = await this.filterChunksByTagsApiTagsFilterPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1221,13 +1298,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for getCollectionChunksApiChunksOfCollectionGet without sending the request
+     * Creates request options for getCollectionChunksApiUserCollectionChunksGet without sending the request
      */
-    async getCollectionChunksApiChunksOfCollectionGetRequestOpts(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest): Promise<runtime.RequestOpts> {
+    async getCollectionChunksApiUserCollectionChunksGetRequestOpts(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['collectionId'] == null) {
             throw new runtime.RequiredError(
                 'collectionId',
-                'Required parameter "collectionId" was null or undefined when calling getCollectionChunksApiChunksOfCollectionGet().'
+                'Required parameter "collectionId" was null or undefined when calling getCollectionChunksApiUserCollectionChunksGet().'
             );
         }
 
@@ -1240,7 +1317,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/chunks_of_collection`;
+        let urlPath = `/api/user_collection/chunks`;
 
         return {
             path: urlPath,
@@ -1254,8 +1331,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Returns chunks which belong to collection given by id
      * Get Collection Chunks
      */
-    async getCollectionChunksApiChunksOfCollectionGetRaw(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionChunksResponse>> {
-        const requestOptions = await this.getCollectionChunksApiChunksOfCollectionGetRequestOpts(requestParameters);
+    async getCollectionChunksApiUserCollectionChunksGetRaw(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionChunksResponse>> {
+        const requestOptions = await this.getCollectionChunksApiUserCollectionChunksGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => GetCollectionChunksResponseFromJSON(jsonValue));
@@ -1265,21 +1342,21 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Returns chunks which belong to collection given by id
      * Get Collection Chunks
      */
-    async getCollectionChunksApiChunksOfCollectionGet(requestParameters: GetCollectionChunksApiChunksOfCollectionGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse> {
-        const response = await this.getCollectionChunksApiChunksOfCollectionGetRaw(requestParameters, initOverrides);
+    async getCollectionChunksApiUserCollectionChunksGet(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse> {
+        const response = await this.getCollectionChunksApiUserCollectionChunksGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for getConfigsApiConfigsGet without sending the request
+     * Creates request options for getConfigsApiTagConfigsGet without sending the request
      */
-    async getConfigsApiConfigsGetRequestOpts(): Promise<runtime.RequestOpts> {
+    async getConfigsApiTagConfigsGetRequestOpts(): Promise<runtime.RequestOpts> {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/configs`;
+        let urlPath = `/api/tag/configs`;
 
         return {
             path: urlPath,
@@ -1293,8 +1370,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Load all config files
      * Get Configs
      */
-    async getConfigsApiConfigsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetConfigsResponse>> {
-        const requestOptions = await this.getConfigsApiConfigsGetRequestOpts();
+    async getConfigsApiTagConfigsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetConfigsResponse>> {
+        const requestOptions = await this.getConfigsApiTagConfigsGetRequestOpts();
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => GetConfigsResponseFromJSON(jsonValue));
@@ -1304,19 +1381,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Load all config files
      * Get Configs
      */
-    async getConfigsApiConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse> {
-        const response = await this.getConfigsApiConfigsGetRaw(initOverrides);
+    async getConfigsApiTagConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse> {
+        const response = await this.getConfigsApiTagConfigsGetRaw(initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for getSelectedTagsChunksApiTaggedTextsPost without sending the request
+     * Creates request options for getSelectedTagsChunksApiTagTextChunksPost without sending the request
      */
-    async getSelectedTagsChunksApiTaggedTextsPostRequestOpts(requestParameters: GetSelectedTagsChunksApiTaggedTextsPostRequest): Promise<runtime.RequestOpts> {
+    async getSelectedTagsChunksApiTagTextChunksPostRequestOpts(requestParameters: GetSelectedTagsChunksApiTagTextChunksPostRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['getTaggedChunksReq'] == null) {
             throw new runtime.RequiredError(
                 'getTaggedChunksReq',
-                'Required parameter "getTaggedChunksReq" was null or undefined when calling getSelectedTagsChunksApiTaggedTextsPost().'
+                'Required parameter "getTaggedChunksReq" was null or undefined when calling getSelectedTagsChunksApiTagTextChunksPost().'
             );
         }
 
@@ -1327,7 +1404,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/tagged_texts`;
+        let urlPath = `/api/tag/textChunks`;
 
         return {
             path: urlPath,
@@ -1342,8 +1419,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Returns chunks which are tagged by certain type of tag (automatic, positive, negative)
      * Get Selected Tags Chunks
      */
-    async getSelectedTagsChunksApiTaggedTextsPostRaw(requestParameters: GetSelectedTagsChunksApiTaggedTextsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTaggedChunksResponse>> {
-        const requestOptions = await this.getSelectedTagsChunksApiTaggedTextsPostRequestOpts(requestParameters);
+    async getSelectedTagsChunksApiTagTextChunksPostRaw(requestParameters: GetSelectedTagsChunksApiTagTextChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTaggedChunksResponse>> {
+        const requestOptions = await this.getSelectedTagsChunksApiTagTextChunksPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => GetTaggedChunksResponseFromJSON(jsonValue));
@@ -1353,21 +1430,21 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Returns chunks which are tagged by certain type of tag (automatic, positive, negative)
      * Get Selected Tags Chunks
      */
-    async getSelectedTagsChunksApiTaggedTextsPost(requestParameters: GetSelectedTagsChunksApiTaggedTextsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTaggedChunksResponse> {
-        const response = await this.getSelectedTagsChunksApiTaggedTextsPostRaw(requestParameters, initOverrides);
+    async getSelectedTagsChunksApiTagTextChunksPost(requestParameters: GetSelectedTagsChunksApiTagTextChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTaggedChunksResponse> {
+        const response = await this.getSelectedTagsChunksApiTagTextChunksPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for getTagTasksApiAllTasksGet without sending the request
+     * Creates request options for getTagTasksApiTagTasksInfoGet without sending the request
      */
-    async getTagTasksApiAllTasksGetRequestOpts(): Promise<runtime.RequestOpts> {
+    async getTagTasksApiTagTasksInfoGetRequestOpts(): Promise<runtime.RequestOpts> {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/all_tasks`;
+        let urlPath = `/api/tag/tasks/info`;
 
         return {
             path: urlPath,
@@ -1381,8 +1458,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Get task info to see history of tasks
      * Get Tag Tasks
      */
-    async getTagTasksApiAllTasksGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
-        const requestOptions = await this.getTagTasksApiAllTasksGetRequestOpts();
+    async getTagTasksApiTagTasksInfoGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+        const requestOptions = await this.getTagTasksApiTagTasksInfoGetRequestOpts();
         const response = await this.request(requestOptions, initOverrides);
 
         if (this.isJsonMime(response.headers.get('content-type'))) {
@@ -1396,21 +1473,21 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Get task info to see history of tasks
      * Get Tag Tasks
      */
-    async getTagTasksApiAllTasksGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
-        const response = await this.getTagTasksApiAllTasksGetRaw(initOverrides);
+    async getTagTasksApiTagTasksInfoGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+        const response = await this.getTagTasksApiTagTasksInfoGetRaw(initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for getTagsApiAllTagsGet without sending the request
+     * Creates request options for getTagsApiTagsGet without sending the request
      */
-    async getTagsApiAllTagsGetRequestOpts(): Promise<runtime.RequestOpts> {
+    async getTagsApiTagsGetRequestOpts(): Promise<runtime.RequestOpts> {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/all_tags`;
+        let urlPath = `/api/tags`;
 
         return {
             path: urlPath,
@@ -1424,8 +1501,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieve all tags
      * Get Tags
      */
-    async getTagsApiAllTagsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTagsResponse>> {
-        const requestOptions = await this.getTagsApiAllTagsGetRequestOpts();
+    async getTagsApiTagsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetTagsResponse>> {
+        const requestOptions = await this.getTagsApiTagsGetRequestOpts();
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => GetTagsResponseFromJSON(jsonValue));
@@ -1435,8 +1512,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieve all tags
      * Get Tags
      */
-    async getTagsApiAllTagsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse> {
-        const response = await this.getTagsApiAllTagsGetRaw(initOverrides);
+    async getTagsApiTagsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse> {
+        const response = await this.getTagsApiTagsGetRaw(initOverrides);
         return await response.value();
     }
 
@@ -1543,13 +1620,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for removeAutomaticTagsApiAutomaticTagsDelete without sending the request
+     * Creates request options for removeAutomaticTagsApiTagsAutomaticDelete without sending the request
      */
-    async removeAutomaticTagsApiAutomaticTagsDeleteRequestOpts(requestParameters: RemoveAutomaticTagsApiAutomaticTagsDeleteRequest): Promise<runtime.RequestOpts> {
+    async removeAutomaticTagsApiTagsAutomaticDeleteRequestOpts(requestParameters: RemoveAutomaticTagsApiTagsAutomaticDeleteRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['removeTagReq'] == null) {
             throw new runtime.RequiredError(
                 'removeTagReq',
-                'Required parameter "removeTagReq" was null or undefined when calling removeAutomaticTagsApiAutomaticTagsDelete().'
+                'Required parameter "removeTagReq" was null or undefined when calling removeAutomaticTagsApiTagsAutomaticDelete().'
             );
         }
 
@@ -1560,7 +1637,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/automatic_tags`;
+        let urlPath = `/api/tags/automatic`;
 
         return {
             path: urlPath,
@@ -1575,8 +1652,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Removes automatic tags
      * Remove Automatic Tags
      */
-    async removeAutomaticTagsApiAutomaticTagsDeleteRaw(requestParameters: RemoveAutomaticTagsApiAutomaticTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>> {
-        const requestOptions = await this.removeAutomaticTagsApiAutomaticTagsDeleteRequestOpts(requestParameters);
+    async removeAutomaticTagsApiTagsAutomaticDeleteRaw(requestParameters: RemoveAutomaticTagsApiTagsAutomaticDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>> {
+        const requestOptions = await this.removeAutomaticTagsApiTagsAutomaticDeleteRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => RemoveTagsResponseFromJSON(jsonValue));
@@ -1586,19 +1663,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Removes automatic tags
      * Remove Automatic Tags
      */
-    async removeAutomaticTagsApiAutomaticTagsDelete(requestParameters: RemoveAutomaticTagsApiAutomaticTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse> {
-        const response = await this.removeAutomaticTagsApiAutomaticTagsDeleteRaw(requestParameters, initOverrides);
+    async removeAutomaticTagsApiTagsAutomaticDelete(requestParameters: RemoveAutomaticTagsApiTagsAutomaticDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse> {
+        const response = await this.removeAutomaticTagsApiTagsAutomaticDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Creates request options for removeTagsApiWholeTagsDelete without sending the request
+     * Creates request options for removeTagsApiTagsDelete without sending the request
      */
-    async removeTagsApiWholeTagsDeleteRequestOpts(requestParameters: RemoveTagsApiWholeTagsDeleteRequest): Promise<runtime.RequestOpts> {
+    async removeTagsApiTagsDeleteRequestOpts(requestParameters: RemoveTagsApiTagsDeleteRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['removeTagReq'] == null) {
             throw new runtime.RequiredError(
                 'removeTagReq',
-                'Required parameter "removeTagReq" was null or undefined when calling removeTagsApiWholeTagsDelete().'
+                'Required parameter "removeTagReq" was null or undefined when calling removeTagsApiTagsDelete().'
             );
         }
 
@@ -1609,7 +1686,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/whole_tags`;
+        let urlPath = `/api/tags`;
 
         return {
             path: urlPath,
@@ -1624,8 +1701,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Removes whole tags
      * Remove Tags
      */
-    async removeTagsApiWholeTagsDeleteRaw(requestParameters: RemoveTagsApiWholeTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>> {
-        const requestOptions = await this.removeTagsApiWholeTagsDeleteRequestOpts(requestParameters);
+    async removeTagsApiTagsDeleteRaw(requestParameters: RemoveTagsApiTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>> {
+        const requestOptions = await this.removeTagsApiTagsDeleteRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => RemoveTagsResponseFromJSON(jsonValue));
@@ -1635,8 +1712,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Removes whole tags
      * Remove Tags
      */
-    async removeTagsApiWholeTagsDelete(requestParameters: RemoveTagsApiWholeTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse> {
-        const response = await this.removeTagsApiWholeTagsDeleteRaw(requestParameters, initOverrides);
+    async removeTagsApiTagsDelete(requestParameters: RemoveTagsApiTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse> {
+        const response = await this.removeTagsApiTagsDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1739,13 +1816,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for startTaggingApiTaggingTaskPost without sending the request
+     * Creates request options for startTaggingApiTagTaskPost without sending the request
      */
-    async startTaggingApiTaggingTaskPostRequestOpts(requestParameters: StartTaggingApiTaggingTaskPostRequest): Promise<runtime.RequestOpts> {
+    async startTaggingApiTagTaskPostRequestOpts(requestParameters: StartTaggingApiTagTaskPostRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['taggingTaskReqTemplate'] == null) {
             throw new runtime.RequiredError(
                 'taggingTaskReqTemplate',
-                'Required parameter "taggingTaskReqTemplate" was null or undefined when calling startTaggingApiTaggingTaskPost().'
+                'Required parameter "taggingTaskReqTemplate" was null or undefined when calling startTaggingApiTagTaskPost().'
             );
         }
 
@@ -1756,7 +1833,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/tagging_task`;
+        let urlPath = `/api/tag/task`;
 
         return {
             path: urlPath,
@@ -1771,8 +1848,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Starts tagging task in form of asyncio.create_task
      * Start Tagging
      */
-    async startTaggingApiTaggingTaskPostRaw(requestParameters: StartTaggingApiTaggingTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagStartResponse>> {
-        const requestOptions = await this.startTaggingApiTaggingTaskPostRequestOpts(requestParameters);
+    async startTaggingApiTagTaskPostRaw(requestParameters: StartTaggingApiTagTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagStartResponse>> {
+        const requestOptions = await this.startTaggingApiTagTaskPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => TagStartResponseFromJSON(jsonValue));
@@ -1782,8 +1859,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Starts tagging task in form of asyncio.create_task
      * Start Tagging
      */
-    async startTaggingApiTaggingTaskPost(requestParameters: StartTaggingApiTaggingTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagStartResponse> {
-        const response = await this.startTaggingApiTaggingTaskPostRaw(requestParameters, initOverrides);
+    async startTaggingApiTagTaskPost(requestParameters: StartTaggingApiTagTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagStartResponse> {
+        const response = await this.startTaggingApiTagTaskPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
