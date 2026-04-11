@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from semant_demo import schemas
 from semant_demo.config import config
@@ -53,6 +53,17 @@ async def fetch_collections(userId: str,
     Retrieves all collections for given user
     """
     response = await searcher.userCollection.read_all(userId)
+    return response
+
+@exp_router.get("/api/user_collections/{collectionId}", response_model=Collection)
+async def fetch_collection(collectionId: str,
+                           searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
+    """
+    Retrieves collection by its id
+    """
+    response = await searcher.userCollection.read(collectionId)
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Collection with id {collectionId} not found")
     return response
 
 

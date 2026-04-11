@@ -59,20 +59,42 @@ class UserCollection():
             }
         )
         return new_collection_uuid
+    
+    async def read(self, collection_id: UUID) -> Collection | None:
+        """
+        Retrieves collection by its id, returns None if collection with given id does not exist
+        """
 
-    async def read_all(self, userId: str) -> list[Collection]:
+        usercollection_collection = self.client.collections.get(
+            "UserCollection")
+        response = await usercollection_collection.query.fetch_object_by_id(collection_id)
+        if response is None:
+            return None
+        props = response.properties
+        return Collection(
+            id=response.uuid,
+            name=props.get("name"),
+            user_id=props.get("user_id"),
+            description=props.get("description"),
+            created_at=props.get("created_at"),
+            updated_at=props.get("updated_at"),
+            color=props.get("color")
+        )
+        
+
+    async def read_all(self, user_id: str) -> list[Collection]:
         """
         Retrieves all collections for given user
         """
         try:
             # filter collections by user
             filters = (
-                Filter.by_property("user_id").equal(userId)
+                Filter.by_property("user_id").equal(user_id)
             )
             results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
                 filters=filters
             )
-            logging.info(f"User Id: {userId}\nRaw results: {results}")
+            logging.info(f"User Id: {user_id}\nRaw results: {results}")
             collections_response = []
             if results.objects is not None:
                 if len(results.objects) > 0:
@@ -83,10 +105,10 @@ class UserCollection():
                         collections_response.append(Collection(
                             id=o.uuid,
                             name=props.get("name"),
-                            userId=props.get("user_id"),
+                            user_id=props.get("user_id"),
                             description=props.get("description"),
-                            createdAt=props.get("created_at"),
-                            updatedAt=props.get("updated_at"),
+                            created_at=props.get("created_at"),
+                            updated_at=props.get("updated_at"),
                             color=props.get("color")
                         ))
 
