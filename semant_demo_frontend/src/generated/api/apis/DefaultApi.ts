@@ -217,7 +217,7 @@ export interface GetCollectionChunksApiUserCollectionChunksGetRequest {
     collectionId: string;
 }
 
-export interface GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest {
+export interface GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest {
     collectionId: string;
 }
 
@@ -794,12 +794,12 @@ export interface DefaultApiInterface {
     getCollectionChunksApiUserCollectionChunksGet(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse>;
 
     /**
-     * Creates request options for getCollectionStatsApiV1CollectionsCollectionIdStatsGet without sending the request
+     * Creates request options for getCollectionStatsApiUserCollectionCollectionIdStatsGet without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getCollectionStatsApiV1CollectionsCollectionIdStatsGetRequestOpts(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest): Promise<runtime.RequestOpts>;
+    getCollectionStatsApiUserCollectionCollectionIdStatsGetRequestOpts(requestParameters: GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest): Promise<runtime.RequestOpts>;
 
     /**
      * 
@@ -809,12 +809,12 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getCollectionStatsApiV1CollectionsCollectionIdStatsGetRaw(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionStats>>;
+    getCollectionStatsApiUserCollectionCollectionIdStatsGetRaw(requestParameters: GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionStats>>;
 
     /**
      * Get Collection Stats
      */
-    getCollectionStatsApiV1CollectionsCollectionIdStatsGet(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionStats>;
+    getCollectionStatsApiUserCollectionCollectionIdStatsGet(requestParameters: GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionStats>;
 
     /**
      * Creates request options for getCollectionTagsApiV1CollectionsCollectionIdTagsGet without sending the request
@@ -2030,8 +2030,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/user_collections/{collectionId}`;
-        urlPath = urlPath.replace(`{${"collectionId"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        let urlPath = `/api/user_collections/{collection_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
 
         return {
             path: urlPath,
@@ -2256,7 +2256,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         if (requestParameters['collectionId'] != null) {
-            queryParameters['collectionId'] = requestParameters['collectionId'];
+            queryParameters['collection_id'] = requestParameters['collectionId'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -2293,13 +2293,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for getCollectionStatsApiV1CollectionsCollectionIdStatsGet without sending the request
+     * Creates request options for getCollectionStatsApiUserCollectionCollectionIdStatsGet without sending the request
      */
-    async getCollectionStatsApiV1CollectionsCollectionIdStatsGetRequestOpts(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest): Promise<runtime.RequestOpts> {
+    async getCollectionStatsApiUserCollectionCollectionIdStatsGetRequestOpts(requestParameters: GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['collectionId'] == null) {
             throw new runtime.RequiredError(
                 'collectionId',
-                'Required parameter "collectionId" was null or undefined when calling getCollectionStatsApiV1CollectionsCollectionIdStatsGet().'
+                'Required parameter "collectionId" was null or undefined when calling getCollectionStatsApiUserCollectionCollectionIdStatsGet().'
             );
         }
 
@@ -2308,7 +2308,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/v1/collections/{collection_id}/stats`;
+        let urlPath = `/api/user_collection/{collection_id}/stats`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
 
         return {
@@ -2322,8 +2322,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     /**
      * Get Collection Stats
      */
-    async getCollectionStatsApiV1CollectionsCollectionIdStatsGetRaw(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionStats>> {
-        const requestOptions = await this.getCollectionStatsApiV1CollectionsCollectionIdStatsGetRequestOpts(requestParameters);
+    async getCollectionStatsApiUserCollectionCollectionIdStatsGetRaw(requestParameters: GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionStats>> {
+        const requestOptions = await this.getCollectionStatsApiUserCollectionCollectionIdStatsGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => CollectionStatsFromJSON(jsonValue));
@@ -2332,8 +2332,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     /**
      * Get Collection Stats
      */
-    async getCollectionStatsApiV1CollectionsCollectionIdStatsGet(requestParameters: GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionStats> {
-        const response = await this.getCollectionStatsApiV1CollectionsCollectionIdStatsGetRaw(requestParameters, initOverrides);
+    async getCollectionStatsApiUserCollectionCollectionIdStatsGet(requestParameters: GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionStats> {
+        const response = await this.getCollectionStatsApiUserCollectionCollectionIdStatsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

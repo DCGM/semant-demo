@@ -73,11 +73,11 @@ export function CollectionStatsFromJSONTyped(json: any, ignoreDiscriminator: boo
     }
     return {
         
-        'collectionId': json['collectionId'],
-        'documentsCount': json['documentsCount'],
-        'chunksCount': json['chunksCount'],
-        'annotationsCount': json['annotationsCount'],
-        'tagsCount': json['tagsCount'],
+        'collectionId': json['collection_id'],
+        'documentsCount': json['documents_count'],
+        'chunksCount': json['chunks_count'],
+        'annotationsCount': json['annotations_count'],
+        'tagsCount': json['tags_count'],
     };
 }
 
@@ -92,11 +92,11 @@ export function CollectionStatsToJSONTyped(value?: CollectionStats | null, ignor
 
     return {
         
-        'collectionId': value['collectionId'],
-        'documentsCount': value['documentsCount'],
-        'chunksCount': value['chunksCount'],
-        'annotationsCount': value['annotationsCount'],
-        'tagsCount': value['tagsCount'],
+        'collection_id': value['collectionId'],
+        'documents_count': value['documentsCount'],
+        'chunks_count': value['chunksCount'],
+        'annotations_count': value['annotationsCount'],
+        'tags_count': value['tagsCount'],
     };
 }
 

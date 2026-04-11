@@ -4,9 +4,8 @@ from datetime import datetime, timezone
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.schema.tags import Tag, PostTag, PatchTag
-from semant_demo.schema.collections import Collection, PostCollection, PatchCollection
+from semant_demo.schema.collections import Collection, PostCollection, PatchCollection, CollectionStats
 from semant_demo.schema.documents import Document, DocumentBrowse
-from semant_demo.schema.collection_stats import CollectionStats
 from uuid import UUID
 from semant_demo.config import Config
 import weaviate

@@ -16,7 +16,7 @@ export function useCollectionRepository() {
     },
 
     getStats: async (collectionId: string): Promise<CollectionStats> => {
-      return api.getCollectionStatsApiV1CollectionsCollectionIdStatsGet({ collectionId })
+      return api.getCollectionStatsApiUserCollectionCollectionIdStatsGet({ collectionId })
     },
 
     create: async (collectionData: PostCollection): Promise<CreateResponse> => {

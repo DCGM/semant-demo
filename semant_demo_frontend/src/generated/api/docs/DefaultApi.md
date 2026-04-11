@@ -18,13 +18,13 @@ All URIs are relative to *http://localhost*
 | [**deleteCollectionApiV1CollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiv1collectionscollectioniddelete) | **DELETE** /api/v1/collections/{collection_id} | Delete Collection |
 | [**deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete**](DefaultApi.md#deletecollectiontagapiv1collectionscollectionidtagstaguuiddelete) | **DELETE** /api/v1/collections/{collection_id}/tags/{tag_uuid} | Delete Collection Tag |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
-| [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collectionId} | Fetch Collection |
+| [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
 | [**filterChunksByTagsApiTagsFilterPost**](DefaultApi.md#filterchunksbytagsapitagsfilterpost) | **POST** /api/tags/filter | Filter Chunks By Tags |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
 | [**getCollectionByIdApiV1CollectionsCollectionIdGet**](DefaultApi.md#getcollectionbyidapiv1collectionscollectionidget) | **GET** /api/v1/collections/{collection_id} | Get Collection By Id |
 | [**getCollectionChunksApiUserCollectionChunksGet**](DefaultApi.md#getcollectionchunksapiusercollectionchunksget) | **GET** /api/user_collection/chunks | Get Collection Chunks |
-| [**getCollectionStatsApiV1CollectionsCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiv1collectionscollectionidstatsget) | **GET** /api/v1/collections/{collection_id}/stats | Get Collection Stats |
+| [**getCollectionStatsApiUserCollectionCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiusercollectioncollectionidstatsget) | **GET** /api/user_collection/{collection_id}/stats | Get Collection Stats |
 | [**getCollectionTagsApiV1CollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapiv1collectionscollectionidtagsget) | **GET** /api/v1/collections/{collection_id}/tags | Get Collection Tags |
 | [**getCollectionsApiV1CollectionsGet**](DefaultApi.md#getcollectionsapiv1collectionsget) | **GET** /api/v1/collections | Get Collections |
 | [**getConfigsApiTagConfigsGet**](DefaultApi.md#getconfigsapitagconfigsget) | **GET** /api/tag/configs | Get Configs |
@@ -1414,9 +1414,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getCollectionStatsApiV1CollectionsCollectionIdStatsGet
+## getCollectionStatsApiUserCollectionCollectionIdStatsGet
 
-> CollectionStats getCollectionStatsApiV1CollectionsCollectionIdStatsGet(collectionId)
+> CollectionStats getCollectionStatsApiUserCollectionCollectionIdStatsGet(collectionId)
 
 Get Collection Stats
 
@@ -1427,7 +1427,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest } from '';
+import type { GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1435,11 +1435,11 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies GetCollectionStatsApiV1CollectionsCollectionIdStatsGetRequest;
+    collectionId: collectionId_example,
+  } satisfies GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest;
 
   try {
-    const data = await api.getCollectionStatsApiV1CollectionsCollectionIdStatsGet(body);
+    const data = await api.getCollectionStatsApiUserCollectionCollectionIdStatsGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
