@@ -32,7 +32,7 @@ export function useCollectionRepository() {
     },
 
     remove: async (collectionId: string): Promise<void> => {
-      await api.deleteCollectionApiV1CollectionsCollectionIdDelete({ collectionId })
+      await api.deleteCollectionApiCollectionsCollectionIdDelete({ collectionId })
     }
   }
 }

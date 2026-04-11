@@ -167,10 +167,6 @@ export interface CheckStatusApiTagTaskStatusTaskIdGetRequest {
     taskId: string;
 }
 
-export interface CreateCollectionApiV1CollectionsPostRequest {
-    postCollection: PostCollection;
-}
-
 export interface CreateCollectionTagApiV1CollectionsCollectionIdTagsPostRequest {
     collectionId: string;
     postTag: PostTag;
@@ -184,7 +180,7 @@ export interface CreateUserCollectionApiUserCollectionsPostRequest {
     postCollection: PostCollection;
 }
 
-export interface DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest {
+export interface DeleteCollectionApiCollectionsCollectionIdDeleteRequest {
     collectionId: string;
 }
 
@@ -209,10 +205,6 @@ export interface FilterChunksByTagsApiTagsFilterPostRequest {
     filterChunksByTagsRequest: FilterChunksByTagsRequest;
 }
 
-export interface GetCollectionByIdApiV1CollectionsCollectionIdGetRequest {
-    collectionId: string;
-}
-
 export interface GetCollectionChunksApiUserCollectionChunksGetRequest {
     collectionId: string;
 }
@@ -223,10 +215,6 @@ export interface GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest 
 
 export interface GetCollectionTagsApiV1CollectionsCollectionIdTagsGetRequest {
     collectionId: string;
-}
-
-export interface GetCollectionsApiV1CollectionsGetRequest {
-    userId: string;
 }
 
 export interface GetDocumentApiV1DocumentsDocumentIdGetRequest {
@@ -285,11 +273,6 @@ export interface SummarizeApiSummarizeSummaryTypePostRequest {
 }
 
 export interface UpdateCollectionApiUserCollectionsCollectionIdPatchRequest {
-    collectionId: string;
-    patchCollection: PatchCollection;
-}
-
-export interface UpdateCollectionApiV1CollectionsCollectionIdPatchRequest {
     collectionId: string;
     patchCollection: PatchCollection;
 }
@@ -492,29 +475,6 @@ export interface DefaultApiInterface {
     checkStatusApiTagTaskStatusTaskIdGet(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
-     * Creates request options for createCollectionApiV1CollectionsPost without sending the request
-     * @param {PostCollection} postCollection 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    createCollectionApiV1CollectionsPostRequestOpts(requestParameters: CreateCollectionApiV1CollectionsPostRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * 
-     * @summary Create Collection
-     * @param {PostCollection} postCollection 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    createCollectionApiV1CollectionsPostRaw(requestParameters: CreateCollectionApiV1CollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>>;
-
-    /**
-     * Create Collection
-     */
-    createCollectionApiV1CollectionsPost(requestParameters: CreateCollectionApiV1CollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
-
-    /**
      * Creates request options for createCollectionTagApiV1CollectionsCollectionIdTagsPost without sending the request
      * @param {string} collectionId 
      * @param {PostTag} postTag 
@@ -588,12 +548,12 @@ export interface DefaultApiInterface {
     createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
 
     /**
-     * Creates request options for deleteCollectionApiV1CollectionsCollectionIdDelete without sending the request
+     * Creates request options for deleteCollectionApiCollectionsCollectionIdDelete without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    deleteCollectionApiV1CollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts>;
+    deleteCollectionApiCollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
      * 
@@ -603,12 +563,12 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    deleteCollectionApiV1CollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+    deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
      * Delete Collection
      */
-    deleteCollectionApiV1CollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+    deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete without sending the request
@@ -752,29 +712,6 @@ export interface DefaultApiInterface {
     getAvalaibleRagConfigurationsApiRagConfigurationsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RagRouteConfig>>;
 
     /**
-     * Creates request options for getCollectionByIdApiV1CollectionsCollectionIdGet without sending the request
-     * @param {string} collectionId 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getCollectionByIdApiV1CollectionsCollectionIdGetRequestOpts(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * 
-     * @summary Get Collection By Id
-     * @param {string} collectionId 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getCollectionByIdApiV1CollectionsCollectionIdGetRaw(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>>;
-
-    /**
-     * Get Collection By Id
-     */
-    getCollectionByIdApiV1CollectionsCollectionIdGet(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
-
-    /**
      * Creates request options for getCollectionChunksApiUserCollectionChunksGet without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
@@ -843,29 +780,6 @@ export interface DefaultApiInterface {
      * Get Collection Tags
      */
     getCollectionTagsApiV1CollectionsCollectionIdTagsGet(requestParameters: GetCollectionTagsApiV1CollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Tag>>;
-
-    /**
-     * Creates request options for getCollectionsApiV1CollectionsGet without sending the request
-     * @param {string} userId 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getCollectionsApiV1CollectionsGetRequestOpts(requestParameters: GetCollectionsApiV1CollectionsGetRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * 
-     * @summary Get Collections
-     * @param {string} userId 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getCollectionsApiV1CollectionsGetRaw(requestParameters: GetCollectionsApiV1CollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Collection>>>;
-
-    /**
-     * Get Collections
-     */
-    getCollectionsApiV1CollectionsGet(requestParameters: GetCollectionsApiV1CollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Collection>>;
 
     /**
      * Creates request options for getConfigsApiTagConfigsGet without sending the request
@@ -1267,31 +1181,6 @@ export interface DefaultApiInterface {
      * Update Collection
      */
     updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
-
-    /**
-     * Creates request options for updateCollectionApiV1CollectionsCollectionIdPatch without sending the request
-     * @param {string} collectionId 
-     * @param {PatchCollection} patchCollection 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    updateCollectionApiV1CollectionsCollectionIdPatchRequestOpts(requestParameters: UpdateCollectionApiV1CollectionsCollectionIdPatchRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * 
-     * @summary Update Collection
-     * @param {string} collectionId 
-     * @param {PatchCollection} patchCollection 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    updateCollectionApiV1CollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiV1CollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>>;
-
-    /**
-     * Update Collection
-     */
-    updateCollectionApiV1CollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiV1CollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
 
     /**
      * Creates request options for updateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatch without sending the request
@@ -1699,53 +1588,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for createCollectionApiV1CollectionsPost without sending the request
-     */
-    async createCollectionApiV1CollectionsPostRequestOpts(requestParameters: CreateCollectionApiV1CollectionsPostRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['postCollection'] == null) {
-            throw new runtime.RequiredError(
-                'postCollection',
-                'Required parameter "postCollection" was null or undefined when calling createCollectionApiV1CollectionsPost().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-
-        let urlPath = `/api/v1/collections`;
-
-        return {
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: PostCollectionToJSON(requestParameters['postCollection']),
-        };
-    }
-
-    /**
-     * Create Collection
-     */
-    async createCollectionApiV1CollectionsPostRaw(requestParameters: CreateCollectionApiV1CollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>> {
-        const requestOptions = await this.createCollectionApiV1CollectionsPostRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionFromJSON(jsonValue));
-    }
-
-    /**
-     * Create Collection
-     */
-    async createCollectionApiV1CollectionsPost(requestParameters: CreateCollectionApiV1CollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
-        const response = await this.createCollectionApiV1CollectionsPostRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
      * Creates request options for createCollectionTagApiV1CollectionsCollectionIdTagsPost without sending the request
      */
     async createCollectionTagApiV1CollectionsCollectionIdTagsPostRequestOpts(requestParameters: CreateCollectionTagApiV1CollectionsCollectionIdTagsPostRequest): Promise<runtime.RequestOpts> {
@@ -1899,13 +1741,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for deleteCollectionApiV1CollectionsCollectionIdDelete without sending the request
+     * Creates request options for deleteCollectionApiCollectionsCollectionIdDelete without sending the request
      */
-    async deleteCollectionApiV1CollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts> {
+    async deleteCollectionApiCollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['collectionId'] == null) {
             throw new runtime.RequiredError(
                 'collectionId',
-                'Required parameter "collectionId" was null or undefined when calling deleteCollectionApiV1CollectionsCollectionIdDelete().'
+                'Required parameter "collectionId" was null or undefined when calling deleteCollectionApiCollectionsCollectionIdDelete().'
             );
         }
 
@@ -1914,7 +1756,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/v1/collections/{collection_id}`;
+        let urlPath = `/api/collections/{collection_id}`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
 
         return {
@@ -1928,8 +1770,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     /**
      * Delete Collection
      */
-    async deleteCollectionApiV1CollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        const requestOptions = await this.deleteCollectionApiV1CollectionsCollectionIdDeleteRequestOpts(requestParameters);
+    async deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.deleteCollectionApiCollectionsCollectionIdDeleteRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.VoidApiResponse(response);
@@ -1938,8 +1780,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     /**
      * Delete Collection
      */
-    async deleteCollectionApiV1CollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.deleteCollectionApiV1CollectionsCollectionIdDeleteRaw(requestParameters, initOverrides);
+    async deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -2229,51 +2071,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for getCollectionByIdApiV1CollectionsCollectionIdGet without sending the request
-     */
-    async getCollectionByIdApiV1CollectionsCollectionIdGetRequestOpts(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['collectionId'] == null) {
-            throw new runtime.RequiredError(
-                'collectionId',
-                'Required parameter "collectionId" was null or undefined when calling getCollectionByIdApiV1CollectionsCollectionIdGet().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/api/v1/collections/{collection_id}`;
-        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Get Collection By Id
-     */
-    async getCollectionByIdApiV1CollectionsCollectionIdGetRaw(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>> {
-        const requestOptions = await this.getCollectionByIdApiV1CollectionsCollectionIdGetRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionFromJSON(jsonValue));
-    }
-
-    /**
-     * Get Collection By Id
-     */
-    async getCollectionByIdApiV1CollectionsCollectionIdGet(requestParameters: GetCollectionByIdApiV1CollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
-        const response = await this.getCollectionByIdApiV1CollectionsCollectionIdGetRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
      * Creates request options for getCollectionChunksApiUserCollectionChunksGet without sending the request
      */
     async getCollectionChunksApiUserCollectionChunksGetRequestOpts(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest): Promise<runtime.RequestOpts> {
@@ -2410,54 +2207,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getCollectionTagsApiV1CollectionsCollectionIdTagsGet(requestParameters: GetCollectionTagsApiV1CollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Tag>> {
         const response = await this.getCollectionTagsApiV1CollectionsCollectionIdTagsGetRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getCollectionsApiV1CollectionsGet without sending the request
-     */
-    async getCollectionsApiV1CollectionsGetRequestOpts(requestParameters: GetCollectionsApiV1CollectionsGetRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['userId'] == null) {
-            throw new runtime.RequiredError(
-                'userId',
-                'Required parameter "userId" was null or undefined when calling getCollectionsApiV1CollectionsGet().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        if (requestParameters['userId'] != null) {
-            queryParameters['user_id'] = requestParameters['userId'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/api/v1/collections`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Get Collections
-     */
-    async getCollectionsApiV1CollectionsGetRaw(requestParameters: GetCollectionsApiV1CollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Collection>>> {
-        const requestOptions = await this.getCollectionsApiV1CollectionsGetRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(CollectionFromJSON));
-    }
-
-    /**
-     * Get Collections
-     */
-    async getCollectionsApiV1CollectionsGet(requestParameters: GetCollectionsApiV1CollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Collection>> {
-        const response = await this.getCollectionsApiV1CollectionsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -3281,61 +3030,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
         const response = await this.updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for updateCollectionApiV1CollectionsCollectionIdPatch without sending the request
-     */
-    async updateCollectionApiV1CollectionsCollectionIdPatchRequestOpts(requestParameters: UpdateCollectionApiV1CollectionsCollectionIdPatchRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['collectionId'] == null) {
-            throw new runtime.RequiredError(
-                'collectionId',
-                'Required parameter "collectionId" was null or undefined when calling updateCollectionApiV1CollectionsCollectionIdPatch().'
-            );
-        }
-
-        if (requestParameters['patchCollection'] == null) {
-            throw new runtime.RequiredError(
-                'patchCollection',
-                'Required parameter "patchCollection" was null or undefined when calling updateCollectionApiV1CollectionsCollectionIdPatch().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-
-        let urlPath = `/api/v1/collections/{collection_id}`;
-        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
-
-        return {
-            path: urlPath,
-            method: 'PATCH',
-            headers: headerParameters,
-            query: queryParameters,
-            body: PatchCollectionToJSON(requestParameters['patchCollection']),
-        };
-    }
-
-    /**
-     * Update Collection
-     */
-    async updateCollectionApiV1CollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiV1CollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>> {
-        const requestOptions = await this.updateCollectionApiV1CollectionsCollectionIdPatchRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionFromJSON(jsonValue));
-    }
-
-    /**
-     * Update Collection
-     */
-    async updateCollectionApiV1CollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiV1CollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
-        const response = await this.updateCollectionApiV1CollectionsCollectionIdPatchRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
