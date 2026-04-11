@@ -7,7 +7,7 @@ export function useCollectionRepository() {
 
   return {
     getAll: async (userId: string): Promise<Collections> => {
-      return api.getCollectionsApiV1CollectionsGet({ userId })
+      return api.fetchCollectionsApiUserCollectionsGet({ userId })
     },
 
     getById: async (collectionId: string): Promise<Collection> => {
