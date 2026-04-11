@@ -523,60 +523,6 @@ class WeaviateHelpers:
         )
         return new_collection_uuid
 
-    async def fetch_all_collections(self, userId: str) -> list[Collection]:
-        """
-        Fetch all user collections by userId
-        """
-        """
-        Retrieves all collections for given user
-        """
-        try:
-            # filter collections by user
-            filters = (
-                Filter.by_property("user_id").equal(userId)
-            )
-            results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
-                filters=filters
-            )
-            logging.info(f"User Id: {userId}\nRaw results: {results}")
-            collections_response = []
-            if results.objects is not None:
-                if len(results.objects) > 0:
-                    collections = results.objects
-                    # map collection data to expected response format
-                    for o in collections:
-                        props = o.properties
-                        collections_response.append(Collection(
-                            id=o.uuid,
-                            name=props.get("name"),
-                            userId=props.get("user_id"),
-                            description=props.get("description"),
-                            createdAt=props.get("created_at"),
-                            updatedAt=props.get("updated_at"),
-                            color=props.get("color")
-                        ))
-
-            return collections_response
-        except WeaviateConnectionError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateConnectError(str(e))
-        except WeaviateInvalidInputError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateDataValidationError(str(e))
-        except WeaviateTimeoutError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateLimitError(str(e))
-        except WeaviateQueryError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateOperationError(str(e))
-        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateServerError(str(e))
-        except Exception as e:
-            # catch unexpected errors and wrap them
-            logging.error(f"Unexpected error fetching chunks: {str(e)}")
-            raise WeaviateServerError(str(e))
-
     async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
         """
         Removes tags by:

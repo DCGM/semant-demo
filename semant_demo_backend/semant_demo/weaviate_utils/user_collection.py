@@ -24,7 +24,7 @@ from semant_demo.weaviate_exceptions import (
     WeaviateOperationError
 )
 
-from semant_demo.schema.collections import Collection, PostCollection
+from semant_demo.schema.collections import Collection, CollectionStats, PostCollection
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
@@ -66,7 +66,7 @@ class UserCollection():
         """
 
         usercollection_collection = self.client.collections.get(
-            "UserCollection")
+            self.collectionNames.user_collection_name)
         response = await usercollection_collection.query.fetch_object_by_id(collection_id)
         if response is None:
             return None
@@ -132,6 +132,78 @@ class UserCollection():
             # catch unexpected errors and wrap them
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
+        
+    async def read_collection_stats(self, collection_id: UUID) -> CollectionStats | None:
+        """
+        Computes aggregate statistics for one collection.
+        """
+
+        collection = await self.read(collection_id)
+        if collection is None:
+            return None
+
+        # Compute documents count
+        documents_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        documents_filters = (
+            Filter.by_ref("collection").by_id().equal(collection_id)
+        )
+
+        documents_count_response = await documents_collection.aggregate.over_all(
+            total_count=True,
+            filters=documents_filters
+        )
+        documents_count = documents_count_response.total_count or 0
+
+        # Compute chunks count
+        chunks_filters = (
+            Filter.by_ref("userCollection").by_id().equal(collection_id)
+        )
+
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        chunks_count_response = await chunks_collection.aggregate.over_all(
+            total_count=True,
+            filters=chunks_filters
+        )
+        chunks_count = chunks_count_response.total_count or 0
+
+        # Compute tags count
+        tags_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        tags_filters = (
+            Filter.by_ref("userCollection").by_id().equal(collection_id)
+        )
+        tags_count_response = await tags_collection.aggregate.over_all(
+            total_count=True,
+            filters=tags_filters
+        )
+        tags_count = tags_count_response.total_count or 0
+
+        # Compute annotation stats from Span collection.
+        # One annotation = one span object.
+        # Span belongs to selected collection if linked chunk OR linked tag belongs to that collection.
+
+        spans_collection = self.client.collections.get(self.collectionNames.span_collection_name)
+
+        spans_filters = (
+            Filter.by_ref("text_chunk").by_ref(
+                self.collectionNames.user_collection_name).by_id().equal(collection_id)
+            |
+            Filter.by_ref("tag").by_ref(
+                self.collectionNames.user_collection_name).by_id().equal(collection_id)
+        )
+
+        annotations_count_response = await spans_collection.aggregate.over_all(
+            total_count=True,
+            filters=spans_filters,
+        )
+        annotations_count = annotations_count_response.total_count or 0
+
+        return CollectionStats(
+            collection_id=collection_id,
+            documents_count=documents_count,
+            chunks_count=chunks_count,
+            tags_count=tags_count,
+            annotations_count=annotations_count,
+        )
 
     def update():
         pass
