@@ -25,7 +25,7 @@ from semant_demo.weaviate_exceptions import (
 )
 
 from semant_demo.schema.collections import Collection, CollectionStats, PatchCollection, PostCollection
-from semant_demo.schema.documents import Document, DocumentBrowse
+from semant_demo.schema.documents import Document
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
