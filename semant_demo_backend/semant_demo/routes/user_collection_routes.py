@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from semant_demo.schemas import TasksBase
-from semant_demo.schema.collections import Collection
+from semant_demo.schema.collections import Collection, PostCollection
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search
@@ -29,8 +29,8 @@ from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
 exp_router = APIRouter()
 
-@exp_router.post("/api/user_collection", response_model=schemas.CreateResponse)
-async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplate,
+@exp_router.post("/api/user_collections", response_model=schemas.CreateResponse)
+async def create_user_collection(collectionReq: PostCollection,
                                  searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.CreateResponse:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
@@ -40,11 +40,11 @@ async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplat
         if collection_id is None:
             raise Exception("weaviate error")
         return {"created": True,
-                "message": f"Collection {collectionReq.collection_name} created with collection id {collection_id}"}
+                "message": f"Collection {collectionReq.name} created with collection id {collection_id}"}
     except Exception as e:
         logging.error(e)
         return {"created": False,
-                "message": f"Collection {collectionReq.collection_name} not created becacause of: {e}"}
+                "message": f"Collection {collectionReq.name} not created becacause of: {e}"}
 
 @exp_router.get("/api/user_collections", response_model=list[Collection])
 async def fetch_collections(userId: str,

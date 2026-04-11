@@ -6,15 +6,15 @@ from datetime import datetime
 class Collection(BaseModel):
     id: UUID
     name: str
-    userId: str
+    user_id: str
     description: str | None = None
-    createdAt: datetime
-    updatedAt: datetime
+    created_at: datetime
+    updated_at: datetime
     color: str
     
 class PostCollection(BaseModel):
     name: str
-    userId: str
+    user_id: str
     description: str | None = None
     color: str
     
