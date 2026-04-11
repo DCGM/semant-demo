@@ -354,17 +354,6 @@ class UserCollectionReqTemplate(BaseModel):
     user_id: str  # user id
 
 
-class Collection(BaseModel):
-    id: str
-    name: str
-    user_id: str
-
-
-class GetCollectionsResponse(BaseModel):
-    collections: list[Collection]
-    userId: str
-
-
 class Chunk2CollectionReq(BaseModel):
     collectionId: str  # id of the collection
     chunkId: str  # chunk id

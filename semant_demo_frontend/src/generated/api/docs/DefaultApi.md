@@ -12,7 +12,7 @@ All URIs are relative to *http://localhost*
 | [**createTagApiTagPost**](DefaultApi.md#createtagapitagpost) | **POST** /api/tag | Create Tag |
 | [**createUserCollectionApiUserCollectionPost**](DefaultApi.md#createusercollectionapiusercollectionpost) | **POST** /api/user_collection | Create User Collection |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
-| [**fetchCollectionsApiUserCollectionAllGet**](DefaultApi.md#fetchcollectionsapiusercollectionallget) | **GET** /api/user_collection/all | Fetch Collections |
+| [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
 | [**filterChunksByTagsApiTagsFilterPost**](DefaultApi.md#filterchunksbytagsapitagsfilterpost) | **POST** /api/tags/filter | Filter Chunks By Tags |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
 | [**getCollectionChunksApiUserCollectionChunksGet**](DefaultApi.md#getcollectionchunksapiusercollectionchunksget) | **GET** /api/user_collection/chunks | Get Collection Chunks |
@@ -573,9 +573,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## fetchCollectionsApiUserCollectionAllGet
+## fetchCollectionsApiUserCollectionsGet
 
-> GetCollectionsResponse fetchCollectionsApiUserCollectionAllGet(userId)
+> Array&lt;Collection&gt; fetchCollectionsApiUserCollectionsGet(userId)
 
 Fetch Collections
 
@@ -588,7 +588,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { FetchCollectionsApiUserCollectionAllGetRequest } from '';
+import type { FetchCollectionsApiUserCollectionsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -597,10 +597,10 @@ async function example() {
   const body = {
     // string
     userId: userId_example,
-  } satisfies FetchCollectionsApiUserCollectionAllGetRequest;
+  } satisfies FetchCollectionsApiUserCollectionsGetRequest;
 
   try {
-    const data = await api.fetchCollectionsApiUserCollectionAllGet(body);
+    const data = await api.fetchCollectionsApiUserCollectionsGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -620,7 +620,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**GetCollectionsResponse**](GetCollectionsResponse.md)
+[**Array&lt;Collection&gt;**](Collection.md)
 
 ### Authorization
 

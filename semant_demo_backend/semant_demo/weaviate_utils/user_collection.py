@@ -15,14 +15,17 @@ from weaviate.exceptions import (
     InsufficientPermissionsError,
 )
 from semant_demo.weaviate_exceptions import (
-    WeaviateConnectError, 
-    WeaviateDataValidationError, 
-    WeaviateLimitError, 
-    WeaviateServerError, 
-    WeaviateOperationError 
+    WeaviateConnectError,
+    WeaviateDataValidationError,
+    WeaviateLimitError,
+    WeaviateServerError,
+    WeaviateOperationError
 )
 
+from semant_demo.schema.collections import Collection
+
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
+
 
 class UserCollection():
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
@@ -37,11 +40,12 @@ class UserCollection():
         """
         Create user collection (contains chunks user choose)
         """
-        logging.info(f"Adding user collection\nUser: {req.user_id}\nCollection name: {req.collection_name}")
+        logging.info(
+            f"Adding user collection\nUser: {req.user_id}\nCollection name: {req.collection_name}")
         # check if user collection with same properties already exists
         filters = (
-                Filter.by_property("name").equal(req.collection_name) &
-                Filter.by_property("user_id").equal(req.user_id)
+            Filter.by_property("name").equal(req.collection_name) &
+            Filter.by_property("user_id").equal(req.user_id)
         )
         results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
             filters=filters
@@ -58,8 +62,8 @@ class UserCollection():
             }
         )
         return new_collection_uuid
-    
-    async def read(self, userId: str) -> schemas.GetCollectionsResponse:
+
+    async def read_all(self, userId: str) -> list[Collection]:
         """
         Retrieves all collections for given user
         """
@@ -72,17 +76,24 @@ class UserCollection():
                 filters=filters
             )
             logging.info(f"User Id: {userId}\nRaw results: {results}")
-            collections = []
-            collections_respone = []
+            collections_response = []
             if results.objects is not None:
                 if len(results.objects) > 0:
                     collections = results.objects
                     # map collection data to expected response format
                     for o in collections:
-                        collections_respone.append(
-                            {'id': str(o.uuid), 'name': o.properties['name'], 'user_id': o.properties.get('user_id')})
+                        props = o.properties
+                        collections_response.append(Collection(
+                            id=o.uuid,
+                            name=props.get("name"),
+                            userId=props.get("user_id"),
+                            description=props.get("description"),
+                            createdAt=props.get("created_at"),
+                            updatedAt=props.get("updated_at"),
+                            color=props.get("color")
+                        ))
 
-            return {"collections": collections_respone, "userId": userId}   
+            return collections_response
         except WeaviateConnectionError as e:
             logging.error(f"Error: {str(e)}")
             raise WeaviateConnectError(str(e))
@@ -118,13 +129,13 @@ class UserCollection():
     def read_all_documents():
         pass
 
-    async def add_chunks(self, 
-                         src_id, 
+    async def add_chunks(self,
+                         src_id,
                          target_collection_id):
-        return await self.helpers.create_reference(src_id, 
-                         self.collectionNames.chunks_collection_name,
-                         self.collectionNames.user_collection_link_name,
-                         target_collection_id)
+        return await self.helpers.create_reference(src_id,
+                                                   self.collectionNames.chunks_collection_name,
+                                                   self.collectionNames.user_collection_link_name,
+                                                   target_collection_id)
 
     def remove_chunks():
         pass

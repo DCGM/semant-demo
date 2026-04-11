@@ -19,13 +19,13 @@ import type {
   ApproveTagResponse,
   CancelTaskResponse,
   Chunk2CollectionReq,
+  Collection,
   CreateResponse,
   ExplainRequest,
   FeedbackRequest,
   FilterChunksByTagsRequest,
   FilterChunksByTagsResponse,
   GetCollectionChunksResponse,
-  GetCollectionsResponse,
   GetConfigsResponse,
   GetTaggedChunksReq,
   GetTaggedChunksResponse,
@@ -54,6 +54,8 @@ import {
     CancelTaskResponseToJSON,
     Chunk2CollectionReqFromJSON,
     Chunk2CollectionReqToJSON,
+    CollectionFromJSON,
+    CollectionToJSON,
     CreateResponseFromJSON,
     CreateResponseToJSON,
     ExplainRequestFromJSON,
@@ -66,8 +68,6 @@ import {
     FilterChunksByTagsResponseToJSON,
     GetCollectionChunksResponseFromJSON,
     GetCollectionChunksResponseToJSON,
-    GetCollectionsResponseFromJSON,
-    GetCollectionsResponseToJSON,
     GetConfigsResponseFromJSON,
     GetConfigsResponseToJSON,
     GetTaggedChunksReqFromJSON,
@@ -138,7 +138,7 @@ export interface ExplainSelectionApiRagExplainPostRequest {
     explainRequest: ExplainRequest;
 }
 
-export interface FetchCollectionsApiUserCollectionAllGetRequest {
+export interface FetchCollectionsApiUserCollectionsGetRequest {
     userId: string;
 }
 
@@ -387,12 +387,12 @@ export interface DefaultApiInterface {
     explainSelectionApiRagExplainPost(requestParameters: ExplainSelectionApiRagExplainPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
-     * Creates request options for fetchCollectionsApiUserCollectionAllGet without sending the request
+     * Creates request options for fetchCollectionsApiUserCollectionsGet without sending the request
      * @param {string} userId 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    fetchCollectionsApiUserCollectionAllGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest): Promise<runtime.RequestOpts>;
+    fetchCollectionsApiUserCollectionsGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionsGetRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Retrieves all collections for given user
@@ -402,13 +402,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    fetchCollectionsApiUserCollectionAllGetRaw(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionsResponse>>;
+    fetchCollectionsApiUserCollectionsGetRaw(requestParameters: FetchCollectionsApiUserCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Collection>>>;
 
     /**
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    fetchCollectionsApiUserCollectionAllGet(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionsResponse>;
+    fetchCollectionsApiUserCollectionsGet(requestParameters: FetchCollectionsApiUserCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Collection>>;
 
     /**
      * Creates request options for filterChunksByTagsApiTagsFilterPost without sending the request
@@ -1162,13 +1162,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for fetchCollectionsApiUserCollectionAllGet without sending the request
+     * Creates request options for fetchCollectionsApiUserCollectionsGet without sending the request
      */
-    async fetchCollectionsApiUserCollectionAllGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest): Promise<runtime.RequestOpts> {
+    async fetchCollectionsApiUserCollectionsGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionsGetRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['userId'] == null) {
             throw new runtime.RequiredError(
                 'userId',
-                'Required parameter "userId" was null or undefined when calling fetchCollectionsApiUserCollectionAllGet().'
+                'Required parameter "userId" was null or undefined when calling fetchCollectionsApiUserCollectionsGet().'
             );
         }
 
@@ -1181,7 +1181,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/user_collection/all`;
+        let urlPath = `/api/user_collections`;
 
         return {
             path: urlPath,
@@ -1195,19 +1195,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    async fetchCollectionsApiUserCollectionAllGetRaw(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetCollectionsResponse>> {
-        const requestOptions = await this.fetchCollectionsApiUserCollectionAllGetRequestOpts(requestParameters);
+    async fetchCollectionsApiUserCollectionsGetRaw(requestParameters: FetchCollectionsApiUserCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Collection>>> {
+        const requestOptions = await this.fetchCollectionsApiUserCollectionsGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => GetCollectionsResponseFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(CollectionFromJSON));
     }
 
     /**
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    async fetchCollectionsApiUserCollectionAllGet(requestParameters: FetchCollectionsApiUserCollectionAllGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionsResponse> {
-        const response = await this.fetchCollectionsApiUserCollectionAllGetRaw(requestParameters, initOverrides);
+    async fetchCollectionsApiUserCollectionsGet(requestParameters: FetchCollectionsApiUserCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Collection>> {
+        const response = await this.fetchCollectionsApiUserCollectionsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -16,7 +16,6 @@ docs/FilterChunksByTagsRequest.md
 docs/FilterChunksByTagsResponse.md
 docs/FilteredChunksByTags.md
 docs/GetCollectionChunksResponse.md
-docs/GetCollectionsResponse.md
 docs/GetConfigsResponse.md
 docs/GetTaggedChunksReq.md
 docs/GetTaggedChunksResponse.md
@@ -67,7 +66,6 @@ models/FilterChunksByTagsRequest.ts
 models/FilterChunksByTagsResponse.ts
 models/FilteredChunksByTags.ts
 models/GetCollectionChunksResponse.ts
-models/GetCollectionsResponse.ts
 models/GetConfigsResponse.ts
 models/GetTaggedChunksReq.ts
 models/GetTaggedChunksResponse.ts

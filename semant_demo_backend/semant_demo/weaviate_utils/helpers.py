@@ -11,6 +11,8 @@ from semant_demo.gemma_embedding import get_query_embedding, get_hyde_document_e
 from weaviate.classes.query import QueryReference
 from semant_demo.config import config
 
+from semant_demo.schema.collections import Collection
+
 import logging
 
 from weaviate.collections.classes.grpc import QueryReference
@@ -521,7 +523,10 @@ class WeaviateHelpers:
         )
         return new_collection_uuid
 
-    async def fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
+    async def fetch_all_collections(self, userId: str) -> list[Collection]:
+        """
+        Fetch all user collections by userId
+        """
         """
         Retrieves all collections for given user
         """
@@ -530,21 +535,28 @@ class WeaviateHelpers:
             filters = (
                 Filter.by_property("user_id").equal(userId)
             )
-            results = await self.client.collections.get("UserCollection").query.fetch_objects(
+            results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
                 filters=filters
             )
             logging.info(f"User Id: {userId}\nRaw results: {results}")
-            collections = []
-            collections_respone = []
+            collections_response = []
             if results.objects is not None:
                 if len(results.objects) > 0:
                     collections = results.objects
                     # map collection data to expected response format
                     for o in collections:
-                        collections_respone.append(
-                            {'id': str(o.uuid), 'name': o.properties['name'], 'user_id': o.properties.get('user_id')})
+                        props = o.properties
+                        collections_response.append(Collection(
+                            id=o.uuid,
+                            name=props.get("name"),
+                            userId=props.get("user_id"),
+                            description=props.get("description"),
+                            createdAt=props.get("created_at"),
+                            updatedAt=props.get("updated_at"),
+                            color=props.get("color")
+                        ))
 
-            return {"collections": collections_respone, "userId": userId}   
+            return collections_response
         except WeaviateConnectionError as e:
             logging.error(f"Error: {str(e)}")
             raise WeaviateConnectError(str(e))
