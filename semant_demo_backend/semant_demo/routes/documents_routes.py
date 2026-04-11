@@ -1,12 +1,21 @@
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
-from semant_demo_backend.semant_demo.schema.documents import DocumentBrowse
+from semant_demo.schema.documents import DocumentBrowse, Document
 from semant_demo.routes.dependencies import get_search
 
 
 exp_router = APIRouter()
 
+@exp_router.get("/api/document/{document_id}", response_model=Document, response_model_exclude_none=True)
+async def fetch_document(document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Document:
+    """
+    Retrieves document by its id
+    """
+    response = await searcher.document.read(document_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Document with id {document_id} not found")
+    return response
 
 @exp_router.get("/api/documents/browse", response_model=DocumentBrowse, response_model_exclude_none=True)
 async def browse_documents(collection_id: str,

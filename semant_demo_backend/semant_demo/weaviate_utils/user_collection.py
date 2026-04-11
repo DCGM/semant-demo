@@ -5,7 +5,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, QueryReference
 from weaviate.exceptions import (
     WeaviateConnectionError,
     WeaviateTimeoutError,
@@ -46,8 +46,9 @@ class UserCollection():
         logging.info(
             f"Adding user collection\nUser: {collection.user_id}\nCollection name: {collection.name}")
 
-        usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
-        
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+
         now = datetime.now(timezone.utc)
         new_collection_uuid = await usercollection_collection.data.insert(
             properties={
@@ -60,7 +61,7 @@ class UserCollection():
             }
         )
         return new_collection_uuid
-    
+
     async def read(self, collection_id: UUID) -> Collection | None:
         """
         Retrieves collection by its id, returns None if collection with given id does not exist
@@ -81,7 +82,6 @@ class UserCollection():
             updated_at=props.get("updated_at"),
             color=props.get("color")
         )
-        
 
     async def read_all(self, user_id: str) -> list[Collection]:
         """
@@ -133,7 +133,7 @@ class UserCollection():
             # catch unexpected errors and wrap them
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
-        
+
     async def read_collection_stats(self, collection_id: UUID) -> CollectionStats | None:
         """
         Computes aggregate statistics for one collection.
@@ -144,7 +144,8 @@ class UserCollection():
             return None
 
         # Compute documents count
-        documents_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        documents_collection = self.client.collections.get(
+            self.collectionNames.document_collection_name)
         documents_filters = (
             Filter.by_ref("collection").by_id().equal(collection_id)
         )
@@ -160,7 +161,8 @@ class UserCollection():
             Filter.by_ref("userCollection").by_id().equal(collection_id)
         )
 
-        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
         chunks_count_response = await chunks_collection.aggregate.over_all(
             total_count=True,
             filters=chunks_filters
@@ -168,7 +170,8 @@ class UserCollection():
         chunks_count = chunks_count_response.total_count or 0
 
         # Compute tags count
-        tags_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        tags_collection = self.client.collections.get(
+            self.collectionNames.tag_collection_name)
         tags_filters = (
             Filter.by_ref("userCollection").by_id().equal(collection_id)
         )
@@ -182,7 +185,8 @@ class UserCollection():
         # One annotation = one span object.
         # Span belongs to selected collection if linked chunk OR linked tag belongs to that collection.
 
-        spans_collection = self.client.collections.get(self.collectionNames.span_collection_name)
+        spans_collection = self.client.collections.get(
+            self.collectionNames.span_collection_name)
 
         spans_filters = (
             Filter.by_ref("text_chunk").by_ref(
@@ -210,9 +214,10 @@ class UserCollection():
         """"
         Updates collection with given id
         """
-        usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
         collection_in_db = await self.read(collection_id)
-        
+
         now = datetime.now(timezone.utc)
 
         # PATCH semantics: update only fields that were actually sent by the client.
@@ -230,9 +235,12 @@ class UserCollection():
         Before deleting the collection object itself, remove references to it
         from chunks, documents, and tags.
         """
-        documents_collection = self.client.collections.get(self.collectionNames.document_collection_name)
-        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
-        tags_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        documents_collection = self.client.collections.get(
+            self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
+        tags_collection = self.client.collections.get(
+            self.collectionNames.tag_collection_name)
         usercollection_collection = self.client.collections.get(
             self.collectionNames.user_collection_name)
 
@@ -279,14 +287,15 @@ class UserCollection():
     def read_all_tags():
         pass
 
-    async def read_all_chunks(self, collectionId):
+    async def read_all_chunks(self, collectionId: str):
         return await self.helpers.fetch_chunks_by_collection(collectionId)
 
     async def read_all_documents(self, collection_id: str) -> list[Document]:
         """
         Retrieves all documents - optionally can be filtered by collection id
         """
-        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        document_collection = self.client.collections.get(
+            self.collectionNames.document_collection_name)
         filters = None
         if collection_id is not None:
             filters = (
@@ -323,6 +332,96 @@ class UserCollection():
 
     def read_shared_users():
         pass
+
+    async def add_document(self, document_id: str, collection_id: str) -> None:
+        """
+        Adds a document to a collection and also links all its chunks to that collection.
+        """
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+
+        # Add collection reference to every chunk that belongs to the document.
+        chunk_filter = Filter.by_ref("document").by_id().equal(document_id)
+        offset = 0
+        page_size = 100
+
+        while True:
+            chunks_response = await chunks_collection.query.fetch_objects(
+                filters=chunk_filter,
+                return_references=[QueryReference(
+                    link_on="userCollection")],
+                limit=page_size,
+                offset=offset,
+            )
+
+            if not chunks_response.objects:
+                break
+
+            for chunk in chunks_response.objects:
+                current_refs = chunk.references.get(
+                    "userCollection") if chunk.references else None
+                current_collection_ids = [ref.uuid for ref in (
+                    current_refs.objects if current_refs else [])]
+
+                if collection_id in current_collection_ids:
+                    continue
+
+                await chunks_collection.data.reference_add(
+                    from_uuid=chunk.uuid,
+                    from_property="userCollection",
+                    to=collection_id,
+                )
+
+            if len(chunks_response.objects) < page_size:
+                break
+
+            offset += page_size
+
+        await document_collection.data.reference_add(
+            from_uuid=document_id,
+            from_property="collection",
+            to=collection_id,
+        )
+        
+    async def remove_document(self, document_id: UUID, collection_id: UUID) -> None:
+        """
+        Removes a document from a collection by deleting the reference between them.
+        """
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+
+        await document_collection.data.reference_delete(
+            from_uuid=document_id,
+            from_property="collection",
+            to=collection_id,
+        )
+
+        # Remove collection reference only from chunks that belong to the document
+        # and currently reference the target collection.
+        chunk_filter = (
+            Filter.by_ref("document").by_id().equal(document_id)
+            & Filter.by_ref("userCollection").by_id().equal(collection_id)
+        )
+        page_size = 100
+
+        while True:
+            chunks_response = await chunks_collection.query.fetch_objects(
+                filters=chunk_filter,
+                limit=page_size,
+            )
+
+            if not chunks_response.objects:
+                break
+
+            for chunk in chunks_response.objects:
+                await chunks_collection.data.reference_delete(
+                    from_uuid=chunk.uuid,
+                    from_property="userCollection",
+                    to=collection_id,
+                )
+
+            if len(chunks_response.objects) < page_size:
+                break
 
     ###########
     # Helpers #

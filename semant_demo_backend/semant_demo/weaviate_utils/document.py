@@ -20,7 +20,7 @@ from semant_demo.weaviate_exceptions import (
 
 import semant_demo.schemas as schemas
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
-from semant_demo.schema.documents import DocumentBrowse
+from semant_demo.schema.documents import DocumentBrowse, Document as DocumentSchema
 
 
 class Document():
@@ -32,7 +32,21 @@ class Document():
     #######
     # API #
     #######
-    def read():
+    async def read(self, document_id: str) -> DocumentSchema | None:
+        """
+        Retrieves document by its id, returns None if document with given id does not exist
+        """
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        response = await document_collection.query.fetch_object_by_id(document_id)
+        if response is None:
+            return None
+        props = response.properties
+        return DocumentSchema(
+            id=response.uuid,
+            **props
+        )
+    
+    def read_all():
         pass
 
     def search():
@@ -102,7 +116,7 @@ class Document():
             objects = objects[:limit]
 
         items = [
-            Document(
+            DocumentSchema(
                 id=obj.uuid,
                 **obj.properties
             )
@@ -111,9 +125,9 @@ class Document():
 
         return DocumentBrowse(
             items=items,
-            hasMore=has_more,
-            nextOffset=(offset + limit) if has_more else None,
-            totalCount=total_count,
+            has_more=has_more,
+            next_offset=(offset + limit) if has_more else None,
+            total_count=total_count,
         )
 
     ###########
