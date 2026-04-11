@@ -49,6 +49,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     error.value = null
     try {
       await collectionRepository.create(collectionData)
+      await fetchCollections('xjuric') // TODO: get userId from auth store
       notif.success('Collection created')
     } catch (err) {
       error.value = 'Failed to create collection'
@@ -63,13 +64,10 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await collectionRepository.update(collectionId, collectionData)
-      const index = collections.value.findIndex((c) => c.id === collectionId)
-      if (index !== -1) {
-        collections.value[index] = data
-      }
-      if (activeCollection.value?.id === collectionId) {
-        activeCollection.value = data
+      await collectionRepository.update(collectionId, collectionData)
+      await fetchCollections('xjuric') // TODO: get userId from auth store
+      if (activeCollection.value && activeCollection.value.id === collectionId) {
+        await fetchCollection(collectionId) // refresh active collection if it's the one being updated
       }
       notif.success('Collection updated')
     } catch (err) {
@@ -86,7 +84,10 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     error.value = null
     try {
       await collectionRepository.remove(collectionId)
-      collections.value = collections.value.filter((c) => c.id !== collectionId)
+      await fetchCollections('xjuric') // TODO: get userId from auth store
+      if (activeCollection.value && activeCollection.value.id === collectionId) {
+        activeCollection.value = null // clear active collection if it's the one being deleted
+      }
       notif.success('Collection deleted')
     } catch (err) {
       error.value = 'Failed to delete collection'

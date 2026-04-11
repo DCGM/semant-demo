@@ -284,6 +284,11 @@ export interface SummarizeApiSummarizeSummaryTypePostRequest {
     searchResponseInput: SearchResponseInput;
 }
 
+export interface UpdateCollectionApiUserCollectionsCollectionIdPatchRequest {
+    collectionId: string;
+    patchCollection: PatchCollection;
+}
+
 export interface UpdateCollectionApiV1CollectionsCollectionIdPatchRequest {
     collectionId: string;
     patchCollection: PatchCollection;
@@ -1236,6 +1241,32 @@ export interface DefaultApiInterface {
      * Summarize
      */
     summarizeApiSummarizeSummaryTypePost(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse>;
+
+    /**
+     * Creates request options for updateCollectionApiUserCollectionsCollectionIdPatch without sending the request
+     * @param {string} collectionId 
+     * @param {PatchCollection} patchCollection 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateCollectionApiUserCollectionsCollectionIdPatchRequestOpts(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Updates collection name/description/color
+     * @summary Update Collection
+     * @param {string} collectionId 
+     * @param {PatchCollection} patchCollection 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+
+    /**
+     * Updates collection name/description/color
+     * Update Collection
+     */
+    updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
      * Creates request options for updateCollectionApiV1CollectionsCollectionIdPatch without sending the request
@@ -3189,6 +3220,67 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async summarizeApiSummarizeSummaryTypePost(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse> {
         const response = await this.summarizeApiSummarizeSummaryTypePostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for updateCollectionApiUserCollectionsCollectionIdPatch without sending the request
+     */
+    async updateCollectionApiUserCollectionsCollectionIdPatchRequestOpts(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling updateCollectionApiUserCollectionsCollectionIdPatch().'
+            );
+        }
+
+        if (requestParameters['patchCollection'] == null) {
+            throw new runtime.RequiredError(
+                'patchCollection',
+                'Required parameter "patchCollection" was null or undefined when calling updateCollectionApiUserCollectionsCollectionIdPatch().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/user_collections/{collection_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchCollectionToJSON(requestParameters['patchCollection']),
+        };
+    }
+
+    /**
+     * Updates collection name/description/color
+     * Update Collection
+     */
+    async updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+        const requestOptions = await this.updateCollectionApiUserCollectionsCollectionIdPatchRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        if (this.isJsonMime(response.headers.get('content-type'))) {
+            return new runtime.JSONApiResponse<any>(response);
+        } else {
+            return new runtime.TextApiResponse(response) as any;
+        }
+    }
+
+    /**
+     * Updates collection name/description/color
+     * Update Collection
+     */
+    async updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+        const response = await this.updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

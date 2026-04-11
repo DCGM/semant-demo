@@ -145,7 +145,6 @@ const handleCreate = () => {
       ...collectionData,
       userId: 'xjuric'
     })
-    await loadCollections('xjuric')
   })
 }
 
@@ -159,7 +158,6 @@ const handleEdit = (collection: Collection) => {
     collection
   }).onOk(async (updatedData: PatchCollection) => {
     await updateCollection(collection.id, updatedData)
-    await loadCollections('xjuric')
   })
 }
 
