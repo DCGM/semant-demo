@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from semant_demo.schemas import TasksBase
+from semant_demo.schema.collections import Collection
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search
@@ -45,13 +46,13 @@ async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplat
         return {"created": False,
                 "message": f"Collection {collectionReq.collection_name} not created becacause of: {e}"}
 
-@exp_router.get("/api/user_collection/all", response_model=schemas.GetCollectionsResponse)
+@exp_router.get("/api/user_collections", response_model=list[Collection])
 async def fetch_collections(userId: str,
-                            searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetCollectionsResponse:
+                            searcher: WeaviateAbstraction = Depends(get_search)) -> list[Collection]:
     """
     Retrieves all collections for given user
     """
-    response = await searcher.userCollection.read(userId)
+    response = await searcher.userCollection.read_all(userId)
     return response
 
 

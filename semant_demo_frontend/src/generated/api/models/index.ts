@@ -19,7 +19,6 @@ export * from './FilterChunksByTagsRequest';
 export * from './FilterChunksByTagsResponse';
 export * from './FilteredChunksByTags';
 export * from './GetCollectionChunksResponse';
-export * from './GetCollectionsResponse';
 export * from './GetConfigsResponse';
 export * from './GetTaggedChunksReq';
 export * from './GetTaggedChunksResponse';

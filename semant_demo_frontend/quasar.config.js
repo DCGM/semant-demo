@@ -75,8 +75,8 @@ module.exports = configure(function (/* ctx */) {
       // publicPath: '/',
       // analyze: true,
       env: {
-        BACKEND_DEV_SERVER: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:9000',
-        BACKEND_URL: process.env.BACKEND_URL ? process.env.BACKEND_URL : 'http://localhost:9000'
+        BACKEND_DEV_SERVER: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:8000',
+        BACKEND_URL: process.env.BACKEND_URL ? process.env.BACKEND_URL : 'http://localhost:8000'
       }
       // rawDefine: {}
       // ignorePublicFolder: true,

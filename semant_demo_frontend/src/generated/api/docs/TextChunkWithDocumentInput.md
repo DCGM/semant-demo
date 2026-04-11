@@ -7,14 +7,15 @@
 Name | Type
 ------------ | -------------
 `id` | string
-`title` | string
 `text` | string
 `startPageId` | string
 `fromPage` | number
 `toPage` | number
+`document` | string
+`title` | string
 `endParagraph` | boolean
 `language` | string
-`document` | string
+`order` | number
 `nerP` | Array&lt;string&gt;
 `nerT` | Array&lt;string&gt;
 `nerA` | Array&lt;string&gt;
@@ -35,14 +36,15 @@ import type { TextChunkWithDocumentInput } from ''
 // TODO: Update the object below with actual values
 const example = {
   "id": null,
-  "title": null,
   "text": null,
   "startPageId": null,
   "fromPage": null,
   "toPage": null,
+  "document": null,
+  "title": null,
   "endParagraph": null,
   "language": null,
-  "document": null,
+  "order": null,
   "nerP": null,
   "nerT": null,
   "nerA": null,

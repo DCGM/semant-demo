@@ -87,14 +87,15 @@ class Document(BaseModel):
 
 class TextChunk(BaseModel):
     id: uuid.UUID
-    title: str = "<N/A>"
     text: str
     start_page_id: uuid.UUID
     from_page: int
     to_page: int
+    document: uuid.UUID
+    title: str | None = None
     end_paragraph: bool = True
     language: str | None = None
-    document: uuid.UUID
+    order: int | None
 
     ner_P: list[str] | None = None  # Person entities
     ner_T: list[str] | None = None  # Temporal entities
@@ -404,17 +405,6 @@ class RemoveTagsResponse(BaseModel):
 class UserCollectionReqTemplate(BaseModel):
     collection_name: str  # name of the collection
     user_id: str  # user id
-
-
-class CollectionSchema(BaseModel):
-    id: str
-    name: str
-    user_id: str
-
-
-class GetCollectionsResponse(BaseModel):
-    collections: list[CollectionSchema]
-    userId: str
 
 
 class Chunk2CollectionReq(BaseModel):

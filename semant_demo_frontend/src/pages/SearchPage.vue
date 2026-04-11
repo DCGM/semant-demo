@@ -224,7 +224,7 @@
             <q-card-section class="row no-wrap items-start">
               <div class="col">
                 <div class="text-h6 text-primary" style="line-height: 1.2;">
-                  {{ (currentPage - 1) * itemsPerPage + index + 1 }}. {{ chunk.query_title || chunk.title }}
+                  {{ (currentPage - 1) * itemsPerPage + index + 1 }}. {{ chunk.query_title || chunk.title || "N/A" }}
                 </div>
                 <div class="row q-gutter-x-md text-caption text-grey-8 q-mt-xs">
                   <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.document_object.author || 'Unknown Author' }}</div>
