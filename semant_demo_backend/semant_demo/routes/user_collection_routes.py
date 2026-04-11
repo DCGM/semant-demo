@@ -154,5 +154,5 @@ async def remove_document_from_collection(
     document_id: str,
     searcher: WeaviateAbstraction = Depends(get_search)
 ) -> Response:
-    success = await searcher.userCollection.remove_document(document_id=document_id, collection_id=collection_id)
+    await searcher.userCollection.remove_document(document_id=document_id, collection_id=collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

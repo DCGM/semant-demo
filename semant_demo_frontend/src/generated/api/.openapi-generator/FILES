@@ -28,9 +28,7 @@ docs/Keywords.md
 docs/LocationInner.md
 docs/Partnumber.md
 docs/PatchCollection.md
-docs/PatchTag.md
 docs/PostCollection.md
-docs/PostTag.md
 docs/RagChatMessage.md
 docs/RagRequest.md
 docs/RagRequestMain.md
@@ -46,7 +44,6 @@ docs/SearchType.md
 docs/SemantDemoSchemaDocumentsDocument.md
 docs/SemantDemoSchemasDocument.md
 docs/SummaryResponse.md
-docs/Tag.md
 docs/TagData.md
 docs/TagReqTemplate.md
 docs/TagStartResponse.md
@@ -88,9 +85,7 @@ models/Keywords.ts
 models/LocationInner.ts
 models/Partnumber.ts
 models/PatchCollection.ts
-models/PatchTag.ts
 models/PostCollection.ts
-models/PostTag.ts
 models/RagChatMessage.ts
 models/RagRequest.ts
 models/RagRequestMain.ts
@@ -106,7 +101,6 @@ models/SearchType.ts
 models/SemantDemoSchemaDocumentsDocument.ts
 models/SemantDemoSchemasDocument.ts
 models/SummaryResponse.ts
-models/Tag.ts
 models/TagData.ts
 models/TagReqTemplate.ts
 models/TagStartResponse.ts

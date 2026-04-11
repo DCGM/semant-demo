@@ -14,21 +14,19 @@ export function useDocumentsRepository() {
     },
 
     getById: async (documentId: string): Promise<Document> => {
-      return api.getDocumentApiV1DocumentsDocumentIdGet({ documentId })
+      return api.fetchDocumentApiDocumentDocumentIdGet({ documentId })
     },
 
     browse: async (params: DocumentBrowseParams): Promise<DocumentBrowse> => {
       return api.browseDocumentsApiDocumentsBrowseGet(params)
     },
 
-    addToCollection: async (documentId: string, collectionId: string): Promise<boolean> => {
-      const response = await api.addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost({ collectionId, documentId })
-      return response.success
+    addToCollection: async (documentId: string, collectionId: string): Promise<void> => {
+      return await api.addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost({ collectionId, documentId })
     },
 
-    removeFromCollection: async (documentId: string, collectionId: string): Promise<boolean> => {
-      const response = await api.removeDocumentFromCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdDelete({ collectionId, documentId })
-      return response.success
+    removeFromCollection: async (documentId: string, collectionId: string): Promise<void> => {
+      return await api.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete({ collectionId, documentId })
     }
   }
 }

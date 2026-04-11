@@ -177,7 +177,8 @@ import { Document } from 'src/models/documents'
 import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
 import useDocuments from 'src/composables/useDocuments'
 import {
-  errorNotification
+  errorNotification,
+  successNotification
 } from 'src/utils/notification'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { BrowseLibraryDialogProps } from './BrowseLibraryDialogTypes'
@@ -187,7 +188,7 @@ const props = defineProps<BrowseLibraryDialogProps>()
 
 const { dialogRef, onDialogHide, onDialogCancel } = useDialogPluginComponent()
 const documentsRepository = useDocumentsRepository()
-const { documents: collectionDocuments, loadDocumentsByCollection, addDoc } = useDocuments()
+const { documents: collectionDocuments, loadDocumentsByCollection, addDocToCollection } = useDocuments()
 
 const PAGE_SIZE = 50
 
@@ -333,20 +334,9 @@ const isDocumentInCollection = (documentId: string): boolean => {
 }
 
 const addDocumentToCurrentCollection = async (documentId: string) => {
-  try {
-    addingDocumentIds.value.add(documentId)
-    const added = await addDoc(documentId, props.collectionId)
-    if (added) {
-      // Reload the collection documents
-      await loadDocumentsByCollection(props.collectionId)
-      return
-    }
-    errorNotification('Failed to add document to collection')
-  } catch (error) {
-    errorNotification('Failed to add document to collection')
-  } finally {
-    addingDocumentIds.value.delete(documentId)
-  }
+  addingDocumentIds.value.add(documentId)
+  await addDocToCollection(documentId, props.collectionId)
+  addingDocumentIds.value.delete(documentId)
 }
 
 onMounted(async () => {
