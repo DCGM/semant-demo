@@ -147,12 +147,12 @@ export interface ApproveSelectedTagChunkApiTagDisapprovePutRequest {
     approveTagReq: ApproveTagReq;
 }
 
-export interface BrowseDocumentsApiV1DocumentsBrowseGetRequest {
+export interface BrowseDocumentsApiDocumentsBrowseGetRequest {
+    collectionId?: string | null;
     limit?: number;
     offset?: number;
     sortBy?: string | null;
     sortDesc?: boolean;
-    collectionId?: string | null;
     title?: string | null;
     author?: string | null;
     publisher?: string | null;
@@ -219,14 +219,6 @@ export interface GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest 
 
 export interface GetCollectionTagsApiV1CollectionsCollectionIdTagsGetRequest {
     collectionId: string;
-}
-
-export interface GetDocumentApiV1DocumentsDocumentIdGetRequest {
-    documentId: string;
-}
-
-export interface GetDocumentsApiV1DocumentsGetRequest {
-    collectionId?: string | null;
 }
 
 export interface GetSelectedTagsChunksApiTagTextChunksPostRequest {
@@ -392,12 +384,12 @@ export interface DefaultApiInterface {
     approveSelectedTagChunkApiTagDisapprovePut(requestParameters: ApproveSelectedTagChunkApiTagDisapprovePutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ApproveTagResponse>;
 
     /**
-     * Creates request options for browseDocumentsApiV1DocumentsBrowseGet without sending the request
+     * Creates request options for browseDocumentsApiDocumentsBrowseGet without sending the request
+     * @param {string} [collectionId] 
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {string} [sortBy] 
      * @param {boolean} [sortDesc] 
-     * @param {string} [collectionId] 
      * @param {string} [title] 
      * @param {string} [author] 
      * @param {string} [publisher] 
@@ -405,16 +397,16 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    browseDocumentsApiV1DocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest): Promise<runtime.RequestOpts>;
+    browseDocumentsApiDocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * 
+     * Browses documents which belong to collection given by id with pagination, filtering and sorting options
      * @summary Browse Documents
+     * @param {string} [collectionId] 
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {string} [sortBy] 
      * @param {boolean} [sortDesc] 
-     * @param {string} [collectionId] 
      * @param {string} [title] 
      * @param {string} [author] 
      * @param {string} [publisher] 
@@ -423,12 +415,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    browseDocumentsApiV1DocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>>;
+    browseDocumentsApiDocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>>;
 
     /**
+     * Browses documents which belong to collection given by id with pagination, filtering and sorting options
      * Browse Documents
      */
-    browseDocumentsApiV1DocumentsBrowseGet(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse>;
+    browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse>;
 
     /**
      * Creates request options for cancelTaskApiTagTaskTaskIdDelete without sending the request
@@ -830,52 +823,6 @@ export interface DefaultApiInterface {
      * Get Configs
      */
     getConfigsApiTagConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse>;
-
-    /**
-     * Creates request options for getDocumentApiV1DocumentsDocumentIdGet without sending the request
-     * @param {string} documentId 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getDocumentApiV1DocumentsDocumentIdGetRequestOpts(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * 
-     * @summary Get Document
-     * @param {string} documentId 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getDocumentApiV1DocumentsDocumentIdGetRaw(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SemantDemoSchemaDocumentsDocument>>;
-
-    /**
-     * Get Document
-     */
-    getDocumentApiV1DocumentsDocumentIdGet(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SemantDemoSchemaDocumentsDocument>;
-
-    /**
-     * Creates request options for getDocumentsApiV1DocumentsGet without sending the request
-     * @param {string} [collectionId] 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getDocumentsApiV1DocumentsGetRequestOpts(requestParameters: GetDocumentsApiV1DocumentsGetRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * 
-     * @summary Get Documents
-     * @param {string} [collectionId] 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    getDocumentsApiV1DocumentsGetRaw(requestParameters: GetDocumentsApiV1DocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SemantDemoSchemaDocumentsDocument>>>;
-
-    /**
-     * Get Documents
-     */
-    getDocumentsApiV1DocumentsGet(requestParameters: GetDocumentsApiV1DocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SemantDemoSchemaDocumentsDocument>>;
 
     /**
      * Creates request options for getSelectedTagsChunksApiTagTextChunksPost without sending the request
@@ -1445,10 +1392,14 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for browseDocumentsApiV1DocumentsBrowseGet without sending the request
+     * Creates request options for browseDocumentsApiDocumentsBrowseGet without sending the request
      */
-    async browseDocumentsApiV1DocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest): Promise<runtime.RequestOpts> {
+    async browseDocumentsApiDocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest): Promise<runtime.RequestOpts> {
         const queryParameters: any = {};
+
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
 
         if (requestParameters['limit'] != null) {
             queryParameters['limit'] = requestParameters['limit'];
@@ -1464,10 +1415,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['sortDesc'] != null) {
             queryParameters['sort_desc'] = requestParameters['sortDesc'];
-        }
-
-        if (requestParameters['collectionId'] != null) {
-            queryParameters['collection_id'] = requestParameters['collectionId'];
         }
 
         if (requestParameters['title'] != null) {
@@ -1489,7 +1436,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/v1/documents/browse`;
+        let urlPath = `/api/documents/browse`;
 
         return {
             path: urlPath,
@@ -1500,20 +1447,22 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Browses documents which belong to collection given by id with pagination, filtering and sorting options
      * Browse Documents
      */
-    async browseDocumentsApiV1DocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>> {
-        const requestOptions = await this.browseDocumentsApiV1DocumentsBrowseGetRequestOpts(requestParameters);
+    async browseDocumentsApiDocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>> {
+        const requestOptions = await this.browseDocumentsApiDocumentsBrowseGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => DocumentBrowseFromJSON(jsonValue));
     }
 
     /**
+     * Browses documents which belong to collection given by id with pagination, filtering and sorting options
      * Browse Documents
      */
-    async browseDocumentsApiV1DocumentsBrowseGet(requestParameters: BrowseDocumentsApiV1DocumentsBrowseGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse> {
-        const response = await this.browseDocumentsApiV1DocumentsBrowseGetRaw(requestParameters, initOverrides);
+    async browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse> {
+        const response = await this.browseDocumentsApiDocumentsBrowseGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -2321,92 +2270,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getConfigsApiTagConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse> {
         const response = await this.getConfigsApiTagConfigsGetRaw(initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getDocumentApiV1DocumentsDocumentIdGet without sending the request
-     */
-    async getDocumentApiV1DocumentsDocumentIdGetRequestOpts(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['documentId'] == null) {
-            throw new runtime.RequiredError(
-                'documentId',
-                'Required parameter "documentId" was null or undefined when calling getDocumentApiV1DocumentsDocumentIdGet().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/api/v1/documents/{document_id}`;
-        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Get Document
-     */
-    async getDocumentApiV1DocumentsDocumentIdGetRaw(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SemantDemoSchemaDocumentsDocument>> {
-        const requestOptions = await this.getDocumentApiV1DocumentsDocumentIdGetRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => SemantDemoSchemaDocumentsDocumentFromJSON(jsonValue));
-    }
-
-    /**
-     * Get Document
-     */
-    async getDocumentApiV1DocumentsDocumentIdGet(requestParameters: GetDocumentApiV1DocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SemantDemoSchemaDocumentsDocument> {
-        const response = await this.getDocumentApiV1DocumentsDocumentIdGetRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getDocumentsApiV1DocumentsGet without sending the request
-     */
-    async getDocumentsApiV1DocumentsGetRequestOpts(requestParameters: GetDocumentsApiV1DocumentsGetRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['collectionId'] != null) {
-            queryParameters['collection_id'] = requestParameters['collectionId'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/api/v1/documents`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Get Documents
-     */
-    async getDocumentsApiV1DocumentsGetRaw(requestParameters: GetDocumentsApiV1DocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SemantDemoSchemaDocumentsDocument>>> {
-        const requestOptions = await this.getDocumentsApiV1DocumentsGetRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(SemantDemoSchemaDocumentsDocumentFromJSON));
-    }
-
-    /**
-     * Get Documents
-     */
-    async getDocumentsApiV1DocumentsGet(requestParameters: GetDocumentsApiV1DocumentsGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SemantDemoSchemaDocumentsDocument>> {
-        const response = await this.getDocumentsApiV1DocumentsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

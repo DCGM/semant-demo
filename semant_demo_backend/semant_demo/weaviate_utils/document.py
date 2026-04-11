@@ -20,7 +20,7 @@ from semant_demo.weaviate_exceptions import (
 
 import semant_demo.schemas as schemas
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
-from semant_demo.schema.documents import DocumentBrowse
+from semant_demo.schema.documents import DocumentBrowse, Document as DocumentSchema
 
 
 class Document():
@@ -102,7 +102,7 @@ class Document():
             objects = objects[:limit]
 
         items = [
-            Document(
+            DocumentSchema(
                 id=obj.uuid,
                 **obj.properties
             )
@@ -111,9 +111,9 @@ class Document():
 
         return DocumentBrowse(
             items=items,
-            hasMore=has_more,
-            nextOffset=(offset + limit) if has_more else None,
-            totalCount=total_count,
+            has_more=has_more,
+            next_offset=(offset + limit) if has_more else None,
+            total_count=total_count,
         )
 
     ###########

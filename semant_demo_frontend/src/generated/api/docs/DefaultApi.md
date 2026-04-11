@@ -8,7 +8,7 @@ All URIs are relative to *http://localhost*
 | [**addDocumentToCollectionApiV1CollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapiv1collectionscollectioniddocumentsdocumentidpost) | **POST** /api/v1/collections/{collection_id}/documents/{document_id} | Add Document To Collection |
 | [**approveSelectedTagChunkApiTagApprovePut**](DefaultApi.md#approveselectedtagchunkapitagapproveput) | **PUT** /api/tag/approve | Approve Selected Tag Chunk |
 | [**approveSelectedTagChunkApiTagDisapprovePut**](DefaultApi.md#approveselectedtagchunkapitagdisapproveput) | **PUT** /api/tag/disapprove | Approve Selected Tag Chunk |
-| [**browseDocumentsApiV1DocumentsBrowseGet**](DefaultApi.md#browsedocumentsapiv1documentsbrowseget) | **GET** /api/v1/documents/browse | Browse Documents |
+| [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**cancelTaskApiTagTaskTaskIdDelete**](DefaultApi.md#canceltaskapitagtasktaskiddelete) | **DELETE** /api/tag/task/{taskId} | Cancel Task |
 | [**checkStatusApiTagTaskStatusTaskIdGet**](DefaultApi.md#checkstatusapitagtaskstatustaskidget) | **GET** /api/tag/task/status/{taskId} | Check Status |
 | [**createCollectionTagApiV1CollectionsCollectionIdTagsPost**](DefaultApi.md#createcollectiontagapiv1collectionscollectionidtagspost) | **POST** /api/v1/collections/{collection_id}/tags | Create Collection Tag |
@@ -26,8 +26,6 @@ All URIs are relative to *http://localhost*
 | [**getCollectionStatsApiUserCollectionCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiusercollectioncollectionidstatsget) | **GET** /api/user_collection/{collection_id}/stats | Get Collection Stats |
 | [**getCollectionTagsApiV1CollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapiv1collectionscollectionidtagsget) | **GET** /api/v1/collections/{collection_id}/tags | Get Collection Tags |
 | [**getConfigsApiTagConfigsGet**](DefaultApi.md#getconfigsapitagconfigsget) | **GET** /api/tag/configs | Get Configs |
-| [**getDocumentApiV1DocumentsDocumentIdGet**](DefaultApi.md#getdocumentapiv1documentsdocumentidget) | **GET** /api/v1/documents/{document_id} | Get Document |
-| [**getDocumentsApiV1DocumentsGet**](DefaultApi.md#getdocumentsapiv1documentsget) | **GET** /api/v1/documents | Get Documents |
 | [**getSelectedTagsChunksApiTagTextChunksPost**](DefaultApi.md#getselectedtagschunksapitagtextchunkspost) | **POST** /api/tag/textChunks | Get Selected Tags Chunks |
 | [**getTagTasksApiTagTasksInfoGet**](DefaultApi.md#gettagtasksapitagtasksinfoget) | **GET** /api/tag/tasks/info | Get Tag Tasks |
 | [**getTagsApiTagsGet**](DefaultApi.md#gettagsapitagsget) | **GET** /api/tags | Get Tags |
@@ -319,11 +317,13 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## browseDocumentsApiV1DocumentsBrowseGet
+## browseDocumentsApiDocumentsBrowseGet
 
-> DocumentBrowse browseDocumentsApiV1DocumentsBrowseGet(limit, offset, sortBy, sortDesc, collectionId, title, author, publisher, documentType)
+> DocumentBrowse browseDocumentsApiDocumentsBrowseGet(collectionId, limit, offset, sortBy, sortDesc, title, author, publisher, documentType)
 
 Browse Documents
+
+Browses documents which belong to collection given by id with pagination, filtering and sorting options
 
 ### Example
 
@@ -332,13 +332,15 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { BrowseDocumentsApiV1DocumentsBrowseGetRequest } from '';
+import type { BrowseDocumentsApiDocumentsBrowseGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   const body = {
+    // string (optional)
+    collectionId: collectionId_example,
     // number (optional)
     limit: 56,
     // number (optional)
@@ -348,8 +350,6 @@ async function example() {
     // boolean (optional)
     sortDesc: true,
     // string (optional)
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-    // string (optional)
     title: title_example,
     // string (optional)
     author: author_example,
@@ -357,10 +357,10 @@ async function example() {
     publisher: publisher_example,
     // string (optional)
     documentType: documentType_example,
-  } satisfies BrowseDocumentsApiV1DocumentsBrowseGetRequest;
+  } satisfies BrowseDocumentsApiDocumentsBrowseGetRequest;
 
   try {
-    const data = await api.browseDocumentsApiV1DocumentsBrowseGet(body);
+    const data = await api.browseDocumentsApiDocumentsBrowseGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -376,11 +376,11 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Optional] [Defaults to `undefined`] |
 | **limit** | `number` |  | [Optional] [Defaults to `50`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
 | **sortBy** | `string` |  | [Optional] [Defaults to `undefined`] |
 | **sortDesc** | `boolean` |  | [Optional] [Defaults to `false`] |
-| **collectionId** | `string` |  | [Optional] [Defaults to `undefined`] |
 | **title** | `string` |  | [Optional] [Defaults to `undefined`] |
 | **author** | `string` |  | [Optional] [Defaults to `undefined`] |
 | **publisher** | `string` |  | [Optional] [Defaults to `undefined`] |
@@ -1535,138 +1535,6 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getDocumentApiV1DocumentsDocumentIdGet
-
-> SemantDemoSchemaDocumentsDocument getDocumentApiV1DocumentsDocumentIdGet(documentId)
-
-Get Document
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetDocumentApiV1DocumentsDocumentIdGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string
-    documentId: documentId_example,
-  } satisfies GetDocumentApiV1DocumentsDocumentIdGetRequest;
-
-  try {
-    const data = await api.getDocumentApiV1DocumentsDocumentIdGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **documentId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**SemantDemoSchemaDocumentsDocument**](SemantDemoSchemaDocumentsDocument.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getDocumentsApiV1DocumentsGet
-
-> Array&lt;SemantDemoSchemaDocumentsDocument&gt; getDocumentsApiV1DocumentsGet(collectionId)
-
-Get Documents
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetDocumentsApiV1DocumentsGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // string (optional)
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies GetDocumentsApiV1DocumentsGetRequest;
-
-  try {
-    const data = await api.getDocumentsApiV1DocumentsGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Optional] [Defaults to `undefined`] |
-
-### Return type
-
-[**Array&lt;SemantDemoSchemaDocumentsDocument&gt;**](SemantDemoSchemaDocumentsDocument.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

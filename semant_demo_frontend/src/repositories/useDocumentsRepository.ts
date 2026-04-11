@@ -18,7 +18,7 @@ export function useDocumentsRepository() {
     },
 
     browse: async (params: DocumentBrowseParams): Promise<DocumentBrowse> => {
-      return api.browseDocumentsApiV1DocumentsBrowseGet(params)
+      return api.browseDocumentsApiDocumentsBrowseGet(params)
     },
 
     addToCollection: async (documentId: string, collectionId: string): Promise<boolean> => {
