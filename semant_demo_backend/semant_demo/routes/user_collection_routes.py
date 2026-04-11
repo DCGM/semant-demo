@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from semant_demo.schemas import TasksBase
-from semant_demo.schema.collections import Collection, CollectionStats, PostCollection
+from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search
@@ -55,16 +55,24 @@ async def fetch_collections(userId: str,
     response = await searcher.userCollection.read_all(userId)
     return response
 
-@exp_router.get("/api/user_collections/{collectionId}", response_model=Collection)
-async def fetch_collection(collectionId: str,
+@exp_router.get("/api/user_collections/{collection_id}", response_model=Collection)
+async def fetch_collection(collection_id: str,
                            searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
     """
     Retrieves collection by its id
     """
-    response = await searcher.userCollection.read(collectionId)
+    response = await searcher.userCollection.read(collection_id)
     if response is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Collection with id {collectionId} not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Collection with id {collection_id} not found")
     return response
+
+@exp_router.patch("/api/user_collections/{collection_id}")
+async def update_collection(collection_id: str, collectionReq: PatchCollection,
+                            searcher: WeaviateAbstraction = Depends(get_search)):
+    """
+    Updates collection name/description/color
+    """
+    await searcher.userCollection.update(collection_id, collectionReq)
 
 
 @exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
@@ -86,22 +94,23 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
         return {"created": False, "message": f"Chunk not added to collection becacause of: {e}"}
     
 @exp_router.get("/api/user_collection/chunks", response_model=schemas.GetCollectionChunksResponse)
-async def get_collection_chunks(collectionId: str, 
+async def get_collection_chunks(collection_id: str, 
                                 searcher: WeaviateAbstraction = Depends(get_search)
                                 ) -> schemas.GetCollectionChunksResponse:
     """
     Returns chunks which belong to collection given by id
     """
     try:
-        logging.info(f"In get collection chunks {collectionId}")
-        response = await searcher.userCollection.read_all_chunks(collectionId)
+        logging.info(f"In get collection chunks {collection_id}")
+        response = await searcher.userCollection.read_all_chunks(collection_id)
         return response
     except Exception as e:
         logging.error(f"{e}")
 
-@exp_router.get("/api/user_collection/{collectionId}/stats", response_model=CollectionStats)
+@exp_router.get("/api/user_collection/{collection_id}/stats", response_model=CollectionStats)
 async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> CollectionStats:
     response = await searcher.userCollection.read_collection_stats(collection_id)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     return response
+    
