@@ -197,6 +197,10 @@ export interface ExplainSelectionApiRagExplainPostRequest {
     explainRequest: ExplainRequest;
 }
 
+export interface FetchCollectionApiUserCollectionsCollectionIdGetRequest {
+    collectionId: string;
+}
+
 export interface FetchCollectionsApiUserCollectionsGetRequest {
     userId: string;
 }
@@ -648,6 +652,30 @@ export interface DefaultApiInterface {
      * Explain Selection
      */
     explainSelectionApiRagExplainPost(requestParameters: ExplainSelectionApiRagExplainPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+
+    /**
+     * Creates request options for fetchCollectionApiUserCollectionsCollectionIdGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    fetchCollectionApiUserCollectionsCollectionIdGetRequestOpts(requestParameters: FetchCollectionApiUserCollectionsCollectionIdGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Retrieves collection by its id
+     * @summary Fetch Collection
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    fetchCollectionApiUserCollectionsCollectionIdGetRaw(requestParameters: FetchCollectionApiUserCollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>>;
+
+    /**
+     * Retrieves collection by its id
+     * Fetch Collection
+     */
+    fetchCollectionApiUserCollectionsCollectionIdGet(requestParameters: FetchCollectionApiUserCollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
 
     /**
      * Creates request options for fetchCollectionsApiUserCollectionsGet without sending the request
@@ -1983,6 +2011,53 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async explainSelectionApiRagExplainPost(requestParameters: ExplainSelectionApiRagExplainPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
         const response = await this.explainSelectionApiRagExplainPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for fetchCollectionApiUserCollectionsCollectionIdGet without sending the request
+     */
+    async fetchCollectionApiUserCollectionsCollectionIdGetRequestOpts(requestParameters: FetchCollectionApiUserCollectionsCollectionIdGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling fetchCollectionApiUserCollectionsCollectionIdGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/user_collections/{collectionId}`;
+        urlPath = urlPath.replace(`{${"collectionId"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Retrieves collection by its id
+     * Fetch Collection
+     */
+    async fetchCollectionApiUserCollectionsCollectionIdGetRaw(requestParameters: FetchCollectionApiUserCollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>> {
+        const requestOptions = await this.fetchCollectionApiUserCollectionsCollectionIdGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionFromJSON(jsonValue));
+    }
+
+    /**
+     * Retrieves collection by its id
+     * Fetch Collection
+     */
+    async fetchCollectionApiUserCollectionsCollectionIdGet(requestParameters: FetchCollectionApiUserCollectionsCollectionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
+        const response = await this.fetchCollectionApiUserCollectionsCollectionIdGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

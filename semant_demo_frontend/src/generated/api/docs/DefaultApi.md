@@ -18,6 +18,7 @@ All URIs are relative to *http://localhost*
 | [**deleteCollectionApiV1CollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiv1collectionscollectioniddelete) | **DELETE** /api/v1/collections/{collection_id} | Delete Collection |
 | [**deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete**](DefaultApi.md#deletecollectiontagapiv1collectionscollectionidtagstaguuiddelete) | **DELETE** /api/v1/collections/{collection_id}/tags/{tag_uuid} | Delete Collection Tag |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
+| [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collectionId} | Fetch Collection |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
 | [**filterChunksByTagsApiTagsFilterPost**](DefaultApi.md#filterchunksbytagsapitagsfilterpost) | **POST** /api/tags/filter | Filter Chunks By Tags |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
@@ -1006,6 +1007,74 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## fetchCollectionApiUserCollectionsCollectionIdGet
+
+> Collection fetchCollectionApiUserCollectionsCollectionIdGet(collectionId)
+
+Fetch Collection
+
+Retrieves collection by its id
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { FetchCollectionApiUserCollectionsCollectionIdGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+  } satisfies FetchCollectionApiUserCollectionsCollectionIdGetRequest;
+
+  try {
+    const data = await api.fetchCollectionApiUserCollectionsCollectionIdGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Collection**](Collection.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 

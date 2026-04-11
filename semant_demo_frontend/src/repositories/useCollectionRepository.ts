@@ -12,7 +12,7 @@ export function useCollectionRepository() {
     },
 
     getById: async (collectionId: string): Promise<Collection> => {
-      return api.getCollectionByIdApiV1CollectionsCollectionIdGet({ collectionId })
+      return api.fetchCollectionApiUserCollectionsCollectionIdGet({ collectionId })
     },
 
     getStats: async (collectionId: string): Promise<CollectionStats> => {
