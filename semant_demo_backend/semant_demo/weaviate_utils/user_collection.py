@@ -223,8 +223,57 @@ class UserCollection():
             properties=properties
         )
 
-    def delete():
-        pass
+    async def delete(self, collection_id: str) -> None:
+        """
+        Deletes collection with given id.
+        Before deleting the collection object itself, remove references to it
+        from chunks, documents, and tags.
+        """
+        documents_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        tags_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+
+        page_size = 100
+
+        async def remove_collection_refs(objects_collection, filters, from_property: str) -> None:
+            while True:
+                response = await objects_collection.query.fetch_objects(
+                    filters=filters,
+                    limit=page_size,
+                )
+
+                if not response.objects:
+                    break
+
+                for obj in response.objects:
+                    await objects_collection.data.reference_delete(
+                        from_uuid=obj.uuid,
+                        from_property=from_property,
+                        to=collection_id,
+                    )
+
+                if len(response.objects) < page_size:
+                    break
+
+        await remove_collection_refs(
+            chunks_collection,
+            Filter.by_ref("userCollection").by_id().equal(collection_id),
+            "userCollection",
+        )
+        await remove_collection_refs(
+            documents_collection,
+            Filter.by_ref("collection").by_id().equal(collection_id),
+            "collection",
+        )
+        await remove_collection_refs(
+            tags_collection,
+            Filter.by_ref("userCollection").by_id().equal(collection_id),
+            "userCollection",
+        )
+
+        await usercollection_collection.data.delete_by_id(collection_id)
 
     def read_all_tags():
         pass

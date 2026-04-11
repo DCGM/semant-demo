@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 
 from semant_demo import schemas
 from semant_demo.config import config
@@ -73,6 +73,7 @@ async def update_collection(collection_id: str, collectionReq: PatchCollection,
     Updates collection name/description/color
     """
     await searcher.userCollection.update(collection_id, collectionReq)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
@@ -114,3 +115,7 @@ async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     return response
     
+@exp_router.delete("/api/v1/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_collection(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
+    await searcher.userCollection.delete(collection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
