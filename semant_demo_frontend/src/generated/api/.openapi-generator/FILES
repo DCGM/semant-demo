@@ -8,7 +8,6 @@ docs/CancelTaskResponse.md
 docs/Chunk2CollectionReq.md
 docs/Collection.md
 docs/CollectionChunks.md
-docs/CollectionSchema.md
 docs/CollectionStats.md
 docs/CreateResponse.md
 docs/DefaultApi.md
@@ -60,7 +59,6 @@ docs/TaggingTaskReqTemplate.md
 docs/TextChunkWithDocumentInput.md
 docs/TextChunkWithDocumentOutput.md
 docs/Url.md
-docs/UserCollectionReqTemplate.md
 docs/ValidationError.md
 index.ts
 models/APIType.ts
@@ -71,7 +69,6 @@ models/CancelTaskResponse.ts
 models/Chunk2CollectionReq.ts
 models/Collection.ts
 models/CollectionChunks.ts
-models/CollectionSchema.ts
 models/CollectionStats.ts
 models/CreateResponse.ts
 models/DocumentBrowse.ts
@@ -122,7 +119,6 @@ models/TaggingTaskReqTemplate.ts
 models/TextChunkWithDocumentInput.ts
 models/TextChunkWithDocumentOutput.ts
 models/Url.ts
-models/UserCollectionReqTemplate.ts
 models/ValidationError.ts
 models/index.ts
 runtime.ts

@@ -14,7 +14,7 @@ All URIs are relative to *http://localhost*
 | [**createCollectionApiV1CollectionsPost**](DefaultApi.md#createcollectionapiv1collectionspost) | **POST** /api/v1/collections | Create Collection |
 | [**createCollectionTagApiV1CollectionsCollectionIdTagsPost**](DefaultApi.md#createcollectiontagapiv1collectionscollectionidtagspost) | **POST** /api/v1/collections/{collection_id}/tags | Create Collection Tag |
 | [**createTagApiTagPost**](DefaultApi.md#createtagapitagpost) | **POST** /api/tag | Create Tag |
-| [**createUserCollectionApiUserCollectionPost**](DefaultApi.md#createusercollectionapiusercollectionpost) | **POST** /api/user_collection | Create User Collection |
+| [**createUserCollectionApiUserCollectionsPost**](DefaultApi.md#createusercollectionapiusercollectionspost) | **POST** /api/user_collections | Create User Collection |
 | [**deleteCollectionApiV1CollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiv1collectionscollectioniddelete) | **DELETE** /api/v1/collections/{collection_id} | Delete Collection |
 | [**deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete**](DefaultApi.md#deletecollectiontagapiv1collectionscollectionidtagstaguuiddelete) | **DELETE** /api/v1/collections/{collection_id}/tags/{tag_uuid} | Delete Collection Tag |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
@@ -749,9 +749,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## createUserCollectionApiUserCollectionPost
+## createUserCollectionApiUserCollectionsPost
 
-> CreateResponse createUserCollectionApiUserCollectionPost(userCollectionReqTemplate)
+> CreateResponse createUserCollectionApiUserCollectionsPost(postCollection)
 
 Create User Collection
 
@@ -764,19 +764,19 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { CreateUserCollectionApiUserCollectionPostRequest } from '';
+import type { CreateUserCollectionApiUserCollectionsPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   const body = {
-    // UserCollectionReqTemplate
-    userCollectionReqTemplate: ...,
-  } satisfies CreateUserCollectionApiUserCollectionPostRequest;
+    // PostCollection
+    postCollection: ...,
+  } satisfies CreateUserCollectionApiUserCollectionsPostRequest;
 
   try {
-    const data = await api.createUserCollectionApiUserCollectionPost(body);
+    const data = await api.createUserCollectionApiUserCollectionsPost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -792,7 +792,7 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **userCollectionReqTemplate** | [UserCollectionReqTemplate](UserCollectionReqTemplate.md) |  | |
+| **postCollection** | [PostCollection](PostCollection.md) |  | |
 
 ### Return type
 

@@ -52,7 +52,6 @@ import type {
   TagReqTemplate,
   TagStartResponse,
   TaggingTaskReqTemplate,
-  UserCollectionReqTemplate,
 } from '../models/index';
 import {
     AppFeedbackRequestFromJSON,
@@ -129,8 +128,6 @@ import {
     TagStartResponseToJSON,
     TaggingTaskReqTemplateFromJSON,
     TaggingTaskReqTemplateToJSON,
-    UserCollectionReqTemplateFromJSON,
-    UserCollectionReqTemplateToJSON,
 } from '../models/index';
 
 export interface AddChunk2CollectionApiUserCollectionChunksPostRequest {
@@ -183,8 +180,8 @@ export interface CreateTagApiTagPostRequest {
     tagReqTemplate: TagReqTemplate;
 }
 
-export interface CreateUserCollectionApiUserCollectionPostRequest {
-    userCollectionReqTemplate: UserCollectionReqTemplate;
+export interface CreateUserCollectionApiUserCollectionsPostRequest {
+    postCollection: PostCollection;
 }
 
 export interface DeleteCollectionApiV1CollectionsCollectionIdDeleteRequest {
@@ -558,28 +555,28 @@ export interface DefaultApiInterface {
     createTagApiTagPost(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
 
     /**
-     * Creates request options for createUserCollectionApiUserCollectionPost without sending the request
-     * @param {UserCollectionReqTemplate} userCollectionReqTemplate 
+     * Creates request options for createUserCollectionApiUserCollectionsPost without sending the request
+     * @param {PostCollection} postCollection 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    createUserCollectionApiUserCollectionPostRequestOpts(requestParameters: CreateUserCollectionApiUserCollectionPostRequest): Promise<runtime.RequestOpts>;
+    createUserCollectionApiUserCollectionsPostRequestOpts(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Creates user collection in weaviate db, or not if the same user collection already exists
      * @summary Create User Collection
-     * @param {UserCollectionReqTemplate} userCollectionReqTemplate 
+     * @param {PostCollection} postCollection 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    createUserCollectionApiUserCollectionPostRaw(requestParameters: CreateUserCollectionApiUserCollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+    createUserCollectionApiUserCollectionsPostRaw(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
 
     /**
      * Creates user collection in weaviate db, or not if the same user collection already exists
      * Create User Collection
      */
-    createUserCollectionApiUserCollectionPost(requestParameters: CreateUserCollectionApiUserCollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
+    createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
 
     /**
      * Creates request options for deleteCollectionApiV1CollectionsCollectionIdDelete without sending the request
@@ -1794,13 +1791,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for createUserCollectionApiUserCollectionPost without sending the request
+     * Creates request options for createUserCollectionApiUserCollectionsPost without sending the request
      */
-    async createUserCollectionApiUserCollectionPostRequestOpts(requestParameters: CreateUserCollectionApiUserCollectionPostRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['userCollectionReqTemplate'] == null) {
+    async createUserCollectionApiUserCollectionsPostRequestOpts(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['postCollection'] == null) {
             throw new runtime.RequiredError(
-                'userCollectionReqTemplate',
-                'Required parameter "userCollectionReqTemplate" was null or undefined when calling createUserCollectionApiUserCollectionPost().'
+                'postCollection',
+                'Required parameter "postCollection" was null or undefined when calling createUserCollectionApiUserCollectionsPost().'
             );
         }
 
@@ -1811,14 +1808,14 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/user_collection`;
+        let urlPath = `/api/user_collections`;
 
         return {
             path: urlPath,
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: UserCollectionReqTemplateToJSON(requestParameters['userCollectionReqTemplate']),
+            body: PostCollectionToJSON(requestParameters['postCollection']),
         };
     }
 
@@ -1826,8 +1823,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Creates user collection in weaviate db, or not if the same user collection already exists
      * Create User Collection
      */
-    async createUserCollectionApiUserCollectionPostRaw(requestParameters: CreateUserCollectionApiUserCollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
-        const requestOptions = await this.createUserCollectionApiUserCollectionPostRequestOpts(requestParameters);
+    async createUserCollectionApiUserCollectionsPostRaw(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
+        const requestOptions = await this.createUserCollectionApiUserCollectionsPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
@@ -1837,8 +1834,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Creates user collection in weaviate db, or not if the same user collection already exists
      * Create User Collection
      */
-    async createUserCollectionApiUserCollectionPost(requestParameters: CreateUserCollectionApiUserCollectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
-        const response = await this.createUserCollectionApiUserCollectionPostRaw(requestParameters, initOverrides);
+    async createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
+        const response = await this.createUserCollectionApiUserCollectionsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

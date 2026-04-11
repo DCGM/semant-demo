@@ -140,11 +140,12 @@ const handleRefresh = async () => {
 const handleCreate = () => {
   openCollectionDialog({
     dialogType: 'CREATE'
-  }).onOk((collectionData: PostCollection) => {
-    createCollection({
+  }).onOk(async (collectionData: PostCollection) => {
+    await createCollection({
       ...collectionData,
       userId: 'xjuric'
     })
+    await loadCollections('xjuric')
   })
 }
 
@@ -156,8 +157,9 @@ const handleEdit = (collection: Collection) => {
   openCollectionDialog({
     dialogType: 'EDIT',
     collection
-  }).onOk((updatedData: PatchCollection) => {
-    updateCollection(collection.id, updatedData)
+  }).onOk(async (updatedData: PatchCollection) => {
+    await updateCollection(collection.id, updatedData)
+    await loadCollections('xjuric')
   })
 }
 

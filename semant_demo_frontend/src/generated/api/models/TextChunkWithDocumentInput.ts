@@ -60,13 +60,13 @@ export interface TextChunkWithDocumentInput {
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof TextChunkWithDocumentInput
      */
     document: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof TextChunkWithDocumentInput
      */
     title?: string | null;
     /**
@@ -84,7 +84,7 @@ export interface TextChunkWithDocumentInput {
     /**
      * 
      * @type {number}
-     * @memberof TextChunkWithDocument
+     * @memberof TextChunkWithDocumentInput
      */
     order: number | null;
     /**

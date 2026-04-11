@@ -66,7 +66,7 @@ export function PostCollectionFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
         
         'name': json['name'],
-        'userId': json['userId'],
+        'userId': json['user_id'],
         'description': json['description'] == null ? undefined : json['description'],
         'color': json['color'],
     };
@@ -84,7 +84,7 @@ export function PostCollectionToJSONTyped(value?: PostCollection | null, ignoreD
     return {
         
         'name': value['name'],
-        'userId': value['userId'],
+        'user_id': value['userId'],
         'description': value['description'],
         'color': value['color'],
     };

@@ -48,8 +48,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     loading.value = true
     error.value = null
     try {
-      const data = await collectionRepository.create(collectionData)
-      collections.value.push(data)
+      await collectionRepository.create(collectionData)
       notif.success('Collection created')
     } catch (err) {
       error.value = 'Failed to create collection'

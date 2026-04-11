@@ -88,10 +88,10 @@ export function CollectionFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         
         'id': json['id'],
         'name': json['name'],
-        'userId': json['userId'],
+        'userId': json['user_id'],
         'description': json['description'] == null ? undefined : json['description'],
-        'createdAt': (new Date(json['createdAt'])),
-        'updatedAt': (new Date(json['updatedAt'])),
+        'createdAt': (new Date(json['created_at'])),
+        'updatedAt': (new Date(json['updated_at'])),
         'color': json['color'],
     };
 }
@@ -109,10 +109,10 @@ export function CollectionToJSONTyped(value?: Collection | null, ignoreDiscrimin
         
         'id': value['id'],
         'name': value['name'],
-        'userId': value['userId'],
+        'user_id': value['userId'],
         'description': value['description'],
-        'createdAt': value['createdAt'].toISOString(),
-        'updatedAt': value['updatedAt'].toISOString(),
+        'created_at': value['createdAt'].toISOString(),
+        'updated_at': value['updatedAt'].toISOString(),
         'color': value['color'],
     };
 }

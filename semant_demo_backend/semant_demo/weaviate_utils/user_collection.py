@@ -83,10 +83,10 @@ class UserCollection():
                         collections_response.append(Collection(
                             id=o.uuid,
                             name=props.get("name"),
-                            userId=props.get("user_id"),
+                            user_id=props.get("user_id"),
                             description=props.get("description"),
-                            createdAt=props.get("created_at"),
-                            updatedAt=props.get("updated_at"),
+                            created_at=props.get("created_at"),
+                            updated_at=props.get("updated_at"),
                             color=props.get("color")
                         ))
 
