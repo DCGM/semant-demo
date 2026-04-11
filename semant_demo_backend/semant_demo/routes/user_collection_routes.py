@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from semant_demo import schemas
 from semant_demo.config import config
@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from semant_demo.schemas import TasksBase
-from semant_demo.schema.collections import Collection, PostCollection
+from semant_demo.schema.collections import Collection, CollectionStats, PostCollection
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search
@@ -63,7 +63,7 @@ async def fetch_collection(collectionId: str,
     """
     response = await searcher.userCollection.read(collectionId)
     if response is None:
-        raise HTTPException(status_code=404, detail=f"Collection with id {collectionId} not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Collection with id {collectionId} not found")
     return response
 
 
@@ -98,3 +98,10 @@ async def get_collection_chunks(collectionId: str,
         return response
     except Exception as e:
         logging.error(f"{e}")
+
+@exp_router.get("/api/user_collection/{collectionId}/stats", response_model=CollectionStats)
+async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> CollectionStats:
+    response = await searcher.userCollection.read_collection_stats(collection_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+    return response

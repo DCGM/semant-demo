@@ -22,3 +22,10 @@ class PatchCollection(BaseModel):
     name: str | None = None
     description: str | None = None
     color: str | None = None
+
+class CollectionStats(BaseModel):
+    collection_id: UUID
+    documents_count: int
+    chunks_count: int
+    annotations_count: int
+    tags_count: int

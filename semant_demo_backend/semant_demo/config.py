@@ -51,6 +51,8 @@ class Config:
             chunks_collection_name = "Chunks",
             tag_collection_name = "Tag",
             user_collection_name = "UserCollection",
+            document_collection_name= "Documents",
+            span_collection_name = "Span_test",
             user_collection_link_name = "userCollection",
             tag_to_user_collection_link_name= "tagToUserCollection"
         )
