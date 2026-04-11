@@ -1,6 +1,8 @@
 import semant_demo.schemas as schemas
 
 import logging
+from uuid import UUID
+from datetime import datetime, timezone
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
@@ -22,7 +24,7 @@ from semant_demo.weaviate_exceptions import (
     WeaviateOperationError
 )
 
-from semant_demo.schema.collections import Collection
+from semant_demo.schema.collections import Collection, PostCollection
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
@@ -36,29 +38,24 @@ class UserCollection():
     #######
     # API #
     #######
-    async def create(self, req: schemas.UserCollectionReqTemplate) -> str:
+    async def create(self, collection: PostCollection) -> UUID:
         """
         Create user collection (contains chunks user choose)
         """
         logging.info(
-            f"Adding user collection\nUser: {req.user_id}\nCollection name: {req.collection_name}")
-        # check if user collection with same properties already exists
-        filters = (
-            Filter.by_property("name").equal(req.collection_name) &
-            Filter.by_property("user_id").equal(req.user_id)
-        )
-        results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
-            filters=filters
-        )
-        if results.objects is not None:
-            if len(results.objects) > 0:
-                return results.objects[0].uuid
+            f"Adding user collection\nUser: {collection.user_id}\nCollection name: {collection.name}")
 
-        # if no match found, create new collection
-        new_collection_uuid = await self.client.collections.get(self.collectionNames.user_collection_name).data.insert(
+        usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
+        
+        now = datetime.now(timezone.utc)
+        new_collection_uuid = await usercollection_collection.data.insert(
             properties={
-                "name": req.collection_name,
-                "user_id": req.user_id
+                "name": collection.name,
+                "user_id": collection.user_id,
+                "description": collection.description,
+                "color": collection.color,
+                "created_at": now,
+                "updated_at": now
             }
         )
         return new_collection_uuid
