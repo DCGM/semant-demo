@@ -25,19 +25,9 @@ class Document(BaseModel):
     redaktors: list[str] | None = None
     seriesNumber: str | None = None
     keywords: list[str] | None = None
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        populate_by_name=True
-    )
     
 class DocumentBrowse(BaseModel):
     items: list[Document]
-    nextOffset: int | None = None
-    hasMore: bool
-    totalCount: int
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        populate_by_name=True
-    )
+    next_offset: int | None = None
+    has_more: bool
+    total_count: int
