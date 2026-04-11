@@ -121,7 +121,7 @@ async def delete_collection(collection_id: str, searcher: WeaviateAbstraction = 
     await searcher.userCollection.delete(collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-@exp_router.get("/api/user_collection/{collection_id}/documents", response_model=list[Document])
+@exp_router.get("/api/user_collection/{collection_id}/documents", response_model=list[Document], response_model_exclude_none=True)
 async def get_collection_documents(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Document]:
     """
     Returns documents which belong to collection given by id

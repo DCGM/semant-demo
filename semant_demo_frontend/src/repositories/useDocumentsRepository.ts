@@ -6,7 +6,11 @@ export function useDocumentsRepository() {
 
   return {
     getAll: async (collectionId?: string): Promise<Documents> => {
-      return api.getDocumentsApiV1DocumentsGet({ collectionId })
+      return api.getDocumentsApiV1DocumentsGet({ collectionId }) // TODO: change in the future - shouldn't be filtered by collectionID
+    },
+
+    getAllByCollection: async (collectionId: string): Promise<Documents> => {
+      return api.getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet({ collectionId })
     },
 
     getById: async (documentId: string): Promise<Document> => {

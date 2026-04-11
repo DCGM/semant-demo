@@ -74,9 +74,9 @@ export function DocumentBrowseFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
         
         'items': ((json['items'] as Array<any>).map(SemantDemoSchemaDocumentsDocumentFromJSON)),
-        'nextOffset': json['nextOffset'] == null ? undefined : json['nextOffset'],
-        'hasMore': json['hasMore'],
-        'totalCount': json['totalCount'],
+        'nextOffset': json['next_offset'] == null ? undefined : json['next_offset'],
+        'hasMore': json['has_more'],
+        'totalCount': json['total_count'],
     };
 }
 
@@ -92,9 +92,9 @@ export function DocumentBrowseToJSONTyped(value?: DocumentBrowse | null, ignoreD
     return {
         
         'items': ((value['items'] as Array<any>).map(SemantDemoSchemaDocumentsDocumentToJSON)),
-        'nextOffset': value['nextOffset'],
-        'hasMore': value['hasMore'],
-        'totalCount': value['totalCount'],
+        'next_offset': value['nextOffset'],
+        'has_more': value['hasMore'],
+        'total_count': value['totalCount'],
     };
 }
 

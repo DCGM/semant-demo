@@ -7,6 +7,7 @@ const useDocuments = () => {
 
   const loadDocuments = (collectionId?: string) => documentsStore.fetchDocuments(collectionId)
   const loadDocument = (documentId: string) => documentsStore.fetchDocument(documentId)
+  const loadDocumentsByCollection = (collectionId: string) => documentsStore.fetchDocumentsByCollection(collectionId)
   const browseDocuments = (params: DocumentBrowseParams) => documentsStore.browseDocuments(params)
   const addDoc = (documentId: string, collectionId: string) => documentsStore.addToCollection(documentId, collectionId)
   const removeDoc = (documentId: string, collectionId: string) => documentsStore.removeFromCollection(documentId, collectionId)
@@ -20,6 +21,7 @@ const useDocuments = () => {
   return {
     loadDocuments,
     loadDocument,
+    loadDocumentsByCollection,
     browseDocuments,
     addDoc,
     removeDoc,

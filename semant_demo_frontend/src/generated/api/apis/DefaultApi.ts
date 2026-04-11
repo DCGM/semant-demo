@@ -209,6 +209,10 @@ export interface GetCollectionChunksApiUserCollectionChunksGetRequest {
     collectionId: string;
 }
 
+export interface GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest {
+    collectionId: string;
+}
+
 export interface GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest {
     collectionId: string;
 }
@@ -734,6 +738,30 @@ export interface DefaultApiInterface {
      * Get Collection Chunks
      */
     getCollectionChunksApiUserCollectionChunksGet(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse>;
+
+    /**
+     * Creates request options for getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequestOpts(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns documents which belong to collection given by id
+     * @summary Get Collection Documents
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRaw(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SemantDemoSchemaDocumentsDocument>>>;
+
+    /**
+     * Returns documents which belong to collection given by id
+     * Get Collection Documents
+     */
+    getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SemantDemoSchemaDocumentsDocument>>;
 
     /**
      * Creates request options for getCollectionStatsApiUserCollectionCollectionIdStatsGet without sending the request
@@ -2117,6 +2145,53 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getCollectionChunksApiUserCollectionChunksGet(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse> {
         const response = await this.getCollectionChunksApiUserCollectionChunksGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet without sending the request
+     */
+    async getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequestOpts(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/user_collection/{collection_id}/documents`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns documents which belong to collection given by id
+     * Get Collection Documents
+     */
+    async getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRaw(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SemantDemoSchemaDocumentsDocument>>> {
+        const requestOptions = await this.getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(SemantDemoSchemaDocumentsDocumentFromJSON));
+    }
+
+    /**
+     * Returns documents which belong to collection given by id
+     * Get Collection Documents
+     */
+    async getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SemantDemoSchemaDocumentsDocument>> {
+        const response = await this.getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

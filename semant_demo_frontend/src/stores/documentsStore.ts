@@ -27,6 +27,24 @@ export const useDocumentsStore = defineStore('documents', () => {
       loading.value = false
     }
   }
+
+  const fetchDocumentsByCollection = async (collectionId: string) => {
+    const notif = ongoingNotification('Loading documents...')
+    loading.value = true
+    error.value = null
+    try {
+      const data = await documentsRepository.getAllByCollection(collectionId)
+      documents.value = data
+      notif.success('Documents loaded')
+    } catch (err) {
+      error.value = 'Failed to fetch documents'
+      console.error('Error fetching documents:', err)
+      notif.error('Failed to load documents')
+    } finally {
+      loading.value = false
+    }
+  }
+
   const fetchDocument = async (documentId: string) => {
     const notif = ongoingNotification('Loading document...')
     loading.value = true
@@ -163,6 +181,7 @@ export const useDocumentsStore = defineStore('documents', () => {
 
     fetchDocuments,
     fetchDocument,
+    fetchDocumentsByCollection,
     browseDocuments,
     appendDocumentIfMissing,
     addToCollection,

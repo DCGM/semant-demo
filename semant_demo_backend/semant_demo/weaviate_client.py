@@ -360,9 +360,9 @@ class WeaviateClient(WeaviateSearch):
 
         return DocumentBrowse(
             items=items,
-            hasMore=has_more,
-            nextOffset=(offset + limit) if has_more else None,
-            totalCount=total_count,
+            has_more=has_more,
+            next_offset=(offset + limit) if has_more else None,
+            total_count=total_count,
         )
 
     async def get_all_tags(self, collection_id: UUID | None = None) -> list[Tag]:

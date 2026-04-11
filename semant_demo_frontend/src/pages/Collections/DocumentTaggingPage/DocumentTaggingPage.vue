@@ -45,7 +45,7 @@ interface Props {
 const props = defineProps<Props>()
 const router = useRouter()
 const documentsRepository = useDocumentsRepository()
-const { loadDocuments } = useDocuments()
+const { loadDocumentsByCollection } = useDocuments()
 const { collectionChunks, getCollectionChunksPaged } = useTagging()
 
 onMounted(() => {
@@ -69,7 +69,7 @@ const handleRemoveFromCollection = async () => {
       successNotification('Document removed from collection')
 
       // Refresh documents list
-      await loadDocuments(props.collectionId)
+      await loadDocumentsByCollection(props.collectionId)
 
       // Go back to documents list
       goBack()

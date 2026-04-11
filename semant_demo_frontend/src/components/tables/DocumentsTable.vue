@@ -136,7 +136,7 @@ import AddDocumentDropdownBtn from '../custom/AddDocumentDropdownBtn.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 
-const { documents, loadDocuments, removeDoc, removeManyDocs, loading } = useDocuments()
+const { documents, loadDocumentsByCollection, removeDoc, removeManyDocs, loading } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
 
 const $q = useQuasar()
@@ -151,11 +151,11 @@ const collectionId = computed<string>(() => {
 })
 
 onMounted(async () => {
-  await loadDocuments(collectionId.value)
+  await loadDocumentsByCollection(collectionId.value)
 })
 
 const handleRefresh = async () => {
-  await loadDocuments(collectionId.value)
+  await loadDocumentsByCollection(collectionId.value)
 }
 
 const handleBrowseLibrary = () => {

@@ -187,7 +187,7 @@ const props = defineProps<BrowseLibraryDialogProps>()
 
 const { dialogRef, onDialogHide, onDialogCancel } = useDialogPluginComponent()
 const documentsRepository = useDocumentsRepository()
-const { documents: collectionDocuments, loadDocuments, addDoc } = useDocuments()
+const { documents: collectionDocuments, loadDocumentsByCollection, addDoc } = useDocuments()
 
 const PAGE_SIZE = 50
 
@@ -338,7 +338,7 @@ const addDocumentToCurrentCollection = async (documentId: string) => {
     const added = await addDoc(documentId, props.collectionId)
     if (added) {
       // Reload the collection documents
-      await loadDocuments(props.collectionId)
+      await loadDocumentsByCollection(props.collectionId)
       return
     }
     errorNotification('Failed to add document to collection')
@@ -350,7 +350,7 @@ const addDocumentToCurrentCollection = async (documentId: string) => {
 }
 
 onMounted(async () => {
-  await loadDocuments(props.collectionId)
+  await loadDocumentsByCollection(props.collectionId)
   await applyFilters()
 })
 </script>
