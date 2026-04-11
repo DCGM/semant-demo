@@ -139,3 +139,20 @@ async def get_collection_documents(collection_id: str, searcher: WeaviateAbstrac
     """
     response = await searcher.userCollection.read_all_documents(collection_id)
     return response
+
+@exp_router.post("/api/collections/{collection_id}/documents/{document_id}")
+async def add_document_to_collection(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
+    """
+    Adds document to collection and also links all its chunks to that collection
+    """
+    await searcher.userCollection.add_document(document_id=document_id, collection_id=collection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@exp_router.delete("/api/collections/{collection_id}/documents/{document_id}")
+async def remove_document_from_collection(
+    collection_id: str,
+    document_id: str,
+    searcher: WeaviateAbstraction = Depends(get_search)
+) -> Response:
+    success = await searcher.userCollection.remove_document(document_id=document_id, collection_id=collection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

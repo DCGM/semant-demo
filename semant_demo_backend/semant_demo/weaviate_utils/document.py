@@ -32,7 +32,21 @@ class Document():
     #######
     # API #
     #######
-    def read():
+    async def read(self, document_id: str) -> DocumentSchema | None:
+        """
+        Retrieves document by its id, returns None if document with given id does not exist
+        """
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        response = await document_collection.query.fetch_object_by_id(document_id)
+        if response is None:
+            return None
+        props = response.properties
+        return DocumentSchema(
+            id=response.uuid,
+            **props
+        )
+    
+    def read_all():
         pass
 
     def search():
