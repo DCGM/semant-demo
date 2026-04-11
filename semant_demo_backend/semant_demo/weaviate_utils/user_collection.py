@@ -25,6 +25,7 @@ from semant_demo.weaviate_exceptions import (
 )
 
 from semant_demo.schema.collections import Collection, CollectionStats, PatchCollection, PostCollection
+from semant_demo.schema.documents import Document, DocumentBrowse
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
@@ -281,8 +282,27 @@ class UserCollection():
     async def read_all_chunks(self, collectionId):
         return await self.helpers.fetch_chunks_by_collection(collectionId)
 
-    def read_all_documents():
-        pass
+    async def read_all_documents(self, collection_id: str) -> list[Document]:
+        """
+        Retrieves all documents - optionally can be filtered by collection id
+        """
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        filters = None
+        if collection_id is not None:
+            filters = (
+                Filter.by_ref("collection").by_id().equal(collection_id)
+            )
+        response = await document_collection.query.fetch_objects(
+            filters=filters
+        )
+        documents = []
+        for obj in response.objects:
+            props = obj.properties
+            documents.append(Document(
+                id=obj.uuid,
+                **props
+            ))
+        return documents
 
     async def add_chunks(self,
                          src_id,

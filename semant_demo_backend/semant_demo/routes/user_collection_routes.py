@@ -19,6 +19,7 @@ import logging
 
 from semant_demo.schemas import TasksBase
 from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection
+from semant_demo.schema.documents import Document
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search
@@ -115,7 +116,15 @@ async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     return response
     
-@exp_router.delete("/api/v1/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+@exp_router.delete("/api/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_collection(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
     await searcher.userCollection.delete(collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@exp_router.get("/api/user_collection/{collection_id}/documents", response_model=list[Document])
+async def get_collection_documents(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Document]:
+    """
+    Returns documents which belong to collection given by id
+    """
+    response = await searcher.userCollection.read_all_documents(collection_id)
+    return response
