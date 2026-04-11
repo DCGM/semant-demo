@@ -24,7 +24,7 @@ from semant_demo.weaviate_exceptions import (
     WeaviateOperationError
 )
 
-from semant_demo.schema.collections import Collection, CollectionStats, PostCollection
+from semant_demo.schema.collections import Collection, CollectionStats, PatchCollection, PostCollection
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
@@ -205,8 +205,23 @@ class UserCollection():
             annotations_count=annotations_count,
         )
 
-    def update():
-        pass
+    async def update(self, collection_id: str, collection: PatchCollection):
+        """"
+        Updates collection with given id
+        """
+        usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
+        collection_in_db = await self.read(collection_id)
+        
+        now = datetime.now(timezone.utc)
+
+        # PATCH semantics: update only fields that were actually sent by the client.
+        properties = collection.model_dump(exclude_unset=True)
+        properties["updated_at"] = now
+
+        await usercollection_collection.data.update(
+            uuid=collection_id,
+            properties=properties
+        )
 
     def delete():
         pass

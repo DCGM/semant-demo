@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from semant_demo.schemas import TasksBase
-from semant_demo.schema.collections import Collection, CollectionStats, PostCollection
+from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search
@@ -66,6 +66,14 @@ async def fetch_collection(collection_id: str,
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Collection with id {collection_id} not found")
     return response
 
+@exp_router.patch("/api/user_collections/{collection_id}")
+async def update_collection(collection_id: str, collectionReq: PatchCollection,
+                            searcher: WeaviateAbstraction = Depends(get_search)):
+    """
+    Updates collection name/description/color
+    """
+    await searcher.userCollection.update(collection_id, collectionReq)
+
 
 @exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
 async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, 
@@ -105,3 +113,4 @@ async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     return response
+    
