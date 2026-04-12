@@ -154,20 +154,29 @@ User accounts are managed with [FastAPI Users](https://fastapi-users.github.io/f
 
 | Module | Responsibility |
 |---|---|
-| `users/models.py` | SQLAlchemy `User` table (UUID PK, email, hashed password, active flag) |
-| `users/schemas.py` | Pydantic `UserRead` / `UserCreate` / `UserUpdate` schemas |
-| `users/manager.py` | `UserManager` — lifecycle hooks (on_after_register, etc.) |
-| `users/auth.py` | JWT strategy, `FastAPIUsers` instance, exported routers |
+| `users/models.py` | SQLAlchemy `User` table — UUID PK, email, hashed password, active/superuser/verified flags, plus `username` (unique, indexed), `name`, `institution` |
+| `users/schemas.py` | Pydantic `UserRead` / `UserCreate` / `UserUpdate` schemas (all include the extra fields as optional) |
+| `users/manager.py` | `UserManager` — overrides `authenticate()` to accept **email or username** at login; lifecycle hooks (`on_after_register`, etc.) |
+| `users/auth.py` | JWT strategy, `FastAPIUsers` instance, exported routers; exports `current_active_user` (mandatory) and `current_active_optional_user` (optional) dependency shortcuts |
 
 **API endpoints:**
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/auth/register` | Create a new account |
-| `POST` | `/api/auth/jwt/login` | Login — returns `access_token` |
+| `POST` | `/api/auth/register` | Create a new account (email, password, username, name, institution) |
+| `POST` | `/api/auth/jwt/login` | Login with **email or username** — returns `access_token` |
 | `POST` | `/api/auth/jwt/logout` | Logout (client discards token) |
 | `GET` | `/api/users/me` | Current user info (requires Bearer token) |
-| `PATCH` | `/api/users/me` | Update current user (email / password) |
+| `PATCH` | `/api/users/me` | Update current user (email / password / name / institution) |
+
+**Route-level authentication:**
+
+All route handlers accept user identity via `Depends()`. Two variants are used:
+
+| Dependency | Behaviour | Applied to |
+|---|---|---|
+| `current_active_user` | Mandatory — returns `401` if no valid token | All `/api/user_collection/*` endpoints |
+| `current_active_optional_user` | Optional — `None` when unauthenticated | All other routes (search, RAG, tags, summarise) |
 
 The JWT secret is configured via the `JWT_SECRET` environment variable (default is a placeholder — **must be overridden in production**).
 

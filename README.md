@@ -215,6 +215,7 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
+| `JWT_SECRET` | _(placeholder)_ | JWT signing secret — **must be overridden in production** with a long random string |
 
 ---
 
@@ -224,6 +225,11 @@ For detailed setup instructions, advanced options, and data management, see [dep
 
 | Method | Path | Description |
 |---|---|---|
+| `POST` | `/api/auth/register` | Create a new account (email, password, username, name, institution) |
+| `POST` | `/api/auth/jwt/login` | Login with email or username — returns `access_token` |
+| `POST` | `/api/auth/jwt/logout` | Logout (client discards token) |
+| `GET` | `/api/users/me` | Current user info (requires Bearer token) |
+| `PATCH` | `/api/users/me` | Update current user (email / password / name / institution) |
 | `POST` | `/api/search` | Hybrid/text/vector search with filters |
 | `POST` | `/api/summarize/{type}` | Summarise search results (`results`) |
 | `POST` | `/api/question/{text}` | Q&A over search results (OpenAI) |
