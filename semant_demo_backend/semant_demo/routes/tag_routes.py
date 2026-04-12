@@ -42,7 +42,7 @@ TAG_CONFIG_DIR = BASE_DIR / "tagging" / "configs"
 
 exp_router = APIRouter()
 
-@exp_router.post("/api/collections/{collection_id}/tags", response_model=Tag, status_code=status.HTTP_201_CREATED)
+@exp_router.post("/api/tags", response_model=Tag, status_code=status.HTTP_201_CREATED)
 async def create_tag(collection_id: UUID, tag: PostTag, 
                      searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
     """
