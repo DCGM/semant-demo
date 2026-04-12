@@ -19,3 +19,5 @@ sqlalchemy
 aiosqlite
 ddgs
 pydantic-ai
+fastapi-users[sqlalchemy]
+python-multipart
