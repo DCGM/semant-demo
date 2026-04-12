@@ -4,7 +4,7 @@ from .user_collection_routes import exp_router as usr_collection_router
 from .rag_routes import exp_router as rag_router
 from .feedback_routes import exp_router as feedback_router
 from .summarizer_routes import exp_router as summarizer_router
-from .documents_routes import exp_router as documents_router
+from .document_routes import exp_router as documents_router
 
 export_router = APIRouter()
 export_router.include_router(tag_router)

@@ -1,7 +1,7 @@
 import os
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 
 from semant_demo import schemas
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
@@ -12,6 +12,7 @@ import asyncio
 from semant_demo.tagging.tagging_utils import tag_and_store
 import uuid
 from pathlib import Path
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 # from sqlalchemy.orm import sessionmaker, declarative_base
@@ -37,6 +38,7 @@ from semant_demo.tagging.tagging_utils import getTaskByName
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
+from semant_demo.schema.tags import Tag, PostTag
 
 logging.basicConfig(level=logging.INFO)
 
@@ -46,30 +48,55 @@ TAG_CONFIG_DIR = BASE_DIR / "tagging" / "configs"
 
 exp_router = APIRouter()
 
-
-@exp_router.post("/api/tag", response_model=schemas.CreateResponse)
-async def create_tag(tagReq: schemas.TagReqTemplate, 
-                     searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.CreateResponse:
+@exp_router.post("/api/collections/{collection_id}/tags", response_model=Tag, status_code=status.HTTP_201_CREATED)
+async def create_tag(collection_id: UUID, tag: PostTag, 
+                     searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
     """
     Creates a tag in weaviate db, or not if the same tag already exists
     """
     try:
-        # convert tag request to tag data
-        tagData = schemas.TagData(
-                tag_name = tagReq.tag_name,
-                tag_shorthand = tagReq.tag_shorthand,
-                tag_color = tagReq.tag_color,
-                tag_pictogram = tagReq.tag_pictogram,
-                tag_definition = tagReq.tag_definition,
-                tag_examples = tagReq.tag_examples,
-                collection_name = tagReq.collection_name,
-                tag_uuid = None
-        )
-        tag_id = await searcher.tag.create(tag=tagData)
-        return {"created": True, "message": f"Tag {tagReq.tag_name} created with tag id {tag_id}"}
-    except Exception as e:
-        logging.error(e)
-        return {"created": False, "message": f"Tag {tagReq.tag_name} not created becacause of: {e}"}
+        return await searcher.tag.create(collection_id=collection_id, tag=tag)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from exc
+    
+@exp_router.get("/api/tags", response_model=schemas.GetTagsResponse)
+async def get_tags(searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
+    """
+    Retrieve all tags
+    """
+    response = await searcher.tag.read_all()
+    return {"tags_lst": response}
+
+@exp_router.get("/api/tags/{tag_uuid}", response_model=Tag)
+async def get_tag(tag_uuid: UUID, searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
+    """
+    Retrieve tag by its id
+    """
+    response = await searcher.tag.read(tag_uuid)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Tag with id {tag_uuid} not found")
+    return response
+
+@exp_router.delete("/api/tags/{tag_uuid}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tag(tag_uuid: UUID,
+                      searcher: WeaviateAbstraction = Depends(get_search)) -> None:
+    """
+    Deletes tag
+    """
+    await searcher.tag.delete(tag_uuid)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@exp_router.patch("/api/tags/{tag_uuid}", response_model=Tag)
+async def update_tag(tag_uuid: UUID, tag_update: PostTag,
+                      searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
+    """
+    Updates a tag
+    """
+    try:
+        response = await searcher.tag.update(tag_uuid, tag_update)
+        return response
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from exc
 
 @exp_router.post("/api/tag/task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
@@ -217,26 +244,6 @@ async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_ses
         logging.exception(f'Failed loading object from database. Task ID={taskId}')
         return {"message": f"Task retrieving failed {taskId}", "taskCanceled": False}
     return {"message": f"No running task {taskId}", "taskCanceled": False}
-
-@exp_router.get("/api/tags", response_model=schemas.GetTagsResponse)
-async def get_tags(searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
-    """
-    Retrieve all tags
-    """
-    response = await searcher.tag.read()
-    return {"tags_lst": response}
-
-@exp_router.delete("/api/tags", response_model=schemas.RemoveTagsResponse)
-async def remove_tags(chosenTagUUIDs: schemas.RemoveTagReq,
-                      searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.RemoveTagsResponse:
-    """
-    Removes whole tags
-    """
-    try:
-        response = await searcher.tag.delete(chosenTagUUIDs)
-        return response
-    except Exception as e:
-        logging.error(f"{e}")
 
 @exp_router.delete("/api/tags/automatic", response_model=schemas.RemoveTagsResponse)
 async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq,
