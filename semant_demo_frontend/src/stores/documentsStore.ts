@@ -11,23 +11,6 @@ export const useDocumentsStore = defineStore('documents', () => {
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
 
-  const fetchDocuments = async (collectionId?: string) => {
-    const notif = ongoingNotification('Loading documents...')
-    loading.value = true
-    error.value = null
-    try {
-      const data = await documentsRepository.getAll(collectionId)
-      documents.value = data
-      notif.success('Documents loaded')
-    } catch (err) {
-      error.value = 'Failed to fetch documents'
-      console.error('Error fetching documents:', err)
-      notif.error('Failed to load documents')
-    } finally {
-      loading.value = false
-    }
-  }
-
   const fetchDocumentsByCollection = async (collectionId: string) => {
     const notif = ongoingNotification('Loading documents...')
     loading.value = true
@@ -77,13 +60,6 @@ export const useDocumentsStore = defineStore('documents', () => {
       throw err
     } finally {
       loading.value = false
-    }
-  }
-
-  const appendDocumentIfMissing = (document: Document) => {
-    const exists = documents.value.some((doc) => doc.id === document.id)
-    if (!exists) {
-      documents.value = [document, ...documents.value]
     }
   }
 
@@ -152,11 +128,9 @@ export const useDocumentsStore = defineStore('documents', () => {
     error,
     loading,
 
-    fetchDocuments,
     fetchDocument,
     fetchDocumentsByCollection,
     browseDocuments,
-    appendDocumentIfMissing,
     addToCollection,
     removeFromCollection,
     removeManyFromCollection

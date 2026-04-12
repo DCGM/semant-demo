@@ -43,7 +43,7 @@ async def create_user_collection(collectionReq: PostCollection,
 
 
 @exp_router.get("/api/user_collections", response_model=list[Collection])
-async def fetch_collections(userId: UUID,
+async def fetch_collections(userId: str,
                             searcher: WeaviateAbstraction = Depends(get_search)) -> list[Collection]:
     """
     Retrieves all collections for given user
@@ -53,7 +53,7 @@ async def fetch_collections(userId: UUID,
 
 
 @exp_router.get("/api/user_collections/{collection_id}", response_model=Collection)
-async def fetch_collection(collection_id: UUID,
+async def fetch_collection(collection_id: str,
                            searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
     """
     Retrieves collection by its id
@@ -66,7 +66,7 @@ async def fetch_collection(collection_id: UUID,
 
 
 @exp_router.patch("/api/user_collections/{collection_id}", response_model=Collection)
-async def update_collection(collection_id: UUID, collectionReq: PatchCollection,
+async def update_collection(collection_id: str, collectionReq: PatchCollection,
                             searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
     """
     Updates collection name/description/color

@@ -1,29 +1,27 @@
 import { useApi } from 'src/composables/useApi'
-import { PatchTag } from 'src/generated/api'
-import { Tag, PostTag, Tags } from 'src/models/tags'
+import { Tag, PostTag, Tags, PatchTag } from 'src/models/tags'
 
 export function useTagsRepository() {
   const api = useApi().default
 
   return {
-    getByCollection: async (collectionId: string): Promise<Tags> => {
-      return api.getCollectionTagsApiV1CollectionsCollectionIdTagsGet({ collectionId })
+    getAllByCollection: async (collectionId: string): Promise<Tags> => {
+      return api.getCollectionTagsApiCollectionsCollectionIdTagsGet({ collectionId })
     },
-    createInCollection: async (collectionId: string, payload: PostTag): Promise<Tag> => {
-      return api.createCollectionTagApiV1CollectionsCollectionIdTagsPost({
-        collectionId,
-        postTag: payload
+    getById: async (tagUuid: string): Promise<Tag> => {
+      return api.getTagApiTagsTagUuidGet({ tagUuid })
+    },
+    create: async (collectionId: string, payload: PostTag): Promise<Tag> => {
+      return api.createTagApiTagsPost({
+        postTag: payload,
+        collectionId
       })
     },
-    deleteFromCollection: async (collectionId: string, tagUuid: string): Promise<void> => {
-      return api.deleteCollectionTagApiV1CollectionsCollectionIdTagsTagUuidDelete({
-        collectionId,
-        tagUuid
-      })
+    delete: async (tagUuid: string): Promise<void> => {
+      return api.deleteTagApiTagsTagUuidDelete({ tagUuid })
     },
-    updateInCollection: async (collectionId: string, tagUuid: string, payload: PatchTag): Promise<Tag> => {
-      return api.updateCollectionTagApiV1CollectionsCollectionIdTagsTagUuidPatch({
-        collectionId,
+    update: async (tagUuid: string, payload: PatchTag): Promise<Tag> => {
+      return api.updateTagApiTagsTagUuidPatch({
         tagUuid,
         patchTag: payload
       })

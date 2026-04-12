@@ -35,7 +35,9 @@ import type {
   GetTagsResponse,
   HTTPValidationError,
   PatchCollection,
+  PatchTag,
   PostCollection,
+  PostTag,
   RagRequestMain,
   RagResponse,
   RagRouteConfig,
@@ -46,7 +48,7 @@ import type {
   SearchResponseOutput,
   SemantDemoSchemaDocumentsDocument,
   SummaryResponse,
-  TagReqTemplate,
+  Tag,
   TagStartResponse,
   TaggingTaskReqTemplate,
 } from '../models/index';
@@ -91,8 +93,12 @@ import {
     HTTPValidationErrorToJSON,
     PatchCollectionFromJSON,
     PatchCollectionToJSON,
+    PatchTagFromJSON,
+    PatchTagToJSON,
     PostCollectionFromJSON,
     PostCollectionToJSON,
+    PostTagFromJSON,
+    PostTagToJSON,
     RagRequestMainFromJSON,
     RagRequestMainToJSON,
     RagResponseFromJSON,
@@ -113,8 +119,8 @@ import {
     SemantDemoSchemaDocumentsDocumentToJSON,
     SummaryResponseFromJSON,
     SummaryResponseToJSON,
-    TagReqTemplateFromJSON,
-    TagReqTemplateToJSON,
+    TagFromJSON,
+    TagToJSON,
     TagStartResponseFromJSON,
     TagStartResponseToJSON,
     TaggingTaskReqTemplateFromJSON,
@@ -158,8 +164,9 @@ export interface CheckStatusApiTagTaskStatusTaskIdGetRequest {
     taskId: string;
 }
 
-export interface CreateTagApiTagPostRequest {
-    tagReqTemplate: TagReqTemplate;
+export interface CreateTagApiTagsPostRequest {
+    collectionId: string;
+    postTag: PostTag;
 }
 
 export interface CreateUserCollectionApiUserCollectionsPostRequest {
@@ -168,6 +175,10 @@ export interface CreateUserCollectionApiUserCollectionsPostRequest {
 
 export interface DeleteCollectionApiCollectionsCollectionIdDeleteRequest {
     collectionId: string;
+}
+
+export interface DeleteTagApiTagsTagUuidDeleteRequest {
+    tagUuid: string;
 }
 
 export interface ExplainSelectionApiRagExplainPostRequest {
@@ -202,8 +213,16 @@ export interface GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest 
     collectionId: string;
 }
 
+export interface GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest {
+    collectionId: string;
+}
+
 export interface GetSelectedTagsChunksApiTagTextChunksPostRequest {
     getTaggedChunksReq: GetTaggedChunksReq;
+}
+
+export interface GetTagApiTagsTagUuidGetRequest {
+    tagUuid: string;
 }
 
 export interface QuestionApiQuestionQuestionTextPostRequest {
@@ -222,10 +241,6 @@ export interface RemoveAutomaticTagsApiTagsAutomaticDeleteRequest {
 export interface RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest {
     collectionId: string;
     documentId: string;
-}
-
-export interface RemoveTagsApiTagsDeleteRequest {
-    removeTagReq: RemoveTagReq;
 }
 
 export interface SaveAppFeedbackApiV1FeedbackPostRequest {
@@ -252,6 +267,11 @@ export interface SummarizeApiSummarizeSummaryTypePostRequest {
 export interface UpdateCollectionApiUserCollectionsCollectionIdPatchRequest {
     collectionId: string;
     patchCollection: PatchCollection;
+}
+
+export interface UpdateTagApiTagsTagUuidPatchRequest {
+    tagUuid: string;
+    patchTag: PatchTag;
 }
 
 /**
@@ -448,28 +468,30 @@ export interface DefaultApiInterface {
     checkStatusApiTagTaskStatusTaskIdGet(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
-     * Creates request options for createTagApiTagPost without sending the request
-     * @param {TagReqTemplate} tagReqTemplate 
+     * Creates request options for createTagApiTagsPost without sending the request
+     * @param {string} collectionId 
+     * @param {PostTag} postTag 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    createTagApiTagPostRequestOpts(requestParameters: CreateTagApiTagPostRequest): Promise<runtime.RequestOpts>;
+    createTagApiTagsPostRequestOpts(requestParameters: CreateTagApiTagsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Creates a tag in weaviate db, or not if the same tag already exists
      * @summary Create Tag
-     * @param {TagReqTemplate} tagReqTemplate 
+     * @param {string} collectionId 
+     * @param {PostTag} postTag 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    createTagApiTagPostRaw(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+    createTagApiTagsPostRaw(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>>;
 
     /**
      * Creates a tag in weaviate db, or not if the same tag already exists
      * Create Tag
      */
-    createTagApiTagPost(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
+    createTagApiTagsPost(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag>;
 
     /**
      * Creates request options for createUserCollectionApiUserCollectionsPost without sending the request
@@ -487,13 +509,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    createUserCollectionApiUserCollectionsPostRaw(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+    createUserCollectionApiUserCollectionsPostRaw(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>>;
 
     /**
      * Creates user collection in weaviate db, or not if the same user collection already exists
      * Create User Collection
      */
-    createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
+    createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
 
     /**
      * Creates request options for deleteCollectionApiCollectionsCollectionIdDelete without sending the request
@@ -517,6 +539,30 @@ export interface DefaultApiInterface {
      * Delete Collection
      */
     deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for deleteTagApiTagsTagUuidDelete without sending the request
+     * @param {string} tagUuid 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteTagApiTagsTagUuidDeleteRequestOpts(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Deletes tag
+     * @summary Delete Tag
+     * @param {string} tagUuid 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteTagApiTagsTagUuidDeleteRaw(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Deletes tag
+     * Delete Tag
+     */
+    deleteTagApiTagsTagUuidDelete(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for explainSelectionApiRagExplainPost without sending the request
@@ -730,6 +776,30 @@ export interface DefaultApiInterface {
     getCollectionStatsApiUserCollectionCollectionIdStatsGet(requestParameters: GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionStats>;
 
     /**
+     * Creates request options for getCollectionTagsApiCollectionsCollectionIdTagsGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionTagsApiCollectionsCollectionIdTagsGetRequestOpts(requestParameters: GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns tags which belong to collection given by id
+     * @summary Get Collection Tags
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionTagsApiCollectionsCollectionIdTagsGetRaw(requestParameters: GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Tag>>>;
+
+    /**
+     * Returns tags which belong to collection given by id
+     * Get Collection Tags
+     */
+    getCollectionTagsApiCollectionsCollectionIdTagsGet(requestParameters: GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Tag>>;
+
+    /**
      * Creates request options for getConfigsApiTagConfigsGet without sending the request
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -774,6 +844,30 @@ export interface DefaultApiInterface {
      * Get Selected Tags Chunks
      */
     getSelectedTagsChunksApiTagTextChunksPost(requestParameters: GetSelectedTagsChunksApiTagTextChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTaggedChunksResponse>;
+
+    /**
+     * Creates request options for getTagApiTagsTagUuidGet without sending the request
+     * @param {string} tagUuid 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getTagApiTagsTagUuidGetRequestOpts(requestParameters: GetTagApiTagsTagUuidGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Retrieve tag by its id
+     * @summary Get Tag
+     * @param {string} tagUuid 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getTagApiTagsTagUuidGetRaw(requestParameters: GetTagApiTagsTagUuidGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>>;
+
+    /**
+     * Retrieve tag by its id
+     * Get Tag
+     */
+    getTagApiTagsTagUuidGet(requestParameters: GetTagApiTagsTagUuidGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag>;
 
     /**
      * Creates request options for getTagTasksApiTagTasksInfoGet without sending the request
@@ -917,30 +1011,6 @@ export interface DefaultApiInterface {
     removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
-     * Creates request options for removeTagsApiTagsDelete without sending the request
-     * @param {RemoveTagReq} removeTagReq 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    removeTagsApiTagsDeleteRequestOpts(requestParameters: RemoveTagsApiTagsDeleteRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * Removes whole tags
-     * @summary Remove Tags
-     * @param {RemoveTagReq} removeTagReq 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    removeTagsApiTagsDeleteRaw(requestParameters: RemoveTagsApiTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>>;
-
-    /**
-     * Removes whole tags
-     * Remove Tags
-     */
-    removeTagsApiTagsDelete(requestParameters: RemoveTagsApiTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse>;
-
-    /**
      * Creates request options for saveAppFeedbackApiV1FeedbackPost without sending the request
      * @param {AppFeedbackRequest} appFeedbackRequest 
      * @throws {RequiredError}
@@ -1076,13 +1146,39 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+    updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>>;
 
     /**
      * Updates collection name/description/color
      * Update Collection
      */
-    updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+    updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
+
+    /**
+     * Creates request options for updateTagApiTagsTagUuidPatch without sending the request
+     * @param {string} tagUuid 
+     * @param {PatchTag} patchTag 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateTagApiTagsTagUuidPatchRequestOpts(requestParameters: UpdateTagApiTagsTagUuidPatchRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Updates a tag
+     * @summary Update Tag
+     * @param {string} tagUuid 
+     * @param {PatchTag} patchTag 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateTagApiTagsTagUuidPatchRaw(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>>;
+
+    /**
+     * Updates a tag
+     * Update Tag
+     */
+    updateTagApiTagsTagUuidPatch(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag>;
 
 }
 
@@ -1471,31 +1567,42 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for createTagApiTagPost without sending the request
+     * Creates request options for createTagApiTagsPost without sending the request
      */
-    async createTagApiTagPostRequestOpts(requestParameters: CreateTagApiTagPostRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['tagReqTemplate'] == null) {
+    async createTagApiTagsPostRequestOpts(requestParameters: CreateTagApiTagsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
             throw new runtime.RequiredError(
-                'tagReqTemplate',
-                'Required parameter "tagReqTemplate" was null or undefined when calling createTagApiTagPost().'
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling createTagApiTagsPost().'
+            );
+        }
+
+        if (requestParameters['postTag'] == null) {
+            throw new runtime.RequiredError(
+                'postTag',
+                'Required parameter "postTag" was null or undefined when calling createTagApiTagsPost().'
             );
         }
 
         const queryParameters: any = {};
+
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/tag`;
+        let urlPath = `/api/tags`;
 
         return {
             path: urlPath,
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: TagReqTemplateToJSON(requestParameters['tagReqTemplate']),
+            body: PostTagToJSON(requestParameters['postTag']),
         };
     }
 
@@ -1503,19 +1610,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Creates a tag in weaviate db, or not if the same tag already exists
      * Create Tag
      */
-    async createTagApiTagPostRaw(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
-        const requestOptions = await this.createTagApiTagPostRequestOpts(requestParameters);
+    async createTagApiTagsPostRaw(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>> {
+        const requestOptions = await this.createTagApiTagsPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => TagFromJSON(jsonValue));
     }
 
     /**
      * Creates a tag in weaviate db, or not if the same tag already exists
      * Create Tag
      */
-    async createTagApiTagPost(requestParameters: CreateTagApiTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
-        const response = await this.createTagApiTagPostRaw(requestParameters, initOverrides);
+    async createTagApiTagsPost(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag> {
+        const response = await this.createTagApiTagsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1552,18 +1659,18 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Creates user collection in weaviate db, or not if the same user collection already exists
      * Create User Collection
      */
-    async createUserCollectionApiUserCollectionsPostRaw(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
+    async createUserCollectionApiUserCollectionsPostRaw(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>> {
         const requestOptions = await this.createUserCollectionApiUserCollectionsPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionFromJSON(jsonValue));
     }
 
     /**
      * Creates user collection in weaviate db, or not if the same user collection already exists
      * Create User Collection
      */
-    async createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
+    async createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
         const response = await this.createUserCollectionApiUserCollectionsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -1610,6 +1717,52 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for deleteTagApiTagsTagUuidDelete without sending the request
+     */
+    async deleteTagApiTagsTagUuidDeleteRequestOpts(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['tagUuid'] == null) {
+            throw new runtime.RequiredError(
+                'tagUuid',
+                'Required parameter "tagUuid" was null or undefined when calling deleteTagApiTagsTagUuidDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/tags/{tag_uuid}`;
+        urlPath = urlPath.replace(`{${"tag_uuid"}}`, encodeURIComponent(String(requestParameters['tagUuid'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Deletes tag
+     * Delete Tag
+     */
+    async deleteTagApiTagsTagUuidDeleteRaw(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.deleteTagApiTagsTagUuidDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Deletes tag
+     * Delete Tag
+     */
+    async deleteTagApiTagsTagUuidDelete(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.deleteTagApiTagsTagUuidDeleteRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -2036,6 +2189,53 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for getCollectionTagsApiCollectionsCollectionIdTagsGet without sending the request
+     */
+    async getCollectionTagsApiCollectionsCollectionIdTagsGetRequestOpts(requestParameters: GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getCollectionTagsApiCollectionsCollectionIdTagsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/collections/{collection_id}/tags`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns tags which belong to collection given by id
+     * Get Collection Tags
+     */
+    async getCollectionTagsApiCollectionsCollectionIdTagsGetRaw(requestParameters: GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Tag>>> {
+        const requestOptions = await this.getCollectionTagsApiCollectionsCollectionIdTagsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(TagFromJSON));
+    }
+
+    /**
+     * Returns tags which belong to collection given by id
+     * Get Collection Tags
+     */
+    async getCollectionTagsApiCollectionsCollectionIdTagsGet(requestParameters: GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Tag>> {
+        const response = await this.getCollectionTagsApiCollectionsCollectionIdTagsGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getConfigsApiTagConfigsGet without sending the request
      */
     async getConfigsApiTagConfigsGetRequestOpts(): Promise<runtime.RequestOpts> {
@@ -2120,6 +2320,53 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getSelectedTagsChunksApiTagTextChunksPost(requestParameters: GetSelectedTagsChunksApiTagTextChunksPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTaggedChunksResponse> {
         const response = await this.getSelectedTagsChunksApiTagTextChunksPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getTagApiTagsTagUuidGet without sending the request
+     */
+    async getTagApiTagsTagUuidGetRequestOpts(requestParameters: GetTagApiTagsTagUuidGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['tagUuid'] == null) {
+            throw new runtime.RequiredError(
+                'tagUuid',
+                'Required parameter "tagUuid" was null or undefined when calling getTagApiTagsTagUuidGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/tags/{tag_uuid}`;
+        urlPath = urlPath.replace(`{${"tag_uuid"}}`, encodeURIComponent(String(requestParameters['tagUuid'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Retrieve tag by its id
+     * Get Tag
+     */
+    async getTagApiTagsTagUuidGetRaw(requestParameters: GetTagApiTagsTagUuidGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>> {
+        const requestOptions = await this.getTagApiTagsTagUuidGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TagFromJSON(jsonValue));
+    }
+
+    /**
+     * Retrieve tag by its id
+     * Get Tag
+     */
+    async getTagApiTagsTagUuidGet(requestParameters: GetTagApiTagsTagUuidGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag> {
+        const response = await this.getTagApiTagsTagUuidGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -2410,55 +2657,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
         const response = await this.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for removeTagsApiTagsDelete without sending the request
-     */
-    async removeTagsApiTagsDeleteRequestOpts(requestParameters: RemoveTagsApiTagsDeleteRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['removeTagReq'] == null) {
-            throw new runtime.RequiredError(
-                'removeTagReq',
-                'Required parameter "removeTagReq" was null or undefined when calling removeTagsApiTagsDelete().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-
-        let urlPath = `/api/tags`;
-
-        return {
-            path: urlPath,
-            method: 'DELETE',
-            headers: headerParameters,
-            query: queryParameters,
-            body: RemoveTagReqToJSON(requestParameters['removeTagReq']),
-        };
-    }
-
-    /**
-     * Removes whole tags
-     * Remove Tags
-     */
-    async removeTagsApiTagsDeleteRaw(requestParameters: RemoveTagsApiTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RemoveTagsResponse>> {
-        const requestOptions = await this.removeTagsApiTagsDeleteRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => RemoveTagsResponseFromJSON(jsonValue));
-    }
-
-    /**
-     * Removes whole tags
-     * Remove Tags
-     */
-    async removeTagsApiTagsDelete(requestParameters: RemoveTagsApiTagsDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse> {
-        const response = await this.removeTagsApiTagsDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -2756,23 +2954,76 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Updates collection name/description/color
      * Update Collection
      */
-    async updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+    async updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>> {
         const requestOptions = await this.updateCollectionApiUserCollectionsCollectionIdPatchRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<any>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionFromJSON(jsonValue));
     }
 
     /**
      * Updates collection name/description/color
      * Update Collection
      */
-    async updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+    async updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
         const response = await this.updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for updateTagApiTagsTagUuidPatch without sending the request
+     */
+    async updateTagApiTagsTagUuidPatchRequestOpts(requestParameters: UpdateTagApiTagsTagUuidPatchRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['tagUuid'] == null) {
+            throw new runtime.RequiredError(
+                'tagUuid',
+                'Required parameter "tagUuid" was null or undefined when calling updateTagApiTagsTagUuidPatch().'
+            );
+        }
+
+        if (requestParameters['patchTag'] == null) {
+            throw new runtime.RequiredError(
+                'patchTag',
+                'Required parameter "patchTag" was null or undefined when calling updateTagApiTagsTagUuidPatch().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/tags/{tag_uuid}`;
+        urlPath = urlPath.replace(`{${"tag_uuid"}}`, encodeURIComponent(String(requestParameters['tagUuid'])));
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchTagToJSON(requestParameters['patchTag']),
+        };
+    }
+
+    /**
+     * Updates a tag
+     * Update Tag
+     */
+    async updateTagApiTagsTagUuidPatchRaw(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>> {
+        const requestOptions = await this.updateTagApiTagsTagUuidPatchRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TagFromJSON(jsonValue));
+    }
+
+    /**
+     * Updates a tag
+     * Update Tag
+     */
+    async updateTagApiTagsTagUuidPatch(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag> {
+        const response = await this.updateTagApiTagsTagUuidPatchRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -1,5 +1,5 @@
-import { Tag, PostTag } from 'src/generated/api'
+import { Tag, PostTag, PatchTag } from 'src/generated/api'
 
 type Tags = Tag[]
 
-export type { Tag, PostTag, Tags }
+export type { Tag, PostTag, PatchTag, Tags }

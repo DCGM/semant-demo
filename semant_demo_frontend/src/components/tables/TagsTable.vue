@@ -172,7 +172,7 @@ import { PatchTag } from 'src/generated/api'
 
 const route = useRoute()
 const $q = useQuasar()
-const { tags, loading, loadTags, createTag, deleteTag, updateTag } = useTags()
+const { tags, loading, loadTagsByCollection, createTag, deleteTag, updateTag } = useTags()
 const { openTagsDialog } = useTagsDialog()
 const filter = ref<string>('')
 const initialPagination = {
@@ -204,7 +204,7 @@ const collectionId = computed<string>(() => {
 })
 
 const handleRefresh = async () => {
-  await loadTags(collectionId.value)
+  await loadTagsByCollection(collectionId.value)
 }
 
 const handleCreate = () => {
@@ -227,7 +227,7 @@ const handleDelete = async (tag: Tag) => {
     },
     persistent: true
   }).onOk(async () => {
-    await deleteTag(collectionId.value, tag.id)
+    await deleteTag(tag.id)
   })
 }
 
@@ -236,12 +236,12 @@ const handleEdit = (tag: Tag) => {
     dialogType: 'EDIT',
     tag
   }).onOk(async (updatedData: PatchTag) => {
-    await updateTag(collectionId.value, tag.id, updatedData)
+    await updateTag(tag.id, updatedData)
   })
 }
 
 onMounted(async () => {
-  await loadTags(collectionId.value)
+  await loadTagsByCollection(collectionId.value)
 })
 
 const columns: QTableColumn<Tag>[] = [

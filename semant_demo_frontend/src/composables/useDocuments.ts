@@ -5,7 +5,6 @@ import { computed } from 'vue'
 const useDocuments = () => {
   const documentsStore = useDocumentsStore()
 
-  const loadDocuments = (collectionId?: string) => documentsStore.fetchDocuments(collectionId)
   const loadDocument = (documentId: string) => documentsStore.fetchDocument(documentId)
   const loadDocumentsByCollection = (collectionId: string) => documentsStore.fetchDocumentsByCollection(collectionId)
   const browseDocuments = (params: DocumentBrowseParams) => documentsStore.browseDocuments(params)
@@ -19,7 +18,6 @@ const useDocuments = () => {
   const error = computed(() => documentsStore.error)
 
   return {
-    loadDocuments,
     loadDocument,
     loadDocumentsByCollection,
     browseDocuments,

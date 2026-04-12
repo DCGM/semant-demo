@@ -1,6 +1,5 @@
 import { useApi } from 'src/composables/useApi'
 import { Collection, Collections, PostCollection, PatchCollection, CollectionStats } from 'src/models/collections'
-import { CreateResponse } from 'src/models/api_responses'
 
 export function useCollectionRepository() {
   const api = useApi().default
@@ -18,13 +17,13 @@ export function useCollectionRepository() {
       return api.getCollectionStatsApiUserCollectionCollectionIdStatsGet({ collectionId })
     },
 
-    create: async (collectionData: PostCollection): Promise<CreateResponse> => {
+    create: async (collectionData: PostCollection): Promise<Collection> => {
       return api.createUserCollectionApiUserCollectionsPost({
         postCollection: collectionData
       })
     },
 
-    update: async (collectionId: string, collectionData: PatchCollection): Promise<void> => {
+    update: async (collectionId: string, collectionData: PatchCollection): Promise<Collection> => {
       return api.updateCollectionApiUserCollectionsCollectionIdPatch({
         collectionId,
         patchCollection: collectionData

@@ -1,23 +1,23 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import { Tags, PostTag } from 'src/models/tags'
+import { Tags, PostTag, PatchTag, Tag } from 'src/models/tags'
 import { useTagsRepository } from 'src/repositories/useTagsRepository'
 import { ongoingNotification } from 'src/utils/notification'
-import { PatchTag } from 'src/generated/api'
 
 export const useTagsStore = defineStore('tags', () => {
   const tagsRepository = useTagsRepository()
   const tags = ref<Tags>([])
+  const activeTag = ref<Tag | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
 
-  const fetchTags = async (collectionId: string) => {
+  const fetchTagsByCollection = async (collectionId: string) => {
     const notif = ongoingNotification('Loading tags...')
     loading.value = true
     error.value = null
     try {
-      const data = await tagsRepository.getByCollection(collectionId)
+      const data = await tagsRepository.getAllByCollection(collectionId)
       tags.value = data
       notif.success('Tags loaded')
     } catch (err) {
@@ -29,18 +29,30 @@ export const useTagsStore = defineStore('tags', () => {
     }
   }
 
+  const fetchTag = async (tagUuid: string) => {
+    const notif = ongoingNotification('Loading tag...')
+    loading.value = true
+    error.value = null
+    try {
+      const data = await tagsRepository.getById(tagUuid)
+      activeTag.value = data
+      notif.success('Tag loaded')
+    } catch (err) {
+      error.value = 'Failed to fetch tag'
+      console.error('Error fetching tag:', err)
+      notif.error('Failed to load tag')
+    } finally {
+      loading.value = false
+    }
+  }
+
   const createTag = async (collectionId: string, payload: PostTag) => {
     const notif = ongoingNotification('Creating tag...')
     loading.value = true
     error.value = null
     try {
-      const createdTag = await tagsRepository.createInCollection(collectionId, payload)
-      const existingIndex = tags.value.findIndex((tag) => tag.id === createdTag.id)
-      if (existingIndex >= 0) {
-        tags.value[existingIndex] = createdTag
-      } else {
-        tags.value = [createdTag, ...tags.value]
-      }
+      const createdTag = await tagsRepository.create(collectionId, payload)
+      tags.value.push(createdTag)
       notif.success('Tag created')
       return createdTag
     } catch (err) {
@@ -53,12 +65,12 @@ export const useTagsStore = defineStore('tags', () => {
     }
   }
 
-  const deleteTag = async (collectionId: string, tagUuid: string) => {
+  const deleteTag = async (tagUuid: string) => {
     const notif = ongoingNotification('Deleting tag...')
     loading.value = true
     error.value = null
     try {
-      await tagsRepository.deleteFromCollection(collectionId, tagUuid)
+      await tagsRepository.delete(tagUuid)
       tags.value = tags.value.filter((tag) => tag.id !== tagUuid)
       notif.success('Tag deleted')
     } catch (err) {
@@ -70,12 +82,12 @@ export const useTagsStore = defineStore('tags', () => {
     }
   }
 
-  const updateTag = async (collectionId: string, tagUuid: string, payload: PatchTag) => {
+  const updateTag = async (tagUuid: string, payload: PatchTag) => {
     const notif = ongoingNotification('Updating tag...')
     loading.value = true
     error.value = null
     try {
-      const updatedTag = await tagsRepository.updateInCollection(collectionId, tagUuid, payload)
+      const updatedTag = await tagsRepository.update(tagUuid, payload)
       const existingIndex = tags.value.findIndex((tag) => tag.id === updatedTag.id)
       if (existingIndex >= 0) {
         tags.value[existingIndex] = updatedTag
@@ -96,9 +108,11 @@ export const useTagsStore = defineStore('tags', () => {
     tags,
     error,
     loading,
+    activeTag,
     deleteTag,
     updateTag,
-    fetchTags,
-    createTag
+    fetchTagsByCollection,
+    createTag,
+    fetchTag
   }
 })

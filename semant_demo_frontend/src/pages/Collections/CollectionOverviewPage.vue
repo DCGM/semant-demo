@@ -352,7 +352,6 @@ const submitDescriptionEdit = async () => {
   isSavingDescription.value = true
 
   await updateCollection(collectionId.value, { description: descriptionPayload })
-  await refreshOverviewData()
 
   isSavingDescription.value = false
   if (!collectionStatsError.value) {
@@ -365,7 +364,6 @@ const submitNameEdit = async () => {
 
   isSavingName.value = true
   await updateCollection(collectionId.value, { name: normalizedEditedName.value })
-  await refreshOverviewData()
 
   isSavingName.value = false
   if (!collectionStatsError.value) {
@@ -391,7 +389,6 @@ const submitColorEdit = async () => {
 
   isSavingColor.value = true
   await updateCollection(collectionId.value, { color: currentColor.value })
-  await refreshOverviewData()
   isSavingColor.value = false
 
   if (!collectionStatsError.value) {
