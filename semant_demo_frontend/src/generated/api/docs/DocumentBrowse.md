@@ -1,28 +1,28 @@
 
-# RagRequest
+# DocumentBrowse
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`question` | string
-`history` | [Array&lt;RagChatMessage&gt;](RagChatMessage.md)
-`ragSearch` | [RagSearch](RagSearch.md)
-`previousDocuments` | [Array&lt;TextChunkWithDocumentInput&gt;](TextChunkWithDocumentInput.md)
+`items` | [Array&lt;SemantDemoSchemaDocumentsDocument&gt;](SemantDemoSchemaDocumentsDocument.md)
+`nextOffset` | number
+`hasMore` | boolean
+`totalCount` | number
 
 ## Example
 
 ```typescript
-import type { RagRequest } from ''
+import type { DocumentBrowse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "question": null,
-  "history": null,
-  "ragSearch": null,
-  "previousDocuments": null,
-} satisfies RagRequest
+  "items": null,
+  "nextOffset": null,
+  "hasMore": null,
+  "totalCount": null,
+} satisfies DocumentBrowse
 
 console.log(example)
 
@@ -31,7 +31,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as RagRequest
+const exampleParsed = JSON.parse(exampleJSON) as DocumentBrowse
 console.log(exampleParsed)
 ```
 

@@ -1,28 +1,30 @@
 
-# RagRequest
+# CollectionStats
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`question` | string
-`history` | [Array&lt;RagChatMessage&gt;](RagChatMessage.md)
-`ragSearch` | [RagSearch](RagSearch.md)
-`previousDocuments` | [Array&lt;TextChunkWithDocumentInput&gt;](TextChunkWithDocumentInput.md)
+`collectionId` | string
+`documentsCount` | number
+`chunksCount` | number
+`annotationsCount` | number
+`tagsCount` | number
 
 ## Example
 
 ```typescript
-import type { RagRequest } from ''
+import type { CollectionStats } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "question": null,
-  "history": null,
-  "ragSearch": null,
-  "previousDocuments": null,
-} satisfies RagRequest
+  "collectionId": null,
+  "documentsCount": null,
+  "chunksCount": null,
+  "annotationsCount": null,
+  "tagsCount": null,
+} satisfies CollectionStats
 
 console.log(example)
 
@@ -31,7 +33,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as RagRequest
+const exampleParsed = JSON.parse(exampleJSON) as CollectionStats
 console.log(exampleParsed)
 ```
 

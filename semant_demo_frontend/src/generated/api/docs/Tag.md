@@ -1,28 +1,34 @@
 
-# RagRequest
+# Tag
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`question` | string
-`history` | [Array&lt;RagChatMessage&gt;](RagChatMessage.md)
-`ragSearch` | [RagSearch](RagSearch.md)
-`previousDocuments` | [Array&lt;TextChunkWithDocumentInput&gt;](TextChunkWithDocumentInput.md)
+`id` | string
+`name` | string
+`shorthand` | string
+`color` | string
+`pictogram` | string
+`definition` | string
+`examples` | Array&lt;string&gt;
 
 ## Example
 
 ```typescript
-import type { RagRequest } from ''
+import type { Tag } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "question": null,
-  "history": null,
-  "ragSearch": null,
-  "previousDocuments": null,
-} satisfies RagRequest
+  "id": null,
+  "name": null,
+  "shorthand": null,
+  "color": null,
+  "pictogram": null,
+  "definition": null,
+  "examples": null,
+} satisfies Tag
 
 console.log(example)
 
@@ -31,7 +37,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as RagRequest
+const exampleParsed = JSON.parse(exampleJSON) as Tag
 console.log(exampleParsed)
 ```
 

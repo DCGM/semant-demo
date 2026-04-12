@@ -20,13 +20,13 @@ import {
     SearchRequestToJSON,
     SearchRequestToJSONTyped,
 } from './SearchRequest';
-import type { TextChunkWithDocument } from './TextChunkWithDocument';
+import type { TextChunkWithDocumentInput } from './TextChunkWithDocumentInput';
 import {
-    TextChunkWithDocumentFromJSON,
-    TextChunkWithDocumentFromJSONTyped,
-    TextChunkWithDocumentToJSON,
-    TextChunkWithDocumentToJSONTyped,
-} from './TextChunkWithDocument';
+    TextChunkWithDocumentInputFromJSON,
+    TextChunkWithDocumentInputFromJSONTyped,
+    TextChunkWithDocumentInputToJSON,
+    TextChunkWithDocumentInputToJSONTyped,
+} from './TextChunkWithDocumentInput';
 import type { FilteredChunksByTags } from './FilteredChunksByTags';
 import {
     FilteredChunksByTagsFromJSON,
@@ -43,10 +43,10 @@ import {
 export interface SearchResponseInput {
     /**
      * 
-     * @type {Array<TextChunkWithDocument>}
+     * @type {Array<TextChunkWithDocumentInput>}
      * @memberof SearchResponseInput
      */
-    results: Array<TextChunkWithDocument>;
+    results: Array<TextChunkWithDocumentInput>;
     /**
      * 
      * @type {string}
@@ -101,7 +101,7 @@ export function SearchResponseInputFromJSONTyped(json: any, ignoreDiscriminator:
     }
     return {
         
-        'results': ((json['results'] as Array<any>).map(TextChunkWithDocumentFromJSON)),
+        'results': ((json['results'] as Array<any>).map(TextChunkWithDocumentInputFromJSON)),
         'resultsSummary': json['results_summary'] == null ? undefined : json['results_summary'],
         'searchRequest': SearchRequestFromJSON(json['search_request']),
         'timeSpent': json['time_spent'],
@@ -121,7 +121,7 @@ export function SearchResponseInputToJSONTyped(value?: SearchResponseInput | nul
 
     return {
         
-        'results': ((value['results'] as Array<any>).map(TextChunkWithDocumentToJSON)),
+        'results': ((value['results'] as Array<any>).map(TextChunkWithDocumentInputToJSON)),
         'results_summary': value['resultsSummary'],
         'search_request': SearchRequestToJSON(value['searchRequest']),
         'time_spent': value['timeSpent'],

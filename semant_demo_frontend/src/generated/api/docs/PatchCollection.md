@@ -1,28 +1,26 @@
 
-# RagRequest
+# PatchCollection
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`question` | string
-`history` | [Array&lt;RagChatMessage&gt;](RagChatMessage.md)
-`ragSearch` | [RagSearch](RagSearch.md)
-`previousDocuments` | [Array&lt;TextChunkWithDocumentInput&gt;](TextChunkWithDocumentInput.md)
+`name` | string
+`description` | string
+`color` | string
 
 ## Example
 
 ```typescript
-import type { RagRequest } from ''
+import type { PatchCollection } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "question": null,
-  "history": null,
-  "ragSearch": null,
-  "previousDocuments": null,
-} satisfies RagRequest
+  "name": null,
+  "description": null,
+  "color": null,
+} satisfies PatchCollection
 
 console.log(example)
 
@@ -31,7 +29,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as RagRequest
+const exampleParsed = JSON.parse(exampleJSON) as PatchCollection
 console.log(exampleParsed)
 ```
 
