@@ -38,7 +38,7 @@ from semant_demo.tagging.tagging_utils import getTaskByName
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
-from semant_demo.schema.tags import Tag, PostTag
+from semant_demo.schema.tags import PatchTag, Tag, PostTag
 
 logging.basicConfig(level=logging.INFO)
 
@@ -87,7 +87,7 @@ async def delete_tag(tag_uuid: UUID,
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @exp_router.patch("/api/tags/{tag_uuid}", response_model=Tag)
-async def update_tag(tag_uuid: UUID, tag_update: PostTag,
+async def update_tag(tag_uuid: UUID, tag_update: PatchTag,
                       searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
     """
     Updates a tag
