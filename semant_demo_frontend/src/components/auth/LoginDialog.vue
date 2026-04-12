@@ -48,12 +48,14 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits(['update:modelValue'])
 
 const show = computed({ get: () => props.modelValue, set: (v: boolean) => emit('update:modelValue', v) })
+const $q = useQuasar()
 
 const email = ref('')
 const password = ref('')
@@ -71,6 +73,12 @@ async function submit() {
     show.value = false
     email.value = ''
     password.value = ''
+    $q.notify({
+      type: 'positive',
+      message: `Welcome, ${userStore.getDisplayName}!`,
+      position: 'top',
+      timeout: 3000
+    })
   } catch (e: unknown) {
     errorMsg.value = 'Invalid email or password.'
   } finally {

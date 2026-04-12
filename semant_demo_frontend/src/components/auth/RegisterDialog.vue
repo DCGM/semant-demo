@@ -68,7 +68,6 @@
           />
 
           <div v-if="errorMsg" class="text-negative text-caption">{{ errorMsg }}</div>
-          <div v-if="successMsg" class="text-positive text-caption">{{ successMsg }}</div>
 
           <div class="row justify-evenly q-mt-md">
             <q-btn flat label="Cancel" color="primary" v-close-popup @click="resetForm" />
@@ -83,11 +82,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { QForm } from 'quasar'
+import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
 
-const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits(['update:modelValue'])
 
+const $q = useQuasar()
 const formRef = ref<QForm | null>(null)
 const username = ref('')
 const name = ref('')
@@ -98,7 +98,6 @@ const confirmPassword = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 const errorMsg = ref('')
-const successMsg = ref('')
 
 const userStore = useUserStore()
 
@@ -110,7 +109,6 @@ function resetForm() {
   password.value = ''
   confirmPassword.value = ''
   errorMsg.value = ''
-  successMsg.value = ''
   formRef.value?.resetValidation()
 }
 
@@ -119,12 +117,17 @@ async function submit() {
   if (!valid) return
 
   errorMsg.value = ''
-  successMsg.value = ''
   loading.value = true
   try {
     await userStore.register(email.value, password.value, username.value, name.value, institution.value || undefined)
-    successMsg.value = 'Account created! You can now log in.'
     resetForm()
+    emit('update:modelValue', false)
+    $q.notify({
+      type: 'positive',
+      message: 'Account created! You can now log in.',
+      position: 'top',
+      timeout: 4000
+    })
   } catch (e: unknown) {
     errorMsg.value = 'Registration failed. The email or username may already be in use.'
   } finally {
