@@ -1,21 +1,44 @@
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" persistent>
-    <q-card style="min-width: 360px">
+    <q-card style="min-width: 380px">
       <q-card-section class="row items-center q-pb-none">
         <div class="text-h6">Create Account</div>
         <q-space />
-        <q-btn icon="close" flat round dense v-close-popup />
+        <q-btn icon="close" flat round dense v-close-popup @click="resetForm" />
       </q-card-section>
 
       <q-card-section>
-        <q-form @submit.prevent="submit" class="q-gutter-md">
+        <q-form ref="formRef" @submit.prevent="submit" class="q-gutter-md">
+          <q-input
+            v-model="username"
+            label="Username"
+            outlined
+            dense
+            lazy-rules
+            :rules="[v => !!v || 'Username is required', v => v.length >= 3 || 'Minimum 3 characters']"
+          />
+          <q-input
+            v-model="name"
+            label="Name"
+            outlined
+            dense
+            lazy-rules
+            :rules="[v => !!v || 'Name is required']"
+          />
+          <q-input
+            v-model="institution"
+            label="Institution (optional)"
+            outlined
+            dense
+          />
           <q-input
             v-model="email"
             label="Email"
             type="email"
             outlined
             dense
-            :rules="[v => !!v || 'Email is required']"
+            lazy-rules
+            :rules="[v => !!v || 'Email is required', v => /.+@.+\..+/.test(v) || 'Enter a valid email']"
           />
           <q-input
             v-model="password"
@@ -23,7 +46,8 @@
             :type="showPassword ? 'text' : 'password'"
             outlined
             dense
-            :rules="[v => v.length >= 8 || 'Minimum 8 characters']"
+            lazy-rules
+            :rules="[v => !!v || 'Password is required', v => v.length >= 8 || 'Minimum 8 characters']"
           >
             <template #append>
               <q-icon
@@ -33,17 +57,23 @@
               />
             </template>
           </q-input>
+          <q-input
+            v-model="confirmPassword"
+            label="Confirm Password"
+            :type="showPassword ? 'text' : 'password'"
+            outlined
+            dense
+            lazy-rules
+            :rules="[v => !!v || 'Please confirm your password', v => v === password || 'Passwords do not match']"
+          />
 
           <div v-if="errorMsg" class="text-negative text-caption">{{ errorMsg }}</div>
           <div v-if="successMsg" class="text-positive text-caption">{{ successMsg }}</div>
 
-          <q-btn
-            type="submit"
-            label="Register"
-            color="primary"
-            class="full-width"
-            :loading="loading"
-          />
+          <div class="row justify-evenly q-mt-md">
+            <q-btn flat label="Cancel" color="primary" v-close-popup @click="resetForm" />
+            <q-btn type="submit" label="Register" color="primary" :loading="loading" />
+          </div>
         </q-form>
       </q-card-section>
     </q-card>
@@ -51,16 +81,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
+import type { QForm } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits(['update:modelValue'])
 
-const show = computed({ get: () => props.modelValue, set: (v: boolean) => emit('update:modelValue', v) })
-
+const formRef = ref<QForm | null>(null)
+const username = ref('')
+const name = ref('')
+const institution = ref('')
 const email = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 const errorMsg = ref('')
@@ -68,17 +102,31 @@ const successMsg = ref('')
 
 const userStore = useUserStore()
 
+function resetForm() {
+  username.value = ''
+  name.value = ''
+  institution.value = ''
+  email.value = ''
+  password.value = ''
+  confirmPassword.value = ''
+  errorMsg.value = ''
+  successMsg.value = ''
+  formRef.value?.resetValidation()
+}
+
 async function submit() {
+  const valid = await formRef.value?.validate()
+  if (!valid) return
+
   errorMsg.value = ''
   successMsg.value = ''
   loading.value = true
   try {
-    await userStore.register(email.value, password.value)
+    await userStore.register(email.value, password.value, username.value, name.value, institution.value || undefined)
     successMsg.value = 'Account created! You can now log in.'
-    email.value = ''
-    password.value = ''
+    resetForm()
   } catch (e: unknown) {
-    errorMsg.value = 'Registration failed. The email may already be in use.'
+    errorMsg.value = 'Registration failed. The email or username may already be in use.'
   } finally {
     loading.value = false
   }
