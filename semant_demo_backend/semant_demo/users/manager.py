@@ -28,6 +28,14 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         result = await session.execute(select(User).where(User.username == username))
         return result.scalar_one_or_none()
 
+    async def create(self, user_create, safe: bool = False, request=None) -> User:
+        """Check username uniqueness before delegating to the default create flow."""
+        if user_create.username:
+            existing = await self._get_by_username(user_create.username)
+            if existing is not None:
+                raise exceptions.UserAlreadyExists()
+        return await super().create(user_create, safe=safe, request=request)
+
     async def authenticate(self, credentials) -> Optional[User]:
         """Authenticate using email or username."""
         try:
