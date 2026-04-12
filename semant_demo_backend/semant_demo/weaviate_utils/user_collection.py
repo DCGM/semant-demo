@@ -39,7 +39,7 @@ class UserCollection():
     #######
     # API #
     #######
-    async def create(self, collection: PostCollection) -> UUID:
+    async def create(self, collection: PostCollection) -> Collection:
         """
         Create user collection (contains chunks user choose)
         """
@@ -60,7 +60,15 @@ class UserCollection():
                 "updated_at": now
             }
         )
-        return new_collection_uuid
+        return Collection(
+            id=new_collection_uuid,
+            name=collection.name,
+            user_id=collection.user_id,
+            description=collection.description,
+            created_at=now,
+            updated_at=now,
+            color=collection.color
+        )
 
     async def read(self, collection_id: UUID) -> Collection | None:
         """
@@ -210,13 +218,15 @@ class UserCollection():
             annotations_count=annotations_count,
         )
 
-    async def update(self, collection_id: str, collection: PatchCollection):
+    async def update(self, collection_id: str, collection: PatchCollection) -> Collection:
         """"
         Updates collection with given id
         """
         usercollection_collection = self.client.collections.get(
             self.collectionNames.user_collection_name)
         collection_in_db = await self.read(collection_id)
+        if collection_in_db is None:
+            raise ValueError(f"Collection with id {collection_id} not found")
 
         now = datetime.now(timezone.utc)
 
@@ -228,6 +238,12 @@ class UserCollection():
             uuid=collection_id,
             properties=properties
         )
+        
+        updated_collection = await self.read(collection_id)
+        if updated_collection is None:
+            raise ValueError("Weaviate error: collection not found after update")
+
+        return updated_collection
 
     async def delete(self, collection_id: str) -> None:
         """
