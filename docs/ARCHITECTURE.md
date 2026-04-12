@@ -66,7 +66,7 @@ flowchart LR
     end
 
     subgraph Core
-        WS[weaviate_search.py]
+        WS[weaviate_utils/weaviate_abstraction.py]
         CFG[config.py]
         SCH[schemas.py]
     end
@@ -113,7 +113,7 @@ FastAPI application uses a centralized dependency-injection container to manage 
 |---|---|---|
 | `get_engine()` | SQLAlchemy engine + async session factory | App startup → shutdown |
 | `get_async_session()` | Database sessions for individual requests | Per-request |
-| `get_search()` | Weaviate connection wrapper (`WeaviateSearch`) | First access → shutdown |
+| `get_search()` | Weaviate connection wrapper (`WeaviateAbstraction`) | First access → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
 
 All route handlers inject dependencies via FastAPI's `Depends()` pattern, avoiding scattered global state. The `cleanup_dependencies()` function is called during app shutdown to properly close connections.
@@ -122,7 +122,7 @@ All route handlers inject dependencies via FastAPI's `Depends()` pattern, avoidi
 ```python
 @exp_router.post("/api/search")
 async def search(req: SearchRequest, 
-                 searcher: WeaviateSearch = Depends(get_search),
+                 searcher: WeaviateAbstraction = Depends(get_search),
                  summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> SearchResponse:
     # searcher and summarizer are automatically injected
     ...
@@ -279,7 +279,6 @@ Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
 |---|---|---|
 | `/search/` | SearchPage | Main search interface with filters, results, summaries |
 | `/rag/` | RagPage | Multi-turn RAG chat with source citations |
-| `/tag/` | TaggingPage | Tagging interface (referenced in routes but **file missing**) |
 | `/tag_manage/` | TagManagementPage | Create tags, start/monitor tagging tasks |
 | `/collection_manage/` | UserCollectionManagementPage | Manage user document collections |
 | `/about/` | AboutPage | Project information |
@@ -310,7 +309,7 @@ sequenceDiagram
     participant WV as Weaviate
     participant LLM as Ollama
 
-    FE->>BE: POST /api/tagging_task {tag definition}
+    FE->>BE: POST /api/tag/task {tag definition + task config}
     BE->>SQL: INSERT Task (PENDING)
     BE->>BE: asyncio.create_task(tag_and_store)
     BE-->>FE: {task_id, started: true}
@@ -324,7 +323,7 @@ sequenceDiagram
 
     BE->>SQL: UPDATE status=COMPLETED
 
-    FE->>BE: GET /api/tag_status/{id}
+    FE->>BE: GET /api/tag/task/status/{id}
     BE->>SQL: SELECT task
     BE-->>FE: {status, processed_count, ...}
 ```
