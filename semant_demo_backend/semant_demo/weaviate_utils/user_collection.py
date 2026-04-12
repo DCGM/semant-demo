@@ -26,6 +26,7 @@ from semant_demo.weaviate_exceptions import (
 
 from semant_demo.schema.collections import Collection, CollectionStats, PatchCollection, PostCollection
 from semant_demo.schema.documents import Document
+from semant_demo.schema.tags import Tag
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
@@ -238,10 +239,11 @@ class UserCollection():
             uuid=collection_id,
             properties=properties
         )
-        
+
         updated_collection = await self.read(collection_id)
         if updated_collection is None:
-            raise ValueError("Weaviate error: collection not found after update")
+            raise ValueError(
+                "Weaviate error: collection not found after update")
 
         return updated_collection
 
@@ -300,8 +302,46 @@ class UserCollection():
 
         await usercollection_collection.data.delete_by_id(collection_id)
 
-    def read_all_tags():
-        pass
+    async def read_all_tags(self, collection_id: UUID) -> list[Tag]:
+        """
+        Retrieves all tags which belong to collection given by id
+        """
+        tag_collection = self.client.collections.get(
+            self.collectionNames.tag_collection_name)
+        filters = (
+            Filter.by_ref("userCollection").by_id().equal(collection_id)
+        )
+        offset = 0
+        page_size = 100
+        
+        tags = []
+        while True:
+            response = await tag_collection.query.fetch_objects(
+                filters=filters,
+                limit=page_size,
+                offset=offset,
+            )
+
+            if not response.objects:
+                break
+
+            for obj in response.objects:
+                props = obj.properties
+                tags.append(Tag(
+                    id=obj.uuid,
+                    name=props['tag_name'],
+                    shorthand=props['tag_shorthand'],
+                    color=props['tag_color'],
+                    pictogram=props['tag_pictogram'],
+                    definition=props['tag_definition'],
+                    examples=props['tag_examples'] or []
+                ))
+
+            if len(response.objects) < page_size:
+                break
+
+            offset += page_size
+        return tags        
 
     async def read_all_chunks(self, collectionId: str):
         return await self.helpers.fetch_chunks_by_collection(collectionId)
@@ -353,8 +393,10 @@ class UserCollection():
         """
         Adds a document to a collection and also links all its chunks to that collection.
         """
-        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
-        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        document_collection = self.client.collections.get(
+            self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
 
         # Add collection reference to every chunk that belongs to the document.
         chunk_filter = Filter.by_ref("document").by_id().equal(document_id)
@@ -398,13 +440,15 @@ class UserCollection():
             from_property="collection",
             to=collection_id,
         )
-        
+
     async def remove_document(self, document_id: UUID, collection_id: UUID) -> None:
         """
         Removes a document from a collection by deleting the reference between them.
         """
-        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
-        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        document_collection = self.client.collections.get(
+            self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
 
         await document_collection.data.reference_delete(
             from_uuid=document_id,

@@ -21,6 +21,7 @@ import logging
 from semant_demo.schemas import TasksBase
 from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection
 from semant_demo.schema.documents import Document, DocumentBrowse
+from semant_demo.schema.tags import Tag
 
 # import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search
@@ -150,3 +151,11 @@ async def remove_document_from_collection(
 ) -> Response:
     await searcher.userCollection.remove_document(document_id=document_id, collection_id=collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@exp_router.get("/api/collections/{collection_id}/tags", response_model=list[Tag])
+async def get_collection_tags(collection_id: UUID, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Tag]:
+    """
+    Returns tags which belong to collection given by id
+    """
+    response = await searcher.userCollection.read_all_tags(collection_id)
+    return response
