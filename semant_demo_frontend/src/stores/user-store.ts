@@ -18,12 +18,13 @@ export const useUserStore = defineStore('user', {
   getters: {
     isLoggedIn: (state) => !!state.token && !!state.user,
     getUserId: (state) => state.user?.id,
-    getEmail: (state) => state.user?.email
+    getEmail: (state) => state.user?.email,
+    getDisplayName: (state) => state.user?.name || state.user?.username || state.user?.email || ''
   },
 
   actions: {
-    async register (email: string, password: string): Promise<void> {
-      await api.post('/auth/register', { email, password })
+    async register (email: string, password: string, username: string, name: string, institution?: string): Promise<void> {
+      await api.post('/auth/register', { email, password, username, name, institution })
     },
 
     async login (email: string, password: string): Promise<void> {
@@ -70,7 +71,7 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    async updateUser (data: { email?: string; password?: string }): Promise<void> {
+    async updateUser (data: { email?: string; password?: string; name?: string; institution?: string | null }): Promise<void> {
       if (!this.token) throw new Error('Not authenticated')
       const response = await api.patch('/users/me', data, {
         headers: { Authorization: `Bearer ${this.token}` }

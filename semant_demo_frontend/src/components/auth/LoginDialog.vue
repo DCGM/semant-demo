@@ -11,11 +11,11 @@
         <q-form @submit.prevent="submit" class="q-gutter-md">
           <q-input
             v-model="email"
-            label="Email"
-            type="email"
+            label="Email or Username"
             outlined
             dense
-            :rules="[v => !!v || 'Email is required']"
+            lazy-rules
+            :rules="[v => !!v || 'Email or username is required']"
           />
           <q-input
             v-model="password"
@@ -23,6 +23,7 @@
             :type="showPassword ? 'text' : 'password'"
             outlined
             dense
+            lazy-rules
             :rules="[v => !!v || 'Password is required']"
           >
             <template #append>
@@ -36,13 +37,9 @@
 
           <div v-if="errorMsg" class="text-negative text-caption">{{ errorMsg }}</div>
 
-          <q-btn
-            type="submit"
-            label="Log In"
-            color="primary"
-            class="full-width"
-            :loading="loading"
-          />
+          <div class="row justify-center q-mt-md">
+            <q-btn type="submit" label="Log In" color="primary" :loading="loading" style="min-width: 120px" />
+          </div>
         </q-form>
       </q-card-section>
     </q-card>

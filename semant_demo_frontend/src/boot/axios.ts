@@ -7,7 +7,7 @@ declare module '@vue/runtime-core' {
   }
 }
 
-const api = axios.create({ baseURL: process.env.BACKEND_URL ? process.env.BACKEND_URL + '/api' : 'http://pcvaskom.fit.vutbr.cz:8024/api' })
+const api = axios.create({ baseURL: process.env.BACKEND_URL ? process.env.BACKEND_URL + '/api' : 'http://localhost:8000/api' })
 
 // Attach the stored JWT bearer token to every request when present
 api.interceptors.request.use((config) => {

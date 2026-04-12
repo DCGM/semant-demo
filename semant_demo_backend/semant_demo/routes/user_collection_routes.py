@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends
 
 from semant_demo import schemas
 from semant_demo.config import config
+from semant_demo.users.auth import current_active_user, current_active_optional_user
+from semant_demo.users.models import User
 
 
 import os
@@ -30,7 +32,8 @@ exp_router = APIRouter()
 
 @exp_router.post("/api/user_collection", response_model=schemas.CreateResponse)
 async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplate,
-                                 searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.CreateResponse:
+                                 searcher: WeaviateAbstraction = Depends(get_search),
+                                 current_user: User = Depends(current_active_user)) -> schemas.CreateResponse:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
     """
@@ -47,7 +50,8 @@ async def create_user_collection(collectionReq: schemas.UserCollectionReqTemplat
 
 @exp_router.get("/api/user_collection/all", response_model=schemas.GetCollectionsResponse)
 async def fetch_collections(userId: str,
-                            searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetCollectionsResponse:
+                            searcher: WeaviateAbstraction = Depends(get_search),
+                            current_user: User = Depends(current_active_user)) -> schemas.GetCollectionsResponse:
     """
     Retrieves all collections for given user
     """
@@ -56,9 +60,9 @@ async def fetch_collections(userId: str,
 
 
 @exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
-async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq, 
+async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
                                  searcher: WeaviateAbstraction = Depends(get_search),
-                                 ) -> schemas.CreateResponse:
+                                 current_user: User = Depends(current_active_user)) -> schemas.CreateResponse:
     """
     Connects chunk with user collection
     """
@@ -74,9 +78,9 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
         return {"created": False, "message": f"Chunk not added to collection becacause of: {e}"}
     
 @exp_router.get("/api/user_collection/chunks", response_model=schemas.GetCollectionChunksResponse)
-async def get_collection_chunks(collectionId: str, 
-                                searcher: WeaviateAbstraction = Depends(get_search)
-                                ) -> schemas.GetCollectionChunksResponse:
+async def get_collection_chunks(collectionId: str,
+                                searcher: WeaviateAbstraction = Depends(get_search),
+                                current_user: User = Depends(current_active_user)) -> schemas.GetCollectionChunksResponse:
     """
     Returns chunks which belong to collection given by id
     """
