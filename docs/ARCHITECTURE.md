@@ -63,6 +63,7 @@ flowchart LR
         RAG_R[rag_routes]
         TAG_R[tag_routes]
         COL_R[user_collection_routes]
+        AUTH_R["users/<br/>(auth, register, users)"]
     end
 
     subgraph Core
@@ -81,10 +82,11 @@ flowchart LR
         RAG_F[rag/]
         SUM[summarization/]
         TAG_F[tagging/]
+        USERS[users/]
     end
 
-    APP --> DI & RAG_F
-    SUM_R & RAG_R & TAG_R & COL_R --> DI
+    APP --> DI & RAG_F & USERS
+    SUM_R & RAG_R & TAG_R & COL_R & AUTH_R --> DI
     DI --> WS
     RAG_R --> RAG_F
     SUM_R --> SUM
@@ -93,6 +95,7 @@ flowchart LR
     RAG_F --> LLM_API
     SUM --> LLM_API
     TAG_F --> OLLP
+    AUTH_R --> USERS
 ```
 
 #### Configuration (`config.py`)
@@ -102,7 +105,8 @@ A singleton `Config` class that reads environment variables with sensible defaul
 - **Weaviate connection** — host, REST port, gRPC port
 - **LLM endpoints** — Ollama URLs (comma-separated for load balancing), model names, API keys
 - **Application** — port, CORS origin, static file path
-- **Database** — SQLite URL for task tracking
+- **Database** — SQLite URL for task tracking and user accounts
+- **Auth** — `JWT_SECRET` (override in production with a long random string)
 - **RAG** — config directory path
 
 #### Dependency Injection (`routes/dependencies.py`)
@@ -134,7 +138,7 @@ The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
 
 1. **Startup** (`main.py` lifespan):
    - Initialize SQLAlchemy engine and database connection pool via `get_engine()`
-   - Create all required database tables (`Task`, etc.)
+   - Create all required database tables (`Task`, `User`, etc.)
    - Load RAG configurations from YAML and instantiate RAG engines via `rag_factory()`
 
 2. **Request handling** — dependency injection provides fresh database sessions and reuses long-lived connections (Weaviate, summarizer)
@@ -143,6 +147,29 @@ The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
    - Call `cleanup_dependencies()` to close Weaviate client, dispose of the database engine, and clean up resources
 
 This ensures no resource leaks and proper initialization order.
+
+#### Authentication (`users/`)
+
+User accounts are managed with [FastAPI Users](https://fastapi-users.github.io/fastapi-users/) using JWT Bearer tokens. User records are stored in the **same SQLite database** as tasks.
+
+| Module | Responsibility |
+|---|---|
+| `users/models.py` | SQLAlchemy `User` table (UUID PK, email, hashed password, active flag) |
+| `users/schemas.py` | Pydantic `UserRead` / `UserCreate` / `UserUpdate` schemas |
+| `users/manager.py` | `UserManager` — lifecycle hooks (on_after_register, etc.) |
+| `users/auth.py` | JWT strategy, `FastAPIUsers` instance, exported routers |
+
+**API endpoints:**
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/auth/register` | Create a new account |
+| `POST` | `/api/auth/jwt/login` | Login — returns `access_token` |
+| `POST` | `/api/auth/jwt/logout` | Logout (client discards token) |
+| `GET` | `/api/users/me` | Current user info (requires Bearer token) |
+| `PATCH` | `/api/users/me` | Update current user (email / password) |
+
+The JWT secret is configured via the `JWT_SECRET` environment variable (default is a placeholder — **must be overridden in production**).
 
 #### Search Pipeline
 

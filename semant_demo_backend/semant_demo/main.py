@@ -12,6 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from semant_demo.schemas import TasksBase
 from semant_demo.routes import export_router
+from semant_demo.users.auth import auth_router, register_router, users_router
+# Import User model so its table is included in TasksBase.metadata
+import semant_demo.users.models  # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
 
@@ -34,6 +37,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 # mount routes
 app.include_router(export_router)
+app.include_router(auth_router, prefix="/api/auth/jwt", tags=["auth"])
+app.include_router(register_router, prefix="/api/auth", tags=["auth"])
+app.include_router(users_router, prefix="/api/users", tags=["users"])
 
 app.add_middleware(
     CORSMiddleware,
