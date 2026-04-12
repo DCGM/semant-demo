@@ -141,16 +141,16 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
 import LoginDialog from 'src/components/auth/LoginDialog.vue'
 import RegisterDialog from 'src/components/auth/RegisterDialog.vue'
 import UserInfoDialog from 'src/components/auth/UserInfoDialog.vue'
 import AboutAppDialog from 'src/components/auth/AboutAppDialog.vue'
 
-const inputName = ref<string|undefined>('')
-
 const route = useRoute()
 const userStore = useUserStore()
+const $q = useQuasar()
 
 const leftDrawerOpen = ref(true)
 const showLogin = ref(false)
@@ -169,6 +169,12 @@ function toggleLeftDrawer () {
 
 async function handleLogout () {
   await userStore.logout()
+  $q.notify({
+    type: 'info',
+    message: 'You have been logged out.',
+    position: 'top',
+    timeout: 3000
+  })
 }
 </script>
 
