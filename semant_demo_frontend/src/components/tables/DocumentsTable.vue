@@ -172,7 +172,7 @@ const handleUploadDocument = () => {
 
 const handleTagDocument = (documentId: string) => {
   $router.push({
-    name: 'documentTagging',
+    name: 'documentDetailV1',
     params: {
       collectionId: collectionId.value,
       documentId
