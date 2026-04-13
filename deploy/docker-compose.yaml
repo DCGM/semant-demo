@@ -19,6 +19,8 @@ services:
     networks:
       - web
       - default
+    ports:
+      - "127.0.0.1:8000:8000"
     labels:
       - traefik.enable=true
       - traefik.http.routers.semant-demo.rule=Host(`${DOMAIN}`)

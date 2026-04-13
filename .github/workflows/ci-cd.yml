@@ -1,5 +1,6 @@
 name: Deploy
 
+# 1
 on:
   push:
     branches: [main, 68-cicd]
@@ -17,67 +18,105 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Prepare deploy directory
-        run: mkdir -p "${{ vars.DEPLOY_PATH }}"
+      - name: Validate and prepare deploy directory
+        run: |
+          set -euo pipefail
+          RUNNER_WORKDIR="${{ vars.RUNNER_WORKDIR }}"
+          DEPLOY_SUBDIR="${{ vars.DEPLOY_SUBDIR }}"
+
+          # Security: validate DEPLOY_SUBDIR before using it
+          if [[ -z "$RUNNER_WORKDIR" ]] || [[ -z "$DEPLOY_SUBDIR" ]]; then
+            echo "ERROR: RUNNER_WORKDIR and DEPLOY_SUBDIR variables must be set"
+            exit 1
+          fi
+
+          if [[ "$DEPLOY_SUBDIR" == *".."* ]] || [[ "$DEPLOY_SUBDIR" == /* ]]; then
+            echo "ERROR: DEPLOY_SUBDIR must be a relative directory name, not absolute or containing .."
+            exit 1
+          fi
+
+          CANONICAL=$(cd "$RUNNER_WORKDIR" && pwd)
+          FULL_PATH="$RUNNER_WORKDIR/$DEPLOY_SUBDIR"
+          if [[ ! "$FULL_PATH" == "$CANONICAL"* ]]; then
+            echo "ERROR: Full deploy path must be under RUNNER_WORKDIR=$RUNNER_WORKDIR"
+            exit 1
+          fi
+
+          mkdir -p "$FULL_PATH"
+          echo "Deploy directory validated and ready: $FULL_PATH"
 
       - name: Update deploy/ files
         run: |
-          set -e
-          REF=${{ github.ref_name }}
-          GIT_DIR="${{ vars.DEPLOY_PATH }}/.git-src"
+          set -euo pipefail
+          set -x
+          RUNNER_WORKDIR="${{ vars.RUNNER_WORKDIR }}"
+          REF_NAME="${{ github.ref_name }}"
+          DEPLOY_PATH="${RUNNER_WORKDIR}/${{ vars.DEPLOY_SUBDIR }}"
+          TMP_DIR="/tmp/semant-deploy"
 
-          if [ -d "$GIT_DIR" ]; then
-            git --git-dir="$GIT_DIR" fetch --tags origin
-          else
-            git clone --filter=blob:none --sparse --no-checkout \
-              https://github.com/DCGM/semant-demo.git "$GIT_DIR"
-            git --git-dir="$GIT_DIR" sparse-checkout set deploy
+          mkdir -p "$DEPLOY_PATH"
+          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
+
+          # Use sparse checkout to fetch only the deploy/ directory
+          git clone --depth=1 --filter=blob:none --sparse \
+            --branch "$REF_NAME" \
+            "https://github.com/DCGM/semant-demo.git" \
+            "$TMP_DIR/repo"
+
+          cd "$TMP_DIR/repo"
+          git sparse-checkout set deploy
+
+          if [ ! -d "deploy" ]; then
+            echo "deploy/ not found in repository for ref $REF_NAME" >&2
+            exit 1
           fi
 
-          git --git-dir="$GIT_DIR" --work-tree="${{ vars.DEPLOY_PATH }}" \
-            checkout "$REF" -- deploy/
-
-          shopt -s dotglob
-          mv -f "${{ vars.DEPLOY_PATH }}/deploy/"* "${{ vars.DEPLOY_PATH }}/"
-          rm -rf "${{ vars.DEPLOY_PATH }}/deploy"
+          # Move deploy contents into DEPLOY_PATH atomically
+          rm -rf "$DEPLOY_PATH/deploy.new" || true
+          mv "deploy" "$DEPLOY_PATH/deploy.new"
+          shopt -s dotglob || true
+          mv -f "$DEPLOY_PATH/deploy.new/"* "$DEPLOY_PATH/" || true
+          rm -rf "$DEPLOY_PATH/deploy.new"
+          rm -rf "$TMP_DIR"
 
       - name: Create .env
         run: |
-          cp "${{ vars.DEPLOY_PATH }}/.env.example" "${{ vars.DEPLOY_PATH }}/.env"
-          sed -i "s|^BRANCH=.*|BRANCH=${{ github.ref_name }}|" "${{ vars.DEPLOY_PATH }}/.env"
-          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}|" "${{ vars.DEPLOY_PATH }}/.env"
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}"
+          cp "$DEPLOY_PATH/.env.example" "$DEPLOY_PATH/.env"
+          sed -i "s|^BRANCH=.*|BRANCH=${{ github.ref_name }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}|" "$DEPLOY_PATH/.env"
 
       - name: Build and start
         id: build
-        working-directory: ${{ vars.DEPLOY_PATH }}
+        working-directory: ${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}
         run: |
           OLD_BACKEND=$(docker compose images -q semant-demo 2>/dev/null || true)
           OLD_EMBED=$(docker compose images -q embedding-service 2>/dev/null || true)
           [ -n "$OLD_BACKEND" ] && docker tag "$OLD_BACKEND" semant-demo-rollback || true
           [ -n "$OLD_EMBED"   ] && docker tag "$OLD_EMBED"   semant-demo-embedding-rollback || true
 
-          ./update.sh build --no-cache
+          ./update.sh build
           ./update.sh up -d
 
       - name: Health check
         id: health
         run: |
-          for i in $(seq 1 20); do
-            sleep 15
-            echo "Attempt $i/20..."
+          for i in $(seq 1 15); do
+            sleep 10
+            echo "Attempt $i/15..."
             if curl --fail --silent --max-time 10 http://localhost:8000/health; then
-              echo "OK"
+              echo "Health check passed"
               docker rmi semant-demo-rollback semant-demo-embedding-rollback 2>/dev/null || true
               docker image prune -f --filter label=project=semant-demo
               exit 0
             fi
           done
-          echo "Health check failed."
+          echo "Health check failed after 15 attempts."
           exit 1
 
       - name: Rollback
         if: failure() && steps.health.outcome == 'failure'
-        working-directory: ${{ vars.DEPLOY_PATH }}
+        working-directory: ${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}
         run: |
           PREV=$(grep "^BRANCH=" .env | cut -d= -f2)
           if [ -z "$PREV" ]; then echo "First deploy – skipping rollback."; exit 1; fi
