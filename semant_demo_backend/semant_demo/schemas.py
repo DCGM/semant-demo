@@ -277,6 +277,7 @@ class CollectionNames(BaseModel):
     user_collection_name: str
     user_collection_link_name: str
     tag_to_user_collection_link_name: str
+    span_collection_name: str
 
 # Tagging configuration
 

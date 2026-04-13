@@ -56,7 +56,8 @@ class Config:
             tag_collection_name = "Tag",
             user_collection_name = "UserCollection",
             user_collection_link_name = "userCollection",
-            tag_to_user_collection_link_name= "tagToUserCollection"
+            tag_to_user_collection_link_name= "tagToUserCollection",
+            span_collection_name="Span_test"
         )
 
 config = Config()

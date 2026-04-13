@@ -74,7 +74,7 @@
             <div class="row q-gutter-sm">
               <q-btn
                 v-for="tag in availableTags"
-                :key="tag.tagUuid"
+                :key="tag.tagUuid || tag.tagName"
                 :label="tag.tagName"
                 :icon="tag.tagPictogram"
                 :disable="!globalSelection || pageLoading || isAutoSelection"
@@ -201,7 +201,7 @@ const isAutoSelection = computed(() => {
 
 onMounted(async () => {
   await loadChunks(props.collectionId)
-  await getTagsForCollection(props.collectionId)
+  await getTagsForCollection()
 })
 </script>
 
