@@ -168,9 +168,7 @@
 
 <script setup lang="ts">
 import MiniStateButton from 'src/components/MiniStateButton.vue'
-import { ref } from 'vue'
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
 import LoginDialog from 'src/components/auth/LoginDialog.vue'
@@ -180,7 +178,6 @@ import AboutAppDialog from 'src/components/auth/AboutAppDialog.vue'
 
 const drawerMiniState = ref(false)
 
-const route = useRoute()
 const userStore = useUserStore()
 const $q = useQuasar()
 
