@@ -11,6 +11,8 @@ from semant_demo.gemma_embedding import get_query_embedding, get_hyde_document_e
 from weaviate.classes.query import QueryReference
 from semant_demo.config import config
 
+from semant_demo.schema.collections import Collection
+
 import logging
 
 from weaviate.collections.classes.grpc import QueryReference
@@ -24,24 +26,191 @@ from weaviate.exceptions import (
     WeaviateClosedClientError,
     InsufficientPermissionsError,
 )
-from semant_demo.weaviate_exceptions import WeaviateConnectError, WeaviateDataValidationError, WeaviateLimitError, WeaviateServerError, WeaviateOperationError 
+from semant_demo.weaviate_exceptions import WeaviateConnectError, WeaviateDataValidationError, WeaviateLimitError, WeaviateServerError, WeaviateOperationError
 
 import uuid
+
 
 class WeaviateHelpers:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
+
+    async def delete_span_cascade(self, span_id: str) -> None:
+        """
+        Performs cascade deletion of a span
+        """
+        logging.info(f"Performing cascade deletion of span {span_id}")
+        span_collection = self.client.collections.get(
+            self.collectionNames.span_collection_name)
+
+        # delete the span itself
+        await span_collection.data.delete_by_id(span_id)
+
+    async def delete_tag_cascade(self, tag_id: str) -> None:
+        """
+        Performs cascade deletion of a tag
+        """
+        logging.info(f"Performing cascade deletion of tag {tag_id}")
+        tag_collection = self.client.collections.get(
+            self.collectionNames.tag_collection_name)
+
+        # delete automatic tag references
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("automaticTag").by_id().equal(tag_id),
+            from_property="automaticTag",
+            target_object_id=tag_id,
+        )
+        # delete positive tag references
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("positiveTag").by_id().equal(tag_id),
+            from_property="positiveTag",
+            target_object_id=tag_id,
+        )
+        # delete negative tag references
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("negativeTag").by_id().equal(tag_id),
+            from_property="negativeTag",
+            target_object_id=tag_id,
+        )
+
+        # delete spans tagged with this tag
+        page_size = 100
+        while True:
+            span_response = await self.client.collections.get(self.collectionNames.span_collection_name).query.fetch_objects(
+                filters=Filter.by_ref("tag").by_id().equal(tag_id),
+                limit=page_size,
+            )
+
+            if not span_response.objects:
+                break
+
+            for span_obj in span_response.objects:
+                await self.delete_span_cascade(str(span_obj.uuid))
+
+            if len(span_response.objects) < page_size:
+                break
+
+        # finally delete the tag itself
+        await tag_collection.data.delete_by_id(tag_id)
+
+    async def delete_user_collection_cascade(self, collection_id: str) -> None:
+        """"
+        Performs cascade deletion of user collection
+        """
+        logging.info(
+            f"Performing cascade deletion of user collection {collection_id}")
+        tag_collection = self.client.collections.get(
+            self.collectionNames.tag_collection_name)
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+
+        # delete references to collection from chunks
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref(
+                "userCollection").by_id().equal(collection_id),
+            from_property="userCollection",
+            target_object_id=collection_id,
+        )
+        # delete references to collection from documents
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.document_collection_name,
+            filters=Filter.by_ref("collection").by_id().equal(collection_id),
+            from_property="collection",
+            target_object_id=collection_id,
+        )
+
+        # delete tags which belong to that collection and their references
+        page_size = 100
+        while True:
+            tag_response = await tag_collection.query.fetch_objects(
+                filters=Filter.by_ref(
+                    "userCollection").by_id().equal(collection_id),
+                limit=page_size,
+            )
+
+            if not tag_response.objects:
+                break
+
+            for tag_obj in tag_response.objects:
+                await self.delete_tag_cascade(str(tag_obj.uuid))
+
+            if len(tag_response.objects) < page_size:
+                break
+
+        # finally delete the collection itself
+        await usercollection_collection.data.delete_by_id(collection_id)
+
+    async def delete_references_from_filtered_objects(
+        self,
+        collection_name: str,
+        filters: Filter,
+        from_property: str,
+        target_object_id: str,
+        page_size: int = 100,
+    ) -> None:
+        """
+        Deletes a reference from every object matching the filter.
+
+        The query is repeated without an offset because removing the reference
+        changes which objects still match the filter.
+        """
+        try:
+            collection = self.client.collections.get(collection_name)
+            target_object_id = str(target_object_id)
+
+            while True:
+                response = await collection.query.fetch_objects(
+                    filters=filters,
+                    limit=page_size,
+                )
+
+                if not response.objects:
+                    break
+
+                for obj in response.objects:
+                    await collection.data.reference_delete(
+                        from_uuid=obj.uuid,
+                        from_property=from_property,
+                        to=target_object_id,
+                    )
+
+                if len(response.objects) < page_size:
+                    break
+
+        except WeaviateConnectionError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
+        except Exception as e:
+            logging.error(f"Unexpected error deleting references: {str(e)}")
+            raise WeaviateServerError(str(e))
+
     async def fetch_chunks(self, filters: Filter) -> list:
         """
         Fetches chunks with filters - tag, user-collection. Fetch subset of text chunks given by filters.
-        
+
         Filters are built by the public methods using inline like:
             filters = Filter.by_property("name").equal("value")
-            
+
         Args:
             filters: Weaviate Filter object for querying chunks
-            
+
         Returns:
             List of chunk objects matching the filters
 
@@ -59,23 +228,24 @@ class WeaviateHelpers:
 
         try:
             # prepare references to fetch in the query (set to None if you do not want to return any)
-            references=[
-                            QueryReference(
-                                link_on="automaticTag",  # the reference property
-                                return_properties=["uuid", "tag_name"]  # properties from the referenced tags
-                            ),
-                            QueryReference(
-                                link_on="positiveTag",
-                                return_properties=["uuid", "tag_name"]
-                            ),
-                            QueryReference(
-                                link_on="negativeTag",
-                                return_properties=["uuid", "tag_name"]
-                            ),
-                            QueryReference(
-                                link_on="userCollection"
-                            ),
-                        ]
+            references = [
+                QueryReference(
+                    link_on="automaticTag",  # the reference property
+                    # properties from the referenced tags
+                    return_properties=["uuid", "tag_name"]
+                ),
+                QueryReference(
+                    link_on="positiveTag",
+                    return_properties=["uuid", "tag_name"]
+                ),
+                QueryReference(
+                    link_on="negativeTag",
+                    return_properties=["uuid", "tag_name"]
+                ),
+                QueryReference(
+                    link_on="userCollection"
+                ),
+            ]
             # returns all properties (except blobs) and specified references
             response = await self.client.collections.get(self.collectionNames.chunks_collection_name).query.fetch_objects(
                 return_references=references,
@@ -104,7 +274,7 @@ class WeaviateHelpers:
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
 
-    async def fetch_tags(self, filters: Filter|None = None, ids: list[str]|None = None) -> list:
+    async def fetch_tags(self, filters: Filter | None = None, ids: list[str] | None = None) -> list:
         """
         Fetches tag collection
         - with specific name OR
@@ -113,14 +283,14 @@ class WeaviateHelpers:
 
         Filters are built by the public methods using inline like:
             filters = Filter.by_property("name").equal("value")
-        
+
         Args:
             filters: Optional Weaviate Filter object for property matching (by name)
             ids: Optional list of tag UUIDs to fetch specific tags
-        
+
         Returns:
             List of tag objects matching criteria. Returns empty list if no matches found.
-            
+
         Raises:
             WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateFilterError: Invalid filter specification or malformed Filter object
@@ -132,13 +302,15 @@ class WeaviateHelpers:
             WeaviateServerError: Weaviate server returned an error
         """
         if filters is not None and ids is not None:
-            raise WeaviateDataValidationError("Cannot specify both filters and ids. Use one or the other.")
+            raise WeaviateDataValidationError(
+                "Cannot specify both filters and ids. Use one or the other.")
         try:
             # build filter from given IDs
             if ids:
                 # validate UUID format
                 if not isinstance(ids, list):
-                    raise WeaviateDataValidationError("ids must be a list of strings (UUIDs)")
+                    raise WeaviateDataValidationError(
+                        "ids must be a list of strings (UUIDs)")
                 converted_ids = []
                 for uid in ids:
                     if isinstance(uid, uuid.UUID):
@@ -179,7 +351,6 @@ class WeaviateHelpers:
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
 
-
     async def create_tag(self, tag: schemas.TagData) -> str:
         """
         Adds new tag to tag-collection. This function calls fetch_tags to prevent duplicates.
@@ -187,10 +358,10 @@ class WeaviateHelpers:
         Args:
             tag: structure containing tag data defined in schemas.TagData,
                  also contains name of the collection this tag belongs to
-            
+
         Returns:
             Created tag object UUID
-            
+
         Raises:
             WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid input data (empty name, invalid UUID format, etc.)
@@ -202,15 +373,18 @@ class WeaviateHelpers:
         # prepare filter
         # Validate input
         if not tag.tag_name or not isinstance(tag.tag_name, str):
-                raise WeaviateDataValidationError("tag_name must be a non-empty string")
+            raise WeaviateDataValidationError(
+                "tag_name must be a non-empty string")
         if not tag.tag_shorthand or not isinstance(tag.tag_shorthand, str):
-                raise WeaviateDataValidationError("tag_shorthand must be a non-empty string")
+            raise WeaviateDataValidationError(
+                "tag_shorthand must be a non-empty string")
         if not tag.tag_color or not isinstance(tag.tag_color, str):
-                raise WeaviateDataValidationError("tag_color must be a non-empty string")
+            raise WeaviateDataValidationError(
+                "tag_color must be a non-empty string")
         try:
-            filters =(
+            filters = (
                 Filter.by_property("tag_name").equal(tag.tag_name) &
-                Filter.by_property("tag_shorthand").equal(tag.tag_shorthand)&
+                Filter.by_property("tag_shorthand").equal(tag.tag_shorthand) &
                 Filter.by_property("tag_color").equal(tag.tag_color)
             )
             # query weaviate
@@ -219,8 +393,8 @@ class WeaviateHelpers:
             for existing_tag in existing_tags:
                 if (existing_tag.properties["tag_name"] == tag.tag_name and
                     existing_tag.properties["tag_shorthand"] == tag.tag_shorthand and
-                    existing_tag.properties["tag_color"] == tag.tag_color):
-                    return existing_tag.uuid # return existing tag UUID
+                        existing_tag.properties["tag_color"] == tag.tag_color):
+                    return existing_tag.uuid  # return existing tag UUID
             # no exact match found, create new tag
             new_tag_uuid = await self.client.collections.get("Tag").data.insert(
                 properties={
@@ -233,7 +407,7 @@ class WeaviateHelpers:
                     "collection_name": tag.collection_name
                 }
             )
-            return new_tag_uuid  
+            return new_tag_uuid
         except WeaviateConnectionError as e:
             logging.error(f"Error: {str(e)}")
             raise WeaviateConnectError(str(e))
@@ -254,20 +428,19 @@ class WeaviateHelpers:
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
 
-
-    async def fetch_object_by_id(self, object_id: str, collection_name: str = None, 
-                               return_references: list = None) -> object:
+    async def fetch_object_by_id(self, object_id: str, collection_name: str = None,
+                                 return_references: list = None) -> object:
         """
         Fetches a single Weaviate object by its UUID.
-        
+
         Args:
             object_id: UUID of the object to fetch
             collection_name: Name of collection (defaults to chunks collection)
             return_references: Optional list of QueryReference objects to include
-            
+
         Returns:
             Weaviate object with properties and optionally references
-            
+
         Raises:
             WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid UUID format
@@ -277,21 +450,23 @@ class WeaviateHelpers:
         try:
             if not collection_name:
                 collection_name = self.collectionNames.chunks_collection_name
-                
+
             # Validate UUID format
             if not isinstance(object_id, str):
-                raise WeaviateDataValidationError(f"object_id must be string, got {type(object_id).__name__}")
-            
+                raise WeaviateDataValidationError(
+                    f"object_id must be string, got {type(object_id).__name__}")
+
             obj = await self.client.collections.get(collection_name).query.fetch_object_by_id(
                 object_id,
                 return_references=return_references
             )
-            
+
             if obj is None:
-                raise WeaviateOperationError(f"Object with ID '{object_id}' not found in collection '{collection_name}'")
-            
+                raise WeaviateOperationError(
+                    f"Object with ID '{object_id}' not found in collection '{collection_name}'")
+
             return obj
-        
+
         except WeaviateConnectionError as e:
             logging.error(f"Error: {str(e)}")
             raise WeaviateConnectError(str(e))
@@ -312,7 +487,7 @@ class WeaviateHelpers:
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
 
-    async def create_reference(self, src_id:str, src_collection_name:str, property_name:str, target_collection_id:str) -> bool:
+    async def create_reference(self, src_id: str, src_collection_name: str, property_name: str, target_collection_id: str) -> bool:
         """
         Creates reference from weviate object fetched by its id to other object defined by id.
 
@@ -321,10 +496,10 @@ class WeaviateHelpers:
             src_collection_name: Name of collection where is weaviate source object
             property_name: Name of reference property (e.g., "tagged_with", "inCollection")
             target_collection_id: UUID of target object (e.g., tag UUID)
-            
+
         Returns:
             True if reference created successfully
-            
+
         Raises:
             WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid UUID format in source_id or target_id
@@ -333,25 +508,30 @@ class WeaviateHelpers:
         try:
             # Validate inputs
             if not src_id or not isinstance(src_id, str):
-                raise WeaviateDataValidationError("src_id must be a non-empty string")
+                raise WeaviateDataValidationError(
+                    "src_id must be a non-empty string")
             if not src_collection_name or not isinstance(src_collection_name, str):
-                raise WeaviateDataValidationError("src_collection_name must be a non-empty string")
+                raise WeaviateDataValidationError(
+                    "src_collection_name must be a non-empty string")
             if not property_name or not isinstance(property_name, str):
-                raise WeaviateDataValidationError("property_name must be a non-empty string")
+                raise WeaviateDataValidationError(
+                    "property_name must be a non-empty string")
             if not target_collection_id or not isinstance(target_collection_id, str):
-                raise WeaviateDataValidationError("target_collection_id must be a non-empty string")
+                raise WeaviateDataValidationError(
+                    "target_collection_id must be a non-empty string")
 
             # prepare references list
-            return_references=[
-                    QueryReference(
-                        link_on=property_name
-                    )]
+            return_references = [
+                QueryReference(
+                    link_on=property_name
+                )]
             # fetch the source object by id
             try:
-                obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
-                                return_references=return_references)
+                obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name,
+                                                    return_references=return_references)
             except WeaviateOperationError:
-                logging.error(f"Source object '{src_id}' not found in collection '{src_collection_name}'")
+                logging.error(
+                    f"Source object '{src_id}' not found in collection '{src_collection_name}'")
                 raise
             # extract references
             refs = obj.references or {}
@@ -361,40 +541,46 @@ class WeaviateHelpers:
                 if not ref_block:
                     return []
                 return [str(r.uuid) for r in ref_block.objects]
-            
+
             # extract ids of referenced objects
             target_collection_ids = ref_uuids(refs.get(property_name))
             target_collection_id = str(target_collection_id)
             # add new collection id to list of already referenced collection ids
-            updatedCollectionIds = sorted(set(target_collection_ids + [target_collection_id]))
+            updatedCollectionIds = sorted(
+                set(target_collection_ids + [target_collection_id]))
             # update weaviate with the new list
             try:
                 await self.client.collections.get(src_collection_name).data.reference_replace(
-                        from_uuid=obj.uuid,
-                        from_property=property_name,
-                        to=updatedCollectionIds,
+                    from_uuid=obj.uuid,
+                    from_property=property_name,
+                    to=updatedCollectionIds,
                 )
             except Exception as e:
-                logging.error(f"Failed to update reference in Weaviate: {str(e)}")
-                raise WeaviateServerError(f"Failed to update reference: {str(e)}")
+                logging.error(
+                    f"Failed to update reference in Weaviate: {str(e)}")
+                raise WeaviateServerError(
+                    f"Failed to update reference: {str(e)}")
 
             # test
             try:
-                updated_obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
-                                return_references=return_references)
+                updated_obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name,
+                                                            return_references=return_references)
                 updated_refs = updated_obj.references or {}
-                updated_collection_ids = ref_uuids(updated_refs.get(property_name))
+                updated_collection_ids = ref_uuids(
+                    updated_refs.get(property_name))
 
-                logging.debug("Test - References after update:", updated_collection_ids)
+                logging.debug("Test - References after update:",
+                              updated_collection_ids)
                 assert target_collection_id in updated_collection_ids, "Reference was not added properly"
                 # reference added
             except WeaviateServerError:
                 raise
             except Exception as e:
                 logging.error(f"Failed to verify reference: {str(e)}")
-                raise WeaviateServerError(f"Failed to verify reference: {str(e)}") 
+                raise WeaviateServerError(
+                    f"Failed to verify reference: {str(e)}")
             # proper end
-            return True # TODO fix in other parts now is switched before False on success
+            return True  # TODO fix in other parts now is switched before False on success
         except WeaviateConnectionError as e:
             logging.error(f"Error: {str(e)}")
             raise WeaviateConnectError(str(e))
@@ -415,8 +601,7 @@ class WeaviateHelpers:
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
 
-
-    async def remove_reference(self, src_id: str, src_collection_name:str, property_name: str, target_collection_id:str) -> bool: 
+    async def remove_reference(self, src_id: str, src_collection_name: str, property_name: str, target_collection_id: str) -> bool:
         """
         Removes reference between objects.
 
@@ -428,7 +613,7 @@ class WeaviateHelpers:
 
         Returns:
             True if reference removed successfully
-            
+
         Raises:
             WeaviateConnectError: Cannot connect to Weaviate instance
             WeaviateDataValidationError: Invalid UUID format in source_id or target_id
@@ -438,42 +623,50 @@ class WeaviateHelpers:
         try:
             # Validate inputs
             if not src_id or not isinstance(src_id, str):
-                raise WeaviateDataValidationError("src_id must be a non-empty string")
+                raise WeaviateDataValidationError(
+                    "src_id must be a non-empty string")
             if not src_collection_name or not isinstance(src_collection_name, str):
-                raise WeaviateDataValidationError("src_collection_name must be a non-empty string")
+                raise WeaviateDataValidationError(
+                    "src_collection_name must be a non-empty string")
             if not property_name or not isinstance(property_name, str):
-                raise WeaviateDataValidationError("property_name must be a non-empty string")
+                raise WeaviateDataValidationError(
+                    "property_name must be a non-empty string")
             if not target_collection_id or not isinstance(target_collection_id, str):
-                raise WeaviateDataValidationError("target_collection_id must be a non-empty string")
+                raise WeaviateDataValidationError(
+                    "target_collection_id must be a non-empty string")
 
             # prepare references list
-            return_references=[
-                    QueryReference(
-                        link_on=property_name
-                    )]
+            return_references = [
+                QueryReference(
+                    link_on=property_name
+                )]
             # fetch the source object by id
             try:
-                obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name, 
-                                return_references=return_references)
+                obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name,
+                                                    return_references=return_references)
             except WeaviateQueryError as e:
-                logging.error(f"Source object '{src_id}' not found in collection '{src_collection_name}'")
+                logging.error(
+                    f"Source object '{src_id}' not found in collection '{src_collection_name}'")
                 raise WeaviateConnectError(str(e))
             # extract references
             refs = obj.references or {}
 
             current = refs.get(property_name)
-            currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
-            remaining = [tid for tid in currentIDs if tid != target_collection_id]
-            logging.debug(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+            currentIDs = [str(r.uuid)
+                          for r in (current.objects if current else [])]
+            remaining = [tid for tid in currentIDs if tid !=
+                         target_collection_id]
+            logging.debug(
+                f"Replacing Current{currentIDs} \nRemaning{remaining}")
             logging.debug(f"To remove {target_collection_id}")
             # check length if the id was removed
             if len(remaining) != len(currentIDs):
                 logging.info(f"Replacing {currentIDs} {remaining}")
                 await self.client.collections.get(src_collection_name).data.reference_replace(
-                        from_uuid=obj.uuid,
-                        from_property=property_name,
-                        to=remaining
-                    )
+                    from_uuid=obj.uuid,
+                    from_property=property_name,
+                    to=remaining
+                )
             return True
         except WeaviateConnectionError as e:
             logging.error(f"Error: {str(e)}")
@@ -499,11 +692,12 @@ class WeaviateHelpers:
         """
         Create user collection (contains chunks user choose)
         """
-        logging.info(f"Adding user collection\nUser: {req.user_id}\nCollection name: {req.collection_name}")
+        logging.info(
+            f"Adding user collection\nUser: {req.user_id}\nCollection name: {req.collection_name}")
         # check if user collection with same properties already exists
         filters = (
-                Filter.by_property("name").equal(req.collection_name) &
-                Filter.by_property("user_id").equal(req.user_id)
+            Filter.by_property("name").equal(req.collection_name) &
+            Filter.by_property("user_id").equal(req.user_id)
         )
         results = await self.client.collections.get().query.fetch_objects(
             filters=filters
@@ -521,51 +715,7 @@ class WeaviateHelpers:
         )
         return new_collection_uuid
 
-    async def fetch_all_collections(self, userId: str) -> schemas.GetCollectionsResponse:
-        """
-        Retrieves all collections for given user
-        """
-        try:
-            # filter collections by user
-            filters = (
-                Filter.by_property("user_id").equal(userId)
-            )
-            results = await self.client.collections.get("UserCollection").query.fetch_objects(
-                filters=filters
-            )
-            logging.info(f"User Id: {userId}\nRaw results: {results}")
-            collections = []
-            collections_respone = []
-            if results.objects is not None:
-                if len(results.objects) > 0:
-                    collections = results.objects
-                    # map collection data to expected response format
-                    for o in collections:
-                        collections_respone.append(
-                            {'id': str(o.uuid), 'name': o.properties['name'], 'user_id': o.properties.get('user_id')})
-
-            return {"collections": collections_respone, "userId": userId}   
-        except WeaviateConnectionError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateConnectError(str(e))
-        except WeaviateInvalidInputError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateDataValidationError(str(e))
-        except WeaviateTimeoutError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateLimitError(str(e))
-        except WeaviateQueryError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateOperationError(str(e))
-        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateServerError(str(e))
-        except Exception as e:
-            # catch unexpected errors and wrap them
-            logging.error(f"Unexpected error fetching chunks: {str(e)}")
-            raise WeaviateServerError(str(e))
-
-    async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq)->schemas.RemoveTagsResponse:
+    async def remove_tags(self, chosenTagUUIDs: schemas.GetTaggedChunksReq) -> schemas.RemoveTagsResponse:
         """
         Removes tags by:
          - remove all cross-references from Chunks
@@ -573,20 +723,22 @@ class WeaviateHelpers:
         """
         try:
             # get tags for collection names
-            tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+            tag_collection = self.client.collections.get(
+                self.collectionNames.tag_collection_name)
             tag_ids = [str(uuid) for uuid in chosenTagUUIDs.tag_uuids]
             filters = Filter.by_id().contains_any(tag_ids)
-            
+
             results = await tag_collection.query.fetch_objects(filters=filters)
-            
+
             # get different collection names
-            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            collection_names = {
+                obj.properties["collection_name"] for obj in results.objects}
             print(collection_names)
-            
+
             self.remove_tag_refs(tag_ids, tag_type="automaticTag")
             self.remove_tag_refs(tag_ids, tag_type="positiveTag")
             self.remove_tag_refs(tag_ids, tag_type="negativeTag")
-            
+
             tagsToRemove = set(chosenTagUUIDs.tag_uuids)
             tagsToRemove = [str(tagID) for tagID in tagsToRemove]
 
@@ -617,8 +769,8 @@ class WeaviateHelpers:
             # catch unexpected errors and wrap them
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
-    
-    async def remove_tag_refs(self, chosenTagUUIDs: schemas.GetTaggedChunksReq, tag_type: str)->schemas.RemoveTagsResponse:
+
+    async def remove_tag_refs(self, chosenTagUUIDs: schemas.GetTaggedChunksReq, tag_type: str) -> schemas.RemoveTagsResponse:
         """
         Removes selected type of tags and their references
         """
@@ -627,12 +779,14 @@ class WeaviateHelpers:
 
             # get tags for collection names
             tag_collection = self.client.collections.get("Tag")
-            filters = Filter.by_id().contains_any([str(uuid) for uuid in chosenTagUUIDs.tag_uuids])
+            filters = Filter.by_id().contains_any(
+                [str(uuid) for uuid in chosenTagUUIDs.tag_uuids])
 
             results = await tag_collection.query.fetch_objects(filters=filters)
 
             # get different collection names
-            collection_names = {obj.properties["collection_name"] for obj in results.objects}
+            collection_names = {
+                obj.properties["collection_name"] for obj in results.objects}
 
             # iterate over the collections and retrieve text chunks and corresponding tags
             for collection_name in collection_names:
@@ -653,9 +807,12 @@ class WeaviateHelpers:
                 for obj in res.objects:
                     refs = obj.references or {}
                     current = refs.get(tag_type)
-                    currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
-                    remaining = list(filter(lambda tid: tid not in tagsToRemove, currentIDs))
-                    logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+                    currentIDs = [str(r.uuid) for r in (
+                        current.objects if current else [])]
+                    remaining = list(
+                        filter(lambda tid: tid not in tagsToRemove, currentIDs))
+                    logging.info(
+                        f"Replacing Current{currentIDs} \nRemaning{remaining}")
                     logging.info(f"To remove {tagsToRemove}")
                     if len(remaining) != len(currentIDs):
                         logging.info(f"Replacing {currentIDs} {remaining}")
@@ -666,9 +823,11 @@ class WeaviateHelpers:
                         )
                     check = await chunks.query.fetch_object_by_id(
                         obj.uuid,
-                        return_references=[QueryReference(link_on=tag_type, return_properties=[])]
+                        return_references=[QueryReference(
+                            link_on=tag_type, return_properties=[])]
                     )
-                    got = [str(r.uuid) for r in (check.references.get(tag_type).objects if check.references and check.references.get("hasTags") else [])]
+                    got = [str(r.uuid) for r in (check.references.get(
+                        tag_type).objects if check.references and check.references.get("hasTags") else [])]
                     logging.info(f"after: {got}")
                 logging.info("deleted references from chunks to tags")
 
@@ -704,7 +863,8 @@ class WeaviateHelpers:
             config_temperature = tag_request.task_config.params.temperature
             # load prompt template from the config
             if tag_request.task_config.prompt_template is not None:
-                prompt = ChatPromptTemplate.from_template(tag_request.task_config.prompt_template)
+                prompt = ChatPromptTemplate.from_template(
+                    tag_request.task_config.prompt_template)
             else:
                 tag_template = tagging_templates.templates["Basic"]
                 prompt = ChatPromptTemplate.from_template(tag_template)
@@ -712,16 +872,17 @@ class WeaviateHelpers:
             if tag_request.task_config.params.model_type == schemas.APIType.openai:
                 api_key = os.getenv("OPENAI_API_KEY", "")
                 model = ChatOpenAI(
-                    model = config_model_name if config_model_name else config.OPENAI_MODEL,
-                    api_key = api_key,
-                    temperature = config_temperature
+                    model=config_model_name if config_model_name else config.OPENAI_MODEL,
+                    api_key=api_key,
+                    temperature=config_temperature
                 )
             elif tag_request.task_config.params.model_type == schemas.APIType.google:
                 pass
-            else: # default ollama
+            else:  # default ollama
                 model = OllamaProxyRunnable()
                 model.set_model(config_model_name)
-                model.set_temperature(config_temperature) # this is preparation, semant_demo_backend\semant_demo\ollama_proxy.py does not support yet
+                # this is preparation, semant_demo_backend\semant_demo\ollama_proxy.py does not support yet
+                model.set_temperature(config_temperature)
             # prepare chain
             chain = prompt | model
 
@@ -729,27 +890,31 @@ class WeaviateHelpers:
             collection_name = tag_request.collection_name
             logging.info(f"Collection name: {collection_name}")
             # select filters
-            tag_filters =(
+            tag_filters = (
                 Filter.by_property("tag_name").equal(tag_request.tag_name) &
-                Filter.by_property("tag_shorthand").equal(tag_request.tag_shorthand)&
+                Filter.by_property("tag_shorthand").equal(tag_request.tag_shorthand) &
                 Filter.by_property("tag_color").equal(tag_request.tag_color)
             )
-            
+
             tag_objects = await searcher.fetch_tags(tag_filters)
             tag_uuid = tag_objects[0].uuid
-            
-            positive_responses = re.compile("^(True|Ano|Áno|Yes)", re.IGNORECASE) # prepare regex for check if the text is tagged be llm
-            
+
+            # prepare regex for check if the text is tagged be llm
+            positive_responses = re.compile(
+                "^(True|Ano|Áno|Yes)", re.IGNORECASE)
+
             # filter to tag just chunks in selected user collection
-            filters_by_collection =(
-                Filter.by_ref(link_on=searcher.user_collection_link_name).by_property("name").equal(collection_name)
+            filters_by_collection = (
+                Filter.by_ref(link_on=searcher.user_collection_link_name).by_property(
+                    "name").equal(collection_name)
             )
             filters_by_tag = ((
-                        Filter.by_ref(link_on="automaticTag").by_id().equal(tag_uuid) |
-                        Filter.by_ref(link_on="positiveTag").by_id().equal(tag_uuid) |
-                        Filter.by_ref(link_on="negativeTag").by_id().equal(tag_uuid) ) &
-                        Filter.by_ref(link_on=searcher.user_collection_link_name).by_property("name").equal(collection_name)
-                    )
+                Filter.by_ref(link_on="automaticTag").by_id().equal(tag_uuid) |
+                Filter.by_ref(link_on="positiveTag").by_id().equal(tag_uuid) |
+                Filter.by_ref(link_on="negativeTag").by_id().equal(tag_uuid)) &
+                Filter.by_ref(link_on=searcher.user_collection_link_name).by_property(
+                    "name").equal(collection_name)
+            )
 
             # query weaviate db for chunks of chosen collection
             results = await searcher.fetch_chunks(filters_by_collection)
@@ -760,7 +925,8 @@ class WeaviateHelpers:
                 filtered_ids = {obj.uuid for obj in resultsFiltered}
 
                 # filter main results to exclude objects whose id is in filtered_ids
-                final_results = [obj for obj in results if obj.uuid not in filtered_ids]
+                final_results = [
+                    obj for obj in results if obj.uuid not in filtered_ids]
             else:
                 final_results = results
 
@@ -780,11 +946,13 @@ class WeaviateHelpers:
                     # process response according to the api type
                     if tag_request.task_config.params.model_type == schemas.APIType.openai:
                         tag = tag.content
-                    
+
                     # store in weaviate (upload positive tag instances to weaviate)
-                    if positive_responses.search(tag): # if the llm response is positive then store the tag data
+                    # if the llm response is positive then store the tag data
+                    if positive_responses.search(tag):
                         # test if the reference to the tag exists
-                        references = obj.references.get("automaticTag") if obj.references else None
+                        references = obj.references.get(
+                            "automaticTag") if obj.references else None
                         # if there are no references or there is not any reference to the wanted tag add the new reference
                         if not references or not getattr(references, "objects", None) or not (any(str(tag_obj.uuid) == str(tag_uuid) for tag_obj in references.objects)):
                             # add the new tag data
@@ -792,10 +960,12 @@ class WeaviateHelpers:
                             logging.info("NOT REFERENCED YET")
                     texts.append(text)
                     tags.append(tag)
-                    tag_processing_data.append({"chunk_id": str(obj.uuid), "text": text, "tag": str(tag)})
-                    logging.info(f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
+                    tag_processing_data.append(
+                        {"chunk_id": str(obj.uuid), "text": text, "tag": str(tag)})
+                    logging.info(
+                        f"Tag {tag_uuid} processed {processed_count} / {all_texts_count}")
                     # store progress in SQL db
-                    processed_count += 1 # increase number of processed chunks
+                    processed_count += 1  # increase number of processed chunks
                     await update_task_status(task_id, "RUNNING", result={}, collection_name=tag_request.collection_name, session=session, all_texts_count=all_texts_count, processed_count=processed_count, tag_id=tag_uuid, tag_processing_data=tag_processing_data)
                     logging.info("After update")
                 except Exception as e:
@@ -810,12 +980,13 @@ class WeaviateHelpers:
     async def tag_and_store(tagReq: schemas.TaggingTaskReqTemplate, task_id: str, sessionmaker):
         try:
             session = sessionmaker()
-            
+
             try:
-                #await update_task_status(task_id, "RUNNING", collection_name=tagReq.collection_name, sessionmaker=sessionmaker)
+                # await update_task_status(task_id, "RUNNING", collection_name=tagReq.collection_name, sessionmaker=sessionmaker)
                 # TODO replace with Weaviate/LLM operations:
                 logging.info(f"Starting task with data: {str(tagReq)}")
-                response = await tag_chunks_with_llm(searcher, tagReq, task_id, session=session)#tag_chunks_with_llm(tagReq, task_id, session=session)
+                # tag_chunks_with_llm(tagReq, task_id, session=session)
+                response = await tag_chunks_with_llm(searcher, tagReq, task_id, session=session)
                 logging.info(f"Task finished. Response: {response}")
                 await update_task_status(task_id, "COMPLETED", result=response, collection_name=tagReq.collection_name, session=session)
                 logging.info("Updated ok")
@@ -830,8 +1001,8 @@ class WeaviateHelpers:
         for t in asyncio.all_tasks():
             if t.get_name() == name and not t.done():
                 return t
-        
-    async def fetch_chunks_by_collection(self, collectionId: str) ->schemas.GetCollectionChunksResponse:
+
+    async def fetch_chunks_by_collection(self, collectionId: str) -> schemas.GetCollectionChunksResponse:
         """
         Get all chunks belonging to collection with collectionId
         get collection object, in that collection search for chunks that refer to the
@@ -840,16 +1011,17 @@ class WeaviateHelpers:
         try:
             chunk_lst_with_tags = []
             # prepare filter for collection ID
-            filters = Filter.by_ref(self.collectionNames.user_collection_link_name).by_id().equal(collectionId)
+            filters = Filter.by_ref(
+                self.collectionNames.user_collection_link_name).by_id().equal(collectionId)
             # iterate over all chunks find the reference to the user collection
             chunks = await self.fetch_chunks(filters=filters)
             chunk_lst_with_tags.extend([
-                    {
-                        'text_chunk': chunk_obj.properties.get('text', ''),
-                        'chunk_id': str(chunk_obj.uuid),
-                        'chunk_collection_name': collectionId
-                    }
-                    for chunk_obj in chunks
+                {
+                    'text_chunk': chunk_obj.properties.get('text', ''),
+                    'chunk_id': str(chunk_obj.uuid),
+                    'chunk_collection_name': collectionId
+                }
+                for chunk_obj in chunks
             ])
             return {"chunks_of_collection": chunk_lst_with_tags}
         except Exception as e:
@@ -858,19 +1030,20 @@ class WeaviateHelpers:
 
     # helper to remove tag from disapproved and automatic tags
     async def removeTagRef(self, refName, data: schemas.ApproveTagReq, return_references):
-                obj = await self.fetch_object_by_id(data.chunkID, self.collectionNames.chunks_collection_name, return_references)
-                refs = obj.references or {}
-                current = refs.get(refName)
-                currentIDs = [str(r.uuid) for r in (current.objects if current else [])]
-                remaining = [tid for tid in currentIDs if tid != data.tagID]
-                logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
-                logging.info(f"To remove {data.tagID}")
-                if len(remaining) != len(currentIDs):
-                    logging.info(f"Replacing {currentIDs} {remaining}")
-                    await self.remove_reference(src_id=str(obj.uuid), 
-                                            src_collection_name=self.collectionNames.chunks_collection_name, 
-                                            property_name=refName,
-                                            target_collection_id=self.collectionNames.tag_collection_name)
+        obj = await self.fetch_object_by_id(data.chunkID, self.collectionNames.chunks_collection_name, return_references)
+        refs = obj.references or {}
+        current = refs.get(refName)
+        currentIDs = [str(r.uuid)
+                      for r in (current.objects if current else [])]
+        remaining = [tid for tid in currentIDs if tid != data.tagID]
+        logging.info(f"Replacing Current{currentIDs} \nRemaning{remaining}")
+        logging.info(f"To remove {data.tagID}")
+        if len(remaining) != len(currentIDs):
+            logging.info(f"Replacing {currentIDs} {remaining}")
+            await self.remove_reference(src_id=str(obj.uuid),
+                                        src_collection_name=self.collectionNames.chunks_collection_name,
+                                        property_name=refName,
+                                        target_collection_id=self.collectionNames.tag_collection_name)
 
     async def get_tagged_chunks(getChunksReq: schemas.GetTaggedChunksReq) -> schemas.GetTaggedChunksResponse:
         """
@@ -881,46 +1054,52 @@ class WeaviateHelpers:
         try:
             # get all chunks with at least one tag from chosenTagUUIDs list
             # get tags
-            
+
             chunk_lst_with_tags = []
-            filters = Filter.by_id().contains_any([str(uuid) for uuid in getChunksReq.tag_uuids])
+            filters = Filter.by_id().contains_any(
+                [str(uuid) for uuid in getChunksReq.tag_uuids])
             results = await searcher.fetch_tags(filters=filters)
             # get different collection names
-            collection_names = {obj.properties["collection_name"] for obj in results}
+            collection_names = {
+                obj.properties["collection_name"] for obj in results}
             userCollectionName = next(iter(collection_names))
-            logging.info(f"Tag uuids in get_tagged_chunks: {getChunksReq.tag_uuids} {collection_names} {userCollectionName}")
+            logging.info(
+                f"Tag uuids in get_tagged_chunks: {getChunksReq.tag_uuids} {collection_names} {userCollectionName}")
             # go over chunks, retrieve text chunks and corresponding tags
             # filter to get chunks in selected user collection
-            filters =(
-                Filter.by_ref(link_on="userCollection").by_property("name").equal(userCollectionName)
+            filters = (
+                Filter.by_ref(link_on="userCollection").by_property(
+                    "name").equal(userCollectionName)
             )
             try:
                 chunk_results = searcher.fetch_chunks(filters=filters)
-                reference_src = getChunksReq.tag_type.value + "Tag"  # ["automaticTag", "positiveTag", "negativeTag"]
+                # ["automaticTag", "positiveTag", "negativeTag"]
+                reference_src = getChunksReq.tag_type.value + "Tag"
                 logging.info(f"Source selected: {reference_src}")
                 for chunk_obj in chunk_results:
-                        referencedTags = chunk_obj.references.get(reference_src) if chunk_obj.references else None
-                        chunk_id = str(chunk_obj.uuid)
-                        chunk_text = chunk_obj.properties.get('text', '')
-                        corresponding_tags = []
-                        if referencedTags is not None:
-                            logging.info(f"Referenced tags: {referencedTags}")
-                        # extract tag
-                        if referencedTags and getattr(referencedTags, "objects", None):
-                            for tag_obj in referencedTags.objects:
-                                if tag_obj.uuid in getChunksReq.tag_uuids:
-                                    corresponding_tags.append(str(tag_obj.uuid))
-                        # check if there is at least one selected tag
+                    referencedTags = chunk_obj.references.get(
+                        reference_src) if chunk_obj.references else None
+                    chunk_id = str(chunk_obj.uuid)
+                    chunk_text = chunk_obj.properties.get('text', '')
+                    corresponding_tags = []
+                    if referencedTags is not None:
+                        logging.info(f"Referenced tags: {referencedTags}")
+                    # extract tag
+                    if referencedTags and getattr(referencedTags, "objects", None):
+                        for tag_obj in referencedTags.objects:
+                            if tag_obj.uuid in getChunksReq.tag_uuids:
+                                corresponding_tags.append(str(tag_obj.uuid))
+                    # check if there is at least one selected tag
 
-                        if corresponding_tags:
-                            # extract approval counts
-                            for tagID in corresponding_tags:
-                                chunk_lst_with_tags.append(
-                                    {'tag_uuid': tagID, 'text_chunk': chunk_text, "chunk_id": chunk_id,
-                                    "chunk_collection_name": userCollectionName, "tag_type": getChunksReq.tag_type.value})
+                    if corresponding_tags:
+                        # extract approval counts
+                        for tagID in corresponding_tags:
+                            chunk_lst_with_tags.append(
+                                {'tag_uuid': tagID, 'text_chunk': chunk_text, "chunk_id": chunk_id,
+                                 "chunk_collection_name": userCollectionName, "tag_type": getChunksReq.tag_type.value})
             except Exception as e:
                 logging.error(f"Tags in Chunks error: {e}")
-                
+
             return {"chunks_with_tags": chunk_lst_with_tags}
         except Exception as e:
             logging.error(f"No tags assigned yet. {e}")

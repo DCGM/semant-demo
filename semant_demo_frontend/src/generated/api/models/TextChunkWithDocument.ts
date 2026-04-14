@@ -38,12 +38,6 @@ export interface TextChunkWithDocument {
      * @type {string}
      * @memberof TextChunkWithDocument
      */
-    title?: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof TextChunkWithDocument
-     */
     text: string;
     /**
      * 
@@ -65,6 +59,18 @@ export interface TextChunkWithDocument {
     toPage: number;
     /**
      * 
+     * @type {string}
+     * @memberof TextChunkWithDocument
+     */
+    document: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TextChunkWithDocument
+     */
+    title?: string | null;
+    /**
+     * 
      * @type {boolean}
      * @memberof TextChunkWithDocument
      */
@@ -77,10 +83,10 @@ export interface TextChunkWithDocument {
     language?: string | null;
     /**
      * 
-     * @type {string}
+     * @type {number}
      * @memberof TextChunkWithDocument
      */
-    document: string;
+    order: number | null;
     /**
      * 
      * @type {Array<string>}
@@ -159,6 +165,7 @@ export function instanceOfTextChunkWithDocument(value: object): value is TextChu
     if (!('fromPage' in value) || value['fromPage'] === undefined) return false;
     if (!('toPage' in value) || value['toPage'] === undefined) return false;
     if (!('document' in value) || value['document'] === undefined) return false;
+    if (!('order' in value) || value['order'] === undefined) return false;
     if (!('documentObject' in value) || value['documentObject'] === undefined) return false;
     return true;
 }
@@ -174,14 +181,15 @@ export function TextChunkWithDocumentFromJSONTyped(json: any, ignoreDiscriminato
     return {
         
         'id': json['id'],
-        'title': json['title'] == null ? undefined : json['title'],
         'text': json['text'],
         'startPageId': json['start_page_id'],
         'fromPage': json['from_page'],
         'toPage': json['to_page'],
+        'document': json['document'],
+        'title': json['title'] == null ? undefined : json['title'],
         'endParagraph': json['end_paragraph'] == null ? undefined : json['end_paragraph'],
         'language': json['language'] == null ? undefined : json['language'],
-        'document': json['document'],
+        'order': json['order'],
         'nerP': json['ner_P'] == null ? undefined : json['ner_P'],
         'nerT': json['ner_T'] == null ? undefined : json['ner_T'],
         'nerA': json['ner_A'] == null ? undefined : json['ner_A'],
@@ -208,14 +216,15 @@ export function TextChunkWithDocumentToJSONTyped(value?: TextChunkWithDocument |
     return {
         
         'id': value['id'],
-        'title': value['title'],
         'text': value['text'],
         'start_page_id': value['startPageId'],
         'from_page': value['fromPage'],
         'to_page': value['toPage'],
+        'document': value['document'],
+        'title': value['title'],
         'end_paragraph': value['endParagraph'],
         'language': value['language'],
-        'document': value['document'],
+        'order': value['order'],
         'ner_P': value['nerP'],
         'ner_T': value['nerT'],
         'ner_A': value['nerA'],

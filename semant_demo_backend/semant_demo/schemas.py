@@ -234,6 +234,8 @@ class CollectionNames(BaseModel):
     chunks_collection_name: str
     tag_collection_name: str
     user_collection_name: str
+    document_collection_name: str
+    span_collection_name: str
     user_collection_link_name: str
     tag_to_user_collection_link_name: str
 
@@ -352,17 +354,6 @@ class RemoveTagsResponse(BaseModel):
 class UserCollectionReqTemplate(BaseModel):
     collection_name: str  # name of the collection
     user_id: str  # user id
-
-
-class Collection(BaseModel):
-    id: str
-    name: str
-    user_id: str
-
-
-class GetCollectionsResponse(BaseModel):
-    collections: list[Collection]
-    userId: str
 
 
 class Chunk2CollectionReq(BaseModel):

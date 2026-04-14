@@ -9,7 +9,7 @@ Name | Type
 `question` | string
 `history` | [Array&lt;RagChatMessage&gt;](RagChatMessage.md)
 `ragSearch` | [RagSearch](RagSearch.md)
-`previousDocuments` | [Array&lt;TextChunkWithDocument&gt;](TextChunkWithDocument.md)
+`previousDocuments` | [Array&lt;TextChunkWithDocumentInput&gt;](TextChunkWithDocumentInput.md)
 
 ## Example
 

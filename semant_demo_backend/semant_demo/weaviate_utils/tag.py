@@ -11,17 +11,20 @@ from weaviate.exceptions import (
     InsufficientPermissionsError,
 )
 from semant_demo.weaviate_exceptions import (
-    WeaviateConnectError, 
-    WeaviateDataValidationError, 
-    WeaviateLimitError, 
-    WeaviateServerError, 
-    WeaviateOperationError 
+    WeaviateConnectError,
+    WeaviateDataValidationError,
+    WeaviateLimitError,
+    WeaviateServerError,
+    WeaviateOperationError
 )
 
 import semant_demo.schemas as schemas
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
+from semant_demo.schema.tags import PostTag, Tag as TagSchema, PatchTag
+from uuid import UUID
 
 import logging
+
 
 class Tag():
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
@@ -32,87 +35,79 @@ class Tag():
     #######
     # API #
     #######
-    async def create(self, tag: schemas.TagData) -> str:
+    async def create(self, collection_id: UUID, tag: PostTag) -> TagSchema:
         """
-        Adds new tag to tag-collection. This function calls fetch_tags to prevent duplicates.
-
-        Args:
-            tag: structure containing tag data defined in schemas.TagData,
-                 also contains name of the collection this tag belongs to
-            
-        Returns:
-            Created tag object UUID
-            
-        Raises:
-            WeaviateConnectError: Cannot connect to Weaviate instance
-            WeaviateDataValidationError: Invalid input data (empty name, invalid UUID format, etc.)
-            WeaviateDuplicateError: Tag with same name already exists for this user in this collection
-            WeaviateSerializationError: Cannot serialize tag data to JSON
-            WeaviateServerError: Weaviate server returned an error
+        Creates a new tag in a collection, or returns the existing one if the same tag already exists in the collection
         """
-        # check if tag with same properties already exists
-        # prepare filter
-        # Validate input
-        if not tag.tag_name or not isinstance(tag.tag_name, str):
-                raise WeaviateDataValidationError("tag_name must be a non-empty string")
-        if not tag.tag_shorthand or not isinstance(tag.tag_shorthand, str):
-                raise WeaviateDataValidationError("tag_shorthand must be a non-empty string")
-        if not tag.tag_color or not isinstance(tag.tag_color, str):
-                raise WeaviateDataValidationError("tag_color must be a non-empty string")
-        try:
-            filters =(
-                Filter.by_property("tag_name").equal(tag.tag_name) &
-                Filter.by_property("tag_shorthand").equal(tag.tag_shorthand)&
-                Filter.by_property("tag_color").equal(tag.tag_color)
-            )
-            # query weaviate
-            existing_tags = await self.helpers.fetch_tags(filters)
-            # iterate over fetched results and check for equality
-            for existing_tag in existing_tags:
-                if (existing_tag.properties["tag_name"] == tag.tag_name and
-                    existing_tag.properties["tag_shorthand"] == tag.tag_shorthand and
-                    existing_tag.properties["tag_color"] == tag.tag_color):
-                    return existing_tag.uuid # return existing tag UUID
-            # no exact match found, create new tag
-            new_tag_uuid = await self.client.collections.get("Tag").data.insert(
-                properties={
-                    "tag_name": tag.tag_name,
-                    "tag_shorthand": tag.tag_shorthand,
-                    "tag_color": tag.tag_color,
-                    "tag_pictogram": tag.tag_pictogram,
-                    "tag_definition": tag.tag_definition,
-                    "tag_examples": tag.tag_examples,
-                    "collection_name": tag.collection_name
-                }
-            )
-            print(f"Collection name: {tag.collection_name}")
-            # create connection to the user collection
-            self.helpers.create_reference(src_id=str(new_tag_uuid),
-                                          src_collection_name=self.collectionNames.tag_collection_name,
-                                          property_name=self.collectionNames.tag_to_user_collection_link_name,
-                                          target_collection_id=self.collectionNames.user_collection_name)
-            return new_tag_uuid  
-        except WeaviateConnectionError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateConnectError(str(e))
-        except WeaviateInvalidInputError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateDataValidationError(str(e))
-        except WeaviateTimeoutError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateLimitError(str(e))
-        except WeaviateQueryError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateOperationError(str(e))
-        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateServerError(str(e))
-        except Exception as e:
-            # catch unexpected errors and wrap them
-            logging.error(f"Unexpected error fetching chunks: {str(e)}")
-            raise WeaviateServerError(str(e))
+        
+        usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
+        user_collection = await usercollection_collection.query.fetch_object_by_id(collection_id)
+        if user_collection is None:
+            raise WeaviateOperationError(f"Collection with id {collection_id} does not exist")
+            
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
 
-    async def read(self):
+        filters = Filter.by_ref("userCollection").by_id().equal(collection_id)
+        existing = await tag_collection.query.fetch_objects(
+            filters=filters,
+            limit=2000
+        )
+        
+        for obj in existing.objects:
+            props = obj.properties
+            existing_examples = [str(item) for item in (props.get("tag_examples") or [])]
+            if (
+                props["tag_name"] == tag.name and
+                props["tag_shorthand"] == tag.shorthand and
+                props["tag_color"] == tag.color and
+                props["tag_pictogram"] == tag.pictogram and
+                props["tag_definition"] == tag.definition and
+                set(existing_examples) == set(tag.examples)
+            ):
+                # tag already exists, return it
+                return TagSchema(
+                    id=obj.uuid,
+                    name=props["tag_name"],
+                    shorthand=props["tag_shorthand"],
+                    color=props["tag_color"],
+                    pictogram=props["tag_pictogram"],
+                    definition=props["tag_definition"],
+                    examples=props["tag_examples"]
+                )
+        
+        # create tag
+        new_tag_uuid = await tag_collection.data.insert(
+            properties={
+                "tag_name": tag.name,
+                "tag_shorthand": tag.shorthand,
+                "tag_color": tag.color,
+                "tag_pictogram": tag.pictogram,
+                "tag_definition": tag.definition,
+                "tag_examples": tag.examples
+            }
+        )
+        
+        await tag_collection.data.reference_add(
+            from_uuid=new_tag_uuid,
+            from_property="userCollection",
+            to=collection_id
+        )
+        
+        return TagSchema(
+            name=tag.name,
+            shorthand=tag.shorthand,
+            color=tag.color,
+            pictogram=tag.pictogram,
+            definition=tag.definition,
+            examples=tag.examples,
+            id=new_tag_uuid,
+        )
+
+    async def read_all(self):
+        """
+        Retrieves all tags in the database with their collection names.
+        """
+        
         results = await self.helpers.fetch_tags()
         response = []
         # format the response
@@ -126,17 +121,92 @@ class Tag():
                 "tag_pictogram": props["tag_pictogram"],
                 "tag_definition": props["tag_definition"],
                 "tag_examples": props["tag_examples"],
-                "collection_name": props["collection_name"],
+                "collection_name": props.get("collection_name") or "",
                 "tag_uuid": str(result.uuid)
             })
-        
+
         return response
+    
+    async def read(self, tag_uuid: UUID) -> TagSchema | None:
+        """
+        Retrieves a tag by its UUID.
+        """
+        
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        response = await tag_collection.query.fetch_object_by_id(tag_uuid)
+        if response is None:
+            return None
+        props = response.properties
+        return TagSchema(
+            id=response.uuid,
+            name=props["tag_name"],
+            shorthand=props["tag_shorthand"],
+            color=props["tag_color"],
+            pictogram=props["tag_pictogram"],
+            definition=props["tag_definition"],
+            examples=props["tag_examples"]
+        )
 
-    def update():
-        pass
+    async def update(self, tag_uuid: UUID, updated_tag: PatchTag) -> TagSchema:
+        """
+        Updates an existing tag in a collection.
+        """
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
 
-    async def delete(self, chosenTagUUIDs):
-        return await self.helpers.remove_tags(chosenTagUUIDs)
+        tag_response = await tag_collection.query.fetch_object_by_id(
+            tag_uuid,
+        )
+        if tag_response is None:
+            raise WeaviateOperationError("Tag not found")
+
+        patch_data = updated_tag.model_dump(exclude_unset=True, exclude_none=True)
+        if not patch_data:
+            raise WeaviateOperationError("No fields provided for update")
+
+        properties_to_update: dict[str, str | list[str]] = {}
+
+        if "name" in patch_data:
+            properties_to_update["tag_name"] = str(patch_data["name"])
+        if "shorthand" in patch_data:
+            properties_to_update["tag_shorthand"] = str(patch_data["shorthand"])
+        if "color" in patch_data:
+            properties_to_update["tag_color"] = str(patch_data["color"])
+        if "pictogram" in patch_data:
+            properties_to_update["tag_pictogram"] = str(patch_data["pictogram"])
+        if "definition" in patch_data:
+            properties_to_update["tag_definition"] = str(patch_data["definition"])
+        if "examples" in patch_data:
+            properties_to_update["tag_examples"] = [
+                str(example) for example in patch_data["examples"] if str(example).strip()
+            ]
+
+        await tag_collection.data.update(
+            uuid=tag_uuid,
+            properties=properties_to_update,
+        )
+        
+        updated_tag = await self.read(tag_uuid)
+        if updated_tag is None:
+            raise WeaviateOperationError("Weaviate error: tag not found after update")
+
+        return updated_tag
+
+    # async def delete(self, chosenTagUUIDs):
+    #     return await self.helpers.remove_tags(chosenTagUUIDs)
+
+    async def delete(self, tag_uuid: str) -> None:
+        """
+        Deletes a tag after removing every reference to it from Span and Chunk collections.
+        """
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+
+        tag_response = await tag_collection.query.fetch_object_by_id(
+            tag_uuid,
+        )
+        if tag_response is None:
+            raise WeaviateOperationError("Tag not found")
+
+        await self.helpers.delete_tag_cascade(tag_uuid)
 
     def read_spans():
         pass

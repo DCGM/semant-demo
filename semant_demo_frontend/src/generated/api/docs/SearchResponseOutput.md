@@ -6,7 +6,7 @@
 
 Name | Type
 ------------ | -------------
-`results` | [Array&lt;TextChunkWithDocument&gt;](TextChunkWithDocument.md)
+`results` | [Array&lt;TextChunkWithDocumentOutput&gt;](TextChunkWithDocumentOutput.md)
 `resultsSummary` | string
 `searchRequest` | [SearchRequest](SearchRequest.md)
 `timeSpent` | number

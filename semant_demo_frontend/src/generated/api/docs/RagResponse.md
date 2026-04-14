@@ -9,7 +9,7 @@ Name | Type
 `ragAnswer` | string
 `timeSpent` | number
 `responseId` | string
-`sources` | [Array&lt;TextChunkWithDocument&gt;](TextChunkWithDocument.md)
+`sources` | [Array&lt;TextChunkWithDocumentOutput&gt;](TextChunkWithDocumentOutput.md)
 
 ## Example
 

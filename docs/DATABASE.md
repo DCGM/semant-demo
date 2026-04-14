@@ -70,16 +70,20 @@ erDiagram
         text tag_pictogram
         text tag_definition
         text_array tag_examples
-        text collection_name
+        text collection_name "legacy / optional"
     }
 
     UserCollection {
         uuid id PK
         text name
         text user_id
+        text description
+        text color
+        datetime created_at
+        datetime updated_at
     }
 
-    Chunks ||--|| Documents : "document (1:1)"
+    Chunks }o--|| Documents : "document (many:1)"
     Chunks }o--o{ Tag : "automaticTag (many:many)"
     Chunks }o--o{ Tag : "positiveTag (many:many)"
     Chunks }o--o{ Tag : "negativeTag (many:many)"
@@ -126,13 +130,16 @@ User-defined tags with:
 - `tag_color`, `tag_pictogram` — UI presentation
 - `tag_definition` — text description used by LLM for tagging
 - `tag_examples` — example texts (used in LLM prompt)
-- `collection_name` — the Weaviate chunk collection this tag was created for
+- `collection_name` — legacy/optional string in existing data; ownership is primarily modeled via `userCollection` reference
 
 ### Collection: `UserCollection`
 
 Named collections of chunks per user:
 - `name` — user-provided collection name
 - `user_id` — owner identifier
+- `description` — optional description
+- `color` — UI color identifier
+- `created_at`, `updated_at` — timestamps managed by backend
 
 ---
 

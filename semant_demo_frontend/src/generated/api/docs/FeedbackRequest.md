@@ -9,7 +9,7 @@ Name | Type
 `ragId` | string
 `responseId` | string
 `question` | string
-`sources` | [Array&lt;TextChunkWithDocument&gt;](TextChunkWithDocument.md)
+`sources` | [Array&lt;TextChunkWithDocumentInput&gt;](TextChunkWithDocumentInput.md)
 `answer` | string
 `rating` | number
 `errorTypes` | Array&lt;string&gt;
