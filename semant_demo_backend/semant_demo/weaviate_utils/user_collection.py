@@ -251,9 +251,6 @@ class UserCollection():
     async def delete(self, collection_id: str) -> None:
         """
         Deletes collection with given id.
-        Before deleting the collection object itself, remove references to it
-        from chunks and documents. Tags belonging to this collection are
-        deleted entirely together with their references from spans/chunks.
         """
         usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
 
@@ -263,7 +260,7 @@ class UserCollection():
         if collection_response is None:
             raise WeaviateOperationError("Collection not found")
         
-        self.helpers.delete_user_collection_cascade(collection_id)
+        await self.helpers.delete_user_collection_cascade(collection_id)
 
     async def read_all_tags(self, collection_id: UUID) -> list[Tag]:
         """
