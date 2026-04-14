@@ -50,6 +50,7 @@ import type {
   Tag,
   TagStartResponse,
   TaggingTaskReqTemplate,
+  UserSearchResult,
 } from '../models/index';
 import {
     ApproveTagReqFromJSON,
@@ -122,6 +123,8 @@ import {
     TagStartResponseToJSON,
     TaggingTaskReqTemplateFromJSON,
     TaggingTaskReqTemplateToJSON,
+    UserSearchResultFromJSON,
+    UserSearchResultToJSON,
 } from '../models/index';
 
 export interface AddChunk2CollectionApiUserCollectionChunksPostRequest {
@@ -246,6 +249,10 @@ export interface SaveFeedbackApiRagFeedbackPostRequest {
 
 export interface SearchApiSearchPostRequest {
     searchRequest: SearchRequest;
+}
+
+export interface SearchUsersApiUsersSearchGetRequest {
+    q: string;
 }
 
 export interface StartTaggingApiTagTaskPostRequest {
@@ -1050,6 +1057,30 @@ export interface DefaultApiInterface {
     searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponseOutput>;
 
     /**
+     * Creates request options for searchUsersApiUsersSearchGet without sending the request
+     * @param {string} q Username substring to search (min 3 characters)
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchUsersApiUsersSearchGetRequestOpts(requestParameters: SearchUsersApiUsersSearchGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Search users by username substring. Returns at most 4 matches. Requires authentication.
+     * @summary Search Users
+     * @param {string} q Username substring to search (min 3 characters)
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchUsersApiUsersSearchGetRaw(requestParameters: SearchUsersApiUsersSearchGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<UserSearchResult>>>;
+
+    /**
+     * Search users by username substring. Returns at most 4 matches. Requires authentication.
+     * Search Users
+     */
+    searchUsersApiUsersSearchGet(requestParameters: SearchUsersApiUsersSearchGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<UserSearchResult>>;
+
+    /**
      * Creates request options for startTaggingApiTagTaskPost without sending the request
      * @param {TaggingTaskReqTemplate} taggingTaskReqTemplate 
      * @throws {RequiredError}
@@ -1174,6 +1205,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/user_collection/chunks`;
 
@@ -1282,6 +1318,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tag/approve`;
 
@@ -1330,6 +1371,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag/disapprove`;
@@ -1460,6 +1506,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tag/task/{taskId}`;
         urlPath = urlPath.replace(`{${"taskId"}}`, encodeURIComponent(String(requestParameters['taskId'])));
@@ -1506,6 +1557,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag/task/status/{taskId}`;
@@ -1571,6 +1627,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tags`;
 
@@ -1619,6 +1680,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/user_collections`;
@@ -1759,6 +1825,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/rag/explain`;
 
@@ -1854,10 +1925,15 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         if (requestParameters['userId'] != null) {
-            queryParameters['userId'] = requestParameters['userId'];
+            queryParameters['user_id'] = requestParameters['userId'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/user_collections`;
@@ -1954,6 +2030,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tags/filter`;
 
@@ -1993,6 +2074,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/rag/configurations`;
@@ -2041,6 +2127,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/user_collection/chunks`;
@@ -2220,6 +2311,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tag/configs`;
 
@@ -2267,6 +2363,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag/textChunks`;
@@ -2354,6 +2455,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag/tasks/info`;
@@ -2453,6 +2559,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/question/{question_text}`;
         urlPath = urlPath.replace(`{${"question_text"}}`, encodeURIComponent(String(requestParameters['questionText'])));
@@ -2501,6 +2612,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/rag`;
 
@@ -2547,6 +2663,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tags/automatic`;
@@ -2654,6 +2775,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/rag/feedback`;
 
@@ -2705,6 +2831,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/search`;
 
@@ -2736,6 +2867,61 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for searchUsersApiUsersSearchGet without sending the request
+     */
+    async searchUsersApiUsersSearchGetRequestOpts(requestParameters: SearchUsersApiUsersSearchGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['q'] == null) {
+            throw new runtime.RequiredError(
+                'q',
+                'Required parameter "q" was null or undefined when calling searchUsersApiUsersSearchGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['q'] != null) {
+            queryParameters['q'] = requestParameters['q'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/users/search`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Search users by username substring. Returns at most 4 matches. Requires authentication.
+     * Search Users
+     */
+    async searchUsersApiUsersSearchGetRaw(requestParameters: SearchUsersApiUsersSearchGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<UserSearchResult>>> {
+        const requestOptions = await this.searchUsersApiUsersSearchGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(UserSearchResultFromJSON));
+    }
+
+    /**
+     * Search users by username substring. Returns at most 4 matches. Requires authentication.
+     * Search Users
+     */
+    async searchUsersApiUsersSearchGet(requestParameters: SearchUsersApiUsersSearchGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<UserSearchResult>> {
+        const response = await this.searchUsersApiUsersSearchGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for startTaggingApiTagTaskPost without sending the request
      */
     async startTaggingApiTagTaskPostRequestOpts(requestParameters: StartTaggingApiTagTaskPostRequest): Promise<runtime.RequestOpts> {
@@ -2751,6 +2937,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag/task`;
@@ -2807,6 +2998,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/summarize/{summary_type}`;

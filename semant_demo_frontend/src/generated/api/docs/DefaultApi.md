@@ -36,6 +36,7 @@ All URIs are relative to *http://localhost*
 | [**removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapicollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
+| [**searchUsersApiUsersSearchGet**](DefaultApi.md#searchusersapiuserssearchget) | **GET** /api/users/search | Search Users |
 | [**startTaggingApiTagTaskPost**](DefaultApi.md#starttaggingapitagtaskpost) | **POST** /api/tag/task | Start Tagging |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
@@ -62,7 +63,11 @@ import type { AddChunk2CollectionApiUserCollectionChunksPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // Chunk2CollectionReq
@@ -94,7 +99,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -134,9 +139,9 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
     // string
-    documentId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    documentId: documentId_example,
   } satisfies AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest;
 
   try {
@@ -201,7 +206,11 @@ import type { ApproveSelectedTagChunkApiTagApprovePutRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // ApproveTagReq
@@ -233,7 +242,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -269,7 +278,11 @@ import type { ApproveSelectedTagChunkApiTagDisapprovePutRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // ApproveTagReq
@@ -301,7 +314,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -429,7 +442,11 @@ import type { CancelTaskApiTagTaskTaskIdDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -461,7 +478,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -497,7 +514,11 @@ import type { CheckStatusApiTagTaskStatusTaskIdGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -529,7 +550,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -565,11 +586,15 @@ import type { CreateTagApiTagsPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
     // PostTag
     postTag: ...,
   } satisfies CreateTagApiTagsPostRequest;
@@ -600,7 +625,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -636,7 +661,11 @@ import type { CreateUserCollectionApiUserCollectionsPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // PostCollection
@@ -668,7 +697,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -706,7 +735,7 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
   } satisfies DeleteCollectionApiCollectionsCollectionIdDeleteRequest;
 
   try {
@@ -774,7 +803,7 @@ async function example() {
 
   const body = {
     // string
-    tagUuid: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    tagUuid: tagUuid_example,
   } satisfies DeleteTagApiTagsTagUuidDeleteRequest;
 
   try {
@@ -836,7 +865,11 @@ import type { ExplainSelectionApiRagExplainPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // ExplainRequest
@@ -868,7 +901,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -908,7 +941,7 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
   } satisfies FetchCollectionApiUserCollectionsCollectionIdGetRequest;
 
   try {
@@ -972,11 +1005,15 @@ import type { FetchCollectionsApiUserCollectionsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
-    userId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    userId: userId_example,
   } satisfies FetchCollectionsApiUserCollectionsGetRequest;
 
   try {
@@ -1004,7 +1041,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1108,7 +1145,11 @@ import type { FilterChunksByTagsApiTagsFilterPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // FilterChunksByTagsRequest
@@ -1140,7 +1181,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1174,7 +1215,11 @@ import type { GetAvalaibleRagConfigurationsApiRagConfigurationsGetRequest } from
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   try {
     const data = await api.getAvalaibleRagConfigurationsApiRagConfigurationsGet();
@@ -1198,7 +1243,7 @@ This endpoint does not need any parameter.
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1233,7 +1278,11 @@ import type { GetCollectionChunksApiUserCollectionChunksGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1265,7 +1314,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1305,7 +1354,7 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
   } satisfies GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest;
 
   try {
@@ -1371,7 +1420,7 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
   } satisfies GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest;
 
   try {
@@ -1439,7 +1488,7 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
   } satisfies GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest;
 
   try {
@@ -1503,7 +1552,11 @@ import type { GetConfigsApiTagConfigsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   try {
     const data = await api.getConfigsApiTagConfigsGet();
@@ -1527,7 +1580,7 @@ This endpoint does not need any parameter.
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1562,7 +1615,11 @@ import type { GetSelectedTagsChunksApiTagTextChunksPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // GetTaggedChunksReq
@@ -1594,7 +1651,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1634,7 +1691,7 @@ async function example() {
 
   const body = {
     // string
-    tagUuid: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    tagUuid: tagUuid_example,
   } satisfies GetTagApiTagsTagUuidGetRequest;
 
   try {
@@ -1698,7 +1755,11 @@ import type { GetTagTasksApiTagTasksInfoGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   try {
     const data = await api.getTagTasksApiTagTasksInfoGet();
@@ -1722,7 +1783,7 @@ This endpoint does not need any parameter.
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1814,7 +1875,11 @@ import type { QuestionApiQuestionQuestionTextPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1849,7 +1914,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1883,7 +1948,11 @@ import type { RagApiRagPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // RagRequestMain
@@ -1915,7 +1984,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1951,7 +2020,11 @@ import type { RemoveAutomaticTagsApiTagsAutomaticDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // RemoveTagReq
@@ -1983,7 +2056,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2021,9 +2094,9 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
     // string
-    documentId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    documentId: documentId_example,
   } satisfies RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest;
 
   try {
@@ -2086,7 +2159,11 @@ import type { SaveFeedbackApiRagFeedbackPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // FeedbackRequest
@@ -2118,7 +2195,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2152,7 +2229,11 @@ import type { SearchApiSearchPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // SearchRequest
@@ -2184,11 +2265,83 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## searchUsersApiUsersSearchGet
+
+> Array&lt;UserSearchResult&gt; searchUsersApiUsersSearchGet(q)
+
+Search Users
+
+Search users by username substring. Returns at most 4 matches. Requires authentication.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SearchUsersApiUsersSearchGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string | Username substring to search (min 3 characters)
+    q: q_example,
+  } satisfies SearchUsersApiUsersSearchGetRequest;
+
+  try {
+    const data = await api.searchUsersApiUsersSearchGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **q** | `string` | Username substring to search (min 3 characters) | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;UserSearchResult&gt;**](UserSearchResult.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 
@@ -2220,7 +2373,11 @@ import type { StartTaggingApiTagTaskPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // TaggingTaskReqTemplate
@@ -2252,7 +2409,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2286,7 +2443,11 @@ import type { SummarizeApiSummarizeSummaryTypePostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -2321,7 +2482,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2361,7 +2522,7 @@ async function example() {
 
   const body = {
     // string
-    collectionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    collectionId: collectionId_example,
     // PatchCollection
     patchCollection: ...,
   } satisfies UpdateCollectionApiUserCollectionsCollectionIdPatchRequest;
@@ -2432,7 +2593,7 @@ async function example() {
 
   const body = {
     // string
-    tagUuid: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    tagUuid: tagUuid_example,
     // PatchTag
     patchTag: ...,
   } satisfies UpdateTagApiTagsTagUuidPatchRequest;
