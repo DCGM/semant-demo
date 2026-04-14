@@ -252,10 +252,31 @@ class UserCollection():
         """
         Deletes collection with given id.
         Before deleting the collection object itself, remove references to it
-        from chunks, documents, and tags.
+        from chunks and documents. Tags belonging to this collection are
+        deleted entirely together with their references from spans/chunks.
         """
         usercollection_collection = self.client.collections.get(
             self.collectionNames.user_collection_name)
+        tag_collection = self.client.collections.get(
+            self.collectionNames.tag_collection_name)
+
+        page_size = 100
+
+        # Delete tags that belong to this collection (and clean their refs first).
+        while True:
+            tag_response = await tag_collection.query.fetch_objects(
+                filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
+                limit=page_size,
+            )
+
+            if not tag_response.objects:
+                break
+
+            for tag_obj in tag_response.objects:
+                await self.helpers.delete_tag_with_references(str(tag_obj.uuid))
+
+            if len(tag_response.objects) < page_size:
+                break
 
         await self.helpers.delete_references_from_filtered_objects(
             collection_name=self.collectionNames.chunks_collection_name,
@@ -267,12 +288,6 @@ class UserCollection():
             collection_name=self.collectionNames.document_collection_name,
             filters=Filter.by_ref("collection").by_id().equal(collection_id),
             from_property="collection",
-            target_object_id=collection_id,
-        )
-        await self.helpers.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.tag_collection_name,
-            filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
-            from_property="userCollection",
             target_object_id=collection_id,
         )
 

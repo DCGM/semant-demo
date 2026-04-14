@@ -1,5 +1,5 @@
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter, QueryReference
+from weaviate.classes.query import Filter
 from weaviate.exceptions import (
     WeaviateConnectionError,
     WeaviateTimeoutError,
@@ -199,8 +199,6 @@ class Tag():
         Deletes a tag after removing every reference to it from Span and Chunk collections.
         """
         tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
-        span_collection = self.client.collections.get(self.collectionNames.span_collection_name)
-        chunk_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
 
         tag_response = await tag_collection.query.fetch_object_by_id(
             tag_uuid,
@@ -208,37 +206,7 @@ class Tag():
         if tag_response is None:
             raise WeaviateOperationError("Tag not found")
 
-        page_size = 100
-
-        await self.helpers.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.span_collection_name,
-            filters=Filter.by_ref("tag").by_id().equal(tag_uuid),
-            from_property="tag",
-            target_object_id=tag_uuid,
-        )
-
-        await self.helpers.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("automaticTag").by_id().equal(tag_uuid),
-            from_property="automaticTag",
-            target_object_id=tag_uuid,
-        )
-
-        await self.helpers.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("positiveTag").by_id().equal(tag_uuid),
-            from_property="positiveTag",
-            target_object_id=tag_uuid,
-        )
-
-        await self.helpers.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("negativeTag").by_id().equal(tag_uuid),
-            from_property="negativeTag",
-            target_object_id=tag_uuid,
-        )
-
-        await tag_collection.data.delete_by_id(tag_uuid)
+        await self.helpers.delete_tag_with_references(str(tag_uuid))
 
     def read_spans():
         pass
