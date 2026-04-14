@@ -33,7 +33,7 @@ from semant_demo.tagging.tagging_utils import getTaskByName
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
 from semant_demo.schema.tags import PatchTag, Tag, PostTag
-from semant_demo_backend.semant_demo.weaviate_exceptions import WeaviateOperationError
+from semant_demo.weaviate_exceptions import WeaviateOperationError
 
 logging.basicConfig(level=logging.INFO)
 
