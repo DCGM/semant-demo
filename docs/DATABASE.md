@@ -143,9 +143,11 @@ Named collections of chunks per user:
 
 ---
 
-## SQLite Schema (Task Tracking)
+## SQLite Schema
 
-A single `tasks` table tracks asynchronous tagging jobs:
+SQLite holds two tables, both created automatically at startup via `TasksBase.metadata.create_all`.
+
+### `tasks` — Asynchronous tagging jobs
 
 ```sql
 CREATE TABLE tasks (
@@ -165,6 +167,24 @@ CREATE TABLE tasks (
 Task lifecycle: `PENDING` → `RUNNING` → `COMPLETED` / `FAILED`
 
 The backend polls this table via `GET /api/tag/task/status/{taskId}` and the frontend uses periodic polling to display progress.
+
+### `user` — User accounts (FastAPI Users)
+
+```sql
+CREATE TABLE user (
+    id              VARCHAR(36)  PRIMARY KEY,   -- UUID
+    email           VARCHAR      NOT NULL UNIQUE,
+    hashed_password VARCHAR      NOT NULL,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    is_superuser    BOOLEAN      NOT NULL DEFAULT FALSE,
+    is_verified     BOOLEAN      NOT NULL DEFAULT FALSE,
+    username        VARCHAR(100) UNIQUE,        -- optional, indexed; accepted at login
+    name            VARCHAR(200),               -- display name
+    institution     VARCHAR(300)                -- optional affiliation
+);
+```
+
+Users authenticate with a JWT Bearer token (via FastAPI Users). Login accepts **email or username**. Token lifetime is 7 days; the secret is set via the `JWT_SECRET` environment variable.
 
 ---
 

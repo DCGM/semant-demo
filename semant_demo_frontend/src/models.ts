@@ -1,5 +1,16 @@
 // TypeScript interfaces generated from Python Pydantic models
 
+export interface User {
+  id: string; // UUID as string
+  email: string;
+  username: string | null;
+  name: string | null;
+  institution: string | null;
+  is_active: boolean;
+  is_superuser: boolean;
+  is_verified: boolean;
+}
+
 export interface SearchRequest {
   query: string;
   limit?: number;

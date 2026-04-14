@@ -45,6 +45,9 @@ class Config:
         # app feedback delivery
         self.FEEDBACK_WEBHOOK_URL = os.getenv("FEEDBACK_WEBHOOK_URL", "")
         self.FEEDBACK_LOG_PATH = os.getenv("FEEDBACK_LOG_PATH", str(SCRIPT_PATH / "feedback.log.jsonl"))
+
+        # Auth – override JWT_SECRET in production with a strong random value
+        self.JWT_SECRET = os.getenv("JWT_SECRET", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_SECRET")
         
         # path to rag configs
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
