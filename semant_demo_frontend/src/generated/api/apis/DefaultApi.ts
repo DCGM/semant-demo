@@ -49,7 +49,6 @@ import type {
   SemantDemoSchemaDocumentsDocument,
   SummaryResponse,
   Tag,
-  TagReqTemplate,
   TagSpan,
   TagSpanCreateSeparateRequest,
   TagSpanUpdateSeparateRequest,
@@ -127,8 +126,6 @@ import {
     SummaryResponseToJSON,
     TagFromJSON,
     TagToJSON,
-    TagReqTemplateFromJSON,
-    TagReqTemplateToJSON,
     TagSpanFromJSON,
     TagSpanToJSON,
     TagSpanCreateSeparateRequestFromJSON,
@@ -1959,6 +1956,53 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for deleteTagSpanApiTagSpansSpanIdDelete without sending the request
+     */
+    async deleteTagSpanApiTagSpansSpanIdDeleteRequestOpts(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['spanId'] == null) {
+            throw new runtime.RequiredError(
+                'spanId',
+                'Required parameter "spanId" was null or undefined when calling deleteTagSpanApiTagSpansSpanIdDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/tag_spans/{span_id}`;
+        urlPath = urlPath.replace(`{${"span_id"}}`, encodeURIComponent(String(requestParameters['spanId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Delete a TagSpan\'s information
+     * Delete Tag Span
+     */
+    async deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+        const requestOptions = await this.deleteTagSpanApiTagSpansSpanIdDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Delete a TagSpan\'s information
+     * Delete Tag Span
+     */
+    async deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
+        const response = await this.deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for explainSelectionApiRagExplainPost without sending the request
      */
     async explainSelectionApiRagExplainPostRequestOpts(requestParameters: ExplainSelectionApiRagExplainPostRequest): Promise<runtime.RequestOpts> {
@@ -2062,54 +2106,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for deleteTagSpanApiTagSpansSpanIdDelete without sending the request
-     */
-    async deleteTagSpanApiTagSpansSpanIdDeleteRequestOpts(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['spanId'] == null) {
-            throw new runtime.RequiredError(
-                'spanId',
-                'Required parameter "spanId" was null or undefined when calling deleteTagSpanApiTagSpansSpanIdDelete().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/api/tag_spans/{span_id}`;
-        urlPath = urlPath.replace(`{${"span_id"}}`, encodeURIComponent(String(requestParameters['spanId'])));
-
-        return {
-            path: urlPath,
-            method: 'DELETE',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Delete a TagSpan\'s information
-     * Delete Tag Span
-     */
-    async deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
-        const requestOptions = await this.deleteTagSpanApiTagSpansSpanIdDeleteRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse<any>(response);
-    }
-
-    /**
-     * Delete a TagSpan\'s information
-     * Delete Tag Span
-     */
-    async deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
-        const response = await this.deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for explainSelectionApiRagExplainPost without sending the request
+     * Creates request options for fetchCollectionsApiUserCollectionsGet without sending the request
      */
     async fetchCollectionsApiUserCollectionsGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionsGetRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['userId'] == null) {
@@ -3019,9 +3016,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        let urlPath = `/api/collections/{collection_id}/documents/{document_id}`;
-        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
-        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
 
         let urlPath = `/api/v1/feedback`;
 

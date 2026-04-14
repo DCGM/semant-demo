@@ -52,7 +52,6 @@ export * from './SpanType';
 export * from './SummaryResponse';
 export * from './Tag';
 export * from './TagData';
-export * from './TagReqTemplate';
 export * from './TagSpan';
 export * from './TagSpanCreateSeparateRequest';
 export * from './TagSpanUpdate';

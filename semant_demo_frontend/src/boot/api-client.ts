@@ -6,7 +6,8 @@ export default boot(({ app }) => {
   const basePath = process.env.BACKEND_URL || 'http://pcvaskom.fit.vutbr.cz:8024'
 
   const config = new Configuration({
-    basePath
+    basePath,
+    accessToken: () => `Bearer ${localStorage.getItem('auth_token') || ''}`
   })
 
   const apiClients: ApiClients = {
