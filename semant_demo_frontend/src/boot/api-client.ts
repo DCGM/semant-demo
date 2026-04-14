@@ -7,7 +7,10 @@ export default boot(({ app }) => {
 
   const config = new Configuration({
     basePath,
-    accessToken: () => `Bearer ${localStorage.getItem('auth_token') || ''}`
+    accessToken: () => {
+      const token = localStorage.getItem('auth_token')
+      return token ? `Bearer ${token}` : ''
+    }
   })
 
   const apiClients: ApiClients = {
