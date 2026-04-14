@@ -41,6 +41,7 @@ class WeaviateHelpers:
         """
         span_collection = self.client.collections.get(self.collectionNames.span_collection_name)
 
+        # delete the span itself
         await span_collection.data.delete_by_id(span_id)
         
     async def delete_tag_cascade(self, tag_id: str) -> None:
@@ -49,28 +50,33 @@ class WeaviateHelpers:
         """
         tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
         
+        # delete automatic tag references
         await self.delete_references_from_filtered_objects(
             collection_name=self.collectionNames.chunks_collection_name,
             filters=Filter.by_ref("automaticTag").by_id().equal(tag_id),
             from_property="automaticTag",
             target_object_id=tag_id,
         )
+        # delete positive tag references
         await self.delete_references_from_filtered_objects(
             collection_name=self.collectionNames.chunks_collection_name,
             filters=Filter.by_ref("positiveTag").by_id().equal(tag_id),
             from_property="positiveTag",
             target_object_id=tag_id,
         )
+        # delete negative tag references
         await self.delete_references_from_filtered_objects(
             collection_name=self.collectionNames.chunks_collection_name,
             filters=Filter.by_ref("negativeTag").by_id().equal(tag_id),
             from_property="negativeTag",
             target_object_id=tag_id,
         )
+        
+        # delete spans tagged with this tag
         page_size = 100
         while True:
             span_response = await self.client.collections.get(self.collectionNames.span_collection_name).query.fetch_objects(
-                filters=Filter.by_ref("tagged_with").by_id().equal(tag_id),
+                filters=Filter.by_ref("tag").by_id().equal(tag_id),
                 limit=page_size,
             )
 
@@ -83,6 +89,7 @@ class WeaviateHelpers:
             if len(span_response.objects) < page_size:
                 break
 
+        # finally delete the tag itself
         await tag_collection.data.delete_by_id(tag_id)
         
     async def delete_user_collection_cascade(self, collection_id: str) -> None:
@@ -92,12 +99,14 @@ class WeaviateHelpers:
         tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
         usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
         
+        # delete references to collection from chunks
         await self.delete_references_from_filtered_objects(
             collection_name=self.collectionNames.chunks_collection_name,
             filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
             from_property="userCollection",
             target_object_id=collection_id,
         )
+        # delete references to collection from documents
         await self.delete_references_from_filtered_objects(
             collection_name=self.collectionNames.document_collection_name,
             filters=Filter.by_ref("collection").by_id().equal(collection_id),
@@ -105,6 +114,7 @@ class WeaviateHelpers:
             target_object_id=collection_id,
         )
         
+        # delete tags which belong to that collection and their references
         page_size = 100
         while True:
             tag_response = await tag_collection.query.fetch_objects(
@@ -121,6 +131,7 @@ class WeaviateHelpers:
             if len(tag_response.objects) < page_size:
                 break
 
+        # finally delete the collection itself
         await usercollection_collection.data.delete_by_id(collection_id)
         
     async def delete_references_from_filtered_objects(
