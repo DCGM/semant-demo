@@ -1,32 +1,28 @@
 import { useApi } from 'src/composables/useApi'
-import type { TagSpan } from 'src/generated/api'
+import { TagSpan } from 'src/generated/api/models/TagSpan'
 import { ref } from 'vue'
 
 export function useTagging() {
   const api = useApi().default
   const collectionChunks = ref<
     Awaited<
-      ReturnType<typeof api.getCollectionChunksApiChunksOfCollectionGet>
+      ReturnType<typeof api.getCollectionChunksApiUserCollectionChunksGet>
     >['chunksOfCollection']
   >([])
   const tagSpans = ref<TagSpan[]>([])
   const isProcessing = ref(false)
   const availableTags = ref<
-    Awaited<
-      ReturnType<
-        typeof api.getTagsForCollectionApiCollectionsCollectionIdTagsGet
-      >
-    >['tagsLst']
+    Awaited<ReturnType<typeof api.getTagsApiTagsGet>>['tagsLst']
   >([])
 
   const getCollectionChunksPaged = async (
     collectionId: Parameters<
-      typeof api.getCollectionChunksApiChunksOfCollectionGet
+      typeof api.getCollectionChunksApiUserCollectionChunksGet
     >[0]['collectionId']
   ) => {
     isProcessing.value = true
     try {
-      const response = await api.getCollectionChunksApiChunksOfCollectionGet({
+      const response = await api.getCollectionChunksApiUserCollectionChunksGet({
         collectionId
       })
       collectionChunks.value = response.chunksOfCollection
@@ -42,11 +38,11 @@ export function useTagging() {
 
   const fetchTagSpansForChunk = async (
     chunkId: Parameters<
-      typeof api.readTagSpansApiTagSpansSeparateChunkIdGet
+      typeof api.readTagSpansApiTagSpansChunkIdGet
     >[0]['chunkId']
   ): Promise<TagSpan[]> => {
     try {
-      const response = await api.readTagSpansApiTagSpansSeparateChunkIdGet({
+      const response = await api.readTagSpansApiTagSpansChunkIdGet({
         chunkId
       })
       return response
@@ -72,7 +68,7 @@ export function useTagging() {
 
   const getTagSpans = async (
     chunkId: Parameters<
-      typeof api.readTagSpansApiTagSpansSeparateChunkIdGet
+      typeof api.readTagSpansApiTagSpansChunkIdGet
     >[0]['chunkId']
   ): Promise<TagSpan[]> => {
     isProcessing.value = true
@@ -91,12 +87,12 @@ export function useTagging() {
 
   const createTagSpan = async (
     data: Parameters<
-      typeof api.upsertTagSpansSeparateApiTagSpansSeparatePost
+      typeof api.upsertTagSpansApiTagSpansPost
     >[0]['tagSpanCreateSeparateRequest']
   ) => {
     isProcessing.value = true
     try {
-      const response = await api.upsertTagSpansSeparateApiTagSpansSeparatePost({
+      const response = await api.upsertTagSpansApiTagSpansPost({
         tagSpanCreateSeparateRequest: {
           span: data.span
         }
@@ -111,15 +107,14 @@ export function useTagging() {
 
   const updateTagSpan = async (
     data: Parameters<
-      typeof api.updateTagSpanSeparateApiTagSpansUpdateSeparatePatch
+      typeof api.updateTagSpanApiTagSpansUpdatePatch
     >[0]['tagSpanUpdateSeparateRequest']
   ) => {
     isProcessing.value = true
     try {
-      const response =
-        await api.updateTagSpanSeparateApiTagSpansUpdateSeparatePatch({
-          tagSpanUpdateSeparateRequest: data
-        })
+      const response = await api.updateTagSpanApiTagSpansUpdatePatch({
+        tagSpanUpdateSeparateRequest: data
+      })
       console.log('Tag updated successfully:', response)
     } catch (error) {
       console.error('Error updating tag:', error)
@@ -130,12 +125,12 @@ export function useTagging() {
 
   const deleteTagSpan = async (
     spanId: Parameters<
-      typeof api.deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete
+      typeof api.deleteTagSpanApiTagSpansSpanIdDelete
     >[0]['spanId']
   ) => {
     isProcessing.value = true
     try {
-      await api.deleteTagSpanSeparateApiTagSpansSeparateSpanIdDelete({
+      await api.deleteTagSpanApiTagSpansSpanIdDelete({
         spanId
       })
       console.log('Tag span deleted successfully')
@@ -146,17 +141,10 @@ export function useTagging() {
     }
   }
 
-  const getTagsForCollection = async (
-    collectionId: Parameters<
-      typeof api.getTagsForCollectionApiCollectionsCollectionIdTagsGet
-    >[0]['collectionId']
-  ) => {
+  const getTagsForCollection = async () => {
     isProcessing.value = true
     try {
-      const response =
-        await api.getTagsForCollectionApiCollectionsCollectionIdTagsGet({
-          collectionId
-        })
+      const response = await api.getTagsApiTagsGet()
       console.log('Fetched tags for collection:', response)
       availableTags.value = response.tagsLst
     } catch (error) {

@@ -1,7 +1,8 @@
 import { computed, ref } from 'vue'
-import { SpanType, type TagSpan } from 'src/generated/api'
 import { useTagging } from './useTagging'
 import { snapToWordBoundary } from '../utils'
+import { TagSpan } from 'src/generated/api/models/TagSpan'
+import { SpanType } from 'src/generated/api/models/SpanType'
 
 interface SelectionState {
   start: number
@@ -423,8 +424,9 @@ export function useTaggingPageState() {
     globalSelection.value = null
   }
 
-  const handleTagClick = async (tagId: string) => {
+  const handleTagClick = async (tagId: string | null) => {
     if (!globalSelection.value) return
+    if (tagId === null) return
 
     if (globalSelection.value.editingId) {
       globalSelection.value = {

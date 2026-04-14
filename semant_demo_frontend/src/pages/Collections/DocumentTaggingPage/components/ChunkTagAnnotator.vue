@@ -41,8 +41,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { SpanType, type TagSpan } from 'src/generated/api'
+import { type TagSpan } from 'src/generated/api/models/TagSpan'
 import { snapToWordBoundary } from '../utils'
+import { SpanType } from 'src/generated/api/models/SpanType'
 
 interface RenderSegment {
   text: string
@@ -71,7 +72,7 @@ interface AvailableTag {
   tagName: string
   tagColor: string
   tagPictogram: string
-  tagUuid: string
+  tagUuid: string | null
 }
 
 interface SpanWithSourceMeta extends TagSpan {
