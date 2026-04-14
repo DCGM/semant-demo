@@ -369,6 +369,39 @@ class WeaviateHelpers:
         except Exception as e:
             logging.error(f"Unexpected error deleting references: {str(e)}")
             raise WeaviateServerError(str(e))
+        
+    async def delete_tag_with_references(self, tag_id: str) -> None:
+        """
+        Deletes one tag object and all references pointing to it.
+        """
+        tag_id = str(tag_id)
+
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.span_collection_name,
+            filters=Filter.by_ref("tag").by_id().equal(tag_id),
+            from_property="tag",
+            target_object_id=tag_id,
+        )
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("automaticTag").by_id().equal(tag_id),
+            from_property="automaticTag",
+            target_object_id=tag_id,
+        )
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("positiveTag").by_id().equal(tag_id),
+            from_property="positiveTag",
+            target_object_id=tag_id,
+        )
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("negativeTag").by_id().equal(tag_id),
+            from_property="negativeTag",
+            target_object_id=tag_id,
+        )
+
+        await self.client.collections.get(self.collectionNames.tag_collection_name).data.delete_by_id(tag_id)
 
     async def create_reference(self, src_id:str, src_collection_name:str, property_name:str, target_collection_id:str) -> bool:
         """
