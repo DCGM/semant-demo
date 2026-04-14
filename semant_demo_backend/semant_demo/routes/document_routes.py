@@ -18,7 +18,7 @@ async def fetch_document(document_id: str, searcher: WeaviateAbstraction = Depen
     return response
 
 @exp_router.get("/api/documents/browse", response_model=DocumentBrowse, response_model_exclude_none=True)
-async def browse_documents(collection_id: str,
+async def browse_documents(collection_id: str | None = None,
                            limit: int = Query(default=50, ge=1, le=200),
                            offset: int = Query(default=0, ge=0),
                            sort_by: str | None = None,

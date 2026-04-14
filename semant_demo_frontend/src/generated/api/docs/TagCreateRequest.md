@@ -1,28 +1,32 @@
 
-# TagSpanWriteRequest
+# TagCreateRequest
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`chunkId` | string
-`tagId` | string
-`spans` | [Array&lt;TagSpan&gt;](TagSpan.md)
-`mode` | [SpanStoreMode](SpanStoreMode.md)
+`tagName` | string
+`tagShorthand` | string
+`tagColor` | string
+`tagPictogram` | string
+`tagDefinition` | string
+`tagExamples` | Array&lt;string&gt;
 
 ## Example
 
 ```typescript
-import type { TagSpanWriteRequest } from ''
+import type { TagCreateRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "chunkId": null,
-  "tagId": null,
-  "spans": null,
-  "mode": null,
-} satisfies TagSpanWriteRequest
+  "tagName": null,
+  "tagShorthand": null,
+  "tagColor": null,
+  "tagPictogram": null,
+  "tagDefinition": null,
+  "tagExamples": null,
+} satisfies TagCreateRequest
 
 console.log(example)
 
@@ -31,7 +35,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as TagSpanWriteRequest
+const exampleParsed = JSON.parse(exampleJSON) as TagCreateRequest
 console.log(exampleParsed)
 ```
 

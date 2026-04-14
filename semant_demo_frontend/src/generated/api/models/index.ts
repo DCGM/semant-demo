@@ -1,6 +1,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export * from './APIType';
+export * from './AppFeedbackRequest';
 export * from './ApproveTagReq';
 export * from './ApproveTagResponse';
 export * from './BearerResponse';
@@ -46,9 +47,16 @@ export * from './SearchResponseOutput';
 export * from './SearchType';
 export * from './SemantDemoSchemaDocumentsDocument';
 export * from './SemantDemoSchemasDocument';
+export * from './SpanStoreMode';
+export * from './SpanType';
 export * from './SummaryResponse';
 export * from './Tag';
 export * from './TagData';
+export * from './TagSpan';
+export * from './TagSpanCreateSeparateRequest';
+export * from './TagSpanUpdate';
+export * from './TagSpanUpdateSeparateRequest';
+export * from './TagSpanWriteResponse';
 export * from './TagStartResponse';
 export * from './TagType';
 export * from './TaggedChunks';

@@ -1,34 +1,20 @@
 
-# TagSpanUpdateRequest
+# SpanType
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`mode` | [SpanStoreMode](SpanStoreMode.md)
-`chunkId` | string
-`index` | number
-`spanId` | string
-`tagId` | string
-`start` | number
-`end` | number
 
 ## Example
 
 ```typescript
-import type { TagSpanUpdateRequest } from ''
+import type { SpanType } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "mode": null,
-  "chunkId": null,
-  "index": null,
-  "spanId": null,
-  "tagId": null,
-  "start": null,
-  "end": null,
-} satisfies TagSpanUpdateRequest
+} satisfies SpanType
 
 console.log(example)
 
@@ -37,7 +23,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as TagSpanUpdateRequest
+const exampleParsed = JSON.parse(exampleJSON) as SpanType
 console.log(exampleParsed)
 ```
 

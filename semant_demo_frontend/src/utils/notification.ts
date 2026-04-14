@@ -37,4 +37,25 @@ function errorNotification (message: string) {
   })
 }
 
-export { actionNotification, successNotification, warningNotification, errorNotification }
+function ongoingNotification (message: string) {
+  const notif = Notify.create({
+    message,
+    type: 'ongoing',
+    spinner: true,
+    position: 'bottom-right',
+    timeout: 0
+  })
+  return {
+    success (message: string, timeout = 4000) {
+      notif({ type: 'positive', message, timeout, spinner: false })
+    },
+    error (message: string, timeout = 6000) {
+      notif({ type: 'negative', message, timeout, spinner: false })
+    },
+    dismiss () {
+      notif()
+    }
+  }
+}
+
+export { actionNotification, successNotification, warningNotification, errorNotification, ongoingNotification }

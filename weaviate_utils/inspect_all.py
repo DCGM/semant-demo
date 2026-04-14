@@ -31,7 +31,7 @@ def main():
         print(f"=== Collection: {name} ===")
 
         # Get the collection object
-        collection = client.collections.get(name)
+        collection = client.collections.use(name)
 
         # Get the record count
         count = collection.aggregate.over_all(total_count=True).total_count
@@ -46,7 +46,20 @@ def main():
             print(f"  description: {prop.description}")
             print(f"  type: {prop.data_type.value}")
             print("\n")
+            
+        print("References:")
+        for ref in schema.references:
+            print(f"- name: {ref.name}")
+            print(f"  description: {ref.description}")
+            print(f"  to: {ref.target_collections}")
+            print("\n")
 
+    all_aliases = client.alias.list_all()
+
+    print(f"=== Aliases ===")
+    print(f"Found {len(all_aliases)} aliases.\n")
+    for alias_name, alias_info in all_aliases.items():
+        print(f"Alias: {alias_info.alias} -> Collection: {alias_info.collection}")
     # Close the connection
     client.close()
 
