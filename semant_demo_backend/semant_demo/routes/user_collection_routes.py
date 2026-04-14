@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 
 from semant_demo import schemas
 from semant_demo.config import config
-from uuid import UUID
+from semant_demo.users.auth import current_active_user, current_active_optional_user
+from semant_demo.users.models import User
 
 from semant_demo.weaviate_exceptions import WeaviateOperationError
 
@@ -36,7 +37,8 @@ exp_router = APIRouter()
 
 @exp_router.post("/api/user_collections", response_model=Collection, status_code=status.HTTP_201_CREATED)
 async def create_user_collection(collectionReq: PostCollection,
-                                 searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
+                                 searcher: WeaviateAbstraction = Depends(get_search),
+                                 current_user: User = Depends(current_active_user)) -> Collection:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
     """
@@ -45,17 +47,18 @@ async def create_user_collection(collectionReq: PostCollection,
 
 
 @exp_router.get("/api/user_collections", response_model=list[Collection])
-async def fetch_collections(userId: UUID,
-                            searcher: WeaviateAbstraction = Depends(get_search)) -> list[Collection]:
+async def fetch_collections(user_id: str,
+                            searcher: WeaviateAbstraction = Depends(get_search),
+                            current_user: User = Depends(current_active_user)) -> list[Collection]:
     """
     Retrieves all collections for given user
     """
-    response = await searcher.userCollection.read_all(userId)
+    response = await searcher.userCollection.read_all(user_id)
     return response
 
 
 @exp_router.get("/api/user_collections/{collection_id}", response_model=Collection)
-async def fetch_collection(collection_id: UUID,
+async def fetch_collection(collection_id: str,
                            searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
     """
     Retrieves collection by its id
@@ -68,7 +71,7 @@ async def fetch_collection(collection_id: UUID,
 
 
 @exp_router.patch("/api/user_collections/{collection_id}", response_model=Collection)
-async def update_collection(collection_id: UUID, collectionReq: PatchCollection,
+async def update_collection(collection_id: str, collectionReq: PatchCollection,
                             searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
     """
     Updates collection name/description/color
@@ -81,9 +84,8 @@ async def update_collection(collection_id: UUID, collectionReq: PatchCollection,
 
 @exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
 async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
-                                 searcher: WeaviateAbstraction = Depends(
-                                     get_search),
-                                 ) -> schemas.CreateResponse:
+                                 searcher: WeaviateAbstraction = Depends(get_search),
+                                 current_user: User = Depends(current_active_user)) -> schemas.CreateResponse:
     """
     Connects chunk with user collection
     """
@@ -101,9 +103,8 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
 
 @exp_router.get("/api/user_collection/chunks", response_model=schemas.GetCollectionChunksResponse)
 async def get_collection_chunks(collection_id: str,
-                                searcher: WeaviateAbstraction = Depends(
-                                    get_search)
-                                ) -> schemas.GetCollectionChunksResponse:
+                                searcher: WeaviateAbstraction = Depends(get_search),
+                                current_user: User = Depends(current_active_user)) -> schemas.GetCollectionChunksResponse:
     """
     Returns chunks which belong to collection given by id
     """
@@ -116,7 +117,7 @@ async def get_collection_chunks(collection_id: str,
 
 
 @exp_router.get("/api/user_collection/{collection_id}/stats", response_model=CollectionStats)
-async def get_collection_stats(collection_id: UUID, searcher: WeaviateAbstraction = Depends(get_search)) -> CollectionStats:
+async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> CollectionStats:
     response = await searcher.userCollection.read_collection_stats(collection_id)
     if response is None:
         raise HTTPException(
@@ -125,13 +126,13 @@ async def get_collection_stats(collection_id: UUID, searcher: WeaviateAbstractio
 
 
 @exp_router.delete("/api/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_collection(collection_id: UUID, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
+async def delete_collection(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
     await searcher.userCollection.delete(collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @exp_router.get("/api/user_collection/{collection_id}/documents", response_model=list[Document], response_model_exclude_none=True)
-async def get_collection_documents(collection_id: UUID, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Document]:
+async def get_collection_documents(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Document]:
     """
     Returns documents which belong to collection given by id
     """
@@ -139,7 +140,7 @@ async def get_collection_documents(collection_id: UUID, searcher: WeaviateAbstra
     return response
 
 @exp_router.post("/api/collections/{collection_id}/documents/{document_id}")
-async def add_document_to_collection(collection_id: UUID, document_id: UUID, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
+async def add_document_to_collection(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
     """
     Adds document to collection and also links all its chunks to that collection
     """
@@ -148,15 +149,15 @@ async def add_document_to_collection(collection_id: UUID, document_id: UUID, sea
 
 @exp_router.delete("/api/collections/{collection_id}/documents/{document_id}")
 async def remove_document_from_collection(
-    collection_id: UUID,
-    document_id: UUID,
+    collection_id: str,
+    document_id: str,
     searcher: WeaviateAbstraction = Depends(get_search)
 ) -> Response:
     await searcher.userCollection.remove_document(document_id=document_id, collection_id=collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @exp_router.get("/api/collections/{collection_id}/tags", response_model=list[Tag])
-async def get_collection_tags(collection_id: UUID, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Tag]:
+async def get_collection_tags(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Tag]:
     """
     Returns tags which belong to collection given by id
     """

@@ -10,6 +10,43 @@
           </router-link>
         </q-toolbar-title>
         <q-space />
+
+        <!-- User avatar with auth menu -->
+        <q-btn flat round dense>
+          <q-avatar size="36px" :color="userStore.isLoggedIn ? undefined : 'grey-5'" text-color="primary">
+            <img v-if="userStore.isLoggedIn" src="/boy-avatar2.png" style="border-radius:50%;width:100%;height:100%;object-fit:cover;" />
+            <q-icon v-else name="person_outline" />
+          </q-avatar>
+          <q-menu>
+            <q-list style="min-width: 180px">
+              <template v-if="!userStore.isLoggedIn">
+                <q-item clickable v-close-popup @click="showLogin = true">
+                  <q-item-section avatar><q-icon name="login" /></q-item-section>
+                  <q-item-section>Log In</q-item-section>
+                </q-item>
+                <q-item clickable v-close-popup @click="showRegister = true">
+                  <q-item-section avatar><q-icon name="person_add" /></q-item-section>
+                  <q-item-section>Register</q-item-section>
+                </q-item>
+              </template>
+              <template v-else>
+                <q-item clickable v-close-popup @click="showUserInfo = true">
+                  <q-item-section avatar><q-icon name="manage_accounts" /></q-item-section>
+                  <q-item-section>Account</q-item-section>
+                </q-item>
+                <q-item clickable v-close-popup @click="handleLogout">
+                  <q-item-section avatar><q-icon name="logout" /></q-item-section>
+                  <q-item-section>Log Out</q-item-section>
+                </q-item>
+              </template>
+              <q-separator />
+              <q-item clickable v-close-popup @click="showAbout = true">
+                <q-item-section avatar><q-icon name="info" /></q-item-section>
+                <q-item-section>About</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
+        </q-btn>
       </q-toolbar>
     </q-header>
 
@@ -18,7 +55,7 @@
         <q-list padding class="text-grey-8">
 
           <router-link to="/search/" style="text-decoration: none; color: inherit;">
-            <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/news') }" v-ripple
+            <q-item class="drawer-item" :class="{ 'drawer-item-selected': route.path.startsWith('/search') }" v-ripple
               clickable>
               <q-item-section avatar>
                 <q-icon name="fa-solid fa-search" />
@@ -30,7 +67,7 @@
           </router-link>
 
           <router-link to="/rag/" style="text-decoration: none; color: inherit;">
-            <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/public_documents') }"
+            <q-item class="drawer-item" :class="{ 'drawer-item-selected': route.path.startsWith('/rag') }"
               v-ripple clickable>
               <q-item-section avatar>
                 <q-icon name="fa-solid fa-search" />
@@ -42,7 +79,7 @@
           </router-link>
 
           <router-link to="/tag_manage/" style="text-decoration: none; color: inherit;">
-            <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/news') }" v-ripple
+            <q-item class="drawer-item" :class="{ 'drawer-item-selected': route.path.startsWith('/tag_manage') }" v-ripple
               clickable>
               <q-item-section avatar>
                 <q-icon name="fa-solid fa-tag" />
@@ -54,7 +91,7 @@
           </router-link>
 
           <router-link to="/collection_manage/" style="text-decoration: none; color: inherit;">
-            <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/news') }" v-ripple
+            <q-item class="drawer-item" :class="{ 'drawer-item-selected': route.path.startsWith('/collection_manage') }" v-ripple
               clickable>
               <q-item-section avatar>
                 <q-icon name="fa-solid fa-tag" />
@@ -66,7 +103,7 @@
           </router-link>
 
           <router-link to="/about/" style="text-decoration: none; color: inherit;">
-            <q-item class="drawer-item" :class="{ 'drawer-item-selected': currentRoute.startsWith('/public_documents') }"
+            <q-item class="drawer-item" :class="{ 'drawer-item-selected': route.path.startsWith('/about') }"
               v-ripple clickable>
               <q-item-section avatar>
                 <q-icon name="fa-solid fa-info-circle" />
@@ -93,27 +130,52 @@
     <q-page-container>
       <router-view />
     </q-page-container>
+
+    <LoginDialog v-model="showLogin" />
+    <RegisterDialog v-model="showRegister" />
+    <UserInfoDialog v-model="showUserInfo" />
+    <AboutAppDialog v-model="showAbout" />
   </q-layout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-
-const inputName = ref<string|undefined>('')
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useQuasar } from 'quasar'
+import { useUserStore } from 'src/stores/user-store'
+import LoginDialog from 'src/components/auth/LoginDialog.vue'
+import RegisterDialog from 'src/components/auth/RegisterDialog.vue'
+import UserInfoDialog from 'src/components/auth/UserInfoDialog.vue'
+import AboutAppDialog from 'src/components/auth/AboutAppDialog.vue'
 
 const route = useRoute()
+const userStore = useUserStore()
+const $q = useQuasar()
 
 const leftDrawerOpen = ref(true)
+const showLogin = ref(false)
+const showRegister = ref(false)
+const showUserInfo = ref(false)
+const showAbout = ref(false)
 
-const currentRoute = computed(() => {
-  return route.path ? route.path : ''
+onMounted(async () => {
+  // Restore session if a token exists in localStorage
+  await userStore.fetchCurrentUser()
 })
 
 function toggleLeftDrawer () {
   leftDrawerOpen.value = !leftDrawerOpen.value
 }
 
+async function handleLogout () {
+  await userStore.logout()
+  $q.notify({
+    type: 'info',
+    message: 'You have been logged out.',
+    position: 'top',
+    timeout: 3000
+  })
+}
 </script>
 
 <style scoped>

@@ -11,6 +11,8 @@ from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
 #import dependencies
 from semant_demo.routes.dependencies import get_search, get_summarizer #, get_engine
+from semant_demo.users.auth import current_active_optional_user
+from semant_demo.users.models import User
 import logging
 
 
@@ -20,7 +22,8 @@ exp_router = APIRouter()
 openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 @exp_router.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Depends(get_search),
-                 summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> schemas.SearchResponse:
+                 summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
+                 current_user: User | None = Depends(current_active_optional_user)) -> schemas.SearchResponse:
     start_time = time.time()
     
     response = await searcher.textChunk.search(req)
@@ -31,7 +34,9 @@ async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Dep
 
 
 @exp_router.post("/api/summarize/{summary_type}", response_model=schemas.SummaryResponse)
-async def summarize(search_response: schemas.SearchResponse, summary_type: str, summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> schemas.SummaryResponse:
+async def summarize(search_response: schemas.SearchResponse, summary_type: str,
+                    summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
+                    current_user: User | None = Depends(current_active_optional_user)) -> schemas.SummaryResponse:
     start_time = time.time()
     if summary_type != "results":
         # only "results" is supported now
@@ -49,7 +54,8 @@ async def summarize(search_response: schemas.SearchResponse, summary_type: str, 
 
 
 @exp_router.post("/api/question/{question_text}", response_model=schemas.SummaryResponse)
-async def question(search_response: schemas.SearchResponse, question_text: str) -> schemas.SummaryResponse:
+async def question(search_response: schemas.SearchResponse, question_text: str,
+                   current_user: User | None = Depends(current_active_optional_user)) -> schemas.SummaryResponse:
     # build your snippets with IDs
     snippets = [
         f"[doc{i+1}]" + res.text.replace('\\n', ' ')

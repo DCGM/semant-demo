@@ -12,7 +12,6 @@ import asyncio
 from semant_demo.tagging.tagging_utils import tag_and_store
 import uuid
 from pathlib import Path
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, asc
@@ -32,6 +31,8 @@ from semant_demo.tagging.tagging_utils import getTaskByName
 
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
+from semant_demo.users.auth import current_active_optional_user, current_active_user
+from semant_demo.users.models import User
 from semant_demo.schema.tags import PatchTag, Tag, PostTag
 from semant_demo.weaviate_exceptions import WeaviateOperationError
 
@@ -44,8 +45,9 @@ TAG_CONFIG_DIR = BASE_DIR / "tagging" / "configs"
 exp_router = APIRouter()
 
 @exp_router.post("/api/tags", response_model=Tag, status_code=status.HTTP_201_CREATED)
-async def create_tag(collection_id: UUID, tag: PostTag, 
-                     searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
+async def create_tag(collection_id: str, tag: PostTag, 
+                     searcher: WeaviateAbstraction = Depends(get_search),
+                     current_user: User = Depends(current_active_user)) -> Tag:
     """
     Creates a tag in weaviate db, or not if the same tag already exists
     """
@@ -63,7 +65,7 @@ async def get_tags(searcher: WeaviateAbstraction = Depends(get_search)) -> schem
     return {"tags_lst": response}
 
 @exp_router.get("/api/tags/{tag_uuid}", response_model=Tag)
-async def get_tag(tag_uuid: UUID, searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
+async def get_tag(tag_uuid: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
     """
     Retrieve tag by its id
     """
@@ -73,7 +75,7 @@ async def get_tag(tag_uuid: UUID, searcher: WeaviateAbstraction = Depends(get_se
     return response
 
 @exp_router.delete("/api/tags/{tag_uuid}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tag(tag_uuid: UUID,
+async def delete_tag(tag_uuid: str,
                       searcher: WeaviateAbstraction = Depends(get_search)) -> None:
     """
     Deletes tag
@@ -82,7 +84,7 @@ async def delete_tag(tag_uuid: UUID,
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @exp_router.patch("/api/tags/{tag_uuid}", response_model=Tag)
-async def update_tag(tag_uuid: UUID, tag_update: PatchTag,
+async def update_tag(tag_uuid: str, tag_update: PatchTag,
                       searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
     """
     Updates a tag
@@ -96,7 +98,8 @@ async def update_tag(tag_uuid: UUID, tag_update: PatchTag,
 @exp_router.post("/api/tag/task", response_model=schemas.TagStartResponse)
 async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
                         searcher: WeaviateAbstraction = Depends(get_search),
-                        session: AsyncSession = Depends(get_async_session)) -> schemas.TagStartResponse:
+                        session: AsyncSession = Depends(get_async_session),
+                        current_user: User = Depends(current_active_user)) -> schemas.TagStartResponse:
     """
     Starts tagging task in form of asyncio.create_task
     """
@@ -133,7 +136,7 @@ async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
         raise HTTPException(status_code=500, detail=str(e))
 
 @exp_router.get("/api/tag/configs", response_model=schemas.GetConfigsResponse)
-async def get_configs() -> schemas.GetConfigsResponse:
+async def get_configs(current_user: User = Depends(current_active_user)) -> schemas.GetConfigsResponse:
     """
     Load all config files
     """
@@ -148,7 +151,8 @@ async def get_configs() -> schemas.GetConfigsResponse:
     return {"configs": configs}
 
 @exp_router.get("/api/tag/tasks/info")
-async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
+async def get_tag_tasks(session: AsyncSession = Depends(get_async_session),
+                        current_user: User = Depends(current_active_user)):
     """
     Get task info to see history of tasks
     """
@@ -184,7 +188,8 @@ async def get_tag_tasks(session: AsyncSession = Depends(get_async_session)):
         raise DBError(f'Failed loading all tasks ids from database.') from e
 
 @exp_router.get("/api/tag/task/status/{taskId}")
-async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session)):
+async def check_status(taskId: str, session: AsyncSession = Depends(get_async_session),
+                       current_user: User = Depends(current_active_user)):
     """
     Polling to check task status
     """
@@ -212,7 +217,8 @@ async def check_status(taskId: str, session: AsyncSession = Depends(get_async_se
 
 
 @exp_router.delete("/api/tag/task/{taskId}", response_model=schemas.CancelTaskResponse)
-async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session)) -> schemas.CancelTaskResponse:
+async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_session),
+                      current_user: User = Depends(current_active_user)) -> schemas.CancelTaskResponse:
     """
     Cancel running task
     """
@@ -242,7 +248,8 @@ async def cancel_task(taskId: str, session: AsyncSession = Depends(get_async_ses
 
 @exp_router.delete("/api/tags/automatic", response_model=schemas.RemoveTagsResponse)
 async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq,
-                                searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.RemoveTagsResponse:
+                                searcher: WeaviateAbstraction = Depends(get_search),
+                                current_user: User = Depends(current_active_user)) -> schemas.RemoveTagsResponse:
     """
     Removes automatic tags
     """
@@ -254,7 +261,8 @@ async def remove_automatic_tags(chosenTagUUIDs: schemas.RemoveTagReq,
 
 @exp_router.put("/api/tag/approve", response_model=schemas.ApproveTagResponse)
 async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
-                                     searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.ApproveTagResponse:
+                                     searcher: WeaviateAbstraction = Depends(get_search),
+                                     current_user: User = Depends(current_active_user)) -> schemas.ApproveTagResponse:
     """
     User approve a tag, changes the reference of the tag
     """
@@ -269,7 +277,8 @@ async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
     
 @exp_router.put("/api/tag/disapprove", response_model=schemas.ApproveTagResponse)
 async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
-                                     searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.ApproveTagResponse:
+                                     searcher: WeaviateAbstraction = Depends(get_search),
+                                     current_user: User = Depends(current_active_user)) -> schemas.ApproveTagResponse:
     """
     User disapprove a tag, changes the reference of the tag
     """
@@ -284,7 +293,8 @@ async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
 
 @exp_router.post("/api/tags/filter", response_model=schemas.FilterChunksByTagsResponse)
 async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest,
-                                searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.FilterChunksByTagsResponse:
+                                searcher: WeaviateAbstraction = Depends(get_search),
+                                current_user: User = Depends(current_active_user)) -> schemas.FilterChunksByTagsResponse:
     """
     Filter chunks by given tags and positive or/and automatic flags
     """
@@ -293,7 +303,8 @@ async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest
 
 @exp_router.post("/api/tag/textChunks", response_model=schemas.GetTaggedChunksResponse)
 async def get_selected_tags_chunks(chosenTagUUIDs: schemas.GetTaggedChunksReq,
-                                   searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
+                                   searcher: WeaviateAbstraction = Depends(get_search),
+                                   current_user: User = Depends(current_active_user)) -> schemas.GetTagsResponse:
     """
     Returns chunks which are tagged by certain type of tag (automatic, positive, negative)
     """
