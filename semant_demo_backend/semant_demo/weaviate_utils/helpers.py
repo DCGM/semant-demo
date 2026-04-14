@@ -34,6 +34,162 @@ class WeaviateHelpers:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
+        
+    async def delete_span_cascade(self, span_id: str) -> None:
+        """
+        Performs cascade deletion of a span
+        """
+        span_collection = self.client.collections.get(self.collectionNames.span_collection_name)
+
+        # delete the span itself
+        await span_collection.data.delete_by_id(span_id)
+        
+    async def delete_tag_cascade(self, tag_id: str) -> None:
+        """
+        Performs cascade deletion of a tag
+        """
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        
+        # delete automatic tag references
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("automaticTag").by_id().equal(tag_id),
+            from_property="automaticTag",
+            target_object_id=tag_id,
+        )
+        # delete positive tag references
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("positiveTag").by_id().equal(tag_id),
+            from_property="positiveTag",
+            target_object_id=tag_id,
+        )
+        # delete negative tag references
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("negativeTag").by_id().equal(tag_id),
+            from_property="negativeTag",
+            target_object_id=tag_id,
+        )
+        
+        # delete spans tagged with this tag
+        page_size = 100
+        while True:
+            span_response = await self.client.collections.get(self.collectionNames.span_collection_name).query.fetch_objects(
+                filters=Filter.by_ref("tag").by_id().equal(tag_id),
+                limit=page_size,
+            )
+
+            if not span_response.objects:
+                break
+
+            for span_obj in span_response.objects:
+                await self.delete_span_cascade(str(span_obj.uuid))
+
+            if len(span_response.objects) < page_size:
+                break
+
+        # finally delete the tag itself
+        await tag_collection.data.delete_by_id(tag_id)
+        
+    async def delete_user_collection_cascade(self, collection_id: str) -> None:
+        """"
+        Performs cascade deletion of user collection
+        """
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
+        
+        # delete references to collection from chunks
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
+            from_property="userCollection",
+            target_object_id=collection_id,
+        )
+        # delete references to collection from documents
+        await self.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.document_collection_name,
+            filters=Filter.by_ref("collection").by_id().equal(collection_id),
+            from_property="collection",
+            target_object_id=collection_id,
+        )
+        
+        # delete tags which belong to that collection and their references
+        page_size = 100
+        while True:
+            tag_response = await tag_collection.query.fetch_objects(
+                filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
+                limit=page_size,
+            )
+
+            if not tag_response.objects:
+                break
+
+            for tag_obj in tag_response.objects:
+                await self.delete_tag_cascade(str(tag_obj.uuid))
+
+            if len(tag_response.objects) < page_size:
+                break
+
+        # finally delete the collection itself
+        await usercollection_collection.data.delete_by_id(collection_id)
+        
+    async def delete_references_from_filtered_objects(
+        self,
+        collection_name: str,
+        filters: Filter,
+        from_property: str,
+        target_object_id: str,
+        page_size: int = 100,
+    ) -> None:
+        """
+        Deletes a reference from every object matching the filter.
+
+        The query is repeated without an offset because removing the reference
+        changes which objects still match the filter.
+        """
+        try:
+            collection = self.client.collections.get(collection_name)
+            target_object_id = str(target_object_id)
+
+            while True:
+                response = await collection.query.fetch_objects(
+                    filters=filters,
+                    limit=page_size,
+                )
+
+                if not response.objects:
+                    break
+
+                for obj in response.objects:
+                    await collection.data.reference_delete(
+                        from_uuid=obj.uuid,
+                        from_property=from_property,
+                        to=target_object_id,
+                    )
+
+                if len(response.objects) < page_size:
+                    break
+
+        except WeaviateConnectionError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
+        except Exception as e:
+            logging.error(f"Unexpected error deleting references: {str(e)}")
+            raise WeaviateServerError(str(e))
+
     async def fetch_chunks(self, filters: Filter) -> list:
         """
         Fetches chunks with filters - tag, user-collection. Fetch subset of text chunks given by filters.
@@ -313,128 +469,6 @@ class WeaviateHelpers:
             # catch unexpected errors and wrap them
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
-
-    async def delete_references_from_filtered_objects(
-        self,
-        collection_name: str,
-        filters: Filter,
-        from_property: str,
-        target_object_id: str,
-        page_size: int = 100,
-    ) -> None:
-        """
-        Deletes a reference from every object matching the filter.
-
-        The query is repeated without an offset because removing the reference
-        changes which objects still match the filter.
-        """
-        try:
-            collection = self.client.collections.get(collection_name)
-            target_object_id = str(target_object_id)
-
-            while True:
-                response = await collection.query.fetch_objects(
-                    filters=filters,
-                    limit=page_size,
-                )
-
-                if not response.objects:
-                    break
-
-                for obj in response.objects:
-                    await collection.data.reference_delete(
-                        from_uuid=obj.uuid,
-                        from_property=from_property,
-                        to=target_object_id,
-                    )
-
-                if len(response.objects) < page_size:
-                    break
-
-        except WeaviateConnectionError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateConnectError(str(e))
-        except WeaviateInvalidInputError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateDataValidationError(str(e))
-        except WeaviateTimeoutError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateLimitError(str(e))
-        except WeaviateQueryError as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateOperationError(str(e))
-        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
-            logging.error(f"Error: {str(e)}")
-            raise WeaviateServerError(str(e))
-        except Exception as e:
-            logging.error(f"Unexpected error deleting references: {str(e)}")
-            raise WeaviateServerError(str(e))
-        
-    async def delete_tag_with_references(self, tag_id: str) -> None:
-        """
-        Deletes one tag object and all references pointing to it.
-        """
-        tag_id = str(tag_id)
-
-        await self.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.span_collection_name,
-            filters=Filter.by_ref("tag").by_id().equal(tag_id),
-            from_property="tag",
-            target_object_id=tag_id,
-        )
-        await self.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("automaticTag").by_id().equal(tag_id),
-            from_property="automaticTag",
-            target_object_id=tag_id,
-        )
-        await self.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("positiveTag").by_id().equal(tag_id),
-            from_property="positiveTag",
-            target_object_id=tag_id,
-        )
-        await self.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("negativeTag").by_id().equal(tag_id),
-            from_property="negativeTag",
-            target_object_id=tag_id,
-        )
-
-        await self.client.collections.get(self.collectionNames.tag_collection_name).data.delete_by_id(tag_id)
-
-    async def delete_tag_with_references(self, tag_id: str) -> None:
-        """
-        Deletes one tag object and all references pointing to it.
-        """
-        tag_id = str(tag_id)
-
-        await self.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.span_collection_name,
-            filters=Filter.by_ref("tag").by_id().equal(tag_id),
-            from_property="tag",
-            target_object_id=tag_id,
-        )
-        await self.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("automaticTag").by_id().equal(tag_id),
-            from_property="automaticTag",
-            target_object_id=tag_id,
-        )
-        await self.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("positiveTag").by_id().equal(tag_id),
-            from_property="positiveTag",
-            target_object_id=tag_id,
-        )
-        await self.delete_references_from_filtered_objects(
-            collection_name=self.collectionNames.chunks_collection_name,
-            filters=Filter.by_ref("negativeTag").by_id().equal(tag_id),
-            from_property="negativeTag",
-            target_object_id=tag_id,
-        )
-
-        await self.client.collections.get(self.collectionNames.tag_collection_name).data.delete_by_id(tag_id)
 
     async def create_reference(self, src_id:str, src_collection_name:str, property_name:str, target_collection_id:str) -> bool:
         """

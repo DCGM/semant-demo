@@ -194,7 +194,7 @@ class Tag():
     # async def delete(self, chosenTagUUIDs):
     #     return await self.helpers.remove_tags(chosenTagUUIDs)
 
-    async def delete(self, tag_uuid: UUID) -> None:
+    async def delete(self, tag_uuid: str) -> None:
         """
         Deletes a tag after removing every reference to it from Span and Chunk collections.
         """
@@ -206,7 +206,7 @@ class Tag():
         if tag_response is None:
             raise WeaviateOperationError("Tag not found")
 
-        await self.helpers.delete_tag_with_references(str(tag_uuid))
+        await self.helpers.delete_tag_cascade(tag_uuid)
 
     def read_spans():
         pass
