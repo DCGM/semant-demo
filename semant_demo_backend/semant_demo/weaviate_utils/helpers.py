@@ -314,6 +314,62 @@ class WeaviateHelpers:
             logging.error(f"Unexpected error fetching chunks: {str(e)}")
             raise WeaviateServerError(str(e))
 
+    async def delete_references_from_filtered_objects(
+        self,
+        collection_name: str,
+        filters: Filter,
+        from_property: str,
+        target_object_id: str,
+        page_size: int = 100,
+    ) -> None:
+        """
+        Deletes a reference from every object matching the filter.
+
+        The query is repeated without an offset because removing the reference
+        changes which objects still match the filter.
+        """
+        try:
+            collection = self.client.collections.get(collection_name)
+            target_object_id = str(target_object_id)
+
+            while True:
+                response = await collection.query.fetch_objects(
+                    filters=filters,
+                    limit=page_size,
+                )
+
+                if not response.objects:
+                    break
+
+                for obj in response.objects:
+                    await collection.data.reference_delete(
+                        from_uuid=obj.uuid,
+                        from_property=from_property,
+                        to=target_object_id,
+                    )
+
+                if len(response.objects) < page_size:
+                    break
+
+        except WeaviateConnectionError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateConnectError(str(e))
+        except WeaviateInvalidInputError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateDataValidationError(str(e))
+        except WeaviateTimeoutError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateLimitError(str(e))
+        except WeaviateQueryError as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateOperationError(str(e))
+        except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
+            logging.error(f"Error: {str(e)}")
+            raise WeaviateServerError(str(e))
+        except Exception as e:
+            logging.error(f"Unexpected error deleting references: {str(e)}")
+            raise WeaviateServerError(str(e))
+
     async def create_reference(self, src_id:str, src_collection_name:str, property_name:str, target_collection_id:str) -> bool:
         """
         Creates reference from weviate object fetched by its id to other object defined by id.

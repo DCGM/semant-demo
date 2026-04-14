@@ -46,7 +46,10 @@ class Document():
             **props
         )
     
-    def read_all():
+    async def read_all(self):
+        """
+        Retrieves all documents in the database
+        """
         pass
 
     def search():
