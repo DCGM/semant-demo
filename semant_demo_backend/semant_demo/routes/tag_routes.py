@@ -39,6 +39,7 @@ from semant_demo.tagging.tagging_utils import getTaskByName
 #import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
 from semant_demo.schema.tags import PatchTag, Tag, PostTag
+from semant_demo_backend.semant_demo.weaviate_exceptions import WeaviateOperationError
 
 logging.basicConfig(level=logging.INFO)
 
@@ -56,7 +57,7 @@ async def create_tag(collection_id: UUID, tag: PostTag,
     """
     try:
         return await searcher.tag.create(collection_id=collection_id, tag=tag)
-    except ValueError as e:
+    except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from exc
     
 @exp_router.get("/api/tags", response_model=schemas.GetTagsResponse)
@@ -95,7 +96,7 @@ async def update_tag(tag_uuid: UUID, tag_update: PatchTag,
     try:
         response = await searcher.tag.update(tag_uuid, tag_update)
         return response
-    except ValueError as e:
+    except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from exc
 
 @exp_router.post("/api/tag/task", response_model=schemas.TagStartResponse)

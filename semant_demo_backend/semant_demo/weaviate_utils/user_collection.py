@@ -227,7 +227,8 @@ class UserCollection():
             self.collectionNames.user_collection_name)
         collection_in_db = await self.read(collection_id)
         if collection_in_db is None:
-            raise ValueError(f"Collection with id {collection_id} not found")
+            raise WeaviateOperationError(
+                f"Collection with id {collection_id} not found")
 
         now = datetime.now(timezone.utc)
 
@@ -242,7 +243,7 @@ class UserCollection():
 
         updated_collection = await self.read(collection_id)
         if updated_collection is None:
-            raise ValueError(
+            raise WeaviateOperationError(
                 "Weaviate error: collection not found after update")
 
         return updated_collection
@@ -253,51 +254,26 @@ class UserCollection():
         Before deleting the collection object itself, remove references to it
         from chunks, documents, and tags.
         """
-        documents_collection = self.client.collections.get(
-            self.collectionNames.document_collection_name)
-        chunks_collection = self.client.collections.get(
-            self.collectionNames.chunks_collection_name)
-        tags_collection = self.client.collections.get(
-            self.collectionNames.tag_collection_name)
         usercollection_collection = self.client.collections.get(
             self.collectionNames.user_collection_name)
 
-        page_size = 100
-
-        async def remove_collection_refs(objects_collection, filters, from_property: str) -> None:
-            while True:
-                response = await objects_collection.query.fetch_objects(
-                    filters=filters,
-                    limit=page_size,
-                )
-
-                if not response.objects:
-                    break
-
-                for obj in response.objects:
-                    await objects_collection.data.reference_delete(
-                        from_uuid=obj.uuid,
-                        from_property=from_property,
-                        to=collection_id,
-                    )
-
-                if len(response.objects) < page_size:
-                    break
-
-        await remove_collection_refs(
-            chunks_collection,
-            Filter.by_ref("userCollection").by_id().equal(collection_id),
-            "userCollection",
+        await self.helpers.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
+            from_property="userCollection",
+            target_object_id=collection_id,
         )
-        await remove_collection_refs(
-            documents_collection,
-            Filter.by_ref("collection").by_id().equal(collection_id),
-            "collection",
+        await self.helpers.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.document_collection_name,
+            filters=Filter.by_ref("collection").by_id().equal(collection_id),
+            from_property="collection",
+            target_object_id=collection_id,
         )
-        await remove_collection_refs(
-            tags_collection,
-            Filter.by_ref("userCollection").by_id().equal(collection_id),
-            "userCollection",
+        await self.helpers.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.tag_collection_name,
+            filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
+            from_property="userCollection",
+            target_object_id=collection_id,
         )
 
         await usercollection_collection.data.delete_by_id(collection_id)

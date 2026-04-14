@@ -36,10 +36,14 @@ class Tag():
     # API #
     #######
     async def create(self, collection_id: UUID, tag: PostTag) -> TagSchema:
+        """
+        Creates a new tag in a collection, or returns the existing one if the same tag already exists in the collection
+        """
+        
         usercollection_collection = self.client.collections.get(self.collectionNames.user_collection_name)
         user_collection = await usercollection_collection.query.fetch_object_by_id(collection_id)
         if user_collection is None:
-            raise ValueError(f"Collection with id {collection_id} does not exist")
+            raise WeaviateOperationError(f"Collection with id {collection_id} does not exist")
             
         tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
 
@@ -100,6 +104,10 @@ class Tag():
         )
 
     async def read_all(self):
+        """
+        Retrieves all tags in the database with their collection names.
+        """
+        
         results = await self.helpers.fetch_tags()
         response = []
         # format the response
@@ -120,6 +128,10 @@ class Tag():
         return response
     
     async def read(self, tag_uuid: UUID) -> TagSchema | None:
+        """
+        Retrieves a tag by its UUID.
+        """
+        
         tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
         response = await tag_collection.query.fetch_object_by_id(tag_uuid)
         if response is None:
@@ -145,11 +157,11 @@ class Tag():
             tag_uuid,
         )
         if tag_response is None:
-            raise ValueError("Tag not found")
+            raise WeaviateOperationError("Tag not found")
 
         patch_data = updated_tag.model_dump(exclude_unset=True, exclude_none=True)
         if not patch_data:
-            raise ValueError("No fields provided for update")
+            raise WeaviateOperationError("No fields provided for update")
 
         properties_to_update: dict[str, str | list[str]] = {}
 
@@ -175,7 +187,7 @@ class Tag():
         
         updated_tag = await self.read(tag_uuid)
         if updated_tag is None:
-            raise ValueError("Weaviate error: tag not found after update")
+            raise WeaviateOperationError("Weaviate error: tag not found after update")
 
         return updated_tag
 
@@ -194,64 +206,37 @@ class Tag():
             tag_uuid,
         )
         if tag_response is None:
-            raise ValueError("Tag not found")
+            raise WeaviateOperationError("Tag not found")
 
         page_size = 100
 
-        span_filter = Filter.by_ref("tag").by_id().equal(tag_uuid)
-        while True:
-            span_response = await span_collection.query.fetch_objects(
-                filters=span_filter,
-                limit=page_size,
-                return_references=[QueryReference(link_on="tag")],
-            )
-
-            if not span_response.objects:
-                break
-
-            for span_obj in span_response.objects:
-                await span_collection.data.reference_delete(
-                    from_uuid=span_obj.uuid,
-                    from_property="tag",
-                    to=tag_uuid,
-                )
-
-            if len(span_response.objects) < page_size:
-                break
-
-        chunk_filter = (
-            Filter.by_ref("automaticTag").by_id().equal(tag_uuid)
-            | Filter.by_ref("positiveTag").by_id().equal(tag_uuid)
-            | Filter.by_ref("negativeTag").by_id().equal(tag_uuid)
+        await self.helpers.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.span_collection_name,
+            filters=Filter.by_ref("tag").by_id().equal(tag_uuid),
+            from_property="tag",
+            target_object_id=tag_uuid,
         )
-        chunk_reference_names = ("automaticTag", "positiveTag", "negativeTag")
 
-        while True:
-            chunk_response = await chunk_collection.query.fetch_objects(
-                filters=chunk_filter,
-                limit=page_size,
-                return_references=[
-                    QueryReference(link_on=ref_name)
-                    for ref_name in chunk_reference_names
-                ],
-            )
+        await self.helpers.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("automaticTag").by_id().equal(tag_uuid),
+            from_property="automaticTag",
+            target_object_id=tag_uuid,
+        )
 
-            if not chunk_response.objects:
-                break
+        await self.helpers.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("positiveTag").by_id().equal(tag_uuid),
+            from_property="positiveTag",
+            target_object_id=tag_uuid,
+        )
 
-            for chunk_obj in chunk_response.objects:
-                refs = chunk_obj.references or {}
-                for ref_name in chunk_reference_names:
-                    current_refs = refs.get(ref_name)
-                    if current_refs and any(ref.uuid == tag_uuid for ref in current_refs.objects):
-                        await chunk_collection.data.reference_delete(
-                            from_uuid=chunk_obj.uuid,
-                            from_property=ref_name,
-                            to=tag_uuid,
-                        )
-
-            if len(chunk_response.objects) < page_size:
-                break
+        await self.helpers.delete_references_from_filtered_objects(
+            collection_name=self.collectionNames.chunks_collection_name,
+            filters=Filter.by_ref("negativeTag").by_id().equal(tag_uuid),
+            from_property="negativeTag",
+            target_object_id=tag_uuid,
+        )
 
         await tag_collection.data.delete_by_id(tag_uuid)
 

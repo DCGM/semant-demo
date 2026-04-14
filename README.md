@@ -130,14 +130,20 @@ class CollectionNames(BaseModel):
     chunks_collection_name: str
     tag_collection_name: str
     user_collection_name: str
+    document_collection_name: str
+    span_collection_name: str
     user_collection_link_name: str
+    tag_to_user_collection_link_name: str
 
 # In config.py: CollectionNames values are initialized
 self.collectionNames = CollectionNames(
     chunks_collection_name = "Chunks",
     tag_collection_name = "Tag",
     user_collection_name = "UserCollection",
-    user_collection_link_name = "userCollection"
+    document_collection_name = "Documents",
+    span_collection_name = "Span_test",
+    user_collection_link_name = "userCollection",
+    tag_to_user_collection_link_name = "tagToUserCollection",
 )
 
 # In handlers: Access collection names consistently
@@ -149,7 +155,7 @@ collection = self.client.collections.get(self.collectionNames.chunks_collection_
 searcher = WeaviateAbstraction(client, collectionNames)  # initialized at startup
 
 # Create a tag
-tag_id = await searcher.tag.create(tagData)
+tag = await searcher.tag.create(collection_id, tagData)
 
 # Search chunks
 results = await searcher.textChunk.search(query, limit=10, filters=...)
@@ -212,7 +218,7 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `MODEL_TEMPERATURE` | `0.0` | Default LLM temperature |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |
-| `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
+| `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
 
@@ -227,26 +233,39 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `POST` | `/api/search` | Hybrid/text/vector search with filters |
 | `POST` | `/api/summarize/{type}` | Summarise search results (`results`) |
 | `POST` | `/api/question/{text}` | Q&A over search results (OpenAI) |
+| `GET` | `/api/document/{document_id}` | Retrieve one document by ID |
+| `GET` | `/api/documents/browse` | Browse documents in a collection with paging/filter/sort |
 | `GET`  | `/api/rag/configurations` | List available RAG configs |
 | `POST` | `/api/rag` | RAG chat request |
 | `POST` | `/api/rag/explain` | Explain selected text in RAG context |
-| `POST` | `/api/tag` | Create a tag |
+| `POST` | `/api/rag/feedback` | Save like/dislike feedback for RAG answer |
+| `POST` | `/api/tags` | Create a tag (`collection_id` query parameter) |
+| `GET` | `/api/tags/{tag_uuid}` | Get a tag by ID |
+| `PATCH` | `/api/tags/{tag_uuid}` | Update a tag |
+| `DELETE` | `/api/tags/{tag_uuid}` | Delete a tag |
 | `POST` | `/api/tag/task` | Start async LLM tagging job |
 | `GET`  | `/api/tag/configs` | List available tagging configs |
 | `GET`  | `/api/tag/tasks/info` | List all tagging tasks |
 | `GET`  | `/api/tag/task/status/{id}` | Poll tagging task status |
 | `DELETE` | `/api/tag/task/{id}` | Cancel a running tagging task |
 | `GET`  | `/api/tags` | List all tags |
-| `DELETE` | `/api/tags` | Delete tags entirely |
 | `DELETE` | `/api/tags/automatic` | Remove automatic tag assignments |
 | `PUT` | `/api/tag/approve` | Approve a tag assignment |
 | `PUT` | `/api/tag/disapprove` | Reject a tag assignment |
 | `POST` | `/api/tags/filter` | Filter chunks by tag UUIDs |
 | `POST` | `/api/tag/textChunks` | Get chunks tagged with specific tags |
-| `POST` | `/api/user_collection` | Create user collection |
-| `GET`  | `/api/user_collection/all` | List collections for a user |
+| `POST` | `/api/user_collections` | Create user collection |
+| `GET` | `/api/user_collections` | List collections for a user |
+| `GET` | `/api/user_collections/{collection_id}` | Get collection by ID |
+| `PATCH` | `/api/user_collections/{collection_id}` | Update collection metadata |
+| `DELETE` | `/api/collections/{collection_id}` | Delete collection |
 | `POST` | `/api/user_collection/chunks` | Add chunk to collection |
 | `GET`  | `/api/user_collection/chunks` | List chunks in a collection |
+| `GET` | `/api/user_collection/{collection_id}/stats` | Get aggregated collection stats |
+| `GET` | `/api/user_collection/{collection_id}/documents` | List documents in collection |
+| `POST` | `/api/collections/{collection_id}/documents/{document_id}` | Attach document (and its chunks) to collection |
+| `DELETE` | `/api/collections/{collection_id}/documents/{document_id}` | Detach document (and matching chunk refs) from collection |
+| `GET` | `/api/collections/{collection_id}/tags` | List tags in collection |
 
 ## Testing
 

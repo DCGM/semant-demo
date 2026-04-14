@@ -7,6 +7,8 @@ from semant_demo import schemas
 from semant_demo.config import config
 from uuid import UUID
 
+from semant_demo.weaviate_exceptions import WeaviateOperationError
+
 import os
 import openai
 from semant_demo import schemas
@@ -74,7 +76,7 @@ async def update_collection(collection_id: str, collectionReq: PatchCollection,
     try:
         response = await searcher.userCollection.update(collection_id, collectionReq)
         return response
-    except ValueError as e:
+    except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 @exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
