@@ -167,6 +167,7 @@ import { useTaggingPageState } from '../composables/useTaggingPageState'
 
 interface Props {
   collectionId: string
+  documentId: string
 }
 
 const props = defineProps<Props>()
@@ -200,7 +201,7 @@ const isAutoSelection = computed(() => {
 })
 
 onMounted(async () => {
-  await loadChunks(props.collectionId)
+  await loadChunks(props.documentId, props.collectionId)
   await getTagsForCollection(props.collectionId)
 })
 </script>

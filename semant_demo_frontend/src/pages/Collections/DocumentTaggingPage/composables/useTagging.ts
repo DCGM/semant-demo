@@ -5,31 +5,44 @@ import { AvailableTag } from '../components/ChunkTagAnnotator.vue'
 
 export function useTagging() {
   const api = useApi().default
-  const collectionChunks = ref<
-    Awaited<
-      ReturnType<typeof api.getCollectionChunksApiUserCollectionChunksGet>
-    >['chunksOfCollection']
-  >([])
+  const documentDetail =
+    ref<
+      Awaited<
+        ReturnType<
+          typeof api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet
+        >
+      >
+    >()
+
   const tagSpans = ref<TagSpan[]>([])
   const isProcessing = ref(false)
   const availableTags = ref<AvailableTag[]>([])
 
-  const getCollectionChunksPaged = async (
+  const getDocumentDetail = async (
+    documentId: Parameters<
+      typeof api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet
+    >[0]['documentId'],
     collectionId: Parameters<
-      typeof api.getCollectionChunksApiUserCollectionChunksGet
+      typeof api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet
     >[0]['collectionId']
   ) => {
     isProcessing.value = true
     try {
-      const response = await api.getCollectionChunksApiUserCollectionChunksGet({
-        collectionId
-      })
-      collectionChunks.value = response.chunksOfCollection
-      collectionChunks.value = response.chunksOfCollection
-      return response.chunksOfCollection
+      const response =
+        await api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet(
+          {
+            collectionId,
+            documentId
+          }
+        )
+
+      documentDetail.value = response
+      console.log('Fetched document detail:', response)
+      return response
     } catch (error) {
-      console.error('Error fetching collection chunks:', error)
-      return []
+      console.error('Error fetching document detail:', error)
+      documentDetail.value = undefined
+      return undefined
     } finally {
       isProcessing.value = false
     }
@@ -167,13 +180,13 @@ export function useTagging() {
 
   return {
     // State
-    collectionChunks,
+    documentDetail,
     tagSpans,
     isProcessing,
     availableTags,
 
     // Methods
-    getCollectionChunksPaged,
+    getDocumentDetail,
     fetchTagSpansForChunk,
     fetchTagSpansMapForChunks,
     getTagSpans,

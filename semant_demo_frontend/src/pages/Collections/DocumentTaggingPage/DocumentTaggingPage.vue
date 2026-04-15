@@ -13,7 +13,10 @@
       </q-btn>
     </div>
 
-  <TaggingPage :collection-id="props.collectionId" />
+    <TaggingPage
+      :collection-id="props.collectionId"
+      :document-id="props.documentId"
+    />
 
     <q-separator class="q-my-md" />
 
@@ -33,9 +36,7 @@ import { useRouter } from 'vue-router'
 import useDocuments from 'src/composables/useDocuments'
 import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
 import { successNotification, errorNotification } from 'src/utils/notification'
-import { onMounted } from 'vue'
 import TaggingPage from './components/TaggingPage.vue'
-import { useTagging } from './composables/useTagging'
 
 interface Props {
   collectionId: string
@@ -46,11 +47,6 @@ const props = defineProps<Props>()
 const router = useRouter()
 const documentsRepository = useDocumentsRepository()
 const { loadDocumentsByCollection } = useDocuments()
-const { collectionChunks, getCollectionChunksPaged } = useTagging()
-
-onMounted(() => {
-  getCollectionChunksPaged(props.collectionId)
-})
 
 const goBack = () => {
   router.push({

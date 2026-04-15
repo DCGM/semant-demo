@@ -56,12 +56,18 @@ interface SelectionPayload {
   dragHandle?: 'start' | 'end'
 }
 
+interface TaggingChunk {
+  chunkId: string
+  textChunk: string
+  inUserCollection: boolean
+}
+
 export function useTaggingPageState() {
   const {
-    collectionChunks,
+    documentDetail,
     availableTags,
     isProcessing,
-    getCollectionChunksPaged,
+    getDocumentDetail,
     fetchTagSpansForChunk,
     fetchTagSpansMapForChunks,
     createTagSpan,
@@ -77,8 +83,18 @@ export function useTaggingPageState() {
 
   const pageLoading = computed(() => isProcessing.value || isPreloading.value)
 
+  const chunks = computed<TaggingChunk[]>(() => {
+    return (
+      documentDetail.value?.chunks.map((chunk) => ({
+        chunkId: chunk.id,
+        textChunk: chunk.text,
+        inUserCollection: chunk.inUserCollection
+      })) ?? []
+    )
+  })
+
   const chunkIndexById = computed(() => {
-    return collectionChunks.value.reduce<Record<string, number>>(
+    return chunks.value.reduce<Record<string, number>>(
       (acc, chunk, index) => {
         acc[chunk.chunkId] = index
         return acc
@@ -107,20 +123,20 @@ export function useTaggingPageState() {
     let remaining = globalSelection.value.end
     let endChunkIndex = startChunkIndex
     while (
-      endChunkIndex < collectionChunks.value.length &&
-      remaining > collectionChunks.value[endChunkIndex].textChunk.length
+      endChunkIndex < chunks.value.length &&
+      remaining > chunks.value[endChunkIndex].textChunk.length
     ) {
-      remaining -= collectionChunks.value[endChunkIndex].textChunk.length
+      remaining -= chunks.value[endChunkIndex].textChunk.length
       endChunkIndex += 1
     }
 
-    if (endChunkIndex >= collectionChunks.value.length) {
-      endChunkIndex = collectionChunks.value.length - 1
+    if (endChunkIndex >= chunks.value.length) {
+      endChunkIndex = chunks.value.length - 1
     }
 
     return {
       startChunkId,
-      endChunkId: collectionChunks.value[endChunkIndex]?.chunkId || startChunkId
+      endChunkId: chunks.value[endChunkIndex]?.chunkId || startChunkId
     }
   })
 
@@ -145,16 +161,16 @@ export function useTaggingPageState() {
     let remaining = globalSelection.value.end
     let endChunkIndex = startChunkIndex
     while (
-      endChunkIndex < collectionChunks.value.length &&
-      remaining > collectionChunks.value[endChunkIndex].textChunk.length
+      endChunkIndex < chunks.value.length &&
+      remaining > chunks.value[endChunkIndex].textChunk.length
     ) {
-      remaining -= collectionChunks.value[endChunkIndex].textChunk.length
+      remaining -= chunks.value[endChunkIndex].textChunk.length
       endChunkIndex += 1
     }
 
-    if (endChunkIndex >= collectionChunks.value.length) {
-      endChunkIndex = collectionChunks.value.length - 1
-      remaining = collectionChunks.value[endChunkIndex].textChunk.length
+    if (endChunkIndex >= chunks.value.length) {
+      endChunkIndex = chunks.value.length - 1
+      remaining = chunks.value[endChunkIndex].textChunk.length
     }
 
     return {
@@ -163,14 +179,14 @@ export function useTaggingPageState() {
         index: globalSelection.value.start
       },
       endBoundary: {
-        chunkId: collectionChunks.value[endChunkIndex].chunkId,
+        chunkId: chunks.value[endChunkIndex].chunkId,
         index: remaining
       }
     }
   })
 
   const preloadAllChunkSpans = async () => {
-    const missingChunkIds = collectionChunks.value
+    const missingChunkIds = chunks.value
       .map((chunk) => chunk.chunkId)
       .filter((chunkId) => !tagSpansByChunkId.value[chunkId])
 
@@ -218,8 +234,8 @@ export function useTaggingPageState() {
     return null
   }
 
-  const loadChunks = async (collectionId: string) => {
-    await getCollectionChunksPaged(collectionId)
+  const loadChunks = async (documentId: string, collectionId: string) => {
+    await getDocumentDetail(documentId, collectionId)
     tagSpansByChunkId.value = {}
     await preloadAllChunkSpans()
   }
@@ -319,9 +335,9 @@ export function useTaggingPageState() {
       }
     }
 
-    let end = collectionChunks.value[firstIndex].textChunk.length
+    let end = chunks.value[firstIndex].textChunk.length
     for (let idx = firstIndex + 1; idx < secondIndex; idx += 1) {
-      end += collectionChunks.value[idx].textChunk.length
+      end += chunks.value[idx].textChunk.length
     }
     end += second.index
 
@@ -346,7 +362,7 @@ export function useTaggingPageState() {
           index: snapToWordBoundary(
             boundary.index,
             type,
-            collectionChunks.value[chunkIndex].textChunk
+            chunks.value[chunkIndex].textChunk
           )
         }
       }
@@ -513,11 +529,10 @@ export function useTaggingPageState() {
 
     let offsetFromBase = 0
     for (let idx = baseChunkIndex; idx < targetChunkIndex; idx += 1) {
-      offsetFromBase += collectionChunks.value[idx].textChunk.length
+      offsetFromBase += chunks.value[idx].textChunk.length
     }
 
-    const targetChunkLength =
-      collectionChunks.value[targetChunkIndex].textChunk.length
+    const targetChunkLength = chunks.value[targetChunkIndex].textChunk.length
     const localStart = Math.max(0, globalSelection.value.start - offsetFromBase)
     const localEnd = Math.min(
       targetChunkLength,
@@ -543,8 +558,7 @@ export function useTaggingPageState() {
       return []
     }
 
-    const targetChunkLength =
-      collectionChunks.value[targetChunkIndex].textChunk.length
+    const targetChunkLength = chunks.value[targetChunkIndex].textChunk.length
     const displayed: DisplayedTagSpan[] = []
 
     for (
@@ -552,13 +566,13 @@ export function useTaggingPageState() {
       sourceIndex <= targetChunkIndex;
       sourceIndex += 1
     ) {
-      const sourceChunk = collectionChunks.value[sourceIndex]
+      const sourceChunk = chunks.value[sourceIndex]
       const sourceSpans = tagSpansByChunkId.value[sourceChunk.chunkId] || []
       if (!sourceSpans.length) continue
 
       let offsetFromSourceToTarget = 0
       for (let idx = sourceIndex; idx < targetChunkIndex; idx += 1) {
-        offsetFromSourceToTarget += collectionChunks.value[idx].textChunk.length
+        offsetFromSourceToTarget += chunks.value[idx].textChunk.length
       }
 
       for (const span of sourceSpans) {
@@ -595,7 +609,7 @@ export function useTaggingPageState() {
   }
 
   return {
-    chunks: collectionChunks,
+    chunks,
     availableTags,
     pageLoading,
     globalSelection,
