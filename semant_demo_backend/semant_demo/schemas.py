@@ -481,6 +481,27 @@ class TagSpanUpdateEmbeddedRequest(BaseModel):
 # /TagSpans
 
 
+# Automatic annotation suggestions
+class AutoAnnotationSuggestion(BaseModel):
+    id: str
+    chunkId: str
+    tagId: str
+    start: int
+    end: int
+    type: SpanType = SpanType.auto
+    confidence: float
+
+
+class AutoAnnotationSuggestionRequest(BaseModel):
+    chunks: list[TextChunk]
+    tags: list[TagData]
+
+
+class AutoAnnotationsSuggestionsResponse(BaseModel):
+    suggestions: list[AutoAnnotationSuggestion]
+# /Automatic annotation suggestions
+
+
 # Task Model
 TasksBase = declarative_base()
 
