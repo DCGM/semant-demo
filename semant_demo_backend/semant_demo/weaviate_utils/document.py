@@ -1,5 +1,5 @@
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter, Sort
+from weaviate.classes.query import Filter, Sort, QueryReference
 from weaviate.exceptions import (
     WeaviateConnectionError,
     WeaviateTimeoutError,
@@ -51,6 +51,66 @@ class Document():
         Retrieves all documents in the database
         """
         pass
+
+    async def read_document_chunks(self, document_id: str, collection_id: str) -> schemas.DocumentDetail | None:
+        """
+        Retrieves a document and all its chunks while marking membership in the selected collection.
+        """
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        document_response = await document_collection.query.fetch_object_by_id(document_id)
+        if document_response is None:
+            return None
+
+        doc_props = document_response.properties
+        if "library" not in doc_props or not doc_props["library"]:
+            doc_props["library"] = "mzk"
+
+        document = schemas.Document(
+            id=document_response.uuid,
+            **doc_props,
+        )
+
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        chunk_filter = Filter.by_ref("document").by_id().equal(document_id)
+
+        chunks: list[schemas.DocumentDetailTextChunkWithUserCollectionInfo] = []
+        page_size = 100
+        offset = 0
+
+        while True:
+            chunk_response = await chunks_collection.query.fetch_objects(
+                filters=chunk_filter,
+                return_references=[QueryReference(link_on="userCollection")],
+                limit=page_size,
+                offset=offset,
+            )
+
+            if not chunk_response.objects:
+                break
+
+            for chunk_obj in chunk_response.objects:
+                chunk_refs = chunk_obj.references.get("userCollection") if chunk_obj.references else None
+                current_collection_ids = [str(ref.uuid) for ref in (chunk_refs.objects if chunk_refs else [])]
+                in_user_collection = str(collection_id) in current_collection_ids
+
+                chunks.append(
+                    schemas.DocumentDetailTextChunkWithUserCollectionInfo(
+                        id=chunk_obj.uuid,
+                        **chunk_obj.properties,
+                        document=document_response.uuid,
+                        in_user_collection=in_user_collection,
+                    )
+                )
+
+            if len(chunk_response.objects) < page_size:
+                break
+
+            offset += page_size
+
+        return schemas.DocumentDetail(
+            document=document,
+            chunks=chunks,
+        )
 
     def search():
         pass

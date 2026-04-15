@@ -113,6 +113,15 @@ class TextChunkWithDocument(TextChunk):
     document_object: Document
 
 
+class DocumentDetailTextChunkWithUserCollectionInfo(TextChunk):
+    in_user_collection: bool
+
+
+class DocumentDetail(BaseModel):
+    document: Document
+    chunks: list[DocumentDetailTextChunkWithUserCollectionInfo]
+
+
 class FilteredChunksByTags(BaseModel):
     chunk_id: str
     positive_tags_ids: list[str]
