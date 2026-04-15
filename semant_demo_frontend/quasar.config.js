@@ -35,7 +35,8 @@ module.exports = configure(function (/* ctx */) {
     // https://v2.quasar.dev/quasar-cli-vite/boot-files
     boot: [
 
-      'axios'
+      'axios',
+      'api-client'
     ],
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-js#css
@@ -74,8 +75,8 @@ module.exports = configure(function (/* ctx */) {
       // publicPath: '/',
       // analyze: true,
       env: {
-        BACKEND_DEV_SERVER: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:9000',
-        BACKEND_URL: process.env.BACKEND_URL ? process.env.BACKEND_URL : 'http://localhost:9000'
+        BACKEND_DEV_SERVER: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:8000',
+        BACKEND_URL: process.env.BACKEND_URL ? process.env.BACKEND_URL : 'http://localhost:8000'
       }
       // rawDefine: {}
       // ignorePublicFolder: true,
@@ -123,7 +124,8 @@ module.exports = configure(function (/* ctx */) {
       // Quasar plugins
       plugins: [
         'Notify',
-        'Loading'
+        'Loading',
+        'Dialog'
       ]
     },
 

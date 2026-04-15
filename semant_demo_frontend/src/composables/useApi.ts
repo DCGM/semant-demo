@@ -12,7 +12,7 @@ export function useApi(): ApiClients {
   const api = inject(ApiClientInjectionKey)
 
   if (!api) {
-    throw new Error('useApi must be used within an ApiProvider')
+    throw new Error('useApi requires ApiClients to be provided (boot api-client or ApiProvider)')
   }
 
   return api

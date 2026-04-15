@@ -1,15 +1,30 @@
 // TypeScript interfaces generated from Python Pydantic models
 
+export interface User {
+  id: string; // UUID as string
+  email: string;
+  username: string | null;
+  name: string | null;
+  institution: string | null;
+  is_active: boolean;
+  is_superuser: boolean;
+  is_verified: boolean;
+}
+
 export interface SearchRequest {
   query: string;
   limit?: number;
+  page?: number;
+  search_title_generate?: boolean;
+  search_summary_generate?: boolean;
+  search_results_summary_generate?: boolean;
   type?: 'hybrid' | 'text' | 'vector';
   hybrid_search_alpha?: number;
   min_year?: number | null;
   max_year?: number | null;
   min_date?: string | null; // ISO datetime string
   max_date?: string | null; // ISO datetime string
-  language?: string | null;
+  language?: string[] | null;
   tag_uuids: string[] | null;
   positive: boolean;
   automatic: boolean;
@@ -162,12 +177,12 @@ export interface ProcessedTagData {
 }
 
 export interface TagData {
-    tag_name: string           
-    tag_shorthand: string          
-    tag_color: string              
-    tag_pictogram: string         
-    tag_definition: string     
-    tag_examples: string[] 
+    tag_name: string
+    tag_shorthand: string
+    tag_color: string
+    tag_pictogram: string
+    tag_definition: string
+    tag_examples: string[]
     collection_name: string
     tag_uuid: string
 }

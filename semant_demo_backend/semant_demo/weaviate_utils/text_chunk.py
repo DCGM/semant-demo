@@ -40,6 +40,7 @@ class TextChunk():
         self.client = client
         self.helpers = WeaviateHelpers(client, collectionNames)
         self.chunk_collection = self.client.collections.get(collectionNames.chunks_collection_name)
+        self.span_collection = self.client.collections.get(collectionNames.span_collection_name)
 
     #######
     # API #
@@ -221,13 +222,51 @@ class TextChunk():
         logging.info(f'Response created in {time() - t1:.2f} seconds')
         return response
 
-    def tag():
-        pass
+    async def tag(self, chunk_id: str, span: schemas.TagSpan):
+        if not self.span_collection:
+            raise RuntimeError("Span collection not available")
 
-    def untag():
-        pass
+        await self.span_collection.data.insert(
+            properties={
+                "start": span.start,
+                "end": span.end,
+                "type": span.type.value if span.type is not None else None,
+            },
+            references={
+                "tag": span.tagId,
+                "text_chunk": chunk_id
+            }
+        )
+
+    async def untag(self, span_id: str):
+        if not self.span_collection:
+            raise RuntimeError("Span collection is not available")
+
+        try:
+            await self.span_collection.data.delete_by_id(uuid=span_id)
+            return True
+        except Exception as e:
+            logging.error(f"Error deleting span with id {span_id}: {e}")
+            return False
 
     async def approve_tag(self, data: schemas.ApproveTagReq) -> bool:
+        # TODO change Span.type
+        # try:
+        #     span_filters = (
+        #         Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
+        #         Filter.by_ref("tag").by_id().equal(data.tagID)
+        #     )
+        #     matching_spans = await self.span_collection.query.fetch_objects(filters=span_filters)
+
+        #     for span in matching_spans.objects:
+        #         await self.span_collection.data.update(
+        #             uuid=span.uuid,
+        #             properties={"type": schemas.SpanType.pos.value}
+        #         )
+        #     logging.info(f"Updated {len(matching_spans.objects)} spans to 'pos'")
+        # except Exception as span_e:
+        #     logging.error(f"Error updating spans during approve: {span_e}")
+        # TODO/
         """
         Output:
             bool value if operation successfull
@@ -286,6 +325,23 @@ class TextChunk():
             return False
 
     async def disapprove_tag(self, data: schemas.ApproveTagReq) -> bool:
+        # TODO change Span.type
+         # try:
+        #     span_filters = (
+        #         Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
+        #         Filter.by_ref("tag").by_id().equal(data.tagID)
+        #     )
+        #     matching_spans = await self.span_collection.query.fetch_objects(filters=span_filters)
+
+        #     for span in matching_spans.objects:
+        #         await self.span_collection.data.update(
+        #             uuid=span.uuid,
+        #             properties={"type": schemas.SpanType.neg.value}
+        #         )
+        #     logging.info(f"Updated {len(matching_spans.objects)} spans to 'neg'")
+        # except Exception as span_e:
+        #     logging.error(f"Error updating spans during disapprove: {span_e}")
+        # TODO/
         """
         Output:
             bool value if operation successfull

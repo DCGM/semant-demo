@@ -9,6 +9,10 @@ Name | Type
 `id` | string
 `name` | string
 `userId` | string
+`description` | string
+`createdAt` | Date
+`updatedAt` | Date
+`color` | string
 
 ## Example
 
@@ -20,6 +24,10 @@ const example = {
   "id": null,
   "name": null,
   "userId": null,
+  "description": null,
+  "createdAt": null,
+  "updatedAt": null,
+  "color": null,
 } satisfies Collection
 
 console.log(example)

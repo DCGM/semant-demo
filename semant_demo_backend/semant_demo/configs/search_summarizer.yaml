@@ -2,11 +2,11 @@ api:  # API configuration.
   cls: OllamaAsyncAPI  # name of class that is subclass of APIAsync
   config: # configuration for defined class
     api_key: OLLAMA # API key.
-    base_url:  # Base URL for API.
+    base_url: http://athena19.fit.vutbr.cz:11431 # Base URL for API.
     pool_interval: 300 # Interval in seconds for checking status.
     process_requests_interval: 1 # Interval in seconds between sending requests when processed synchronously.
     concurrency: 10 # Maximum number of concurrent requests to the API. This is used with async processing.
-gen_title_model: gpt-oss:20b # Model to use for title generation.
+gen_title_model: qwen2.5:32b-instruct  # Model to use for title generation.
 gen_title_model_options: # Model options for title generation.
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.
@@ -20,7 +20,7 @@ gen_title_prompt: |
   "{{ text.text }}"
   Nadpis by měl být relevantní k dotazu uživatele: "{{ query }}".
 # Prompt for title generation.
-gen_results_summary_model: gpt-oss:20b # Model to use for search results summary generation.
+gen_results_summary_model: qwen2.5:32b-instruct  # Model to use for search results summary generation.
 gen_results_summary_model_options: # Model options for search results summary generation.
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.
@@ -28,10 +28,11 @@ gen_results_summary_model_options: # Model options for search results summary ge
 gen_results_summary_error_summary: N/A # Summary to use when search results summary generation fails.
 gen_results_summary_system_prompt: |
   Jsi asistent pro sumarizaci textů.  
-  Dostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc1], [doc2], … [doc15].  
+  Dostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc0], [doc1], … [doc15].  
   Tvým úkolem je vytvořit jediný, stručný souhrn, který pokryje všechny klíčové body relevantní k uživatelskému vyhledávacímu dotazu.  
   Po každém faktu, který z úryvku získáš, připoj ID daného úryvku v hranatých závorkách – například: „Gen ABC je nadregulován v nádorových buňkách [doc3].“  
-  Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID oddělená čárkami: „Tento přístup zlepšil přesnost o 12 % [doc2, doc7, doc11].“  
+  Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID: „Tento přístup zlepšil přesnost o 12 % [doc2][doc7][doc11].“  
+  Nikdy neslučuj více id do jednoho, jako [doc2-4] nebo [doc2, doc3, doc4], ale vždy je uváděj jednotlivě.
   Nevymýšlej žádná fakta, která v úryvcích nejsou. Soustřeď se pouze na informace relevantní k uživatelskému dotazu.  
   Piš přehledně a stručně.
   {% if brevity %} Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}
@@ -49,7 +50,7 @@ gen_results_summary_prompt: |
   [doc{{ loop.index }}] {{ result.text }}
   {% endfor %}
 # Prompt for search results summary generation.
-gen_query_summary_model: gpt-oss:20b # Model to use for query summary generation.
+gen_query_summary_model: qwen2.5:32b-instruct  # Model to use for query summary generation.
 gen_query_summary_model_options: # Model options for query summary generation.
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.

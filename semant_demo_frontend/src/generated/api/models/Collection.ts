@@ -37,6 +37,30 @@ export interface Collection {
      * @memberof Collection
      */
     userId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof Collection
+     */
+    description?: string | null;
+    /**
+     * 
+     * @type {Date}
+     * @memberof Collection
+     */
+    createdAt: Date;
+    /**
+     * 
+     * @type {Date}
+     * @memberof Collection
+     */
+    updatedAt: Date;
+    /**
+     * 
+     * @type {string}
+     * @memberof Collection
+     */
+    color: string;
 }
 
 /**
@@ -46,6 +70,9 @@ export function instanceOfCollection(value: object): value is Collection {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('userId' in value) || value['userId'] === undefined) return false;
+    if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
+    if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
+    if (!('color' in value) || value['color'] === undefined) return false;
     return true;
 }
 
@@ -62,6 +89,10 @@ export function CollectionFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'id': json['id'],
         'name': json['name'],
         'userId': json['user_id'],
+        'description': json['description'] == null ? undefined : json['description'],
+        'createdAt': (new Date(json['created_at'])),
+        'updatedAt': (new Date(json['updated_at'])),
+        'color': json['color'],
     };
 }
 
@@ -79,6 +110,10 @@ export function CollectionToJSONTyped(value?: Collection | null, ignoreDiscrimin
         'id': value['id'],
         'name': value['name'],
         'user_id': value['userId'],
+        'description': value['description'],
+        'created_at': value['createdAt'].toISOString(),
+        'updated_at': value['updatedAt'].toISOString(),
+        'color': value['color'],
     };
 }
 

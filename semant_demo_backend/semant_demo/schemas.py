@@ -1,17 +1,20 @@
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal, TypedDict, Any
 from datetime import datetime
 import uuid
+from uuid import UUID
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, String, JSON, Integer, DateTime, Text
 import sqlalchemy.sql.functions as funcs
 
+
 class SearchType(str, Enum):
     text = "text"
     vector = "vector"
     hybrid = "hybrid"
+
 
 class APIType(str, Enum):
     ollama = "OLLAMA"
@@ -19,21 +22,25 @@ class APIType(str, Enum):
     google = "GOOGLE"
     metacentrum = "METACENTRUM"
 
+
 class SummaryRequestBase(BaseModel):
     search_title_generate: bool = True
     search_title_prompt: str | None = None
     search_title_model: str | None = None
-    search_title_brevity: int | None = None  # upper bound on number of words in the title
+    # upper bound on number of words in the title
+    search_title_brevity: int | None = None
 
     search_summary_generate: bool = True
     search_summary_prompt: str | None = None
     search_summary_model: str | None = None
-    search_summary_brevity: int | None = None  # upper bound on number of words in the summary
+    # upper bound on number of words in the summary
+    search_summary_brevity: int | None = None
 
     search_results_summary_generate: bool = True
     search_results_summary_prompt: str | None = None
     search_results_summary_model: str | None = None
-    search_results_summary_brevity: int | None = None  # upper bound on number of words in the summary
+    # upper bound on number of words in the summary
+    search_results_summary_brevity: int | None = None
 
 
 class SearchRequest(SummaryRequestBase):
@@ -53,14 +60,16 @@ class SearchRequest(SummaryRequestBase):
     positive: bool
     automatic: bool
 
-    is_hyde: bool = False # variable which indicates if query is document
+    is_hyde: bool = False  # variable which indicates if query is document
+
 
 class Document(BaseModel):
     id: uuid.UUID
     library: str
     title: str | None = None
     subtitle: str | None = None
-    partNumber: int | str | None = None    #string is here because partNumber is sometimes string in testing DB
+    # string is here because partNumber is sometimes string in testing DB
+    partNumber: int | str | None = None
     partName: str | None = None
     yearIssued: int | None = None
     dateIssued: datetime | None = None
@@ -78,14 +87,15 @@ class Document(BaseModel):
 
 class TextChunk(BaseModel):
     id: uuid.UUID
-    title: str = "<N/A>"
     text: str
     start_page_id: uuid.UUID
     from_page: int
     to_page: int
+    document: uuid.UUID
+    title: str | None = None
     end_paragraph: bool = True
     language: str | None = None
-    document: uuid.UUID
+    order: int | None
 
     ner_P: list[str] | None = None  # Person entities
     ner_T: list[str] | None = None  # Temporal entities
@@ -102,13 +112,16 @@ class TextChunkWithDocument(TextChunk):
     summary: str | None = None
     document_object: Document
 
+
 class FilteredChunksByTags(BaseModel):
     chunk_id: str
     positive_tags_ids: list[str]
     automatic_tags_ids: list[str]
 
+
 class FilterChunksByTagsResponse(BaseModel):
     chunkTags: list[FilteredChunksByTags]
+
 
 class FilterChunksByTagsRequest(BaseModel):
     chunkIds: list[str]
@@ -116,13 +129,16 @@ class FilterChunksByTagsRequest(BaseModel):
     positive: bool
     automatic: bool
 
+
 class SearchResponse(BaseModel):
     results: list[TextChunkWithDocument]
-    results_summary: str | None = None  # Optional overall query-based summary of the results
+    # Optional overall query-based summary of the results
+    results_summary: str | None = None
     search_request: SearchRequest
     time_spent: float
     search_log: list[str]
-    tags_result: list[FilteredChunksByTags]   # TODO: Should it be here or in Chunks? (xtomas36)
+    # TODO: Should it be here or in Chunks? (xtomas36)
+    tags_result: list[FilteredChunksByTags]
 
 
 class SummaryRequest(SummaryRequestBase):
@@ -133,12 +149,15 @@ class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
 
+
 class RagRouteConfig(BaseModel):
     id: str
     name: str
     description: str
 
-#rag message format for purpose of history
+# rag message format for purpose of history
+
+
 class RagChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
@@ -155,50 +174,61 @@ class RagSearch(BaseModel):
     max_date: datetime | None = None
     language: str | None = None
 
-#main request used by rag 
+# main request used by rag
+
+
 class RagRequest(BaseModel):
     # rag parameters
     question: str
-    history: list[RagChatMessage] | None = None    # chat history, to keep context
+    # chat history, to keep context
+    history: list[RagChatMessage] | None = None
     # search parameters
     rag_search: RagSearch
     previous_documents: list[TextChunkWithDocument] = []
 
-#rag request from frontend to backend
+# rag request from frontend to backend
+
+
 class RagRequestMain(BaseModel):
-    rag_id : str
+    rag_id: str
     rag_request: RagRequest
-    
-#rag response return by rag backend
+
+# rag response return by rag backend
+
+
 class RagResponse(BaseModel):
     rag_answer: str
     time_spent: float
     response_id: str
     sources: list[TextChunkWithDocument]
 
+
 class ExtractedMeradata(BaseModel):
-    min_year : int | None = None
-    max_year : int | None = None
-    min_date : datetime | None = None
-    min_date : datetime | None = None
-    language : int | None = None
+    min_year: int | None = None
+    max_year: int | None = None
+    min_date: datetime | None = None
+    min_date: datetime | None = None
+    language: int | None = None
 
 # class defining state of the adaptive rag
+
+
 class AdaptiveRagState(TypedDict):
-    language: str | None #ces, des, eng, ...
+    language: str | None  # ces, des, eng, ...
     question: str
     original_question: str
     queries: list[str]
-    context_sufficient : bool
+    context_sufficient: bool
     history: list[Any]
     documents: list[Any]
     generation: str
     metadata: ExtractedMeradata
-    metadata_extraction_allowed : bool
+    metadata_extraction_allowed: bool
     retrieval_iteration_counter: int
     generation_iteration_counter: int
     feedback: str
-    web_search_performed : bool
+    web_search_performed: bool
+
 
 class AvailableRagConfigurationsResponse(BaseModel):
     available_models: list[str]
@@ -207,12 +237,17 @@ class AvailableRagConfigurationsResponse(BaseModel):
     temperature_range: dict[str, float]
     available_api_keys: list[str]
 
+
 class ExplainRequest(BaseModel):
-    rag_id : str
-    selected_text : str
-    full_answer : str                                # full text of an answer from which selected_text came from
-    history: list[RagChatMessage] | None = None      # chat history, to keep context
-    sources : list[TextChunkWithDocument]            # sources / chunks of the id question
+    rag_id: str
+    selected_text: str
+    # full text of an answer from which selected_text came from
+    full_answer: str
+    # chat history, to keep context
+    history: list[RagChatMessage] | None = None
+    # sources / chunks of the id question
+    sources: list[TextChunkWithDocument]
+
 
 class FeedbackRequest(BaseModel):
     rag_id: str
@@ -224,6 +259,14 @@ class FeedbackRequest(BaseModel):
     error_types: list[str] | None = None
     comment: str | None = None
 
+
+class AppFeedbackRequest(BaseModel):
+    type: str
+    subject: str | None = None
+    message: str
+    email: str | None = None
+
+
 class CreateResponse(BaseModel):
     created: bool
     message: str
@@ -233,14 +276,20 @@ class CollectionNames(BaseModel):
     chunks_collection_name: str
     tag_collection_name: str
     user_collection_name: str
+    document_collection_name: str
+    span_collection_name: str
     user_collection_link_name: str
     tag_to_user_collection_link_name: str
+    span_collection_name: str
 
 # Tagging configuration
+
+
 class TaggingConfigParams(BaseModel):
     model_type: APIType
     model_name: str
     temperature: float = 1.0
+
 
 class TaggingConfig(BaseModel):
     name: str
@@ -249,10 +298,13 @@ class TaggingConfig(BaseModel):
     prompt_template: str
     params: TaggingConfigParams
 
+
 class GetConfigsResponse(BaseModel):
     configs: list[TaggingConfig]
 
 # tagging task
+
+
 class TagStartResponse(BaseModel):
     job_started: bool
     task_id: str
@@ -267,6 +319,7 @@ class TagReqTemplate(BaseModel):
     tag_definition: str  # description of the tag
     tag_examples: list[str]  # list of examples what should be tagged
     collection_name: str
+
 
 class TaggingTaskReqTemplate(BaseModel):
     tag_name: str  # name of the tag
@@ -325,11 +378,13 @@ class TaggedChunks(BaseModel):
     tag_uuid: uuid.UUID  # uuid of a tag selected in UI and belonging to the text chunk
     text_chunk: str  # actual text chunk
     chunk_id: str  # to apply changes later
-    chunk_collection_name: str  # send collection name of the chunk for faster manipulation later
+    # send collection name of the chunk for faster manipulation later
+    chunk_collection_name: str
 
 
 class GetTaggedChunksResponse(BaseModel):
-    chunks_with_tags: list[TaggedChunks]  # list of pairs text chunk and id belonging to it
+    # list of pairs text chunk and id belonging to it
+    chunks_with_tags: list[TaggedChunks]
 
 
 class ApproveTagReq(BaseModel):
@@ -348,20 +403,11 @@ class RemoveTagsResponse(BaseModel):
     successful: bool
 
 # User collection
+
+
 class UserCollectionReqTemplate(BaseModel):
     collection_name: str  # name of the collection
     user_id: str  # user id
-
-
-class Collection(BaseModel):
-    id: str
-    name: str
-    user_id: str
-
-
-class GetCollectionsResponse(BaseModel):
-    collections: list[Collection]
-    userId: str
 
 
 class Chunk2CollectionReq(BaseModel):
@@ -375,7 +421,64 @@ class CollectionChunks(BaseModel):
 
 
 class GetCollectionChunksResponse(BaseModel):
-    chunks_of_collection: list[CollectionChunks]  # list of pairs text chunk and id belonging to it
+    # list of pairs text chunk and id belonging to it
+    chunks_of_collection: list[CollectionChunks]
+
+# TagSpans
+
+
+class SpanStoreMode(str, Enum):
+    embedded = "embedded"
+    separate = "separate"
+    both = "both"
+
+
+class SpanType(str, Enum):
+    pos = "pos"
+    neg = "neg"
+    auto = "auto"
+
+
+class TagSpan(BaseModel):
+    id: str | None = None
+    chunkId: str
+    tagId: str
+    start: int
+    end: int
+    type: SpanType | None = None
+
+
+class TagSpanUpdate(BaseModel):
+    tagId: str | None = None
+    start: int | None = None
+    end: int | None = None
+    type: SpanType | None = None
+
+
+class TagSpanCreateSeparateRequest(BaseModel):
+    span: TagSpan
+
+
+class TagSpanCreateEmbeddedRequest(BaseModel):
+    chunk_id: str
+    tag_id: str
+    spans: list[TagSpan]
+
+
+class TagSpanWriteResponse(BaseModel):
+    stored_in: list[SpanStoreMode]
+
+
+class TagSpanUpdateSeparateRequest(BaseModel):
+    span_id: str
+    tagSpan: TagSpanUpdate
+
+
+class TagSpanUpdateEmbeddedRequest(BaseModel):
+    chunk_id: str | None = None
+    index: int | None = None
+    tagSpan: TagSpanUpdate
+# /TagSpans
 
 
 # Task Model
@@ -384,8 +487,10 @@ TasksBase = declarative_base()
 
 class Task(TasksBase):
     __tablename__ = "tasks"
-    taskId = Column(String(36), primary_key=True)  # 36 is max number of chars in uuid
-    status = Column(String(20), default="PENDING")  # PENDING|RUNNING|COMPLETED|FAILED
+    # 36 is max number of chars in uuid
+    taskId = Column(String(36), primary_key=True)
+    # PENDING|RUNNING|COMPLETED|FAILED
+    status = Column(String(20), default="PENDING")
     result = Column(JSON, nullable=True)
     all_texts_count = Column(Integer, nullable=True)
     processed_count = Column(Integer, nullable=True)
@@ -410,15 +515,17 @@ tag_class = {
     ]
 }
 
+
 class RagUserFeedback(TasksBase):
     __tablename__ = "rag_user_feedback"
     id = Column(Integer, primary_key=True, autoincrement=True)
     response_id = Column(String(36), index=True, unique=True, nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=funcs.now())
     rag_id = Column(String(255), nullable=False)
-    question = Column(Text, nullable=False) 
+    question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
-    rating = Column(Integer, nullable=False) # 1 - like, -1 - dislike
-    error_types = Column(JSON, nullable=True) # list of error types, if rating is -1
+    rating = Column(Integer, nullable=False)  # 1 - like, -1 - dislike
+    # list of error types, if rating is -1
+    error_types = Column(JSON, nullable=True)
     comment = Column(Text, nullable=True)
     sources = Column(JSON, nullable=True)

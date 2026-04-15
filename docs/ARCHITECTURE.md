@@ -63,10 +63,11 @@ flowchart LR
         RAG_R[rag_routes]
         TAG_R[tag_routes]
         COL_R[user_collection_routes]
+        AUTH_R["users/<br/>(auth, register, users)"]
     end
 
     subgraph Core
-        WS[weaviate_search.py]
+        WS[weaviate_utils/weaviate_abstraction.py]
         CFG[config.py]
         SCH[schemas.py]
     end
@@ -81,10 +82,11 @@ flowchart LR
         RAG_F[rag/]
         SUM[summarization/]
         TAG_F[tagging/]
+        USERS[users/]
     end
 
-    APP --> DI & RAG_F
-    SUM_R & RAG_R & TAG_R & COL_R --> DI
+    APP --> DI & RAG_F & USERS
+    SUM_R & RAG_R & TAG_R & COL_R & AUTH_R --> DI
     DI --> WS
     RAG_R --> RAG_F
     SUM_R --> SUM
@@ -93,6 +95,7 @@ flowchart LR
     RAG_F --> LLM_API
     SUM --> LLM_API
     TAG_F --> OLLP
+    AUTH_R --> USERS
 ```
 
 #### Configuration (`config.py`)
@@ -102,7 +105,8 @@ A singleton `Config` class that reads environment variables with sensible defaul
 - **Weaviate connection** — host, REST port, gRPC port
 - **LLM endpoints** — Ollama URLs (comma-separated for load balancing), model names, API keys
 - **Application** — port, CORS origin, static file path
-- **Database** — SQLite URL for task tracking
+- **Database** — SQLite URL for task tracking and user accounts
+- **Auth** — `JWT_SECRET` (override in production with a long random string)
 - **RAG** — config directory path
 
 #### Dependency Injection (`routes/dependencies.py`)
@@ -113,7 +117,7 @@ FastAPI application uses a centralized dependency-injection container to manage 
 |---|---|---|
 | `get_engine()` | SQLAlchemy engine + async session factory | App startup → shutdown |
 | `get_async_session()` | Database sessions for individual requests | Per-request |
-| `get_search()` | Weaviate connection wrapper (`WeaviateSearch`) | First access → shutdown |
+| `get_search()` | Weaviate connection wrapper (`WeaviateAbstraction`) | First access → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
 
 All route handlers inject dependencies via FastAPI's `Depends()` pattern, avoiding scattered global state. The `cleanup_dependencies()` function is called during app shutdown to properly close connections.
@@ -122,7 +126,7 @@ All route handlers inject dependencies via FastAPI's `Depends()` pattern, avoidi
 ```python
 @exp_router.post("/api/search")
 async def search(req: SearchRequest, 
-                 searcher: WeaviateSearch = Depends(get_search),
+                 searcher: WeaviateAbstraction = Depends(get_search),
                  summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> SearchResponse:
     # searcher and summarizer are automatically injected
     ...
@@ -134,7 +138,7 @@ The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
 
 1. **Startup** (`main.py` lifespan):
    - Initialize SQLAlchemy engine and database connection pool via `get_engine()`
-   - Create all required database tables (`Task`, etc.)
+   - Create all required database tables (`Task`, `User`, etc.)
    - Load RAG configurations from YAML and instantiate RAG engines via `rag_factory()`
 
 2. **Request handling** — dependency injection provides fresh database sessions and reuses long-lived connections (Weaviate, summarizer)
@@ -143,6 +147,38 @@ The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
    - Call `cleanup_dependencies()` to close Weaviate client, dispose of the database engine, and clean up resources
 
 This ensures no resource leaks and proper initialization order.
+
+#### Authentication (`users/`)
+
+User accounts are managed with [FastAPI Users](https://fastapi-users.github.io/fastapi-users/) using JWT Bearer tokens. User records are stored in the **same SQLite database** as tasks.
+
+| Module | Responsibility |
+|---|---|
+| `users/models.py` | SQLAlchemy `User` table — UUID PK, email, hashed password, active/superuser/verified flags, plus `username` (unique, indexed), `name`, `institution` |
+| `users/schemas.py` | Pydantic `UserRead` / `UserCreate` / `UserUpdate` schemas (all include the extra fields as optional) |
+| `users/manager.py` | `UserManager` — overrides `authenticate()` to accept **email or username** at login; lifecycle hooks (`on_after_register`, etc.) |
+| `users/auth.py` | JWT strategy, `FastAPIUsers` instance, exported routers; exports `current_active_user` (mandatory) and `current_active_optional_user` (optional) dependency shortcuts |
+
+**API endpoints:**
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/auth/register` | Create a new account (email, password, username, name, institution) |
+| `POST` | `/api/auth/jwt/login` | Login with **email or username** — returns `access_token` |
+| `POST` | `/api/auth/jwt/logout` | Logout (client discards token) |
+| `GET` | `/api/users/me` | Current user info (requires Bearer token) |
+| `PATCH` | `/api/users/me` | Update current user (email / password / name / institution) |
+
+**Route-level authentication:**
+
+All route handlers accept user identity via `Depends()`. Two variants are used:
+
+| Dependency | Behaviour | Applied to |
+|---|---|---|
+| `current_active_user` | Mandatory — returns `401` if no valid token | All `/api/user_collection/*` endpoints |
+| `current_active_optional_user` | Optional — `None` when unauthenticated | All other routes (search, RAG, tags, summarise) |
+
+The JWT secret is configured via the `JWT_SECRET` environment variable (default is a placeholder — **must be overridden in production**).
 
 #### Search Pipeline
 
@@ -279,9 +315,8 @@ Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
 |---|---|---|
 | `/search/` | SearchPage | Main search interface with filters, results, summaries |
 | `/rag/` | RagPage | Multi-turn RAG chat with source citations |
-| `/tag/` | TaggingPage | Tagging interface (referenced in routes but **file missing**) |
 | `/tag_manage/` | TagManagementPage | Create tags, start/monitor tagging tasks |
-| `/collection_manage/` | UserCollectionManagementPage | Manage user document collections |
+| `/collections` | UserCollectionsPage | Manage user document collections |
 | `/about/` | AboutPage | Project information |
 
 State management via Pinia stores (`user-store`, `chunk_collection-store`). API communication through a shared Axios instance with configurable `BACKEND_URL`.
@@ -310,7 +345,7 @@ sequenceDiagram
     participant WV as Weaviate
     participant LLM as Ollama
 
-    FE->>BE: POST /api/tagging_task {tag definition}
+    FE->>BE: POST /api/tag/task {tag definition + task config}
     BE->>SQL: INSERT Task (PENDING)
     BE->>BE: asyncio.create_task(tag_and_store)
     BE-->>FE: {task_id, started: true}
@@ -324,7 +359,7 @@ sequenceDiagram
 
     BE->>SQL: UPDATE status=COMPLETED
 
-    FE->>BE: GET /api/tag_status/{id}
+    FE->>BE: GET /api/tag/task/status/{id}
     BE->>SQL: SELECT task
     BE-->>FE: {status, processed_count, ...}
 ```

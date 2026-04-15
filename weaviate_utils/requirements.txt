@@ -5,3 +5,4 @@ classconfig
 sqlalchemy
 tqdm
 psycopg2
+aicaller~=1.1.6

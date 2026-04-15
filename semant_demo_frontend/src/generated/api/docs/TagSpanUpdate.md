@@ -9,6 +9,7 @@ Name | Type
 `tagId` | string
 `start` | number
 `end` | number
+`type` | [SpanType](SpanType.md)
 
 ## Example
 
@@ -20,6 +21,7 @@ const example = {
   "tagId": null,
   "start": null,
   "end": null,
+  "type": null,
 } satisfies TagSpanUpdate
 
 console.log(example)

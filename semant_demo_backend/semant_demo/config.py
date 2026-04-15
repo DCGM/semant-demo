@@ -41,6 +41,13 @@ class Config:
 
         # SQL db
         self.SQL_DB_URL = "sqlite+aiosqlite:///tasks.db"
+
+        # app feedback delivery
+        self.FEEDBACK_WEBHOOK_URL = os.getenv("FEEDBACK_WEBHOOK_URL", "")
+        self.FEEDBACK_LOG_PATH = os.getenv("FEEDBACK_LOG_PATH", str(SCRIPT_PATH / "feedback.log.jsonl"))
+
+        # Auth – override JWT_SECRET in production with a strong random value
+        self.JWT_SECRET = os.getenv("JWT_SECRET", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_SECRET")
         
         # path to rag configs
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
@@ -51,8 +58,10 @@ class Config:
             chunks_collection_name = "Chunks",
             tag_collection_name = "Tag",
             user_collection_name = "UserCollection",
+            document_collection_name= "Documents",
+            span_collection_name = "Span_test",
             user_collection_link_name = "userCollection",
-            tag_to_user_collection_link_name= "tagToUserCollection"
+            tag_to_user_collection_link_name= "tagToUserCollection",
         )
 
 config = Config()

@@ -70,16 +70,20 @@ erDiagram
         text tag_pictogram
         text tag_definition
         text_array tag_examples
-        text collection_name
+        text collection_name "legacy / optional"
     }
 
     UserCollection {
         uuid id PK
         text name
         text user_id
+        text description
+        text color
+        datetime created_at
+        datetime updated_at
     }
 
-    Chunks ||--|| Documents : "document (1:1)"
+    Chunks }o--|| Documents : "document (many:1)"
     Chunks }o--o{ Tag : "automaticTag (many:many)"
     Chunks }o--o{ Tag : "positiveTag (many:many)"
     Chunks }o--o{ Tag : "negativeTag (many:many)"
@@ -126,19 +130,24 @@ User-defined tags with:
 - `tag_color`, `tag_pictogram` — UI presentation
 - `tag_definition` — text description used by LLM for tagging
 - `tag_examples` — example texts (used in LLM prompt)
-- `collection_name` — the Weaviate chunk collection this tag was created for
+- `collection_name` — legacy/optional string in existing data; ownership is primarily modeled via `userCollection` reference
 
 ### Collection: `UserCollection`
 
 Named collections of chunks per user:
 - `name` — user-provided collection name
 - `user_id` — owner identifier
+- `description` — optional description
+- `color` — UI color identifier
+- `created_at`, `updated_at` — timestamps managed by backend
 
 ---
 
-## SQLite Schema (Task Tracking)
+## SQLite Schema
 
-A single `tasks` table tracks asynchronous tagging jobs:
+SQLite holds two tables, both created automatically at startup via `TasksBase.metadata.create_all`.
+
+### `tasks` — Asynchronous tagging jobs
 
 ```sql
 CREATE TABLE tasks (
@@ -157,7 +166,25 @@ CREATE TABLE tasks (
 
 Task lifecycle: `PENDING` → `RUNNING` → `COMPLETED` / `FAILED`
 
-The backend polls this table via `GET /api/tag_status/{taskId}` and the frontend uses periodic polling to display progress.
+The backend polls this table via `GET /api/tag/task/status/{taskId}` and the frontend uses periodic polling to display progress.
+
+### `user` — User accounts (FastAPI Users)
+
+```sql
+CREATE TABLE user (
+    id              VARCHAR(36)  PRIMARY KEY,   -- UUID
+    email           VARCHAR      NOT NULL UNIQUE,
+    hashed_password VARCHAR      NOT NULL,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    is_superuser    BOOLEAN      NOT NULL DEFAULT FALSE,
+    is_verified     BOOLEAN      NOT NULL DEFAULT FALSE,
+    username        VARCHAR(100) UNIQUE,        -- optional, indexed; accepted at login
+    name            VARCHAR(200),               -- display name
+    institution     VARCHAR(300)                -- optional affiliation
+);
+```
+
+Users authenticate with a JWT Bearer token (via FastAPI Users). Login accepts **email or username**. Token lifetime is 7 days; the secret is set via the `JWT_SECRET` environment variable.
 
 ---
 

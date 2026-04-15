@@ -27,7 +27,7 @@ Tagging jobs run as `asyncio.create_task()` inside the FastAPI process. If the s
 ## Medium Priority
 
 ### 6. Centralise LLM model creation
-Both `RagGenerator` and `AdaptiveRagGenerator` contain identical `_create_model()` methods that switch on model_type (OLLAMA/OPENAI/GOOGLE). 
+Both `RagGenerator` and `AdaptiveRagGenerator` contain identical `_create_model()` methods that switch on model_type (OLLAMA/OPENAI/GOOGLE).
 
 **Fix:** Move to `BaseRag` or a factory function in `rag_factory.py`.
 
@@ -56,7 +56,7 @@ FastAPI auto-generates OpenAPI docs, but response models are not consistently de
 **Fix:** Default to `http://localhost:8000/api` or make the fallback a build-time configuration.
 
 ### 11. Improve Weaviate search module size
-`weaviate_search.py` is ~1500 lines covering search, tag CRUD, collection CRUD, tag propagation, and chunk filtering. 
+`weaviate_search.py` is ~1500 lines covering search, tag CRUD, collection CRUD, tag propagation, and chunk filtering.
 
 **Fix:** Split into focused modules: `search.py`, `tag_repository.py`, `collection_repository.py`.
 
@@ -106,6 +106,13 @@ Package name is `image-search-frontend` and description says "Semantic image sea
 No `/health` or `/ready` endpoint exists. Container orchestrators (Kubernetes, Docker Compose health checks) cannot verify service status.
 
 **Fix:** Add `GET /health` that checks Weaviate connectivity and embedding service availability.
+
+### XX. Format the project's code consistently
+Unreadable unstyled ununiform code.
+Define formatter for BE and FE. FE should use Prettier. ESLint will then listen to Prettier rules and only report actual code issues. Add a package.json script for formatting whole frontend.
+
+### XX. Use Pylance
+Backend is full of typing errors.
 
 ---
 
