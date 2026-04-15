@@ -1,6 +1,7 @@
 import { useApi } from 'src/composables/useApi'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
 import { ref } from 'vue'
+import { AvailableTag } from '../components/ChunkTagAnnotator.vue'
 
 export function useTagging() {
   const api = useApi().default
@@ -11,9 +12,7 @@ export function useTagging() {
   >([])
   const tagSpans = ref<TagSpan[]>([])
   const isProcessing = ref(false)
-  const availableTags = ref<
-    Awaited<ReturnType<typeof api.getTagsApiTagsGet>>['tagsLst']
-  >([])
+  const availableTags = ref<AvailableTag[]>([])
 
   const getCollectionChunksPaged = async (
     collectionId: Parameters<
@@ -141,12 +140,23 @@ export function useTagging() {
     }
   }
 
-  const getTagsForCollection = async () => {
+  const getTagsForCollection = async (
+    collectionId: Parameters<
+      typeof api.getCollectionTagsApiCollectionsCollectionIdTagsGet
+    >[0]['collectionId']
+  ) => {
     isProcessing.value = true
     try {
-      const response = await api.getTagsApiTagsGet()
-      console.log('Fetched tags for collection:', response)
-      availableTags.value = response.tagsLst
+      const response =
+        await api.getCollectionTagsApiCollectionsCollectionIdTagsGet({
+          collectionId
+        })
+      availableTags.value = response.map((tag) => ({
+        tagUuid: tag.id,
+        tagName: tag.name,
+        tagColor: tag.color,
+        tagPictogram: tag.pictogram
+      }))
     } catch (error) {
       console.error('Error fetching tags for collection:', error)
       availableTags.value = []

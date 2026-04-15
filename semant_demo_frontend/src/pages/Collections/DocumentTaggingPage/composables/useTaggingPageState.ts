@@ -261,8 +261,8 @@ export function useTaggingPageState() {
       tagSpan: {
         tagId: payload.tagId,
         start: payload.start,
-        end: payload.end,
-        type: payload.spanType
+        end: payload.end
+        // type: payload.spanType
       }
     })
 

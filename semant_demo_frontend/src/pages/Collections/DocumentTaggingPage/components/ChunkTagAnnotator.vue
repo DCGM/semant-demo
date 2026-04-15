@@ -68,7 +68,7 @@ interface SelectionBoundary {
   index: number
 }
 
-interface AvailableTag {
+export interface AvailableTag {
   tagName: string
   tagColor: string
   tagPictogram: string

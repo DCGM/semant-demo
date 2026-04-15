@@ -201,7 +201,7 @@ const isAutoSelection = computed(() => {
 
 onMounted(async () => {
   await loadChunks(props.collectionId)
-  await getTagsForCollection()
+  await getTagsForCollection(props.collectionId)
 })
 </script>
 
