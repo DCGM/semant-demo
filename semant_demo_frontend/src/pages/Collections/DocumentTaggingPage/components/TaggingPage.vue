@@ -36,22 +36,9 @@
       </div>
 
       <div class="col-12 col-md-4">
-        <TagOptionsMenu
-          :global-selection="globalSelection"
-          :page-loading="pageLoading"
-          :is-auto-selection="isAutoSelection"
+        <AnnotationTagRail
+          :markers="annotationMarkers"
           :available-tags="availableTags"
-          @tag-click="handleTagClick"
-          @clear-selection="clearSelection"
-          @save-edited-tag="saveEditedTag"
-          @delete-edited-tag="deleteEditedTag"
-          @approve-auto-span="approveSelectedAutoSpan"
-          @decline-auto-span="declineSelectedAutoSpan"
-        />
-
-        <AutoAnnotationSuggestionsMenu
-          :available-tags="availableTags"
-          @start-suggestions="handleStartSuggestions"
         />
       </div>
     </div>
@@ -59,11 +46,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { SpanType } from 'src/generated/api'
+import { onMounted } from 'vue'
 import ChunkExpansionItem from './ChunkExpansionItem.vue'
-import AutoAnnotationSuggestionsMenu from './AutoAnnotationSuggestionsMenu.vue'
-import TagOptionsMenu from './TagOptionsMenu.vue'
+import AnnotationTagRail from './AnnotationTagRail.vue'
 import { useTaggingPageState } from '../composables/useTaggingPageState'
 
 interface Props {
@@ -75,6 +60,7 @@ const props = defineProps<Props>()
 
 const {
   chunks,
+  annotationMarkers,
   pageLoading,
   globalSelection,
   useWordSnapping,
@@ -84,29 +70,11 @@ const {
   toggleChunkInCollection,
   availableTags,
   loadChunks,
-  clearSelection,
-  handleTagClick,
-  saveEditedTag,
-  deleteEditedTag,
-  approveSelectedAutoSpan,
-  declineSelectedAutoSpan,
   handleSelectionChange,
   getChunkSelection,
   getDisplayedTagSpans,
   getTagsForCollection
 } = useTaggingPageState()
-
-const isAutoSelection = computed(() => {
-  return (
-    !!globalSelection.value?.editingId &&
-    globalSelection.value.spanType === SpanType.auto
-  )
-})
-
-const handleStartSuggestions = (selectedTagIds: string[]) => {
-  // Placeholder for future backend call.
-  console.log('Automatic suggestions start for tags:', selectedTagIds)
-}
 
 onMounted(async () => {
   await loadChunks(props.documentId, props.collectionId)

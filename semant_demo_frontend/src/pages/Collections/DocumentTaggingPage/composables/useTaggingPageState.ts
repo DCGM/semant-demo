@@ -62,6 +62,13 @@ interface TaggingChunk {
   inUserCollection: boolean
 }
 
+interface AnnotationMarker {
+  markerId: string
+  chunkId: string
+  start: number
+  tagId: string
+}
+
 export function useTaggingPageState() {
   const {
     documentDetail,
@@ -95,6 +102,20 @@ export function useTaggingPageState() {
         textChunk: chunk.text,
         inUserCollection: chunk.inUserCollection
       })) ?? []
+    )
+  })
+
+  const annotationMarkers = computed<AnnotationMarker[]>(() => {
+    return Object.entries(tagSpansByChunkId.value).flatMap(([chunkId, spans]) =>
+      spans
+        .filter((span) => span.type !== SpanType.neg)
+        .map((span) => ({
+          markerId:
+            span.id ?? `${chunkId}-${span.tagId}-${span.start}-${span.end}`,
+          chunkId,
+          start: span.start,
+          tagId: span.tagId
+        }))
     )
   })
 
@@ -647,6 +668,7 @@ export function useTaggingPageState() {
 
   return {
     chunks,
+    annotationMarkers,
     availableTags,
     pageLoading,
     globalSelection,
