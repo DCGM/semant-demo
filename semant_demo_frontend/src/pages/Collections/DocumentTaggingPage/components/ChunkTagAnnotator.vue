@@ -11,6 +11,7 @@
       :data-chunk-id="chunkId"
       :data-start="seg.start"
       :data-end="seg.end"
+      :data-span-ids="seg.spanIds.length ? seg.spanIds.join(' ') : undefined"
       :style="getSegmentStyle(seg)"
       class="text-segment"
       @click="handleSegmentClick(seg)"
@@ -48,6 +49,7 @@ import { SpanType } from 'src/generated/api/models/SpanType'
 interface RenderSegment {
   text: string
   tags: TagSpan[]
+  spanIds: string[]
   isSelected: boolean
   start: number
   end: number
@@ -184,8 +186,15 @@ const renderedSegments = computed(() => {
         i >= t.start && i < t.end && t.id !== props.editingSpanId
     )
 
-    activeTags.sort((a, b) => a.tagId.localeCompare(b.tagId))
-    const tagsStr = activeTags.map((t) => t.tagId).join(',')
+    activeTags.sort((a, b) => {
+      const aKey = a.id ?? `${a.tagId}-${a.start}-${a.end}`
+      const bKey = b.id ?? `${b.tagId}-${b.start}-${b.end}`
+      return aKey.localeCompare(bKey)
+    })
+    const spanIds = activeTags.map((t) => t.id).filter((id): id is string => !!id)
+    const tagsStr = activeTags
+      .map((t) => t.id ?? `${t.tagId}-${t.start}-${t.end}`)
+      .join(',')
 
     const isSelected =
       currentSelection.value !== null &&
@@ -213,6 +222,7 @@ const renderedSegments = computed(() => {
       currentSeg = {
         text: char,
         tags: activeTags,
+        spanIds,
         isSelected,
         start: i,
         end: i + 1

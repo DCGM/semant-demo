@@ -64,6 +64,7 @@ interface TaggingChunk {
 
 interface AnnotationMarker {
   markerId: string
+  spanId: string | null
   chunkId: string
   start: number
   tagId: string
@@ -112,6 +113,7 @@ export function useTaggingPageState() {
         .map((span) => ({
           markerId:
             span.id ?? `${chunkId}-${span.tagId}-${span.start}-${span.end}`,
+          spanId: span.id ?? null,
           chunkId,
           start: span.start,
           tagId: span.tagId

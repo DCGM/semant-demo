@@ -27,6 +27,7 @@ import type { AvailableTag } from './ChunkTagAnnotator.vue'
 
 interface AnnotationMarker {
   markerId: string
+  spanId: string | null
   chunkId: string
   start: number
   tagId: string
@@ -108,15 +109,45 @@ const syncMarkerPositions = () => {
   const railRect = rail.getBoundingClientRect()
   const nextPositions: Record<string, { top: number; height: number }> = {}
 
-  for (const marker of props.markers) {
+  const getSegmentsForMarker = (marker: AnnotationMarker): HTMLElement[] => {
+    if (marker.spanId) {
+      const candidates = document.querySelectorAll(
+        '.text-segment[data-span-ids]'
+      )
+      const matched = Array.from(candidates).filter((node) => {
+        const spanIds =
+          (node.getAttribute('data-span-ids') || '')
+            .split(/\s+/)
+            .filter(Boolean) || []
+        return spanIds.includes(marker.spanId as string)
+      }) as HTMLElement[]
+
+      if (matched.length > 0) {
+        return matched
+      }
+    }
+
     const selector = `.text-segment[data-chunk-id="${marker.chunkId}"][data-start="${marker.start}"]`
     const segment = document.querySelector(selector) as HTMLElement | null
-    if (!segment) continue
+    return segment ? [segment] : []
+  }
 
-    const segmentRect = segment.getBoundingClientRect()
+  for (const marker of props.markers) {
+    const segments = getSegmentsForMarker(marker)
+    if (!segments.length) continue
+
+    const segmentRects = segments
+      .map((segment) => segment.getBoundingClientRect())
+      .filter((rect) => rect.height > 0)
+
+    if (!segmentRects.length) continue
+
+    const top = Math.min(...segmentRects.map((rect) => rect.top))
+    const bottom = Math.max(...segmentRects.map((rect) => rect.bottom))
+
     nextPositions[marker.markerId] = {
-      top: segmentRect.top - railRect.top,
-      height: segmentRect.height
+      top: top - railRect.top,
+      height: Math.max(2, bottom - top)
     }
   }
 
