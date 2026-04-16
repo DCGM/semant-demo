@@ -59,12 +59,6 @@ const routes: RouteRecordRaw[] = [
             path: 'documents/:documentId/tagging',
             component: () => import('pages/Collections/DocumentTaggingPage/DocumentTaggingPage.vue'),
             props: true
-          },
-          {
-            name: 'documentDetail',
-            path: 'documents/:documentId',
-            component: () => import('pages/Collections/DocumentDetailPage.vue'),
-            props: true
           }
         ]
       },
