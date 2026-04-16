@@ -52,9 +52,7 @@ module.exports = configure(function (/* ctx */) {
       // 'eva-icons',
       // 'themify',
       // 'line-awesome',
-      // 'roboto-font-latin-ext', // this or either 'roboto-font', NEVER both!
-
-      'roboto-font', // optional, you are not bound to it
+      'roboto-font-latin-ext', // this or either 'roboto-font', NEVER both!
       'material-icons' // optional, you are not bound to it
     ],
 
