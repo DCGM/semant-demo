@@ -4,7 +4,10 @@
       :default-opened="inUserCollection"
       expand-separator
       switch-toggle-side
-      :header-class="inUserCollection ? '' : 'bg-grey-2 text-grey-8'"
+      :header-class="[
+        'chunk-expansion-header',
+        inUserCollection ? '' : 'bg-grey-2 text-grey-8'
+      ]"
       :caption="
         inUserCollection
           ? 'Chunk is in selected collection'

@@ -140,3 +140,10 @@ defineEmits<{
   declineAutoSpan: []
 }>()
 </script>
+
+<style scoped>
+.menu-card {
+  position: sticky;
+  top: 100px;
+}
+</style>
