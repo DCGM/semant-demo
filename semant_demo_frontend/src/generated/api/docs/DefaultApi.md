@@ -37,6 +37,7 @@ All URIs are relative to *http://localhost*
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
 | [**readTagSpansApiTagSpansChunkIdGet**](DefaultApi.md#readtagspansapitagspanschunkidget) | **GET** /api/tag_spans/{chunk_id} | Read Tag Spans |
 | [**removeAutomaticTagsApiTagsAutomaticDelete**](DefaultApi.md#removeautomatictagsapitagsautomaticdelete) | **DELETE** /api/tags/automatic | Remove Automatic Tags |
+| [**removeChunkFromCollectionApiUserCollectionChunksRemovePost**](DefaultApi.md#removechunkfromcollectionapiusercollectionchunksremovepost) | **POST** /api/user_collection/chunks/remove | Remove Chunk From Collection |
 | [**removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapicollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
@@ -2335,6 +2336,78 @@ example().catch(console.error);
 ### Return type
 
 [**RemoveTagsResponse**](RemoveTagsResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## removeChunkFromCollectionApiUserCollectionChunksRemovePost
+
+> CreateResponse removeChunkFromCollectionApiUserCollectionChunksRemovePost(chunk2CollectionReq)
+
+Remove Chunk From Collection
+
+Removes connection between chunk and user collection.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // Chunk2CollectionReq
+    chunk2CollectionReq: ...,
+  } satisfies RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest;
+
+  try {
+    const data = await api.removeChunkFromCollectionApiUserCollectionChunksRemovePost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **chunk2CollectionReq** | [Chunk2CollectionReq](Chunk2CollectionReq.md) |  | |
+
+### Return type
+
+[**CreateResponse**](CreateResponse.md)
 
 ### Authorization
 

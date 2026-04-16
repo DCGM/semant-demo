@@ -178,6 +178,51 @@ export function useTagging() {
     }
   }
 
+  const addChunkToCollection = async ({
+    chunkId,
+    collectionId
+  }: Parameters<
+    typeof api.addChunk2CollectionApiUserCollectionChunksPost
+  >[0]['chunk2CollectionReq']) => {
+    try {
+      const response = await api.addChunk2CollectionApiUserCollectionChunksPost(
+        {
+          chunk2CollectionReq: {
+            chunkId,
+            collectionId
+          }
+        }
+      )
+      console.log('Chunk added to collection successfully:', response)
+      return response
+    } catch (error) {
+      console.error('Error adding chunk to collection:', error)
+      return undefined
+    }
+  }
+
+  const removeChunkFromCollection = async ({
+    chunkId,
+    collectionId
+  }: Parameters<
+    typeof api.removeChunkFromCollectionApiUserCollectionChunksRemovePost
+  >[0]['chunk2CollectionReq']) => {
+    try {
+      const response =
+        await api.removeChunkFromCollectionApiUserCollectionChunksRemovePost({
+          chunk2CollectionReq: {
+            chunkId,
+            collectionId
+          }
+        })
+      console.log('Chunk removed from collection successfully:', response)
+      return response
+    } catch (error) {
+      console.error('Error removing chunk from collection:', error)
+      return undefined
+    }
+  }
+
   return {
     // State
     documentDetail,
@@ -193,6 +238,8 @@ export function useTagging() {
     createTagSpan,
     updateTagSpan,
     deleteTagSpan,
-    getTagsForCollection
+    getTagsForCollection,
+    addChunkToCollection,
+    removeChunkFromCollection
   }
 }

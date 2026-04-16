@@ -2,33 +2,30 @@
   <q-page class="">
     <div class="row q-col-gutter-lg">
       <div class="col-12 col-md-8">
-        <q-card
+        <ChunkExpansionItem
           v-for="chunk in chunks"
           :key="chunk.chunkId"
-          flat
-          bordered
-          class="q-mb-lg"
-        >
-          <ChunkTagAnnotator
-            :chunk-id="chunk.chunkId"
-            :chunk-text="chunk.textChunk"
-            :tag-spans="getDisplayedTagSpans(chunk.chunkId)"
-            :available-tags="availableTags"
-            :is-processing="pageLoading"
-            :snap-to-words="useWordSnapping"
-            :selection="getChunkSelection(chunk.chunkId)"
-            :show-selection-start-handle="
-              selectionBoundaryChunkIds.startChunkId === chunk.chunkId
-            "
-            :show-selection-end-handle="
-              selectionBoundaryChunkIds.endChunkId === chunk.chunkId
-            "
-            :selection-start-boundary="globalSelectionBoundaries.startBoundary"
-            :selection-end-boundary="globalSelectionBoundaries.endBoundary"
-            :editing-span-id="globalSelection?.editingId || null"
-            @selection-change="handleSelectionChange"
-          />
-        </q-card>
+          :chunk-id="chunk.chunkId"
+          :chunk-text="chunk.textChunk"
+          :in-user-collection="chunk.inUserCollection"
+          :tag-spans="getDisplayedTagSpans(chunk.chunkId)"
+          :available-tags="availableTags"
+          :is-processing="pageLoading"
+          :snap-to-words="useWordSnapping"
+          :selection="getChunkSelection(chunk.chunkId)"
+          :show-selection-start-handle="
+            selectionBoundaryChunkIds.startChunkId === chunk.chunkId
+          "
+          :show-selection-end-handle="
+            selectionBoundaryChunkIds.endChunkId === chunk.chunkId
+          "
+          :selection-start-boundary="globalSelectionBoundaries.startBoundary"
+          :selection-end-boundary="globalSelectionBoundaries.endBoundary"
+          :editing-span-id="globalSelection?.editingId || null"
+          :is-collection-updating="isChunkCollectionUpdating(chunk.chunkId)"
+          @selection-change="handleSelectionChange"
+          @toggle-collection="toggleChunkInCollection"
+        />
 
         <q-card v-if="!chunks.length" class="bg-grey-2">
           <q-card-section class="text-center text-grey-7 q-py-xl">
@@ -162,7 +159,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { SpanType } from 'src/generated/api'
-import ChunkTagAnnotator from './ChunkTagAnnotator.vue'
+import ChunkExpansionItem from './ChunkExpansionItem.vue'
 import { useTaggingPageState } from '../composables/useTaggingPageState'
 
 interface Props {
@@ -179,6 +176,8 @@ const {
   useWordSnapping,
   selectionBoundaryChunkIds,
   globalSelectionBoundaries,
+  isChunkCollectionUpdating,
+  toggleChunkInCollection,
   availableTags,
   loadChunks,
   clearSelection,

@@ -68,6 +68,8 @@ export function useTaggingPageState() {
     availableTags,
     isProcessing,
     getDocumentDetail,
+    addChunkToCollection,
+    removeChunkFromCollection,
     fetchTagSpansForChunk,
     fetchTagSpansMapForChunks,
     createTagSpan,
@@ -78,6 +80,9 @@ export function useTaggingPageState() {
 
   const tagSpansByChunkId = ref<Record<string, TagSpan[]>>({})
   const isPreloading = ref(false)
+  const collectionActionChunkId = ref<string | null>(null)
+  const currentDocumentId = ref<string | null>(null)
+  const currentCollectionId = ref<string | null>(null)
   const globalSelection = ref<GlobalSelection | null>(null)
   const useWordSnapping = ref(true)
 
@@ -235,9 +240,41 @@ export function useTaggingPageState() {
   }
 
   const loadChunks = async (documentId: string, collectionId: string) => {
+    currentDocumentId.value = documentId
+    currentCollectionId.value = collectionId
     await getDocumentDetail(documentId, collectionId)
     tagSpansByChunkId.value = {}
     await preloadAllChunkSpans()
+  }
+
+  const isChunkCollectionUpdating = (chunkId: string) => {
+    return collectionActionChunkId.value === chunkId
+  }
+
+  const toggleChunkInCollection = async (
+    chunkId: string,
+    inUserCollection: boolean
+  ) => {
+    if (!currentCollectionId.value || !currentDocumentId.value) return
+
+    collectionActionChunkId.value = chunkId
+    try {
+      if (inUserCollection) {
+        await removeChunkFromCollection({
+          chunkId,
+          collectionId: currentCollectionId.value
+        })
+      } else {
+        await addChunkToCollection({
+          chunkId,
+          collectionId: currentCollectionId.value
+        })
+      }
+
+      await getDocumentDetail(currentDocumentId.value, currentCollectionId.value)
+    } finally {
+      collectionActionChunkId.value = null
+    }
   }
 
   const handleCreateTagSpan = async (payload: CreatePayload) => {
@@ -616,6 +653,8 @@ export function useTaggingPageState() {
     useWordSnapping,
     selectionBoundaryChunkIds,
     globalSelectionBoundaries,
+    isChunkCollectionUpdating,
+    toggleChunkInCollection,
     loadChunks,
     clearSelection,
     handleTagClick,

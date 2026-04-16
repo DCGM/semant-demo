@@ -337,8 +337,13 @@ class UserCollection():
                                                    self.collectionNames.user_collection_link_name,
                                                    target_collection_id)
 
-    def remove_chunks():
-        pass
+    async def remove_chunks(self,
+                            src_id,
+                            target_collection_id):
+        return await self.helpers.remove_reference(src_id,
+                                                   self.collectionNames.chunks_collection_name,
+                                                   self.collectionNames.user_collection_link_name,
+                                                   target_collection_id)
 
     def share():
         pass
