@@ -36,121 +36,23 @@
       </div>
 
       <div class="col-12 col-md-4">
-        <q-card
-          class="menu-card"
-          :class="globalSelection ? 'bg-blue-grey-1' : 'bg-grey-2'"
-        >
-          <q-card-section>
-            <div class="text-h6">
-              {{ globalSelection?.editingId ? 'Edit Tag' : 'Global Selection' }}
-            </div>
-            <div
-              v-if="globalSelection"
-              class="text-caption text-grey-7 q-mt-xs"
-            >
-              Chunk: {{ globalSelection.chunkId }} | Range:
-              {{ globalSelection.start }}-{{ globalSelection.end }}
-            </div>
-            <div v-else class="text-caption text-grey-7 q-mt-xs">
-              Select text in any chunk to annotate it here.
-            </div>
-          </q-card-section>
+        <TagOptionsMenu
+          :global-selection="globalSelection"
+          :page-loading="pageLoading"
+          :is-auto-selection="isAutoSelection"
+          :available-tags="availableTags"
+          @tag-click="handleTagClick"
+          @clear-selection="clearSelection"
+          @save-edited-tag="saveEditedTag"
+          @delete-edited-tag="deleteEditedTag"
+          @approve-auto-span="approveSelectedAutoSpan"
+          @decline-auto-span="declineSelectedAutoSpan"
+        />
 
-          <q-separator />
-
-          <q-card-section>
-            <div class="text-subtitle1 text-weight-bold q-mb-sm">
-              {{
-                isAutoSelection
-                  ? 'Review Suggested Tag'
-                  : globalSelection?.editingId
-                    ? 'Tag Type'
-                    : 'Assign Tag'
-              }}
-            </div>
-            <div class="row q-gutter-sm">
-              <q-btn
-                v-for="tag in availableTags"
-                :key="tag.tagUuid || tag.tagName"
-                :label="tag.tagName"
-                :icon="tag.tagPictogram"
-                :disable="!globalSelection || pageLoading || isAutoSelection"
-                :style="{
-                  backgroundColor: tag.tagColor,
-                  color: '#fff',
-                  opacity:
-                    globalSelection?.editingId &&
-                    globalSelection.tagId !== tag.tagUuid
-                      ? 0.4
-                      : 1
-                }"
-                @click="handleTagClick(tag.tagUuid)"
-              >
-                <q-icon
-                  v-if="
-                    globalSelection?.editingId &&
-                    globalSelection.tagId === tag.tagUuid
-                  "
-                  name="check"
-                  class="q-ml-xs"
-                />
-              </q-btn>
-
-              <p v-if="availableTags.length === 0" class="text-grey-7 q-mt-sm">
-                No tags available for this collection. Add some.
-              </p>
-            </div>
-
-            <div v-if="isAutoSelection" class="row q-gutter-sm q-mt-md">
-              <q-btn
-                color="positive"
-                icon="thumb_up"
-                label="Approve"
-                :loading="pageLoading"
-                @click="approveSelectedAutoSpan"
-              />
-              <q-btn
-                color="negative"
-                icon="thumb_down"
-                label="Decline"
-                :loading="pageLoading"
-                @click="declineSelectedAutoSpan"
-              />
-            </div>
-          </q-card-section>
-
-          <q-card-actions
-            class="q-pa-md bg-grey-3 row justify-between items-center"
-          >
-            <q-btn
-              v-if="globalSelection?.editingId"
-              flat
-              icon="delete"
-              label="Remove Tag"
-              color="negative"
-              :loading="pageLoading"
-              @click="deleteEditedTag"
-            />
-            <div v-else></div>
-
-            <div class="row q-gutter-sm">
-              <q-btn
-                flat
-                label="Cancel"
-                color="grey-8"
-                @click="clearSelection"
-                :disable="!globalSelection || pageLoading"
-              />
-              <q-btn
-                v-if="globalSelection?.editingId && !isAutoSelection"
-                label="Save Changes"
-                color="primary"
-                :loading="pageLoading"
-                @click="saveEditedTag"
-              />
-            </div>
-          </q-card-actions>
-        </q-card>
+        <AutoAnnotationSuggestionsMenu
+          :available-tags="availableTags"
+          @start-suggestions="handleStartSuggestions"
+        />
       </div>
     </div>
   </q-page>
@@ -160,6 +62,8 @@
 import { computed, onMounted } from 'vue'
 import { SpanType } from 'src/generated/api'
 import ChunkExpansionItem from './ChunkExpansionItem.vue'
+import AutoAnnotationSuggestionsMenu from './AutoAnnotationSuggestionsMenu.vue'
+import TagOptionsMenu from './TagOptionsMenu.vue'
 import { useTaggingPageState } from '../composables/useTaggingPageState'
 
 interface Props {
@@ -199,15 +103,13 @@ const isAutoSelection = computed(() => {
   )
 })
 
+const handleStartSuggestions = (selectedTagIds: string[]) => {
+  // Placeholder for future backend call.
+  console.log('Automatic suggestions start for tags:', selectedTagIds)
+}
+
 onMounted(async () => {
   await loadChunks(props.documentId, props.collectionId)
   await getTagsForCollection(props.collectionId)
 })
 </script>
-
-<style scoped>
-.menu-card {
-  position: sticky;
-  top: calc(64px + 12px);
-}
-</style>
