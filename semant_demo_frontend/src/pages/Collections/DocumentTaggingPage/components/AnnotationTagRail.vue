@@ -5,7 +5,11 @@
         v-for="marker in renderedMarkers"
         :key="marker.markerId"
         class="rail-item"
-        :style="{ top: `${marker.top}px`, minHeight: `${marker.height}px` }"
+        :style="{
+          top: `${marker.top}px`,
+          left: `${marker.left}px`,
+          minHeight: `${marker.height}px`
+        }"
       >
         <span
           class="rail-color"
@@ -49,7 +53,7 @@ const tagsById = computed(() => {
 })
 
 const renderedMarkers = computed(() => {
-  return props.markers
+  const baseMarkers = props.markers
     .map((marker) => {
       const tag = tagsById.value[marker.tagId]
       const position = markerPositions.value[marker.markerId]
@@ -64,6 +68,29 @@ const renderedMarkers = computed(() => {
       }
     })
     .filter((marker): marker is NonNullable<typeof marker> => marker !== null)
+
+  // Assign horizontal lanes so vertically overlapping markers do not collide.
+  const sortedMarkers = [...baseMarkers].sort((a, b) => a.top - b.top)
+  const laneEndByIndex: number[] = []
+  const overlapPadding = 1
+  const laneOffsetPx = 22
+
+  return sortedMarkers.map((marker) => {
+    let lane = laneEndByIndex.findIndex(
+      (laneEnd) => marker.top >= laneEnd + overlapPadding
+    )
+    if (lane === -1) {
+      lane = laneEndByIndex.length
+      laneEndByIndex.push(0)
+    }
+
+    laneEndByIndex[lane] = marker.top + marker.height
+
+    return {
+      ...marker,
+      left: lane * laneOffsetPx
+    }
+  })
 })
 
 const schedulePositionSync = () => {
@@ -136,8 +163,7 @@ onBeforeUnmount(() => {
 
 .rail-item {
   position: absolute;
-  left: 0;
-  right: 0;
+  width: max-content;
   display: flex;
   align-items: center;
   gap: 10px;
