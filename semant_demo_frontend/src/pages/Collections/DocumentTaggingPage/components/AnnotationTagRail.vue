@@ -10,6 +10,11 @@
           left: `${marker.left}px`,
           minHeight: `${marker.height}px`
         }"
+        role="button"
+        tabindex="0"
+        @click="emit('markerClick', marker.rawMarker)"
+        @keydown.enter.prevent="emit('markerClick', marker.rawMarker)"
+        @keydown.space.prevent="emit('markerClick', marker.rawMarker)"
       >
         <span
           class="rail-color"
@@ -24,12 +29,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AvailableTag } from './ChunkTagAnnotator.vue'
+import type { SpanType } from 'src/generated/api/models/SpanType'
 
 interface AnnotationMarker {
   markerId: string
   spanId: string | null
   chunkId: string
   start: number
+  end: number
+  spanType?: SpanType | null
   tagId: string
 }
 
@@ -39,6 +47,10 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+const emit = defineEmits<{
+  markerClick: [marker: AnnotationMarker]
+}>()
 
 const railRef = ref<HTMLElement | null>(null)
 const markerPositions = ref<Record<string, { top: number; height: number }>>({})
@@ -61,6 +73,7 @@ const renderedMarkers = computed(() => {
       if (!tag || position === undefined) return null
 
       return {
+        rawMarker: marker,
         markerId: marker.markerId,
         top: position.top,
         height: position.height,
@@ -198,6 +211,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+  cursor: pointer;
 }
 
 .rail-color {

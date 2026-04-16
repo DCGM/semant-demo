@@ -67,6 +67,8 @@ interface AnnotationMarker {
   spanId: string | null
   chunkId: string
   start: number
+  end: number
+  spanType?: TagSpan['type']
   tagId: string
 }
 
@@ -116,6 +118,8 @@ export function useTaggingPageState() {
           spanId: span.id ?? null,
           chunkId,
           start: span.start,
+          end: span.end,
+          spanType: span.type,
           tagId: span.tagId
         }))
     )
@@ -359,6 +363,42 @@ export function useTaggingPageState() {
   const handleDeleteTagSpan = async (payload: DeletePayload) => {
     await deleteTagSpan(payload.spanId)
     await refreshChunkSpans(payload.chunkId)
+  }
+
+  const selectSpanFromAnnotationMarker = (marker: AnnotationMarker) => {
+    let ownerChunkId = marker.chunkId
+    let spanMatch: TagSpan | undefined
+
+    if (marker.spanId) {
+      for (const [chunkId, spans] of Object.entries(tagSpansByChunkId.value)) {
+        const matched = spans.find((span) => span.id === marker.spanId)
+        if (matched) {
+          ownerChunkId = chunkId
+          spanMatch = matched
+          break
+        }
+      }
+    }
+
+    if (!spanMatch) {
+      spanMatch = (tagSpansByChunkId.value[marker.chunkId] || []).find(
+        (span) =>
+          span.start === marker.start &&
+          span.end === marker.end &&
+          span.tagId === marker.tagId
+      )
+    }
+
+    if (!spanMatch) return
+
+    globalSelection.value = {
+      chunkId: ownerChunkId,
+      start: spanMatch.start,
+      end: spanMatch.end,
+      editingId: spanMatch.id as string | undefined,
+      tagId: spanMatch.tagId,
+      spanType: spanMatch.type
+    }
   }
 
   const normalizeCrossChunkSelection = (
@@ -687,6 +727,7 @@ export function useTaggingPageState() {
     approveSelectedAutoSpan,
     declineSelectedAutoSpan,
     handleSelectionChange,
+    selectSpanFromAnnotationMarker,
     getChunkSelection,
     getDisplayedTagSpans,
     getTagsForCollection

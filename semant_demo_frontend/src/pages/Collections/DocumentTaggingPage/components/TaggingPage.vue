@@ -55,6 +55,7 @@
           <AnnotationTagRail
             :markers="annotationMarkers"
             :available-tags="availableTags"
+            @marker-click="selectSpanFromAnnotationMarker"
           />
         </div>
       </div>
@@ -96,6 +97,7 @@ const {
   approveSelectedAutoSpan,
   declineSelectedAutoSpan,
   handleSelectionChange,
+  selectSpanFromAnnotationMarker,
   getChunkSelection,
   getDisplayedTagSpans,
   getTagsForCollection
