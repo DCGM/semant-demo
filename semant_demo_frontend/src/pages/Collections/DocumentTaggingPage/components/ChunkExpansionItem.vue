@@ -138,3 +138,9 @@ const onToggleCollection = () => {
   emit('toggleCollection', props.chunkId, props.inUserCollection)
 }
 </script>
+
+<style scoped>
+:deep(.chunk-expansion-header) {
+  user-select: none;
+}
+</style>
