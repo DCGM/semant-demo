@@ -14,6 +14,8 @@
       :data-span-ids="seg.spanIds.length ? seg.spanIds.join(' ') : undefined"
       :style="getSegmentStyle(seg)"
       class="text-segment"
+      @mouseenter="handleSegmentMouseEnter(seg)"
+      @mouseleave="handleSegmentMouseLeave(seg)"
       @click="handleSegmentClick(seg)"
     >
       <span
@@ -124,6 +126,9 @@ const emit = defineEmits<{
 const currentSelection = ref<SelectionState | null>(null)
 const textContainer = ref<HTMLElement | null>(null)
 const draggingHandle = ref<'start' | 'end' | null>(null)
+const hoveredSpanIds = ref<string[]>([])
+const hoveredTagId = ref<string | null>(null)
+const hoveredSpanType = ref<TagSpan['type'] | null>(null)
 let justFinishedDrag = false
 
 watch(
@@ -520,30 +525,131 @@ const handleSegmentClick = (seg: RenderSegment) => {
   }
 }
 
+const handleSegmentMouseEnter = (seg: RenderSegment) => {
+  if (currentSelection.value?.editingId) {
+    hoveredSpanIds.value = []
+    hoveredTagId.value = null
+    hoveredSpanType.value = null
+    return
+  }
+
+  if (!seg.spanIds.length) {
+    hoveredSpanIds.value = []
+    hoveredTagId.value = null
+    hoveredSpanType.value = null
+    return
+  }
+
+  hoveredSpanIds.value = seg.spanIds
+
+  const hoveredTag = seg.tags.find((tag) =>
+    seg.spanIds.includes(tag.id as string)
+  )
+  hoveredTagId.value = hoveredTag?.tagId || seg.tags[0]?.tagId || null
+  hoveredSpanType.value = hoveredTag?.type || seg.tags[0]?.type || null
+}
+
+const handleSegmentMouseLeave = (seg: RenderSegment) => {
+  if (currentSelection.value?.editingId) {
+    hoveredSpanIds.value = []
+    hoveredTagId.value = null
+    hoveredSpanType.value = null
+    return
+  }
+
+  if (!seg.spanIds.length) return
+  hoveredSpanIds.value = []
+  hoveredTagId.value = null
+  hoveredSpanType.value = null
+}
+
 const getTagName = (tagId: string) => {
   const tag = props.availableTags.find((item) => item.tagUuid === tagId)
   return tag ? tag.tagName : 'Unknown Tag'
 }
 
 const getSegmentStyle = (seg: RenderSegment) => {
+  const hoverIsActive =
+    !currentSelection.value?.editingId && hoveredSpanIds.value.length > 0
+  const isTaggedSegment = seg.spanIds.length > 0
+  const isHoveredSpanSegment =
+    hoverIsActive &&
+    isTaggedSegment &&
+    seg.spanIds.some((spanId) => hoveredSpanIds.value.includes(spanId))
+  const isDifferentSpanWhileHovering =
+    hoverIsActive && isTaggedSegment && !isHoveredSpanSegment
+
+  const getHoverOpacityStyle = () => {
+    if (!hoverIsActive || !isTaggedSegment) return {}
+    return {
+      opacity: isHoveredSpanSegment ? '1' : '0.45'
+    }
+  }
+
+  const getHoveredColorStyle = () => {
+    if (!isHoveredSpanSegment || !hoveredTagId.value) return {}
+
+    const hoveredTag = props.availableTags.find(
+      (tag) => tag.tagUuid === hoveredTagId.value
+    )
+    const hoveredColor = hoveredTag?.tagColor || '#cccccc'
+
+    if (hoveredSpanType.value === SpanType.auto) {
+      return {
+        backgroundColor: `${hoveredColor}24`,
+        borderBottom: `2px dashed ${hoveredColor}`,
+        color: '#000'
+      }
+    }
+
+    return {
+      backgroundColor: `${hoveredColor}40`,
+      borderBottom: `2px solid ${hoveredColor}`,
+      color: '#000'
+    }
+  }
+
   if (seg.isSelected) {
     if (currentSelection.value?.tagId) {
       const draftTag = props.availableTags.find(
         (tag) => tag.tagUuid === currentSelection.value?.tagId
       )
       if (draftTag) {
-        return {
+        const selectedStyle = {
           backgroundColor: `${draftTag.tagColor}60`,
           borderBottom: `2px solid ${draftTag.tagColor}`,
           color: '#000'
         }
+        if (isDifferentSpanWhileHovering) {
+          return {
+            ...selectedStyle,
+            opacity: '0.45'
+          }
+        }
+        return {
+          ...selectedStyle,
+          ...getHoveredColorStyle(),
+          ...getHoverOpacityStyle()
+        }
+      }
+    }
+
+    const selectedStyle = {
+      backgroundColor: '#ffe082',
+      borderBottom: '2px solid #ffca28',
+      color: '#000'
+    }
+    if (isDifferentSpanWhileHovering) {
+      return {
+        ...selectedStyle,
+        opacity: '0.45'
       }
     }
 
     return {
-      backgroundColor: '#ffe082',
-      borderBottom: '2px solid #ffca28',
-      color: '#000'
+      ...selectedStyle,
+      ...getHoveredColorStyle(),
+      ...getHoverOpacityStyle()
     }
   }
 
@@ -554,17 +660,41 @@ const getSegmentStyle = (seg: RenderSegment) => {
     const color = tag ? tag.tagColor : '#cccccc'
 
     if (seg.tags[0].type === SpanType.auto) {
-      return {
+      const autoStyle = {
         backgroundColor: `${color}24`,
         borderBottom: `2px dashed ${color}`,
         cursor: 'pointer'
       }
+      if (isDifferentSpanWhileHovering) {
+        return {
+          ...autoStyle,
+          opacity: '0.45'
+        }
+      }
+
+      return {
+        ...autoStyle,
+        ...getHoveredColorStyle(),
+        ...getHoverOpacityStyle()
+      }
     }
 
-    return {
+    const taggedStyle = {
       backgroundColor: `${color}40`,
       borderBottom: `2px solid ${color}`,
       cursor: 'pointer'
+    }
+    if (isDifferentSpanWhileHovering) {
+      return {
+        ...taggedStyle,
+        opacity: '0.45'
+      }
+    }
+
+    return {
+      ...taggedStyle,
+      ...getHoveredColorStyle(),
+      ...getHoverOpacityStyle()
     }
   }
 
