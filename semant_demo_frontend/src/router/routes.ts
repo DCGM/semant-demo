@@ -53,12 +53,6 @@ const routes: RouteRecordRaw[] = [
             name: 'collectionMembers',
             path: 'members',
             component: () => import('pages/Collections/CollectionMembersPage.vue')
-          },
-          {
-            name: 'documentTagging',
-            path: 'documents/:documentId/tagging',
-            component: () => import('pages/Collections/DocumentTaggingPage/DocumentTaggingPage.vue'),
-            props: true
           }
         ]
       },
