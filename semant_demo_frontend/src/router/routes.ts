@@ -66,7 +66,7 @@ const routes: RouteRecordRaw[] = [
           {
             name: 'documentDetailV1',
             path: 'v1',
-            component: () => import('pages/Collections/DocumentDetailPageV1.vue'),
+            component: () => import('pages/Collections/xjuric31/DocumentDetailLayout.vue'),
             props: true
           },
           {
