@@ -125,6 +125,7 @@ const {
   deleteEditedTag,
   approveSelectedAutoSpan,
   declineSelectedAutoSpan,
+  startAutoAnnotationSuggestions,
   handleSelectionChange,
   selectSpanFromAnnotationMarker,
   startHoverFromAnnotationMarker,
@@ -150,8 +151,9 @@ const railLayoutTrigger = computed(() => {
   ].join('|')
 })
 
-const handleStartSuggestions = () => {
-  // Placeholder hook for future auto-annotation flow integration.
+const handleStartSuggestions = async (selectedTagIds: string[]) => {
+  await startAutoAnnotationSuggestions(selectedTagIds)
+  showAutoSuggestionsMenu.value = false
 }
 
 onMounted(async () => {

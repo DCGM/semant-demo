@@ -2,6 +2,7 @@ import { useApi } from 'src/composables/useApi'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
 import { ref } from 'vue'
 import { AvailableTag } from '../components/ChunkTagAnnotator.vue'
+import { Tag } from 'src/generated/api/models/Tag'
 
 export function useTagging() {
   const api = useApi().default
@@ -17,6 +18,7 @@ export function useTagging() {
   const tagSpans = ref<TagSpan[]>([])
   const isProcessing = ref(false)
   const availableTags = ref<AvailableTag[]>([])
+  const collectionTags = ref<Tag[]>([])
 
   const getDocumentDetail = async (
     documentId: Parameters<
@@ -164,6 +166,7 @@ export function useTagging() {
         await api.getCollectionTagsApiCollectionsCollectionIdTagsGet({
           collectionId
         })
+      collectionTags.value = response
       availableTags.value = response.map((tag) => ({
         tagUuid: tag.id,
         tagName: tag.name,
@@ -172,6 +175,7 @@ export function useTagging() {
       }))
     } catch (error) {
       console.error('Error fetching tags for collection:', error)
+      collectionTags.value = []
       availableTags.value = []
     } finally {
       isProcessing.value = false
@@ -223,12 +227,36 @@ export function useTagging() {
     }
   }
 
+  const suggestAnnotations = async ({
+    chunks,
+    tags
+  }: Parameters<
+    typeof api.proposeTagsApiProposeTagsPost
+  >[0]['autoAnnotationSuggestionRequest']) => {
+    try {
+      const response = await api.proposeTagsApiProposeTagsPost({
+        autoAnnotationSuggestionRequest: {
+          chunks,
+          tags
+        }
+      })
+      console.log('Auto-annotation suggestions fetched successfully:', response)
+      return response
+    } catch (error) {
+      console.error('Error fetching auto-annotation suggestions:', error)
+      return {
+        suggestions: []
+      }
+    }
+  }
+
   return {
     // State
     documentDetail,
     tagSpans,
     isProcessing,
     availableTags,
+    collectionTags,
 
     // Methods
     getDocumentDetail,
@@ -240,6 +268,7 @@ export function useTagging() {
     deleteTagSpan,
     getTagsForCollection,
     addChunkToCollection,
-    removeChunkFromCollection
+    removeChunkFromCollection,
+    suggestAnnotations
   }
 }

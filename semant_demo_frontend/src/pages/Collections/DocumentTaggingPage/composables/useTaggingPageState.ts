@@ -4,6 +4,10 @@ import { snapToWordBoundary } from '../utils'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
 import { SpanType } from 'src/generated/api/models/SpanType'
 
+type TagSpanWithConfidence = TagSpan & {
+  confidence?: number
+}
+
 interface SelectionState {
   start: number
   end: number
@@ -12,7 +16,7 @@ interface SelectionState {
   spanType?: TagSpan['type']
 }
 
-interface DisplayedTagSpan extends TagSpan {
+interface DisplayedTagSpan extends TagSpanWithConfidence {
   sourceStart?: number
   sourceEnd?: number
 }
@@ -82,6 +86,7 @@ export function useTaggingPageState() {
   const {
     documentDetail,
     availableTags,
+    collectionTags,
     isProcessing,
     getDocumentDetail,
     addChunkToCollection,
@@ -91,10 +96,11 @@ export function useTaggingPageState() {
     createTagSpan,
     updateTagSpan,
     deleteTagSpan,
+    suggestAnnotations,
     getTagsForCollection
   } = useTagging()
 
-  const tagSpansByChunkId = ref<Record<string, TagSpan[]>>({})
+  const tagSpansByChunkId = ref<Record<string, TagSpanWithConfidence[]>>({})
   const isPreloading = ref(false)
   const collectionActionChunkId = ref<string | null>(null)
   const currentDocumentId = ref<string | null>(null)
@@ -616,6 +622,53 @@ export function useTaggingPageState() {
     await updateSelectedAutoSpanType(SpanType.neg)
   }
 
+  const startAutoAnnotationSuggestions = async (selectedTagIds: string[]) => {
+    if (!selectedTagIds.length) return
+
+    const chunksForSuggestion =
+      documentDetail.value?.chunks.filter((chunk) => chunk.inUserCollection) ||
+      []
+    if (!chunksForSuggestion.length) return
+
+    const allowedChunkIds = new Set(chunksForSuggestion.map((chunk) => chunk.id))
+
+    const selectedTags = collectionTags.value.filter(
+      (tag) => !!tag.id && selectedTagIds.includes(tag.id)
+    )
+    if (!selectedTags.length) return
+
+    const response = await suggestAnnotations({
+      chunks: chunksForSuggestion,
+      tags: selectedTags.map((tag) => ({
+        tagName: tag.name,
+        tagShorthand: tag.shorthand,
+        tagColor: tag.color,
+        tagPictogram: tag.pictogram,
+        tagDefinition: tag.definition,
+        tagExamples: tag.examples,
+        collectionName: currentCollectionId.value || '',
+        tagUuid: tag.id
+      }))
+    })
+
+    const suggestedSpans = response.suggestions.filter((span) =>
+      allowedChunkIds.has(span.chunkId)
+    )
+
+    if (!suggestedSpans.length) return
+
+    const chunkIdsToMerge = [...new Set(suggestedSpans.map((s) => s.chunkId))]
+    const nextByChunk = { ...tagSpansByChunkId.value }
+
+    for (const chunkId of chunkIdsToMerge) {
+      const existing = nextByChunk[chunkId] || []
+      const incoming = suggestedSpans.filter((span) => span.chunkId === chunkId)
+      nextByChunk[chunkId] = [...existing, ...incoming]
+    }
+
+    tagSpansByChunkId.value = nextByChunk
+  }
+
   const deleteEditedTag = async () => {
     if (!globalSelection.value?.editingId) return
 
@@ -742,6 +795,7 @@ export function useTaggingPageState() {
     deleteEditedTag,
     approveSelectedAutoSpan,
     declineSelectedAutoSpan,
+    startAutoAnnotationSuggestions,
     handleSelectionChange,
     selectSpanFromAnnotationMarker,
     startHoverFromAnnotationMarker,
