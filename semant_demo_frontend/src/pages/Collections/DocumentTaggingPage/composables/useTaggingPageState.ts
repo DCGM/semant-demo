@@ -72,6 +72,12 @@ interface AnnotationMarker {
   tagId: string
 }
 
+interface HoveredSpanMarker {
+  spanId: string | null
+  tagId: string
+  spanType?: TagSpan['type'] | null
+}
+
 export function useTaggingPageState() {
   const {
     documentDetail,
@@ -94,6 +100,7 @@ export function useTaggingPageState() {
   const currentDocumentId = ref<string | null>(null)
   const currentCollectionId = ref<string | null>(null)
   const globalSelection = ref<GlobalSelection | null>(null)
+  const hoveredAnnotationMarker = ref<HoveredSpanMarker | null>(null)
   const useWordSnapping = ref(true)
 
   const pageLoading = computed(() => isProcessing.value || isPreloading.value)
@@ -399,6 +406,14 @@ export function useTaggingPageState() {
       tagId: spanMatch.tagId,
       spanType: spanMatch.type
     }
+  }
+
+  const startHoverFromAnnotationMarker = (marker: HoveredSpanMarker) => {
+    hoveredAnnotationMarker.value = marker
+  }
+
+  const stopHoverFromAnnotationMarker = () => {
+    hoveredAnnotationMarker.value = null
   }
 
   const normalizeCrossChunkSelection = (
@@ -711,6 +726,7 @@ export function useTaggingPageState() {
   return {
     chunks,
     annotationMarkers,
+    hoveredAnnotationMarker,
     availableTags,
     pageLoading,
     globalSelection,
@@ -728,6 +744,8 @@ export function useTaggingPageState() {
     declineSelectedAutoSpan,
     handleSelectionChange,
     selectSpanFromAnnotationMarker,
+    startHoverFromAnnotationMarker,
+    stopHoverFromAnnotationMarker,
     getChunkSelection,
     getDisplayedTagSpans,
     getTagsForCollection

@@ -22,9 +22,12 @@
           :selection-start-boundary="globalSelectionBoundaries.startBoundary"
           :selection-end-boundary="globalSelectionBoundaries.endBoundary"
           :editing-span-id="globalSelection?.editingId || null"
+          :hovered-annotation-marker="hoveredAnnotationMarker"
           :is-collection-updating="isChunkCollectionUpdating(chunk.chunkId)"
           @selection-change="handleSelectionChange"
           @toggle-collection="toggleChunkInCollection"
+          @span-hover-start="startHoverFromAnnotationMarker"
+          @span-hover-end="stopHoverFromAnnotationMarker"
         />
 
         <q-card v-if="!chunks.length" class="bg-grey-2">
@@ -55,7 +58,10 @@
           <AnnotationTagRail
             :markers="annotationMarkers"
             :available-tags="availableTags"
+            :hovered-marker="hoveredAnnotationMarker"
             @marker-click="selectSpanFromAnnotationMarker"
+            @marker-hover-start="startHoverFromAnnotationMarker"
+            @marker-hover-end="stopHoverFromAnnotationMarker"
           />
         </div>
       </div>
@@ -81,6 +87,7 @@ const props = defineProps<Props>()
 const {
   chunks,
   annotationMarkers,
+  hoveredAnnotationMarker,
   pageLoading,
   globalSelection,
   useWordSnapping,
@@ -98,6 +105,8 @@ const {
   declineSelectedAutoSpan,
   handleSelectionChange,
   selectSpanFromAnnotationMarker,
+  startHoverFromAnnotationMarker,
+  stopHoverFromAnnotationMarker,
   getChunkSelection,
   getDisplayedTagSpans,
   getTagsForCollection

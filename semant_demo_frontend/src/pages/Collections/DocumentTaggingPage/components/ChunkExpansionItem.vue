@@ -67,7 +67,10 @@
           :selection-start-boundary="selectionStartBoundary"
           :selection-end-boundary="selectionEndBoundary"
           :editing-span-id="editingSpanId"
+          :external-hovered-marker="hoveredAnnotationMarker"
           @selection-change="onSelectionChange"
+          @span-hover-start="onSpanHoverStart"
+          @span-hover-end="onSpanHoverEnd"
         />
       </q-card-section>
     </q-expansion-item>
@@ -101,6 +104,12 @@ interface SelectionPayload {
   dragHandle?: 'start' | 'end'
 }
 
+interface HoveredSpanMarker {
+  spanId: string | null
+  tagId: string
+  spanType?: TagSpan['type'] | null
+}
+
 interface Props {
   chunkId: string
   chunkText: string
@@ -115,6 +124,7 @@ interface Props {
   selectionStartBoundary: SelectionBoundary | null
   selectionEndBoundary: SelectionBoundary | null
   editingSpanId: string | null
+  hoveredAnnotationMarker: HoveredSpanMarker | null
   isCollectionUpdating: boolean
 }
 
@@ -123,6 +133,8 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   selectionChange: [payload: SelectionPayload]
   toggleCollection: [chunkId: string, inUserCollection: boolean]
+  spanHoverStart: [marker: HoveredSpanMarker]
+  spanHoverEnd: []
 }>()
 
 const chunkPreview = computed(() => {
@@ -139,6 +151,14 @@ const onSelectionChange = (payload: SelectionPayload) => {
 
 const onToggleCollection = () => {
   emit('toggleCollection', props.chunkId, props.inUserCollection)
+}
+
+const onSpanHoverStart = (marker: HoveredSpanMarker) => {
+  emit('spanHoverStart', marker)
+}
+
+const onSpanHoverEnd = () => {
+  emit('spanHoverEnd')
 }
 </script>
 

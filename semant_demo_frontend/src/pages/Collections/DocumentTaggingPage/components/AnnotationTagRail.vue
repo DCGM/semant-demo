@@ -8,7 +8,8 @@
         :style="{
           top: `${marker.top}px`,
           left: `${marker.left}px`,
-          minHeight: `${marker.height}px`
+          minHeight: `${marker.height}px`,
+          opacity: `${marker.opacity}`
         }"
         role="button"
         tabindex="0"
@@ -19,6 +20,8 @@
         <span
           class="rail-color"
           :style="{ backgroundColor: marker.tagColor, height: `${marker.height}px` }"
+          @mouseenter="emit('markerHoverStart', marker.rawMarker)"
+          @mouseleave="emit('markerHoverEnd')"
         />
         <span class="rail-label">{{ marker.tagName }}</span>
       </div>
@@ -44,12 +47,19 @@ interface AnnotationMarker {
 interface Props {
   markers: AnnotationMarker[]
   availableTags: AvailableTag[]
+  hoveredMarker?: {
+    spanId: string | null
+    tagId: string
+    spanType?: SpanType | null
+  } | null
 }
 
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
   markerClick: [marker: AnnotationMarker]
+  markerHoverStart: [marker: AnnotationMarker]
+  markerHoverEnd: []
 }>()
 
 const railRef = ref<HTMLElement | null>(null)
@@ -66,11 +76,16 @@ const tagsById = computed(() => {
 })
 
 const renderedMarkers = computed(() => {
+  const hoveredSpanId = props.hoveredMarker?.spanId || null
+  const shouldDimOthers = hoveredSpanId !== null
+
   const baseMarkers = props.markers
     .map((marker) => {
       const tag = tagsById.value[marker.tagId]
       const position = markerPositions.value[marker.markerId]
       if (!tag || position === undefined) return null
+
+      const isActive = !!hoveredSpanId && marker.spanId === hoveredSpanId
 
       return {
         rawMarker: marker,
@@ -78,7 +93,8 @@ const renderedMarkers = computed(() => {
         top: position.top,
         height: position.height,
         tagName: tag.tagName,
-        tagColor: tag.tagColor
+        tagColor: tag.tagColor,
+        opacity: shouldDimOthers && !isActive ? 0.35 : 1
       }
     })
     .filter((marker): marker is NonNullable<typeof marker> => marker !== null)
@@ -215,9 +231,19 @@ onBeforeUnmount(() => {
 }
 
 .rail-color {
-  width: 8px;
-  min-width: 8px;
+  position: relative;
+  width: 10px;
+  min-width: 10px;
   border-radius: 8px;
+}
+
+.rail-color::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  bottom: -6px;
+  left: -8px;
 }
 
 .rail-label {
