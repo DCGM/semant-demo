@@ -64,10 +64,18 @@ const routes: RouteRecordRaw[] = [
         redirect: { name: 'documentDetailV1' },
         children: [
           {
-            name: 'documentDetailV1',
+            name: 'documentDetailLayoutV1',
             path: 'v1',
             component: () => import('pages/Collections/xjuric31/DocumentDetailLayout.vue'),
-            props: true
+            props: true,
+            children: [
+              {
+                name: 'documentDetailV1',
+                path: '',
+                component: () => import('pages/Collections/xjuric31/DocumentDetailPage.vue'),
+                props: true
+              }
+            ]
           },
           {
             name: 'documentDetailV2',
