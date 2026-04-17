@@ -6,13 +6,13 @@
     @mouseup="handleMouseUp"
   >
     <span
-      v-for="seg in renderedSegments"
+      v-for="(seg, idx) in renderedSegments"
       :key="`${seg.start}-${seg.end}`"
       :data-chunk-id="chunkId"
       :data-start="seg.start"
       :data-end="seg.end"
       :data-span-ids="seg.spanIds.length ? seg.spanIds.join(' ') : undefined"
-      :style="getSegmentStyle(seg)"
+      :style="getSegmentStyle(seg, idx)"
       class="text-segment"
       @mouseenter="handleSegmentMouseEnter(seg)"
       @mouseleave="handleSegmentMouseLeave(seg)"
@@ -501,8 +501,7 @@ const stopDrag = () => {
 }
 
 const handleSegmentClick = (seg: RenderSegment) => {
-  if (currentSelection.value !== null || props.isProcessing || justFinishedDrag)
-    return
+  if (props.isProcessing || justFinishedDrag) return
 
   if (seg.tags.length > 0) {
     clearLocalHoverMarker()
@@ -597,7 +596,8 @@ const getTagColorStyle = (
   if (selected) {
     return {
       backgroundColor: `${color}60`,
-      borderBottom: `2px solid ${color}`,
+      borderColor: color,
+      borderStyle: 'solid',
       color: '#000'
     }
   }
@@ -605,14 +605,16 @@ const getTagColorStyle = (
   if (spanType === SpanType.auto) {
     return {
       backgroundColor: `${color}24`,
-      borderBottom: `2px dashed ${color}`,
+      borderColor: color,
+      borderStyle: 'dashed',
       cursor: 'pointer'
     }
   }
 
   return {
     backgroundColor: `${color}40`,
-    borderBottom: `2px solid ${color}`,
+    borderColor: color,
+    borderStyle: 'solid',
     cursor: 'pointer'
   }
 }
@@ -656,7 +658,34 @@ const applyHoverVisualState = (
   }
 }
 
-const getSegmentStyle = (seg: RenderSegment) => {
+const segmentHasOutline = (seg: RenderSegment) => {
+  return seg.isSelected || seg.tags.length > 0
+}
+
+const mergeOutlineByNeighbors = (
+  seg: RenderSegment,
+  index: number,
+  style: Record<string, string | undefined>
+) => {
+  if (!style.borderColor || !style.borderStyle) {
+    return style
+  }
+
+  const prevSeg = renderedSegments.value[index - 1]
+  const nextSeg = renderedSegments.value[index + 1]
+  const prevHasOutline = !!prevSeg && segmentHasOutline(prevSeg)
+  const nextHasOutline = !!nextSeg && segmentHasOutline(nextSeg)
+
+  return {
+    ...style,
+    borderTopWidth: '2px',
+    borderBottomWidth: '2px',
+    borderLeftWidth: prevHasOutline ? '0px' : '2px',
+    borderRightWidth: nextHasOutline ? '0px' : '2px'
+  }
+}
+
+const getSegmentStyle = (seg: RenderSegment, index: number) => {
   if (seg.isSelected) {
     if (currentSelection.value?.tagId) {
       const selectedStyle = getTagColorStyle(
@@ -664,21 +693,25 @@ const getSegmentStyle = (seg: RenderSegment) => {
         currentSelection.value.spanType,
         true
       )
-      return applyHoverVisualState(seg, selectedStyle)
+      const hoveredStyle = applyHoverVisualState(seg, selectedStyle)
+      return mergeOutlineByNeighbors(seg, index, hoveredStyle)
     }
 
     const selectedStyle = {
       backgroundColor: '#ffe082',
-      borderBottom: '2px solid #ffca28',
+      borderColor: '#ffca28',
+      borderStyle: 'solid',
       color: '#000'
     }
 
-    return applyHoverVisualState(seg, selectedStyle)
+    const hoveredStyle = applyHoverVisualState(seg, selectedStyle)
+    return mergeOutlineByNeighbors(seg, index, hoveredStyle)
   }
 
   if (seg.tags.length > 0) {
     const taggedStyle = getTagColorStyle(seg.tags[0].tagId, seg.tags[0].type)
-    return applyHoverVisualState(seg, taggedStyle)
+    const hoveredStyle = applyHoverVisualState(seg, taggedStyle)
+    return mergeOutlineByNeighbors(seg, index, hoveredStyle)
   }
 
   return {}
@@ -710,16 +743,23 @@ const getHandleStyle = () => {
 .text-segment {
   transition:
     background-color 0.15s,
-    border-bottom 0.15s;
-  border-bottom: 2px solid transparent;
-  border-radius: 2px;
+    border-color 0.15s,
+    outline-color 0.15s;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 0;
+  border-radius: 0;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 4px 0px;
+  margin: -3px 0;
 }
 
 .selection-handle {
   display: inline-block;
   position: relative;
   width: 4px;
-  height: 1.1em;
+  height: 24px;
   background-color: var(--handle-color);
   cursor: ew-resize;
   vertical-align: text-bottom;
@@ -741,7 +781,7 @@ const getHandleStyle = () => {
 .handle-end::after {
   content: '';
   position: absolute;
-  bottom: -6px;
+  bottom: -9px;
   left: -3px;
   width: 10px;
   height: 10px;

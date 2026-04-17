@@ -2,7 +2,7 @@
   <q-card class="suggestions-card bg-grey-2 q-mt-md">
     <q-card-section class="row items-center justify-between">
       <div class="text-subtitle1 text-weight-bold">
-        Automatic Annotation Suggestions
+        Choose tags to be annotated
       </div>
     </q-card-section>
 
