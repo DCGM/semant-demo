@@ -47,6 +47,7 @@ interface AnnotationMarker {
 interface Props {
   markers: AnnotationMarker[]
   availableTags: AvailableTag[]
+  layoutTrigger?: string | number
   hoveredMarker?: {
     spanId: string | null
     tagId: string
@@ -184,7 +185,7 @@ const syncMarkerPositions = () => {
 }
 
 watch(
-  () => [props.markers, props.availableTags],
+  () => [props.markers, props.availableTags, props.layoutTrigger],
   async () => {
     await nextTick()
     schedulePositionSync()

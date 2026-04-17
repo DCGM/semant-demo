@@ -55,9 +55,29 @@
             />
           </div>
 
+          <div class="floating-suggestions-panel">
+            <q-btn
+              v-if="!showAutoSuggestionsMenu"
+              color="primary"
+              class="full-width"
+              label="Automaticky navrhnout anotace"
+              no-caps
+              unelevated
+              @click="showAutoSuggestionsMenu = true"
+            />
+
+            <AutoAnnotationSuggestionsMenu
+              v-else
+              :available-tags="availableTags"
+              @start-suggestions="handleStartSuggestions"
+              @cancel-suggestions="showAutoSuggestionsMenu = false"
+            />
+          </div>
+
           <AnnotationTagRail
             :markers="annotationMarkers"
             :available-tags="availableTags"
+            :layout-trigger="railLayoutTrigger"
             :hovered-marker="hoveredAnnotationMarker"
             @marker-click="selectSpanFromAnnotationMarker"
             @marker-hover-start="startHoverFromAnnotationMarker"
@@ -70,10 +90,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { SpanType } from 'src/generated/api/models/SpanType'
 import ChunkExpansionItem from './ChunkExpansionItem.vue'
 import AnnotationTagRail from './AnnotationTagRail.vue'
+import AutoAnnotationSuggestionsMenu from './AutoAnnotationSuggestionsMenu.vue'
 import TagOptionsMenu from './TagOptionsMenu.vue'
 import { useTaggingPageState } from '../composables/useTaggingPageState'
 
@@ -83,6 +104,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const showAutoSuggestionsMenu = ref(false)
 
 const {
   chunks,
@@ -119,6 +141,19 @@ const isAutoSelection = computed(() => {
   )
 })
 
+const railLayoutTrigger = computed(() => {
+  return [
+    !!globalSelection.value,
+    globalSelection.value?.editingId || '',
+    isAutoSelection.value,
+    showAutoSuggestionsMenu.value
+  ].join('|')
+})
+
+const handleStartSuggestions = () => {
+  // Placeholder hook for future auto-annotation flow integration.
+}
+
 onMounted(async () => {
   await loadChunks(props.documentId, props.collectionId)
   await getTagsForCollection(props.collectionId)
@@ -145,10 +180,30 @@ onMounted(async () => {
   background: white;
 }
 
+.floating-suggestions-panel {
+  position: sticky;
+  z-index: 29;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* height: -webkit-fill-available; */
+  /* background: white; */
+}
+
+.floating-suggestions-panel :deep(.suggestions-card) {
+  margin-top: 0;
+}
+
 @media (max-width: 1023px) {
   .floating-tag-menu {
     position: static;
     width: 100%;
+    margin-top: 12px;
+  }
+
+  .floating-suggestions-panel {
+    position: static;
+    padding: 0;
     margin-top: 12px;
   }
 }
