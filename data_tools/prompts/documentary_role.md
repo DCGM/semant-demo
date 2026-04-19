@@ -3,14 +3,13 @@ You are annotating digitized library texts for filtering in a search interface o
 
 # Task
 - Characterize the documentary role of `Text to be classified`.
-- Choose only from the possible classes below.
+- Choose only from the classes below.
 - Choose one primary class that best describes the dominant documentary sphere or institutional role of the classified passage.
-- If multiple classes apply, prefer the most specific class that describes the dominant role of the passage.
 - Optionally choose a second class only if a second documentary role is clearly and substantially present in the classified passage.
 - Use the provided `Context` only for better understanding, but assign classes relevant only to `Text to be classified`.
 - Focus on what kind of documentary or institutional sphere the passage belongs to, not on layout, communicative mode, or topic.
 
-# Possible classes
+# Classes
 - `journalistic` — passage belongs to news, periodical, or press communication
 - `scholarly` — passage belongs to research, academic, scientific, or learned discourse
 - `literary` — passage belongs to imaginative, poetic, dramatic, or literary-aesthetic writing
@@ -40,8 +39,8 @@ You are annotating digitized library texts for filtering in a search interface o
 # Output
 Write only a JSON list of one or two class labels without any additional text or explanation.
 
-Output example 1: ["legal"]
-Output example 2: ["administrative", "legal"]
+- Output example 1: ["legal"]
+- Output example 2: ["administrative", "legal"]
 
 # Previous context from the document is:
 {{prefix_text}}
