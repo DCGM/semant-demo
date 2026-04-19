@@ -5,7 +5,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter, QueryReference
+from weaviate.classes.query import Filter, QueryReference, Sort
 from weaviate.exceptions import (
     WeaviateConnectionError,
     WeaviateTimeoutError,
@@ -27,6 +27,7 @@ from semant_demo.weaviate_exceptions import (
 from semant_demo.schema.collections import Collection, CollectionStats, PatchCollection, PostCollection
 from semant_demo.schema.documents import Document
 from semant_demo.schema.tags import Tag
+from semant_demo.schema.chunks import Chunk
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
@@ -305,6 +306,53 @@ class UserCollection():
 
     async def read_all_chunks(self, collectionId: str):
         return await self.helpers.fetch_chunks_by_collection(collectionId)
+    
+    async def read_all_chunks_by_document(self, document_id: str, collection_id: str):
+        """
+        Retrieves all chunks from a document with given id, that also belong to collection with given id.
+        """
+        
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
+        filters = (
+            Filter.by_ref("document").by_id().equal(document_id)
+            & Filter.by_ref("userCollection").by_id().equal(collection_id)
+        )
+        offset = 0
+        page_size = 100
+        
+        chunks = []
+        while True:
+            response = await chunks_collection.query.fetch_objects(
+                filters=filters,
+                limit=page_size,
+                offset=offset,
+                sort=Sort.by_property("order", ascending=True),
+                return_references=[QueryReference(link_on="document")]
+            )
+
+            if not response.objects:
+                break
+
+            for obj in response.objects:
+                props = obj.properties
+                chunks.append(Chunk(
+                    id=obj.uuid,
+                    text=props['text'],
+                    order=props['order'],
+                    title=props['title'],
+                    end_paragraph=props['end_paragraph'],
+                    start_page_id=props['start_page_id'],
+                    from_page=props['from_page'],
+                    to_page=props['to_page'],
+                ))
+
+            if len(response.objects) < page_size:
+                break
+
+            offset += page_size
+        return chunks
+        
 
     async def read_all_documents(self, collection_id: str) -> list[Document]:
         """

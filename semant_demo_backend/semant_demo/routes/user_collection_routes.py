@@ -28,6 +28,7 @@ from semant_demo.schema.tags import Tag
 
 # import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_search
+from semant_demo.schema.chunks import Chunk
 
 logging.basicConfig(level=logging.INFO)
 
@@ -161,4 +162,12 @@ async def get_collection_tags(collection_id: str, searcher: WeaviateAbstraction 
     Returns tags which belong to collection given by id
     """
     response = await searcher.userCollection.read_all_tags(collection_id)
+    return response
+
+@exp_router.get("/api/collections/{collection_id}/documents/{document_id}", response_model=list[Chunk], response_model_exclude_none=True)
+async def get_collection_document_chunks(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Chunk]:
+    """
+    Returns chunks which belong to document and collection given by id
+    """
+    response = await searcher.userCollection.read_all_chunks_by_document(document_id, collection_id)
     return response
