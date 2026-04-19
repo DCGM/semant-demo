@@ -500,6 +500,11 @@ watch(
   () => nextTick(recalculateGutter)
 )
 
+watch(
+  () => annotations.selection.value?.tagId,
+  (tagId) => tagNav.setActiveTagId(tagId ?? null)
+)
+
 // ── Dismiss on click-outside / Escape ──
 
 const onClickOutside = (e: MouseEvent) => {

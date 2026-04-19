@@ -88,6 +88,7 @@
                 :key="tag.id"
                 class="tag-card"
                 :class="{
+                  'is-active': tagNav.activeTagId.value === tag.id,
                   'is-hidden': !tagNav.isTagVisible(tag.id),
                   'is-dragging': dragTagId === tag.id,
                   'is-drop-before': dropTargetId === tag.id && dragTagId !== tag.id && dropHalf === 'before',
@@ -562,6 +563,11 @@ onBeforeUnmount(() => {
 
 .visibility-btn.is-off {
   color: #cbd5e1;
+}
+
+.tag-card.is-active {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
 }
 
 .tag-card.is-hidden {

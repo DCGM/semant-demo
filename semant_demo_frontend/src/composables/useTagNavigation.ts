@@ -13,6 +13,13 @@ const currentIndex = ref<Record<string, number>>({})
 let scrollCallback: ((item: TagNavItem) => void) | null = null
 let highlightCallback: ((spanId: string | null) => void) | null = null
 
+// ── Active tag (selection/editing) ──
+const activeTagId = ref<string | null>(null)
+
+function setActiveTagId(tagId: string | null) {
+  activeTagId.value = tagId
+}
+
 // ── Tag visibility ──
 const hiddenTagIds = reactive(new Set<string>())
 
@@ -94,6 +101,8 @@ export function useTagNavigation() {
   return {
     groups,
     currentIndex,
+    activeTagId,
+    setActiveTagId,
     hiddenTagIds,
     spanCount,
     navIndex,
