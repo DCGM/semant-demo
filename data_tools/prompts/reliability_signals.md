@@ -39,8 +39,8 @@ You are annotating digitized library texts for filtering in a search interface o
 # Output
 Write only a JSON list of one or two class labels without any additional text or explanation.
 
-Output example 1: ["procedurally_documented"]
-Output example 2: ["source_attributed", "speculative_or_uncertain"]
+- Output example 1: ["procedurally_documented"]
+- Output example 2: ["source_attributed", "speculative_or_uncertain"]
 
 # Previous context from the document is:
 {{prefix_text}}
