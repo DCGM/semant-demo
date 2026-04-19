@@ -3,15 +3,14 @@ You are annotating digitized library texts for filtering in a search interface o
 
 # Task
 - Characterize the reliability signals of `Text to be classified`.
-- Choose only from the possible classes below.
+- Choose only from the classes below.
 - Choose one primary class that best describes the dominant evidential or reliability-related signal present in the classified passage.
-- If multiple classes apply, prefer the most specific class that describes the dominant signal.
 - Optionally choose a second class only if a second signal is clearly and substantially present in the classified passage.
 - Use the provided `Context` only for better understanding, but assign classes relevant only to `Text to be classified`.
 - Focus on signals visible in the passage, such as evidence, sourcing, certainty, documentation, speculation, or advocacy.
 - Do not judge whether the passage is actually true or false. Classify only the reliability-related signals expressed in the passage itself.
 
-# Possible classes
+# Classes
 - `evidence_based` — supports claims with cited facts, sources, records, observations, data, or explicit evidence
 - `source_attributed` — attributes information to identifiable sources, witnesses, authorities, or documents
 - `first_hand_account` — presents information as directly observed or personally experienced
