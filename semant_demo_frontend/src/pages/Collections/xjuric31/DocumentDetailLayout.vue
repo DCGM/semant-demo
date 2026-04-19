@@ -84,10 +84,21 @@
             </div>
             <div v-else class="tags-list">
               <div
-                v-for="tag in tags"
+                v-for="tag in sortedTags"
                 :key="tag.id"
                 class="tag-card"
-                :class="{ 'is-hidden': !tagNav.isTagVisible(tag.id) }"
+                :class="{
+                  'is-hidden': !tagNav.isTagVisible(tag.id),
+                  'is-dragging': dragTagId === tag.id,
+                  'is-drop-before': dropTargetId === tag.id && dragTagId !== tag.id && dropHalf === 'before',
+                  'is-drop-after': dropTargetId === tag.id && dragTagId !== tag.id && dropHalf === 'after'
+                }"
+                draggable="true"
+                @dragstart="onDragStart(tag.id)"
+                @dragover="onDragOver($event, tag.id)"
+                @dragleave="onDragLeave(tag.id)"
+                @drop.prevent="onDrop(tag.id)"
+                @dragend="onDragEnd"
               >
                 <div class="tag-card-header">
                   <q-btn
@@ -217,6 +228,81 @@ const { activeCollection, loadCollection } = useCollections()
 const { tags, loading: tagsLoading, loadTagsByCollection, createTag, updateTag } = useTags()
 const { openTagsDialog } = useTagsDialog()
 const tagNav = useTagNavigation()
+
+// ── Tag drag-reorder ──
+const tagOrder = ref<string[]>([])
+const dragTagId = ref<string | null>(null)
+const dropTargetId = ref<string | null>(null)
+const dropHalf = ref<'before' | 'after'>('before')
+
+const sortedTags = computed(() => {
+  if (!tagOrder.value.length) return tags.value
+  const orderMap = new Map(tagOrder.value.map((id, i) => [id, i]))
+  return [...tags.value].sort((a, b) => {
+    const ai = orderMap.get(a.id) ?? Infinity
+    const bi = orderMap.get(b.id) ?? Infinity
+    return ai - bi
+  })
+})
+
+// Sync tagOrder when tags change (new tags appended at end)
+watch(tags, (newTags) => {
+  const existing = new Set(tagOrder.value)
+  const fresh = newTags.map(t => t.id).filter(id => !existing.has(id))
+  if (!tagOrder.value.length) {
+    tagOrder.value = newTags.map(t => t.id)
+  } else if (fresh.length) {
+    tagOrder.value = [...tagOrder.value.filter(id => newTags.some(t => t.id === id)), ...fresh]
+  }
+})
+
+function onDragStart(tagId: string) {
+  dragTagId.value = tagId
+}
+
+function onDragOver(e: DragEvent, tagId: string) {
+  e.preventDefault()
+  dropTargetId.value = tagId
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  dropHalf.value = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+}
+
+function onDragLeave(tagId: string) {
+  if (dropTargetId.value === tagId) dropTargetId.value = null
+}
+
+function onDrop(targetTagId: string) {
+  if (!dragTagId.value || dragTagId.value === targetTagId) {
+    dragTagId.value = null
+    dropTargetId.value = null
+    return
+  }
+
+  const order = [...tagOrder.value]
+  const fromIdx = order.indexOf(dragTagId.value)
+  let toIdx = order.indexOf(targetTagId)
+  if (fromIdx === -1 || toIdx === -1) return
+
+  order.splice(fromIdx, 1)
+  // Adjust: if dropped on bottom half, insert after target
+  if (dropHalf.value === 'after') {
+    // After removing source, target may have shifted
+    toIdx = order.indexOf(targetTagId)
+    order.splice(toIdx + 1, 0, dragTagId.value)
+  } else {
+    toIdx = order.indexOf(targetTagId)
+    order.splice(toIdx, 0, dragTagId.value)
+  }
+  tagOrder.value = order
+
+  dragTagId.value = null
+  dropTargetId.value = null
+}
+
+function onDragEnd() {
+  dragTagId.value = null
+  dropTargetId.value = null
+}
 
 const handleCreateTag = () => {
   openTagsDialog({ dialogType: 'CREATE' }).onOk(async (tagData: PostTag) => {
@@ -420,6 +506,12 @@ onBeforeUnmount(() => {
   background: rgba(15, 23, 42, 0.03);
   border: 1px solid rgba(15, 23, 42, 0.06);
   min-height: 80px;
+  cursor: grab;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.tag-card:active {
+  cursor: grabbing;
 }
 
 .tag-card-header {
@@ -474,6 +566,20 @@ onBeforeUnmount(() => {
 
 .tag-card.is-hidden {
   opacity: 0.45;
+}
+
+.tag-card.is-dragging {
+  opacity: 0.4;
+}
+
+.tag-card.is-drop-before {
+  border-top: 2px solid #3b82f6;
+  margin-top: -1px;
+}
+
+.tag-card.is-drop-after {
+  border-bottom: 2px solid #3b82f6;
+  margin-bottom: -1px;
 }
 
 .edit-tag-btn {
