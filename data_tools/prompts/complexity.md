@@ -3,11 +3,11 @@ You are annotating digitized library texts for filtering in a search interface o
 
 # Task - reading complexity
 - Characterize the reading complexity of `Text to be classified`.
-- Choose one class from the possible classes below that best describes how difficult the passage is for a competent present-day reader to understand.
+- Choose one class from the list of classes below that best describes how difficult the passage is for a competent present-day reader to understand.
 - Use the provided `Context` only for better understanding, but assign the class relevant only to `Text to be classified`.
 - Judge complexity based on the passage itself, not on assumed prestige, genre, or topic alone.
 
-# Possible classes
+# Classes
 - `very_easy` — very simple vocabulary and syntax, explicit meaning, minimal background knowledge required
 - `easy` — generally accessible language and structure, low conceptual density, and limited specialized terminology
 - `moderate` — standard educated-reader difficulty, with some abstraction, nontrivial structure, or moderately specialized vocabulary
