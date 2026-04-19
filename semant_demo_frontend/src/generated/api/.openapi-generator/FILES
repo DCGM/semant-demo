@@ -9,6 +9,7 @@ docs/ApproveTagResponse.md
 docs/AuthApi.md
 docs/BearerResponse.md
 docs/CancelTaskResponse.md
+docs/Chunk.md
 docs/Chunk2CollectionReq.md
 docs/Collection.md
 docs/CollectionChunks.md
@@ -84,6 +85,7 @@ models/ApproveTagReq.ts
 models/ApproveTagResponse.ts
 models/BearerResponse.ts
 models/CancelTaskResponse.ts
+models/Chunk.ts
 models/Chunk2CollectionReq.ts
 models/Collection.ts
 models/CollectionChunks.ts

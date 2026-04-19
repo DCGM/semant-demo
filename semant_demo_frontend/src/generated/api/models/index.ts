@@ -6,6 +6,7 @@ export * from './ApproveTagReq';
 export * from './ApproveTagResponse';
 export * from './BearerResponse';
 export * from './CancelTaskResponse';
+export * from './Chunk';
 export * from './Chunk2CollectionReq';
 export * from './Collection';
 export * from './CollectionChunks';

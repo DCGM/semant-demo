@@ -19,6 +19,7 @@ import type {
   ApproveTagReq,
   ApproveTagResponse,
   CancelTaskResponse,
+  Chunk,
   Chunk2CollectionReq,
   Collection,
   CollectionStats,
@@ -66,6 +67,8 @@ import {
     ApproveTagResponseToJSON,
     CancelTaskResponseFromJSON,
     CancelTaskResponseToJSON,
+    ChunkFromJSON,
+    ChunkToJSON,
     Chunk2CollectionReqFromJSON,
     Chunk2CollectionReqToJSON,
     CollectionFromJSON,
@@ -222,6 +225,11 @@ export interface FilterChunksByTagsApiTagsFilterPostRequest {
 
 export interface GetCollectionChunksApiUserCollectionChunksGetRequest {
     collectionId: string;
+}
+
+export interface GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest {
+    collectionId: string;
+    documentId: string;
 }
 
 export interface GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest {
@@ -786,6 +794,32 @@ export interface DefaultApiInterface {
      * Get Collection Chunks
      */
     getCollectionChunksApiUserCollectionChunksGet(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse>;
+
+    /**
+     * Creates request options for getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet without sending the request
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequestOpts(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns chunks which belong to document and collection given by id
+     * @summary Get Collection Document Chunks
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRaw(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Chunk>>>;
+
+    /**
+     * Returns chunks which belong to document and collection given by id
+     * Get Collection Document Chunks
+     */
+    getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Chunk>>;
 
     /**
      * Creates request options for getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet without sending the request
@@ -2355,6 +2389,61 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getCollectionChunksApiUserCollectionChunksGet(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetCollectionChunksResponse> {
         const response = await this.getCollectionChunksApiUserCollectionChunksGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet without sending the request
+     */
+    async getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequestOpts(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet().'
+            );
+        }
+
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/collections/{collection_id}/documents/{document_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns chunks which belong to document and collection given by id
+     * Get Collection Document Chunks
+     */
+    async getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRaw(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Chunk>>> {
+        const requestOptions = await this.getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(ChunkFromJSON));
+    }
+
+    /**
+     * Returns chunks which belong to document and collection given by id
+     * Get Collection Document Chunks
+     */
+    async getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Chunk>> {
+        const response = await this.getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
