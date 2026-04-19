@@ -3,25 +3,24 @@ You are annotating digitized library texts for filtering in a search interface o
 
 # Task
 - Characterize the register/style of `Text to be classified`.
-- Choose only from the possible classes below.
+- Choose only from the classes below.
 - Choose one primary class that best describes the dominant register/style of the classified passage.
-- If multiple classes apply, prefer the most specific class that describes how the passage is mainly written.
 - Optionally choose a second class only if a second register/style is clearly and substantially present in the classified passage.
 - Use the provided `Context` only for better understanding, but assign classes relevant only to `Text to be classified`.
 - Focus on how the passage is written linguistically and stylistically, not on layout, topic, communicative mode, or documentary role.
 
-# Possible classes
-- `formal` — elevated, conventionally polished, institutionally appropriate language
-- `neutral` — relatively unmarked standard prose without strong stylistic coloration
-- `informal` — conversational, familiar, colloquial, or socially relaxed language
-- `bureaucratic` — formulaic, procedural, impersonal, office-like, or administrative style
-- `scholarly` — concept-dense, precise, analytic, citation-oriented, or research-like style
-- `journalistic` — news-like, report-oriented, concise, public-information style
-- `didactic` — explanatory, teaching-oriented, learner-guiding style
-- `devotional` — prayerful, reverential, liturgical, or spiritually oriented style
-- `literary` — aesthetically marked, figurative, rhythmically or rhetorically shaped language
-- `promotional` — persuasive, attention-seeking, selling, or publicity-oriented style
-- `formulaic` — heavily patterned, repetitive, conventionalized wording
+# Classes
+- `formal` / `formal` — elevated, conventionally polished, institutionally appropriate language
+- `neutral` / `neutrální` — relatively unmarked standard prose without strong stylistic coloration
+- `informal` / `neformální` — conversational, familiar, colloquial, or socially relaxed language
+- `bureaucratic` / `administrativní` — formulaic, procedural, impersonal, office-like, or administrative style
+- `scholarly` / `akademický`  — concept-dense, precise, analytic, citation-oriented, or research-like style
+- `journalistic` / `publicistick7` — news-like, report-oriented, concise, public-information style
+- `didactic` / `výukový` — explanatory, teaching-oriented, learner-guiding style
+- `devotional` / `duchovní` — prayerful, reverential, liturgical, or spiritually oriented style
+- `literary` / `umělecký` — aesthetically marked, figurative, rhythmically or rhetorically shaped language
+- `promotional` / `propagační` — persuasive, attention-seeking, selling, or publicity-oriented style
+- `formulaic` / `šablonovitý` — heavily patterned, repetitive, conventionalized wording
 - `other_style` — recognizable register/style not covered by the available classes
 - `uncertain` — register/style cannot be determined reliably from the passage
 
@@ -41,8 +40,8 @@ You are annotating digitized library texts for filtering in a search interface o
 # Output
 Write only a JSON list of one or two class labels without any additional text or explanation.
 
-Output example 1: ["neutral"]
-Output example 2: ["bureaucratic", "formulaic"]
+- Output example 1: ["neutral"]
+- Output example 2: ["bureaucratic", "formulaic"]
 
 # Previous context from the document is:
 {{prefix_text}}
