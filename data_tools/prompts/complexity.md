@@ -1,10 +1,9 @@
 # Task context
 You are annotating digitized library texts for filtering in a search interface of a public web portal.
 
-# Task
+# Task - reading complexity
 - Characterize the reading complexity of `Text to be classified`.
-- Choose only from the possible classes below.
-- Choose one class that best describes how difficult the passage is for a competent present-day reader to understand.
+- Choose one class from the possible classes below that best describes how difficult the passage is for a competent present-day reader to understand.
 - Use the provided `Context` only for better understanding, but assign the class relevant only to `Text to be classified`.
 - Judge complexity based on the passage itself, not on assumed prestige, genre, or topic alone.
 
@@ -28,7 +27,6 @@ Consider all of the following:
 # Important rules
 - Do not treat OCR corruption or damaged text by itself as high complexity; use `uncertain` if readability is too degraded.
 - Do not base the label only on document type.
-- Prefer the lowest class that adequately describes the passage.
 - Use `expert` only for genuinely specialized, highly technical, or very difficult scholarly, legal, medical, scientific, theological, or philological material.
 - Use `very_easy` only for genuinely very simple material such as basic primers, children’s educational text, simple notices, or highly explicit and simple instructional text.
 
