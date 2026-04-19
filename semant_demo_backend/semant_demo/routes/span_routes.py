@@ -69,6 +69,17 @@ async def read_tag_spans(
     return await tagger.span.read(chunk_id)
 
 
+@exp_router.post("/api/tag_spans/batch", response_model=dict[str, list[schemas.TagSpan]])
+async def read_tag_spans_batch(
+    body: schemas.TagSpanBatchRequest,
+    tagger: WeaviateAbstraction = Depends(get_search)
+) -> dict[str, list[schemas.TagSpan]]:
+    """
+    Get stored TagSpans for multiple chunk IDs in a single request.
+    """
+    return await tagger.span.read_batch(body.chunk_ids)
+
+
 @exp_router.patch("/api/tag_spans/update", response_model=dict)
 async def update_tag_span(
     body: schemas.TagSpanUpdateSeparateRequest,

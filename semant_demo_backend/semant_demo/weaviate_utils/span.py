@@ -80,6 +80,76 @@ class Span():
 
         return spans
 
+    async def read_batch(self, chunk_ids: list[str]) -> dict[str, list[schemas.TagSpan]]:
+        """
+        Get spans for multiple chunk IDs in a single query.
+        Returns a dict keyed by chunk_id.
+        """
+
+        if not chunk_ids:
+            return {}
+
+        try:
+            chunk_uuids = [UUID(cid) for cid in chunk_ids]
+        except ValueError as exc:
+            raise WeaviateDataValidationError(
+                f"Invalid chunk id format in batch"
+            ) from exc
+
+        filters = Filter.by_ref(link_on="text_chunk").by_id().contains_any(chunk_uuids)
+
+        # Initialize result with empty lists for all requested chunk_ids
+        result: dict[str, list[schemas.TagSpan]] = {cid: [] for cid in chunk_ids}
+
+        PAGE_SIZE = 500
+        offset = 0
+
+        while True:
+            response = await self.span_collection.query.fetch_objects(
+                filters=filters,
+                return_properties=["start", "end", "type"],
+                return_references=[
+                    QueryReference(link_on="tag"),
+                    QueryReference(link_on="text_chunk"),
+                ],
+                limit=PAGE_SIZE,
+                offset=offset,
+            )
+
+            if not response.objects:
+                break
+
+            for obj in response.objects:
+                tag_ref = obj.references.get("tag")
+                tag_id = str(
+                    tag_ref.objects[0].uuid) if tag_ref and tag_ref.objects else ""
+
+                chunk_ref = obj.references.get("text_chunk")
+                if not chunk_ref or not chunk_ref.objects:
+                    continue
+                chunk_id = str(chunk_ref.objects[0].uuid)
+
+                span_type = obj.properties.get("type")
+
+                span = schemas.TagSpan(
+                    id=str(obj.uuid),
+                    chunkId=chunk_id,
+                    tagId=tag_id,
+                    start=obj.properties.get("start"),
+                    end=obj.properties.get("end"),
+                    type=schemas.SpanType(span_type) if isinstance(span_type, str) else None
+                )
+
+                if chunk_id in result:
+                    result[chunk_id].append(span)
+
+            if len(response.objects) < PAGE_SIZE:
+                break
+
+            offset += PAGE_SIZE
+
+        return result
+
     async def update(self, span_id: str, update_fields: schemas.TagSpanUpdate):
         """
         Update start or end position or tag reference.

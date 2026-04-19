@@ -469,6 +469,10 @@ class TagSpanWriteResponse(BaseModel):
     stored_in: list[SpanStoreMode]
 
 
+class TagSpanBatchRequest(BaseModel):
+    chunk_ids: list[str]
+
+
 class TagSpanUpdateSeparateRequest(BaseModel):
     span_id: str
     tagSpan: TagSpanUpdate
