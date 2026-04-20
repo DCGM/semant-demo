@@ -3,7 +3,6 @@ name: Deploy
 # 1
 on:
   push:
-    branches: [main, 68-cicd]
     tags: ["v*.*.*"]
 
 concurrency:
@@ -13,11 +12,22 @@ concurrency:
 jobs:
   deploy:
     name: Deploy ${{ github.ref_name }}
+    if: github.ref_type == 'tag' && github.event.base_ref == 'refs/heads/main'
     runs-on: [self-hosted, semant-server]
     environment: production
     timeout-minutes: 30
 
     steps:
+      - name: Validate SQL database directory
+        run: |
+          SQL_DB_DIR="${{ vars.SQL_DB_DIR }}"
+          if [ ! -d "$SQL_DB_DIR" ]; then
+            echo "ERROR: SQL database directory does not exist: $SQL_DB_DIR" >&2
+            echo "Please create it with: sudo mkdir -p $SQL_DB_DIR && sudo chown runner $SQL_DB_DIR" >&2
+            exit 1
+          fi
+          echo "SQL database directory validated: $SQL_DB_DIR"
+
       - name: Validate and prepare deploy directory
         run: |
           set -euo pipefail
@@ -48,87 +58,102 @@ jobs:
       - name: Update deploy/ files
         run: |
           set -euo pipefail
-          set -x
-          RUNNER_WORKDIR="${{ vars.RUNNER_WORKDIR }}"
-          REF_NAME="${{ github.ref_name }}"
-          DEPLOY_PATH="${RUNNER_WORKDIR}/${{ vars.DEPLOY_SUBDIR }}"
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}"
           TMP_DIR="/tmp/semant-deploy"
 
-          mkdir -p "$DEPLOY_PATH"
           rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
 
-          # Use sparse checkout to fetch only the deploy/ directory
           git clone --depth=1 --filter=blob:none --sparse \
-            --branch "$REF_NAME" \
+            --branch "${{ github.ref_name }}" \
             "https://github.com/DCGM/semant-demo.git" \
             "$TMP_DIR/repo"
 
           cd "$TMP_DIR/repo"
-          git sparse-checkout set deploy
+          git sparse-checkout set deploy/docker-compose.app.yaml deploy/Dockerfile deploy/.env.example
 
-          if [ ! -d "deploy" ]; then
-            echo "deploy/ not found in repository for ref $REF_NAME" >&2
-            exit 1
+          if [ ! -f "deploy/docker-compose.app.yaml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.example" ]; then
+            echo "ERROR: Required files not found in deploy/ for ref ${{ github.ref_name }}" >&2 ; exit 1
           fi
 
-          # Move deploy contents into DEPLOY_PATH atomically
-          rm -rf "$DEPLOY_PATH/deploy.new" || true
-          mv "deploy" "$DEPLOY_PATH/deploy.new"
-          shopt -s dotglob || true
-          mv -f "$DEPLOY_PATH/deploy.new/"* "$DEPLOY_PATH/" || true
-          rm -rf "$DEPLOY_PATH/deploy.new"
+          cp deploy/docker-compose.app.yaml "$DEPLOY_PATH/"
+          cp deploy/Dockerfile "$DEPLOY_PATH/"
+          cp deploy/.env.example "$DEPLOY_PATH/"
           rm -rf "$TMP_DIR"
 
       - name: Create .env
         run: |
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}"
+          PREV_BRANCH=$(grep "^BRANCH=" "$DEPLOY_PATH/.env" 2>/dev/null | cut -d= -f2 || true)
+          echo "PREV_BRANCH=${PREV_BRANCH}" >> "$GITHUB_ENV"
           cp "$DEPLOY_PATH/.env.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=${{ github.ref_name }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=${{ vars.SQL_DB_DIR }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^DOMAIN=.*|DOMAIN=${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^BACKEND_URL=.*|BACKEND_URL=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}|" "$DEPLOY_PATH/.env"
+
+      - name: Initialize SQLite database (first run only)
+        run: |
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}"
+          SQL_DB_PATH=$(grep "^SQL_DB_PATH=" "$DEPLOY_PATH/.env" | cut -d= -f2)
+
+          if [ ! -d "$SQL_DB_PATH" ]; then
+            mkdir -p "$SQL_DB_PATH"
+            echo "Created new SQL database directory"
+          else
+            echo "SQL database directory already exists"
+          fi
+
+          if [ ! -f "$SQL_DB_PATH/tasks.db" ]; then
+            touch "$SQL_DB_PATH/tasks.db"
+            echo "Created new SQLite database"
+          else
+            echo "Using existing SQLite database"
+          fi
 
       - name: Build and start
         id: build
         working-directory: ${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}
         run: |
-          OLD_BACKEND=$(docker compose images -q semant-demo 2>/dev/null || true)
-          OLD_EMBED=$(docker compose images -q embedding-service 2>/dev/null || true)
+          OLD_BACKEND=$(docker compose -p semant-demo -f ./docker-compose.app.yaml images -q app 2>/dev/null || true)
           [ -n "$OLD_BACKEND" ] && docker tag "$OLD_BACKEND" semant-demo-rollback || true
-          [ -n "$OLD_EMBED"   ] && docker tag "$OLD_EMBED"   semant-demo-embedding-rollback || true
 
-          ./update.sh build
-          ./update.sh up -d
+          docker compose -p semant-demo -f ./docker-compose.app.yaml down --rmi local 2>/dev/null || true
+          docker compose -p semant-demo -f ./docker-compose.app.yaml build --no-cache
+          docker compose -p semant-demo -f ./docker-compose.app.yaml up -d
 
       - name: Health check
         id: health
+        working-directory: ${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}
         run: |
-          for i in $(seq 1 15); do
+          DOMAIN=$(grep "^DOMAIN=" .env | cut -d= -f2)
+          TEST_URL="https://${DOMAIN}/health"
+          for i in $(seq 1 6); do
             sleep 10
-            echo "Attempt $i/15..."
-            if curl --fail --silent --max-time 10 http://localhost:8000/health; then
-              echo "Health check passed"
-              docker rmi semant-demo-rollback semant-demo-embedding-rollback 2>/dev/null || true
+            echo "Attempt $i/6..."
+            if curl --fail --silent --max-time 10 "$TEST_URL"; then
+              echo "Health check passed: $TEST_URL"
+              docker rmi semant-demo-rollback 2>/dev/null || true
               docker image prune -f --filter label=project=semant-demo
               exit 0
             fi
           done
-          echo "Health check failed after 15 attempts."
+          echo "Health check failed after 6 attempts."
           exit 1
 
       - name: Rollback
         if: failure() && steps.health.outcome == 'failure'
         working-directory: ${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}
         run: |
-          PREV=$(grep "^BRANCH=" .env | cut -d= -f2)
+          PREV="${{ env.PREV_BRANCH }}"
           if [ -z "$PREV" ]; then echo "First deploy – skipping rollback."; exit 1; fi
           echo "Rolling back to $PREV..."
 
-          BACKEND_IMG=$(docker compose images semant-demo --format json 2>/dev/null \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['Image'])" 2>/dev/null || true)
-          EMBED_IMG=$(docker compose images embedding-service --format json 2>/dev/null \
+          BACKEND_IMG=$(docker compose -p semant-demo -f ./docker-compose.app.yaml images app --format json 2>/dev/null \
             | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['Image'])" 2>/dev/null || true)
           [ -n "$BACKEND_IMG" ] && docker tag semant-demo-rollback "$BACKEND_IMG" || true
-          [ -n "$EMBED_IMG"   ] && docker tag semant-demo-embedding-rollback "$EMBED_IMG" || true
 
           sed -i "s|^BRANCH=.*|BRANCH=$PREV|" .env
-          ./update.sh up -d
+          docker compose -p semant-demo -f ./docker-compose.app.yaml up -d
           echo "Rollback complete."
