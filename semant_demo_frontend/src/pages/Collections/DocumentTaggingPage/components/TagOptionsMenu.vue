@@ -11,6 +11,16 @@
         Chunk: {{ globalSelection.chunkId }} | Range:
         {{ globalSelection.start }}-{{ globalSelection.end }}
       </div>
+      <div
+        v-if="
+          isAutoSelection &&
+          globalSelection &&
+          globalSelection.confidence !== undefined
+        "
+        class="text-caption text-grey-8 q-mt-xs"
+      >
+        Confidence: {{ formatConfidence(globalSelection.confidence) }}
+      </div>
       <div v-else class="text-caption text-grey-7 q-mt-xs">
         Select text in any chunk to annotate it here.
       </div>
@@ -122,6 +132,7 @@ interface GlobalSelection {
   editingId?: string
   tagId?: string
   spanType?: TagSpan['type']
+  confidence?: number
 }
 
 defineProps<{
@@ -139,6 +150,11 @@ defineEmits<{
   approveAutoSpan: []
   declineAutoSpan: []
 }>()
+
+const formatConfidence = (confidence?: number) => {
+  if (confidence === undefined) return '-'
+  return `${(confidence * 100).toFixed(1)}%`
+}
 </script>
 
 <style scoped>

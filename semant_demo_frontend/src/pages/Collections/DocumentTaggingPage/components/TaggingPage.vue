@@ -5,6 +5,7 @@
         <ChunkExpansionItem
           v-for="chunk in chunks"
           :key="chunk.chunkId"
+          :ref="(el) => setChunkItemRef(chunk.chunkId, el)"
           :chunk-id="chunk.chunkId"
           :chunk-text="chunk.textChunk"
           :in-user-collection="chunk.inUserCollection"
@@ -50,39 +51,52 @@
               @clear-selection="clearSelection"
               @save-edited-tag="saveEditedTag"
               @delete-edited-tag="deleteEditedTag"
-              @approve-auto-span="approveSelectedAutoSpan"
-              @decline-auto-span="declineSelectedAutoSpan"
+              @approve-auto-span="handleApproveAutoSpan"
+              @decline-auto-span="handleDeclineAutoSpan"
             />
           </div>
 
           <div class="floating-suggestions-panel">
-            <q-btn
-              v-if="!showAutoSuggestionsMenu"
-              color="primary"
-              class="full-width"
-              label="Automaticky navrhnout anotace"
-              no-caps
-              unelevated
-              @click="showAutoSuggestionsMenu = true"
-            />
+            <div class="sticky">
+              <q-btn
+                v-if="!showAutoSuggestionsMenu"
+                color="primary"
+                class="full-width"
+                label="Automatically suggest annotations"
+                no-caps
+                unelevated
+                @click="showAutoSuggestionsMenu = true"
+              />
 
-            <AutoAnnotationSuggestionsMenu
-              v-else
+              <AutoAnnotationSuggestionsMenu
+                v-else
+                :available-tags="availableTags"
+                @start-suggestions="handleStartSuggestions"
+                @cancel-suggestions="showAutoSuggestionsMenu = false"
+              />
+
+              <q-btn
+                color="negative"
+                class="full-width q-mt-sm"
+                label="DEBUG: Remove all chunks from collection"
+                no-caps
+                outline
+                :loading="isBulkCollectionUpdating"
+                :disable="pageLoading"
+                @click="removeAllChunksFromCollection"
+              />
+            </div>
+
+            <AnnotationTagRail
+              :markers="annotationMarkers"
               :available-tags="availableTags"
-              @start-suggestions="handleStartSuggestions"
-              @cancel-suggestions="showAutoSuggestionsMenu = false"
+              :layout-trigger="railLayoutTrigger"
+              :hovered-marker="hoveredAnnotationMarker"
+              @marker-click="selectSpanFromAnnotationMarker"
+              @marker-hover-start="startHoverFromAnnotationMarker"
+              @marker-hover-end="stopHoverFromAnnotationMarker"
             />
           </div>
-
-          <AnnotationTagRail
-            :markers="annotationMarkers"
-            :available-tags="availableTags"
-            :layout-trigger="railLayoutTrigger"
-            :hovered-marker="hoveredAnnotationMarker"
-            @marker-click="selectSpanFromAnnotationMarker"
-            @marker-hover-start="startHoverFromAnnotationMarker"
-            @marker-hover-end="stopHoverFromAnnotationMarker"
-          />
         </div>
       </div>
     </div>
@@ -90,7 +104,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { SpanType } from 'src/generated/api/models/SpanType'
 import ChunkExpansionItem from './ChunkExpansionItem.vue'
 import AnnotationTagRail from './AnnotationTagRail.vue'
@@ -103,8 +117,16 @@ interface Props {
   documentId: string
 }
 
+interface ChunkExpansionItemExposed {
+  scrollToSpan: (
+    spanId: string | null | undefined,
+    startIndex?: number
+  ) => Promise<boolean>
+}
+
 const props = defineProps<Props>()
 const showAutoSuggestionsMenu = ref(false)
+const chunkItemRefs = ref<Record<string, ChunkExpansionItemExposed | null>>({})
 
 const {
   chunks,
@@ -116,7 +138,9 @@ const {
   selectionBoundaryChunkIds,
   globalSelectionBoundaries,
   isChunkCollectionUpdating,
+  isBulkCollectionUpdating,
   toggleChunkInCollection,
+  removeAllChunksFromCollection,
   availableTags,
   loadChunks,
   clearSelection,
@@ -151,9 +175,46 @@ const railLayoutTrigger = computed(() => {
   ].join('|')
 })
 
+const setChunkItemRef = (chunkId: string, el: unknown) => {
+  chunkItemRefs.value[chunkId] =
+    (el as ChunkExpansionItemExposed | null) || null
+}
+
+const scrollToSpan = async (spanId: string | null | undefined) => {
+  if (!spanId && globalSelection.value?.start === undefined) return
+
+  await nextTick()
+
+  const selectedChunkId = globalSelection.value?.chunkId
+  const selectedStartIndex = globalSelection.value?.start
+
+  if (selectedChunkId) {
+    const chunkRef = chunkItemRefs.value[selectedChunkId]
+    const scrolled = await chunkRef?.scrollToSpan(spanId, selectedStartIndex)
+    if (scrolled) return
+  }
+
+  // Fallback: try all chunk refs if selected chunk ref is temporarily unavailable.
+  for (const chunkRef of Object.values(chunkItemRefs.value)) {
+    const scrolled = await chunkRef?.scrollToSpan(spanId, selectedStartIndex)
+    if (scrolled) return
+  }
+}
+
 const handleStartSuggestions = async (selectedTagIds: string[]) => {
-  await startAutoAnnotationSuggestions(selectedTagIds)
+  const nextSpanId = await startAutoAnnotationSuggestions(selectedTagIds)
   showAutoSuggestionsMenu.value = false
+  await scrollToSpan(nextSpanId)
+}
+
+const handleApproveAutoSpan = async () => {
+  const nextSpanId = await approveSelectedAutoSpan()
+  await scrollToSpan(nextSpanId)
+}
+
+const handleDeclineAutoSpan = async () => {
+  const nextSpanId = await declineSelectedAutoSpan()
+  await scrollToSpan(nextSpanId)
 }
 
 onMounted(async () => {
@@ -183,13 +244,19 @@ onMounted(async () => {
 }
 
 .floating-suggestions-panel {
-  position: sticky;
+  /* position: sticky; */
   z-index: 29;
   top: 0;
   left: 0;
   right: 0;
-  /* height: -webkit-fill-available; */
+  height: -webkit-fill-available;
   /* background: white; */
+}
+
+.sticky {
+  position: sticky;
+  top: 100px;
+  z-index: 29;
 }
 
 .floating-suggestions-panel :deep(.suggestions-card) {

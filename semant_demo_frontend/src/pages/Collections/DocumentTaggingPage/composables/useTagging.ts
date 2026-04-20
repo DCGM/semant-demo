@@ -250,6 +250,52 @@ export function useTagging() {
     }
   }
 
+  const approveTagSpan = async ({
+    chunkID,
+    tagID
+  }: Parameters<
+    typeof api.approveSelectedTagChunkApiTagApprovePut
+  >[0]['approveTagReq']) => {
+    isProcessing.value = true
+    try {
+      const response = await api.approveSelectedTagChunkApiTagApprovePut({
+        approveTagReq: {
+          chunkID,
+          tagID
+        }
+      })
+      return response
+    } catch (error) {
+      console.error('Error approving tag span:', error)
+      return undefined
+    } finally {
+      isProcessing.value = false
+    }
+  }
+
+  const declineTagSpan = async ({
+    chunkID,
+    tagID
+  }: Parameters<
+    typeof api.approveSelectedTagChunkApiTagDisapprovePut
+  >[0]['approveTagReq']) => {
+    isProcessing.value = true
+    try {
+      const response = await api.approveSelectedTagChunkApiTagDisapprovePut({
+        approveTagReq: {
+          chunkID,
+          tagID
+        }
+      })
+      return response
+    } catch (error) {
+      console.error('Error declining tag span:', error)
+      return undefined
+    } finally {
+      isProcessing.value = false
+    }
+  }
+
   return {
     // State
     documentDetail,
@@ -265,6 +311,8 @@ export function useTagging() {
     getTagSpans,
     createTagSpan,
     updateTagSpan,
+    approveTagSpan,
+    declineTagSpan,
     deleteTagSpan,
     getTagsForCollection,
     addChunkToCollection,

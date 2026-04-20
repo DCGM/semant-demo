@@ -14,6 +14,7 @@ interface SelectionState {
   editingId?: string
   tagId?: string
   spanType?: TagSpan['type']
+  confidence?: number
 }
 
 interface DisplayedTagSpan extends TagSpanWithConfidence {
@@ -82,6 +83,11 @@ interface HoveredSpanMarker {
   spanType?: TagSpan['type'] | null
 }
 
+interface AutoSpanCandidate {
+  chunkId: string
+  span: TagSpanWithConfidence
+}
+
 export function useTaggingPageState() {
   const {
     documentDetail,
@@ -95,6 +101,8 @@ export function useTaggingPageState() {
     fetchTagSpansMapForChunks,
     createTagSpan,
     updateTagSpan,
+    approveTagSpan,
+    declineTagSpan,
     deleteTagSpan,
     suggestAnnotations,
     getTagsForCollection
@@ -103,13 +111,17 @@ export function useTaggingPageState() {
   const tagSpansByChunkId = ref<Record<string, TagSpanWithConfidence[]>>({})
   const isPreloading = ref(false)
   const collectionActionChunkId = ref<string | null>(null)
+  const isBulkCollectionUpdating = ref(false)
   const currentDocumentId = ref<string | null>(null)
   const currentCollectionId = ref<string | null>(null)
   const globalSelection = ref<GlobalSelection | null>(null)
   const hoveredAnnotationMarker = ref<HoveredSpanMarker | null>(null)
   const useWordSnapping = ref(true)
 
-  const pageLoading = computed(() => isProcessing.value || isPreloading.value)
+  const pageLoading = computed(
+    () =>
+      isProcessing.value || isPreloading.value || isBulkCollectionUpdating.value
+  )
 
   const chunks = computed<TaggingChunk[]>(() => {
     return (
@@ -139,13 +151,10 @@ export function useTaggingPageState() {
   })
 
   const chunkIndexById = computed(() => {
-    return chunks.value.reduce<Record<string, number>>(
-      (acc, chunk, index) => {
-        acc[chunk.chunkId] = index
-        return acc
-      },
-      {}
-    )
+    return chunks.value.reduce<Record<string, number>>((acc, chunk, index) => {
+      acc[chunk.chunkId] = index
+      return acc
+    }, {})
   })
 
   const selectionBoundaryChunkIds = computed(() => {
@@ -270,6 +279,57 @@ export function useTaggingPageState() {
     return loadedMap
   }
 
+  const getSortedAutoSpanCandidates = (): AutoSpanCandidate[] => {
+    const candidates = Object.entries(tagSpansByChunkId.value).flatMap(
+      ([chunkId, spans]) =>
+        spans
+          .filter((span) => span.type === SpanType.auto)
+          .map((span) => ({ chunkId, span }))
+    )
+
+    candidates.sort((a, b) => {
+      const aConfidence = a.span.confidence ?? Number.NEGATIVE_INFINITY
+      const bConfidence = b.span.confidence ?? Number.NEGATIVE_INFINITY
+
+      if (aConfidence !== bConfidence) {
+        return bConfidence - aConfidence
+      }
+
+      const aChunkIndex =
+        chunkIndexById.value[a.chunkId] ?? Number.MAX_SAFE_INTEGER
+      const bChunkIndex =
+        chunkIndexById.value[b.chunkId] ?? Number.MAX_SAFE_INTEGER
+      if (aChunkIndex !== bChunkIndex) {
+        return aChunkIndex - bChunkIndex
+      }
+
+      return a.span.start - b.span.start
+    })
+
+    return candidates
+  }
+
+  const selectHighestConfidenceAutoSpan = (): string | null => {
+    const nextAutoSpan = getSortedAutoSpanCandidates()[0]
+
+    if (!nextAutoSpan) {
+      clearSelection()
+      return null
+    }
+
+    globalSelection.value = {
+      chunkId: nextAutoSpan.chunkId,
+      start: nextAutoSpan.span.start,
+      end: nextAutoSpan.span.end,
+      editingId: nextAutoSpan.span.id || undefined,
+      tagId: nextAutoSpan.span.tagId,
+      spanType: nextAutoSpan.span.type,
+      confidence: nextAutoSpan.span.confidence
+    }
+
+    return nextAutoSpan.span.id || null
+  }
+
   const findSpanOwnerChunkId = (spanId: string): string | null => {
     for (const [chunkId, spans] of Object.entries(tagSpansByChunkId.value)) {
       if (spans.some((span) => span.id === spanId)) {
@@ -311,9 +371,40 @@ export function useTaggingPageState() {
         })
       }
 
-      await getDocumentDetail(currentDocumentId.value, currentCollectionId.value)
+      await getDocumentDetail(
+        currentDocumentId.value,
+        currentCollectionId.value
+      )
     } finally {
       collectionActionChunkId.value = null
+    }
+  }
+
+  const removeAllChunksFromCollection = async () => {
+    if (!currentCollectionId.value || !currentDocumentId.value) return
+
+    const chunkIdsToRemove =
+      documentDetail.value?.chunks
+        .filter((chunk) => chunk.inUserCollection)
+        .map((chunk) => chunk.id) ?? []
+
+    if (!chunkIdsToRemove.length) return
+
+    isBulkCollectionUpdating.value = true
+    try {
+      for (const chunkId of chunkIdsToRemove) {
+        await removeChunkFromCollection({
+          chunkId,
+          collectionId: currentCollectionId.value
+        })
+      }
+
+      await getDocumentDetail(
+        currentDocumentId.value,
+        currentCollectionId.value
+      )
+    } finally {
+      isBulkCollectionUpdating.value = false
     }
   }
 
@@ -410,7 +501,8 @@ export function useTaggingPageState() {
       end: spanMatch.end,
       editingId: spanMatch.id as string | undefined,
       tagId: spanMatch.tagId,
-      spanType: spanMatch.type
+      spanType: spanMatch.type,
+      confidence: (spanMatch as TagSpanWithConfidence).confidence
     }
   }
 
@@ -555,6 +647,14 @@ export function useTaggingPageState() {
       chunkId: payload.chunkId,
       ...payload.selection
     }
+
+    if (globalSelection.value?.editingId) {
+      const selectedSpan = (
+        tagSpansByChunkId.value[payload.chunkId] || []
+      ).find((span) => span.id === globalSelection.value?.editingId)
+
+      globalSelection.value.confidence = selectedSpan?.confidence
+    }
   }
 
   const clearSelection = () => {
@@ -600,42 +700,61 @@ export function useTaggingPageState() {
 
   const updateSelectedAutoSpanType = async (
     nextType: typeof SpanType.pos | typeof SpanType.neg
-  ) => {
-    if (!globalSelection.value?.editingId) return
-    if (globalSelection.value.spanType !== SpanType.auto) return
+  ): Promise<string | null> => {
+    if (!globalSelection.value?.editingId) return null
+    if (globalSelection.value.spanType !== SpanType.auto) return null
 
-    await updateTagSpan({
-      spanId: globalSelection.value.editingId,
-      tagSpan: {
-        type: nextType
-      }
-    })
-    await refreshChunkSpans(globalSelection.value.chunkId)
-    clearSelection()
+    const selectedChunkId = globalSelection.value.chunkId
+    const selectedSpanId = globalSelection.value.editingId
+    const selectedSpan = (tagSpansByChunkId.value[selectedChunkId] || []).find(
+      (span) => span.id === selectedSpanId
+    )
+
+    if (!selectedSpan) return null
+
+    if (nextType === SpanType.pos) {
+      await approveTagSpan({
+        chunkID: selectedSpan.chunkId,
+        tagID: selectedSpan.tagId
+      })
+    } else {
+      await declineTagSpan({
+        chunkID: selectedSpan.chunkId,
+        tagID: selectedSpan.tagId
+      })
+    }
+
+    await refreshChunkSpans(selectedChunkId)
+
+    return selectHighestConfidenceAutoSpan()
   }
 
   const approveSelectedAutoSpan = async () => {
-    await updateSelectedAutoSpanType(SpanType.pos)
+    return await updateSelectedAutoSpanType(SpanType.pos)
   }
 
   const declineSelectedAutoSpan = async () => {
-    await updateSelectedAutoSpanType(SpanType.neg)
+    return await updateSelectedAutoSpanType(SpanType.neg)
   }
 
-  const startAutoAnnotationSuggestions = async (selectedTagIds: string[]) => {
-    if (!selectedTagIds.length) return
+  const startAutoAnnotationSuggestions = async (
+    selectedTagIds: string[]
+  ): Promise<string | null> => {
+    if (!selectedTagIds.length) return null
 
     const chunksForSuggestion =
       documentDetail.value?.chunks.filter((chunk) => chunk.inUserCollection) ||
       []
-    if (!chunksForSuggestion.length) return
+    if (!chunksForSuggestion.length) return null
 
-    const allowedChunkIds = new Set(chunksForSuggestion.map((chunk) => chunk.id))
+    const allowedChunkIds = new Set(
+      chunksForSuggestion.map((chunk) => chunk.id)
+    )
 
     const selectedTags = collectionTags.value.filter(
       (tag) => !!tag.id && selectedTagIds.includes(tag.id)
     )
-    if (!selectedTags.length) return
+    if (!selectedTags.length) return null
 
     const response = await suggestAnnotations({
       chunks: chunksForSuggestion,
@@ -655,7 +774,7 @@ export function useTaggingPageState() {
       allowedChunkIds.has(span.chunkId)
     )
 
-    if (!suggestedSpans.length) return
+    if (!suggestedSpans.length) return null
 
     const chunkIdsToMerge = [...new Set(suggestedSpans.map((s) => s.chunkId))]
     const nextByChunk = { ...tagSpansByChunkId.value }
@@ -667,6 +786,8 @@ export function useTaggingPageState() {
     }
 
     tagSpansByChunkId.value = nextByChunk
+
+    return selectHighestConfidenceAutoSpan()
   }
 
   const deleteEditedTag = async () => {
@@ -787,7 +908,9 @@ export function useTaggingPageState() {
     selectionBoundaryChunkIds,
     globalSelectionBoundaries,
     isChunkCollectionUpdating,
+    isBulkCollectionUpdating,
     toggleChunkInCollection,
+    removeAllChunksFromCollection,
     loadChunks,
     clearSelection,
     handleTagClick,

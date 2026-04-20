@@ -1,6 +1,9 @@
 <template>
-  <q-card flat bordered class="q-mb-lg">
+  <div ref="rootEl">
+    <q-card flat bordered class="q-mb-lg">
     <q-expansion-item
+      ref="expansionRef"
+      v-model="isExpanded"
       :default-opened="inUserCollection"
       expand-separator
       switch-toggle-side
@@ -74,11 +77,12 @@
         />
       </q-card-section>
     </q-expansion-item>
-  </q-card>
+    </q-card>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
 import ChunkTagAnnotator, { AvailableTag } from './ChunkTagAnnotator.vue'
 
@@ -130,6 +134,10 @@ interface Props {
 
 const props = defineProps<Props>()
 
+const rootEl = ref<HTMLElement | null>(null)
+const expansionRef = ref()
+const isExpanded = ref(props.inUserCollection)
+
 const emit = defineEmits<{
   selectionChange: [payload: SelectionPayload]
   toggleCollection: [chunkId: string, inUserCollection: boolean]
@@ -160,6 +168,59 @@ const onSpanHoverStart = (marker: HoveredSpanMarker) => {
 const onSpanHoverEnd = () => {
   emit('spanHoverEnd')
 }
+
+const scrollToSpan = async (
+  spanId: string | null | undefined,
+  startIndex?: number
+): Promise<boolean> => {
+  if (!spanId && startIndex === undefined) return false
+
+  isExpanded.value = true
+  await nextTick()
+
+  let target: HTMLElement | null = null
+
+  if (spanId) {
+    const escapedSpanId =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(spanId)
+        : spanId
+
+    target = rootEl.value?.querySelector(
+      `.text-segment[data-span-ids~="${escapedSpanId}"]`
+    ) as HTMLElement | null
+  }
+
+  // Selected/editing span can be removed from segment tag IDs in annotator rendering.
+  // Fallback to locating segment by current selection start index.
+  if (!target && startIndex !== undefined) {
+    const segments = Array.from(
+      rootEl.value?.querySelectorAll('.text-segment') || []
+    ) as HTMLElement[]
+
+    target =
+      segments.find((segment) => {
+        const start = Number(segment.dataset.start)
+        const end = Number(segment.dataset.end)
+        if (Number.isNaN(start) || Number.isNaN(end)) return false
+        return startIndex >= start && startIndex < end
+      }) || null
+  }
+
+  if (!target) return false
+
+  target.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center',
+    inline: 'nearest'
+  })
+
+  return true
+}
+
+defineExpose({
+  scrollToSpan
+})
 </script>
 
 <style scoped>
