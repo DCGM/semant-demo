@@ -88,7 +88,7 @@ class UserCollection():
         return Collection(
             id=response.uuid,
             name=props.get("name"),
-            owner=props.get("owner") or props.get("user_id") or "",
+            owner=props.get("owner"),
             description=props.get("description"),
             created_at=props.get("created_at"),
             updated_at=props.get("updated_at"),
