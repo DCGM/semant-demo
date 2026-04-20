@@ -29,6 +29,7 @@
           @toggle-collection="toggleChunkInCollection"
           @span-hover-start="startHoverFromAnnotationMarker"
           @span-hover-end="stopHoverFromAnnotationMarker"
+          @expansion-change="handleChunkExpansionChange"
         />
 
         <q-card v-if="!chunks.length" class="bg-grey-2">
@@ -88,7 +89,7 @@
             </div>
 
             <AnnotationTagRail
-              :markers="annotationMarkers"
+              :markers="visibleAnnotationMarkers"
               :available-tags="availableTags"
               :layout-trigger="railLayoutTrigger"
               :hovered-marker="hoveredAnnotationMarker"
@@ -104,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { SpanType } from 'src/generated/api/models/SpanType'
 import ChunkExpansionItem from './ChunkExpansionItem.vue'
 import AnnotationTagRail from './AnnotationTagRail.vue'
@@ -127,6 +128,8 @@ interface ChunkExpansionItemExposed {
 const props = defineProps<Props>()
 const showAutoSuggestionsMenu = ref(false)
 const chunkItemRefs = ref<Record<string, ChunkExpansionItemExposed | null>>({})
+const railLayoutVersion = ref(0)
+const expandedChunks = ref<Record<string, boolean>>({})
 
 const {
   chunks,
@@ -171,9 +174,44 @@ const railLayoutTrigger = computed(() => {
     !!globalSelection.value,
     globalSelection.value?.editingId || '',
     isAutoSelection.value,
-    showAutoSuggestionsMenu.value
+    showAutoSuggestionsMenu.value,
+    railLayoutVersion.value
   ].join('|')
 })
+
+const visibleAnnotationMarkers = computed(() => {
+  return annotationMarkers.value.filter(
+    (marker) => expandedChunks.value[marker.chunkId] !== false
+  )
+})
+
+watch(
+  chunks,
+  (nextChunks) => {
+    const nextExpanded: Record<string, boolean> = {}
+
+    for (const chunk of nextChunks) {
+      nextExpanded[chunk.chunkId] =
+        expandedChunks.value[chunk.chunkId] ?? chunk.inUserCollection
+    }
+
+    expandedChunks.value = nextExpanded
+  },
+  { immediate: true }
+)
+
+const handleChunkExpansionChange = (chunkId: string, expanded: boolean) => {
+  expandedChunks.value[chunkId] = expanded
+
+  if (!expanded) {
+    window.setTimeout(() => {
+      railLayoutVersion.value += 1
+    }, 0)
+    return
+  }
+
+  railLayoutVersion.value += 1
+}
 
 const setChunkItemRef = (chunkId: string, el: unknown) => {
   chunkItemRefs.value[chunkId] =

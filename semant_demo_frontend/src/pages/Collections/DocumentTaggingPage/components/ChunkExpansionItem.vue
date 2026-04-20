@@ -82,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
 import ChunkTagAnnotator, { AvailableTag } from './ChunkTagAnnotator.vue'
 
@@ -143,7 +143,12 @@ const emit = defineEmits<{
   toggleCollection: [chunkId: string, inUserCollection: boolean]
   spanHoverStart: [marker: HoveredSpanMarker]
   spanHoverEnd: []
+  expansionChange: [chunkId: string, expanded: boolean]
 }>()
+
+watch(isExpanded, (expanded) => {
+  emit('expansionChange', props.chunkId, expanded)
+})
 
 const chunkPreview = computed(() => {
   const text = props.chunkText.replace(/\s+/g, ' ').trim()
