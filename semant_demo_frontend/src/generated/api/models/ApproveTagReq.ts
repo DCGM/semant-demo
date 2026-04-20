@@ -21,10 +21,10 @@ import { mapValues } from '../runtime';
 export interface ApproveTagReq {
     /**
      * 
-     * @type {boolean}
+     * @type {string}
      * @memberof ApproveTagReq
      */
-    approved: boolean;
+    collectionID: string;
     /**
      * 
      * @type {string}
@@ -39,20 +39,25 @@ export interface ApproveTagReq {
     tagID: string;
     /**
      * 
-     * @type {string}
+     * @type {number}
      * @memberof ApproveTagReq
      */
-    chunkCollectionName: string;
+    start?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ApproveTagReq
+     */
+    end?: number | null;
 }
 
 /**
  * Check if a given object implements the ApproveTagReq interface.
  */
 export function instanceOfApproveTagReq(value: object): value is ApproveTagReq {
-    if (!('approved' in value) || value['approved'] === undefined) return false;
+    if (!('collectionID' in value) || value['collectionID'] === undefined) return false;
     if (!('chunkID' in value) || value['chunkID'] === undefined) return false;
     if (!('tagID' in value) || value['tagID'] === undefined) return false;
-    if (!('chunkCollectionName' in value) || value['chunkCollectionName'] === undefined) return false;
     return true;
 }
 
@@ -66,10 +71,11 @@ export function ApproveTagReqFromJSONTyped(json: any, ignoreDiscriminator: boole
     }
     return {
         
-        'approved': json['approved'],
+        'collectionID': json['collectionID'],
         'chunkID': json['chunkID'],
         'tagID': json['tagID'],
-        'chunkCollectionName': json['chunk_collection_name'],
+        'start': json['start'] == null ? undefined : json['start'],
+        'end': json['end'] == null ? undefined : json['end'],
     };
 }
 
@@ -84,10 +90,11 @@ export function ApproveTagReqToJSONTyped(value?: ApproveTagReq | null, ignoreDis
 
     return {
         
-        'approved': value['approved'],
+        'collectionID': value['collectionID'],
         'chunkID': value['chunkID'],
         'tagID': value['tagID'],
-        'chunk_collection_name': value['chunkCollectionName'],
+        'start': value['start'],
+        'end': value['end'],
     };
 }
 

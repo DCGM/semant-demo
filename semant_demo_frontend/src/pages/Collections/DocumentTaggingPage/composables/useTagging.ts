@@ -252,7 +252,10 @@ export function useTagging() {
 
   const approveTagSpan = async ({
     chunkID,
-    tagID
+    tagID,
+    collectionID,
+    start,
+    end
   }: Parameters<
     typeof api.approveSelectedTagChunkApiTagApprovePut
   >[0]['approveTagReq']) => {
@@ -261,7 +264,10 @@ export function useTagging() {
       const response = await api.approveSelectedTagChunkApiTagApprovePut({
         approveTagReq: {
           chunkID,
-          tagID
+          tagID,
+          collectionID,
+          start,
+          end
         }
       })
       return response
@@ -275,7 +281,10 @@ export function useTagging() {
 
   const declineTagSpan = async ({
     chunkID,
-    tagID
+    tagID,
+    collectionID,
+    start,
+    end
   }: Parameters<
     typeof api.approveSelectedTagChunkApiTagDisapprovePut
   >[0]['approveTagReq']) => {
@@ -284,7 +293,10 @@ export function useTagging() {
       const response = await api.approveSelectedTagChunkApiTagDisapprovePut({
         approveTagReq: {
           chunkID,
-          tagID
+          tagID,
+          collectionID,
+          start,
+          end
         }
       })
       return response

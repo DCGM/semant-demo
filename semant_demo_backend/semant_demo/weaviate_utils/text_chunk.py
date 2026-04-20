@@ -250,149 +250,170 @@ class TextChunk():
             return False
 
     async def approve_tag(self, data: schemas.ApproveTagReq) -> bool:
-        # TODO change Span.type
-        # try:
-        #     span_filters = (
-        #         Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
-        #         Filter.by_ref("tag").by_id().equal(data.tagID)
-        #     )
-        #     matching_spans = await self.span_collection.query.fetch_objects(filters=span_filters)
-
-        #     for span in matching_spans.objects:
-        #         await self.span_collection.data.update(
-        #             uuid=span.uuid,
-        #             properties={"type": schemas.SpanType.pos.value}
-        #         )
-        #     logging.info(f"Updated {len(matching_spans.objects)} spans to 'pos'")
-        # except Exception as span_e:
-        #     logging.error(f"Error updating spans during approve: {span_e}")
-        # TODO/
         """
-        Output:
-            bool value if operation successfull
+        Approves a tag for a chunk.
+        Moves the tag to the 'positiveTag' reference bucket.
+        If start/end are provided, creates or updates the Span to 'pos'.
         """
         try:
             logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
-            # get chunk
-            return_references=[
-                    QueryReference(
-                        link_on="automaticTag"
-                    ),
-                    QueryReference(
-                        link_on="positiveTag"
-                    ),
-                    QueryReference(
-                        link_on="negativeTag"
-                    )]
-            print("HERE 1")
-            print(data.chunkID)
-            obj = await self.helpers.fetch_object_by_id(data.chunkID, self.helpers.collectionNames.chunks_collection_name, return_references)
-            refs = obj.references or {}
-            print("Here 2")
-            # helper to extract UUID strings from reference block
-            def ref_uuids(ref_block):
-                if not ref_block:
-                    return []
-                return [str(r.uuid) for r in ref_block.objects]
+            chunks_coll_name = self.helpers.collectionNames.chunks_collection_name
 
-            pos_ids = ref_uuids(refs.get("positiveTag"))
-            tag_id = str(data.tagID)
-            print("Here 3")
-            # create the reference for approved tag
-            # positive tags
-            print(obj.uuid)
-            updatedTags = sorted(set(pos_ids + [tag_id]))
-            for targetId in updatedTags:
-                await self.helpers.create_reference(src_id=str(obj.uuid), 
-                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
-                                        property_name="positiveTag",
-                                        target_collection_id=targetId)
-            print("Here 4")
-            # remove the reference from the negative tags
-            await self.helpers.remove_reference(src_id=str(obj.uuid), 
-                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
-                                        property_name="negativeTag",
-                                        target_collection_id=targetId)
-            print("Here 5")
-            # remove the reference from the automatic tags
-            await self.helpers.remove_reference(src_id=str(obj.uuid), 
-                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
-                                        property_name="automaticTag",
-                                        target_collection_id=targetId)
+            # 1. Add reference to positiveTag using helpers
+            await self.helpers.create_reference(
+                src_id=data.chunkID,
+                src_collection_name=chunks_coll_name,
+                property_name="positiveTag",
+                target_collection_id=data.tagID
+            )
+
+            # 2. Remove references from negativeTag and automaticTag using helpers
+            await self.helpers.remove_reference(
+                src_id=data.chunkID,
+                src_collection_name=chunks_coll_name,
+                property_name="negativeTag",
+                target_collection_id=data.tagID
+            )
+            await self.helpers.remove_reference(
+                src_id=data.chunkID,
+                src_collection_name=chunks_coll_name,
+                property_name="automaticTag",
+                target_collection_id=data.tagID
+            )
+
+            # 3. Handle Spans
+            span_col = self.span_collection
+
+            if data.start is not None and data.end is not None:
+                # Check if this EXACT span already exists
+                span_filters = (
+                    Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
+                    Filter.by_ref("tag").by_id().equal(data.tagID) &
+                    Filter.by_property("start").equal(data.start) &
+                    Filter.by_property("end").equal(data.end)
+                )
+                matching_spans = await span_col.query.fetch_objects(filters=span_filters)
+
+                if len(matching_spans.objects) > 0:
+                    # Span exists, just update it to 'pos'
+                    for span in matching_spans.objects:
+                        await span_col.data.update(uuid=span.uuid, properties={"type": "pos"})
+                    logging.info(
+                        f"Updated {len(matching_spans.objects)} existing spans to 'pos'")
+                else:
+                    # Span does NOT exist in DB yet (because it was an 'auto' suggestion). Create it!
+                    await span_col.data.insert(
+                        properties={
+                            "start": data.start,
+                            "end": data.end,
+                            "type": "pos"
+                        },
+                        references={
+                            "tag": data.tagID,
+                            "text_chunk": data.chunkID
+                        }
+                    )
+                    logging.info("Created 1 new span with type 'pos'")
+            else:
+                # Fallback: User approved the chunk without specific highlight coordinates
+                # Just update any existing spans for this chunk/tag to 'pos'
+                span_filters = (
+                    Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
+                    Filter.by_ref("tag").by_id().equal(data.tagID)
+                )
+                matching_spans = await span_col.query.fetch_objects(filters=span_filters)
+                for span in matching_spans.objects:
+                    await span_col.data.update(uuid=span.uuid, properties={"type": "pos"})
+                logging.info(
+                    f"Updated {len(matching_spans.objects)} spans to 'pos' (No coordinates provided)")
+
             return True
+
         except Exception as e:
-            logging.error(f"Not changed approval state. Error: {e}")
+            logging.error(f"Failed to approve tag. Error: {e}")
             return False
 
     async def disapprove_tag(self, data: schemas.ApproveTagReq) -> bool:
-        # TODO change Span.type
-         # try:
-        #     span_filters = (
-        #         Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
-        #         Filter.by_ref("tag").by_id().equal(data.tagID)
-        #     )
-        #     matching_spans = await self.span_collection.query.fetch_objects(filters=span_filters)
-
-        #     for span in matching_spans.objects:
-        #         await self.span_collection.data.update(
-        #             uuid=span.uuid,
-        #             properties={"type": schemas.SpanType.neg.value}
-        #         )
-        #     logging.info(f"Updated {len(matching_spans.objects)} spans to 'neg'")
-        # except Exception as span_e:
-        #     logging.error(f"Error updating spans during disapprove: {span_e}")
-        # TODO/
         """
-        Output:
-            bool value if operation successfull
+        Disapproves a tag for a chunk.
+        Moves the tag to the 'negativeTag' reference bucket.
+        If start/end are provided, creates or updates the Span to 'neg'.
         """
         try:
             logging.info(f"Chunk ID: {data.chunkID}, Tag ID: {data.tagID}")
-            # get chunk
-            return_references=[
-                    QueryReference(
-                        link_on="automaticTag"
-                    ),
-                    QueryReference(
-                        link_on="positiveTag"
-                    ),
-                    QueryReference(
-                        link_on="negativeTag"
-                    )]
-            obj = await self.helpers.fetch_object_by_id(data.chunkID, self.helpers.collectionNames.chunks_collection_name, return_references)
-            refs = obj.references or {}
+            chunks_coll_name = self.helpers.collectionNames.chunks_collection_name
 
-            # helper to extract UUID strings from reference block
-            def ref_uuids(ref_block):
-                if not ref_block:
-                    return []
-                return [str(r.uuid) for r in ref_block.objects]
+            # 1. Add reference to negativeTag using helpers
+            await self.helpers.create_reference(
+                src_id=data.chunkID,
+                src_collection_name=chunks_coll_name,
+                property_name="negativeTag",
+                target_collection_id=data.tagID
+            )
 
-            neg_ids = ref_uuids(refs.get("negativeTag"))
-            tag_id = str(data.tagID)
+            # 2. Remove references from positiveTag and automaticTag using helpers
+            await self.helpers.remove_reference(
+                src_id=data.chunkID,
+                src_collection_name=chunks_coll_name,
+                property_name="positiveTag",
+                target_collection_id=data.tagID
+            )
+            await self.helpers.remove_reference(
+                src_id=data.chunkID,
+                src_collection_name=chunks_coll_name,
+                property_name="automaticTag",
+                target_collection_id=data.tagID
+            )
 
-            # create the reference for disapproved tag
-            # negative tags
-            updatedTags = sorted(set(neg_ids + [tag_id]))
-            for targetId in updatedTags:
-                await self.helpers.create_reference(src_id=str(obj.uuid), 
-                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
-                                        property_name="negativeTag",
-                                        target_collection_id=targetId)
-            # remove the reference from the positive tags
-            await self.helpers.remove_reference(src_id=str(obj.uuid), 
-                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
-                                        property_name="positiveTag",
-                                        target_collection_id=targetId)
-            
-            # remove the reference from the automatic tags
-            await self.helpers.remove_reference(src_id=str(obj.uuid), 
-                                        src_collection_name=self.helpers.collectionNames.chunks_collection_name, 
-                                        property_name="automaticTag",
-                                        target_collection_id=targetId)
+            # 3. Handle Spans
+            span_col = self.span_collection
+
+            if data.start is not None and data.end is not None:
+                # Check if this EXACT span already exists
+                span_filters = (
+                    Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
+                    Filter.by_ref("tag").by_id().equal(data.tagID) &
+                    Filter.by_property("start").equal(data.start) &
+                    Filter.by_property("end").equal(data.end)
+                )
+                matching_spans = await span_col.query.fetch_objects(filters=span_filters)
+
+                if len(matching_spans.objects) > 0:
+                    # Span exists, just update it to 'neg'
+                    for span in matching_spans.objects:
+                        await span_col.data.update(uuid=span.uuid, properties={"type": "neg"})
+                    logging.info(
+                        f"Updated {len(matching_spans.objects)} existing spans to 'neg'")
+                else:
+                    # Span does NOT exist in DB yet. Create it!
+                    await span_col.data.insert(
+                        properties={
+                            "start": data.start,
+                            "end": data.end,
+                            "type": "neg"
+                        },
+                        references={
+                            "tag": data.tagID,
+                            "text_chunk": data.chunkID
+                        }
+                    )
+                    logging.info("Created 1 new span with type 'neg'")
+            else:
+                # Fallback: User disapproved the chunk without specific highlight coordinates
+                span_filters = (
+                    Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
+                    Filter.by_ref("tag").by_id().equal(data.tagID)
+                )
+                matching_spans = await span_col.query.fetch_objects(filters=span_filters)
+                for span in matching_spans.objects:
+                    await span_col.data.update(uuid=span.uuid, properties={"type": "neg"})
+                logging.info(
+                    f"Updated {len(matching_spans.objects)} spans to 'neg' (No coordinates provided)")
+
             return True
+
         except Exception as e:
-            logging.error(f"Not changed approval state. Error: {e}")
+            logging.error(f"Failed to disapprove tag. Error: {e}")
             return False
 
     def get_tags():

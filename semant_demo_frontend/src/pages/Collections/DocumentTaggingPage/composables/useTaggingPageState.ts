@@ -715,12 +715,18 @@ export function useTaggingPageState() {
     if (nextType === SpanType.pos) {
       await approveTagSpan({
         chunkID: selectedSpan.chunkId,
-        tagID: selectedSpan.tagId
+        tagID: selectedSpan.tagId,
+        collectionID: currentCollectionId.value || '',
+        start: selectedSpan.start,
+        end: selectedSpan.end
       })
     } else {
       await declineTagSpan({
         chunkID: selectedSpan.chunkId,
-        tagID: selectedSpan.tagId
+        tagID: selectedSpan.tagId,
+        collectionID: currentCollectionId.value || '',
+        start: selectedSpan.start,
+        end: selectedSpan.end
       })
     }
 

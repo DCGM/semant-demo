@@ -396,16 +396,16 @@ class GetTaggedChunksResponse(BaseModel):
     chunks_with_tags: list[TaggedChunks]
 
 
+# approves/disapproves or creates a new span in database
 class ApproveTagReq(BaseModel):
-    approved: bool
+    collectionID: str
     chunkID: str
     tagID: str
-    chunk_collection_name: str
-
+    start: int | None = None
+    end: int | None = None
 
 class ApproveTagResponse(BaseModel):
     successful: bool
-    approved: bool
 
 
 class RemoveTagsResponse(BaseModel):
