@@ -51,6 +51,7 @@ import type {
   SummaryResponse,
   Tag,
   TagSpan,
+  TagSpanBatchRequest,
   TagSpanCreateSeparateRequest,
   TagSpanUpdateSeparateRequest,
   TagSpanWriteResponse,
@@ -131,6 +132,8 @@ import {
     TagToJSON,
     TagSpanFromJSON,
     TagSpanToJSON,
+    TagSpanBatchRequestFromJSON,
+    TagSpanBatchRequestToJSON,
     TagSpanCreateSeparateRequestFromJSON,
     TagSpanCreateSeparateRequestToJSON,
     TagSpanUpdateSeparateRequestFromJSON,
@@ -211,10 +214,6 @@ export interface FetchCollectionApiUserCollectionsCollectionIdGetRequest {
     collectionId: string;
 }
 
-export interface FetchCollectionsApiUserCollectionsGetRequest {
-    userId: string;
-}
-
 export interface FetchDocumentApiDocumentDocumentIdGetRequest {
     documentId: string;
 }
@@ -263,6 +262,10 @@ export interface RagApiRagPostRequest {
 
 export interface ReadTagSpansApiTagSpansChunkIdGetRequest {
     chunkId: string;
+}
+
+export interface ReadTagSpansBatchApiTagSpansBatchPostRequest {
+    tagSpanBatchRequest: TagSpanBatchRequest;
 }
 
 export interface RemoveAutomaticTagsApiTagsAutomaticDeleteRequest {
@@ -680,27 +683,25 @@ export interface DefaultApiInterface {
 
     /**
      * Creates request options for fetchCollectionsApiUserCollectionsGet without sending the request
-     * @param {string} userId 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    fetchCollectionsApiUserCollectionsGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionsGetRequest): Promise<runtime.RequestOpts>;
+    fetchCollectionsApiUserCollectionsGetRequestOpts(): Promise<runtime.RequestOpts>;
 
     /**
      * Retrieves all collections for given user
      * @summary Fetch Collections
-     * @param {string} userId 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    fetchCollectionsApiUserCollectionsGetRaw(requestParameters: FetchCollectionsApiUserCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Collection>>>;
+    fetchCollectionsApiUserCollectionsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Collection>>>;
 
     /**
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    fetchCollectionsApiUserCollectionsGet(requestParameters: FetchCollectionsApiUserCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Collection>>;
+    fetchCollectionsApiUserCollectionsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Collection>>;
 
     /**
      * Creates request options for fetchDocumentApiDocumentDocumentIdGet without sending the request
@@ -1077,6 +1078,30 @@ export interface DefaultApiInterface {
      * Read Tag Spans
      */
     readTagSpansApiTagSpansChunkIdGet(requestParameters: ReadTagSpansApiTagSpansChunkIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>>;
+
+    /**
+     * Creates request options for readTagSpansBatchApiTagSpansBatchPost without sending the request
+     * @param {TagSpanBatchRequest} tagSpanBatchRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readTagSpansBatchApiTagSpansBatchPostRequestOpts(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Get stored TagSpans for multiple chunk IDs in a single request.
+     * @summary Read Tag Spans Batch
+     * @param {TagSpanBatchRequest} tagSpanBatchRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readTagSpansBatchApiTagSpansBatchPostRaw(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: Array<TagSpan>; }>>;
+
+    /**
+     * Get stored TagSpans for multiple chunk IDs in a single request.
+     * Read Tag Spans Batch
+     */
+    readTagSpansBatchApiTagSpansBatchPost(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: Array<TagSpan>; }>;
 
     /**
      * Creates request options for removeAutomaticTagsApiTagsAutomaticDelete without sending the request
@@ -2142,19 +2167,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     /**
      * Creates request options for fetchCollectionsApiUserCollectionsGet without sending the request
      */
-    async fetchCollectionsApiUserCollectionsGetRequestOpts(requestParameters: FetchCollectionsApiUserCollectionsGetRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['userId'] == null) {
-            throw new runtime.RequiredError(
-                'userId',
-                'Required parameter "userId" was null or undefined when calling fetchCollectionsApiUserCollectionsGet().'
-            );
-        }
-
+    async fetchCollectionsApiUserCollectionsGetRequestOpts(): Promise<runtime.RequestOpts> {
         const queryParameters: any = {};
-
-        if (requestParameters['userId'] != null) {
-            queryParameters['user_id'] = requestParameters['userId'];
-        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
@@ -2178,8 +2192,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    async fetchCollectionsApiUserCollectionsGetRaw(requestParameters: FetchCollectionsApiUserCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Collection>>> {
-        const requestOptions = await this.fetchCollectionsApiUserCollectionsGetRequestOpts(requestParameters);
+    async fetchCollectionsApiUserCollectionsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Collection>>> {
+        const requestOptions = await this.fetchCollectionsApiUserCollectionsGetRequestOpts();
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(CollectionFromJSON));
@@ -2189,8 +2203,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieves all collections for given user
      * Fetch Collections
      */
-    async fetchCollectionsApiUserCollectionsGet(requestParameters: FetchCollectionsApiUserCollectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Collection>> {
-        const response = await this.fetchCollectionsApiUserCollectionsGetRaw(requestParameters, initOverrides);
+    async fetchCollectionsApiUserCollectionsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Collection>> {
+        const response = await this.fetchCollectionsApiUserCollectionsGetRaw(initOverrides);
         return await response.value();
     }
 
@@ -2974,6 +2988,55 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async readTagSpansApiTagSpansChunkIdGet(requestParameters: ReadTagSpansApiTagSpansChunkIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>> {
         const response = await this.readTagSpansApiTagSpansChunkIdGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for readTagSpansBatchApiTagSpansBatchPost without sending the request
+     */
+    async readTagSpansBatchApiTagSpansBatchPostRequestOpts(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['tagSpanBatchRequest'] == null) {
+            throw new runtime.RequiredError(
+                'tagSpanBatchRequest',
+                'Required parameter "tagSpanBatchRequest" was null or undefined when calling readTagSpansBatchApiTagSpansBatchPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/tag_spans/batch`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: TagSpanBatchRequestToJSON(requestParameters['tagSpanBatchRequest']),
+        };
+    }
+
+    /**
+     * Get stored TagSpans for multiple chunk IDs in a single request.
+     * Read Tag Spans Batch
+     */
+    async readTagSpansBatchApiTagSpansBatchPostRaw(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: Array<TagSpan>; }>> {
+        const requestOptions = await this.readTagSpansBatchApiTagSpansBatchPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Get stored TagSpans for multiple chunk IDs in a single request.
+     * Read Tag Spans Batch
+     */
+    async readTagSpansBatchApiTagSpansBatchPost(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: Array<TagSpan>; }> {
+        const response = await this.readTagSpansBatchApiTagSpansBatchPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -698,7 +698,7 @@ async function addDocumentToCollection (documentId: string | number | undefined)
 }
 
 onMounted(async () => {
-  username.value = userStore.user?.id ?? 'xjuric'
+  username.value = userStore.user?.id ?? ''
   await fetchFilterMocks()
   await handleAddUser()
 })

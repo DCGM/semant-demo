@@ -148,7 +148,7 @@ const columns: QTableColumn<Collection>[] = [
   {
     name: 'collectionName',
     label: 'Name',
-    field: (row) => row.name,
+    field: (row) => row.name || '-',
     align: 'left',
     sortable: true,
     required: true
@@ -156,33 +156,33 @@ const columns: QTableColumn<Collection>[] = [
   {
     name: 'color',
     label: 'Color',
-    field: (row) => row.color,
+    field: (row) => row.color || '-',
     align: 'center'
   },
   {
     name: 'description',
     label: 'Description',
-    field: (row) => row.description ?? '-',
+    field: (row) => row.description || '-',
     align: 'left',
     style: 'max-width: 300px;'
   },
   {
     name: 'owner',
     label: 'Owner',
-    field: (row) => row.userId,
+    field: (row) => row.owner || '-',
     align: 'left'
   },
   {
     name: 'createdAt',
     label: 'Created',
-    field: (row) => row.createdAt.toLocaleDateString(),
+    field: (row) => row.createdAt ? row.createdAt.toLocaleDateString() : '-',
     align: 'left',
     sortable: true
   },
   {
     name: 'updatedAt',
     label: 'Updated',
-    field: (row) => row.updatedAt.toLocaleDateString(),
+    field: (row) => row.updatedAt ? row.updatedAt.toLocaleDateString() : '-',
     align: 'left',
     sortable: true
   }

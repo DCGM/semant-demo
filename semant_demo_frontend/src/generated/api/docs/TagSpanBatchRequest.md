@@ -1,34 +1,22 @@
 
-# Collection
+# TagSpanBatchRequest
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`id` | string
-`name` | string
-`owner` | string
-`description` | string
-`createdAt` | Date
-`updatedAt` | Date
-`color` | string
+`chunkIds` | Array&lt;string&gt;
 
 ## Example
 
 ```typescript
-import type { Collection } from ''
+import type { TagSpanBatchRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "id": null,
-  "name": null,
-  "owner": null,
-  "description": null,
-  "createdAt": null,
-  "updatedAt": null,
-  "color": null,
-} satisfies Collection
+  "chunkIds": null,
+} satisfies TagSpanBatchRequest
 
 console.log(example)
 
@@ -37,7 +25,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as Collection
+const exampleParsed = JSON.parse(exampleJSON) as TagSpanBatchRequest
 console.log(exampleParsed)
 ```
 

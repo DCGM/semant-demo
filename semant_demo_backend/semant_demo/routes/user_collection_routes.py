@@ -43,18 +43,18 @@ async def create_user_collection(collectionReq: PostCollection,
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
     """
-    collection = await searcher.userCollection.create(collectionReq)
+    collection = await searcher.userCollection.create(collectionReq, user=current_user)
     return collection
 
 
 @exp_router.get("/api/user_collections", response_model=list[Collection])
-async def fetch_collections(user_id: str,
-                            searcher: WeaviateAbstraction = Depends(get_search),
+async def fetch_collections(searcher: WeaviateAbstraction = Depends(get_search),
                             current_user: User = Depends(current_active_user)) -> list[Collection]:
     """
     Retrieves all collections for given user
     """
-    response = await searcher.userCollection.read_all(user_id)
+    
+    response = await searcher.userCollection.read_all(current_user)
     return response
 
 

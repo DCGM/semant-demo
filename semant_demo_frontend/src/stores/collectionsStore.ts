@@ -11,12 +11,12 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
 
-  const fetchCollections = async (userId: string) => {
+  const fetchCollections = async () => {
     const notif = ongoingNotification('Loading collections...')
     loading.value = true
     error.value = null
     try {
-      const data = await collectionRepository.getAll(userId)
+      const data = await collectionRepository.getAll()
       collections.value = data
       notif.success('Collections loaded')
     } catch (err) {

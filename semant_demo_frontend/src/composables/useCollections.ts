@@ -5,7 +5,7 @@ import { computed } from 'vue'
 const useCollections = () => {
   const collectionsStore = useCollectionsStore()
 
-  const loadCollections = (userId: string) => collectionsStore.fetchCollections(userId)
+  const loadCollections = () => collectionsStore.fetchCollections()
   const loadCollection = (collectionId: string) => collectionsStore.fetchCollection(collectionId)
   const createCollection = (collectionData: PostCollection) => collectionsStore.createCollection(collectionData)
   const updateCollection = (collectionId: string, collectionData: PatchCollection) => collectionsStore.updateCollection(collectionId, collectionData)

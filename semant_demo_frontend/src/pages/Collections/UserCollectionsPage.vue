@@ -130,21 +130,18 @@ watch(viewMode, (mode) => {
 
 onMounted(async () => {
   searchQuery.value = ''
-  await loadCollections('xjuric')
+  await loadCollections()
 })
 
 const handleRefresh = async () => {
-  await loadCollections('xjuric')
+  await loadCollections()
 }
 
 const handleCreate = () => {
   openCollectionDialog({
     dialogType: 'CREATE'
   }).onOk(async (collectionData: PostCollection) => {
-    await createCollection({
-      ...collectionData,
-      userId: 'xjuric'
-    })
+    await createCollection(collectionData)
   })
 }
 

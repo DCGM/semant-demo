@@ -30,6 +30,7 @@ from semant_demo.schema.tags import Tag
 from semant_demo.schema.chunks import Chunk
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
+from semant_demo.users.models import User
 
 
 class UserCollection():
@@ -41,12 +42,12 @@ class UserCollection():
     #######
     # API #
     #######
-    async def create(self, collection: PostCollection) -> Collection:
+    async def create(self, collection: PostCollection, user: User) -> Collection:
         """
         Create user collection (contains chunks user choose)
         """
         logging.info(
-            f"Adding user collection\nUser: {collection.user_id}\nCollection name: {collection.name}")
+            f"Adding user collection\nUser: {user.id}\nCollection name: {collection.name}")
 
         usercollection_collection = self.client.collections.get(
             self.collectionNames.user_collection_name)
@@ -55,7 +56,8 @@ class UserCollection():
         new_collection_uuid = await usercollection_collection.data.insert(
             properties={
                 "name": collection.name,
-                "user_id": collection.user_id,
+                "owner": user.name,
+                "user_id": user.id,
                 "description": collection.description,
                 "color": collection.color,
                 "created_at": now,
@@ -65,7 +67,7 @@ class UserCollection():
         return Collection(
             id=new_collection_uuid,
             name=collection.name,
-            user_id=collection.user_id,
+            owner=user.name,
             description=collection.description,
             created_at=now,
             updated_at=now,
@@ -86,26 +88,26 @@ class UserCollection():
         return Collection(
             id=response.uuid,
             name=props.get("name"),
-            user_id=props.get("user_id"),
+            owner=props.get("owner") or props.get("user_id") or "",
             description=props.get("description"),
             created_at=props.get("created_at"),
             updated_at=props.get("updated_at"),
             color=props.get("color")
         )
 
-    async def read_all(self, user_id: str) -> list[Collection]:
+    async def read_all(self, user: User) -> list[Collection]:
         """
         Retrieves all collections for given user
         """
         try:
             # filter collections by user
             filters = (
-                Filter.by_property("user_id").equal(user_id)
+                Filter.by_property("user_id").equal(user.id)
             )
             results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
                 filters=filters
             )
-            logging.info(f"User Id: {user_id}\nRaw results: {results}")
+            logging.info(f"User Id: {user.id}\nRaw results: {results}")
             collections_response = []
             if results.objects is not None:
                 if len(results.objects) > 0:
@@ -116,7 +118,7 @@ class UserCollection():
                         collections_response.append(Collection(
                             id=o.uuid,
                             name=props.get("name"),
-                            user_id=props.get("user_id"),
+                            owner=props.get("owner"),
                             description=props.get("description"),
                             created_at=props.get("created_at"),
                             updated_at=props.get("updated_at"),

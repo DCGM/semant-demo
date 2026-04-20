@@ -54,6 +54,7 @@ export * from './SummaryResponse';
 export * from './Tag';
 export * from './TagData';
 export * from './TagSpan';
+export * from './TagSpanBatchRequest';
 export * from './TagSpanCreateSeparateRequest';
 export * from './TagSpanUpdate';
 export * from './TagSpanUpdateSeparateRequest';

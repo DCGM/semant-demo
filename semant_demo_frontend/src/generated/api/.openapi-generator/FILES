@@ -58,6 +58,7 @@ docs/SummaryResponse.md
 docs/Tag.md
 docs/TagData.md
 docs/TagSpan.md
+docs/TagSpanBatchRequest.md
 docs/TagSpanCreateSeparateRequest.md
 docs/TagSpanUpdate.md
 docs/TagSpanUpdateSeparateRequest.md
@@ -133,6 +134,7 @@ models/SummaryResponse.ts
 models/Tag.ts
 models/TagData.ts
 models/TagSpan.ts
+models/TagSpanBatchRequest.ts
 models/TagSpanCreateSeparateRequest.ts
 models/TagSpanUpdate.ts
 models/TagSpanUpdateSeparateRequest.ts

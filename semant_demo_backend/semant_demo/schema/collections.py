@@ -6,7 +6,7 @@ from datetime import datetime
 class Collection(BaseModel):
     id: UUID
     name: str
-    user_id: str
+    owner: str
     description: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -14,7 +14,6 @@ class Collection(BaseModel):
     
 class PostCollection(BaseModel):
     name: str
-    user_id: str
     description: str | None = None
     color: str
     

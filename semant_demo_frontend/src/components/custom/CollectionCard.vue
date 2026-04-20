@@ -7,7 +7,7 @@
             <q-item-section avatar>
               <q-avatar color="primary" text-color="white">
                 {{ ownerInitials }}
-                <q-tooltip> {{ props.collection.userId }} </q-tooltip>
+                <q-tooltip> {{ props.collection.owner }} </q-tooltip>
               </q-avatar>
             </q-item-section>
             <q-item-section>
@@ -78,8 +78,8 @@ const updatedOn = computed(() => {
 })
 
 const ownerInitials = computed(() => {
-  if (!props.collection.userId) return ''
-  const names = props.collection.userId.trim().split(' ')
+  if (!props.collection.owner) return ''
+  const names = props.collection.owner.trim().split(' ')
   if (names[0] && names[1]) {
     return (names[0]?.[0] ?? '') + (names[1]?.[0] ?? '')
   } else if (names[0]) {
