@@ -266,6 +266,70 @@ export function useTaggingPageState() {
     }
   }
 
+  const getSpanMergeKey = (
+    chunkId: string,
+    span: Pick<TagSpanWithConfidence, 'chunkId' | 'tagId' | 'start' | 'end'>
+  ) => {
+    return `${span.chunkId || chunkId}:${span.tagId}:${span.start}:${span.end}`
+  }
+
+  const mergePersistedAndLocalAutoSpans = ({
+    chunkId,
+    persistedSpans,
+    localAutoSpans
+  }: {
+    chunkId: string
+    persistedSpans: TagSpan[]
+    localAutoSpans: TagSpanWithConfidence[]
+  }) => {
+    const mergedByKey = new Map<string, TagSpanWithConfidence>()
+
+    // Keep local auto suggestions in memory while backend remains source of truth for persisted spans.
+    for (const autoSpan of localAutoSpans) {
+      mergedByKey.set(getSpanMergeKey(chunkId, autoSpan), autoSpan)
+    }
+
+    for (const persistedSpan of persistedSpans) {
+      mergedByKey.set(getSpanMergeKey(chunkId, persistedSpan), persistedSpan)
+    }
+
+    return [...mergedByKey.values()]
+  }
+
+  const refreshChunkSpansAfterAutoDecision = async ({
+    chunkId,
+    processedSpan
+  }: {
+    chunkId: string
+    processedSpan: TagSpanWithConfidence
+  }) => {
+    const existingChunkSpans = tagSpansByChunkId.value[chunkId] || []
+    const remainingLocalAutoSpans = existingChunkSpans.filter((span) => {
+      if (span.type !== SpanType.auto) return false
+
+      const matchesById = !!processedSpan.id && span.id === processedSpan.id
+      const matchesByCoordinates =
+        span.chunkId === processedSpan.chunkId &&
+        span.tagId === processedSpan.tagId &&
+        span.start === processedSpan.start &&
+        span.end === processedSpan.end
+
+      return !matchesById && !matchesByCoordinates
+    })
+
+    const refreshedSpans = await fetchTagSpansForChunk(chunkId)
+    const mergedSpans = mergePersistedAndLocalAutoSpans({
+      chunkId,
+      persistedSpans: refreshedSpans,
+      localAutoSpans: remainingLocalAutoSpans
+    })
+
+    tagSpansByChunkId.value = {
+      ...tagSpansByChunkId.value,
+      [chunkId]: mergedSpans
+    }
+  }
+
   const refreshSelectedChunkSpans = async (chunkIds: string[]) => {
     const uniqueChunkIds = [...new Set(chunkIds)].filter(Boolean)
     if (!uniqueChunkIds.length) return {}
@@ -712,25 +776,31 @@ export function useTaggingPageState() {
 
     if (!selectedSpan) return null
 
-    if (nextType === SpanType.pos) {
-      await approveTagSpan({
-        chunkID: selectedSpan.chunkId,
-        tagID: selectedSpan.tagId,
-        collectionID: currentCollectionId.value || '',
-        start: selectedSpan.start,
-        end: selectedSpan.end
-      })
-    } else {
-      await declineTagSpan({
-        chunkID: selectedSpan.chunkId,
-        tagID: selectedSpan.tagId,
-        collectionID: currentCollectionId.value || '',
-        start: selectedSpan.start,
-        end: selectedSpan.end
-      })
+    const response =
+      nextType === SpanType.pos
+        ? await approveTagSpan({
+          chunkID: selectedSpan.chunkId,
+          tagID: selectedSpan.tagId,
+          collectionID: currentCollectionId.value || '',
+          start: selectedSpan.start,
+          end: selectedSpan.end
+        })
+        : await declineTagSpan({
+          chunkID: selectedSpan.chunkId,
+          tagID: selectedSpan.tagId,
+          collectionID: currentCollectionId.value || '',
+          start: selectedSpan.start,
+          end: selectedSpan.end
+        })
+
+    if (!response) {
+      return selectedSpanId
     }
 
-    await refreshChunkSpans(selectedChunkId)
+    await refreshChunkSpansAfterAutoDecision({
+      chunkId: selectedChunkId,
+      processedSpan: selectedSpan
+    })
 
     return selectHighestConfidenceAutoSpan()
   }

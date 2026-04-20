@@ -66,9 +66,18 @@
           />
         </q-btn>
 
-        <p v-if="availableTags.length === 0" class="text-grey-7 q-mt-sm">
-          No tags available for this collection. Add some.
+        <p
+          v-if="availableTags.length === 0"
+          class="text-grey-7 q-mt-sm q-mb-sm"
+        >
+          No tags available for this collection.
         </p>
+        <div v-if="availableTags.length === 0" class="q-mt-none q-ml-sm">
+          <go-to-tag-management
+            :collectionId="props.collectionId"
+            :before-redirect="() => $emit('clearSelection')"
+          />
+        </div>
       </div>
 
       <div v-if="isAutoSelection" class="row q-gutter-sm q-mt-md">
@@ -124,6 +133,7 @@
 <script setup lang="ts">
 import { TagSpan } from 'src/generated/api/models/TagSpan'
 import { AvailableTag } from './ChunkTagAnnotator.vue'
+import GoToTagManagement from './GoToTagManagement.vue'
 
 interface GlobalSelection {
   chunkId: string
@@ -135,11 +145,12 @@ interface GlobalSelection {
   confidence?: number
 }
 
-defineProps<{
+const props = defineProps<{
   globalSelection: GlobalSelection | null
   pageLoading: boolean
   isAutoSelection: boolean
   availableTags: AvailableTag[]
+  collectionId: string
 }>()
 
 defineEmits<{

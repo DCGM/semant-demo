@@ -48,6 +48,7 @@
               :page-loading="pageLoading"
               :is-auto-selection="isAutoSelection"
               :available-tags="availableTags"
+              :collection-id="props.collectionId"
               @tag-click="handleTagClick"
               @clear-selection="clearSelection"
               @save-edited-tag="saveEditedTag"
@@ -72,6 +73,8 @@
               <AutoAnnotationSuggestionsMenu
                 v-else
                 :available-tags="availableTags"
+                :is-loading="isSuggestingAnnotations"
+                :collection-id="props.collectionId"
                 @start-suggestions="handleStartSuggestions"
                 @cancel-suggestions="showAutoSuggestionsMenu = false"
               />
@@ -127,6 +130,7 @@ interface ChunkExpansionItemExposed {
 
 const props = defineProps<Props>()
 const showAutoSuggestionsMenu = ref(false)
+const isSuggestingAnnotations = ref(false)
 const chunkItemRefs = ref<Record<string, ChunkExpansionItemExposed | null>>({})
 const railLayoutVersion = ref(0)
 const expandedChunks = ref<Record<string, boolean>>({})
@@ -240,9 +244,14 @@ const scrollToSpan = async (spanId: string | null | undefined) => {
 }
 
 const handleStartSuggestions = async (selectedTagIds: string[]) => {
-  const nextSpanId = await startAutoAnnotationSuggestions(selectedTagIds)
-  showAutoSuggestionsMenu.value = false
-  await scrollToSpan(nextSpanId)
+  isSuggestingAnnotations.value = true
+  try {
+    const nextSpanId = await startAutoAnnotationSuggestions(selectedTagIds)
+    showAutoSuggestionsMenu.value = false
+    await scrollToSpan(nextSpanId)
+  } finally {
+    isSuggestingAnnotations.value = false
+  }
 }
 
 const handleApproveAutoSpan = async () => {
