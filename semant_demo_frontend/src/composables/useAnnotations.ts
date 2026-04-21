@@ -26,12 +26,7 @@ export interface GlobalSelection {
 }
 
 /** A tag span projected into a specific chunk's local coordinate space */
-export interface ProjectedSpan extends TagSpan {
-  /** Original start/end before projection (for editing) */
-  originalStart: number
-  originalEnd: number
-  originalChunkId: string
-}
+export type ProjectedSpan = TagSpan
 
 // ── Composable ─────────────────────────────────────────
 
@@ -156,12 +151,7 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
 
         if (srcIndex === targetIndex) {
           // Same chunk — no projection needed
-          result.push({
-            ...span,
-            originalStart: span.start,
-            originalEnd: span.end,
-            originalChunkId: srcChunk.id
-          })
+          result.push({ ...span })
         } else {
           // Cross-chunk projection
           const localStart = Math.max(0, span.start - offsetToTarget)
@@ -172,10 +162,7 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
           result.push({
             ...span,
             start: localStart,
-            end: localEnd,
-            originalStart: span.start,
-            originalEnd: span.end,
-            originalChunkId: srcChunk.id
+            end: localEnd
           })
         }
       }
@@ -233,18 +220,18 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
     }
   }
 
-  const editSpan = (span: ProjectedSpan) => {
+  const editSpan = (span: TagSpan) => {
     selection.value = {
-      chunkId: span.originalChunkId,
-      start: span.originalStart,
-      end: span.originalEnd,
+      chunkId: span.chunkId,
+      start: span.start,
+      end: span.end,
       editingSpanId: span.id ?? undefined,
       tagId: span.tagId
     }
     originalPosition.value = {
-      chunkId: span.originalChunkId,
-      start: span.originalStart,
-      end: span.originalEnd
+      chunkId: span.chunkId,
+      start: span.start,
+      end: span.end
     }
   }
 

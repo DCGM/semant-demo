@@ -349,10 +349,7 @@ const onGutterClick = (item: GutterItem, e: MouseEvent) => {
     chunkId: item.chunkId,
     tagId: item.tagId,
     start: item.start,
-    end: item.end,
-    originalStart: item.start,
-    originalEnd: item.end,
-    originalChunkId: item.chunkId
+    end: item.end
   })
   updatePopoverPos(e)
   showTagPicker.value = false
