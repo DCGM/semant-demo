@@ -33,18 +33,6 @@ export interface ProjectedSpan extends TagSpan {
   originalChunkId: string
 }
 
-/** Emitted by ChunkAnnotator when the user makes a text selection */
-export interface ChunkSelectionEvent {
-  chunkId: string
-  start: number
-  end: number
-}
-
-/** Emitted by ChunkAnnotator when the user clicks an existing span */
-export interface SpanClickEvent {
-  span: ProjectedSpan
-}
-
 // ── Composable ─────────────────────────────────────────
 
 export function useAnnotations(chunksRef: () => Chunk[]) {
