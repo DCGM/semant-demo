@@ -240,16 +240,59 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
     originalPosition.value = null
   }
 
+  /**
+   * Keep GlobalSelection anchored to the chunk that really contains `start`.
+   */
+  const normalizeSelectionToStartChunk = (sel: GlobalSelection): GlobalSelection | null => {
+    let chunkIndex = chunkIndexById.value[sel.chunkId]
+    if (chunkIndex === undefined) return null
+
+    let chunkId = sel.chunkId
+    let start = sel.start
+    let end = sel.end
+
+    // Move anchor forward while start is outside current chunk to the right.
+    while (chunkIndex < chunks.value.length - 1 && start >= chunks.value[chunkIndex].text.length) {
+      const len = chunks.value[chunkIndex].text.length
+      start -= len
+      end -= len
+      chunkIndex += 1
+      chunkId = chunks.value[chunkIndex].id
+    }
+
+    // Move anchor backward while start is outside current chunk to the left.
+    while (chunkIndex > 0 && start < 0) {
+      chunkIndex -= 1
+      const len = chunks.value[chunkIndex].text.length
+      start += len
+      end += len
+      chunkId = chunks.value[chunkIndex].id
+    }
+
+    const chunkLength = chunks.value[chunkIndex].text.length
+    if (start < 0 || start >= chunkLength || end <= start) return null
+
+    return {
+      ...sel,
+      chunkId,
+      start,
+      end
+    }
+  }
+
   // ── CRUD actions ──
 
   const createSpan = async (tagId: string) => {
     if (!selection.value) return
 
+    const normalized = normalizeSelectionToStartChunk(selection.value)
+    if (!normalized) return
+
     await store.createSpan({
-      chunkId: selection.value.chunkId,
+      chunkId: normalized.chunkId,
       tagId,
-      start: selection.value.start,
-      end: selection.value.end,
+      start: normalized.start,
+      end: normalized.end,
       type: SpanType.pos
     })
     clearSelection()
@@ -272,23 +315,29 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
   const updateSpanPosition = async () => {
     if (!selection.value?.editingSpanId) return
 
-    const spanId = selection.value.editingSpanId
+    const normalized = normalizeSelectionToStartChunk(selection.value)
+    if (!normalized?.editingSpanId) return
+
+    // Keep UI state consistent with the normalized anchor used for persistence.
+    selection.value = normalized
+
+    const spanId = normalized.editingSpanId
     const ownerChunkId = findSpanOwnerChunkId(spanId)
 
-    if (ownerChunkId && ownerChunkId !== selection.value.chunkId) {
+    if (ownerChunkId && ownerChunkId !== normalized.chunkId) {
       // Span moved to a different chunk → delete + create
       await store.deleteSpan(spanId, ownerChunkId)
       await store.createSpan({
-        chunkId: selection.value.chunkId,
-        tagId: selection.value.tagId!,
-        start: selection.value.start,
-        end: selection.value.end,
+        chunkId: normalized.chunkId,
+        tagId: normalized.tagId!,
+        start: normalized.start,
+        end: normalized.end,
         type: SpanType.pos
       })
     } else {
-      await store.updateSpan(spanId, selection.value.chunkId, {
-        start: selection.value.start,
-        end: selection.value.end
+      await store.updateSpan(spanId, normalized.chunkId, {
+        start: normalized.start,
+        end: normalized.end
       })
     }
     clearSelection()
@@ -334,25 +383,31 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
   ) => {
     if (!selection.value) return
 
-    const sel = selection.value
+    const normalized = normalizeSelectionToStartChunk(selection.value)
+    if (!normalized) return
 
     if (handle === 'start') {
       // Compute the new start as a global offset from current anchor chunk
-      const offsetFromAnchorToTarget = getOffsetBetweenChunks(sel.chunkId, targetChunkId)
+      const offsetFromAnchorToTarget = getOffsetBetweenChunks(normalized.chunkId, targetChunkId)
 
       if (offsetFromAnchorToTarget !== null) {
-        // Target is at or after anchor chunk
-        const newStart = offsetFromAnchorToTarget + charOffset
-        if (newStart >= sel.end) return
-        selection.value = { ...sel, start: newStart }
-      } else {
-        // Target is before anchor chunk — re-anchor to the target chunk
-        const offsetFromTargetToAnchor = getOffsetBetweenChunks(targetChunkId, sel.chunkId)
-        if (offsetFromTargetToAnchor === null) return
-        const newEnd = offsetFromTargetToAnchor + sel.end
+        // Target is at or after anchor chunk — re-anchor directly to target chunk
+        const newEnd = normalized.end - offsetFromAnchorToTarget
         if (charOffset >= newEnd) return
         selection.value = {
-          ...sel,
+          ...normalized,
+          chunkId: targetChunkId,
+          start: charOffset,
+          end: newEnd
+        }
+      } else {
+        // Target is before anchor chunk — re-anchor to the target chunk
+        const offsetFromTargetToAnchor = getOffsetBetweenChunks(targetChunkId, normalized.chunkId)
+        if (offsetFromTargetToAnchor === null) return
+        const newEnd = offsetFromTargetToAnchor + normalized.end
+        if (charOffset >= newEnd) return
+        selection.value = {
+          ...normalized,
           chunkId: targetChunkId,
           start: charOffset,
           end: newEnd
@@ -360,11 +415,11 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
       }
     } else {
       // Moving end handle
-      const offsetFromAnchorToTarget = getOffsetBetweenChunks(sel.chunkId, targetChunkId)
+      const offsetFromAnchorToTarget = getOffsetBetweenChunks(normalized.chunkId, targetChunkId)
       if (offsetFromAnchorToTarget === null) return
       const newEnd = offsetFromAnchorToTarget + charOffset
-      if (newEnd <= sel.start) return
-      selection.value = { ...sel, end: newEnd }
+      if (newEnd <= normalized.start) return
+      selection.value = { ...normalized, end: newEnd }
     }
   }
 

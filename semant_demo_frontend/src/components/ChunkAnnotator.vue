@@ -137,46 +137,44 @@ const renderedSegments = computed((): TextSegment[] => {
 
 // ── Drag handles ──
 
-function resolveCharOffset(clientX: number, clientY: number): { chunkId: string; charOffset: number } | null {
-  let range: Range | null = null
-
-  if (typeof document.caretRangeFromPoint !== 'undefined') {
-    range = document.caretRangeFromPoint(clientX, clientY)
-  } else if (typeof document.caretPositionFromPoint !== 'undefined') {
+const getCaretPoint = (clientX: number, clientY: number): { node: Node; offset: number } | null => {
+  if (typeof document.caretPositionFromPoint === 'function') {
     const pos = document.caretPositionFromPoint(clientX, clientY)
     if (pos?.offsetNode) {
-      range = document.createRange()
-      range.setStart(pos.offsetNode, pos.offset)
+      return { node: pos.offsetNode, offset: pos.offset }
     }
   }
 
-  if (!range) return null
-
-  const node = range.startContainer
-  const offset = range.startOffset
-
-  // Walk up to find .text-segment with data-start
-  let segmentEl: HTMLElement | null = null
-  let current: Node | null = node
-  while (current) {
-    if (current instanceof HTMLElement && current.dataset.start !== undefined) {
-      segmentEl = current
-      break
+  // Safari fallback. Deprecated but still needed for browser compatibility.
+  if (typeof document.caretRangeFromPoint === 'function') {
+    const range = document.caretRangeFromPoint(clientX, clientY)
+    if (range) {
+      return { node: range.startContainer, offset: range.startOffset }
     }
-    current = current.parentElement
   }
+
+  return null
+}
+
+function resolveCharOffset(clientX: number, clientY: number): { chunkId: string; charOffset: number } | null {
+  const caretPoint = getCaretPoint(clientX, clientY)
+  if (!caretPoint) return null
+
+  const { node, offset } = caretPoint
+  const element = node instanceof HTMLElement ? node : node.parentElement
+
+  const segmentEl = element?.closest<HTMLElement>('.text-segment[data-start][data-end]')
   if (!segmentEl) return null
 
-  // Walk up to find [data-chunk-id]
-  let chunkEl: HTMLElement | null = segmentEl
-  while (chunkEl && !chunkEl.dataset.chunkId) {
-    chunkEl = chunkEl.parentElement
-  }
-  if (!chunkEl) return null
+  const chunkId = segmentEl.closest<HTMLElement>('[data-chunk-id]')?.dataset.chunkId
+  if (!chunkId) return null
 
-  const chunkId = chunkEl.dataset.chunkId!
-  const segStart = parseInt(segmentEl.dataset.start || '0', 10)
-  const charOffset = node.nodeType === Node.TEXT_NODE ? segStart + offset : segStart
+  const segStart = Number(segmentEl.dataset.start ?? '0')
+  const segEnd = Number(segmentEl.dataset.end ?? segStart)
+  if (!Number.isFinite(segStart) || !Number.isFinite(segEnd)) return null
+
+  const rawOffset = node.nodeType === Node.TEXT_NODE ? segStart + offset : segStart
+  const charOffset = Math.max(segStart, Math.min(segEnd, rawOffset))
 
   return { chunkId, charOffset }
 }
