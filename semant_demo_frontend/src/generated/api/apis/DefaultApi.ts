@@ -36,8 +36,10 @@ import type {
   GetTagsResponse,
   HTTPValidationError,
   PatchCollection,
+  PatchSpan,
   PatchTag,
   PostCollection,
+  PostSpan,
   PostTag,
   RagRequestMain,
   RagResponse,
@@ -52,9 +54,6 @@ import type {
   Tag,
   TagSpan,
   TagSpanBatchRequest,
-  TagSpanCreateSeparateRequest,
-  TagSpanUpdateSeparateRequest,
-  TagSpanWriteResponse,
   TagStartResponse,
   TaggingTaskReqTemplate,
   UserSearchResult,
@@ -102,10 +101,14 @@ import {
     HTTPValidationErrorToJSON,
     PatchCollectionFromJSON,
     PatchCollectionToJSON,
+    PatchSpanFromJSON,
+    PatchSpanToJSON,
     PatchTagFromJSON,
     PatchTagToJSON,
     PostCollectionFromJSON,
     PostCollectionToJSON,
+    PostSpanFromJSON,
+    PostSpanToJSON,
     PostTagFromJSON,
     PostTagToJSON,
     RagRequestMainFromJSON,
@@ -134,12 +137,6 @@ import {
     TagSpanToJSON,
     TagSpanBatchRequestFromJSON,
     TagSpanBatchRequestToJSON,
-    TagSpanCreateSeparateRequestFromJSON,
-    TagSpanCreateSeparateRequestToJSON,
-    TagSpanUpdateSeparateRequestFromJSON,
-    TagSpanUpdateSeparateRequestToJSON,
-    TagSpanWriteResponseFromJSON,
-    TagSpanWriteResponseToJSON,
     TagStartResponseFromJSON,
     TagStartResponseToJSON,
     TaggingTaskReqTemplateFromJSON,
@@ -188,6 +185,10 @@ export interface CheckStatusApiTagTaskStatusTaskIdGetRequest {
 export interface CreateTagApiTagsPostRequest {
     collectionId: string;
     postTag: PostTag;
+}
+
+export interface CreateTagSpanApiTagSpansPostRequest {
+    postSpan: PostSpan;
 }
 
 export interface CreateUserCollectionApiUserCollectionsPostRequest {
@@ -260,8 +261,9 @@ export interface RagApiRagPostRequest {
     ragRequestMain: RagRequestMain;
 }
 
-export interface ReadTagSpansApiTagSpansChunkIdGetRequest {
-    chunkId: string;
+export interface ReadTagSpansApiTagSpansGetRequest {
+    chunkId?: string | null;
+    collectionId?: string | null;
 }
 
 export interface ReadTagSpansBatchApiTagSpansBatchPostRequest {
@@ -312,12 +314,9 @@ export interface UpdateTagApiTagsTagUuidPatchRequest {
     patchTag: PatchTag;
 }
 
-export interface UpdateTagSpanApiTagSpansUpdatePatchRequest {
-    tagSpanUpdateSeparateRequest: TagSpanUpdateSeparateRequest;
-}
-
-export interface UpsertTagSpansApiTagSpansPostRequest {
-    tagSpanCreateSeparateRequest: TagSpanCreateSeparateRequest;
+export interface UpdateTagSpanApiTagSpansSpanIdPatchRequest {
+    spanId: string;
+    patchSpan: PatchSpan;
 }
 
 /**
@@ -540,6 +539,30 @@ export interface DefaultApiInterface {
     createTagApiTagsPost(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag>;
 
     /**
+     * Creates request options for createTagSpanApiTagSpansPost without sending the request
+     * @param {PostSpan} postSpan 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    createTagSpanApiTagSpansPostRequestOpts(requestParameters: CreateTagSpanApiTagSpansPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Adds new TagSpan
+     * @summary Create Tag Span
+     * @param {PostSpan} postSpan 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    createTagSpanApiTagSpansPostRaw(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpan>>;
+
+    /**
+     * Adds new TagSpan
+     * Create Tag Span
+     */
+    createTagSpanApiTagSpansPost(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpan>;
+
+    /**
      * Creates request options for createUserCollectionApiUserCollectionsPost without sending the request
      * @param {PostCollection} postCollection 
      * @throws {RequiredError}
@@ -626,13 +649,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>>;
+    deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
      * Delete a TagSpan\'s information
      * Delete Tag Span
      */
-    deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }>;
+    deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for explainSelectionApiRagExplainPost without sending the request
@@ -1056,28 +1079,30 @@ export interface DefaultApiInterface {
     ragApiRagPost(requestParameters: RagApiRagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RagResponse>;
 
     /**
-     * Creates request options for readTagSpansApiTagSpansChunkIdGet without sending the request
-     * @param {string} chunkId 
+     * Creates request options for readTagSpansApiTagSpansGet without sending the request
+     * @param {string} [chunkId] Filter spans by chunk ID
+     * @param {string} [collectionId] Filter spans by collection ID
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    readTagSpansApiTagSpansChunkIdGetRequestOpts(requestParameters: ReadTagSpansApiTagSpansChunkIdGetRequest): Promise<runtime.RequestOpts>;
+    readTagSpansApiTagSpansGetRequestOpts(requestParameters: ReadTagSpansApiTagSpansGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Get stored TagSpans for a given chunk ID.
+     * Get stored TagSpans for a given chunk ID and collection ID.
      * @summary Read Tag Spans
-     * @param {string} chunkId 
+     * @param {string} [chunkId] Filter spans by chunk ID
+     * @param {string} [collectionId] Filter spans by collection ID
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    readTagSpansApiTagSpansChunkIdGetRaw(requestParameters: ReadTagSpansApiTagSpansChunkIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TagSpan>>>;
+    readTagSpansApiTagSpansGetRaw(requestParameters: ReadTagSpansApiTagSpansGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TagSpan>>>;
 
     /**
-     * Get stored TagSpans for a given chunk ID.
+     * Get stored TagSpans for a given chunk ID and collection ID.
      * Read Tag Spans
      */
-    readTagSpansApiTagSpansChunkIdGet(requestParameters: ReadTagSpansApiTagSpansChunkIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>>;
+    readTagSpansApiTagSpansGet(requestParameters: ReadTagSpansApiTagSpansGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>>;
 
     /**
      * Creates request options for readTagSpansBatchApiTagSpansBatchPost without sending the request
@@ -1347,52 +1372,30 @@ export interface DefaultApiInterface {
     updateTagApiTagsTagUuidPatch(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag>;
 
     /**
-     * Creates request options for updateTagSpanApiTagSpansUpdatePatch without sending the request
-     * @param {TagSpanUpdateSeparateRequest} tagSpanUpdateSeparateRequest 
+     * Creates request options for updateTagSpanApiTagSpansSpanIdPatch without sending the request
+     * @param {string} spanId 
+     * @param {PatchSpan} patchSpan 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    updateTagSpanApiTagSpansUpdatePatchRequestOpts(requestParameters: UpdateTagSpanApiTagSpansUpdatePatchRequest): Promise<runtime.RequestOpts>;
+    updateTagSpanApiTagSpansSpanIdPatchRequestOpts(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest): Promise<runtime.RequestOpts>;
 
     /**
      * Update TagSpan\'s information (start, end, tagId, ...)
      * @summary Update Tag Span
-     * @param {TagSpanUpdateSeparateRequest} tagSpanUpdateSeparateRequest 
+     * @param {string} spanId 
+     * @param {PatchSpan} patchSpan 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    updateTagSpanApiTagSpansUpdatePatchRaw(requestParameters: UpdateTagSpanApiTagSpansUpdatePatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>>;
+    updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpan>>;
 
     /**
      * Update TagSpan\'s information (start, end, tagId, ...)
      * Update Tag Span
      */
-    updateTagSpanApiTagSpansUpdatePatch(requestParameters: UpdateTagSpanApiTagSpansUpdatePatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }>;
-
-    /**
-     * Creates request options for upsertTagSpansApiTagSpansPost without sending the request
-     * @param {TagSpanCreateSeparateRequest} tagSpanCreateSeparateRequest 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    upsertTagSpansApiTagSpansPostRequestOpts(requestParameters: UpsertTagSpansApiTagSpansPostRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * Adds new TagSpan
-     * @summary Upsert Tag Spans
-     * @param {TagSpanCreateSeparateRequest} tagSpanCreateSeparateRequest 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    upsertTagSpansApiTagSpansPostRaw(requestParameters: UpsertTagSpansApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResponse>>;
-
-    /**
-     * Adds new TagSpan
-     * Upsert Tag Spans
-     */
-    upsertTagSpansApiTagSpansPost(requestParameters: UpsertTagSpansApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResponse>;
+    updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpan>;
 
 }
 
@@ -1871,6 +1874,55 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for createTagSpanApiTagSpansPost without sending the request
+     */
+    async createTagSpanApiTagSpansPostRequestOpts(requestParameters: CreateTagSpanApiTagSpansPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['postSpan'] == null) {
+            throw new runtime.RequiredError(
+                'postSpan',
+                'Required parameter "postSpan" was null or undefined when calling createTagSpanApiTagSpansPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/tag_spans`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PostSpanToJSON(requestParameters['postSpan']),
+        };
+    }
+
+    /**
+     * Adds new TagSpan
+     * Create Tag Span
+     */
+    async createTagSpanApiTagSpansPostRaw(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpan>> {
+        const requestOptions = await this.createTagSpanApiTagSpansPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TagSpanFromJSON(jsonValue));
+    }
+
+    /**
+     * Adds new TagSpan
+     * Create Tag Span
+     */
+    async createTagSpanApiTagSpansPost(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpan> {
+        const response = await this.createTagSpanApiTagSpansPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for createUserCollectionApiUserCollectionsPost without sending the request
      */
     async createUserCollectionApiUserCollectionsPostRequestOpts(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest): Promise<runtime.RequestOpts> {
@@ -2045,20 +2097,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Delete a TagSpan\'s information
      * Delete Tag Span
      */
-    async deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+    async deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
         const requestOptions = await this.deleteTagSpanApiTagSpansSpanIdDeleteRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse<any>(response);
+        return new runtime.VoidApiResponse(response);
     }
 
     /**
      * Delete a TagSpan\'s information
      * Delete Tag Span
      */
-    async deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
-        const response = await this.deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters, initOverrides);
-        return await response.value();
+    async deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -2945,23 +2996,23 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for readTagSpansApiTagSpansChunkIdGet without sending the request
+     * Creates request options for readTagSpansApiTagSpansGet without sending the request
      */
-    async readTagSpansApiTagSpansChunkIdGetRequestOpts(requestParameters: ReadTagSpansApiTagSpansChunkIdGetRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['chunkId'] == null) {
-            throw new runtime.RequiredError(
-                'chunkId',
-                'Required parameter "chunkId" was null or undefined when calling readTagSpansApiTagSpansChunkIdGet().'
-            );
+    async readTagSpansApiTagSpansGetRequestOpts(requestParameters: ReadTagSpansApiTagSpansGetRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['chunkId'] != null) {
+            queryParameters['chunk_id'] = requestParameters['chunkId'];
         }
 
-        const queryParameters: any = {};
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/api/tag_spans/{chunk_id}`;
-        urlPath = urlPath.replace(`{${"chunk_id"}}`, encodeURIComponent(String(requestParameters['chunkId'])));
+        let urlPath = `/api/tag_spans`;
 
         return {
             path: urlPath,
@@ -2972,22 +3023,22 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Get stored TagSpans for a given chunk ID.
+     * Get stored TagSpans for a given chunk ID and collection ID.
      * Read Tag Spans
      */
-    async readTagSpansApiTagSpansChunkIdGetRaw(requestParameters: ReadTagSpansApiTagSpansChunkIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TagSpan>>> {
-        const requestOptions = await this.readTagSpansApiTagSpansChunkIdGetRequestOpts(requestParameters);
+    async readTagSpansApiTagSpansGetRaw(requestParameters: ReadTagSpansApiTagSpansGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TagSpan>>> {
+        const requestOptions = await this.readTagSpansApiTagSpansGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(TagSpanFromJSON));
     }
 
     /**
-     * Get stored TagSpans for a given chunk ID.
+     * Get stored TagSpans for a given chunk ID and collection ID.
      * Read Tag Spans
      */
-    async readTagSpansApiTagSpansChunkIdGet(requestParameters: ReadTagSpansApiTagSpansChunkIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>> {
-        const response = await this.readTagSpansApiTagSpansChunkIdGetRaw(requestParameters, initOverrides);
+    async readTagSpansApiTagSpansGet(requestParameters: ReadTagSpansApiTagSpansGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>> {
+        const response = await this.readTagSpansApiTagSpansGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -3594,13 +3645,20 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for updateTagSpanApiTagSpansUpdatePatch without sending the request
+     * Creates request options for updateTagSpanApiTagSpansSpanIdPatch without sending the request
      */
-    async updateTagSpanApiTagSpansUpdatePatchRequestOpts(requestParameters: UpdateTagSpanApiTagSpansUpdatePatchRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['tagSpanUpdateSeparateRequest'] == null) {
+    async updateTagSpanApiTagSpansSpanIdPatchRequestOpts(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['spanId'] == null) {
             throw new runtime.RequiredError(
-                'tagSpanUpdateSeparateRequest',
-                'Required parameter "tagSpanUpdateSeparateRequest" was null or undefined when calling updateTagSpanApiTagSpansUpdatePatch().'
+                'spanId',
+                'Required parameter "spanId" was null or undefined when calling updateTagSpanApiTagSpansSpanIdPatch().'
+            );
+        }
+
+        if (requestParameters['patchSpan'] == null) {
+            throw new runtime.RequiredError(
+                'patchSpan',
+                'Required parameter "patchSpan" was null or undefined when calling updateTagSpanApiTagSpansSpanIdPatch().'
             );
         }
 
@@ -3611,14 +3669,15 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         headerParameters['Content-Type'] = 'application/json';
 
 
-        let urlPath = `/api/tag_spans/update`;
+        let urlPath = `/api/tag_spans/{span_id}`;
+        urlPath = urlPath.replace(`{${"span_id"}}`, encodeURIComponent(String(requestParameters['spanId'])));
 
         return {
             path: urlPath,
             method: 'PATCH',
             headers: headerParameters,
             query: queryParameters,
-            body: TagSpanUpdateSeparateRequestToJSON(requestParameters['tagSpanUpdateSeparateRequest']),
+            body: PatchSpanToJSON(requestParameters['patchSpan']),
         };
     }
 
@@ -3626,68 +3685,19 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Update TagSpan\'s information (start, end, tagId, ...)
      * Update Tag Span
      */
-    async updateTagSpanApiTagSpansUpdatePatchRaw(requestParameters: UpdateTagSpanApiTagSpansUpdatePatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
-        const requestOptions = await this.updateTagSpanApiTagSpansUpdatePatchRequestOpts(requestParameters);
+    async updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpan>> {
+        const requestOptions = await this.updateTagSpanApiTagSpansSpanIdPatchRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse<any>(response);
+        return new runtime.JSONApiResponse(response, (jsonValue) => TagSpanFromJSON(jsonValue));
     }
 
     /**
      * Update TagSpan\'s information (start, end, tagId, ...)
      * Update Tag Span
      */
-    async updateTagSpanApiTagSpansUpdatePatch(requestParameters: UpdateTagSpanApiTagSpansUpdatePatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
-        const response = await this.updateTagSpanApiTagSpansUpdatePatchRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for upsertTagSpansApiTagSpansPost without sending the request
-     */
-    async upsertTagSpansApiTagSpansPostRequestOpts(requestParameters: UpsertTagSpansApiTagSpansPostRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['tagSpanCreateSeparateRequest'] == null) {
-            throw new runtime.RequiredError(
-                'tagSpanCreateSeparateRequest',
-                'Required parameter "tagSpanCreateSeparateRequest" was null or undefined when calling upsertTagSpansApiTagSpansPost().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-
-        let urlPath = `/api/tag_spans`;
-
-        return {
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: TagSpanCreateSeparateRequestToJSON(requestParameters['tagSpanCreateSeparateRequest']),
-        };
-    }
-
-    /**
-     * Adds new TagSpan
-     * Upsert Tag Spans
-     */
-    async upsertTagSpansApiTagSpansPostRaw(requestParameters: UpsertTagSpansApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResponse>> {
-        const requestOptions = await this.upsertTagSpansApiTagSpansPostRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => TagSpanWriteResponseFromJSON(jsonValue));
-    }
-
-    /**
-     * Adds new TagSpan
-     * Upsert Tag Spans
-     */
-    async upsertTagSpansApiTagSpansPost(requestParameters: UpsertTagSpansApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResponse> {
-        const response = await this.upsertTagSpansApiTagSpansPostRaw(requestParameters, initOverrides);
+    async updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpan> {
+        const response = await this.updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

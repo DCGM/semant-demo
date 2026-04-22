@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { TagSpan, TagSpans, TagSpanUpdate } from 'src/models/tagSpans'
-import { SpanType } from 'src/generated/api'
+import type { PostSpan, TagSpans, PatchSpan } from 'src/models/tagSpans'
 import { useTagSpansRepository } from 'src/repositories/useTagSpansRepository'
 
 export const useTagSpansStore = defineStore('tagSpans', () => {
@@ -12,9 +11,9 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  const fetchSpansForChunk = async (chunkId: string) => {
+  const fetchSpansForChunkInCollection = async (chunkId: string, collectionId: string) => {
     try {
-      const spans = await repo.getByChunkId(chunkId)
+      const spans = await repo.getByChunkIdInCollection(chunkId, collectionId)
       spansByChunkId.value = {
         ...spansByChunkId.value,
         [chunkId]: spans
@@ -25,11 +24,11 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     }
   }
 
-  const fetchSpansForChunks = async (chunkIds: string[]) => {
+  const fetchSpansForChunksInCollection = async (chunkIds: string[], collectionId: string) => {
     loading.value = true
     error.value = null
     try {
-      const result = await repo.getByChunkIds(chunkIds)
+      const result = await repo.getByChunkIdsInCollection(chunkIds, collectionId)
       spansByChunkId.value = { ...spansByChunkId.value, ...result }
     } catch (err) {
       console.error('Failed to fetch spans', err)
@@ -39,10 +38,10 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     }
   }
 
-  const createSpan = async (span: TagSpan) => {
+  const createSpan = async (span: PostSpan) => {
     try {
-      await repo.create(span)
-      await fetchSpansForChunk(span.chunkId)
+      const newSpan = await repo.create(span)
+      spansByChunkId.value[span.chunkId] = [...(spansByChunkId.value[span.chunkId] || []), newSpan]
     } catch (err) {
       console.error('Failed to create span', err)
       error.value = 'Failed to create span'
@@ -50,10 +49,10 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     }
   }
 
-  const updateSpan = async (spanId: string, chunkId: string, update: TagSpanUpdate) => {
+  const updateSpan = async (spanId: string, chunkId: string, update: PatchSpan) => {
     try {
-      await repo.update(spanId, update)
-      await fetchSpansForChunk(chunkId)
+      const updatedSpan = await repo.update(spanId, update)
+      spansByChunkId.value[chunkId] = spansByChunkId.value[chunkId].map((s) => (s.id === spanId ? updatedSpan : s))
     } catch (err) {
       console.error('Failed to update span', err)
       error.value = 'Failed to update span'
@@ -64,7 +63,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   const deleteSpan = async (spanId: string, chunkId: string) => {
     try {
       await repo.delete(spanId)
-      await fetchSpansForChunk(chunkId)
+      spansByChunkId.value[chunkId] = spansByChunkId.value[chunkId].filter((s) => s.id !== spanId)
     } catch (err) {
       console.error('Failed to delete span', err)
       error.value = 'Failed to delete span'
@@ -81,8 +80,8 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     spansByChunkId,
     loading,
     error,
-    fetchSpansForChunk,
-    fetchSpansForChunks,
+    fetchSpansForChunkInCollection,
+    fetchSpansForChunksInCollection,
     createSpan,
     updateSpan,
     deleteSpan,

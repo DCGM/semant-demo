@@ -470,7 +470,8 @@ class TagSpanWriteResponse(BaseModel):
 
 
 class TagSpanBatchRequest(BaseModel):
-    chunk_ids: list[str]
+    chunk_ids: list[str] | None = None
+    collection_id: str | None = None
 
 
 class TagSpanUpdateSeparateRequest(BaseModel):

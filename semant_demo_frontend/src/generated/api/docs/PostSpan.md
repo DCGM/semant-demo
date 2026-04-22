@@ -1,24 +1,30 @@
 
-# TagSpanBatchRequest
+# PostSpan
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`chunkIds` | Array&lt;string&gt;
-`collectionId` | string
+`start` | number
+`end` | number
+`type` | [SpanType](SpanType.md)
+`chunkId` | string
+`tagId` | string
 
 ## Example
 
 ```typescript
-import type { TagSpanBatchRequest } from ''
+import type { PostSpan } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "chunkIds": null,
-  "collectionId": null,
-} satisfies TagSpanBatchRequest
+  "start": null,
+  "end": null,
+  "type": null,
+  "chunkId": null,
+  "tagId": null,
+} satisfies PostSpan
 
 console.log(example)
 
@@ -27,7 +33,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as TagSpanBatchRequest
+const exampleParsed = JSON.parse(exampleJSON) as PostSpan
 console.log(exampleParsed)
 ```
 

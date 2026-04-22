@@ -12,6 +12,7 @@ All URIs are relative to *http://localhost*
 | [**cancelTaskApiTagTaskTaskIdDelete**](DefaultApi.md#canceltaskapitagtasktaskiddelete) | **DELETE** /api/tag/task/{taskId} | Cancel Task |
 | [**checkStatusApiTagTaskStatusTaskIdGet**](DefaultApi.md#checkstatusapitagtaskstatustaskidget) | **GET** /api/tag/task/status/{taskId} | Check Status |
 | [**createTagApiTagsPost**](DefaultApi.md#createtagapitagspost) | **POST** /api/tags | Create Tag |
+| [**createTagSpanApiTagSpansPost**](DefaultApi.md#createtagspanapitagspanspost) | **POST** /api/tag_spans | Create Tag Span |
 | [**createUserCollectionApiUserCollectionsPost**](DefaultApi.md#createusercollectionapiusercollectionspost) | **POST** /api/user_collections | Create User Collection |
 | [**deleteCollectionApiCollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapicollectionscollectioniddelete) | **DELETE** /api/collections/{collection_id} | Delete Collection |
 | [**deleteTagApiTagsTagUuidDelete**](DefaultApi.md#deletetagapitagstaguuiddelete) | **DELETE** /api/tags/{tag_uuid} | Delete Tag |
@@ -34,7 +35,7 @@ All URIs are relative to *http://localhost*
 | [**getTagsApiTagsGet**](DefaultApi.md#gettagsapitagsget) | **GET** /api/tags | Get Tags |
 | [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
-| [**readTagSpansApiTagSpansChunkIdGet**](DefaultApi.md#readtagspansapitagspanschunkidget) | **GET** /api/tag_spans/{chunk_id} | Read Tag Spans |
+| [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
 | [**removeAutomaticTagsApiTagsAutomaticDelete**](DefaultApi.md#removeautomatictagsapitagsautomaticdelete) | **DELETE** /api/tags/automatic | Remove Automatic Tags |
 | [**removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapicollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
@@ -46,8 +47,7 @@ All URIs are relative to *http://localhost*
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
-| [**updateTagSpanApiTagSpansUpdatePatch**](DefaultApi.md#updatetagspanapitagspansupdatepatch) | **PATCH** /api/tag_spans/update | Update Tag Span |
-| [**upsertTagSpansApiTagSpansPost**](DefaultApi.md#upserttagspansapitagspanspost) | **POST** /api/tag_spans | Upsert Tag Spans |
+| [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
 
 
 
@@ -649,6 +649,74 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## createTagSpanApiTagSpansPost
+
+> TagSpan createTagSpanApiTagSpansPost(postSpan)
+
+Create Tag Span
+
+Adds new TagSpan
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CreateTagSpanApiTagSpansPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // PostSpan
+    postSpan: ...,
+  } satisfies CreateTagSpanApiTagSpansPostRequest;
+
+  try {
+    const data = await api.createTagSpanApiTagSpansPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **postSpan** | [PostSpan](PostSpan.md) |  | |
+
+### Return type
+
+[**TagSpan**](TagSpan.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## createUserCollectionApiUserCollectionsPost
 
 > Collection createUserCollectionApiUserCollectionsPost(postCollection)
@@ -857,7 +925,7 @@ No authorization required
 
 ## deleteTagSpanApiTagSpansSpanIdDelete
 
-> { [key: string]: any; } deleteTagSpanApiTagSpansSpanIdDelete(spanId)
+> deleteTagSpanApiTagSpansSpanIdDelete(spanId)
 
 Delete Tag Span
 
@@ -902,7 +970,7 @@ example().catch(console.error);
 
 ### Return type
 
-**{ [key: string]: any; }**
+`void` (Empty response body)
 
 ### Authorization
 
@@ -917,7 +985,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
+| **204** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -2138,13 +2206,13 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## readTagSpansApiTagSpansChunkIdGet
+## readTagSpansApiTagSpansGet
 
-> Array&lt;TagSpan&gt; readTagSpansApiTagSpansChunkIdGet(chunkId)
+> Array&lt;TagSpan&gt; readTagSpansApiTagSpansGet(chunkId, collectionId)
 
 Read Tag Spans
 
-Get stored TagSpans for a given chunk ID.
+Get stored TagSpans for a given chunk ID and collection ID.
 
 ### Example
 
@@ -2153,19 +2221,21 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { ReadTagSpansApiTagSpansChunkIdGetRequest } from '';
+import type { ReadTagSpansApiTagSpansGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   const body = {
-    // string
+    // string | Filter spans by chunk ID (optional)
     chunkId: chunkId_example,
-  } satisfies ReadTagSpansApiTagSpansChunkIdGetRequest;
+    // string | Filter spans by collection ID (optional)
+    collectionId: collectionId_example,
+  } satisfies ReadTagSpansApiTagSpansGetRequest;
 
   try {
-    const data = await api.readTagSpansApiTagSpansChunkIdGet(body);
+    const data = await api.readTagSpansApiTagSpansGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2181,7 +2251,8 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **chunkId** | `string` |  | [Defaults to `undefined`] |
+| **chunkId** | `string` | Filter spans by chunk ID | [Optional] [Defaults to `undefined`] |
+| **collectionId** | `string` | Filter spans by collection ID | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -2980,9 +3051,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## updateTagSpanApiTagSpansUpdatePatch
+## updateTagSpanApiTagSpansSpanIdPatch
 
-> { [key: string]: any; } updateTagSpanApiTagSpansUpdatePatch(tagSpanUpdateSeparateRequest)
+> TagSpan updateTagSpanApiTagSpansSpanIdPatch(spanId, patchSpan)
 
 Update Tag Span
 
@@ -2995,19 +3066,21 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { UpdateTagSpanApiTagSpansUpdatePatchRequest } from '';
+import type { UpdateTagSpanApiTagSpansSpanIdPatchRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   const body = {
-    // TagSpanUpdateSeparateRequest
-    tagSpanUpdateSeparateRequest: ...,
-  } satisfies UpdateTagSpanApiTagSpansUpdatePatchRequest;
+    // string
+    spanId: spanId_example,
+    // PatchSpan
+    patchSpan: ...,
+  } satisfies UpdateTagSpanApiTagSpansSpanIdPatchRequest;
 
   try {
-    const data = await api.updateTagSpanApiTagSpansUpdatePatch(body);
+    const data = await api.updateTagSpanApiTagSpansSpanIdPatch(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -3023,79 +3096,12 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **tagSpanUpdateSeparateRequest** | [TagSpanUpdateSeparateRequest](TagSpanUpdateSeparateRequest.md) |  | |
+| **spanId** | `string` |  | [Defaults to `undefined`] |
+| **patchSpan** | [PatchSpan](PatchSpan.md) |  | |
 
 ### Return type
 
-**{ [key: string]: any; }**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## upsertTagSpansApiTagSpansPost
-
-> TagSpanWriteResponse upsertTagSpansApiTagSpansPost(tagSpanCreateSeparateRequest)
-
-Upsert Tag Spans
-
-Adds new TagSpan
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { UpsertTagSpansApiTagSpansPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // TagSpanCreateSeparateRequest
-    tagSpanCreateSeparateRequest: ...,
-  } satisfies UpsertTagSpansApiTagSpansPostRequest;
-
-  try {
-    const data = await api.upsertTagSpansApiTagSpansPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **tagSpanCreateSeparateRequest** | [TagSpanCreateSeparateRequest](TagSpanCreateSeparateRequest.md) |  | |
-
-### Return type
-
-[**TagSpanWriteResponse**](TagSpanWriteResponse.md)
+[**TagSpan**](TagSpan.md)
 
 ### Authorization
 

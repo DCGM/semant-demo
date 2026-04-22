@@ -56,15 +56,15 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
 
   // ── Span loading ──
 
-  const loadAllSpans = async () => {
+  const loadAllSpans = async (collectionId: string) => {
     const chunkIds = chunks.value.map((c) => c.id)
     if (chunkIds.length) {
-      await store.fetchSpansForChunks(chunkIds)
+      await store.fetchSpansForChunksInCollection(chunkIds, collectionId)
     }
   }
 
-  const refreshChunkSpans = async (chunkId: string) => {
-    await store.fetchSpansForChunk(chunkId)
+  const refreshChunkSpans = async (chunkId: string, collectionId: string) => {
+    await store.fetchSpansForChunkInCollection(chunkId, collectionId)
   }
 
   // ── Cross-chunk offset math ──

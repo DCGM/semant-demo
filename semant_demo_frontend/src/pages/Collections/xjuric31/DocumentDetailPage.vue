@@ -479,7 +479,7 @@ watch(
   () => chunks.value,
   async (newChunks) => {
     if (newChunks.length) {
-      await annotations.loadAllSpans()
+      await annotations.loadAllSpans(props.collectionId)
       await nextTick()
       recalculateGutter()
     }

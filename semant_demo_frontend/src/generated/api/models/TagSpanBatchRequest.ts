@@ -24,14 +24,19 @@ export interface TagSpanBatchRequest {
      * @type {Array<string>}
      * @memberof TagSpanBatchRequest
      */
-    chunkIds: Array<string>;
+    chunkIds?: Array<string> | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TagSpanBatchRequest
+     */
+    collectionId?: string | null;
 }
 
 /**
  * Check if a given object implements the TagSpanBatchRequest interface.
  */
 export function instanceOfTagSpanBatchRequest(value: object): value is TagSpanBatchRequest {
-    if (!('chunkIds' in value) || value['chunkIds'] === undefined) return false;
     return true;
 }
 
@@ -45,7 +50,8 @@ export function TagSpanBatchRequestFromJSONTyped(json: any, ignoreDiscriminator:
     }
     return {
         
-        'chunkIds': json['chunk_ids'],
+        'chunkIds': json['chunk_ids'] == null ? undefined : json['chunk_ids'],
+        'collectionId': json['collection_id'] == null ? undefined : json['collection_id'],
     };
 }
 
@@ -61,6 +67,7 @@ export function TagSpanBatchRequestToJSONTyped(value?: TagSpanBatchRequest | nul
     return {
         
         'chunk_ids': value['chunkIds'],
+        'collection_id': value['collectionId'],
     };
 }
 

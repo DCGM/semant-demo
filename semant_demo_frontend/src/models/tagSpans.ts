@@ -1,5 +1,5 @@
-import { TagSpan, TagSpanUpdate, SpanType } from 'src/generated/api'
+import { TagSpan, PostSpan, PatchSpan, SpanType } from 'src/generated/api'
 
 type TagSpans = TagSpan[]
 
-export type { TagSpan, TagSpanUpdate, TagSpans, SpanType }
+export type { TagSpan, TagSpans, PostSpan, PatchSpan, SpanType }
