@@ -278,6 +278,7 @@ const hexToRgba = (hex: string, alpha: number): string => {
 
 <style scoped>
 .chunk-annotator {
+  display: inline;
   line-height: 2;
   cursor: text;
 }
