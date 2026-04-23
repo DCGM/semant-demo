@@ -70,6 +70,8 @@ column_mapping = {
 
 chunk_column_types = {
     "text": wvc.DataType.TEXT,
+    "title": wvc.DataType.TEXT,
+    "order": wvc.DataType.INT,
     "start_page_id": wvc.DataType.TEXT,
     "from_page": wvc.DataType.INT,
     "to_page": wvc.DataType.INT,
