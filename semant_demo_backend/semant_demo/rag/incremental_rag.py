@@ -236,74 +236,81 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
     async def node_retrieve(self, state: AdaptiveRagState):
-        #get metadata
-        metadata = state.get("metadata", {})
-        iteration = state.get("retrieval_iteration_counter", 0)
+        try:
+            #get metadata
+            metadata = state.get("metadata", {})
+            iteration = state.get("retrieval_iteration_counter", 0)
 
-        limit = self.chunk_limit
-        alpha = self.alpha
-        use_hyde_embedding = False
-        if (iteration == 0):
-            limit = 5
-        elif (iteration == 1):
             limit = self.chunk_limit
-        elif (iteration == 2):  # hyde
-            #use document embedding instead of query embedding
-            limit = 10
-            use_hyde_embedding = True
-            alpha = 0.9
+            alpha = self.alpha
+            use_hyde_embedding = False
+            if (iteration == 0):
+                limit = 5
+            elif (iteration == 1):
+                limit = self.chunk_limit
+            elif (iteration == 2):  # hyde
+                #use document embedding instead of query embedding
+                limit = 10
+                use_hyde_embedding = True
+                alpha = 0.9
 
-        if (DEBUG_PRINT):
-            print(f"Is used hyde embedding: {use_hyde_embedding}.")
-
-        #load all question variants
-        queries = state.get("queries", [])
-        if not queries:
-            queries = [state["question"]]
-
-        #create db search request
-        async def single_search(query):
-            search_request = SearchRequest(
-                query = query,
-                type = self.search_type,
-                hybrid_search_alpha = alpha,
-                limit = limit,
-                min_year = metadata.get("min_year"),
-                max_year = metadata.get("max_year"),
-                min_date = metadata.get("min_date"),
-                max_date = metadata.get("max_date"),
-                language = metadata.get("language"),
-                tag_uuids = [],
-                positive = False,
-                automatic = False,
-                is_hyde = use_hyde_embedding
-            )
             if (DEBUG_PRINT):
-                print(f"search_request: {search_request}")
-            #call db search
-            return await self.searcher.textChunk.search(search_request)
+                print(f"Is used hyde embedding: {use_hyde_embedding}.")
 
-        #call in parallel
-        search_tasks = [single_search(query) for query in queries]
-        search_responses = await asyncio.gather(*search_tasks)
-        
-        #remove duplicities and put it together
-        unique_chunks = {}
-        for response in search_responses:
-            # for chunk in response.results[:3]:
-            for chunk in response.results:
-                chunk_id = getattr(chunk, "id", None)
-                if chunk_id not in unique_chunks:
-                    unique_chunks[chunk_id] = chunk
+            #load all question variants
+            queries = state.get("queries", [])
+            if not queries:
+                queries = [state["question"]]
 
-        all_chunks = list(unique_chunks.values())
-        all_chunks = all_chunks[:10]
+            #create db search request
+            async def single_search(query):
+                search_request = SearchRequest(
+                    query = query,
+                    type = self.search_type,
+                    hybrid_search_alpha = alpha,
+                    limit = limit,
+                    min_year = metadata.get("min_year"),
+                    max_year = metadata.get("max_year"),
+                    min_date = metadata.get("min_date"),
+                    max_date = metadata.get("max_date"),
+                    language = metadata.get("language"),
+                    tag_uuids = [],
+                    positive = False,
+                    automatic = False,
+                    is_hyde = use_hyde_embedding
+                )
+                if (DEBUG_PRINT):
+                    print(f"search_request: {search_request}")
+                #call db search
+                return await self.searcher.textChunk.search(search_request)
 
-        counter_value = state.get("retrieval_iteration_counter", 0) + 1
+            #call in parallel
+            search_tasks = [single_search(query) for query in queries]
+            search_responses = await asyncio.gather(*search_tasks)
+            
+            #remove duplicities and put it together
+            unique_chunks = {}
+            for response in search_responses:
+                # for chunk in response.results[:3]:
+                for chunk in response.results:
+                    chunk_id = getattr(chunk, "id", None)
+                    if chunk_id not in unique_chunks:
+                        unique_chunks[chunk_id] = chunk
 
-        return  {"documents" : all_chunks, 
-                 "retrieval_iteration_counter" : counter_value
-                 }
+            all_chunks = list(unique_chunks.values())
+            all_chunks = all_chunks[:10]
+
+            counter_value = state.get("retrieval_iteration_counter", 0) + 1
+
+            return  {"documents" : all_chunks, 
+                    "retrieval_iteration_counter" : counter_value
+                    }
+        except Exception as e:
+            logging.error(f"RAG ERROR: retrieval: {str(e)}")
+            counter_value = state.get("retrieval_iteration_counter", 0) + 1
+            return  {"documents" : [], 
+                    "retrieval_iteration_counter" : counter_value
+                    }
     
     async def node_detect_language(self, state: AdaptiveRagState):
         chain = self._create_chain(model=self.model, prompt=self.identify_language_prompt)
@@ -608,6 +615,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 start_page_id= uuid_tmp,
                 from_page=0,
                 to_page=0,
+                order=0,
                 text= search_result,
                 document=uuid_tmp,
                 document_object=Document(id=uuid_tmp, library="web_search", title="DuckDuckGo Search", yearIssued = 2026)
