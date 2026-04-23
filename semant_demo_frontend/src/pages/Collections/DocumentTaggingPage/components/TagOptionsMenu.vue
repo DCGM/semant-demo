@@ -34,7 +34,7 @@
           isAutoSelection
             ? 'Review Suggested Tag'
             : globalSelection?.editingId
-              ? 'Tag Type'
+              ? ''
               : 'Assign Tag'
         }}
       </div>
@@ -99,32 +99,33 @@
     </q-card-section>
 
     <q-card-actions class="q-pa-md bg-grey-3 row justify-between items-center">
-      <q-btn
-        v-if="globalSelection?.editingId"
-        flat
-        icon="delete"
-        label="Remove Tag"
-        color="negative"
-        :loading="pageLoading"
-        @click="$emit('deleteEditedTag')"
-      />
-      <div v-else></div>
-
-      <div class="row q-gutter-sm">
+      <div class="">
         <q-btn
-          flat
-          label="Cancel"
-          color="grey-8"
-          :disable="!globalSelection || pageLoading"
-          @click="$emit('clearSelection')"
-        />
-        <q-btn
-          v-if="globalSelection?.editingId && !isAutoSelection"
-          label="Save Changes"
-          color="primary"
+          v-if="globalSelection?.editingId"
+          class="q-mb-sm"
+          unelevated
+          icon="delete"
+          label="Delete"
+          color="negative"
           :loading="pageLoading"
-          @click="$emit('saveEditedTag')"
+          @click="$emit('deleteEditedTag')"
         />
+        <div class="row q-gutter-sm">
+          <q-btn
+            unelevated
+            label="Cancel"
+            color="grey-8"
+            :disable="!globalSelection || pageLoading"
+            @click="$emit('clearSelection')"
+          />
+          <q-btn
+            v-if="globalSelection?.editingId && !isAutoSelection"
+            label="Save Changes"
+            color="primary"
+            :loading="pageLoading"
+            @click="$emit('saveEditedTag')"
+          />
+        </div>
       </div>
     </q-card-actions>
   </q-card>

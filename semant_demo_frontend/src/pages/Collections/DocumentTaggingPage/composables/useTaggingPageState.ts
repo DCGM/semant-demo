@@ -88,11 +88,17 @@ interface AutoSpanCandidate {
   span: TagSpanWithConfidence
 }
 
+const normalizeChunkId = (chunkId: string | null | undefined): string => {
+  return (chunkId || '').trim().toLowerCase()
+}
+
 export function useTaggingPageState() {
   const {
     documentDetail,
     availableTags,
     collectionTags,
+    discoveredTopics,
+    discoveredTopicChunkIds,
     isProcessing,
     getDocumentDetail,
     addChunkToCollection,
@@ -105,10 +111,13 @@ export function useTaggingPageState() {
     declineTagSpan,
     deleteTagSpan,
     suggestAnnotations,
+    discoverTopics,
     getTagsForCollection
   } = useTagging()
 
   const tagSpansByChunkId = ref<Record<string, TagSpanWithConfidence[]>>({})
+  const pendingAutoSuggestions = ref<AutoSpanCandidate[]>([])
+  const reviewedAutoSuggestionChunkIds = ref<string[]>([])
   const isPreloading = ref(false)
   const collectionActionChunkId = ref<string | null>(null)
   const isBulkCollectionUpdating = ref(false)
@@ -131,6 +140,39 @@ export function useTaggingPageState() {
         inUserCollection: chunk.inUserCollection
       })) ?? []
     )
+  })
+
+  const discoveredTopicByChunkId = computed<Record<string, string>>(() => {
+    const topics = discoveredTopics.value?.topics || []
+    const topicDocuments = discoveredTopics.value?.topicDocuments || []
+    const chunkIds = discoveredTopicChunkIds.value
+
+    if (!topics.length || !topicDocuments.length || !chunkIds.length) {
+      return {}
+    }
+
+    const topicByChunkId: Record<string, string> = {}
+
+    for (let chunkIndex = 0; chunkIndex < chunkIds.length; chunkIndex += 1) {
+      let bestTopicName: string | null = null
+      let bestScore = Number.NEGATIVE_INFINITY
+
+      for (let topicIndex = 0; topicIndex < topics.length; topicIndex += 1) {
+        const score = topicDocuments[topicIndex]?.[chunkIndex]
+        if (score === undefined) continue
+
+        if (score > bestScore) {
+          bestScore = score
+          bestTopicName = topics[topicIndex].name
+        }
+      }
+
+      if (bestTopicName) {
+        topicByChunkId[chunkIds[chunkIndex]] = bestTopicName
+      }
+    }
+
+    return topicByChunkId
   })
 
   const annotationMarkers = computed<AnnotationMarker[]>(() => {
@@ -266,47 +308,18 @@ export function useTaggingPageState() {
     }
   }
 
-  const getSpanMergeKey = (
-    chunkId: string,
-    span: Pick<TagSpanWithConfidence, 'chunkId' | 'tagId' | 'start' | 'end'>
-  ) => {
-    return `${span.chunkId || chunkId}:${span.tagId}:${span.start}:${span.end}`
-  }
-
-  const mergePersistedAndLocalAutoSpans = ({
+  const applyAutoDecisionLocally = ({
     chunkId,
-    persistedSpans,
-    localAutoSpans
-  }: {
-    chunkId: string
-    persistedSpans: TagSpan[]
-    localAutoSpans: TagSpanWithConfidence[]
-  }) => {
-    const mergedByKey = new Map<string, TagSpanWithConfidence>()
-
-    // Keep local auto suggestions in memory while backend remains source of truth for persisted spans.
-    for (const autoSpan of localAutoSpans) {
-      mergedByKey.set(getSpanMergeKey(chunkId, autoSpan), autoSpan)
-    }
-
-    for (const persistedSpan of persistedSpans) {
-      mergedByKey.set(getSpanMergeKey(chunkId, persistedSpan), persistedSpan)
-    }
-
-    return [...mergedByKey.values()]
-  }
-
-  const refreshChunkSpansAfterAutoDecision = async ({
-    chunkId,
-    processedSpan
+    processedSpan,
+    nextType
   }: {
     chunkId: string
     processedSpan: TagSpanWithConfidence
+    nextType: typeof SpanType.pos | typeof SpanType.neg
   }) => {
-    const existingChunkSpans = tagSpansByChunkId.value[chunkId] || []
-    const remainingLocalAutoSpans = existingChunkSpans.filter((span) => {
-      if (span.type !== SpanType.auto) return false
+    const chunkSpans = tagSpansByChunkId.value[chunkId] || []
 
+    const nextChunkSpans = chunkSpans.map((span) => {
       const matchesById = !!processedSpan.id && span.id === processedSpan.id
       const matchesByCoordinates =
         span.chunkId === processedSpan.chunkId &&
@@ -314,19 +327,19 @@ export function useTaggingPageState() {
         span.start === processedSpan.start &&
         span.end === processedSpan.end
 
-      return !matchesById && !matchesByCoordinates
-    })
+      if (!matchesById && !matchesByCoordinates) {
+        return span
+      }
 
-    const refreshedSpans = await fetchTagSpansForChunk(chunkId)
-    const mergedSpans = mergePersistedAndLocalAutoSpans({
-      chunkId,
-      persistedSpans: refreshedSpans,
-      localAutoSpans: remainingLocalAutoSpans
+      return {
+        ...span,
+        type: nextType
+      }
     })
 
     tagSpansByChunkId.value = {
       ...tagSpansByChunkId.value,
-      [chunkId]: mergedSpans
+      [chunkId]: nextChunkSpans
     }
   }
 
@@ -344,12 +357,18 @@ export function useTaggingPageState() {
   }
 
   const getSortedAutoSpanCandidates = (): AutoSpanCandidate[] => {
-    const candidates = Object.entries(tagSpansByChunkId.value).flatMap(
-      ([chunkId, spans]) =>
-        spans
-          .filter((span) => span.type === SpanType.auto)
-          .map((span) => ({ chunkId, span }))
-    )
+    const inCurrentBatch = pendingAutoSuggestions.value
+      .filter(({ span }) => span.type === SpanType.auto)
+      .map(({ chunkId, span }) => ({ chunkId, span }))
+
+    const candidates =
+      inCurrentBatch.length > 0
+        ? inCurrentBatch
+        : Object.entries(tagSpansByChunkId.value).flatMap(([chunkId, spans]) =>
+          spans
+            .filter((span) => span.type === SpanType.auto)
+            .map((span) => ({ chunkId, span }))
+        )
 
     candidates.sort((a, b) => {
       const aConfidence = a.span.confidence ?? Number.NEGATIVE_INFINITY
@@ -408,6 +427,8 @@ export function useTaggingPageState() {
     currentCollectionId.value = collectionId
     await getDocumentDetail(documentId, collectionId)
     tagSpansByChunkId.value = {}
+    pendingAutoSuggestions.value = []
+    reviewedAutoSuggestionChunkIds.value = []
     await preloadAllChunkSpans()
   }
 
@@ -765,13 +786,27 @@ export function useTaggingPageState() {
   const updateSelectedAutoSpanType = async (
     nextType: typeof SpanType.pos | typeof SpanType.neg
   ): Promise<string | null> => {
-    if (!globalSelection.value?.editingId) return null
+    if (!globalSelection.value) return null
     if (globalSelection.value.spanType !== SpanType.auto) return null
 
-    const selectedChunkId = globalSelection.value.chunkId
-    const selectedSpanId = globalSelection.value.editingId
+    const currentSelection = globalSelection.value
+
+    const selectedChunkId = currentSelection.chunkId
+    const selectedSpanId = currentSelection.editingId
     const selectedSpan = (tagSpansByChunkId.value[selectedChunkId] || []).find(
-      (span) => span.id === selectedSpanId
+      (span) => {
+        if (selectedSpanId && span.id === selectedSpanId) {
+          return true
+        }
+
+        // Fallback for auto suggestions that may not carry a stable span id.
+        return (
+          span.type === SpanType.auto &&
+          span.start === currentSelection.start &&
+          span.end === currentSelection.end &&
+          span.tagId === currentSelection.tagId
+        )
+      }
     )
 
     if (!selectedSpan) return null
@@ -794,13 +829,37 @@ export function useTaggingPageState() {
         })
 
     if (!response) {
-      return selectedSpanId
+      return selectedSpanId ?? null
     }
 
-    await refreshChunkSpansAfterAutoDecision({
+    pendingAutoSuggestions.value = pendingAutoSuggestions.value.filter(
+      ({ span, chunkId }) => {
+        const matchesById = !!selectedSpan.id && span.id === selectedSpan.id
+        const matchesByCoordinates =
+          normalizeChunkId(chunkId) === normalizeChunkId(selectedChunkId) &&
+          span.tagId === selectedSpan.tagId &&
+          span.start === selectedSpan.start &&
+          span.end === selectedSpan.end
+
+        return !matchesById && !matchesByCoordinates
+      }
+    )
+
+    console.debug(
+      '[auto-suggest] remaining-after-decision=',
+      pendingAutoSuggestions.value.length
+    )
+
+    applyAutoDecisionLocally({
       chunkId: selectedChunkId,
-      processedSpan: selectedSpan
+      processedSpan: selectedSpan,
+      nextType
     })
+
+    if (pendingAutoSuggestions.value.length === 0) {
+      await refreshSelectedChunkSpans(reviewedAutoSuggestionChunkIds.value)
+      reviewedAutoSuggestionChunkIds.value = []
+    }
 
     return selectHighestConfidenceAutoSpan()
   }
@@ -824,7 +883,7 @@ export function useTaggingPageState() {
     if (!chunksForSuggestion.length) return null
 
     const allowedChunkIds = new Set(
-      chunksForSuggestion.map((chunk) => chunk.id)
+      chunksForSuggestion.map((chunk) => normalizeChunkId(chunk.id))
     )
 
     const selectedTags = collectionTags.value.filter(
@@ -846,11 +905,36 @@ export function useTaggingPageState() {
       }))
     })
 
-    const suggestedSpans = response.suggestions.filter((span) =>
-      allowedChunkIds.has(span.chunkId)
+    const suggestedSpans = response.suggestions
+      .filter((span) => allowedChunkIds.has(normalizeChunkId(span.chunkId)))
+      .map((span) => ({
+        ...span,
+        type: span.type ?? SpanType.auto
+      }))
+
+    console.debug(
+      '[auto-suggest] received=',
+      response.suggestions.length,
+      'accepted=',
+      suggestedSpans.length
     )
 
-    if (!suggestedSpans.length) return null
+    if (!suggestedSpans.length) {
+      pendingAutoSuggestions.value = []
+      reviewedAutoSuggestionChunkIds.value = []
+      return null
+    }
+
+    pendingAutoSuggestions.value = suggestedSpans.map((span) => ({
+      chunkId: span.chunkId,
+      span
+    }))
+
+    reviewedAutoSuggestionChunkIds.value = [
+      ...new Set(suggestedSpans.map((span) => span.chunkId))
+    ]
+
+    console.debug('[auto-suggest] queued=', pendingAutoSuggestions.value.length)
 
     const chunkIdsToMerge = [...new Set(suggestedSpans.map((s) => s.chunkId))]
     const nextByChunk = { ...tagSpansByChunkId.value }
@@ -864,6 +948,17 @@ export function useTaggingPageState() {
     tagSpansByChunkId.value = nextByChunk
 
     return selectHighestConfidenceAutoSpan()
+  }
+
+  const discoverTopicsForCurrentDocument = async (n = 3) => {
+    const chunksForDiscovery =
+      documentDetail.value?.chunks.filter((chunk) => chunk.inUserCollection) ||
+      []
+
+    return await discoverTopics({
+      chunks: chunksForDiscovery,
+      n
+    })
   }
 
   const deleteEditedTag = async () => {
@@ -978,6 +1073,8 @@ export function useTaggingPageState() {
     annotationMarkers,
     hoveredAnnotationMarker,
     availableTags,
+    discoveredTopics,
+    discoveredTopicByChunkId,
     pageLoading,
     globalSelection,
     useWordSnapping,
@@ -995,6 +1092,7 @@ export function useTaggingPageState() {
     approveSelectedAutoSpan,
     declineSelectedAutoSpan,
     startAutoAnnotationSuggestions,
+    discoverTopicsForCurrentDocument,
     handleSelectionChange,
     selectSpanFromAnnotationMarker,
     startHoverFromAnnotationMarker,

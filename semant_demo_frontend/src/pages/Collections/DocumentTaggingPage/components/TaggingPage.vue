@@ -23,6 +23,7 @@
           :selection-start-boundary="globalSelectionBoundaries.startBoundary"
           :selection-end-boundary="globalSelectionBoundaries.endBoundary"
           :editing-span-id="globalSelection?.editingId || null"
+          :discovered-topic="discoveredTopicByChunkId[chunk.chunkId] || null"
           :hovered-annotation-marker="hoveredAnnotationMarker"
           :is-collection-updating="isChunkCollectionUpdating(chunk.chunkId)"
           @selection-change="handleSelectionChange"
@@ -64,9 +65,10 @@
                 v-if="!showAutoSuggestionsMenu"
                 color="primary"
                 class="full-width"
-                label="Automatically suggest annotations"
+                label="Suggest annotations"
                 no-caps
                 unelevated
+                size="md"
                 @click="showAutoSuggestionsMenu = true"
               />
 
@@ -80,6 +82,19 @@
               />
 
               <q-btn
+                color="secondary"
+                class="full-width q-mt-sm"
+                label="Discover topics"
+                no-caps
+                unelevated
+                size="md"
+                :loading="isDiscoveringTopics"
+                :disable="pageLoading || isSuggestingAnnotations"
+                @click="handleDiscoverTopics"
+              />
+
+              <q-btn
+                v-if="true"
                 color="negative"
                 class="full-width q-mt-sm"
                 label="DEBUG: Remove all chunks from collection"
@@ -131,6 +146,7 @@ interface ChunkExpansionItemExposed {
 const props = defineProps<Props>()
 const showAutoSuggestionsMenu = ref(false)
 const isSuggestingAnnotations = ref(false)
+const isDiscoveringTopics = ref(false)
 const chunkItemRefs = ref<Record<string, ChunkExpansionItemExposed | null>>({})
 const railLayoutVersion = ref(0)
 const expandedChunks = ref<Record<string, boolean>>({})
@@ -149,6 +165,7 @@ const {
   toggleChunkInCollection,
   removeAllChunksFromCollection,
   availableTags,
+  discoveredTopicByChunkId,
   loadChunks,
   clearSelection,
   handleTagClick,
@@ -157,6 +174,7 @@ const {
   approveSelectedAutoSpan,
   declineSelectedAutoSpan,
   startAutoAnnotationSuggestions,
+  discoverTopicsForCurrentDocument,
   handleSelectionChange,
   selectSpanFromAnnotationMarker,
   startHoverFromAnnotationMarker,
@@ -167,10 +185,7 @@ const {
 } = useTaggingPageState()
 
 const isAutoSelection = computed(() => {
-  return (
-    !!globalSelection.value?.editingId &&
-    globalSelection.value.spanType === SpanType.auto
-  )
+  return globalSelection.value?.spanType === SpanType.auto
 })
 
 const railLayoutTrigger = computed(() => {
@@ -251,6 +266,15 @@ const handleStartSuggestions = async (selectedTagIds: string[]) => {
     await scrollToSpan(nextSpanId)
   } finally {
     isSuggestingAnnotations.value = false
+  }
+}
+
+const handleDiscoverTopics = async () => {
+  isDiscoveringTopics.value = true
+  try {
+    await discoverTopicsForCurrentDocument()
+  } finally {
+    isDiscoveringTopics.value = false
   }
 }
 

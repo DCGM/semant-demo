@@ -29,9 +29,12 @@
           <q-item-label class="text-weight-medium">
             Chunk {{ chunkIdShort }}
           </q-item-label>
-          <q-item-label caption lines="2">
-            {{ chunkPreview }}
+          <q-item-label v-if="discoveredTopic" caption class="text-blue-8">
+            Topic: {{ discoveredTopic }}
           </q-item-label>
+          <!-- <q-item-label caption lines="2">
+            {{ chunkPreview }}
+          </q-item-label> -->
         </q-item-section>
 
         <q-item-section side>
@@ -128,6 +131,7 @@ interface Props {
   selectionStartBoundary: SelectionBoundary | null
   selectionEndBoundary: SelectionBoundary | null
   editingSpanId: string | null
+  discoveredTopic?: string | null
   hoveredAnnotationMarker: HoveredSpanMarker | null
   isCollectionUpdating: boolean
 }
@@ -148,12 +152,6 @@ const emit = defineEmits<{
 
 watch(isExpanded, (expanded) => {
   emit('expansionChange', props.chunkId, expanded)
-})
-
-const chunkPreview = computed(() => {
-  const text = props.chunkText.replace(/\s+/g, ' ').trim()
-  if (text.length <= 120) return text
-  return `${text.slice(0, 117)}...`
 })
 
 const chunkIdShort = computed(() => props.chunkId.slice(0, 8))
