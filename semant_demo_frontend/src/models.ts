@@ -15,6 +15,7 @@ export interface SearchRequest {
   query: string;
   limit?: number;
   page?: number;
+  user_collection_id: string | null;
   search_title_generate?: boolean;
   search_summary_generate?: boolean;
   search_results_summary_generate?: boolean;

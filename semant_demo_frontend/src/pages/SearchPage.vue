@@ -62,9 +62,9 @@
               <q-card-section class="bg-grey-1">
                 <div class="row q-col-gutter-xl">
 
-                  <div class="col-12 col-md-4">
+                  <div v-if="userStore.isLoggedIn" class="col-12 col-md-4">
                     <q-select
-                      v-model="selectedCollectionId"
+                      v-model="searchForm.user_collection_id"
                       :options="collectionOptions"
                       label="Select a Collection"
                       outlined
@@ -304,10 +304,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QCheckbox, QRange, QPagination, Notify } from 'quasar'
 import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, CreateResponse } from 'src/models'
+import type { Chunk2CollectionReq } from 'src/generated/api'
 import { api } from 'src/boot/axios'
+import { useApi } from 'src/composables/useApi'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
 import { useUserStore } from 'src/stores/user-store'
 
@@ -317,6 +319,7 @@ const showSummarizeOptions = ref(false)
 const searchForm = ref<SearchRequest>({
   query: '',
   limit: 50, // Increased default to show pagination better
+  user_collection_id: null,
   type: 'hybrid',
   search_title_generate: false,
   search_summary_generate: false,
@@ -447,8 +450,30 @@ async function jumpToResult (docNumber: number) {
 // Collections & User State
 const collectionStore = useCollectionStore()
 const userStore = useUserStore()
-const username = ref('')
-const selectedCollectionId = ref<string | null>(null)
+const apiClients = useApi()
+
+async function loadCollections () {
+  if (!userStore.isLoggedIn || !userStore.getUserId) return
+
+  collectionStore.setUser(userStore.getUserId)
+  loading.value = true
+  try {
+    await collectionStore.fetchCollections(collectionStore.userId)
+  } catch (err) {
+    console.error(err)
+    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
+  } finally {
+    loading.value = false
+  }
+}
+
+watch(
+  () => userStore.getUserId,
+  async () => {
+    await loadCollections()
+  },
+  { immediate: true }
+)
 
 const collectionOptions = computed(() =>
   collectionStore.collections.map(c => ({
@@ -466,9 +491,9 @@ type ActiveFilterBadge = {
 }
 
 const selectedCollectionLabel = computed(() => {
-  if (!selectedCollectionId.value) return null
-  const option = collectionOptions.value.find(option => option.value === selectedCollectionId.value)
-  return option?.label ?? `Collection ${selectedCollectionId.value}`
+  if (!searchForm.value.user_collection_id) return null
+  const option = collectionOptions.value.find(option => option.value === searchForm.value.user_collection_id)
+  return option?.label ?? `Collection ${searchForm.value.user_collection_id}`
 })
 
 const isYearFilterActive = computed(() => (
@@ -479,12 +504,12 @@ const isYearFilterActive = computed(() => (
 const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
   const badges: ActiveFilterBadge[] = []
 
-  if (selectedCollectionId.value) {
+  if (searchForm.value.user_collection_id) {
     badges.push({
-      key: `collection:${selectedCollectionId.value}`,
+      key: `collection:${searchForm.value.user_collection_id}`,
       type: 'collection',
       icon: 'folder',
-      label: selectedCollectionLabel.value ?? selectedCollectionId.value
+      label: selectedCollectionLabel.value ?? searchForm.value.user_collection_id
     })
   }
 
@@ -512,7 +537,7 @@ const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
 
 function removeFilterBadge (badge: ActiveFilterBadge) {
   if (badge.type === 'collection') {
-    selectedCollectionId.value = null
+    searchForm.value.user_collection_id = null
     return
   }
 
@@ -597,6 +622,9 @@ async function onSearch () {
     timeSpent.value = data.time_spent
     searchLog.value = data.search_log
     lastSearchRequest.value = data.search_request
+    if (results.value.length === 0) {
+      Notify.create({ message: 'No results found', position: 'top', color: 'info' })
+    }
   } catch (e) {
     console.error(e)
     Notify.create({ message: 'Search failed', position: 'top', color: 'negative' })
@@ -632,38 +660,18 @@ async function onSummarize () {
   }
 }
 
-const handleAddUser = async () => {
-  if (username.value.trim()) {
-    userStore.setUser(username.value)
-    await loadCollections()
-  }
-}
-
-const loadCollections = async () => {
-  if (!collectionStore.userId) {
-    Notify.create({ message: 'No user set', position: 'top', color: 'negative' })
-    return
-  }
-
-  loading.value = true
-  try {
-    await collectionStore.fetchCollections(collectionStore.userId)
-  } catch (err) {
-    console.error(err)
-    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
-  } finally {
-    loading.value = false
-  }
-}
-
 async function addChunkToCollection (currentChunkId: string) {
-  if (!selectedCollectionId.value) {
+  if (!searchForm.value.user_collection_id) {
     Notify.create({ message: 'Please select a collection first.', position: 'top', color: 'warning' })
     return
   }
-  const payload = { collectionId: selectedCollectionId.value, chunkId: currentChunkId }
+  const chunk2CollectionReq: Chunk2CollectionReq = {
+    collectionId: searchForm.value.user_collection_id,
+    chunkId: currentChunkId
+  }
+
   try {
-    const { data } = await api.post<CreateResponse>('/chunk_2_collection', payload)
+    const data = await apiClients.default.addChunk2CollectionApiUserCollectionChunksPost({ chunk2CollectionReq })
     if (data.created) {
       Notify.create({ message: 'Chunk added to collection', position: 'top', color: 'positive' })
     } else {
@@ -675,7 +683,7 @@ async function addChunkToCollection (currentChunkId: string) {
 }
 
 async function addDocumentToCollection (documentId: string | number | undefined) {
-  if (!selectedCollectionId.value) {
+  if (!searchForm.value.user_collection_id) {
     Notify.create({ message: 'Please select a collection first.', position: 'top', color: 'warning' })
     return
   }
@@ -683,7 +691,7 @@ async function addDocumentToCollection (documentId: string | number | undefined)
     Notify.create({ message: 'Document ID not found.', position: 'top', color: 'negative' })
     return
   }
-  const payload = { collectionId: selectedCollectionId.value, documentId }
+  const payload = { collectionId: searchForm.value.user_collection_id, documentId }
   try {
     // Replace the endpoint with your actual document addition endpoint
     const { data } = await api.post<CreateResponse>('/document_2_collection', payload)
@@ -698,9 +706,8 @@ async function addDocumentToCollection (documentId: string | number | undefined)
 }
 
 onMounted(async () => {
-  username.value = userStore.user?.id ?? 'xjuric'
   await fetchFilterMocks()
-  await handleAddUser()
+  await loadCollections()
 })
 
 onBeforeUnmount(() => {
