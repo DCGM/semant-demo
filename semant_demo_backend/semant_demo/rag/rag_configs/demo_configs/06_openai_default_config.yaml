@@ -1,6 +1,6 @@
 id: "xandry12_RagGenerator_gemma_default"
-name: "Standard/Basic RAG"
-description: "Lightweight and fast RAG implementation using Gemma 3 12B with basic retrieval and conversation history support. Typically responds in English."
+name: "Basic-RAG (Gemma-3 12B)"
+description: "Standard linear RAG implementation using Gemma 3 12B. Serves as a performance baseline. Lacks advanced correction loops and multi-query logic. Note: Typically responds in English."
 class_name: "RagGenerator"
 params:
   model_type: "OPENAI"
