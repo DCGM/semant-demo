@@ -318,7 +318,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QCheckbox, QRange, QPagination, Notify } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, CreateResponse } from 'src/models'
+import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument } from 'src/models'
 import type { Chunk2CollectionReq } from 'src/generated/api'
 import { api } from 'src/boot/axios'
 import { useApi } from 'src/composables/useApi'
@@ -408,11 +408,13 @@ const summaryTimeSpent = ref(0)
 const highlightedDocNumber = ref<number | null>(null)
 let clearHighlightTimer: number | null = null
 
+const summarizedResultIndices = ref<number[]>([])
+
 type SummaryToken =
   | { type: 'text'; value: string }
   | { type: 'citation'; docNumber: number }
 
-function parseSummaryTokens (text: string): SummaryToken[] {
+function parseSummaryTokens (text: string, indicesMap: number[]): SummaryToken[] {
   const tokens: SummaryToken[] = []
   const citationRegex = /\[(doc([1-9][0-9]*))]/g
   let lastIndex = 0
@@ -425,7 +427,8 @@ function parseSummaryTokens (text: string): SummaryToken[] {
     if (index > lastIndex) {
       tokens.push({ type: 'text', value: text.slice(lastIndex, index) })
     }
-    tokens.push({ type: 'citation', docNumber: number })
+    const translatedNumber = indicesMap[number - 1] ?? number
+    tokens.push({ type: 'citation', docNumber: translatedNumber })
 
     lastIndex = index + matchText.length
   }
@@ -437,7 +440,7 @@ function parseSummaryTokens (text: string): SummaryToken[] {
   return tokens
 }
 
-const parsedSummaryTokens = computed(() => parseSummaryTokens(summary.value))
+const parsedSummaryTokens = computed(() => parseSummaryTokens(summary.value, summarizedResultIndices.value))
 
 async function jumpToResult (docNumber: number) {
   const resultIndex = docNumber - 1
@@ -618,6 +621,7 @@ async function onSearch () {
   selectedResults.value = []
   summary.value = ''
   summaryTimeSpent.value = 0
+  summarizedResultIndices.value = []
   currentPage.value = 1 // reset pagination
   searchResponse = null
 
@@ -674,19 +678,33 @@ async function onSummarize () {
   const scopedSearchResponse: SearchResponse = {
     ...searchResponse
   }
+
+  let currentIndices: number[] = []
+
   if (summaryScope.value === 'selected') {
     if (selectedResults.value.length === 0) {
       Notify.create({ message: 'Please select at least one result for summarization.', position: 'top', color: 'warning' })
       summarizing.value = false
       return
     }
-    scopedSearchResponse.results = results.value.filter(r => selectedResults.value.includes(r.id))
+    scopedSearchResponse.results = []
+    results.value.forEach((r, index) => {
+      if (selectedResults.value.includes(r.id)) {
+        scopedSearchResponse.results.push(r)
+        currentIndices.push(index + 1)
+      }
+    })
   } else if (summarizeK !== null) {
     scopedSearchResponse.results = results.value.slice(0, summarizeK)
+    currentIndices = scopedSearchResponse.results.map((_, i) => i + 1)
+  } else {
+    scopedSearchResponse.results = results.value
+    currentIndices = results.value.map((_, i) => i + 1)
   }
 
   try {
     const { data } = await api.post<SummaryResponse>('/summarize/results', scopedSearchResponse)
+    summarizedResultIndices.value = currentIndices
     summary.value = data.summary
     summaryTimeSpent.value = data.time_spent
   } catch (e) {
