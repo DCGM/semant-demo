@@ -511,6 +511,31 @@ class AutoAnnotationsSuggestionsResponse(BaseModel):
 # /Automatic annotation suggestions
 
 
+# Topic discovery
+class Topic(BaseModel):
+    name: str
+    name_explanation: str | None = None
+    description: str | None = None
+
+
+class DiscoverTopicsRequest(BaseModel):
+    chunks: list[TextChunk]
+    n: int | None = 3
+
+
+class DiscoveredTopics(BaseModel):
+    topics: list[Topic]
+    # N x K matrix of probabilities where N is number of topics and K is number of documents.
+    topic_documents: list[list[float]]
+
+
+class DiscoveredTopicsSparse(BaseModel):
+    topics: list[Topic]
+    # Sparse N x K matrix where tuple is (document_index, probability).
+    topic_documents: list[list[tuple[int, float]]]
+# /Topic discovery
+
+
 # Task Model
 TasksBase = declarative_base()
 

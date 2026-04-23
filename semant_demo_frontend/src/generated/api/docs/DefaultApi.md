@@ -16,6 +16,7 @@ All URIs are relative to *http://localhost*
 | [**deleteCollectionApiCollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapicollectionscollectioniddelete) | **DELETE** /api/collections/{collection_id} | Delete Collection |
 | [**deleteTagApiTagsTagUuidDelete**](DefaultApi.md#deletetagapitagstaguuiddelete) | **DELETE** /api/tags/{tag_uuid} | Delete Tag |
 | [**deleteTagSpanApiTagSpansSpanIdDelete**](DefaultApi.md#deletetagspanapitagspansspaniddelete) | **DELETE** /api/tag_spans/{span_id} | Delete Tag Span |
+| [**discoverTopicsApiDiscoverTopicsPost**](DefaultApi.md#discovertopicsapidiscovertopicspost) | **POST** /api/discover_topics | Discover Topics |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
 | [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
@@ -912,6 +913,74 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## discoverTopicsApiDiscoverTopicsPost
+
+> DiscoveredTopics discoverTopicsApiDiscoverTopicsPost(discoverTopicsRequest)
+
+Discover Topics
+
+Call Topicer dense topic discovery on the provided chunks.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DiscoverTopicsApiDiscoverTopicsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // DiscoverTopicsRequest
+    discoverTopicsRequest: ...,
+  } satisfies DiscoverTopicsApiDiscoverTopicsPostRequest;
+
+  try {
+    const data = await api.discoverTopicsApiDiscoverTopicsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **discoverTopicsRequest** | [DiscoverTopicsRequest](DiscoverTopicsRequest.md) |  | |
+
+### Return type
+
+[**DiscoveredTopics**](DiscoveredTopics.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 
