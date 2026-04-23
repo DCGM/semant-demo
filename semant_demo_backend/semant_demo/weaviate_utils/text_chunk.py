@@ -1,3 +1,5 @@
+import uuid
+
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
 from weaviate.exceptions import (
@@ -41,6 +43,7 @@ class TextChunk():
         self.helpers = WeaviateHelpers(client, collectionNames)
         self.chunk_collection = self.client.collections.get(collectionNames.chunks_collection_name)
         self.span_collection = self.client.collections.get(collectionNames.span_collection_name)
+        self.user_collection = self.client.collections.get(collectionNames.user_collection_name)
 
     #######
     # API #
@@ -52,6 +55,13 @@ class TextChunk():
     async def search(self, search_request: schemas.SearchRequest) -> schemas.SearchResponse:
         # Build filters
         filters = []
+        if search_request.user_collection_id:
+            filters.append(
+                Filter.by_ref(link_on=self.helpers.collectionNames.user_collection_link_name)
+                .by_id()
+                .equal(search_request.user_collection_id)
+            )
+
         if search_request.min_year:
             filters.append(
                 Filter.by_ref(link_on="document").by_property("yearIssued").greater_or_equal(search_request.min_year)
