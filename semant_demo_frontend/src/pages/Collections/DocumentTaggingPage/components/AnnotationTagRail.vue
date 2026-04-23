@@ -9,7 +9,8 @@
           top: `${marker.top}px`,
           left: `${marker.left}px`,
           minHeight: `${marker.height}px`,
-          opacity: `${marker.opacity}`
+          opacity: `${marker.opacity}`,
+          zIndex: `${marker.zIndex}`
         }"
         role="button"
         tabindex="0"
@@ -119,7 +120,8 @@ const renderedMarkers = computed(() => {
 
     return {
       ...marker,
-      left: lane * laneOffsetPx
+      left: lane * laneOffsetPx,
+      zIndex: 100 + lane
     }
   })
 })
