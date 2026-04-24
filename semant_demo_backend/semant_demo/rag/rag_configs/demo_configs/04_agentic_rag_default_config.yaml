@@ -1,5 +1,5 @@
 id: "xmarti96_agentic_rag"
-name: "Agentic RAG using OpenAI GPT 5.2 model"
+name: "Agentic-RAG (GPT-5.2)"
 description: "Agentic rag implementation utilizing 5 different tools for answer synthesis. Does not support chat history or \"Explain\" functionality."
 class_name: "xmartiAgentRag"
 params:

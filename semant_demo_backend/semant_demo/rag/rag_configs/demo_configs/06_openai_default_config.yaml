@@ -1,10 +1,10 @@
-id: "xandry12_RagGenerator_openai_default"
-name: "Standard/Basic RAG"
-description: "Lightweight and fast RAG implementation using GPT-4o-mini with basic retrieval and conversation history support. Typically responds in English."
+id: "xandry12_RagGenerator_gemma_default"
+name: "Basic-RAG (Gemma-3 12B)"
+description: "Standard linear RAG implementation using Gemma 3 12B. Serves as a performance baseline. Lacks advanced correction loops and multi-query logic. Note: Typically responds in English."
 class_name: "RagGenerator"
 params:
   model_type: "OPENAI"
-  model_name: "gpt-4o-mini"
+  model_name: "google/gemma-3-12b-it"
   temperature: 0.0
   search_type : "hybrid"
   alpha: 0.5

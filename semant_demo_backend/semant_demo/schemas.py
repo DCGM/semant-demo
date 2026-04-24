@@ -46,6 +46,7 @@ class SummaryRequestBase(BaseModel):
 class SearchRequest(SummaryRequestBase):
     query: str
     limit: int = 10
+    user_collection_id: str | None = None
     type: SearchType = SearchType.hybrid
     hybrid_search_alpha: float = 0.5
     search_llm_filter: bool = False
