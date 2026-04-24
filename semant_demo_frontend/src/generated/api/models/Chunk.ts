@@ -73,6 +73,12 @@ export interface Chunk {
      * @memberof Chunk
      */
     order: number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof Chunk
+     */
+    inCollection?: boolean;
 }
 
 /**
@@ -107,6 +113,7 @@ export function ChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean): Chu
         'title': json['title'] == null ? undefined : json['title'],
         'language': json['language'] == null ? undefined : json['language'],
         'order': json['order'],
+        'inCollection': json['in_collection'] == null ? undefined : json['in_collection'],
     };
 }
 
@@ -130,6 +137,7 @@ export function ChunkToJSONTyped(value?: Chunk | null, ignoreDiscriminator: bool
         'title': value['title'],
         'language': value['language'],
         'order': value['order'],
+        'in_collection': value['inCollection'],
     };
 }
 

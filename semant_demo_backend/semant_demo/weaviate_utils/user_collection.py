@@ -347,6 +347,7 @@ class UserCollection():
                     start_page_id=props['start_page_id'],
                     from_page=props['from_page'],
                     to_page=props['to_page'],
+                    in_collection=True,
                 ))
 
             if len(response.objects) < page_size:
@@ -354,7 +355,168 @@ class UserCollection():
 
             offset += page_size
         return chunks
-        
+
+    async def get_document_chunks_with_context(
+        self,
+        document_id: str,
+        collection_id: str,
+        order_values: list[int],
+    ) -> list[Chunk]:
+        """
+        Fetches specific chunks from a document by their order values,
+        marking whether each chunk is already in the given collection.
+        """
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
+
+        # Build a filter matching the document and the requested order values
+        order_filters = [Filter.by_property("order").equal(o) for o in order_values]
+        combined_order = order_filters[0]
+        for f in order_filters[1:]:
+            combined_order = combined_order | f
+
+        doc_filter = Filter.by_ref("document").by_id().equal(document_id)
+        filters = doc_filter & combined_order
+
+        response = await chunks_collection.query.fetch_objects(
+            filters=filters,
+            sort=Sort.by_property("order", ascending=True),
+            return_references=[QueryReference(link_on="userCollection")],
+        )
+
+        result = []
+        for obj in response.objects:
+            props = obj.properties
+            # Check if this chunk references the current collection
+            in_col = False
+            if obj.references and "userCollection" in obj.references:
+                col_ids = [ref.uuid for ref in obj.references["userCollection"].objects]
+                in_col = UUID(collection_id) in col_ids
+            result.append(Chunk(
+                id=obj.uuid,
+                text=props['text'],
+                order=props['order'],
+                title=props['title'],
+                end_paragraph=props['end_paragraph'],
+                start_page_id=props['start_page_id'],
+                from_page=props['from_page'],
+                to_page=props['to_page'],
+                in_collection=in_col,
+            ))
+        return result
+
+    async def get_chunks_in_range(
+        self,
+        document_id: str,
+        collection_id: str,
+        order_gt: int | None,
+        order_lt: int | None,
+    ) -> list[Chunk]:
+        """
+        Returns all chunks of a document whose order is strictly greater than
+        order_gt (if given) and strictly less than order_lt (if given).
+        Marks in_collection for each chunk based on collection membership.
+        Results are sorted by order ascending.
+        """
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
+
+        doc_filter = Filter.by_ref("document").by_id().equal(document_id)
+        range_filter = doc_filter
+        if order_gt is not None:
+            range_filter = range_filter & Filter.by_property("order").greater_than(order_gt)
+        if order_lt is not None:
+            range_filter = range_filter & Filter.by_property("order").less_than(order_lt)
+
+        response = await chunks_collection.query.fetch_objects(
+            filters=range_filter,
+            limit=10000,
+            sort=Sort.by_property("order", ascending=True),
+            return_references=[QueryReference(link_on="userCollection")],
+        )
+
+        result: list[Chunk] = []
+        for obj in response.objects:
+            props = obj.properties
+            in_col = False
+            if obj.references and "userCollection" in obj.references:
+                col_ids = [ref.uuid for ref in obj.references["userCollection"].objects]
+                in_col = UUID(collection_id) in col_ids
+            result.append(Chunk(
+                id=obj.uuid,
+                text=props['text'],
+                order=props['order'],
+                title=props['title'],
+                end_paragraph=props['end_paragraph'],
+                start_page_id=props['start_page_id'],
+                from_page=props['from_page'],
+                to_page=props['to_page'],
+                in_collection=in_col,
+            ))
+        return result
+
+    async def get_neighbour_chunk(
+        self,
+        document_id: str,
+        collection_id: str,
+        direction: str,
+        boundary_order: int,
+    ) -> Chunk | None:
+        """
+        Returns the single chunk immediately before (direction='prev') or after
+        (direction='next') the given boundary_order value within the document.
+        Marks in_collection based on whether it belongs to the collection.
+        """
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
+
+        doc_filter = Filter.by_ref("document").by_id().equal(document_id)
+        if direction == "prev":
+            order_filter = Filter.by_property("order").less_than(boundary_order)
+            sort = Sort.by_property("order", ascending=False)
+        else:
+            order_filter = Filter.by_property("order").greater_than(boundary_order)
+            sort = Sort.by_property("order", ascending=True)
+
+        response = await chunks_collection.query.fetch_objects(
+            filters=doc_filter & order_filter,
+            limit=1,
+            sort=sort,
+            return_references=[QueryReference(link_on="userCollection")],
+        )
+
+        if not response.objects:
+            return None
+
+        obj = response.objects[0]
+        props = obj.properties
+        in_col = False
+        if obj.references and "userCollection" in obj.references:
+            col_ids = [ref.uuid for ref in obj.references["userCollection"].objects]
+            in_col = UUID(collection_id) in col_ids
+
+        return Chunk(
+            id=obj.uuid,
+            text=props['text'],
+            order=props['order'],
+            title=props['title'],
+            end_paragraph=props['end_paragraph'],
+            start_page_id=props['start_page_id'],
+            from_page=props['from_page'],
+            to_page=props['to_page'],
+            in_collection=in_col,
+        )
+
+    async def count_document_chunks(self, document_id: str) -> int:
+        """Returns the total number of chunks belonging to the given document."""
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
+        doc_filter = Filter.by_ref("document").by_id().equal(document_id)
+        response = await chunks_collection.aggregate.over_all(
+            filters=doc_filter,
+            total_count=True,
+        )
+        return response.total_count or 0
 
     async def read_all_documents(self, collection_id: str) -> list[Document]:
         """
@@ -411,8 +573,22 @@ class UserCollection():
 
         return result
 
-    def remove_chunk():
-        pass
+    async def remove_chunk(self, chunk_id: str, collection_id: str) -> bool:
+        """
+        Removes the reference between a chunk and a collection.
+        """
+        try:
+            chunks_collection = self.client.collections.get(
+                self.collectionNames.chunks_collection_name)
+            await chunks_collection.data.reference_delete(
+                from_uuid=chunk_id,
+                from_property="userCollection",
+                to=collection_id,
+            )
+            return True
+        except Exception as e:
+            logging.error(f"Failed to remove chunk from collection: {e}")
+            return False
 
     def share():
         pass

@@ -1,9 +1,89 @@
 <template>
   <q-page class="q-pa-lg doc-page">
     <div class="page-shell">
+
+      <!-- Left chunk-control gutter -->
+      <div class="chunk-gutter-wrapper">
+        <div class="chunk-gutter">
+          <div
+            v-for="item in leftGutterItems"
+            :key="item.chunkId"
+            class="chunk-gutter-item"
+            :class="{ 'chunk-gutter-item--text-hover': hoveredChunkId === item.chunkId }"
+            :style="{ top: item.top + 'px', height: item.height + 'px' }"
+            @mouseenter="hoveredChunkId = item.chunkId; if (!item.inCollection) hoveredPreviewChunkId = item.chunkId"
+            @mouseleave="hoveredChunkId = null; hoveredPreviewChunkId = null"
+          >
+            <div
+              class="chunk-bar"
+              :class="item.inCollection ? 'chunk-bar--in' : 'chunk-bar--out'"
+            />
+            <div class="chunk-btn-group">
+              <template v-if="item.inCollection">
+                <q-btn
+                  flat dense round
+                  icon="remove_circle_outline"
+                  color="negative"
+                  size="sm"
+                  class="chunk-toggle-btn"
+                  :loading="chunkLoadingId === item.chunkId"
+                  title="Remove from collection"
+                  @click.stop="onRemoveChunkById(item.chunkId)"
+                />
+              </template>
+              <template v-else>
+                <q-btn
+                  flat dense round
+                  icon="add_circle_outline"
+                  color="positive"
+                  size="sm"
+                  class="chunk-toggle-btn"
+                  :loading="chunkLoadingId === item.chunkId"
+                  title="Add to collection"
+                  @click.stop="onAddChunkById(item.chunkId)"
+                />
+                <q-btn
+                  flat dense round
+                  icon="visibility_off"
+                  color="grey"
+                  size="sm"
+                  class="chunk-toggle-btn chunk-hide-btn"
+                  title="Hide chunk"
+                  @click.stop="hideChunkById(item.chunkId)"
+                />
+              </template>
+            </div>
+            <span class="chunk-order-label">
+              <span class="chunk-order-num">{{ item.order }}</span>
+              <span class="chunk-order-total">/ {{ totalDocumentChunks ?? '?' }}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
       <q-card class="paper-card" :class="{ 'has-gutter': gutterItems.length > 0 }">
         <q-card-section class="paper-body">
-          <div class="document-text" ref="documentTextRef" @mouseup="handleDocumentMouseUp($event)">
+          <!-- Expand previous — right above the text -->
+          <div v-if="hasPrev" class="expand-row expand-row--top expand-row--col">
+            <q-btn
+              flat dense
+              icon="vertical_align_top"
+              :loading="loadingAllPrev"
+              class="expand-btn"
+              label="Load all previous"
+              @click="loadAllNeighbours('prev')"
+            />
+            <q-btn
+              flat dense
+              icon="keyboard_arrow_up"
+              :loading="loadingPrev"
+              class="expand-btn"
+              label="Load previous"
+              @click="loadNeighbour('prev')"
+            />
+          </div>
+
+          <div class="document-text" ref="documentTextRef" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="hoveredPreviewChunkId = null">
             <template v-for="(group, gIndex) in assembledParagraphs" :key="gIndex">
               <p>
                 <ChunkAnnotator
@@ -15,10 +95,61 @@
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
                   :highlight-span-id="hoveredSpanId"
+                  :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
               </p>
+              <!-- Gap buttons between non-consecutive chunks -->
+              <div v-if="group.gapAfter !== null" class="gap-row">
+                <q-btn
+                  flat dense
+                  icon="keyboard_arrow_up"
+                  :loading="gapLoadingKey === `${group.gapBefore}:prev`"
+                  class="gap-btn"
+                  label="Load previous"
+                  title="Load the chunk just before this gap"
+                  @click="loadGapPrev(group.gapBefore!)"
+                />
+                <q-btn
+                  flat dense
+                  icon="unfold_more"
+                  :loading="gapLoadingKey === `${group.gapAfter}:all`"
+                  class="gap-btn gap-btn--all"
+                  label="Load all missing"
+                  title="Load all chunks in this gap"
+                  @click="loadGapAll(group.gapAfter, group.gapBefore!)"
+                />
+                <q-btn
+                  flat dense
+                  icon="keyboard_arrow_down"
+                  :loading="gapLoadingKey === `${group.gapAfter}:next`"
+                  class="gap-btn"
+                  label="Load next"
+                  title="Load the chunk just after this gap"
+                  @click="loadGap(group.gapAfter)"
+                />
+              </div>
             </template>
+          </div>
+
+          <!-- Expand next — right below the text -->
+          <div v-if="hasNext" class="expand-row expand-row--bottom expand-row--col">
+            <q-btn
+              flat dense
+              icon="keyboard_arrow_down"
+              :loading="loadingNext"
+              class="expand-btn"
+              label="Load next"
+              @click="loadNeighbour('next')"
+            />
+            <q-btn
+              flat dense
+              icon="vertical_align_bottom"
+              :loading="loadingAllNext"
+              class="expand-btn"
+              label="Load all next"
+              @click="loadAllNeighbours('next')"
+            />
           </div>
         </q-card-section>
         <q-inner-loading :showing="loading" />
@@ -147,6 +278,7 @@ import useChunks from 'src/composables/useChunks'
 import useTags from 'src/composables/useTags'
 import { useAnnotations } from 'src/composables/useAnnotations'
 import { SpanType } from 'src/generated/api'
+import type { Chunk } from 'src/generated/api'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
 import ChunkAnnotator from 'src/components/ChunkAnnotator.vue'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
@@ -190,10 +322,26 @@ const props = defineProps<{
   documentId: string
 }>()
 
-const { chunks, loading, error, loadChunksInCollectionDocument } = useChunks()
+const { chunks, loading, error, loadChunksInCollectionDocument, addChunkToCollection, removeChunkFromCollection, getNeighbourChunk, countDocumentChunks, getChunksInRange } = useChunks()
 const { tags, loadTagsByCollection } = useTags()
 
-const annotations = useAnnotations(() => chunks.value)
+// Local display chunks — a superset of collection chunks plus any expanded previews
+const displayChunks = ref<Chunk[]>([])
+
+// Whether neighbour chunks exist in the DB beyond what we're showing
+const hasPrev = ref(false)
+const hasNext = ref(false)
+const loadingPrev = ref(false)
+const loadingNext = ref(false)
+const loadingAllPrev = ref(false)
+const loadingAllNext = ref(false)
+const gapLoadingKey = ref<string | null>(null)
+
+// Which chunk is currently being added/removed
+const chunkLoadingId = ref<string | null>(null)
+
+// Sync displayChunks from store when initial load completes (handled in watch below)
+const annotations = useAnnotations(() => displayChunks.value)
 
 // ── Gutter state ──
 
@@ -214,6 +362,76 @@ const hoveredSpanId = ref<string | null>(null)
 const gutterItems = ref<GutterItem[]>([])
 const showTagPicker = ref(false)
 const tagSearch = ref('')
+
+// ── Left chunk-control gutter ──
+interface LeftGutterItem {
+  chunkId: string
+  inCollection: boolean
+  order: number
+  top: number
+  height: number
+}
+const leftGutterItems = ref<LeftGutterItem[]>([])
+const totalDocumentChunks = ref<number | null>(null)
+
+function recalculateLeftGutter() {
+  const container = documentTextRef.value
+  if (!container) { leftGutterItems.value = []; return }
+  const cardEl = container.closest('.paper-card') as HTMLElement | null
+  if (!cardEl) { leftGutterItems.value = []; return }
+  const cardRect = cardEl.getBoundingClientRect()
+  const items: LeftGutterItem[] = []
+
+  for (const chunk of displayChunks.value) {
+    const chunkEl = container.querySelector(`[data-chunk-id="${chunk.id}"]`) as HTMLElement | null
+    if (!chunkEl) continue
+    const rect = chunkEl.getBoundingClientRect()
+    items.push({
+      chunkId: chunk.id,
+      inCollection: chunk.inCollection ?? false,
+      order: chunk.order,
+      top: rect.top - cardRect.top,
+      height: Math.max(rect.height, 24)
+    })
+  }
+  leftGutterItems.value = items
+}
+
+// Helpers so the left gutter can call add/remove by id without a full Chunk ref
+function onAddChunkById(chunkId: string) {
+  const chunk = displayChunks.value.find(c => c.id === chunkId)
+  if (chunk) onAddChunk(chunk)
+}
+function onRemoveChunkById(chunkId: string) {
+  const chunk = displayChunks.value.find(c => c.id === chunkId)
+  if (chunk) onRemoveChunk(chunk)
+}
+
+function hideChunkById(chunkId: string) {
+  displayChunks.value = displayChunks.value.filter(c => c.id !== chunkId)
+  void nextTick().then(() => { recalculateGutter(); void checkNeighbours() })
+}
+
+const hoveredPreviewChunkId = ref<string | null>(null)
+const hoveredChunkId = ref<string | null>(null)
+
+function onDocumentPointerMove(e: PointerEvent) {
+  if (!documentTextRef.value) return
+  for (const chunk of displayChunks.value) {
+    const el = documentTextRef.value.querySelector(`[data-chunk-id="${chunk.id}"]`) as HTMLElement | null
+    if (!el) continue
+    const rect = el.getBoundingClientRect()
+    if (e.clientX >= rect.left && e.clientX <= rect.right &&
+        e.clientY >= rect.top && e.clientY <= rect.bottom) {
+      hoveredChunkId.value = chunk.id
+      if (!chunk.inCollection) hoveredPreviewChunkId.value = chunk.id
+      else hoveredPreviewChunkId.value = null
+      return
+    }
+  }
+  hoveredChunkId.value = null
+  hoveredPreviewChunkId.value = null
+}
 
 const filteredTags = computed(() => {
   const q = tagSearch.value.toLowerCase().trim()
@@ -269,7 +487,7 @@ function recalculateGutter() {
   const cardRect = cardEl.getBoundingClientRect()
   const items: GutterItem[] = []
 
-  for (const chunk of chunks.value) {
+  for (const chunk of displayChunks.value) {
     const chunkSpans = annotations.spansByChunkId.value[chunk.id] || []
 
     for (const span of chunkSpans) {
@@ -280,15 +498,15 @@ function recalculateGutter() {
       let maxBottom = -Infinity
 
       // Measure segments in the owning chunk and any subsequent chunks the span overflows into
-      const startChunkIndex = chunks.value.indexOf(chunk)
+      const startChunkIndex = displayChunks.value.indexOf(chunk)
       let remaining = span.end
-      for (let ci = startChunkIndex; ci < chunks.value.length && remaining > 0; ci++) {
-        const c = chunks.value[ci]
+      for (let ci = startChunkIndex; ci < displayChunks.value.length && remaining > 0; ci++) {
+        const c = displayChunks.value[ci]
         const cEl = container.querySelector(`[data-chunk-id="${c.id}"]`) as HTMLElement | null
         if (!cEl) break
 
         const segEls = cEl.querySelectorAll<HTMLElement>('.text-segment')
-        const offsetFromSpanChunk = ci === startChunkIndex ? 0 : chunks.value.slice(startChunkIndex, ci).reduce((sum, ch) => sum + ch.text.length, 0)
+        const offsetFromSpanChunk = ci === startChunkIndex ? 0 : displayChunks.value.slice(startChunkIndex, ci).reduce((sum, ch) => sum + ch.text.length, 0)
         const localStart = ci === startChunkIndex ? span.start : 0
         const localEnd = Math.min(c.text.length, span.end - offsetFromSpanChunk)
 
@@ -341,6 +559,7 @@ function recalculateGutter() {
   }
 
   gutterItems.value = items
+  recalculateLeftGutter()
 }
 
 const onGutterClick = (item: GutterItem, e: MouseEvent) => {
@@ -399,20 +618,29 @@ tagNav.onHighlight((spanId) => { hoveredSpanId.value = spanId })
 
 /** Group chunks into paragraphs for rendering, but keep individual chunks accessible */
 const assembledParagraphs = computed(() => {
-  const paragraphs: { chunks: typeof chunks.value }[] = []
-  let currentGroup: typeof chunks.value = []
+  const paragraphs: { chunks: Chunk[]; gapAfter: number | null; gapBefore: number | null }[] = []
+  let currentGroup: Chunk[] = []
 
-  for (const chunk of chunks.value) {
+  for (let i = 0; i < displayChunks.value.length; i++) {
+    const chunk = displayChunks.value[i]
     currentGroup.push(chunk)
 
-    if (chunk.endParagraph) {
-      paragraphs.push({ chunks: currentGroup })
+    const nextChunk = displayChunks.value[i + 1]
+    const hasGap = nextChunk != null && nextChunk.order > chunk.order + 1
+
+    // Close the paragraph group on endParagraph OR when there's a gap (so gap buttons can go between <p> tags)
+    if (chunk.endParagraph || hasGap || !nextChunk) {
+      paragraphs.push({
+        chunks: [...currentGroup],
+        gapAfter: hasGap ? chunk.order : null,
+        gapBefore: hasGap ? nextChunk!.order : null
+      })
       currentGroup = []
     }
   }
 
   if (currentGroup.length) {
-    paragraphs.push({ chunks: currentGroup })
+    paragraphs.push({ chunks: currentGroup, gapAfter: null, gapBefore: null })
   }
 
   return paragraphs
@@ -475,13 +703,206 @@ const onDeleteSpan = async () => {
 // Load data + recalculate gutter
 let resizeObserver: ResizeObserver | null = null
 
+// ── Check if neighbours exist ──
+async function checkNeighbours() {
+  if (!displayChunks.value.length) { hasPrev.value = false; hasNext.value = false; return }
+  const minOrder = Math.min(...displayChunks.value.map(c => c.order))
+  const maxOrder = Math.max(...displayChunks.value.map(c => c.order))
+  const [prev, next] = await Promise.all([
+    getNeighbourChunk(props.collectionId, props.documentId, 'prev', minOrder),
+    getNeighbourChunk(props.collectionId, props.documentId, 'next', maxOrder)
+  ])
+  hasPrev.value = prev !== null
+  hasNext.value = next !== null
+}
+
+// ── Load all neighbouring chunks in one direction ──
+async function loadAllNeighbours(direction: 'prev' | 'next') {
+  if (direction === 'prev') loadingAllPrev.value = true
+  else loadingAllNext.value = true
+  try {
+    const boundary = direction === 'prev'
+      ? Math.min(...displayChunks.value.map(c => c.order))
+      : Math.max(...displayChunks.value.map(c => c.order))
+    const chunks = await getChunksInRange(
+      props.collectionId,
+      props.documentId,
+      direction === 'next' ? boundary : null,
+      direction === 'prev' ? boundary : null
+    )
+    if (chunks.length) {
+      if (direction === 'prev') {
+        displayChunks.value = [...chunks, ...displayChunks.value]
+      } else {
+        displayChunks.value = [...displayChunks.value, ...chunks]
+      }
+    }
+    await nextTick()
+    recalculateGutter()
+    if (direction === 'prev') hasPrev.value = false
+    else hasNext.value = false
+  } finally {
+    if (direction === 'prev') loadingAllPrev.value = false
+    else loadingAllNext.value = false
+  }
+}
+
+// ── Load a neighbouring chunk into the display list ──
+async function loadNeighbour(direction: 'prev' | 'next') {
+  if (direction === 'prev') loadingPrev.value = true
+  else loadingNext.value = true
+  try {
+    const boundaryOrder = direction === 'prev'
+      ? Math.min(...displayChunks.value.map(c => c.order))
+      : Math.max(...displayChunks.value.map(c => c.order))
+    const chunk = await getNeighbourChunk(props.collectionId, props.documentId, direction, boundaryOrder)
+    if (!chunk) {
+      if (direction === 'prev') hasPrev.value = false
+      else hasNext.value = false
+      return
+    }
+    if (direction === 'prev') {
+      displayChunks.value = [chunk, ...displayChunks.value]
+    } else {
+      displayChunks.value = [...displayChunks.value, chunk]
+    }
+    await nextTick()
+    recalculateGutter()
+    // Only re-check the direction we loaded — the other side couldn't have changed
+    const newBoundary = direction === 'prev'
+      ? Math.min(...displayChunks.value.map(c => c.order))
+      : Math.max(...displayChunks.value.map(c => c.order))
+    const further = await getNeighbourChunk(props.collectionId, props.documentId, direction, newBoundary)
+    if (direction === 'prev') hasPrev.value = further !== null
+    else hasNext.value = further !== null
+  } finally {
+    if (direction === 'prev') loadingPrev.value = false
+    else loadingNext.value = false
+  }
+}
+
+// ── Load a single chunk just after afterOrder (into the gap) ──
+async function loadGap(afterOrder: number) {
+  gapLoadingKey.value = `${afterOrder}:next`
+  try {
+    const chunk = await getNeighbourChunk(props.collectionId, props.documentId, 'next', afterOrder)
+    if (!chunk) return
+    const idx = displayChunks.value.findIndex(c => c.order === afterOrder)
+    if (idx === -1) return
+    displayChunks.value = [
+      ...displayChunks.value.slice(0, idx + 1),
+      chunk,
+      ...displayChunks.value.slice(idx + 1)
+    ]
+    await nextTick()
+    recalculateGutter()
+  } finally {
+    gapLoadingKey.value = null
+  }
+}
+
+// ── Load a single chunk just before beforeOrder (into the gap) ──
+async function loadGapPrev(beforeOrder: number) {
+  // gapAfter is the order of the last chunk before the gap; we need the boundary
+  // We search by the order of the first chunk after the gap
+  gapLoadingKey.value = `${beforeOrder}:prev`
+  try {
+    const chunk = await getNeighbourChunk(props.collectionId, props.documentId, 'prev', beforeOrder)
+    if (!chunk) return
+    const idx = displayChunks.value.findIndex(c => c.order === beforeOrder)
+    if (idx === -1) return
+    displayChunks.value = [
+      ...displayChunks.value.slice(0, idx),
+      chunk,
+      ...displayChunks.value.slice(idx)
+    ]
+    await nextTick()
+    recalculateGutter()
+  } finally {
+    gapLoadingKey.value = null
+  }
+}
+
+// ── Load all missing chunks between afterOrder and beforeOrder ──
+async function loadGapAll(afterOrder: number, beforeOrder: number) {
+  gapLoadingKey.value = `${afterOrder}:all`
+  try {
+    const newChunks = await getChunksInRange(
+      props.collectionId,
+      props.documentId,
+      afterOrder,
+      beforeOrder
+    )
+    if (newChunks.length) {
+      const idx = displayChunks.value.findIndex(c => c.order === afterOrder)
+      if (idx !== -1) {
+        displayChunks.value = [
+          ...displayChunks.value.slice(0, idx + 1),
+          ...newChunks,
+          ...displayChunks.value.slice(idx + 1)
+        ]
+      }
+    }
+    await nextTick()
+    recalculateGutter()
+  } finally {
+    gapLoadingKey.value = null
+  }
+}
+
+// ── Add / remove chunk from collection ──
+async function onAddChunk(chunk: Chunk) {
+  chunkLoadingId.value = chunk.id
+  try {
+    await addChunkToCollection(chunk.id, props.collectionId)
+    const idx = displayChunks.value.findIndex(c => c.id === chunk.id)
+    if (idx !== -1) {
+      displayChunks.value = [
+        ...displayChunks.value.slice(0, idx),
+        { ...displayChunks.value[idx], inCollection: true },
+        ...displayChunks.value.slice(idx + 1)
+      ]
+      // Sync left gutter inCollection flag without full recalculate
+      const lg = leftGutterItems.value.find(i => i.chunkId === chunk.id)
+      if (lg) lg.inCollection = true
+    }
+  } finally {
+    chunkLoadingId.value = null
+  }
+}
+
+async function onRemoveChunk(chunk: Chunk) {
+  chunkLoadingId.value = chunk.id
+  try {
+    await removeChunkFromCollection(chunk.id, props.collectionId)
+    // Keep chunk visible as a preview (inCollection = false), only hide on explicit hide action
+    const idx = displayChunks.value.findIndex(c => c.id === chunk.id)
+    if (idx !== -1) {
+      displayChunks.value = [
+        ...displayChunks.value.slice(0, idx),
+        { ...displayChunks.value[idx], inCollection: false },
+        ...displayChunks.value.slice(idx + 1)
+      ]
+      const lg = leftGutterItems.value.find(i => i.chunkId === chunk.id)
+      if (lg) lg.inCollection = false
+    }
+    await nextTick()
+    recalculateGutter()
+    await checkNeighbours()
+  } finally {
+    chunkLoadingId.value = null
+  }
+}
+
 watch(
   () => chunks.value,
   async (newChunks) => {
     if (newChunks.length) {
+      displayChunks.value = [...newChunks]
       await annotations.loadAllSpans(props.collectionId)
       await nextTick()
       recalculateGutter()
+      await checkNeighbours()
     }
   }
 )
@@ -526,6 +947,8 @@ onMounted(async () => {
     loadChunksInCollectionDocument(props.collectionId, props.documentId)
   ])
 
+  void countDocumentChunks(props.documentId).then(n => { totalDocumentChunks.value = n })
+
   await nextTick()
   if (documentTextRef.value) {
     resizeObserver = new ResizeObserver(() => recalculateGutter())
@@ -551,23 +974,25 @@ onBeforeUnmount(() => {
 
 .page-shell {
   display: flex;
+  flex-direction: row;
   gap: 0;
   align-items: stretch;
   border-radius: 16px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
 }
 
 .paper-card {
   flex: 4;
   min-width: 0;
   min-height: calc(100vh - 160px);
-  border-radius: 16px;
+  border-radius: 0;
   background: #ffffff;
   box-shadow: none;
 }
 
 .paper-card.has-gutter {
-  border-radius: 16px 0 0 16px;
+  border-radius: 0;
 }
 
 .paper-header {
@@ -588,6 +1013,188 @@ onBeforeUnmount(() => {
 
 .document-text p {
   margin: 0 0 18px;
+}
+
+/* Dim non-collection preview chunks slightly */
+:deep(.chunk-preview) {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+:deep(.chunk-preview.chunk-preview--active) {
+  opacity: 1;
+}
+
+/* ── Left chunk-control gutter ── */
+
+.chunk-gutter-wrapper {
+  width: 52px;
+  flex-shrink: 0;
+  position: relative;
+  background: #ffffff;
+  min-height: calc(100vh - 160px);
+}
+
+.chunk-gutter {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.chunk-gutter-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+  gap: 4px;
+}
+
+.chunk-btn-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  position: absolute;
+  left: 5px;
+  top: 30px;
+  z-index: 1;
+}
+
+.chunk-gutter-item:hover .chunk-btn-group,
+.chunk-gutter-item--text-hover .chunk-btn-group {
+  opacity: 1;
+}
+
+.chunk-order-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+  color: #64748b;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+  padding-top: 1px;
+}
+
+.chunk-order-num {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chunk-order-total {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.chunk-bar {
+  width: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  align-self: stretch;
+  min-height: 20px;
+  transition: opacity 0.15s;
+}
+
+.chunk-bar--in {
+  background: #22c55e;
+  opacity: 0.7;
+}
+
+.chunk-bar--out {
+  background: #cbd5e1;
+  opacity: 0.5;
+}
+
+.chunk-gutter-item:hover .chunk-bar {
+  opacity: 1;
+}
+
+.chunk-toggle-btn {
+  flex-shrink: 0;
+}
+
+/* order label stays visible on hover */
+
+/* ── Full-width expand rows (prev / next) inside paper-body ── */
+
+.expand-row {
+  display: flex;
+  justify-content: center;
+  border-bottom: 1px dashed #e2e8f0;
+  margin-bottom: 16px;
+}
+
+.expand-row--col {
+  flex-direction: column;
+}
+
+.expand-row--col .expand-btn + .expand-btn {
+  border-top: 1px solid #e2e8f0;
+}
+
+.expand-row--top {
+  margin-top: -32px;
+  margin-bottom: 20px;
+}
+
+.expand-row--bottom {
+  border-bottom: none;
+  border-top: 1px dashed #e2e8f0;
+  margin-bottom: 0;
+  margin-top: 16px;
+}
+
+.expand-btn {
+  width: 100%;
+  color: #64748b;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  transition: background 0.15s, color 0.15s;
+  border-radius: 0;
+}
+
+.expand-btn:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+/* ── Gap row (missing chunks between two displayed chunks) ── */
+
+.gap-row {
+  display: flex;
+  flex-direction: column;
+  margin: 4px 0;
+  border-top: 1px dashed #e2e8f0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.gap-btn {
+  flex: 1;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  transition: background 0.15s, color 0.15s;
+  border-radius: 0;
+}
+
+.gap-btn + .gap-btn {
+  border-left: none;
+  border-top: 1px solid #e2e8f0;
+}
+
+.gap-btn--all {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.gap-btn:hover {
+  background: #f8fafc;
+  color: #475569;
 }
 
 @media (max-width: 1023px) {

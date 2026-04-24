@@ -15,6 +15,7 @@ Name | Type
 `title` | string
 `language` | string
 `order` | number
+`inCollection` | boolean
 
 ## Example
 
@@ -32,6 +33,7 @@ const example = {
   "title": null,
   "language": null,
   "order": null,
+  "inCollection": null,
 } satisfies Chunk
 
 console.log(example)

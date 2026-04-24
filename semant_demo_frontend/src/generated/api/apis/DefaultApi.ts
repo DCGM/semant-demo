@@ -182,6 +182,10 @@ export interface CheckStatusApiTagTaskStatusTaskIdGetRequest {
     taskId: string;
 }
 
+export interface CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest {
+    documentId: string;
+}
+
 export interface CreateTagApiTagsPostRequest {
     collectionId: string;
     postTag: PostTag;
@@ -223,6 +227,13 @@ export interface FilterChunksByTagsApiTagsFilterPostRequest {
     filterChunksByTagsRequest: FilterChunksByTagsRequest;
 }
 
+export interface GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest {
+    collectionId: string;
+    documentId: string;
+    orderGt?: number | null;
+    orderLt?: number | null;
+}
+
 export interface GetCollectionChunksApiUserCollectionChunksGetRequest {
     collectionId: string;
 }
@@ -242,6 +253,13 @@ export interface GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest 
 
 export interface GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest {
     collectionId: string;
+}
+
+export interface GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest {
+    collectionId: string;
+    documentId: string;
+    direction: string;
+    boundaryOrder: number;
 }
 
 export interface GetSelectedTagsChunksApiTagTextChunksPostRequest {
@@ -272,6 +290,10 @@ export interface ReadTagSpansBatchApiTagSpansBatchPostRequest {
 
 export interface RemoveAutomaticTagsApiTagsAutomaticDeleteRequest {
     removeTagReq: RemoveTagReq;
+}
+
+export interface RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest {
+    chunk2CollectionReq: Chunk2CollectionReq;
 }
 
 export interface RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest {
@@ -511,6 +533,30 @@ export interface DefaultApiInterface {
      * Check Status
      */
     checkStatusApiTagTaskStatusTaskIdGet(requestParameters: CheckStatusApiTagTaskStatusTaskIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+
+    /**
+     * Creates request options for countDocumentChunksApiDocumentsDocumentIdChunksCountGet without sending the request
+     * @param {string} documentId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    countDocumentChunksApiDocumentsDocumentIdChunksCountGetRequestOpts(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns the total number of chunks in the given document.
+     * @summary Count Document Chunks
+     * @param {string} documentId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<number>>;
+
+    /**
+     * Returns the total number of chunks in the given document.
+     * Count Document Chunks
+     */
+    countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number>;
 
     /**
      * Creates request options for createTagApiTagsPost without sending the request
@@ -796,6 +842,36 @@ export interface DefaultApiInterface {
     getAvalaibleRagConfigurationsApiRagConfigurationsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RagRouteConfig>>;
 
     /**
+     * Creates request options for getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet without sending the request
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {number} [orderGt] 
+     * @param {number} [orderLt] 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequestOpts(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
+     * @summary Get Chunks In Range
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {number} [orderGt] 
+     * @param {number} [orderLt] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRaw(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Chunk | null>>>;
+
+    /**
+     * Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
+     * Get Chunks In Range
+     */
+    getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Chunk | null>>;
+
+    /**
      * Creates request options for getCollectionChunksApiUserCollectionChunksGet without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
@@ -937,6 +1013,36 @@ export interface DefaultApiInterface {
      * Get Configs
      */
     getConfigsApiTagConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse>;
+
+    /**
+     * Creates request options for getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet without sending the request
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {string} direction 
+     * @param {number} boundaryOrder 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequestOpts(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. Marks in_collection accordingly.
+     * @summary Get Neighbour Chunk
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {string} direction 
+     * @param {number} boundaryOrder 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRaw(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Chunk>>;
+
+    /**
+     * Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. Marks in_collection accordingly.
+     * Get Neighbour Chunk
+     */
+    getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Chunk>;
 
     /**
      * Creates request options for getSelectedTagsChunksApiTagTextChunksPost without sending the request
@@ -1151,6 +1257,30 @@ export interface DefaultApiInterface {
      * Remove Automatic Tags
      */
     removeAutomaticTagsApiTagsAutomaticDelete(requestParameters: RemoveAutomaticTagsApiTagsAutomaticDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse>;
+
+    /**
+     * Creates request options for removeChunkFromCollectionApiUserCollectionChunksDelete without sending the request
+     * @param {Chunk2CollectionReq} chunk2CollectionReq 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    removeChunkFromCollectionApiUserCollectionChunksDeleteRequestOpts(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Removes a chunk from a user collection.
+     * @summary Remove Chunk From Collection
+     * @param {Chunk2CollectionReq} chunk2CollectionReq 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    removeChunkFromCollectionApiUserCollectionChunksDeleteRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+
+    /**
+     * Removes a chunk from a user collection.
+     * Remove Chunk From Collection
+     */
+    removeChunkFromCollectionApiUserCollectionChunksDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
 
     /**
      * Creates request options for removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete without sending the request
@@ -1809,6 +1939,57 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for countDocumentChunksApiDocumentsDocumentIdChunksCountGet without sending the request
+     */
+    async countDocumentChunksApiDocumentsDocumentIdChunksCountGetRequestOpts(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling countDocumentChunksApiDocumentsDocumentIdChunksCountGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/documents/{document_id}/chunks/count`;
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns the total number of chunks in the given document.
+     * Count Document Chunks
+     */
+    async countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<number>> {
+        const requestOptions = await this.countDocumentChunksApiDocumentsDocumentIdChunksCountGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        if (this.isJsonMime(response.headers.get('content-type'))) {
+            return new runtime.JSONApiResponse<number>(response);
+        } else {
+            return new runtime.TextApiResponse(response) as any;
+        }
+    }
+
+    /**
+     * Returns the total number of chunks in the given document.
+     * Count Document Chunks
+     */
+    async countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number> {
+        const response = await this.countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for createTagApiTagsPost without sending the request
      */
     async createTagApiTagsPostRequestOpts(requestParameters: CreateTagApiTagsPostRequest): Promise<runtime.RequestOpts> {
@@ -2403,6 +2584,69 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet without sending the request
+     */
+    async getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequestOpts(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet().'
+            );
+        }
+
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['orderGt'] != null) {
+            queryParameters['order_gt'] = requestParameters['orderGt'];
+        }
+
+        if (requestParameters['orderLt'] != null) {
+            queryParameters['order_lt'] = requestParameters['orderLt'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/collections/{collection_id}/documents/{document_id}/chunks`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
+     * Get Chunks In Range
+     */
+    async getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRaw(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Chunk | null>>> {
+        const requestOptions = await this.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(ChunkFromJSON));
+    }
+
+    /**
+     * Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
+     * Get Chunks In Range
+     */
+    async getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Chunk | null>> {
+        const response = await this.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getCollectionChunksApiUserCollectionChunksGet without sending the request
      */
     async getCollectionChunksApiUserCollectionChunksGetRequestOpts(requestParameters: GetCollectionChunksApiUserCollectionChunksGetRequest): Promise<runtime.RequestOpts> {
@@ -2692,6 +2936,83 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getConfigsApiTagConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse> {
         const response = await this.getConfigsApiTagConfigsGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet without sending the request
+     */
+    async getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequestOpts(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet().'
+            );
+        }
+
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet().'
+            );
+        }
+
+        if (requestParameters['direction'] == null) {
+            throw new runtime.RequiredError(
+                'direction',
+                'Required parameter "direction" was null or undefined when calling getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet().'
+            );
+        }
+
+        if (requestParameters['boundaryOrder'] == null) {
+            throw new runtime.RequiredError(
+                'boundaryOrder',
+                'Required parameter "boundaryOrder" was null or undefined when calling getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['direction'] != null) {
+            queryParameters['direction'] = requestParameters['direction'];
+        }
+
+        if (requestParameters['boundaryOrder'] != null) {
+            queryParameters['boundary_order'] = requestParameters['boundaryOrder'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/collections/{collection_id}/documents/{document_id}/neighbour`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. Marks in_collection accordingly.
+     * Get Neighbour Chunk
+     */
+    async getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRaw(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Chunk>> {
+        const requestOptions = await this.getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ChunkFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. Marks in_collection accordingly.
+     * Get Neighbour Chunk
+     */
+    async getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Chunk> {
+        const response = await this.getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -3142,6 +3463,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async removeAutomaticTagsApiTagsAutomaticDelete(requestParameters: RemoveAutomaticTagsApiTagsAutomaticDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RemoveTagsResponse> {
         const response = await this.removeAutomaticTagsApiTagsAutomaticDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for removeChunkFromCollectionApiUserCollectionChunksDelete without sending the request
+     */
+    async removeChunkFromCollectionApiUserCollectionChunksDeleteRequestOpts(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['chunk2CollectionReq'] == null) {
+            throw new runtime.RequiredError(
+                'chunk2CollectionReq',
+                'Required parameter "chunk2CollectionReq" was null or undefined when calling removeChunkFromCollectionApiUserCollectionChunksDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collection/chunks`;
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+            body: Chunk2CollectionReqToJSON(requestParameters['chunk2CollectionReq']),
+        };
+    }
+
+    /**
+     * Removes a chunk from a user collection.
+     * Remove Chunk From Collection
+     */
+    async removeChunkFromCollectionApiUserCollectionChunksDeleteRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
+        const requestOptions = await this.removeChunkFromCollectionApiUserCollectionChunksDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Removes a chunk from a user collection.
+     * Remove Chunk From Collection
+     */
+    async removeChunkFromCollectionApiUserCollectionChunksDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
+        const response = await this.removeChunkFromCollectionApiUserCollectionChunksDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

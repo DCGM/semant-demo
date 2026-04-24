@@ -11,3 +11,4 @@ class Chunk(BaseModel):
     title: str | None = None
     language: str | None = None
     order: int
+    in_collection: bool = False
