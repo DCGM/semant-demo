@@ -70,14 +70,27 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
   // ── Cross-chunk offset math ──
 
   /**
+   * Returns true if all display chunks from fromIndex to toIndex (inclusive)
+   * have consecutive order values (no document gaps between them).
+   */
+  const areConsecutiveChunks = (fromIndex: number, toIndex: number): boolean => {
+    for (let i = fromIndex; i < toIndex; i++) {
+      if (chunks.value[i + 1].order !== chunks.value[i].order + 1) return false
+    }
+    return true
+  }
+
+  /**
    * Compute the cumulative character offset from the start of `fromChunkId`
-   * to the start of `toChunkId`.
+   * to the start of `toChunkId`. Returns null if there is a document gap
+   * anywhere along the path.
    */
   const getOffsetBetweenChunks = (fromChunkId: string, toChunkId: string): number | null => {
     const fromIndex = chunkIndexById.value[fromChunkId]
     const toIndex = chunkIndexById.value[toChunkId]
     if (fromIndex === undefined || toIndex === undefined) return null
     if (toIndex < fromIndex) return null
+    if (!areConsecutiveChunks(fromIndex, toIndex)) return null
 
     let offset = 0
     for (let i = fromIndex; i < toIndex; i++) {
@@ -143,17 +156,18 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
       for (const span of srcSpans) {
         if (span.type === SpanType.neg) continue
 
-        // Offset from source chunk start to target chunk start
-        let offsetToTarget = 0
-        for (let i = srcIndex; i < targetIndex; i++) {
-          offsetToTarget += chunks.value[i].text.length
-        }
-
         if (srcIndex === targetIndex) {
           // Same chunk — no projection needed
           result.push({ ...span })
         } else {
-          // Cross-chunk projection
+          // Cross-chunk projection — only if every intermediate chunk is consecutive
+          if (!areConsecutiveChunks(srcIndex, targetIndex)) continue
+
+          let offsetToTarget = 0
+          for (let i = srcIndex; i < targetIndex; i++) {
+            offsetToTarget += chunks.value[i].text.length
+          }
+
           const localStart = Math.max(0, span.start - offsetToTarget)
           const localEnd = Math.min(targetLength, span.end - offsetToTarget)
 
@@ -207,9 +221,23 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
       lastOffset = startOffset
     }
 
-    // Compute global end relative to firstChunkId
+    // Compute global end relative to firstChunkId — only if no gap in between
     const offsetToLast = getOffsetBetweenChunks(firstChunkId, lastChunkId)
-    if (offsetToLast === null) return
+    if (offsetToLast === null) {
+      // There's a document gap between the two chunks — clamp to just the first chunk
+      const firstIndex = chunkIndexById.value[firstChunkId]
+      if (firstIndex === undefined) return
+      const firstChunkLength = chunks.value[firstIndex].text.length
+      if (firstOffset >= firstChunkLength) return
+      selection.value = {
+        chunkId: firstChunkId,
+        start: firstOffset,
+        end: firstChunkLength,
+        editingSpanId,
+        tagId
+      }
+      return
+    }
 
     selection.value = {
       chunkId: firstChunkId,
@@ -252,7 +280,9 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
     let end = sel.end
 
     // Move anchor forward while start is outside current chunk to the right.
+    // Stop at document gaps to avoid crossing into non-consecutive chunks.
     while (chunkIndex < chunks.value.length - 1 && start >= chunks.value[chunkIndex].text.length) {
+      if (chunks.value[chunkIndex + 1].order !== chunks.value[chunkIndex].order + 1) break
       const len = chunks.value[chunkIndex].text.length
       start -= len
       end -= len
@@ -261,7 +291,9 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
     }
 
     // Move anchor backward while start is outside current chunk to the left.
+    // Stop at document gaps to avoid crossing into non-consecutive chunks.
     while (chunkIndex > 0 && start < 0) {
+      if (chunks.value[chunkIndex].order !== chunks.value[chunkIndex - 1].order + 1) break
       chunkIndex -= 1
       const len = chunks.value[chunkIndex].text.length
       start += len

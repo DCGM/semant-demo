@@ -103,12 +103,12 @@
               <div v-if="group.gapAfter !== null" class="gap-row">
                 <q-btn
                   flat dense
-                  icon="keyboard_arrow_up"
-                  :loading="gapLoadingKey === `${group.gapBefore}:prev`"
+                  icon="keyboard_arrow_down"
+                  :loading="gapLoadingKey === `${group.gapAfter}:next`"
                   class="gap-btn"
-                  label="Load previous"
-                  title="Load the chunk just before this gap"
-                  @click="loadGapPrev(group.gapBefore!)"
+                  label="Load next"
+                  title="Load the chunk just after this gap"
+                  @click="loadGap(group.gapAfter)"
                 />
                 <q-btn
                   flat dense
@@ -121,12 +121,12 @@
                 />
                 <q-btn
                   flat dense
-                  icon="keyboard_arrow_down"
-                  :loading="gapLoadingKey === `${group.gapAfter}:next`"
+                  icon="keyboard_arrow_up"
+                  :loading="gapLoadingKey === `${group.gapBefore}:prev`"
                   class="gap-btn"
-                  label="Load next"
-                  title="Load the chunk just after this gap"
-                  @click="loadGap(group.gapAfter)"
+                  label="Load previous"
+                  title="Load the chunk just before this gap"
+                  @click="loadGapPrev(group.gapBefore!)"
                 />
               </div>
             </template>
@@ -497,10 +497,12 @@ function recalculateGutter() {
       let minTop = Infinity
       let maxBottom = -Infinity
 
-      // Measure segments in the owning chunk and any subsequent chunks the span overflows into
+      // Measure segments in the owning chunk and any subsequent consecutive chunks the span overflows into
       const startChunkIndex = displayChunks.value.indexOf(chunk)
       let remaining = span.end
       for (let ci = startChunkIndex; ci < displayChunks.value.length && remaining > 0; ci++) {
+        // Stop at document gaps — do not project across non-consecutive chunks
+        if (ci > startChunkIndex && displayChunks.value[ci].order !== displayChunks.value[ci - 1].order + 1) break
         const c = displayChunks.value[ci]
         const cEl = container.querySelector(`[data-chunk-id="${c.id}"]`) as HTMLElement | null
         if (!cEl) break
