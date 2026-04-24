@@ -7,7 +7,7 @@
         icon="playlist_add_check"
         label="Collection only"
         size="sm"
-        :class="{ 'view-btn--active': displayedPreviewCount === 0 && hiddenPreviewChunks.length > 0 }"
+        :class="{ 'view-btn--active': displayedPreviewCount === 0 }"
         class="view-btn"
         title="Show only chunks already in this collection"
         @click="hideAllPreviews"
@@ -18,7 +18,7 @@
         label="All chunks"
         size="sm"
         :loading="loadingAllChunks"
-        :class="{ 'view-btn--active': hiddenPreviewChunks.length === 0 && displayedPreviewCount > 0 }"
+        :class="{ 'view-btn--active': !hasPrev && !hasNext && hiddenPreviewChunks.length === 0 && displayChunks.length > 0 }"
         class="view-btn"
         title="Load and show the entire document"
         @click="loadAllChunks"
@@ -322,7 +322,7 @@
           <q-btn
             flat dense no-caps
             label="All visible"
-            size="sm"
+            size="md"
             color="grey-4"
             title="Select all visible chunks"
             @click="selectAllVisible"
@@ -330,7 +330,7 @@
           <q-btn
             flat dense no-caps
             label="Not in collection"
-            size="sm"
+            size="md"
             color="grey-4"
             title="Select all chunks not yet in the collection"
             @click="selectAllNotInCollection"
@@ -359,7 +359,7 @@
           <q-btn
             flat dense round
             icon="close"
-            size="sm"
+            size="md"
             color="grey-4"
             title="Clear selection"
             @click="clearChunkSelection"
@@ -1678,24 +1678,24 @@ onBeforeUnmount(() => {
 
 .bulk-action-bar {
   position: fixed;
-  bottom: 24px;
+  bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 10px;
-  background: #1e293b;
-  border-radius: 12px;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #1c2636;
+  border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
   z-index: 9000;
   white-space: nowrap;
 }
 
 .bulk-count {
-  font-size: 0.82rem;
+  font-size: 0.92rem;
   font-weight: 600;
-  padding: 0 8px;
+  padding: 0 10px;
   color: #f1f5f9;
 }
 

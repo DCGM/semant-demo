@@ -102,28 +102,29 @@
     </template>
   </q-table>
 
-  <transition name="fade-slide-up">
-    <q-page-sticky
-      v-if="selected.length > 0"
-      position="bottom"
-      :offset="[0, 30]"
-    >
-      <q-card class="bulk-actions-card q-px-md q-py-sm">
-        <div class="row items-center q-gutter-md">
-          <div class="text-body1 text-weight-medium">
-            Selected: {{ selected.length }}
-          </div>
-          <q-space />
-          <q-btn
-            color="negative"
-            icon="delete_sweep"
-            label="Remove Selected"
-            @click="handleBulkRemoveFromCollection"
-          />
-        </div>
-      </q-card>
-    </q-page-sticky>
-  </transition>
+  <Teleport to="body">
+    <transition name="fade-slide-up">
+      <div v-if="selected.length > 0" class="bulk-action-bar">
+        <span class="bulk-count">{{ selected.length }} selected</span>
+        <q-btn
+          flat dense no-caps
+          icon="delete_sweep"
+          label="Remove selected"
+          color="negative"
+          size="md"
+          @click="handleBulkRemoveFromCollection"
+        />
+        <q-btn
+          flat dense round
+          icon="close"
+          size="md"
+          color="grey-4"
+          title="Clear selection"
+          @click="selected = []"
+        />
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -312,13 +313,27 @@ const columnOptions = columns.filter((col) => !col.required)
 </script>
 
 <style scoped>
-.bulk-actions-card {
-  min-width: 360px;
-  width: min(92vw, 550px);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-  backdrop-filter: saturate(120%) blur(2px);
+.bulk-action-bar {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #1c2636;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  z-index: 9000;
+  white-space: nowrap;
+}
+
+.bulk-count {
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0 10px;
+  color: #f1f5f9;
 }
 
 .fade-slide-up-enter-active,
@@ -329,6 +344,6 @@ const columnOptions = columns.filter((col) => !col.required)
 .fade-slide-up-enter-from,
 .fade-slide-up-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateX(-50%) translateY(10px);
 }
 </style>
