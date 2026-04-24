@@ -1,7 +1,22 @@
 <template>
-  <q-page class="q-pa-lg doc-page">
+  <q-page class="q-px-lg doc-page">
     <!-- View mode toolbar -->
-    <div class="paper-view-toolbar">
+    <div class="paper-toolbar-row">
+      <div class="paper-view-toolbar">
+        <q-btn
+          flat dense round
+          icon="view_sidebar"
+          size="sm"
+          class="view-btn"
+          :class="{ 'view-btn--active': leftGutterVisible }"
+          title="Show/hide chunk gutter"
+          @click="leftGutterVisible = !leftGutterVisible"
+          >
+          <q-tooltip v-if="leftGutterVisible">Hide chunk gutter</q-tooltip>
+          <q-tooltip v-else>Show chunk gutter</q-tooltip>
+        </q-btn>
+      </div>
+      <div class="paper-view-toolbar">
       <q-btn
         flat dense no-caps
         icon="playlist_add_check"
@@ -11,7 +26,11 @@
         class="view-btn"
         title="Show only chunks already in this collection"
         @click="hideAllPreviews"
-      />
+      >
+        <q-tooltip>
+          Show only chunks in the collection (hide preview chunks)
+        </q-tooltip>
+      </q-btn>
       <q-btn
         flat dense no-caps
         icon="visibility"
@@ -22,12 +41,18 @@
         class="view-btn"
         title="Load and show the entire document"
         @click="loadAllChunks"
-      />
+      >
+        <q-tooltip>
+          Load and show all chunks in the document (including previews)
+        </q-tooltip>
+      </q-btn>
+      </div>
     </div>
     <div class="page-shell">
 
       <!-- Chunk checkbox column -->
       <div
+        v-show="leftGutterVisible"
         class="chunk-checkbox-col"
         :class="{ 'is-active': selectedChunkIds.length > 0 }"
       >
@@ -49,7 +74,7 @@
       </div>
 
       <!-- Left chunk-control gutter -->
-      <div class="chunk-gutter-wrapper">
+      <div v-show="leftGutterVisible" class="chunk-gutter-wrapper">
         <div class="chunk-gutter">
           <div
             v-for="item in leftGutterItems"
@@ -471,6 +496,7 @@ interface LeftGutterItem {
 }
 const leftGutterItems = ref<LeftGutterItem[]>([])
 const totalDocumentChunks = ref<number | null>(null)
+const leftGutterVisible = ref(true)
 
 // ── Bulk selection ──
 const selectedChunkIds = ref<string[]>([])
@@ -1706,6 +1732,17 @@ onBeforeUnmount(() => {
 
 /* ── Paper view-mode toolbar ── */
 
+.paper-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  position: sticky;
+  top: 96px;
+  z-index: 200;
+  margin-top: 8px;
+}
+
 .paper-view-toolbar {
   display: flex;
   align-items: center;
@@ -1713,8 +1750,8 @@ onBeforeUnmount(() => {
   padding: 4px 6px;
   background: #ffffff;
   border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-  align-self: flex-start;
+  border: 2px solid rgb(202, 202, 202);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.14);
 }
 
 .view-btn {
