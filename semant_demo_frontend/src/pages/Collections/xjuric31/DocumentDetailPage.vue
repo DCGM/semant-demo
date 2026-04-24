@@ -1,6 +1,52 @@
 <template>
   <q-page class="q-pa-lg doc-page">
+    <!-- View mode toolbar -->
+    <div class="paper-view-toolbar">
+      <q-btn
+        flat dense no-caps
+        icon="playlist_add_check"
+        label="Collection only"
+        size="sm"
+        :class="{ 'view-btn--active': displayedPreviewCount === 0 && hiddenPreviewChunks.length > 0 }"
+        class="view-btn"
+        title="Show only chunks already in this collection"
+        @click="hideAllPreviews"
+      />
+      <q-btn
+        flat dense no-caps
+        icon="visibility"
+        label="All chunks"
+        size="sm"
+        :loading="loadingAllChunks"
+        :class="{ 'view-btn--active': hiddenPreviewChunks.length === 0 && displayedPreviewCount > 0 }"
+        class="view-btn"
+        title="Load and show the entire document"
+        @click="loadAllChunks"
+      />
+    </div>
     <div class="page-shell">
+
+      <!-- Chunk checkbox column -->
+      <div
+        class="chunk-checkbox-col"
+        :class="{ 'is-active': selectedChunkIds.length > 0 }"
+      >
+        <div
+          v-for="item in leftGutterItems"
+          :key="item.chunkId"
+          class="chunk-checkbox-item"
+          :class="{ 'is-checked': selectedChunkIds.includes(item.chunkId), 'is-hovered': hoveredChunkId === item.chunkId }"
+          :style="{ top: item.top + 'px', height: item.height + 'px' }"
+          :title="selectedChunkIds.includes(item.chunkId) ? 'Deselect chunk' : 'Select chunk'"
+          @click.stop="toggleChunkSelection(item.chunkId)"
+        >
+          <q-icon
+            :name="selectedChunkIds.includes(item.chunkId) ? 'check_box' : 'check_box_outline_blank'"
+            size="18px"
+            :color="selectedChunkIds.includes(item.chunkId) ? 'primary' : 'grey-5'"
+          />
+        </div>
+      </div>
 
       <!-- Left chunk-control gutter -->
       <div class="chunk-gutter-wrapper">
@@ -268,6 +314,58 @@
           </template>
         </div>
       </Teleport>
+
+      <!-- Bulk selection action bar -->
+      <Teleport to="body">
+        <div v-if="selectedChunkIds.length > 0" class="bulk-action-bar">
+          <span class="bulk-count">{{ selectedChunkIds.length }} selected</span>
+          <q-btn
+            flat dense no-caps
+            label="All visible"
+            size="sm"
+            color="grey-4"
+            title="Select all visible chunks"
+            @click="selectAllVisible"
+          />
+          <q-btn
+            flat dense no-caps
+            label="Not in collection"
+            size="sm"
+            color="grey-4"
+            title="Select all chunks not yet in the collection"
+            @click="selectAllNotInCollection"
+          />
+          <div class="bulk-spacer" />
+          <q-btn
+            v-if="hasSelectedNotInCollection"
+            flat dense no-caps
+            icon="add_circle_outline"
+            label="Add"
+            color="positive"
+            :loading="bulkLoading"
+            title="Add selected chunks to collection"
+            @click="onBulkAdd"
+          />
+          <q-btn
+            v-if="hasSelectedInCollection"
+            flat dense no-caps
+            icon="remove_circle_outline"
+            label="Remove"
+            color="negative"
+            :loading="bulkLoading"
+            title="Remove selected chunks from collection"
+            @click="onBulkRemove"
+          />
+          <q-btn
+            flat dense round
+            icon="close"
+            size="sm"
+            color="grey-4"
+            title="Clear selection"
+            @click="clearChunkSelection"
+          />
+        </div>
+      </Teleport>
     </div>
   </q-page>
 </template>
@@ -374,6 +472,24 @@ interface LeftGutterItem {
 const leftGutterItems = ref<LeftGutterItem[]>([])
 const totalDocumentChunks = ref<number | null>(null)
 
+// ── Bulk selection ──
+const selectedChunkIds = ref<string[]>([])
+const bulkLoading = ref(false)
+const loadingAllChunks = ref(false)
+
+const hiddenPreviewChunks = ref<import('src/generated/api').Chunk[]>([])
+const displayedPreviewCount = computed(() => displayChunks.value.filter(c => !c.inCollection).length)
+
+const hasSelectedInCollection = computed(() =>
+  selectedChunkIds.value.some(id => displayChunks.value.find(c => c.id === id)?.inCollection)
+)
+const hasSelectedNotInCollection = computed(() =>
+  selectedChunkIds.value.some(id => {
+    const c = displayChunks.value.find(ch => ch.id === id)
+    return c !== undefined && !c.inCollection
+  })
+)
+
 function recalculateLeftGutter() {
   const container = documentTextRef.value
   if (!container) { leftGutterItems.value = []; return }
@@ -408,8 +524,97 @@ function onRemoveChunkById(chunkId: string) {
 }
 
 function hideChunkById(chunkId: string) {
+  const chunk = displayChunks.value.find(c => c.id === chunkId)
+  if (chunk && !chunk.inCollection) hiddenPreviewChunks.value.push(chunk)
   displayChunks.value = displayChunks.value.filter(c => c.id !== chunkId)
   void nextTick().then(() => { recalculateGutter(); void checkNeighbours() })
+}
+
+function toggleChunkSelection(chunkId: string) {
+  const idx = selectedChunkIds.value.indexOf(chunkId)
+  if (idx === -1) selectedChunkIds.value = [...selectedChunkIds.value, chunkId]
+  else selectedChunkIds.value = selectedChunkIds.value.filter(id => id !== chunkId)
+}
+
+function clearChunkSelection() {
+  selectedChunkIds.value = []
+}
+
+function hideAllPreviews() {
+  const previews = displayChunks.value.filter(c => !c.inCollection)
+  hiddenPreviewChunks.value = [...hiddenPreviewChunks.value, ...previews.filter(
+    p => !hiddenPreviewChunks.value.find(h => h.id === p.id)
+  )]
+  displayChunks.value = displayChunks.value.filter(c => c.inCollection)
+  void nextTick().then(() => { recalculateGutter(); void checkNeighbours() })
+}
+
+async function loadAllChunks() {
+  loadingAllChunks.value = true
+  try {
+    const all = await getChunksInRange(props.collectionId, props.documentId)
+    const merged = [...all]
+    merged.sort((a, b) => a.order - b.order)
+    displayChunks.value = merged.filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
+    hiddenPreviewChunks.value = []
+    hasPrev.value = false
+    hasNext.value = false
+    await nextTick()
+    recalculateGutter()
+  } finally {
+    loadingAllChunks.value = false
+  }
+}
+
+function selectAllVisible() {
+  selectedChunkIds.value = displayChunks.value.map(c => c.id)
+}
+
+function selectAllNotInCollection() {
+  selectedChunkIds.value = displayChunks.value.filter(c => !c.inCollection).map(c => c.id)
+}
+
+async function onBulkAdd() {
+  bulkLoading.value = true
+  try {
+    const toAdd = selectedChunkIds.value.filter(id =>
+      !displayChunks.value.find(c => c.id === id)?.inCollection
+    )
+    await Promise.all(toAdd.map(id => addChunkToCollection(id, props.collectionId)))
+    displayChunks.value = displayChunks.value.map(c =>
+      toAdd.includes(c.id) ? { ...c, inCollection: true } : c
+    )
+    for (const id of toAdd) {
+      const lg = leftGutterItems.value.find(i => i.chunkId === id)
+      if (lg) lg.inCollection = true
+    }
+    selectedChunkIds.value = []
+  } finally {
+    bulkLoading.value = false
+  }
+}
+
+async function onBulkRemove() {
+  bulkLoading.value = true
+  try {
+    const toRemove = selectedChunkIds.value.filter(id =>
+      displayChunks.value.find(c => c.id === id)?.inCollection
+    )
+    await Promise.all(toRemove.map(id => removeChunkFromCollection(id, props.collectionId)))
+    displayChunks.value = displayChunks.value.map(c =>
+      toRemove.includes(c.id) ? { ...c, inCollection: false } : c
+    )
+    for (const id of toRemove) {
+      const lg = leftGutterItems.value.find(i => i.chunkId === id)
+      if (lg) lg.inCollection = false
+    }
+    selectedChunkIds.value = []
+    await nextTick()
+    recalculateGutter()
+    await checkNeighbours()
+  } finally {
+    bulkLoading.value = false
+  }
 }
 
 const hoveredPreviewChunkId = ref<string | null>(null)
@@ -590,7 +795,7 @@ const onGutterWheel = (e: WheelEvent) => {
 const tagNav = useTagNavigation()
 
 // Keep nav items in sync with gutter items
-watch(gutterItems, (items) => {
+watch(gutterItems, (items, oldItems) => {
   tagNav.setItems(items.map(i => ({
     spanId: i.spanId,
     chunkId: i.chunkId,
@@ -598,6 +803,11 @@ watch(gutterItems, (items) => {
     start: i.start,
     end: i.end
   })))
+  // When the span gutter appears or disappears the paper-card width changes,
+  // text reflows and chunk heights change → re-measure the left gutter
+  if ((items.length > 0) !== (oldItems.length > 0)) {
+    requestAnimationFrame(() => recalculateLeftGutter())
+  }
 })
 
 // Register scroll & highlight callbacks
@@ -920,6 +1130,9 @@ watch(
   () => nextTick(recalculateGutter)
 )
 
+// When prev/next expand-rows appear/disappear they shift the text — remeasure
+watch([hasPrev, hasNext], () => nextTick(() => requestAnimationFrame(recalculateGutter)))
+
 watch(
   () => annotations.selection.value?.tagId,
   (tagId) => tagNav.setActiveTagId(tagId ?? null)
@@ -953,7 +1166,9 @@ onMounted(async () => {
 
   await nextTick()
   if (documentTextRef.value) {
-    resizeObserver = new ResizeObserver(() => recalculateGutter())
+    resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(() => recalculateGutter())
+    })
     resizeObserver.observe(documentTextRef.value)
   }
 
@@ -972,6 +1187,9 @@ onBeforeUnmount(() => {
 .doc-page {
   min-height: 100%;
   background: #eef2f7;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .page-shell {
@@ -1423,5 +1641,90 @@ onBeforeUnmount(() => {
 .gutter-item.is-active .gutter-label {
   opacity: 1;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Chunk selection checkbox column ── */
+
+.chunk-checkbox-col {
+  width: 22px;
+  flex-shrink: 0;
+  position: relative;
+  background: #ffffff;
+  min-height: calc(100vh - 160px);
+}
+
+.chunk-checkbox-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 2px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+/* Show on direct hover of checkbox column, when something is selected, or when this item is checked */
+.chunk-checkbox-col.is-active .chunk-checkbox-item,
+.chunk-checkbox-item.is-checked,
+.chunk-checkbox-item.is-hovered,
+.chunk-checkbox-item:hover {
+  opacity: 1;
+}
+
+/* ── Bulk action bar ── */
+
+.bulk-action-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  background: #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  z-index: 9000;
+  white-space: nowrap;
+}
+
+.bulk-count {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0 8px;
+  color: #f1f5f9;
+}
+
+.bulk-spacer {
+  min-width: 12px;
+  flex: 1;
+}
+
+/* ── Paper view-mode toolbar ── */
+
+.paper-view-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  align-self: flex-start;
+}
+
+.view-btn {
+  color: #64748b;
+  font-size: 0.78rem;
+  border-radius: 6px;
+}
+
+.view-btn--active {
+  color: #1d4ed8;
+  background: #eff6ff;
 }
 </style>
