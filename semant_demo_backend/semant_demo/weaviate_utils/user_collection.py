@@ -203,7 +203,7 @@ class UserCollection():
         spans_filters = (
             Filter.by_ref("text_chunk").by_ref(
                 self.collectionNames.user_collection_name).by_id().equal(collection_id)
-            |
+            &
             Filter.by_ref("tag").by_ref(
                 self.collectionNames.user_collection_name).by_id().equal(collection_id)
         )
@@ -379,15 +379,39 @@ class UserCollection():
             ))
         return documents
 
-    async def add_chunks(self,
-                         src_id,
-                         target_collection_id):
-        return await self.helpers.create_reference(src_id,
-                                                   self.collectionNames.chunks_collection_name,
-                                                   self.collectionNames.user_collection_link_name,
-                                                   target_collection_id)
+    async def add_chunk(self, chunk_id: str, collection_id: str):
+        # 1. Add reference from the chunk to the target collection
+        result = await self.helpers.create_reference(chunk_id,
+                                                     self.collectionNames.chunks_collection_name,
+                                                     self.collectionNames.user_collection_link_name,
+                                                     collection_id)
 
-    def remove_chunks():
+        # 2. Find the document the chunk belongs to and link it to the collection
+        try:
+            chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+            chunk_obj = await chunks_collection.query.fetch_object_by_id(
+                chunk_id,
+                return_references=[QueryReference(link_on="document")]
+            )
+
+            if chunk_obj and chunk_obj.references and "document" in chunk_obj.references:
+                doc_refs = chunk_obj.references["document"].objects
+                for doc_ref in doc_refs:
+                    document_id = doc_ref.uuid
+                    
+                    document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+                    # Add reference from the document (property "collection") to the given user collection
+                    await document_collection.data.reference_add(
+                        from_uuid=document_id,
+                        from_property="collection",
+                        to=collection_id,
+                    )
+        except Exception as e:
+            logging.error(f"Failed to link chunk's document to collection: {e}")
+
+        return result
+
+    def remove_chunk():
         pass
 
     def share():

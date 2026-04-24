@@ -92,8 +92,8 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
     """
     try:
 
-        err = await searcher.userCollection.add_chunks(src_id=req.chunkId,
-                                                       target_collection_id=req.collectionId)
+        err = await searcher.userCollection.add_chunk(chunk_id=req.chunkId,
+                                                      collection_id=req.collectionId)
         if err == False:
             raise Exception(f"weaviate error, reference not created")
         return {"created": True, "message": f"Chunk added to collection"}
