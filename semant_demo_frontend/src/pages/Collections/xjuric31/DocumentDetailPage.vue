@@ -125,7 +125,7 @@
               </template>
             </div>
             <span class="chunk-order-label">
-              <span class="chunk-order-num">{{ item.order }}</span>
+              <span class="chunk-order-num">{{ item.order + 1 }}</span>
               <span class="chunk-order-total">/ {{ totalDocumentChunks ?? '?' }}</span>
             </span>
           </div>
