@@ -100,6 +100,46 @@
         </div>
       </q-td>
     </template>
+    <template #body-cell-docStats="props">
+      <q-td :props="props" @click.stop>
+        <div v-if="statsLoading" class="doc-stats-cell doc-stats-cell--loading">
+          <q-spinner size="14px" color="grey-5" />
+        </div>
+        <div v-else-if="documentStatsMap[props.row.id]" class="doc-stats-cell">
+          <span class="doc-stat">
+            <q-icon name="view_list" size="13px" />
+            {{ documentStatsMap[props.row.id].chunks_in_collection }}&thinsp;/&thinsp;{{ documentStatsMap[props.row.id].total_chunks }}
+            <q-tooltip>
+              <div class="doc-stat-tooltip">
+                <strong>Chunks in collection</strong><br />
+                {{ documentStatsMap[props.row.id].chunks_in_collection }} out of {{ documentStatsMap[props.row.id].total_chunks }} total chunks of this document are added to the collection.
+              </div>
+            </q-tooltip>
+          </span>
+          <span class="doc-stat">
+            <q-icon name="format_quote" size="13px" />
+            {{ documentStatsMap[props.row.id].annotations_count }}
+            <q-tooltip>
+              <div class="doc-stat-tooltip">
+                <strong>Annotations</strong><br />
+                {{ documentStatsMap[props.row.id].annotations_count }} tag span{{ documentStatsMap[props.row.id].annotations_count === 1 ? '' : 's' }} annotated in this document within this collection.
+              </div>
+            </q-tooltip>
+          </span>
+          <span class="doc-stat">
+            <q-icon name="label" size="13px" />
+            {{ documentStatsMap[props.row.id].distinct_tags_count }}
+            <q-tooltip>
+              <div class="doc-stat-tooltip">
+                <strong>Distinct tags</strong><br />
+                {{ documentStatsMap[props.row.id].distinct_tags_count }} unique tag{{ documentStatsMap[props.row.id].distinct_tags_count === 1 ? '' : 's' }} used in annotations across this document.
+              </div>
+            </q-tooltip>
+          </span>
+        </div>
+        <span v-else class="text-grey-4">—</span>
+      </q-td>
+    </template>
   </q-table>
 
   <Teleport to="body">
@@ -136,9 +176,22 @@ import RefreshButton from '../custom/RefreshButton.vue'
 import AddDocumentDropdownBtn from '../custom/AddDocumentDropdownBtn.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from 'src/boot/axios'
+
+interface DocumentStats {
+  document_id: string
+  collection_id: string
+  chunks_in_collection: number
+  total_chunks: number
+  annotations_count: number
+  distinct_tags_count: number
+}
 
 const { documents, loadDocumentsByCollection, removeDoc, removeManyDocs, loading } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
+
+const documentStatsMap = ref<Record<string, DocumentStats>>({})
+const statsLoading = ref(false)
 
 const $q = useQuasar()
 const $route = useRoute()
@@ -153,10 +206,33 @@ const collectionId = computed<string>(() => {
 
 onMounted(async () => {
   await loadDocumentsByCollection(collectionId.value)
+  void loadAllDocumentStats()
 })
+
+const loadAllDocumentStats = async () => {
+  if (!documents.value.length) return
+  statsLoading.value = true
+  try {
+    const results = await Promise.all(
+      documents.value.map(doc =>
+        api.get<DocumentStats>(`/collections/${collectionId.value}/documents/${doc.id}/stats`)
+          .then(r => r.data)
+          .catch(() => null)
+      )
+    )
+    const map: Record<string, DocumentStats> = {}
+    for (const stats of results) {
+      if (stats) map[stats.document_id] = stats
+    }
+    documentStatsMap.value = map
+  } finally {
+    statsLoading.value = false
+  }
+}
 
 const handleRefresh = async () => {
   await loadDocumentsByCollection(collectionId.value)
+  void loadAllDocumentStats()
 }
 
 const handleBrowseLibrary = () => {
@@ -232,6 +308,7 @@ const initialPagination = {
 const visibleColumns = ref<string[]>([
   'actions',
   'documentTitle',
+  'docStats',
   'author',
   'yearIssued',
   'language',
@@ -261,6 +338,12 @@ const columns: QTableColumn<Document>[] = [
     name: 'author',
     label: 'Author',
     field: (doc) => doc.author?.join(', ') ?? '-',
+    align: 'center' as const
+  },
+  {
+    name: 'docStats',
+    label: 'Collection stats',
+    field: () => '',
     align: 'center' as const
   },
   {
@@ -345,5 +428,34 @@ const columnOptions = columns.filter((col) => !col.required)
 .fade-slide-up-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(10px);
+}
+
+.doc-stats-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.doc-stats-cell--loading {
+  justify-content: center;
+}
+
+.doc-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.78rem;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.doc-stat-tooltip {
+  max-width: 220px;
+  line-height: 1.5;
 }
 </style>

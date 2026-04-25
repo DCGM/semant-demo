@@ -3,6 +3,7 @@ from uuid import UUID
 from uuid import UUID
 from datetime import datetime
 
+
 class Collection(BaseModel):
     id: UUID
     name: str
@@ -11,16 +12,19 @@ class Collection(BaseModel):
     created_at: datetime
     updated_at: datetime
     color: str
-    
+
+
 class PostCollection(BaseModel):
     name: str
     description: str | None = None
     color: str
-    
+
+
 class PatchCollection(BaseModel):
     name: str | None = None
     description: str | None = None
     color: str | None = None
+
 
 class CollectionStats(BaseModel):
     collection_id: UUID

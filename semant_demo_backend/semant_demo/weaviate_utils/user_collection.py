@@ -25,6 +25,7 @@ from semant_demo.weaviate_exceptions import (
 )
 
 from semant_demo.schema.collections import Collection, CollectionStats, PatchCollection, PostCollection
+from semant_demo.schema.documents import DocumentStats
 from semant_demo.schema.documents import Document
 from semant_demo.schema.tags import Tag
 from semant_demo.schema.chunks import Chunk
@@ -517,6 +518,72 @@ class UserCollection():
             total_count=True,
         )
         return response.total_count or 0
+
+    async def read_document_stats(self, collection_id: str, document_id: str) -> DocumentStats:
+        """
+        Computes per-document statistics within a given collection:
+        - chunks_in_collection: chunks of this document linked to the collection
+        - total_chunks: all chunks of this document
+        - annotations_count: spans whose chunk belongs to this document and collection
+        - distinct_tags_count: number of distinct tags used in those spans
+        """
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
+
+        # Total chunks in this document
+        total_filter = Filter.by_ref("document").by_id().equal(document_id)
+        total_response = await chunks_collection.aggregate.over_all(
+            filters=total_filter,
+            total_count=True,
+        )
+        total_chunks = total_response.total_count or 0
+
+        # Chunks in this document that are also in the collection
+        in_col_filter = (
+            Filter.by_ref("document").by_id().equal(document_id)
+            & Filter.by_ref(self.collectionNames.user_collection_link_name).by_id().equal(collection_id)
+        )
+        in_col_response = await chunks_collection.aggregate.over_all(
+            filters=in_col_filter,
+            total_count=True,
+        )
+        chunks_in_collection = in_col_response.total_count or 0
+
+        # Annotations (spans) for this document's chunks in this collection
+        spans_collection = self.client.collections.get(
+            self.collectionNames.span_collection_name)
+        spans_filter = (
+            Filter.by_ref("text_chunk").by_ref("document").by_id().equal(document_id)
+            & Filter.by_ref("text_chunk").by_ref(
+                self.collectionNames.user_collection_link_name).by_id().equal(collection_id)
+        )
+        spans_agg_response = await spans_collection.aggregate.over_all(
+            filters=spans_filter,
+            total_count=True,
+        )
+        annotations_count = spans_agg_response.total_count or 0
+
+        # Distinct tags used in those spans
+        distinct_tag_ids: set[str] = set()
+        if annotations_count > 0:
+            spans_objects = await spans_collection.query.fetch_objects(
+                filters=spans_filter,
+                limit=10000,
+                return_references=[QueryReference(link_on="tag")],
+            )
+            for obj in spans_objects.objects:
+                if obj.references and "tag" in obj.references:
+                    for ref in obj.references["tag"].objects:
+                        distinct_tag_ids.add(str(ref.uuid))
+
+        return DocumentStats(
+            document_id=document_id,
+            collection_id=collection_id,
+            chunks_in_collection=chunks_in_collection,
+            total_chunks=total_chunks,
+            annotations_count=annotations_count,
+            distinct_tags_count=len(distinct_tag_ids),
+        )
 
     async def read_all_documents(self, collection_id: str) -> list[Document]:
         """

@@ -23,6 +23,7 @@ import logging
 
 from semant_demo.schemas import TasksBase
 from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection
+from semant_demo.schema.documents import DocumentStats
 from semant_demo.schema.documents import Document, DocumentBrowse
 from semant_demo.schema.tags import Tag
 
@@ -163,6 +164,15 @@ async def get_collection_tags(collection_id: str, searcher: WeaviateAbstraction 
     """
     response = await searcher.userCollection.read_all_tags(collection_id)
     return response
+
+@exp_router.get("/api/collections/{collection_id}/documents/{document_id}/stats", response_model=DocumentStats)
+async def get_document_stats(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> DocumentStats:
+    """
+    Returns per-document statistics within the given collection:
+    chunks in collection / total, annotation count, distinct tag count.
+    """
+    return await searcher.userCollection.read_document_stats(collection_id, document_id)
+
 
 @exp_router.get("/api/collections/{collection_id}/documents/{document_id}", response_model=list[Chunk], response_model_exclude_none=True)
 async def get_collection_document_chunks(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Chunk]:
