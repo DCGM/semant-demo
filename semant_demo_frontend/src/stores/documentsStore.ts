@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Documents, Document, DocumentBrowseParams } from 'src/models/documents'
 import { ongoingNotification } from 'src/utils/notification'
 import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
@@ -10,6 +10,11 @@ export const useDocumentsStore = defineStore('documents', () => {
   const activeDocument = ref<Document | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
+  const pendingRemoveIds = ref<Set<string>>(new Set())
+
+  const visibleDocuments = computed(() =>
+    documents.value.filter((doc) => !pendingRemoveIds.value.has(doc.id))
+  )
 
   const fetchDocumentsByCollection = async (collectionId: string) => {
     const notif = ongoingNotification('Loading documents...')
@@ -100,30 +105,29 @@ export const useDocumentsStore = defineStore('documents', () => {
   }
 
   const removeManyFromCollection = async (documentIds: string[], collectionId: string) => {
-    if (documentIds.length === 0) {
-      return
-    }
+    if (documentIds.length === 0) return
 
     const notif = ongoingNotification('Removing selected documents from collection...')
+    documentIds.forEach((id) => pendingRemoveIds.value.add(id))
+    documents.value = documents.value.filter((doc) => !documentIds.includes(doc.id))
     error.value = null
-    loading.value = true
     try {
       await Promise.all(
         documentIds.map((documentId) => documentsRepository.removeFromCollection(documentId, collectionId))
       )
-      await fetchDocumentsByCollection(collectionId)
       notif.success('Selected documents removed from collection')
     } catch (err) {
       error.value = 'Failed to remove selected documents from collection'
       console.error('Error removing selected documents from collection:', err)
       notif.error('Failed to remove selected documents from collection')
+      await fetchDocumentsByCollection(collectionId)
     } finally {
-      loading.value = false
+      documentIds.forEach((id) => pendingRemoveIds.value.delete(id))
     }
   }
 
   return {
-    documents,
+    documents: visibleDocuments,
     activeDocument,
     error,
     loading,

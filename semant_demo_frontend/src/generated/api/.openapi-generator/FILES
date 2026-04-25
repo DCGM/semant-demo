@@ -19,6 +19,7 @@ docs/DefaultApi.md
 docs/Detail.md
 docs/DocumentBrowse.md
 docs/DocumentInput.md
+docs/DocumentStats.md
 docs/ErrorModel.md
 docs/ExplainRequest.md
 docs/FeedbackRequest.md
@@ -92,6 +93,7 @@ models/CreateResponse.ts
 models/Detail.ts
 models/DocumentBrowse.ts
 models/DocumentInput.ts
+models/DocumentStats.ts
 models/ErrorModel.ts
 models/ExplainRequest.ts
 models/FeedbackRequest.ts

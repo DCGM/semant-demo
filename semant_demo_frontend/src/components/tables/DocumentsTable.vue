@@ -108,31 +108,31 @@
         <div v-else-if="documentStatsMap[props.row.id]" class="doc-stats-cell">
           <span class="doc-stat">
             <q-icon name="view_list" size="13px" />
-            {{ documentStatsMap[props.row.id].chunks_in_collection }}&thinsp;/&thinsp;{{ documentStatsMap[props.row.id].total_chunks }}
+            {{ documentStatsMap[props.row.id].chunksInCollection }}&thinsp;/&thinsp;{{ documentStatsMap[props.row.id].totalChunks }}
             <q-tooltip>
               <div class="doc-stat-tooltip">
                 <strong>Chunks in collection</strong><br />
-                {{ documentStatsMap[props.row.id].chunks_in_collection }} out of {{ documentStatsMap[props.row.id].total_chunks }} total chunks of this document are added to the collection.
+                {{ documentStatsMap[props.row.id].chunksInCollection }} out of {{ documentStatsMap[props.row.id].totalChunks }} total chunks of this document are added to the collection.
               </div>
             </q-tooltip>
           </span>
           <span class="doc-stat">
             <q-icon name="format_quote" size="13px" />
-            {{ documentStatsMap[props.row.id].annotations_count }}
+            {{ documentStatsMap[props.row.id].annotationsCount }}
             <q-tooltip>
               <div class="doc-stat-tooltip">
                 <strong>Annotations</strong><br />
-                {{ documentStatsMap[props.row.id].annotations_count }} tag span{{ documentStatsMap[props.row.id].annotations_count === 1 ? '' : 's' }} annotated in this document within this collection.
+                {{ documentStatsMap[props.row.id].annotationsCount }} tag span{{ documentStatsMap[props.row.id].annotationsCount === 1 ? '' : 's' }} annotated in this document within this collection.
               </div>
             </q-tooltip>
           </span>
           <span class="doc-stat">
             <q-icon name="label" size="13px" />
-            {{ documentStatsMap[props.row.id].distinct_tags_count }}
+            {{ documentStatsMap[props.row.id].distinctTagsCount }}
             <q-tooltip>
               <div class="doc-stat-tooltip">
                 <strong>Distinct tags</strong><br />
-                {{ documentStatsMap[props.row.id].distinct_tags_count }} unique tag{{ documentStatsMap[props.row.id].distinct_tags_count === 1 ? '' : 's' }} used in annotations across this document.
+                {{ documentStatsMap[props.row.id].distinctTagsCount }} unique tag{{ documentStatsMap[props.row.id].distinctTagsCount === 1 ? '' : 's' }} used in annotations across this document.
               </div>
             </q-tooltip>
           </span>
@@ -176,19 +176,12 @@ import RefreshButton from '../custom/RefreshButton.vue'
 import AddDocumentDropdownBtn from '../custom/AddDocumentDropdownBtn.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
-import { api } from 'src/boot/axios'
-
-interface DocumentStats {
-  document_id: string
-  collection_id: string
-  chunks_in_collection: number
-  total_chunks: number
-  annotations_count: number
-  distinct_tags_count: number
-}
+import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
+import type { DocumentStats } from 'src/generated/api'
 
 const { documents, loadDocumentsByCollection, removeDoc, removeManyDocs, loading } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
+const documentsRepository = useDocumentsRepository()
 
 const documentStatsMap = ref<Record<string, DocumentStats>>({})
 const statsLoading = ref(false)
@@ -215,14 +208,12 @@ const loadAllDocumentStats = async () => {
   try {
     const results = await Promise.all(
       documents.value.map(doc =>
-        api.get<DocumentStats>(`/collections/${collectionId.value}/documents/${doc.id}/stats`)
-          .then(r => r.data)
-          .catch(() => null)
+        documentsRepository.getStats(collectionId.value, doc.id).catch(() => null)
       )
     )
     const map: Record<string, DocumentStats> = {}
     for (const stats of results) {
-      if (stats) map[stats.document_id] = stats
+      if (stats) map[stats.documentId] = stats
     }
     documentStatsMap.value = map
   } finally {

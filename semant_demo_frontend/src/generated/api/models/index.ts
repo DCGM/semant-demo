@@ -15,6 +15,7 @@ export * from './CreateResponse';
 export * from './Detail';
 export * from './DocumentBrowse';
 export * from './DocumentInput';
+export * from './DocumentStats';
 export * from './ErrorModel';
 export * from './ExplainRequest';
 export * from './FeedbackRequest';

@@ -25,6 +25,7 @@ import type {
   CollectionStats,
   CreateResponse,
   DocumentBrowse,
+  DocumentStats,
   ExplainRequest,
   FeedbackRequest,
   FilterChunksByTagsRequest,
@@ -79,6 +80,8 @@ import {
     CreateResponseToJSON,
     DocumentBrowseFromJSON,
     DocumentBrowseToJSON,
+    DocumentStatsFromJSON,
+    DocumentStatsToJSON,
     ExplainRequestFromJSON,
     ExplainRequestToJSON,
     FeedbackRequestFromJSON,
@@ -253,6 +256,11 @@ export interface GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest 
 
 export interface GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest {
     collectionId: string;
+}
+
+export interface GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest {
+    collectionId: string;
+    documentId: string;
 }
 
 export interface GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest {
@@ -1013,6 +1021,32 @@ export interface DefaultApiInterface {
      * Get Configs
      */
     getConfigsApiTagConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse>;
+
+    /**
+     * Creates request options for getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet without sending the request
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequestOpts(requestParameters: GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+     * @summary Get Document Stats
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRaw(requestParameters: GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentStats>>;
+
+    /**
+     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+     * Get Document Stats
+     */
+    getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet(requestParameters: GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentStats>;
 
     /**
      * Creates request options for getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet without sending the request
@@ -2936,6 +2970,61 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getConfigsApiTagConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetConfigsResponse> {
         const response = await this.getConfigsApiTagConfigsGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet without sending the request
+     */
+    async getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequestOpts(requestParameters: GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet().'
+            );
+        }
+
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/collections/{collection_id}/documents/{document_id}/stats`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+     * Get Document Stats
+     */
+    async getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRaw(requestParameters: GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentStats>> {
+        const requestOptions = await this.getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentStatsFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+     * Get Document Stats
+     */
+    async getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet(requestParameters: GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentStats> {
+        const response = await this.getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

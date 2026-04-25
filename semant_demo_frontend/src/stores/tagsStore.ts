@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { Tags, PostTag, PatchTag, Tag } from 'src/models/tags'
 import { useTagsRepository } from 'src/repositories/useTagsRepository'
@@ -11,6 +11,11 @@ export const useTagsStore = defineStore('tags', () => {
   const activeTag = ref<Tag | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
+  const pendingDeleteIds = ref<Set<string>>(new Set())
+
+  const visibleTags = computed(() =>
+    tags.value.filter((tag) => !pendingDeleteIds.value.has(tag.id))
+  )
 
   const fetchTagsByCollection = async (collectionId: string) => {
     const notif = ongoingNotification('Loading tags...')
@@ -82,6 +87,26 @@ export const useTagsStore = defineStore('tags', () => {
     }
   }
 
+  const deleteManyTags = async (tagUuids: string[]) => {
+    if (tagUuids.length === 0) return
+    const notif = ongoingNotification(`Deleting ${tagUuids.length} tags...`)
+    tagUuids.forEach((id) => pendingDeleteIds.value.add(id))
+    tags.value = tags.value.filter((tag) => !tagUuids.includes(tag.id))
+    error.value = null
+    try {
+      await Promise.all(tagUuids.map((id) => tagsRepository.delete(id)))
+      notif.success(`${tagUuids.length} tag${tagUuids.length === 1 ? '' : 's'} deleted`)
+    } catch (err) {
+      error.value = 'Failed to delete some tags'
+      console.error('Error deleting tags:', err)
+      notif.error('Failed to delete some tags')
+      // restore from API on error
+      await fetchTagsByCollection('')
+    } finally {
+      tagUuids.forEach((id) => pendingDeleteIds.value.delete(id))
+    }
+  }
+
   const updateTag = async (tagUuid: string, payload: PatchTag) => {
     const notif = ongoingNotification('Updating tag...')
     loading.value = true
@@ -105,11 +130,12 @@ export const useTagsStore = defineStore('tags', () => {
   }
 
   return {
-    tags,
+    tags: visibleTags,
     error,
     loading,
     activeTag,
     deleteTag,
+    deleteManyTags,
     updateTag,
     fetchTagsByCollection,
     createTag,

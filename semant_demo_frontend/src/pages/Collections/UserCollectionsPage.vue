@@ -66,6 +66,7 @@
       @enter="handleEnter"
       @edit="handleEdit"
       @delete="handleDelete"
+      @deleteMany="handleDeleteMany"
     />
     <div class="row justify-center q-mt-md lt-md">
       <q-pagination
@@ -79,7 +80,6 @@
       />
     </div>
     <ErrorDisplay :error="error" />
-    <q-inner-loading :showing="loading"></q-inner-loading>
   </q-page>
 </template>
 
@@ -111,7 +111,7 @@ const getInitialViewMode = (): 'tiles' | 'table' => {
 }
 const viewMode = ref<'tiles' | 'table'>(getInitialViewMode())
 const searchQuery = ref('')
-const { collections, error, loading, loadCollections, createCollection, updateCollection, deleteCollection } = useCollections()
+const { collections, error, loading, loadCollections, createCollection, updateCollection, deleteCollection, deleteManyCollections } = useCollections()
 const filteredCollections = computed(() => {
   if (!searchQuery.value?.trim()) {
     return collections.value
@@ -171,5 +171,9 @@ const handleDelete = (collection: Collection) => {
   }).onOk(async () => {
     await deleteCollection(collection.id)
   })
+}
+
+const handleDeleteMany = (collectionIds: string[]) => {
+  deleteManyCollections(collectionIds)
 }
 </script>

@@ -4,6 +4,8 @@
     :columns="columns"
     :rows="tags"
     row-key="id"
+    selection="multiple"
+    v-model:selected="selected"
     :filter="filter"
     :pagination="initialPagination"
     :visible-columns="visibleColumns"
@@ -156,6 +158,30 @@
       </q-td>
     </template>
   </q-table>
+
+  <Teleport to="body">
+    <transition name="fade-slide-up">
+      <div v-if="selected.length > 0" class="bulk-action-bar">
+        <span class="bulk-count">{{ selected.length }} selected</span>
+        <q-btn
+          flat dense no-caps
+          icon="delete_sweep"
+          label="Delete selected"
+          color="negative"
+          size="md"
+          @click="handleBulkDelete"
+        />
+        <q-btn
+          flat dense round
+          icon="close"
+          size="md"
+          color="grey-4"
+          title="Clear selection"
+          @click="selected = []"
+        />
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -172,9 +198,10 @@ import { PatchTag } from 'src/generated/api'
 
 const route = useRoute()
 const $q = useQuasar()
-const { tags, loading, loadTagsByCollection, createTag, deleteTag, updateTag } = useTags()
+const { tags, loading, loadTagsByCollection, createTag, deleteTag, deleteManyTags, updateTag } = useTags()
 const { openTagsDialog } = useTagsDialog()
 const filter = ref<string>('')
+const selected = ref<Tag[]>([])
 const initialPagination = {
   sortBy: 'tag_name',
   descending: false,
@@ -237,6 +264,26 @@ const handleEdit = (tag: Tag) => {
     tag
   }).onOk(async (updatedData: PatchTag) => {
     await updateTag(tag.id, updatedData)
+  })
+}
+
+const handleBulkDelete = () => {
+  if (selected.value.length === 0) return
+  const count = selected.value.length
+  $q.dialog({
+    title: 'Delete Selected Tags',
+    html: true,
+    message: `Are you sure you want to delete <strong>${count}</strong> selected tag${count === 1 ? '' : 's'}?`,
+    cancel: true,
+    ok: {
+      label: 'Delete selected',
+      color: 'negative'
+    },
+    persistent: true
+  }).onOk(() => {
+    const ids = selected.value.map(tag => tag.id)
+    selected.value = []
+    deleteManyTags(ids)
   })
 }
 
@@ -326,5 +373,39 @@ const columnOptions = columns.filter((column) => !column.required)
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.1px;
+}
+
+.bulk-action-bar {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #1c2636;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  z-index: 9000;
+  white-space: nowrap;
+}
+
+.bulk-count {
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0 10px;
+  color: #f1f5f9;
+}
+
+.fade-slide-up-enter-active,
+.fade-slide-up-leave-active {
+  transition: all 0.2s ease;
+}
+
+.fade-slide-up-enter-from,
+.fade-slide-up-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
 }
 </style>
