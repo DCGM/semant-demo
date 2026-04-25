@@ -196,7 +196,7 @@ class UserCollection():
 
         # Compute annotation stats from Span collection.
         # One annotation = one span object.
-        # Span belongs to selected collection if linked chunk OR linked tag belongs to that collection.
+        # Span belongs to selected collection if it references at least one chunk that belongs to the collection.
 
         spans_collection = self.client.collections.get(
             self.collectionNames.span_collection_name)
@@ -549,13 +549,16 @@ class UserCollection():
         )
         chunks_in_collection = in_col_response.total_count or 0
 
-        # Annotations (spans) for this document's chunks in this collection
+        # Annotations (spans) for this document's chunks in this collection.
+        # Both the chunk and the tag must belong to the collection.
         spans_collection = self.client.collections.get(
             self.collectionNames.span_collection_name)
         spans_filter = (
             Filter.by_ref("text_chunk").by_ref("document").by_id().equal(document_id)
             & Filter.by_ref("text_chunk").by_ref(
                 self.collectionNames.user_collection_link_name).by_id().equal(collection_id)
+            & Filter.by_ref("tag").by_ref(
+                self.collectionNames.user_collection_name).by_id().equal(collection_id)
         )
         spans_agg_response = await spans_collection.aggregate.over_all(
             filters=spans_filter,

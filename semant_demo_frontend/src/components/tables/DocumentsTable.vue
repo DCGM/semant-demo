@@ -342,7 +342,7 @@ const columns: QTableColumn<Document>[] = [
   },
   {
     name: 'docStats',
-    label: 'Collection stats',
+    label: 'Usage in collection',
     field: () => '',
     align: 'center' as const
   },
