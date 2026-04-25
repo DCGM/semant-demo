@@ -30,7 +30,7 @@ export type ProjectedSpan = TagSpan
 
 // ── Composable ─────────────────────────────────────────
 
-export function useAnnotations(chunksRef: () => Chunk[]) {
+export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => Chunk[] = () => []) {
   const store = useTagSpansStore()
 
   // ── State ──
@@ -48,6 +48,21 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
     chunks.value.forEach((chunk, index) => {
       map[chunk.id] = index
     })
+    return map
+  })
+
+  // All known chunks: display chunks + hidden gap chunks, sorted by document order.
+  // Used for cross-chunk span projection across gaps (e.g. a span spanning a removed chunk).
+  const allKnownChunks = computed(() => {
+    const byId = new Map<string, Chunk>()
+    for (const c of chunks.value) byId.set(c.id, c)
+    for (const c of hiddenChunksRef()) if (!byId.has(c.id)) byId.set(c.id, c)
+    return Array.from(byId.values()).sort((a, b) => a.order - b.order)
+  })
+
+  const allKnownChunkIndexById = computed(() => {
+    const map: Record<string, number> = {}
+    allKnownChunks.value.forEach((chunk, index) => { map[chunk.id] = index })
     return map
   })
 
@@ -75,7 +90,7 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
    */
   const areConsecutiveChunks = (fromIndex: number, toIndex: number): boolean => {
     for (let i = fromIndex; i < toIndex; i++) {
-      if (chunks.value[i + 1].order !== chunks.value[i].order + 1) return false
+      if (allKnownChunks.value[i + 1].order !== allKnownChunks.value[i].order + 1) return false
     }
     return true
   }
@@ -86,15 +101,15 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
    * anywhere along the path.
    */
   const getOffsetBetweenChunks = (fromChunkId: string, toChunkId: string): number | null => {
-    const fromIndex = chunkIndexById.value[fromChunkId]
-    const toIndex = chunkIndexById.value[toChunkId]
+    const fromIndex = allKnownChunkIndexById.value[fromChunkId]
+    const toIndex = allKnownChunkIndexById.value[toChunkId]
     if (fromIndex === undefined || toIndex === undefined) return null
     if (toIndex < fromIndex) return null
     if (!areConsecutiveChunks(fromIndex, toIndex)) return null
 
     let offset = 0
     for (let i = fromIndex; i < toIndex; i++) {
-      offset += chunks.value[i].text.length
+      offset += allKnownChunks.value[i].text.length
     }
     return offset
   }
@@ -142,15 +157,15 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
    * Negative (declined) spans are filtered out.
    */
   const getProjectedSpans = (targetChunkId: string): ProjectedSpan[] => {
-    const targetIndex = chunkIndexById.value[targetChunkId]
+    const targetIndex = allKnownChunkIndexById.value[targetChunkId]
     if (targetIndex === undefined) return []
 
-    const targetLength = chunks.value[targetIndex].text.length
+    const targetLength = allKnownChunks.value[targetIndex].text.length
     const result: ProjectedSpan[] = []
 
-    // Check all chunks from the start up to and including the target
+    // Check all known chunks (incl. hidden gap chunks) from the start up to and including the target
     for (let srcIndex = 0; srcIndex <= targetIndex; srcIndex++) {
-      const srcChunk = chunks.value[srcIndex]
+      const srcChunk = allKnownChunks.value[srcIndex]
       const srcSpans = spansByChunkId.value[srcChunk.id] || []
 
       for (const span of srcSpans) {
@@ -160,12 +175,12 @@ export function useAnnotations(chunksRef: () => Chunk[]) {
           // Same chunk — no projection needed
           result.push({ ...span })
         } else {
-          // Cross-chunk projection — only if every intermediate chunk is consecutive
+          // Cross-chunk projection — only if every intermediate known chunk is consecutive
           if (!areConsecutiveChunks(srcIndex, targetIndex)) continue
 
           let offsetToTarget = 0
           for (let i = srcIndex; i < targetIndex; i++) {
-            offsetToTarget += chunks.value[i].text.length
+            offsetToTarget += allKnownChunks.value[i].text.length
           }
 
           const localStart = Math.max(0, span.start - offsetToTarget)

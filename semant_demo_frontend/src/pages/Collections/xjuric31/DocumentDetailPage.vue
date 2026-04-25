@@ -463,8 +463,10 @@ const gapLoadingKey = ref<string | null>(null)
 // Which chunk is currently being added/removed
 const chunkLoadingId = ref<string | null>(null)
 
+// Hidden chunks needed for cross-gap span projection (e.g. a span bridging a removed chunk)
+const hiddenPreviewChunks = ref<Chunk[]>([])
 // Sync displayChunks from store when initial load completes (handled in watch below)
-const annotations = useAnnotations(() => displayChunks.value)
+const annotations = useAnnotations(() => displayChunks.value, () => hiddenPreviewChunks.value)
 
 // ── Gutter state ──
 
@@ -503,7 +505,6 @@ const selectedChunkIds = ref<string[]>([])
 const bulkLoading = ref(false)
 const loadingAllChunks = ref(false)
 
-const hiddenPreviewChunks = ref<import('src/generated/api').Chunk[]>([])
 const displayedPreviewCount = computed(() => displayChunks.value.filter(c => !c.inCollection).length)
 
 const hasSelectedInCollection = computed(() =>
@@ -728,30 +729,39 @@ function recalculateGutter() {
       let minTop = Infinity
       let maxBottom = -Infinity
 
-      // Measure segments in the owning chunk and any subsequent consecutive chunks the span overflows into
-      const startChunkIndex = displayChunks.value.indexOf(chunk)
-      let remaining = span.end
-      for (let ci = startChunkIndex; ci < displayChunks.value.length && remaining > 0; ci++) {
-        // Stop at document gaps — do not project across non-consecutive chunks
-        if (ci > startChunkIndex && displayChunks.value[ci].order !== displayChunks.value[ci - 1].order + 1) break
-        const c = displayChunks.value[ci]
-        const cEl = container.querySelector(`[data-chunk-id="${c.id}"]`) as HTMLElement | null
-        if (!cEl) break
+      // Use all known chunks (display + hidden) so the gutter bar bridges gaps caused by removed chunks
+      const allKnown = [...displayChunks.value, ...hiddenPreviewChunks.value]
+        .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
+        .sort((a, b) => a.order - b.order)
 
-        const segEls = cEl.querySelectorAll<HTMLElement>('.text-segment')
-        const offsetFromSpanChunk = ci === startChunkIndex ? 0 : displayChunks.value.slice(startChunkIndex, ci).reduce((sum, ch) => sum + ch.text.length, 0)
-        const localStart = ci === startChunkIndex ? span.start : 0
+      const startAllIndex = allKnown.findIndex(c => c.id === chunk.id)
+      if (startAllIndex === -1) continue
+
+      let remaining = span.end
+      for (let ci = startAllIndex; ci < allKnown.length && remaining > 0; ci++) {
+        // Stop only at true document gaps (no known chunk bridges it)
+        if (ci > startAllIndex && allKnown[ci].order !== allKnown[ci - 1].order + 1) break
+        const c = allKnown[ci]
+
+        const offsetFromSpanChunk = ci === startAllIndex ? 0 : allKnown.slice(startAllIndex, ci).reduce((sum, ch) => sum + ch.text.length, 0)
+        const localStart = ci === startAllIndex ? span.start : 0
         const localEnd = Math.min(c.text.length, span.end - offsetFromSpanChunk)
 
-        for (const segEl of segEls) {
-          const segStart = parseInt(segEl.dataset.start || '0')
-          const segEnd = parseInt(segEl.dataset.end || '0')
-          if (segStart < localEnd && segEnd > localStart) {
-            const rect = segEl.getBoundingClientRect()
-            minTop = Math.min(minTop, rect.top - cardRect.top)
-            maxBottom = Math.max(maxBottom, rect.bottom - cardRect.top)
+        const cEl = container.querySelector(`[data-chunk-id="${c.id}"]`) as HTMLElement | null
+        if (cEl) {
+          // Chunk is in the DOM — measure its text segments
+          const segEls = cEl.querySelectorAll<HTMLElement>('.text-segment')
+          for (const segEl of segEls) {
+            const segStart = parseInt(segEl.dataset.start || '0')
+            const segEnd = parseInt(segEl.dataset.end || '0')
+            if (segStart < localEnd && segEnd > localStart) {
+              const rect = segEl.getBoundingClientRect()
+              minTop = Math.min(minTop, rect.top - cardRect.top)
+              maxBottom = Math.max(maxBottom, rect.bottom - cardRect.top)
+            }
           }
         }
+        // Hidden gap chunk: no DOM element — subtract its length so remaining decreases correctly
 
         remaining -= c.text.length
       }
@@ -954,6 +964,32 @@ async function checkNeighbours() {
   hasNext.value = next !== null
 }
 
+// ── Pre-load gap chunks for cross-gap span rendering ──
+// Fetches chunks that sit in document gaps between displayed chunks and stores
+// them in hiddenPreviewChunks so useAnnotations can do correct offset math.
+async function preloadGapChunks() {
+  const display = displayChunks.value
+  const fetches: Promise<void>[] = []
+  for (let i = 0; i < display.length - 1; i++) {
+    if (display[i + 1].order === display[i].order + 1) continue
+    const afterOrder = display[i].order
+    const beforeOrder = display[i + 1].order
+    fetches.push(
+      getChunksInRange(props.collectionId, props.documentId, afterOrder, beforeOrder)
+        .then(gaps => {
+          for (const g of gaps) {
+            if (!hiddenPreviewChunks.value.find(h => h.id === g.id) &&
+                !displayChunks.value.find(d => d.id === g.id)) {
+              hiddenPreviewChunks.value.push(g)
+            }
+          }
+        })
+        .catch(e => console.warn('preloadGapChunks failed:', e))
+    )
+  }
+  await Promise.all(fetches)
+}
+
 // ── Load all neighbouring chunks in one direction ──
 async function loadAllNeighbours(direction: 'prev' | 'next') {
   if (direction === 'prev') loadingAllPrev.value = true
@@ -1138,6 +1174,7 @@ watch(
     if (newChunks.length) {
       displayChunks.value = [...newChunks]
       await annotations.loadAllSpans(props.collectionId)
+      await preloadGapChunks()
       await nextTick()
       recalculateGutter()
       await checkNeighbours()
