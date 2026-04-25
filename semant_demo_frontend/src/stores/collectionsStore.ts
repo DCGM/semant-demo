@@ -114,16 +114,22 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     collectionIds.forEach((id) => pendingDeleteIds.value.add(id))
     collections.value = collections.value.filter((c) => !collectionIds.includes(c.id))
     error.value = null
+    let hadError = false
     try {
       await Promise.all(collectionIds.map((id) => collectionRepository.remove(id)))
       notif.success(`${collectionIds.length} collection${collectionIds.length === 1 ? '' : 's'} deleted`)
     } catch (err) {
+      hadError = true
       error.value = 'Failed to delete some collections'
       console.error('Error deleting collections:', err)
       notif.error('Failed to delete some collections')
-      // On error, restore and clear pending so they reappear
+      // On error, restore via fresh fetch so non-deleted items reappear
       await fetchCollections()
     } finally {
+      if (!hadError) {
+        // Re-filter in case a mid-deletion refresh restored items into collections.value
+        collections.value = collections.value.filter((c) => !collectionIds.includes(c.id))
+      }
       collectionIds.forEach((id) => pendingDeleteIds.value.delete(id))
     }
   }

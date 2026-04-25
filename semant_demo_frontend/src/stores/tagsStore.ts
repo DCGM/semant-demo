@@ -93,16 +93,21 @@ export const useTagsStore = defineStore('tags', () => {
     tagUuids.forEach((id) => pendingDeleteIds.value.add(id))
     tags.value = tags.value.filter((tag) => !tagUuids.includes(tag.id))
     error.value = null
+    let hadError = false
     try {
       await Promise.all(tagUuids.map((id) => tagsRepository.delete(id)))
       notif.success(`${tagUuids.length} tag${tagUuids.length === 1 ? '' : 's'} deleted`)
     } catch (err) {
+      hadError = true
       error.value = 'Failed to delete some tags'
       console.error('Error deleting tags:', err)
       notif.error('Failed to delete some tags')
       // restore from API on error
       await fetchTagsByCollection('')
     } finally {
+      if (!hadError) {
+        tags.value = tags.value.filter((tag) => !tagUuids.includes(tag.id))
+      }
       tagUuids.forEach((id) => pendingDeleteIds.value.delete(id))
     }
   }

@@ -111,17 +111,22 @@ export const useDocumentsStore = defineStore('documents', () => {
     documentIds.forEach((id) => pendingRemoveIds.value.add(id))
     documents.value = documents.value.filter((doc) => !documentIds.includes(doc.id))
     error.value = null
+    let hadError = false
     try {
       await Promise.all(
         documentIds.map((documentId) => documentsRepository.removeFromCollection(documentId, collectionId))
       )
       notif.success('Selected documents removed from collection')
     } catch (err) {
+      hadError = true
       error.value = 'Failed to remove selected documents from collection'
       console.error('Error removing selected documents from collection:', err)
       notif.error('Failed to remove selected documents from collection')
       await fetchDocumentsByCollection(collectionId)
     } finally {
+      if (!hadError) {
+        documents.value = documents.value.filter((doc) => !documentIds.includes(doc.id))
+      }
       documentIds.forEach((id) => pendingRemoveIds.value.delete(id))
     }
   }
