@@ -29,7 +29,7 @@ Output example 1: ["exposition"]
 Output example 2: ["record", "description"]
 
 # Previous context from the document is:
-{{prefix_text}}
+{prefix_text}
 
 # Text to be classified is:
-{{text}}
+{text}

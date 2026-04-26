@@ -43,7 +43,7 @@ Write only a JSON list of one or two class labels without any additional text or
 - Output example 2: ["administrative", "legal"]
 
 # Previous context from the document is:
-{{prefix_text}}
+{prefix_text}
 
 # Text to be classified is:
-{{text}}
+{text}

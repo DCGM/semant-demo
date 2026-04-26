@@ -37,7 +37,7 @@ Output example 1: "moderate"
 Output example 2: "advanced"
 
 # Previous context from the document is:
-{{prefix_text}}
+{prefix_text}
 
 # Text to be classified is:
-{{text}}
+{text}

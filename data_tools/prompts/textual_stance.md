@@ -42,7 +42,7 @@ Output example 1: ["neutral_descriptive"]
 Output example 2: ["evaluative", "persuasive"]
 
 # Previous context from the document is:
-{{prefix_text}}
+{prefix_text}
 
 # Text to be classified is:
-{{text}}
+{text}
