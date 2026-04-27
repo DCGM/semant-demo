@@ -200,7 +200,7 @@ async def _thorough_stream(
     async with topicer_client() as client:
         tasks = [
             asyncio.create_task(process_chunk(client, chunk))
-            for chunk in in_collection
+            for chunk in chunks
         ]
         try:
             for coro in asyncio.as_completed(tasks):
