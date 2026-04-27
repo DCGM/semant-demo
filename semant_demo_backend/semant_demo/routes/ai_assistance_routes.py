@@ -126,6 +126,10 @@ async def _persist_proposal(
 
 # ── Thorough mode ──────────────────────────────────────────────────────────
 
+# Topicer's internal OpenAI semaphore is set to 10, so we match that to
+# saturate it without overshooting.
+_THOROUGH_CONCURRENCY = 10
+
 
 async def _thorough_stream(
     searcher: WeaviateAbstraction,
@@ -134,7 +138,12 @@ async def _thorough_stream(
     document_id: str,
     tag_ids: list[str],
 ) -> AsyncGenerator[bytes, None]:
-    """Yield NDJSON events for the thorough variant."""
+    """Yield NDJSON events for the thorough variant.
+
+    Per-chunk Topicer calls are dispatched concurrently (bounded by
+    :data:`_THOROUGH_CONCURRENCY`); results are streamed to the client in
+    completion order (not original chunk order).
+    """
     tags = await _load_tag_dicts(searcher, tag_ids)
     if not tags:
         return
@@ -146,8 +155,12 @@ async def _thorough_stream(
     if not in_collection:
         return
 
-    async with topicer_client() as client:
-        for chunk in in_collection:
+    sem = asyncio.Semaphore(_THOROUGH_CONCURRENCY)
+
+    async def process_chunk(
+        client, chunk,
+    ) -> SuggestSpansChunkResult:
+        async with sem:
             new_spans: list[schemas.TagSpan] = []
             err: str | None = None
             try:
@@ -179,13 +192,27 @@ async def _thorough_stream(
                 if span is not None:
                     new_spans.append(span)
 
-            yield _ndjson_line(SuggestSpansChunkResult(
+            return SuggestSpansChunkResult(
                 chunk_id=str(chunk.id),
                 spans=new_spans,
                 error=err,
-            ))
-            # Cooperative scheduling so each line gets flushed promptly.
-            await asyncio.sleep(0)
+            )
+
+    async with topicer_client() as client:
+        tasks = [
+            asyncio.create_task(process_chunk(client, chunk))
+            for chunk in in_collection
+        ]
+        try:
+            for coro in asyncio.as_completed(tasks):
+                result = await coro
+                yield _ndjson_line(result)
+        finally:
+            # On client disconnect / cancellation, abort any still-running
+            # Topicer calls so we free up the upstream slots immediately.
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
 
 
 # ── Optimized mode ─────────────────────────────────────────────────────────
