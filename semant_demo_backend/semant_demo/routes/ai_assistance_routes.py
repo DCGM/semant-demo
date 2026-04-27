@@ -151,8 +151,7 @@ async def _thorough_stream(
     chunks = await searcher.userCollection.read_all_chunks_by_document(
         document_id, collection_id,
     )
-    in_collection = [c for c in chunks if getattr(c, "in_collection", False)]
-    if not in_collection:
+    if not chunks:
         return
 
     sem = asyncio.Semaphore(_THOROUGH_CONCURRENCY)
