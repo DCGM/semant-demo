@@ -162,10 +162,10 @@
                   :key="chunk.id"
                   :chunk-id="chunk.id"
                   :text="chunk.text"
-                  :spans="annotations.getProjectedSpans(chunk.id).filter(s => tagNav.isTagVisible(s.tagId))"
+                  :spans="annotations.getProjectedSpans(chunk.id).filter(s => tagNav.isTagVisible(s.tagId) && (aiTabActive || s.type !== SpanType.auto))"
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
-                  :highlight-span-id="hoveredSpanId"
+                  :highlight-span-id="hoveredSpanId || highlightedAutoSpanId"
                   :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
@@ -234,7 +234,7 @@
             v-for="item in gutterItems"
             :key="item.spanId"
             class="gutter-item"
-            :class="{ 'is-active': hoveredSpanId === item.spanId }"
+            :class="{ 'is-active': hoveredSpanId === item.spanId, 'is-auto': item.isAuto, 'is-highlighted': highlightedAutoSpanId === item.spanId }"
             :style="{
               top: item.top + 'px',
               height: item.height + 'px',
@@ -308,6 +308,27 @@
           <!-- Default action mode -->
           <template v-else>
             <div class="popover-actions">
+              <!-- Approve / reject shortcut for auto spans (AI suggestions) -->
+              <template v-if="editingAutoSpan">
+                <q-btn
+                  no-caps unelevated
+                  icon="check"
+                  label="Approve"
+                  color="positive"
+                  class="popover-btn"
+                  :disable="approveRejectBusy"
+                  @click="onApproveAutoSpan"
+                />
+                <q-btn
+                  no-caps unelevated
+                  icon="close"
+                  label="Reject"
+                  color="negative"
+                  class="popover-btn"
+                  :disable="approveRejectBusy"
+                  @click="onRejectAutoSpan"
+                />
+              </template>
               <q-btn
                 no-caps unelevated
                 icon="sell"
@@ -400,9 +421,11 @@ import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import useChunks from 'src/composables/useChunks'
 import useTags from 'src/composables/useTags'
 import { useAnnotations } from 'src/composables/useAnnotations'
+import { useTagSpansStore } from 'src/stores/tagSpansStore'
 import { SpanType } from 'src/generated/api'
 import type { Chunk } from 'src/generated/api'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
+import useAiAssistance from 'src/composables/useAiAssistance'
 import ChunkAnnotator from 'src/components/ChunkAnnotator.vue'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
 
@@ -467,6 +490,43 @@ const chunkLoadingId = ref<string | null>(null)
 const hiddenPreviewChunks = ref<Chunk[]>([])
 // Sync displayChunks from store when initial load completes (handled in watch below)
 const annotations = useAnnotations(() => displayChunks.value, () => hiddenPreviewChunks.value)
+const tagSpansStore = useTagSpansStore()
+const aiAssist = useAiAssistance()
+const aiTabActive = computed(() => aiAssist.aiTabActive.value)
+const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.value)
+
+// ── Approve/reject for AI-suggested (auto) spans ──
+// Looks up the span being edited via the popover and exposes whether it has
+// ``type === auto`` so the popover can offer Approve/Reject shortcuts.
+const approveRejectBusy = ref(false)
+
+const editingAutoSpan = computed(() => {
+  const sel = annotations.selection.value
+  if (!sel?.editingSpanId) return null
+  const spans = tagSpansStore.spansByChunkId[sel.chunkId] || []
+  const span = spans.find((s) => s.id === sel.editingSpanId)
+  return span && span.type === SpanType.auto ? span : null
+})
+
+async function changeEditingSpanType(type: SpanType) {
+  const span = editingAutoSpan.value
+  if (!span || !span.id) return
+  approveRejectBusy.value = true
+  try {
+    await tagSpansStore.updateSpan(span.id, span.chunkId, { type })
+  } finally {
+    approveRejectBusy.value = false
+    annotations.clearSelection()
+  }
+}
+
+function onApproveAutoSpan() {
+  void changeEditingSpanType(SpanType.pos)
+}
+
+function onRejectAutoSpan() {
+  void changeEditingSpanType(SpanType.neg)
+}
 
 // ── Gutter state ──
 
@@ -479,6 +539,7 @@ interface GutterItem {
   top: number
   height: number
   column: number
+  isAuto: boolean
 }
 
 const COLUMN_WIDTH = 44
@@ -724,6 +785,7 @@ function recalculateGutter() {
 
     for (const span of chunkSpans) {
       if (span.type === SpanType.neg || !span.id) continue
+      if (!aiTabActive.value && span.type === SpanType.auto) continue
       if (!tagNav.isTagVisible(span.tagId)) continue
 
       let minTop = Infinity
@@ -776,7 +838,8 @@ function recalculateGutter() {
         end: span.end,
         top: minTop,
         height: Math.max(maxBottom - minTop, 20),
-        column: 0
+        column: 0,
+        isAuto: span.type === SpanType.auto
       })
     }
   }
@@ -819,6 +882,13 @@ const onGutterClick = (item: GutterItem, e: MouseEvent) => {
 
   // Sync nav index
   tagNav.syncIndex(item.tagId, item.spanId)
+
+  // Two-way highlight with the AI panel: clicking an auto span in the gutter
+  // should make its corresponding suggestion card light up (and scroll into
+  // view inside the panel).
+  if (item.isAuto) {
+    aiAssist.highlightedAutoSpanId.value = item.spanId
+  }
 }
 
 const onGutterWheel = (e: WheelEvent) => {
@@ -863,6 +933,42 @@ tagNav.onScroll((item) => {
   }
 })
 tagNav.onHighlight((spanId) => { hoveredSpanId.value = spanId })
+
+// Re-render gutter (and re-filter auto spans in text) when the AI tab is
+// toggled in the side panel.
+watch(aiTabActive, () => {
+  void nextTick(() => recalculateGutter())
+})
+
+// When the AI panel highlights a suggestion, scroll the document text to it.
+watch(highlightedAutoSpanId, (spanId) => {
+  if (!spanId || !documentTextRef.value) return
+  // Find the span across known chunks.
+  for (const chunkId of Object.keys(tagSpansStore.spansByChunkId)) {
+    const span = (tagSpansStore.spansByChunkId[chunkId] || []).find(s => s.id === spanId)
+    if (!span) continue
+    const chunkEl = documentTextRef.value.querySelector(
+      `[data-chunk-id="${chunkId}"]`
+    ) as HTMLElement | null
+    if (!chunkEl) return
+    const segs = chunkEl.querySelectorAll<HTMLElement>('.text-segment')
+    for (const seg of segs) {
+      const s = parseInt(seg.dataset.start || '0')
+      if (s >= span.start && s < span.end) {
+        seg.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        return
+      }
+    }
+    return
+  }
+})
+
+// When the user clicks an auto span directly in the text (which selects it
+// for the popover via `annotations.editSpan` from ChunkAnnotator), mirror that
+// into the AI panel highlight so the matching suggestion card lights up.
+watch(editingAutoSpan, (span) => {
+  if (span?.id) aiAssist.highlightedAutoSpanId.value = span.id
+})
 
 /** Group chunks into paragraphs for rendering, but keep individual chunks accessible */
 const assembledParagraphs = computed(() => {
@@ -1704,6 +1810,53 @@ onBeforeUnmount(() => {
 .gutter-item.is-active .gutter-label {
   opacity: 1;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Auto (AI-suggested) gutter items: muted, dashed, slightly faded. ── */
+.gutter-item.is-auto .gutter-line {
+  /* Replace solid colour with a dashed strip so users can spot at a glance
+     that this is an unconfirmed AI suggestion. */
+  background: repeating-linear-gradient(
+    to bottom,
+    currentColor 0,
+    currentColor 4px,
+    transparent 4px,
+    transparent 8px
+  ) !important;
+  color: #94a3b8;
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+
+.gutter-item.is-auto .gutter-label {
+  background: #94a3b8 !important;
+  opacity: 0.7;
+  filter: grayscale(0.5);
+}
+
+.gutter-item.is-auto:hover .gutter-line,
+.gutter-item.is-auto.is-active .gutter-line {
+  opacity: 0.85;
+}
+
+.gutter-item.is-auto:hover .gutter-label,
+.gutter-item.is-auto.is-active .gutter-label {
+  opacity: 0.95;
+}
+
+/* Two-way highlight with the AI suggestions panel: when a card is selected
+   in the panel, drop the grayed-out look on its gutter marker so the tag's
+   own colour pops back. The same class is added when the user clicks an auto
+   span in the text/gutter so the panel mirrors the choice. */
+.gutter-item.is-auto.is-highlighted .gutter-line {
+  opacity: 1;
+  filter: none;
+  background-image: none !important;
+}
+
+.gutter-item.is-auto.is-highlighted .gutter-label {
+  opacity: 1;
+  filter: none;
 }
 
 /* ── Chunk selection checkbox column ── */

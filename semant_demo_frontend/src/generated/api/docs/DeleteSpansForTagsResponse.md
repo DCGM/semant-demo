@@ -1,34 +1,23 @@
 
-# PostSpan
+# DeleteSpansForTagsResponse
 
+Result of a bulk per-tag deletion.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`start` | number
-`end` | number
-`type` | [SpanType](SpanType.md)
-`chunkId` | string
-`tagId` | string
-`reason` | string
-`confidence` | number
+`deleted` | number
 
 ## Example
 
 ```typescript
-import type { PostSpan } from ''
+import type { DeleteSpansForTagsResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "start": null,
-  "end": null,
-  "type": null,
-  "chunkId": null,
-  "tagId": null,
-  "reason": null,
-  "confidence": null,
-} satisfies PostSpan
+  "deleted": null,
+} satisfies DeleteSpansForTagsResponse
 
 console.log(example)
 
@@ -37,7 +26,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as PostSpan
+const exampleParsed = JSON.parse(exampleJSON) as DeleteSpansForTagsResponse
 console.log(exampleParsed)
 ```
 

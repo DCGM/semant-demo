@@ -37,7 +37,7 @@ from semant_demo.tagging.tagging_utils import getTaskByName
 
 # import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
-from semant_demo.schema.spans import PostSpan, PatchSpan
+from semant_demo.schema.spans import PostSpan, PatchSpan, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse
 logging.basicConfig(level=logging.INFO)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -107,5 +107,25 @@ async def delete_tag_span(
     """
     await tagger.span.delete(span_id=span_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@exp_router.post(
+    "/api/tag_spans/in_document/delete",
+    response_model=DeleteSpansForTagsResponse,
+)
+async def delete_spans_for_tags_in_document(
+    body: DeleteSpansForTagsRequest,
+    tagger: WeaviateAbstraction = Depends(get_search),
+) -> DeleteSpansForTagsResponse:
+    """
+    Bulk-delete every span (regardless of ``type``) for the given tag ids
+    within a single (collection, document) scope.
+    """
+    deleted = await tagger.span.delete_all_spans_for_tags_in_document(
+        collection_id=body.collection_id,
+        document_id=body.document_id,
+        tag_ids=body.tag_ids,
+    )
+    return DeleteSpansForTagsResponse(deleted=deleted)
 
 # /TagSpans

@@ -49,6 +49,11 @@ class Config:
         # Auth – override JWT_SECRET in production with a strong random value
         self.JWT_SECRET = os.getenv("JWT_SECRET", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_SECRET")
         
+        # Topicer (AI assistance / tag proposal service)
+        self.TOPICER_URL = os.getenv("TOPICER_URL", "http://localhost:8089")
+        self.TOPICER_CONFIG_NAME = os.getenv("TOPICER_CONFIG_NAME", "config")
+        self.TOPICER_TIMEOUT = float(os.getenv("TOPICER_TIMEOUT", 600.0))
+
         # path to rag configs
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
         test_configs_path = SCRIPT_PATH / "rag" / "rag_configs" / "tests"

@@ -1,34 +1,27 @@
 
-# PostSpan
+# DeleteAutoSpansRequest
 
+Request body for bulk deletion of unresolved AI proposals (``type == auto``) within a single (collection, document) scope.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`start` | number
-`end` | number
-`type` | [SpanType](SpanType.md)
-`chunkId` | string
-`tagId` | string
-`reason` | string
-`confidence` | number
+`collectionId` | string
+`documentId` | string
+`tagIds` | Array&lt;string&gt;
 
 ## Example
 
 ```typescript
-import type { PostSpan } from ''
+import type { DeleteAutoSpansRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "start": null,
-  "end": null,
-  "type": null,
-  "chunkId": null,
-  "tagId": null,
-  "reason": null,
-  "confidence": null,
-} satisfies PostSpan
+  "collectionId": null,
+  "documentId": null,
+  "tagIds": null,
+} satisfies DeleteAutoSpansRequest
 
 console.log(example)
 
@@ -37,7 +30,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as PostSpan
+const exampleParsed = JSON.parse(exampleJSON) as DeleteAutoSpansRequest
 console.log(exampleParsed)
 ```
 

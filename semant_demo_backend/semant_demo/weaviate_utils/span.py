@@ -2,6 +2,7 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
 from uuid import UUID
 from typing import cast
+import logging
 from weaviate.exceptions import (
     WeaviateConnectionError,
     WeaviateTimeoutError,
@@ -34,6 +35,45 @@ class Span():
         self.helpers = WeaviateHelpers(client, collectionNames)
         self.span_collection = self.client.collections.get(
             collectionNames.span_collection_name)
+        # Whether the optional ``reason``/``confidence`` properties were
+        # already ensured to exist on the live Weaviate collection. Set by
+        # :meth:`_ensure_ai_properties`; first call performs the check.
+        self._ai_props_ensured = False
+
+    async def _ensure_ai_properties(self) -> None:
+        """
+        Idempotently make sure the ``reason`` (TEXT) and ``confidence``
+        (NUMBER) properties exist on the Span collection.
+
+        Older deployments created the collection without these properties.
+        Calling ``add_property`` for an already-existing property is a no-op
+        from this code's perspective (Weaviate raises and we ignore).
+        """
+        if self._ai_props_ensured:
+            return
+        try:
+            from weaviate.classes.config import Property, DataType
+            try:
+                config = await self.span_collection.config.get()
+                existing = {p.name for p in (config.properties or [])}
+            except Exception:
+                existing = set()
+            if "reason" not in existing:
+                try:
+                    await self.span_collection.config.add_property(
+                        Property(name="reason", data_type=DataType.TEXT)
+                    )
+                except Exception:
+                    pass
+            if "confidence" not in existing:
+                try:
+                    await self.span_collection.config.add_property(
+                        Property(name="confidence", data_type=DataType.NUMBER)
+                    )
+                except Exception:
+                    pass
+        finally:
+            self._ai_props_ensured = True
 
     def move(self):
         pass
@@ -45,12 +85,23 @@ class Span():
         if not self.span_collection:
             raise RuntimeError("Span_test collection not available")
 
+        if span.reason is not None or span.confidence is not None:
+            await self._ensure_ai_properties()
+
+        properties: dict = {
+            "start": span.start,
+            "end": span.end,
+            "type": span.type.value if span.type is not None else None,
+        }
+        # Persist AI metadata only when present so Weaviate auto-schema does
+        # not have to handle null property values.
+        if span.reason is not None:
+            properties["reason"] = span.reason
+        if span.confidence is not None:
+            properties["confidence"] = float(span.confidence)
+
         span_id = await self.span_collection.data.insert(
-            properties={
-                "start": span.start,
-                "end": span.end,
-                "type": span.type.value if span.type is not None else None,
-            },
+            properties=properties,
             references={
                 "tag": span.tagId,
                 "text_chunk": span.chunkId
@@ -63,7 +114,9 @@ class Span():
             tagId=span.tagId,
             start=span.start,
             end=span.end,
-            type=span.type
+            type=span.type,
+            reason=span.reason,
+            confidence=span.confidence,
         )
 
     async def delete(self, span_id: str) -> None:
@@ -84,7 +137,7 @@ class Span():
 
         response = await self.span_collection.query.fetch_object_by_id(
             uuid=span_id,
-            return_properties=["start", "end", "type"],
+            return_properties=["start", "end", "type", "reason", "confidence"],
             return_references=[
                 QueryReference(link_on="tag", return_references=[
                     QueryReference(link_on="userCollection")
@@ -103,6 +156,7 @@ class Span():
         chunk_id_val = str(chunk_ref.objects[0].uuid) if chunk_ref and chunk_ref.objects else None
 
         span_type = response.properties.get("type")
+        confidence_raw = response.properties.get("confidence")
 
         return schemas.TagSpan(
             id=str(response.uuid),
@@ -110,7 +164,9 @@ class Span():
             tagId=tag_id,
             start=response.properties.get("start"),
             end=response.properties.get("end"),
-            type=schemas.SpanType(span_type) if isinstance(span_type, str) else None
+            type=schemas.SpanType(span_type) if isinstance(span_type, str) else None,
+            reason=response.properties.get("reason"),
+            confidence=float(confidence_raw) if confidence_raw is not None else None,
         )
 
     async def read_all(self, chunk_id: str = None, collection_id: str = None) -> list[schemas.TagSpan]:
@@ -155,7 +211,7 @@ class Span():
         while True:
             response = await self.span_collection.query.fetch_objects(
                 filters=filters,
-                return_properties=["start", "end", "type"],
+                return_properties=["start", "end", "type", "reason", "confidence"],
                 return_references=[
                     QueryReference(link_on="tag"),
                     QueryReference(link_on="text_chunk")
@@ -173,6 +229,7 @@ class Span():
                 span_type = obj.properties.get("type")
                 chunk_ref = obj.references.get("text_chunk")
                 chunk_id_val = str(chunk_ref.objects[0].uuid) if chunk_ref and chunk_ref.objects else None
+                confidence_raw = obj.properties.get("confidence")
 
                 spans.append(
                     schemas.TagSpan(
@@ -181,7 +238,9 @@ class Span():
                         tagId=tag_id,
                         start=cast(int, obj.properties.get("start")),
                         end=cast(int, obj.properties.get("end")),
-                        type=schemas.SpanType(span_type) if isinstance(span_type, str) else None
+                        type=schemas.SpanType(span_type) if isinstance(span_type, str) else None,
+                        reason=obj.properties.get("reason"),
+                        confidence=float(confidence_raw) if confidence_raw is not None else None,
                     )
                 )
 
@@ -229,7 +288,7 @@ class Span():
         while True:
             response = await self.span_collection.query.fetch_objects(
                 filters=filters,
-                return_properties=["start", "end", "type"],
+                return_properties=["start", "end", "type", "reason", "confidence"],
                 return_references=[
                     QueryReference(link_on="tag"),
                     QueryReference(link_on="text_chunk"),
@@ -251,6 +310,7 @@ class Span():
                 chunk_id = str(chunk_ref.objects[0].uuid)
 
                 span_type = obj.properties.get("type")
+                confidence_raw = obj.properties.get("confidence")
 
                 span = schemas.TagSpan(
                     id=str(obj.uuid),
@@ -258,7 +318,9 @@ class Span():
                     tagId=tag_id,
                     start=obj.properties.get("start"),
                     end=obj.properties.get("end"),
-                    type=schemas.SpanType(span_type) if isinstance(span_type, str) else None
+                    type=schemas.SpanType(span_type) if isinstance(span_type, str) else None,
+                    reason=obj.properties.get("reason"),
+                    confidence=float(confidence_raw) if confidence_raw is not None else None,
                 )
 
                 if chunk_id in result:
@@ -289,8 +351,12 @@ class Span():
         if "end" in dumped_fields:
             props_to_update["end"] = dumped_fields["end"]
         if "type" in dumped_fields:
-            raise WeaviateDataValidationError(
-                "Updating 'type' field is not allowed, use Approve or Disapprove tag endpoints"
+            # Used by the AI-assistance flow to approve/reject auto spans:
+            #   auto -> pos  (approve)
+            #   auto -> neg  (reject; kept as a negative example)
+            type_val = dumped_fields["type"]
+            props_to_update["type"] = (
+                type_val.value if hasattr(type_val, "value") else type_val
             )
 
         if props_to_update:
@@ -307,3 +373,105 @@ class Span():
             )
 
         return await self.read(span_id)
+
+    async def delete_auto_spans_in_scope(
+        self,
+        *,
+        collection_id: str,
+        document_id: str,
+        tag_ids: list[str],
+    ) -> int:
+        """
+        Bulk-delete unresolved AI proposals (spans with ``type == 'auto'``)
+        within a single (collection, document) scope, restricted to the given
+        tag UUIDs.
+
+        Returns the number of spans deleted. Cascades through the standard
+        ``delete_span_cascade`` helper (one-by-one) so any cleanup logic
+        (cross-references, indexes, …) is preserved.
+        """
+        return await self._delete_spans_in_scope(
+            collection_id=collection_id,
+            document_id=document_id,
+            tag_ids=tag_ids,
+            type_filter=schemas.SpanType.auto.value,
+        )
+
+    async def delete_all_spans_for_tags_in_document(
+        self,
+        *,
+        collection_id: str,
+        document_id: str,
+        tag_ids: list[str],
+    ) -> int:
+        """
+        Bulk-delete every span (regardless of ``type``) for the given tag UUIDs
+        within a single (collection, document) scope. Used by the "delete all
+        annotations of this tag" action in the document detail page.
+        """
+        return await self._delete_spans_in_scope(
+            collection_id=collection_id,
+            document_id=document_id,
+            tag_ids=tag_ids,
+            type_filter=None,
+        )
+
+    async def _delete_spans_in_scope(
+        self,
+        *,
+        collection_id: str,
+        document_id: str,
+        tag_ids: list[str],
+        type_filter: str | None,
+    ) -> int:
+        """
+        Internal helper: delete spans within a single (collection, document)
+        scope, restricted to the given tag UUIDs and (optionally) a single
+        ``type`` value.
+
+        Returns the number of spans deleted. Cascades through the standard
+        ``delete_span_cascade`` helper (one-by-one) so any cleanup logic
+        (cross-references, indexes, …) is preserved.
+        """
+        if not self.span_collection:
+            raise RuntimeError("Span_test collection not available")
+        if not tag_ids:
+            return 0
+
+        try:
+            collection_uuid = UUID(collection_id)
+            document_uuid = UUID(document_id)
+            tag_uuids = [UUID(tid) for tid in tag_ids]
+        except ValueError as exc:
+            raise WeaviateDataValidationError(f"Invalid id in scope: {exc}") from exc
+
+        filters = (
+            Filter.by_ref(link_on="tag").by_id().contains_any(tag_uuids)
+            & Filter.by_ref(link_on="tag").by_ref(link_on="userCollection").by_id().equal(collection_uuid)
+            & Filter.by_ref(link_on="text_chunk").by_ref(link_on="document").by_id().equal(document_uuid)
+        )
+        if type_filter is not None:
+            filters = filters & Filter.by_property("type").equal(type_filter)
+
+        PAGE_SIZE = 500
+        deleted = 0
+        while True:
+            response = await self.span_collection.query.fetch_objects(
+                filters=filters,
+                return_properties=["type"],
+                limit=PAGE_SIZE,
+            )
+            objs = response.objects or []
+            if not objs:
+                break
+            for obj in objs:
+                try:
+                    await self.helpers.delete_span_cascade(span_id=str(obj.uuid))
+                    deleted += 1
+                except Exception as e:
+                    logging.getLogger(__name__).warning(
+                        "Failed to delete span %s: %s", obj.uuid, e
+                    )
+            if len(objs) < PAGE_SIZE:
+                break
+        return deleted

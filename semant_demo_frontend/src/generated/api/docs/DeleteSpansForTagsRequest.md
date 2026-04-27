@@ -1,34 +1,27 @@
 
-# PostSpan
+# DeleteSpansForTagsRequest
 
+Request body for bulk deletion of every span for the given tags within a single (collection, document) scope, regardless of ``type``.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`start` | number
-`end` | number
-`type` | [SpanType](SpanType.md)
-`chunkId` | string
-`tagId` | string
-`reason` | string
-`confidence` | number
+`collectionId` | string
+`documentId` | string
+`tagIds` | Array&lt;string&gt;
 
 ## Example
 
 ```typescript
-import type { PostSpan } from ''
+import type { DeleteSpansForTagsRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "start": null,
-  "end": null,
-  "type": null,
-  "chunkId": null,
-  "tagId": null,
-  "reason": null,
-  "confidence": null,
-} satisfies PostSpan
+  "collectionId": null,
+  "documentId": null,
+  "tagIds": null,
+} satisfies DeleteSpansForTagsRequest
 
 console.log(example)
 
@@ -37,7 +30,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as PostSpan
+const exampleParsed = JSON.parse(exampleJSON) as DeleteSpansForTagsRequest
 console.log(exampleParsed)
 ```
 

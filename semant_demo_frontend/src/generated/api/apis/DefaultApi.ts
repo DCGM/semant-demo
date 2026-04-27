@@ -24,6 +24,10 @@ import type {
   Collection,
   CollectionStats,
   CreateResponse,
+  DeleteAutoSpansRequest,
+  DeleteAutoSpansResponse,
+  DeleteSpansForTagsRequest,
+  DeleteSpansForTagsResponse,
   DocumentBrowse,
   DocumentStats,
   ExplainRequest,
@@ -51,6 +55,7 @@ import type {
   SearchResponseInput,
   SearchResponseOutput,
   SemantDemoSchemaDocumentsDocument,
+  SuggestSpansRequest,
   SummaryResponse,
   Tag,
   TagSpan,
@@ -78,6 +83,14 @@ import {
     CollectionStatsToJSON,
     CreateResponseFromJSON,
     CreateResponseToJSON,
+    DeleteAutoSpansRequestFromJSON,
+    DeleteAutoSpansRequestToJSON,
+    DeleteAutoSpansResponseFromJSON,
+    DeleteAutoSpansResponseToJSON,
+    DeleteSpansForTagsRequestFromJSON,
+    DeleteSpansForTagsRequestToJSON,
+    DeleteSpansForTagsResponseFromJSON,
+    DeleteSpansForTagsResponseToJSON,
     DocumentBrowseFromJSON,
     DocumentBrowseToJSON,
     DocumentStatsFromJSON,
@@ -132,6 +145,8 @@ import {
     SearchResponseOutputToJSON,
     SemantDemoSchemaDocumentsDocumentFromJSON,
     SemantDemoSchemaDocumentsDocumentToJSON,
+    SuggestSpansRequestFromJSON,
+    SuggestSpansRequestToJSON,
     SummaryResponseFromJSON,
     SummaryResponseToJSON,
     TagFromJSON,
@@ -202,8 +217,16 @@ export interface CreateUserCollectionApiUserCollectionsPostRequest {
     postCollection: PostCollection;
 }
 
+export interface DeleteAutoSpansApiAiAutoSpansDeletePostRequest {
+    deleteAutoSpansRequest: DeleteAutoSpansRequest;
+}
+
 export interface DeleteCollectionApiCollectionsCollectionIdDeleteRequest {
     collectionId: string;
+}
+
+export interface DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest {
+    deleteSpansForTagsRequest: DeleteSpansForTagsRequest;
 }
 
 export interface DeleteTagApiTagsTagUuidDeleteRequest {
@@ -327,6 +350,14 @@ export interface SearchUsersApiUsersSearchGetRequest {
 
 export interface StartTaggingApiTagTaskPostRequest {
     taggingTaskReqTemplate: TaggingTaskReqTemplate;
+}
+
+export interface SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest {
+    suggestSpansRequest: SuggestSpansRequest;
+}
+
+export interface SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest {
+    suggestSpansRequest: SuggestSpansRequest;
 }
 
 export interface SummarizeApiSummarizeSummaryTypePostRequest {
@@ -641,6 +672,30 @@ export interface DefaultApiInterface {
     createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
 
     /**
+     * Creates request options for deleteAutoSpansApiAiAutoSpansDeletePost without sending the request
+     * @param {DeleteAutoSpansRequest} deleteAutoSpansRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteAutoSpansApiAiAutoSpansDeletePostRequestOpts(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+     * @summary Delete Auto Spans
+     * @param {DeleteAutoSpansRequest} deleteAutoSpansRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteAutoSpansResponse>>;
+
+    /**
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+     * Delete Auto Spans
+     */
+    deleteAutoSpansApiAiAutoSpansDeletePost(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteAutoSpansResponse>;
+
+    /**
      * Creates request options for deleteCollectionApiCollectionsCollectionIdDelete without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
@@ -662,6 +717,30 @@ export interface DefaultApiInterface {
      * Delete Collection
      */
     deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost without sending the request
+     * @param {DeleteSpansForTagsRequest} deleteSpansForTagsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequestOpts(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Bulk-delete every span (regardless of ``type``) for the given tag ids within a single (collection, document) scope.
+     * @summary Delete Spans For Tags In Document
+     * @param {DeleteSpansForTagsRequest} deleteSpansForTagsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteSpansForTagsResponse>>;
+
+    /**
+     * Bulk-delete every span (regardless of ``type``) for the given tag ids within a single (collection, document) scope.
+     * Delete Spans For Tags In Document
+     */
+    deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteSpansForTagsResponse>;
 
     /**
      * Creates request options for deleteTagApiTagsTagUuidDelete without sending the request
@@ -1459,6 +1538,54 @@ export interface DefaultApiInterface {
     startTaggingApiTagTaskPost(requestParameters: StartTaggingApiTagTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagStartResponse>;
 
     /**
+     * Creates request options for suggestSpansOptimizedApiAiSuggestSpansOptimizedPost without sending the request
+     * @param {SuggestSpansRequest} suggestSpansRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequestOpts(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+     * @summary Suggest Spans Optimized
+     * @param {SuggestSpansRequest} suggestSpansRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+     * Suggest Spans Optimized
+     */
+    suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for suggestSpansThoroughApiAiSuggestSpansThoroughPost without sending the request
+     * @param {SuggestSpansRequest} suggestSpansRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    suggestSpansThoroughApiAiSuggestSpansThoroughPostRequestOpts(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``); each line is a :class:`SuggestSpansChunkResult`.
+     * @summary Suggest Spans Thorough
+     * @param {SuggestSpansRequest} suggestSpansRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    suggestSpansThoroughApiAiSuggestSpansThoroughPostRaw(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``); each line is a :class:`SuggestSpansChunkResult`.
+     * Suggest Spans Thorough
+     */
+    suggestSpansThoroughApiAiSuggestSpansThoroughPost(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
      * Creates request options for summarizeApiSummarizeSummaryTypePost without sending the request
      * @param {string} summaryType 
      * @param {SearchResponseInput} searchResponseInput 
@@ -2192,6 +2319,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for deleteAutoSpansApiAiAutoSpansDeletePost without sending the request
+     */
+    async deleteAutoSpansApiAiAutoSpansDeletePostRequestOpts(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['deleteAutoSpansRequest'] == null) {
+            throw new runtime.RequiredError(
+                'deleteAutoSpansRequest',
+                'Required parameter "deleteAutoSpansRequest" was null or undefined when calling deleteAutoSpansApiAiAutoSpansDeletePost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/ai/auto_spans/delete`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DeleteAutoSpansRequestToJSON(requestParameters['deleteAutoSpansRequest']),
+        };
+    }
+
+    /**
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+     * Delete Auto Spans
+     */
+    async deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteAutoSpansResponse>> {
+        const requestOptions = await this.deleteAutoSpansApiAiAutoSpansDeletePostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DeleteAutoSpansResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+     * Delete Auto Spans
+     */
+    async deleteAutoSpansApiAiAutoSpansDeletePost(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteAutoSpansResponse> {
+        const response = await this.deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for deleteCollectionApiCollectionsCollectionIdDelete without sending the request
      */
     async deleteCollectionApiCollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts> {
@@ -2233,6 +2414,55 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost without sending the request
+     */
+    async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequestOpts(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['deleteSpansForTagsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'deleteSpansForTagsRequest',
+                'Required parameter "deleteSpansForTagsRequest" was null or undefined when calling deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/tag_spans/in_document/delete`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DeleteSpansForTagsRequestToJSON(requestParameters['deleteSpansForTagsRequest']),
+        };
+    }
+
+    /**
+     * Bulk-delete every span (regardless of ``type``) for the given tag ids within a single (collection, document) scope.
+     * Delete Spans For Tags In Document
+     */
+    async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteSpansForTagsResponse>> {
+        const requestOptions = await this.deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DeleteSpansForTagsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Bulk-delete every span (regardless of ``type``) for the given tag ids within a single (collection, document) scope.
+     * Delete Spans For Tags In Document
+     */
+    async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteSpansForTagsResponse> {
+        const response = await this.deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**
@@ -3932,6 +4162,112 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     async startTaggingApiTagTaskPost(requestParameters: StartTaggingApiTagTaskPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagStartResponse> {
         const response = await this.startTaggingApiTagTaskPostRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * Creates request options for suggestSpansOptimizedApiAiSuggestSpansOptimizedPost without sending the request
+     */
+    async suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequestOpts(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['suggestSpansRequest'] == null) {
+            throw new runtime.RequiredError(
+                'suggestSpansRequest',
+                'Required parameter "suggestSpansRequest" was null or undefined when calling suggestSpansOptimizedApiAiSuggestSpansOptimizedPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/ai/suggest_spans/optimized`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SuggestSpansRequestToJSON(requestParameters['suggestSpansRequest']),
+        };
+    }
+
+    /**
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+     * Suggest Spans Optimized
+     */
+    async suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+     * Suggest Spans Optimized
+     */
+    async suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for suggestSpansThoroughApiAiSuggestSpansThoroughPost without sending the request
+     */
+    async suggestSpansThoroughApiAiSuggestSpansThoroughPostRequestOpts(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['suggestSpansRequest'] == null) {
+            throw new runtime.RequiredError(
+                'suggestSpansRequest',
+                'Required parameter "suggestSpansRequest" was null or undefined when calling suggestSpansThoroughApiAiSuggestSpansThoroughPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/ai/suggest_spans/thorough`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SuggestSpansRequestToJSON(requestParameters['suggestSpansRequest']),
+        };
+    }
+
+    /**
+     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``); each line is a :class:`SuggestSpansChunkResult`.
+     * Suggest Spans Thorough
+     */
+    async suggestSpansThoroughApiAiSuggestSpansThoroughPostRaw(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.suggestSpansThoroughApiAiSuggestSpansThoroughPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``); each line is a :class:`SuggestSpansChunkResult`.
+     * Suggest Spans Thorough
+     */
+    async suggestSpansThoroughApiAiSuggestSpansThoroughPost(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.suggestSpansThoroughApiAiSuggestSpansThoroughPostRaw(requestParameters, initOverrides);
     }
 
     /**

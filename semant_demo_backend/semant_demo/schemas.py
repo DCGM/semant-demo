@@ -447,6 +447,11 @@ class TagSpan(BaseModel):
     start: int
     end: int
     type: SpanType | None = None
+    # Optional metadata produced by AI/automatic taggers. Always None for
+    # manual spans; populated when an LLM proposes a span via the Topicer
+    # service. Stored alongside the span itself in the database.
+    reason: str | None = None
+    confidence: float | None = None
 
 
 class TagSpanUpdate(BaseModel):

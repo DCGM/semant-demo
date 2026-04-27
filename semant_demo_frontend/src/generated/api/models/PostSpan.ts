@@ -57,6 +57,18 @@ export interface PostSpan {
      * @memberof PostSpan
      */
     tagId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof PostSpan
+     */
+    reason?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PostSpan
+     */
+    confidence?: number | null;
 }
 
 
@@ -88,6 +100,8 @@ export function PostSpanFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
         'type': SpanTypeFromJSON(json['type']),
         'chunkId': json['chunkId'],
         'tagId': json['tagId'],
+        'reason': json['reason'] == null ? undefined : json['reason'],
+        'confidence': json['confidence'] == null ? undefined : json['confidence'],
     };
 }
 
@@ -107,6 +121,8 @@ export function PostSpanToJSONTyped(value?: PostSpan | null, ignoreDiscriminator
         'type': SpanTypeToJSON(value['type']),
         'chunkId': value['chunkId'],
         'tagId': value['tagId'],
+        'reason': value['reason'],
+        'confidence': value['confidence'],
     };
 }
 
