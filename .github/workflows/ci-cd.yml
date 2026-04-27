@@ -12,12 +12,27 @@ concurrency:
 jobs:
   deploy:
     name: Deploy ${{ github.ref_name }}
-    if: github.ref_type == 'tag' && github.event.base_ref == 'refs/heads/main'
+    if: github.ref_type == 'tag'
     runs-on: [self-hosted, semant-server]
     environment: production
     timeout-minutes: 30
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag points to a commit contained in main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "ERROR: Tagged commit $GITHUB_SHA is not contained in origin/main" >&2
+            exit 1
+          fi
+          echo "Tagged commit $GITHUB_SHA is contained in origin/main"
+
       - name: Validate SQL database directory
         run: |
           SQL_DB_DIR="${{ vars.SQL_DB_DIR }}"

@@ -13,7 +13,11 @@ services:
       - path: .env
         required: true
     volumes:
-      - ${SQL_DB_PATH}/tasks.db:/app/tasks.db
+      - type: bind
+        source: ${SQL_DB_PATH}/tasks.db
+        target: /app/tasks.db
+        bind:
+          create_host_path: false
     networks:
       - web
       - semant_demo_database

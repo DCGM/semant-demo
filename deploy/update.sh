@@ -5,6 +5,12 @@ CMD="${1:-}"
 
 case "$CMD" in
   app-up)
+    SQL_DB_PATH=$(grep "^SQL_DB_PATH=" .env | cut -d= -f2)
+    if [ ! -f "$SQL_DB_PATH/tasks.db" ]; then
+      mkdir -p "$SQL_DB_PATH"
+      touch "$SQL_DB_PATH/tasks.db"
+      echo "Created SQLite database: $SQL_DB_PATH/tasks.db"
+    fi
     docker compose -p semant-demo -f ./docker-compose.app.yaml up -d ;;
   app-down)
     docker compose -p semant-demo -f ./docker-compose.app.yaml down ;;

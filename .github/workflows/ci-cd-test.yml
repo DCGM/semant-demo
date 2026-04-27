@@ -84,14 +84,16 @@ jobs:
           TEST_ROUTER_NAME="semant-demo-test-main"
           SQL_DB_PATH="${{ vars.SQL_DB_DIR_TEST }}/test-main"
 
+          escape_sed_replacement() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
+
           cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
-          sed -i "s|^BRANCH=.*|BRANCH=main|"                                      "$DEPLOY_PATH/.env"
-          sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=${TEST_SUBDOMAIN}|"          "$DEPLOY_PATH/.env"
-          sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=${TEST_ROUTER_NAME}|"    "$DEPLOY_PATH/.env"
-          sed -i "s|^BACKEND_URL=.*|BACKEND_URL=https://${TEST_SUBDOMAIN}|"        "$DEPLOY_PATH/.env"
-          sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=https://${TEST_SUBDOMAIN}|"  "$DEPLOY_PATH/.env"
-          sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=${SQL_DB_PATH}|"             "$DEPLOY_PATH/.env"
-          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^BRANCH=.*|BRANCH=main|"                                                                                    "$DEPLOY_PATH/.env"
+          sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
+          sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
+          sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
+          sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"      "$DEPLOY_PATH/.env"
+          sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
+          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "${{ secrets.OPENAI_API_KEY }}")|"  "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 
@@ -141,7 +143,7 @@ jobs:
 
   deploy-test:
     name: "Deploy test PR #${{ github.event.pull_request.number }}"
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
 
@@ -219,14 +221,16 @@ jobs:
           TEST_ROUTER_NAME="semant-demo-test-pr-${PR_NUMBER}"
           SQL_DB_PATH="${{ vars.SQL_DB_DIR_TEST }}/test-pr-${PR_NUMBER}"
 
+          escape_sed_replacement() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
+
           cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
-          sed -i "s|^BRANCH=.*|BRANCH=${BRANCH}|"                           "$DEPLOY_PATH/.env"
-          sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=${TEST_SUBDOMAIN}|"   "$DEPLOY_PATH/.env"
-          sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=${TEST_ROUTER_NAME}|" "$DEPLOY_PATH/.env"
-          sed -i "s|^BACKEND_URL=.*|BACKEND_URL=https://${TEST_SUBDOMAIN}|" "$DEPLOY_PATH/.env"
-          sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=https://${TEST_SUBDOMAIN}|" "$DEPLOY_PATH/.env"
-          sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=${SQL_DB_PATH}|"      "$DEPLOY_PATH/.env"
-          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^BRANCH=.*|BRANCH=$(escape_sed_replacement "${BRANCH}")|"                                      "$DEPLOY_PATH/.env"
+          sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
+          sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
+          sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
+          sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"      "$DEPLOY_PATH/.env"
+          sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
+          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "${{ secrets.OPENAI_API_KEY }}")|"  "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 
@@ -276,7 +280,7 @@ jobs:
 
   teardown-test:
     name: "Teardown test PR #${{ github.event.pull_request.number }}"
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 10
 

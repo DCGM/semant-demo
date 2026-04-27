@@ -43,8 +43,14 @@ The stack is split across several compose files that are started independently a
 | `docker-compose.database.yml` | `weaviate` | `semant_demo_database` | Production Weaviate (REST :8080, gRPC :50051) |
 | `docker-compose.database-test.yml` | `weaviate-test` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
 | `docker-compose.embedder.yml` | `embedding-service` | `semant_demo_embedder` | Single GPU embedder shared by **production and all test instances** (port 8001) |
-| `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder` | Production app instance; own `tasks.db` mounted from `$SQL_DB_DIR` |
-| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder` | One container per test instance (CI/CD managed); each has its own `tasks.db` mounted from a subdirectory of `$SQL_DB_DIR_TEST` |
+| `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder` | Production app instance; own `tasks.db` mounted via `$SQL_DB_PATH` |
+| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder` | One container per test instance (CI/CD managed); each has its own `tasks.db` mounted via `$SQL_DB_PATH` |
+
+**Note on `SQL_DB_PATH` construction:**
+- **Production** (`ci-cd.yml`): `SQL_DB_PATH` is set directly to `$SQL_DB_DIR` from GitHub variables
+- **Test** (`ci-cd-test.yml`): `SQL_DB_PATH` is constructed per instance as a unique subdirectory under `$SQL_DB_DIR_TEST`:
+  - `test-main`: `${SQL_DB_DIR_TEST}/test-main`
+  - `test-pr-{N}`: `${SQL_DB_DIR_TEST}/test-pr-${PR_NUMBER}`
 
 ## Requirements
 
