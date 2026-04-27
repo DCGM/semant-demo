@@ -68,7 +68,7 @@ def call_ollama(client: Client, model: str, prompt_template: str, json_response:
     """
     text = rec.get("text", "")
     prefix_text = rec.get("prefix_text", "")
-    prompt = prompt_template.format(text=text, prefix_text=prefix_text)
+    prompt = prompt_template.replace("{text}", text).replace("{prefix_text}", prefix_text)
     try:
         response = client.generate(model=model, prompt=prompt, think=thinking, options={"num_predict": 512})
     except KeyboardInterrupt:
