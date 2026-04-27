@@ -1072,12 +1072,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
 }
 
-.drawer-panels {
-  flex: 1;
-  overflow-y: auto;
-  background: transparent;
-}
-
 .meta-row {
   padding: 12px 0;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
