@@ -50,23 +50,32 @@ def parse_args():
         "--json-response", action="store_true",
         help="Whether to expect JSON responses from the model and parse them accordingly. If not set, the raw text response will be stored under response-key." 
     )
+    parser.add_argument(
+        "--thinking", action="store_true",
+        help="Enable thinking mode. The model's thinking content will be stored under {response-key}_thinking."
+    )
+    parser.add_argument(
+        "--direct-output", action="store_true",
+        help="Write each record to the output file as soon as it is processed, rather than buffering all records until the end."
+    )
     return parser.parse_args()
 
 
-def call_ollama(client: Client, model: str, prompt_template: str, json_response: bool, rec: dict) -> str | None:
+def call_ollama(client: Client, model: str, prompt_template: str, json_response: bool, thinking: bool, rec: dict) -> tuple[str | dict | None, str | None]:
     """
     Use the Ollama Python client to generate a response from the model.
+    Returns a tuple of (response_value, thinking_text).
     """
     text = rec.get("text", "")
     prefix_text = rec.get("prefix_text", "")
     prompt = prompt_template.format(text=text, prefix_text=prefix_text)
     try:
-        response = client.generate(model=model, prompt=prompt, think=False, options={"num_predict": 512})
+        response = client.generate(model=model, prompt=prompt, think=thinking, options={"num_predict": 512})
     except KeyboardInterrupt:
         raise KeyboardInterrupt("Ollama call interrupted by user.")
     except Exception as e:
         print(f"Error calling model {model}: {e}")
-        return None
+        return None, None
 
     text_response = None
 
@@ -87,20 +96,28 @@ def call_ollama(client: Client, model: str, prompt_template: str, json_response:
     
     if text_response is None:
         print(f"Could not extract text response from model output: {response}")
-        return None
+        return None, None
+
+    # Extract thinking content if thinking mode is enabled
+    thinking_text = None
+    if thinking:
+        thinking_text = getattr(response, 'thinking', None)
+        if thinking_text is None and isinstance(response, dict):
+            thinking_text = response.get('thinking')
     
     if json_response:
         # We need to strip ```json ... ``` if present, because some models include that in the response when asked for JSON output
         text_response = text_response.strip("```json").strip("```").strip()
 
         try:
-            return json.loads(text_response)
+            return json.loads(text_response), thinking_text
         except KeyboardInterrupt:
             raise KeyboardInterrupt("Ollama call interrupted by user.")
         except json.JSONDecodeError as e:
             print(f"Error parsing JSON response: {e}\nResponse text was: {text_response}")
+            return None, thinking_text
 
-    return text_response
+    return text_response, thinking_text
 
 
 def should_skip(rec: dict, skip_attribute_values: dict) -> bool:
@@ -153,46 +170,65 @@ def main():
                 prefix = prefix[-args.prefix_characters:]  # Keep only the last N characters
 
         # 2) Dispatch Ollama calls in parallel, skipping records that match skip-attribute-values
-        to_process = [rec for rec in records if not should_skip(rec, skip_attribute_values)]
-        n_skipped = len(records) - len(to_process)
-        if n_skipped:
-            tqdm.write(f"Skipping processing of {n_skipped} records matching skip-attribute-values")
-
-        with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            future_to_rec = {
-                executor.submit(
-                    call_ollama,
-                    client,
-                    args.model,
-                    prompt_template,
-                    args.json_response,
-                    rec
-                ): rec
-                for rec in to_process
-            }
-
-            # 3) Collect results as they complete, with a progress bar
-            for future in tqdm(as_completed(future_to_rec),
-                               desc="Records", total=len(future_to_rec), leave=False, smoothing=0.05):
-                rec = future_to_rec[future]
-                try:
-                    result_value = future.result()
-                    if result_value is None:
-                        tqdm.write("No response from model for record.")
-                    else:
-                        rec[args.response_key] = result_value
-                except KeyboardInterrupt:
-                    tqdm.write("Processing interrupted by user.")
-                    return
-                except Exception as e:
-                    print(f"Error processing record with text: {e}")
-
-        # 4) Write out all records in original order (skipped records pass through unchanged)
-        with open(dst_path, 'w', encoding='utf-8') as outfile:
+        direct_out = open(dst_path, 'w', encoding='utf-8') if args.direct_output else None
+        try:
+            to_process = []
             for rec in records:
-                if "prefix_text" in rec:
-                    del rec["prefix_text"] 
-                outfile.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                if should_skip(rec, skip_attribute_values):
+                    if direct_out:
+                        rec.pop("prefix_text", None)
+                        direct_out.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                else:
+                    to_process.append(rec)
+            n_skipped = len(records) - len(to_process)
+            if n_skipped:
+                tqdm.write(f"Skipping processing of {n_skipped} records matching skip-attribute-values")
+
+            with ThreadPoolExecutor(max_workers=args.threads) as executor:
+                future_to_rec = {
+                    executor.submit(
+                        call_ollama,
+                        client,
+                        args.model,
+                        prompt_template,
+                        args.json_response,
+                        args.thinking,
+                        rec
+                    ): rec
+                    for rec in to_process
+                }
+
+                # 3) Collect results as they complete, with a progress bar
+                for future in tqdm(as_completed(future_to_rec),
+                                   desc="Records", total=len(future_to_rec), leave=False, smoothing=0.05):
+                    rec = future_to_rec[future]
+                    try:
+                        result_value, thinking_text = future.result()
+                        if result_value is None:
+                            tqdm.write("No response from model for record.")
+                        else:
+                            rec[args.response_key] = result_value
+                            if args.thinking and thinking_text is not None:
+                                rec[args.response_key + "_thinking"] = thinking_text
+                    except KeyboardInterrupt:
+                        tqdm.write("Processing interrupted by user.")
+                        return
+                    except Exception as e:
+                        print(f"Error processing record with text: {e}")
+
+                    if direct_out:
+                        rec.pop("prefix_text", None)
+                        direct_out.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+            # 4) Write out all records in original order (skipped records pass through unchanged)
+            if not direct_out:
+                with open(dst_path, 'w', encoding='utf-8') as outfile:
+                    for rec in records:
+                        rec.pop("prefix_text", None)
+                        outfile.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        finally:
+            if direct_out:
+                direct_out.close()
 
     print("Processing complete.")
 
