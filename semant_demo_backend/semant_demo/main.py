@@ -41,6 +41,10 @@ app.include_router(auth_router, prefix="/api/auth/jwt", tags=["auth"])
 app.include_router(register_router, prefix="/api/auth", tags=["auth"])
 app.include_router(users_router, prefix="/api/users", tags=["users"])
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[config.ALLOWED_ORIGIN],  # http://localhost:9000
