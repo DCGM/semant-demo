@@ -17,51 +17,51 @@ export const useDocumentsStore = defineStore('documents', () => {
   )
 
   const fetchDocumentsByCollection = async (collectionId: string) => {
-    const notif = ongoingNotification('Loading documents...')
+    // const notif = ongoingNotification('Loading documents...')
     loading.value = true
     error.value = null
     try {
       const data = await documentsRepository.getAllByCollection(collectionId)
       documents.value = data
-      notif.success('Documents loaded')
+      // notif.success('Documents loaded')
     } catch (err) {
       error.value = 'Failed to fetch documents'
       console.error('Error fetching documents:', err)
-      notif.error('Failed to load documents')
+      // notif.error('Failed to load documents')
     } finally {
       loading.value = false
     }
   }
 
   const fetchDocument = async (documentId: string) => {
-    const notif = ongoingNotification('Loading document...')
+    // const notif = ongoingNotification('Loading document...')
     loading.value = true
     error.value = null
     try {
       const data = await documentsRepository.getById(documentId)
       activeDocument.value = data
-      notif.success('Document loaded')
+      // notif.success('Document loaded')
     } catch (err) {
       error.value = 'Failed to fetch document'
       console.error('Error fetching document:', err)
-      notif.error('Failed to load document')
+      // notif.error('Failed to load document')
     } finally {
       loading.value = false
     }
   }
   const browseDocuments = async (params: DocumentBrowseParams) => {
-    const notif = ongoingNotification('Browsing documents...')
+    // const notif = ongoingNotification('Browsing documents...')
     loading.value = true
     error.value = null
     try {
       const data = await documentsRepository.browse(params)
       documents.value = data.items
-      notif.success('Documents loaded')
+      // notif.success('Documents loaded')
       return data
     } catch (err) {
       error.value = 'Failed to browse documents'
       console.error('Error browsing documents:', err)
-      notif.error('Failed to load documents')
+      // notif.error('Failed to load documents')
       throw err
     } finally {
       loading.value = false

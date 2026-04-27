@@ -11,16 +11,16 @@ export const useCollectionStatsStore = defineStore('collectionStats', () => {
   const loading = ref<boolean>(false)
 
   const fetchCollectionStats = async (collectionId: string) => {
-    const notif = ongoingNotification('Loading collection statistics...')
+    // const notif = ongoingNotification('Loading collection statistics...')
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.getStats(collectionId)
       collectionStats.value = data
-      notif.success('Collection statistics loaded')
+      // notif.success('Collection statistics loaded')
     } catch (err) {
       error.value = 'Failed to fetch collection statistics'
-      notif.error('Failed to load collection statistics')
+      // notif.error('Failed to load collection statistics')
     } finally {
       loading.value = false
     }

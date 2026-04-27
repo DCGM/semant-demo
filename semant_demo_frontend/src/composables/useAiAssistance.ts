@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import type { TagSpan } from 'src/models/tagSpans'
+import { SpanType } from 'src/generated/api'
 import { useTagSpansStore } from 'src/stores/tagSpansStore'
 
 /**
@@ -43,6 +44,61 @@ const highlightedAutoSpanId = ref<string | null>(null)
 
 export function useAiAssistance() {
   const spansStore = useTagSpansStore()
+
+  /**
+   * All currently-pending auto spans across the document, sorted in display
+   * order (confidence desc, then chunkId, then start). This is the canonical
+   * order used by the AI panel, the gutter popover and the "advance to next
+   * suggestion" helper below — keep it here so callers don't drift apart.
+   */
+  const pendingAutoSpans = computed<TagSpan[]>(() => {
+    const out: TagSpan[] = []
+    const byChunk = spansStore.spansByChunkId
+    for (const chunkId of Object.keys(byChunk)) {
+      for (const s of byChunk[chunkId] || []) {
+        if (s.type === SpanType.auto) out.push(s)
+      }
+    }
+    out.sort((a, b) => {
+      const confA = a.confidence ?? -Infinity
+      const confB = b.confidence ?? -Infinity
+      if (confA !== confB) return confB - confA
+      if (a.chunkId === b.chunkId) return a.start - b.start
+      return a.chunkId.localeCompare(b.chunkId)
+    })
+    return out
+  })
+
+  /**
+   * Pick the suggestion that should become highlighted after `spanId` is
+   * resolved (approved / rejected). Returns the next entry in the pending
+   * order; if `spanId` was last, returns the previous one; null when
+   * nothing else is pending.
+   */
+  const nextPendingSuggestionAfter = (spanId: string): string | null => {
+    const list = pendingAutoSpans.value
+    if (list.length <= 1) return null
+    const idx = list.findIndex((s) => s.id === spanId)
+    if (idx === -1) return list[0]?.id ?? null
+    const candidate = list[idx + 1] ?? list[idx - 1]
+    return candidate?.id ?? null
+  }
+
+  /**
+   * Resolve a single auto span (approve = pos / reject = neg) and advance
+   * the highlight to the next pending suggestion in the same order. Used
+   * both from the AI panel and from the gutter popover so the behaviour
+   * stays consistent.
+   */
+  const resolveAutoSpan = async (
+    span: TagSpan,
+    type: SpanType
+  ): Promise<void> => {
+    if (!span.id) return
+    const nextId = nextPendingSuggestionAfter(span.id)
+    await spansStore.updateSpan(span.id, span.chunkId, { type })
+    highlightedAutoSpanId.value = nextId
+  }
 
   /**
    * Run a streaming AI suggestion request. Auto spans are persisted in the
@@ -192,7 +248,10 @@ export function useAiAssistance() {
     processedChunkCount: computed(() => processedChunkIds.value.size),
     totalSpansAdded: computed(() => totalSpansAdded.value),
     aiTabActive,
-    highlightedAutoSpanId
+    highlightedAutoSpanId,
+    pendingAutoSpans,
+    nextPendingSuggestionAfter,
+    resolveAutoSpan
   }
 }
 

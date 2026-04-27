@@ -18,33 +18,33 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   )
 
   const fetchCollections = async () => {
-    const notif = ongoingNotification('Loading collections...')
+    // const notif = ongoingNotification('Loading collections...')
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.getAll()
       collections.value = data
-      notif.success('Collections loaded')
+      // notif.success('Collections loaded')
     } catch (err) {
       error.value = 'Failed to fetch collections'
       console.error('Error fetching collections:', err)
-      notif.error('Failed to load collections')
+      // notif.error('Failed to load collections')
     } finally {
       loading.value = false
     }
   }
   const fetchCollection = async (collectionId: string) => {
-    const notif = ongoingNotification('Loading collection...')
+    // const notif = ongoingNotification('Loading collection...')
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.getById(collectionId)
       activeCollection.value = data
-      notif.success('Collection loaded')
+      // notif.success('Collection loaded')
     } catch (err) {
       error.value = 'Failed to fetch collection'
       console.error('Error fetching collection:', err)
-      notif.error('Failed to load collection')
+      // notif.error('Failed to load collection')
     } finally {
       loading.value = false
     }

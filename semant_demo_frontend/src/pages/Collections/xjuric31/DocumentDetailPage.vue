@@ -238,7 +238,8 @@
             :style="{
               top: item.top + 'px',
               height: item.height + 'px',
-              left: item.column * 44 + 8 + 'px'
+              left: item.column * 44 + 8 + 'px',
+              '--tag-color': (tagInfoMap[item.tagId] || { color: '#3b82f6' }).color
             }"
             @mouseenter="hoveredSpanId = item.spanId"
             @mouseleave="hoveredSpanId = null"
@@ -513,7 +514,7 @@ async function changeEditingSpanType(type: SpanType) {
   if (!span || !span.id) return
   approveRejectBusy.value = true
   try {
-    await tagSpansStore.updateSpan(span.id, span.chunkId, { type })
+    await aiAssist.resolveAutoSpan(span, type)
   } finally {
     approveRejectBusy.value = false
     annotations.clearSelection()
@@ -1815,21 +1816,26 @@ onBeforeUnmount(() => {
 /* ── Auto (AI-suggested) gutter items: muted, dashed, slightly faded. ── */
 .gutter-item.is-auto .gutter-line {
   /* Replace solid colour with a dashed strip so users can spot at a glance
-     that this is an unconfirmed AI suggestion. */
-  background: repeating-linear-gradient(
+     that this is an unconfirmed AI suggestion. The inline `backgroundColor`
+     (tag colour) is intentionally overridden — but we need to use
+     `background-image` only (not the `background` shorthand) so the inline
+     `background-color` isn't wiped, which would make the bar disappear
+     whenever we re-enable it (e.g. on highlight). */
+  background-image: repeating-linear-gradient(
     to bottom,
     currentColor 0,
     currentColor 4px,
     transparent 4px,
     transparent 8px
   ) !important;
+  background-color: transparent !important;
   color: #94a3b8;
   opacity: 0.55;
   filter: grayscale(0.6);
 }
 
 .gutter-item.is-auto .gutter-label {
-  background: #94a3b8 !important;
+  background-color: #94a3b8 !important;
   opacity: 0.7;
   filter: grayscale(0.5);
 }
@@ -1845,16 +1851,18 @@ onBeforeUnmount(() => {
 }
 
 /* Two-way highlight with the AI suggestions panel: when a card is selected
-   in the panel, drop the grayed-out look on its gutter marker so the tag's
-   own colour pops back. The same class is added when the user clicks an auto
-   span in the text/gutter so the panel mirrors the choice. */
+   in the panel, emphasize the gray dashed marker (darker color, full
+   opacity) without restoring the tag's full colour. The same class is
+   added when the user clicks an auto span in the text/gutter so the panel
+   mirrors the choice. */
 .gutter-item.is-auto.is-highlighted .gutter-line {
+  color: #475569;
   opacity: 1;
   filter: none;
-  background-image: none !important;
 }
 
 .gutter-item.is-auto.is-highlighted .gutter-label {
+  background-color: #475569 !important;
   opacity: 1;
   filter: none;
 }

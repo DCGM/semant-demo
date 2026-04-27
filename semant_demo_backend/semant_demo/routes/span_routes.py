@@ -118,8 +118,9 @@ async def delete_spans_for_tags_in_document(
     tagger: WeaviateAbstraction = Depends(get_search),
 ) -> DeleteSpansForTagsResponse:
     """
-    Bulk-delete every span (regardless of ``type``) for the given tag ids
-    within a single (collection, document) scope.
+    Bulk-delete approved (``type == 'pos'``) spans for the given tag ids
+    within a single (collection, document) scope. Negatives and unresolved
+    auto suggestions are left untouched.
     """
     deleted = await tagger.span.delete_all_spans_for_tags_in_document(
         collection_id=body.collection_id,

@@ -141,11 +141,11 @@
                     size="sm"
                     icon="delete_sweep"
                     class="delete-tag-spans-btn"
-                    :disable="tagNav.spanCount(tag.id) === 0 || deletingTagSpansId === tag.id"
+                    :disable="(posSpanCountByTag[tag.id] ?? 0) === 0 || deletingTagSpansId === tag.id"
                     :loading="deletingTagSpansId === tag.id"
                     @click="onDeleteAllTagSpans(tag)"
                   >
-                    <q-tooltip>Delete all annotations of this tag in this document</q-tooltip>
+                    <q-tooltip>Delete all approved annotations of this tag in this document</q-tooltip>
                   </q-btn>
                 </div>
                 <!-- Span navigation -->
@@ -401,9 +401,17 @@
                 <div
                   v-if="entry.span.reason"
                   class="auto-span-reason"
-                  :title="entry.span.reason || ''"
                 >
                   {{ entry.span.reason }}
+                  <q-tooltip
+                    anchor="top middle"
+                    self="bottom middle"
+                    :delay="150"
+                    max-width="320px"
+                    class="auto-span-reason-tooltip"
+                  >
+                    {{ entry.span.reason }}
+                  </q-tooltip>
                 </div>
               </div>
               </div>
@@ -673,29 +681,14 @@ const tagsById = computed(() => {
   return m
 })
 
-const pendingAutoSpans = computed<AutoSpanEntry[]>(() => {
-  const out: AutoSpanEntry[] = []
-  const byChunk = tagSpansStore.spansByChunkId
-  for (const chunkId of Object.keys(byChunk)) {
-    const spans = byChunk[chunkId] || []
-    for (const span of spans) {
-      if (span.type !== SpanType.auto) continue
-      out.push({
-        span,
-        tag: tagsById.value[span.tagId]
-      })
-    }
-  }
-  // Stable order: by confidence (highest first), then chunk id, then start.
-  out.sort((a, b) => {
-    const confA = a.span.confidence ?? -Infinity
-    const confB = b.span.confidence ?? -Infinity
-    if (confA !== confB) return confB - confA
-    if (a.span.chunkId === b.span.chunkId) return a.span.start - b.span.start
-    return a.span.chunkId.localeCompare(b.span.chunkId)
-  })
-  return out
-})
+// Canonical pending auto spans (ordered by confidence desc) come from the
+// composable; we just join in the tag for display.
+const pendingAutoSpans = computed<AutoSpanEntry[]>(() =>
+  aiAssist.pendingAutoSpans.value.map((span) => ({
+    span,
+    tag: tagsById.value[span.tagId]
+  }))
+)
 
 // Group pending suggestions by tag id so each tag in the AI tag list can show
 // per-tag navigation arrows and a counter.
@@ -731,25 +724,18 @@ function navigateAutoSpan(tagId: string, direction: 'prev' | 'next') {
   if (target.id) aiAssist.highlightedAutoSpanId.value = target.id
 }
 
-async function approveAutoSpan(span: TagSpan) {
+async function resolveSuggestion(span: TagSpan, type: SpanType) {
   if (!span.id) return
   busyAutoSpanIds.value.add(span.id)
   try {
-    await tagSpansStore.updateSpan(span.id, span.chunkId, { type: SpanType.pos })
+    await aiAssist.resolveAutoSpan(span, type)
   } finally {
     busyAutoSpanIds.value.delete(span.id)
   }
 }
 
-async function rejectAutoSpan(span: TagSpan) {
-  if (!span.id) return
-  busyAutoSpanIds.value.add(span.id)
-  try {
-    await tagSpansStore.updateSpan(span.id, span.chunkId, { type: SpanType.neg })
-  } finally {
-    busyAutoSpanIds.value.delete(span.id)
-  }
-}
+const approveAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.pos)
+const rejectAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.neg)
 
 // ── Bulk approve / reject of selected suggestions ──
 const selectedSuggestionIds = ref<Set<string>>(new Set())
@@ -811,6 +797,11 @@ async function bulkResolveSelected(type: SpanType) {
   }
   if (!targets.length) return
 
+  // Pre-compute which suggestion should be highlighted once these resolve.
+  const targetIds = new Set(targets.map((t) => t.id))
+  const nextHighlight =
+    pendingAutoSpans.value.find((e) => e.span.id && !targetIds.has(e.span.id))?.span.id ?? null
+
   isBulkResolving.value = true
   for (const t of targets) busyAutoSpanIds.value.add(t.id)
   try {
@@ -821,6 +812,7 @@ async function bulkResolveSelected(type: SpanType) {
         })
       )
     )
+    aiAssist.highlightedAutoSpanId.value = nextHighlight
   } finally {
     for (const t of targets) busyAutoSpanIds.value.delete(t.id)
     isBulkResolving.value = false
@@ -857,12 +849,27 @@ async function onBulkDelete() {
   }
 }
 
+// Per-tag count of approved (pos) spans in the currently loaded chunks. Used
+// by the per-tag delete-sweep button which only wipes positives — auto
+// suggestions and negative feedback are intentionally left alone.
+const posSpanCountByTag = computed<Record<string, number>>(() => {
+  const out: Record<string, number> = {}
+  const byChunk = tagSpansStore.spansByChunkId
+  for (const chunkId of Object.keys(byChunk)) {
+    for (const s of byChunk[chunkId] || []) {
+      if (s.type !== SpanType.pos) continue
+      out[s.tagId] = (out[s.tagId] ?? 0) + 1
+    }
+  }
+  return out
+})
+
 function onDeleteAllTagSpans(tag: Tag) {
-  const count = tagNav.spanCount(tag.id)
+  const count = posSpanCountByTag.value[tag.id] ?? 0
   if (!count) return
   $q.dialog({
-    title: 'Delete all annotations',
-    message: `Delete all ${count} annotation${count === 1 ? '' : 's'} of "${tag.name}" in this document? This cannot be undone.`,
+    title: 'Delete approved annotations',
+    message: `Delete all ${count} approved annotation${count === 1 ? '' : 's'} of "${tag.name}" in this document? Negative feedback and unresolved AI suggestions will be kept. This cannot be undone.`,
     cancel: true,
     persistent: true,
     ok: { label: 'Delete', color: 'negative', flat: false }
@@ -876,14 +883,17 @@ function onDeleteAllTagSpans(tag: Tag) {
           tagIds: [tag.id]
         }
       })
-      // Drop spans for this tag from the in-memory store.
+      // Drop only approved spans for this tag from the in-memory store —
+      // mirrors what the backend just did.
       const byChunk = tagSpansStore.spansByChunkId
       for (const chunkId of Object.keys(byChunk)) {
-        byChunk[chunkId] = (byChunk[chunkId] || []).filter((s) => s.tagId !== tag.id)
+        byChunk[chunkId] = (byChunk[chunkId] || []).filter(
+          (s) => !(s.tagId === tag.id && s.type === SpanType.pos)
+        )
       }
       $q.notify({
         type: 'positive',
-        message: `Deleted ${result.deleted} annotation${result.deleted === 1 ? '' : 's'} of "${tag.name}".`,
+        message: `Deleted ${result.deleted} approved annotation${result.deleted === 1 ? '' : 's'} of "${tag.name}".`,
         timeout: 2500
       })
     } catch (e) {
@@ -1196,21 +1206,22 @@ onBeforeUnmount(() => {
 
 .delete-tag-spans-btn {
   color: #94a3b8;
-  opacity: 0;
+  opacity: 0 !important;
   transition: opacity 0.15s, color 0.15s;
 }
 
 .tag-card:hover .delete-tag-spans-btn {
-  opacity: 1;
+  opacity: 1 !important;
 }
 
 .delete-tag-spans-btn:hover {
   color: #dc2626;
 }
 
-.delete-tag-spans-btn.disabled,
-.delete-tag-spans-btn[disabled] {
-  opacity: 0 !important;
+.tag-card:hover .delete-tag-spans-btn.disabled,
+.tag-card:hover .delete-tag-spans-btn[disabled] {
+  color: #cbd5e1;
+  opacity: 0.6 !important;
 }
 
 .tag-nav-row {
@@ -1421,5 +1432,12 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: #64748b;
   border-color: #94a3b8;
+}
+
+.auto-span-reason-tooltip {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  background: rgba(15, 23, 42, 0.92);
 }
 </style>

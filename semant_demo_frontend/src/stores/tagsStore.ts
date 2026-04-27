@@ -18,34 +18,34 @@ export const useTagsStore = defineStore('tags', () => {
   )
 
   const fetchTagsByCollection = async (collectionId: string) => {
-    const notif = ongoingNotification('Loading tags...')
+    // const notif = ongoingNotification('Loading tags...')
     loading.value = true
     error.value = null
     try {
       const data = await tagsRepository.getAllByCollection(collectionId)
       tags.value = data
-      notif.success('Tags loaded')
+      // notif.success('Tags loaded')
     } catch (err) {
       error.value = 'Failed to fetch tags'
       console.error('Error fetching tags:', err)
-      notif.error('Failed to load tags')
+      // notif.error('Failed to load tags')
     } finally {
       loading.value = false
     }
   }
 
   const fetchTag = async (tagUuid: string) => {
-    const notif = ongoingNotification('Loading tag...')
+    // const notif = ongoingNotification('Loading tag...')
     loading.value = true
     error.value = null
     try {
       const data = await tagsRepository.getById(tagUuid)
       activeTag.value = data
-      notif.success('Tag loaded')
+      // notif.success('Tag loaded')
     } catch (err) {
       error.value = 'Failed to fetch tag'
       console.error('Error fetching tag:', err)
-      notif.error('Failed to load tag')
+      // notif.error('Failed to load tag')
     } finally {
       loading.value = false
     }

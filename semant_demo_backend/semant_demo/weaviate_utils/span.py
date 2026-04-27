@@ -405,15 +405,17 @@ class Span():
         tag_ids: list[str],
     ) -> int:
         """
-        Bulk-delete every span (regardless of ``type``) for the given tag UUIDs
+        Bulk-delete approved (``type == 'pos'``) spans for the given tag UUIDs
         within a single (collection, document) scope. Used by the "delete all
-        annotations of this tag" action in the document detail page.
+        annotations of this tag" action in the document detail page — we only
+        wipe positives so user feedback (negatives) and unresolved AI
+        suggestions (auto) are preserved.
         """
         return await self._delete_spans_in_scope(
             collection_id=collection_id,
             document_id=document_id,
             tag_ids=tag_ids,
-            type_filter=None,
+            type_filter=schemas.SpanType.pos.value,
         )
 
     async def _delete_spans_in_scope(
