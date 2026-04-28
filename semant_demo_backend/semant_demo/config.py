@@ -54,6 +54,21 @@ class Config:
         self.TOPICER_CONFIG_NAME = os.getenv("TOPICER_CONFIG_NAME", "config")
         self.TOPICER_TIMEOUT = float(os.getenv("TOPICER_TIMEOUT", 600.0))
 
+        # Span discussion chat (OpenAI-compatible endpoint).
+        # Defaults reuse the generic OPENAI_* settings so a single API key
+        # can drive both generic LLM use and the span chat unless overridden.
+        self.SPAN_CHAT_API_KEY = os.getenv("SPAN_CHAT_API_KEY", self.OPENAI_API_KEY)
+        self.SPAN_CHAT_API_URL = os.getenv("SPAN_CHAT_API_URL", self.OPENAI_API_URL)
+        self.SPAN_CHAT_MODEL = os.getenv("SPAN_CHAT_MODEL", self.OPENAI_MODEL)
+        self.SPAN_CHAT_TEMPERATURE = float(os.getenv("SPAN_CHAT_TEMPERATURE", 0.4))
+        self.SPAN_CHAT_MAX_TOKENS = int(os.getenv("SPAN_CHAT_MAX_TOKENS", 1024))
+        # Number of characters of surrounding chunk text to include before/after
+        # the span when building the assistant context.
+        self.SPAN_CHAT_CONTEXT_CHARS = int(os.getenv("SPAN_CHAT_CONTEXT_CHARS", 1500))
+        # Cap on the number of user/assistant messages kept from history
+        # (system + context + last N exchanges).
+        self.SPAN_CHAT_HISTORY_LIMIT = int(os.getenv("SPAN_CHAT_HISTORY_LIMIT", 20))
+
         # path to rag configs
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
         test_configs_path = SCRIPT_PATH / "rag" / "rag_configs" / "tests"

@@ -30,6 +30,7 @@ import type {
   DeleteAutoSpansResponse,
   DeleteSpansForTagsRequest,
   DeleteSpansForTagsResponse,
+  DiscussSpanRequest,
   DocumentBrowse,
   DocumentStats,
   ExplainRequest,
@@ -97,6 +98,8 @@ import {
     DeleteSpansForTagsRequestToJSON,
     DeleteSpansForTagsResponseFromJSON,
     DeleteSpansForTagsResponseToJSON,
+    DiscussSpanRequestFromJSON,
+    DiscussSpanRequestToJSON,
     DocumentBrowseFromJSON,
     DocumentBrowseToJSON,
     DocumentStatsFromJSON,
@@ -245,6 +248,10 @@ export interface DeleteTagApiTagsTagUuidDeleteRequest {
 
 export interface DeleteTagSpanApiTagSpansSpanIdDeleteRequest {
     spanId: string;
+}
+
+export interface DiscussSpanApiAiDiscussSpanPostRequest {
+    discussSpanRequest: DiscussSpanRequest;
 }
 
 export interface ExplainSelectionApiRagExplainPostRequest {
@@ -823,6 +830,30 @@ export interface DefaultApiInterface {
      * Delete Tag Span
      */
     deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for discussSpanApiAiDiscussSpanPost without sending the request
+     * @param {DiscussSpanRequest} discussSpanRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    discussSpanApiAiDiscussSpanPostRequestOpts(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+     * @summary Discuss Span
+     * @param {DiscussSpanRequest} discussSpanRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    discussSpanApiAiDiscussSpanPostRaw(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+     * Discuss Span
+     */
+    discussSpanApiAiDiscussSpanPost(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for explainSelectionApiRagExplainPost without sending the request
@@ -2638,6 +2669,59 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for discussSpanApiAiDiscussSpanPost without sending the request
+     */
+    async discussSpanApiAiDiscussSpanPostRequestOpts(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['discussSpanRequest'] == null) {
+            throw new runtime.RequiredError(
+                'discussSpanRequest',
+                'Required parameter "discussSpanRequest" was null or undefined when calling discussSpanApiAiDiscussSpanPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/ai/discuss_span`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DiscussSpanRequestToJSON(requestParameters['discussSpanRequest']),
+        };
+    }
+
+    /**
+     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+     * Discuss Span
+     */
+    async discussSpanApiAiDiscussSpanPostRaw(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.discussSpanApiAiDiscussSpanPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+     * Discuss Span
+     */
+    async discussSpanApiAiDiscussSpanPost(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.discussSpanApiAiDiscussSpanPostRaw(requestParameters, initOverrides);
     }
 
     /**

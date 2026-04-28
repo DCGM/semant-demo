@@ -23,6 +23,7 @@ docs/DeleteAutoSpansResponse.md
 docs/DeleteSpansForTagsRequest.md
 docs/DeleteSpansForTagsResponse.md
 docs/Detail.md
+docs/DiscussSpanRequest.md
 docs/DocumentBrowse.md
 docs/DocumentInput.md
 docs/DocumentStats.md
@@ -61,6 +62,7 @@ docs/SearchResponseOutput.md
 docs/SearchType.md
 docs/SemantDemoSchemaDocumentsDocument.md
 docs/SemantDemoSchemasDocument.md
+docs/SpanChatMessage.md
 docs/SpanType.md
 docs/SuggestSpansRequest.md
 docs/SummaryResponse.md
@@ -104,6 +106,7 @@ models/DeleteAutoSpansResponse.ts
 models/DeleteSpansForTagsRequest.ts
 models/DeleteSpansForTagsResponse.ts
 models/Detail.ts
+models/DiscussSpanRequest.ts
 models/DocumentBrowse.ts
 models/DocumentInput.ts
 models/DocumentStats.ts
@@ -142,6 +145,7 @@ models/SearchResponseOutput.ts
 models/SearchType.ts
 models/SemantDemoSchemaDocumentsDocument.ts
 models/SemantDemoSchemasDocument.ts
+models/SpanChatMessage.ts
 models/SpanType.ts
 models/SuggestSpansRequest.ts
 models/SummaryResponse.ts

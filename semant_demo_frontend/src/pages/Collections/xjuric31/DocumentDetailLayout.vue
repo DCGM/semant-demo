@@ -172,7 +172,7 @@
           <q-tab-panel name="ai" class="q-pa-md ai-panel">
             <div class="ai-section-title">AI assistance</div>
             <div class="text-caption text-grey-7 q-mb-sm">
-              Pick the tags the AI should look for in this document and choose a mode. Suggestions are stored as auto spans and shown as dashed grey markers in the text.
+              Pick the tags the AI should look for in this document and choose a mode. Suggestions are shown as dashed grey markers in the text.
             </div>
 
             <div class="ai-section-label">Mode</div>

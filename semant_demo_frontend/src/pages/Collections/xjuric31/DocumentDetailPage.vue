@@ -350,6 +350,15 @@
               <q-btn
                 v-if="annotations.isEditing.value"
                 no-caps outline
+                icon="smart_toy"
+                label="Discuss with AI"
+                color="info"
+                class="popover-btn"
+                @click="onDiscussSpan"
+              />
+              <q-btn
+                v-if="annotations.isEditing.value"
+                no-caps outline
                 icon="delete"
                 label="Delete"
                 color="negative"
@@ -427,6 +436,7 @@ import { SpanType } from 'src/generated/api'
 import type { Chunk } from 'src/generated/api'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
 import useAiAssistance from 'src/composables/useAiAssistance'
+import useSpanDiscussionDialog from 'src/composables/dialogs/useSpanDiscussionDialog'
 import ChunkAnnotator from 'src/components/ChunkAnnotator.vue'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
 
@@ -1053,6 +1063,34 @@ const onBoundaryDrag = (payload: { chunkId: string; handle: 'start' | 'end'; cha
 
 const onDeleteSpan = async () => {
   await annotations.deleteSpan()
+}
+
+// ── Discuss-with-AI ──
+const { openSpanDiscussionDialog } = useSpanDiscussionDialog()
+
+const onDiscussSpan = () => {
+  const sel = annotations.selection.value
+  if (!sel?.editingSpanId) return
+
+  // Resolve span text & tag info for the dialog header. The selection only
+  // exposes the start chunk; for spans crossing chunks we still slice from
+  // that chunk to keep the preview short.
+  const chunk = displayChunks.value.find((c) => c.id === sel.chunkId) ??
+    hiddenPreviewChunks.value.find((c) => c.id === sel.chunkId)
+  const text = chunk?.text || ''
+  const start = Math.max(0, Math.min(sel.start, text.length))
+  const end = Math.max(start, Math.min(sel.end, text.length))
+  const spanText = text.slice(start, end)
+
+  const tag = sel.tagId ? tags.value.find((t) => t.id === sel.tagId) : undefined
+
+  openSpanDiscussionDialog({
+    spanId: sel.editingSpanId,
+    collectionId: props.collectionId,
+    spanText,
+    tagName: tag?.name,
+    tagColor: tag?.color
+  })
 }
 
 // Load data + recalculate gutter
