@@ -60,6 +60,45 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     }
   }
 
+  /**
+   * Apply the same patch to many spans in one round-trip and commit the
+   * results with a SINGLE reactive write to `spansByChunkId`.
+   *
+   * The previous approach (`Promise.all(updateSpan(...))`) caused N
+   * independent reactive mutations, each triggering recomputes of derived
+   * `pendingAutoSpans` / `autoSpansByTag` and a document re-render. For
+   * large bulk approve/reject actions that stalled the main thread.
+   */
+  const bulkUpdateSpans = async (spanIds: string[], update: PatchSpan) => {
+    if (spanIds.length === 0) return
+    try {
+      const updated = await repo.bulkUpdate(spanIds, update)
+      const byId = new Map(updated.map((s) => [s.id, s] as const))
+
+      const next: Record<string, TagSpans> = { ...spansByChunkId.value }
+      for (const chunkId of Object.keys(next)) {
+        const list = next[chunkId]
+        if (!list) continue
+        let copy: TagSpans | null = null
+        for (let i = 0; i < list.length; i++) {
+          const id = list[i]?.id
+          if (!id) continue
+          const replacement = byId.get(id)
+          if (!replacement) continue
+          if (!copy) copy = list.slice()
+          copy[i] = replacement
+        }
+        if (copy) next[chunkId] = copy
+      }
+
+      spansByChunkId.value = next
+    } catch (err) {
+      console.error('Failed to bulk-update spans', err)
+      error.value = 'Failed to bulk-update spans'
+      throw err
+    }
+  }
+
   const deleteSpan = async (spanId: string, chunkId: string) => {
     try {
       await repo.delete(spanId)
@@ -76,6 +115,20 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     error.value = null
   }
 
+  /**
+   * Drop spans from the in-memory cache without hitting the API.
+   * Useful when the backend has already deleted spans in bulk and we only
+   * need to mirror the change locally.
+   */
+  const removeSpansLocally = (predicate: (span: TagSpans[number], chunkId: string) => boolean) => {
+    const next: Record<string, TagSpans> = {}
+    for (const chunkId of Object.keys(spansByChunkId.value)) {
+      const list = spansByChunkId.value[chunkId] || []
+      next[chunkId] = list.filter((s) => !predicate(s, chunkId))
+    }
+    spansByChunkId.value = next
+  }
+
   return {
     spansByChunkId,
     loading,
@@ -84,7 +137,9 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     fetchSpansForChunksInCollection,
     createSpan,
     updateSpan,
+    bulkUpdateSpans,
     deleteSpan,
+    removeSpansLocally,
     clearAll
   }
 })

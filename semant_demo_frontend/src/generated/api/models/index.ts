@@ -5,6 +5,8 @@ export * from './AppFeedbackRequest';
 export * from './ApproveTagReq';
 export * from './ApproveTagResponse';
 export * from './BearerResponse';
+export * from './BulkUpdateSpansRequest';
+export * from './BulkUpdateSpansResponse';
 export * from './CancelTaskResponse';
 export * from './Chunk';
 export * from './Chunk2CollectionReq';

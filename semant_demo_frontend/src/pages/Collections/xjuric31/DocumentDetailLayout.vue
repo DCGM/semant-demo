@@ -477,7 +477,7 @@ import type { PostTag, PatchTag, Tag } from 'src/models/tags'
 import TagExamples from 'src/components/TagExamples.vue'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
 import useAiAssistance, { type AiAssistanceMode } from 'src/composables/useAiAssistance'
-import { useTagSpansStore } from 'src/stores/tagSpansStore'
+import useTagSpans from 'src/composables/useTagSpans'
 import { useApi } from 'src/composables/useApi'
 import { SpanType } from 'src/generated/api'
 import type { TagSpan } from 'src/models/tagSpans'
@@ -602,7 +602,7 @@ function onDragEnd() {
 
 // ── AI assistance ──
 const aiAssist = useAiAssistance()
-const tagSpansStore = useTagSpansStore()
+const tagSpans = useTagSpans()
 const { default: api } = useApi()
 const aiMode = ref<AiAssistanceMode>('optimized')
 const aiModeOptions = [
@@ -805,13 +805,14 @@ async function bulkResolveSelected(type: SpanType) {
   isBulkResolving.value = true
   for (const t of targets) busyAutoSpanIds.value.add(t.id)
   try {
-    await Promise.all(
-      targets.map((t) =>
-        tagSpansStore.updateSpan(t.id, t.chunkId, { type }).catch((e) => {
-          console.error('Bulk resolve failed for span', t.id, e)
-        })
+    await tagSpans
+      .bulkUpdateSpans(
+        targets.map((t) => t.id),
+        { type }
       )
-    )
+      .catch((e: unknown) => {
+        console.error('Bulk resolve failed', e)
+      })
     aiAssist.highlightedAutoSpanId.value = nextHighlight
   } finally {
     for (const t of targets) busyAutoSpanIds.value.delete(t.id)
@@ -836,12 +837,7 @@ async function onBulkDelete() {
     // Refresh auto spans currently in memory by dropping them from the store
     // for the affected (chunk, tag) pairs.
     const tagIdSet = new Set(selectedAiTagIds.value)
-    const byChunk = tagSpansStore.spansByChunkId
-    for (const chunkId of Object.keys(byChunk)) {
-      byChunk[chunkId] = (byChunk[chunkId] || []).filter(
-        (s) => !(s.type === SpanType.auto && tagIdSet.has(s.tagId))
-      )
-    }
+    tagSpans.removeSpansLocally((s) => s.type === SpanType.auto && tagIdSet.has(s.tagId))
   } catch (e) {
     console.error('Bulk delete of auto spans failed', e)
   } finally {
@@ -854,7 +850,7 @@ async function onBulkDelete() {
 // suggestions and negative feedback are intentionally left alone.
 const posSpanCountByTag = computed<Record<string, number>>(() => {
   const out: Record<string, number> = {}
-  const byChunk = tagSpansStore.spansByChunkId
+  const byChunk = tagSpans.spansByChunkId.value
   for (const chunkId of Object.keys(byChunk)) {
     for (const s of byChunk[chunkId] || []) {
       if (s.type !== SpanType.pos) continue
@@ -885,12 +881,7 @@ function onDeleteAllTagSpans(tag: Tag) {
       })
       // Drop only approved spans for this tag from the in-memory store —
       // mirrors what the backend just did.
-      const byChunk = tagSpansStore.spansByChunkId
-      for (const chunkId of Object.keys(byChunk)) {
-        byChunk[chunkId] = (byChunk[chunkId] || []).filter(
-          (s) => !(s.tagId === tag.id && s.type === SpanType.pos)
-        )
-      }
+      tagSpans.removeSpansLocally((s) => s.tagId === tag.id && s.type === SpanType.pos)
       $q.notify({
         type: 'positive',
         message: `Deleted ${result.deleted} approved annotation${result.deleted === 1 ? '' : 's'} of "${tag.name}".`,
@@ -985,7 +976,7 @@ watch(
     aiAssist.reset()
     selectedSuggestionIds.value = new Set()
     lastDeletedCount.value = null
-    tagSpansStore.clearAll()
+    tagSpans.clearAll()
     await loadDocument(documentId)
   },
   { immediate: true }

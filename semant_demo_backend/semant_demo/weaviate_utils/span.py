@@ -2,6 +2,7 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
 from uuid import UUID
 from typing import cast
+import asyncio
 import logging
 from weaviate.exceptions import (
     WeaviateConnectionError,
@@ -373,6 +374,40 @@ class Span():
             )
 
         return await self.read(span_id)
+
+    async def bulk_update(
+        self,
+        span_ids: list[str],
+        update_fields: PatchSpan,
+    ) -> list[schemas.TagSpan]:
+        """
+        Apply the same patch to many spans concurrently.
+
+        Used by the AI-assist "Approve / Reject all selected" action — a
+        single HTTP request from the browser fan-outs into one
+        :meth:`update` call per span on the server side, so we avoid the
+        per-span HTTP round-trip and the browser's 6-conn-per-origin cap.
+
+        Spans that fail to update are skipped (the failure is logged) so a
+        single bad id doesn't poison the whole batch.
+        """
+        if not span_ids:
+            return []
+
+        results = await asyncio.gather(
+            *(self.update(span_id=sid, update_fields=update_fields) for sid in span_ids),
+            return_exceptions=True,
+        )
+
+        out: list[schemas.TagSpan] = []
+        for sid, res in zip(span_ids, results):
+            if isinstance(res, Exception):
+                logging.getLogger(__name__).warning(
+                    "bulk_update failed for span %s: %s", sid, res
+                )
+                continue
+            out.append(res)
+        return out
 
     async def delete_auto_spans_in_scope(
         self,

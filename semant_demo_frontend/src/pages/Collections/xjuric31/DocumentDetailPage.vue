@@ -422,7 +422,7 @@ import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import useChunks from 'src/composables/useChunks'
 import useTags from 'src/composables/useTags'
 import { useAnnotations } from 'src/composables/useAnnotations'
-import { useTagSpansStore } from 'src/stores/tagSpansStore'
+import useTagSpans from 'src/composables/useTagSpans'
 import { SpanType } from 'src/generated/api'
 import type { Chunk } from 'src/generated/api'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
@@ -491,7 +491,7 @@ const chunkLoadingId = ref<string | null>(null)
 const hiddenPreviewChunks = ref<Chunk[]>([])
 // Sync displayChunks from store when initial load completes (handled in watch below)
 const annotations = useAnnotations(() => displayChunks.value, () => hiddenPreviewChunks.value)
-const tagSpansStore = useTagSpansStore()
+const tagSpans = useTagSpans()
 const aiAssist = useAiAssistance()
 const aiTabActive = computed(() => aiAssist.aiTabActive.value)
 const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.value)
@@ -504,7 +504,7 @@ const approveRejectBusy = ref(false)
 const editingAutoSpan = computed(() => {
   const sel = annotations.selection.value
   if (!sel?.editingSpanId) return null
-  const spans = tagSpansStore.spansByChunkId[sel.chunkId] || []
+  const spans = tagSpans.spansByChunkId.value[sel.chunkId] || []
   const span = spans.find((s) => s.id === sel.editingSpanId)
   return span && span.type === SpanType.auto ? span : null
 })
@@ -945,8 +945,8 @@ watch(aiTabActive, () => {
 watch(highlightedAutoSpanId, (spanId) => {
   if (!spanId || !documentTextRef.value) return
   // Find the span across known chunks.
-  for (const chunkId of Object.keys(tagSpansStore.spansByChunkId)) {
-    const span = (tagSpansStore.spansByChunkId[chunkId] || []).find(s => s.id === spanId)
+  for (const chunkId of Object.keys(tagSpans.spansByChunkId.value)) {
+    const span = (tagSpans.spansByChunkId.value[chunkId] || []).find(s => s.id === spanId)
     if (!span) continue
     const chunkEl = documentTextRef.value.querySelector(
       `[data-chunk-id="${chunkId}"]`

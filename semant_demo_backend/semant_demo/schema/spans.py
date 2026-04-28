@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from semant_demo.schemas import SpanType
+from semant_demo.schemas import SpanType, TagSpan
 
 class PostSpan(BaseModel):
     start: int
@@ -21,6 +21,21 @@ class PatchSpan(BaseModel):
     type: SpanType | None = None
 
     tagId: str | None = None
+
+
+class BulkUpdateSpansRequest(BaseModel):
+    """
+    Request body for bulk-applying the same :class:`PatchSpan` patch to many
+    spans in a single round-trip. Used by the AI-assist "Approve / Reject all
+    selected" action so the frontend doesn't have to fan out N PATCH calls.
+    """
+    span_ids: list[str]
+    update: PatchSpan
+
+
+class BulkUpdateSpansResponse(BaseModel):
+    """Updated spans returned by a bulk update."""
+    spans: list[TagSpan]
 
 
 class DeleteSpansForTagsRequest(BaseModel):

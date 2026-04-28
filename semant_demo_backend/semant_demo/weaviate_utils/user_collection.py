@@ -29,6 +29,7 @@ from semant_demo.schema.documents import DocumentStats
 from semant_demo.schema.documents import Document
 from semant_demo.schema.tags import Tag
 from semant_demo.schema.chunks import Chunk
+from semant_demo.schema.spans import SpanType
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 from semant_demo.users.models import User
@@ -207,6 +208,8 @@ class UserCollection():
             &
             Filter.by_ref("tag").by_ref(
                 self.collectionNames.user_collection_name).by_id().equal(collection_id)
+            &
+            Filter.by_property("type").equal(SpanType.pos)
         )
 
         annotations_count_response = await spans_collection.aggregate.over_all(
@@ -559,6 +562,7 @@ class UserCollection():
                 self.collectionNames.user_collection_link_name).by_id().equal(collection_id)
             & Filter.by_ref("tag").by_ref(
                 self.collectionNames.user_collection_name).by_id().equal(collection_id)
+            & Filter.by_property("type").equal(SpanType.pos)
         )
         spans_agg_response = await spans_collection.aggregate.over_all(
             filters=spans_filter,

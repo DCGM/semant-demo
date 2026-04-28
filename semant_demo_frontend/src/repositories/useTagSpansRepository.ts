@@ -31,6 +31,16 @@ export function useTagSpansRepository() {
       })
     },
 
+    bulkUpdate: async (spanIds: string[], patch: PatchSpan): Promise<TagSpans> => {
+      const res = await api.bulkUpdateTagSpansApiTagSpansBulkUpdatePost({
+        bulkUpdateSpansRequest: {
+          spanIds,
+          update: patch
+        }
+      })
+      return res.spans
+    },
+
     delete: async (spanId: string): Promise<void> => {
       return api.deleteTagSpanApiTagSpansSpanIdDelete({ spanId })
     }

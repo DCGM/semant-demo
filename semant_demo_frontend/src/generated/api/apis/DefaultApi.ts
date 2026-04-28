@@ -18,6 +18,8 @@ import type {
   AppFeedbackRequest,
   ApproveTagReq,
   ApproveTagResponse,
+  BulkUpdateSpansRequest,
+  BulkUpdateSpansResponse,
   CancelTaskResponse,
   Chunk,
   Chunk2CollectionReq,
@@ -71,6 +73,10 @@ import {
     ApproveTagReqToJSON,
     ApproveTagResponseFromJSON,
     ApproveTagResponseToJSON,
+    BulkUpdateSpansRequestFromJSON,
+    BulkUpdateSpansRequestToJSON,
+    BulkUpdateSpansResponseFromJSON,
+    BulkUpdateSpansResponseToJSON,
     CancelTaskResponseFromJSON,
     CancelTaskResponseToJSON,
     ChunkFromJSON,
@@ -190,6 +196,10 @@ export interface BrowseDocumentsApiDocumentsBrowseGetRequest {
     author?: string | null;
     publisher?: string | null;
     documentType?: string | null;
+}
+
+export interface BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest {
+    bulkUpdateSpansRequest: BulkUpdateSpansRequest;
 }
 
 export interface CancelTaskApiTagTaskTaskIdDeleteRequest {
@@ -526,6 +536,30 @@ export interface DefaultApiInterface {
     browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse>;
 
     /**
+     * Creates request options for bulkUpdateTagSpansApiTagSpansBulkUpdatePost without sending the request
+     * @param {BulkUpdateSpansRequest} bulkUpdateSpansRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    bulkUpdateTagSpansApiTagSpansBulkUpdatePostRequestOpts(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+     * @summary Bulk Update Tag Spans
+     * @param {BulkUpdateSpansRequest} bulkUpdateSpansRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>>;
+
+    /**
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+     * Bulk Update Tag Spans
+     */
+    bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse>;
+
+    /**
      * Creates request options for cancelTaskApiTagTaskTaskIdDelete without sending the request
      * @param {string} taskId 
      * @throws {RequiredError}
@@ -727,7 +761,7 @@ export interface DefaultApiInterface {
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequestOpts(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Bulk-delete every span (regardless of ``type``) for the given tag ids within a single (collection, document) scope.
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
      * @summary Delete Spans For Tags In Document
      * @param {DeleteSpansForTagsRequest} deleteSpansForTagsRequest 
      * @param {*} [options] Override http request option.
@@ -737,7 +771,7 @@ export interface DefaultApiInterface {
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteSpansForTagsResponse>>;
 
     /**
-     * Bulk-delete every span (regardless of ``type``) for the given tag ids within a single (collection, document) scope.
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
      * Delete Spans For Tags In Document
      */
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteSpansForTagsResponse>;
@@ -1992,6 +2026,55 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for bulkUpdateTagSpansApiTagSpansBulkUpdatePost without sending the request
+     */
+    async bulkUpdateTagSpansApiTagSpansBulkUpdatePostRequestOpts(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['bulkUpdateSpansRequest'] == null) {
+            throw new runtime.RequiredError(
+                'bulkUpdateSpansRequest',
+                'Required parameter "bulkUpdateSpansRequest" was null or undefined when calling bulkUpdateTagSpansApiTagSpansBulkUpdatePost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/tag_spans/bulk_update`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BulkUpdateSpansRequestToJSON(requestParameters['bulkUpdateSpansRequest']),
+        };
+    }
+
+    /**
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+     * Bulk Update Tag Spans
+     */
+    async bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>> {
+        const requestOptions = await this.bulkUpdateTagSpansApiTagSpansBulkUpdatePostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => BulkUpdateSpansResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+     * Bulk Update Tag Spans
+     */
+    async bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse> {
+        const response = await this.bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for cancelTaskApiTagTaskTaskIdDelete without sending the request
      */
     async cancelTaskApiTagTaskTaskIdDeleteRequestOpts(requestParameters: CancelTaskApiTagTaskTaskIdDeleteRequest): Promise<runtime.RequestOpts> {
@@ -2446,7 +2529,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete every span (regardless of ``type``) for the given tag ids within a single (collection, document) scope.
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
      * Delete Spans For Tags In Document
      */
     async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteSpansForTagsResponse>> {
@@ -2457,7 +2540,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete every span (regardless of ``type``) for the given tag ids within a single (collection, document) scope.
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
      * Delete Spans For Tags In Document
      */
     async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteSpansForTagsResponse> {

@@ -37,7 +37,14 @@ from semant_demo.tagging.tagging_utils import getTaskByName
 
 # import dependencies
 from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
-from semant_demo.schema.spans import PostSpan, PatchSpan, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse
+from semant_demo.schema.spans import (
+    PostSpan,
+    PatchSpan,
+    DeleteSpansForTagsRequest,
+    DeleteSpansForTagsResponse,
+    BulkUpdateSpansRequest,
+    BulkUpdateSpansResponse,
+)
 logging.basicConfig(level=logging.INFO)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -95,6 +102,27 @@ async def update_tag_span(
         span_id=span_id,
         update_fields=body
     )
+
+
+@exp_router.post(
+    "/api/tag_spans/bulk_update",
+    response_model=BulkUpdateSpansResponse,
+)
+async def bulk_update_tag_spans(
+    body: BulkUpdateSpansRequest,
+    tagger: WeaviateAbstraction = Depends(get_search),
+) -> BulkUpdateSpansResponse:
+    """
+    Apply the same :class:`PatchSpan` to many spans in one round-trip.
+
+    Used by the AI-assist "Approve / Reject all selected" action — collapses
+    N PATCH calls into one and lets the server fan them out concurrently.
+    """
+    spans = await tagger.span.bulk_update(
+        span_ids=body.span_ids,
+        update_fields=body.update,
+    )
+    return BulkUpdateSpansResponse(spans=spans)
 
 
 @exp_router.delete("/api/tag_spans/{span_id}", status_code=status.HTTP_204_NO_CONTENT)

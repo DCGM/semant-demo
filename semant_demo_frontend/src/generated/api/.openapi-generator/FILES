@@ -8,6 +8,8 @@ docs/ApproveTagReq.md
 docs/ApproveTagResponse.md
 docs/AuthApi.md
 docs/BearerResponse.md
+docs/BulkUpdateSpansRequest.md
+docs/BulkUpdateSpansResponse.md
 docs/CancelTaskResponse.md
 docs/Chunk.md
 docs/Chunk2CollectionReq.md
@@ -88,6 +90,8 @@ models/AppFeedbackRequest.ts
 models/ApproveTagReq.ts
 models/ApproveTagResponse.ts
 models/BearerResponse.ts
+models/BulkUpdateSpansRequest.ts
+models/BulkUpdateSpansResponse.ts
 models/CancelTaskResponse.ts
 models/Chunk.ts
 models/Chunk2CollectionReq.ts
