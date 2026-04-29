@@ -173,8 +173,8 @@
       rounded
       dense
       unelevated
-      class="absolute z-top"
-      :style="{ top: selectionData.y + 'px', left: selectionData.x + 'px', position: 'absolute' }"
+      class="absolute z-top shadow-10"
+      :style="{ top: selectionData.y + 'px', left: selectionData.x + 'px', position: 'fixed' }"
       @click="explainSelection"
     />
 
@@ -466,13 +466,14 @@ const handleMouseUp = (index: number) => {
   if (selectedText.length > 5 && messages.value[index].sender === 'AI') {
     if (!selection || selection.rangeCount === 0) return
     const range = selection!.getRangeAt(0)
-    const rect = range.getBoundingClientRect()
+    const rect = range.getClientRects()
+    const lastRect = rect[rect.length - 1]
 
     // get button location
     selectionData.value = {
       show: true,
-      x: rect.left + window.scrollX,
-      y: rect.top + window.scrollY - 35,
+      x: lastRect.right + 8,
+      y: lastRect.bottom + 4,
       text: selectedText,
       msgIndex: index
     }
