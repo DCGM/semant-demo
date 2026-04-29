@@ -89,7 +89,7 @@ class Config:
         default_mapping = {
             "nomic_embed_text_v2_moe": {
                 "provider": EmbeddingProvider.ollama.value,
-                "model": os.getenv("OLLAMA_NOMIC_EMBEDDING_MODEL", "nomic-embed-text:v2-moe"),
+                "model": os.getenv("OLLAMA_NOMIC_EMBEDDING_MODEL", "nomic-embed-text-v2-moe:latest"),
                 "base_url": self.OLLAMA_URLS[0],
             },
             "qwen3_embedding_4b": {
@@ -99,10 +99,9 @@ class Config:
                 "api_key": self.OPENROUTER_API_KEY,
             },
             "qwen3_embedding_0_6b": {
-                "provider": EmbeddingProvider.openrouter.value,
-                "model": os.getenv("OPENROUTER_QWEN3_EMBEDDING_0_6B_MODEL", "qwen/qwen3-embedding-0.6b"),
-                "base_url": self.OPENROUTER_API_URL,
-                "api_key": self.OPENROUTER_API_KEY,
+                "provider": EmbeddingProvider.ollama.value,
+                "model": os.getenv("OLLAMA_QWEN3_EMBEDDING_0_6B_MODEL", "qwen3-embedding-0.6b:latest"),
+                "base_url": self.OLLAMA_URLS[0],
             },
         }
 
