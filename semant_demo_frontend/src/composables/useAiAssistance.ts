@@ -110,7 +110,7 @@ export function useAiAssistance() {
   ): Promise<void> => {
     if (isRunning.value) return
     if (!req.tagIds.length) {
-      lastError.value = 'Vyberte alespoň jeden tag.'
+      lastError.value = 'Choose at least one tag to get suggestions.'
       return
     }
 
