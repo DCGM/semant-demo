@@ -13,10 +13,17 @@ from semant_demo.config import config
 exp_router = APIRouter()
 LOGGER = logging.getLogger(__name__)
 
-TOPICER_DISCOVER_TOPICS_DENSE_PATH = "/v1/topics/discover/texts/dense"
-TOPICER_DISCOVER_TOPICS_SPARSE_PATH = "/v1/topics/discover/texts/sparse"
 TOPICER_PROPOSE_TAGS_TEXTS_PATH = "/v1/tags/propose/texts"
 TOPICER_CONFIGS_PATH = "/v1/configs"
+
+
+def _topicer_http_timeout() -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=config.TOPICER_CONNECT_TIMEOUT,
+        read=config.TOPICER_READ_TIMEOUT,
+        write=config.TOPICER_TIMEOUT,
+        pool=config.TOPICER_TIMEOUT,
+    )
 
 
 def _fallback_tag_id(tag: schemas.TagData) -> str:
@@ -93,7 +100,8 @@ def _topicer_proposal_to_auto_suggestions(
 
     proposals = payload.get("tag_span_proposals")
     if not isinstance(proposals, list):
-        raise ValueError("Topicer propose tags payload is missing 'tag_span_proposals'.")
+        raise ValueError(
+            "Topicer propose tags payload is missing 'tag_span_proposals'.")
 
     suggestions: list[schemas.AutoAnnotationSuggestion] = []
     for proposal in proposals:
@@ -106,12 +114,14 @@ def _topicer_proposal_to_auto_suggestions(
 
         tag_id = tag.get("id")
         if not isinstance(tag_id, str) or tag_id == "":
-            raise ValueError("Topicer tag span proposal tag is missing valid 'id'.")
+            raise ValueError(
+                "Topicer tag span proposal tag is missing valid 'id'.")
 
         span_start = proposal.get("span_start")
         span_end = proposal.get("span_end")
         if not isinstance(span_start, int) or not isinstance(span_end, int):
-            raise ValueError("Topicer tag span proposal has invalid span boundaries.")
+            raise ValueError(
+                "Topicer tag span proposal has invalid span boundaries.")
 
         confidence = proposal.get("confidence")
         confidence_value = float(confidence) if confidence is not None else 0.0
@@ -158,7 +168,7 @@ async def _resolve_topicer_config_candidates(client: httpx.AsyncClient) -> list[
 
     response = await client.get(
         f"{config.TOPICER_URL}{TOPICER_CONFIGS_PATH}",
-        timeout=config.TOPICER_TIMEOUT,
+        timeout=_topicer_http_timeout(),
     )
     response.raise_for_status()
 
@@ -166,7 +176,8 @@ async def _resolve_topicer_config_candidates(client: httpx.AsyncClient) -> list[
     if not isinstance(names, list) or len(names) == 0:
         raise ValueError("Topicer returned no available configs.")
 
-    valid_names = [name for name in names if isinstance(name, str) and name != ""]
+    valid_names = [name for name in names if isinstance(
+        name, str) and name != ""]
     if len(valid_names) == 0:
         raise ValueError("Topicer returned invalid config list.")
 
@@ -236,7 +247,7 @@ async def propose_tags(
 
     try:
         async with httpx.AsyncClient() as client:
-            config_candidates = ['ollama']
+            config_candidates = ['openai_gpt5']
             method_not_applicable_configs: list[str] = []
 
             for config_name in config_candidates:
@@ -253,8 +264,16 @@ async def propose_tags(
                             },
                             "tags": topicer_tags,
                         },
-                        timeout=config.TOPICER_TIMEOUT,
+                        timeout=_topicer_http_timeout(),
                     )
+
+                    print({
+                        "text_chunk": {
+                            "id": str(chunk.id),
+                            "text": chunk.text,
+                        },
+                        "tags": topicer_tags,
+                    },)
 
                     if response.status_code >= 400:
                         if _is_method_not_applicable_error(response):
@@ -268,8 +287,10 @@ async def propose_tags(
                             fallback_chunk_id=str(chunk.id),
                         )
                     except Exception as exc:
-                        LOGGER.exception("Topicer returned invalid propose tags payload.")
-                        _raise_topicer_gateway_error(f"Topicer returned invalid propose tags payload: {exc}")
+                        LOGGER.exception(
+                            "Topicer returned invalid propose tags payload.")
+                        _raise_topicer_gateway_error(
+                            f"Topicer returned invalid propose tags payload: {exc}")
 
                     all_suggestions.extend(chunk_suggestions)
                 else:
@@ -282,6 +303,12 @@ async def propose_tags(
                     "Tag proposal is not implemented for available Topicer configs: "
                     f"{joined_configs}. Set TOPICER_CONFIG_NAME to a config that supports tag proposal."
                 )
+    except httpx.ReadTimeout as exc:
+        LOGGER.exception("Topicer request timed out.")
+        _raise_topicer_gateway_error(
+            "Topicer request timed out while waiting for LLM response. "
+            "Increase TOPICER_READ_TIMEOUT (or TOPICER_TIMEOUT)."
+        )
     except httpx.HTTPStatusError as exc:
         response_text = _extract_topicer_error_detail(exc.response)[:500]
         LOGGER.exception("Topicer returned an error response.")
@@ -295,7 +322,8 @@ async def propose_tags(
         LOGGER.exception("Topicer configuration resolution failed.")
         _raise_topicer_gateway_error(str(exc))
 
-    _raise_topicer_gateway_error("Topicer request did not produce a valid response.")
+    _raise_topicer_gateway_error(
+        "Topicer request did not produce a valid response.")
 
 
 @exp_router.post(
@@ -318,7 +346,7 @@ async def propose_best_tag(
 
     try:
         async with httpx.AsyncClient() as client:
-            config_candidates = ["ollama"]
+            config_candidates = ["openai_gpt5"]
             method_not_applicable_configs: list[str] = []
 
             for config_name in config_candidates:
@@ -332,7 +360,7 @@ async def propose_best_tag(
                         },
                         "tags": topicer_tags,
                     },
-                    timeout=config.TOPICER_TIMEOUT,
+                    timeout=_topicer_http_timeout(),
                 )
 
                 if response.status_code >= 400:
@@ -347,7 +375,8 @@ async def propose_best_tag(
                         fallback_chunk_id=fallback_chunk_id,
                     )
                 except Exception as exc:
-                    LOGGER.exception("Topicer returned invalid propose tags payload.")
+                    LOGGER.exception(
+                        "Topicer returned invalid propose tags payload.")
                     _raise_topicer_gateway_error(
                         f"Topicer returned invalid propose tags payload: {exc}"
                     )
@@ -378,6 +407,12 @@ async def propose_best_tag(
                     "Tag proposal is not implemented for available Topicer configs: "
                     f"{joined_configs}. Set TOPICER_CONFIG_NAME to a config that supports tag proposal."
                 )
+    except httpx.ReadTimeout as exc:
+        LOGGER.exception("Topicer request timed out.")
+        _raise_topicer_gateway_error(
+            "Topicer request timed out while waiting for LLM response. "
+            "Increase TOPICER_READ_TIMEOUT (or TOPICER_TIMEOUT)."
+        )
     except httpx.HTTPStatusError as exc:
         response_text = _extract_topicer_error_detail(exc.response)[:500]
         LOGGER.exception("Topicer returned an error response.")
@@ -391,94 +426,5 @@ async def propose_best_tag(
         LOGGER.exception("Topicer configuration resolution failed.")
         _raise_topicer_gateway_error(str(exc))
 
-    _raise_topicer_gateway_error("Topicer request did not produce a valid response.")
-
-
-@exp_router.post(
-    "/api/discover_topics",
-    response_model=schemas.DiscoveredTopics,
-)
-async def discover_topics(
-    body: schemas.DiscoverTopicsRequest,
-) -> schemas.DiscoveredTopics:
-    """Call Topicer dense topic discovery on the provided chunks."""
-    if len(body.chunks) == 0:
-        return schemas.DiscoveredTopics(topics=[], topic_documents=[])
-
-    topicer_chunks = _build_topicer_chunk_payload(body.chunks)
-
-    try:
-        async with httpx.AsyncClient() as client:
-            config_candidates = await _resolve_topicer_config_candidates(client)
-            method_not_applicable_configs: list[str] = []
-
-            for config_name in config_candidates:
-                params: dict[str, str | int] = {"config_name": config_name}
-                if body.n is not None:
-                    params["n"] = body.n
-
-                dense_response = await client.post(
-                    f"{config.TOPICER_URL}{TOPICER_DISCOVER_TOPICS_DENSE_PATH}",
-                    params=params,
-                    json=topicer_chunks,
-                    timeout=config.TOPICER_TIMEOUT,
-                )
-
-                if dense_response.status_code < 400:
-                    try:
-                        return schemas.DiscoveredTopics(**dense_response.json())
-                    except Exception as exc:
-                        LOGGER.exception("Topicer returned invalid dense discover topics payload.")
-                        _raise_topicer_gateway_error(f"Topicer returned invalid dense payload: {exc}")
-
-                if _is_method_not_applicable_error(dense_response):
-                    sparse_response = await client.post(
-                        f"{config.TOPICER_URL}{TOPICER_DISCOVER_TOPICS_SPARSE_PATH}",
-                        params=params,
-                        json=topicer_chunks,
-                        timeout=config.TOPICER_TIMEOUT,
-                    )
-
-                    if sparse_response.status_code < 400:
-                        try:
-                            sparse_topics = schemas.DiscoveredTopicsSparse(**sparse_response.json())
-                        except Exception as exc:
-                            LOGGER.exception("Topicer returned invalid sparse discover topics payload.")
-                            _raise_topicer_gateway_error(f"Topicer returned invalid sparse payload: {exc}")
-
-                        return schemas.DiscoveredTopics(
-                            topics=sparse_topics.topics,
-                            topic_documents=_sparse_topic_documents_to_dense(
-                                sparse_topics.topic_documents,
-                                chunk_count=len(body.chunks),
-                            ),
-                        )
-
-                    if _is_method_not_applicable_error(sparse_response):
-                        method_not_applicable_configs.append(config_name)
-                        continue
-
-                    sparse_response.raise_for_status()
-
-                dense_response.raise_for_status()
-
-            if len(method_not_applicable_configs) > 0:
-                joined_configs = ", ".join(method_not_applicable_configs)
-                _raise_topicer_gateway_error(
-                    "Topic discovery is not implemented for available Topicer configs: "
-                    f"{joined_configs}. Set TOPICER_CONFIG_NAME to a config that supports topic discovery."
-                )
-    except httpx.HTTPStatusError as exc:
-        response_text = _extract_topicer_error_detail(exc.response)[:500]
-        LOGGER.exception("Topicer returned an error response.")
-        _raise_topicer_gateway_error(
-            f"Topicer request failed with status {exc.response.status_code}: {response_text}"
-        )
-    except httpx.HTTPError as exc:
-        LOGGER.exception("Topicer request failed.")
-        _raise_topicer_gateway_error(f"Unable to contact Topicer: {exc}")
-    except ValueError as exc:
-        LOGGER.exception("Topicer configuration resolution failed.")
-        _raise_topicer_gateway_error(str(exc))
-
-    _raise_topicer_gateway_error("Topicer request did not produce a valid response.")
+    _raise_topicer_gateway_error(
+        "Topicer request did not produce a valid response.")

@@ -124,10 +124,17 @@
         />
       </div>
 
-      <template v-if="showProbableTagsSection && (isLoadingProbableTags || hasProbableTags)">
+      <template
+        v-if="
+          showProbableTagsSection && (isLoadingProbableTags || hasProbableTags)
+        "
+      >
         <q-separator class="q-mt-lg" />
 
-        <div v-if="isLoadingProbableTags" class="text-grey-7 text-caption q-mt-md">
+        <div
+          v-if="isLoadingProbableTags"
+          class="text-grey-7 text-caption q-mt-md"
+        >
           Loading probable tags...
         </div>
 
@@ -135,17 +142,21 @@
           <div class="text-subtitle2 q-mt-md q-mb-sm">
             Most probable tags for selected text
           </div>
+          <div class="text-caption text-grey-7 q-mb-md">
+            Confidence represents the certainty about relevance of tag to the
+            selected text.
+          </div>
 
-          <div class="row q-gutter-sm">
+          <div class="row q-gutter-sm tag-list">
             <q-btn
               v-for="tag in probableTags"
               :key="`probable-${tag.tagId}`"
-              :label="`${tag.tagName} (${formatConfidence(tag.confidence)})`"
-              :icon="tag.tagPictogram"
+              class="tag-list-item"
               :disable="!globalSelection || pageLoading"
+              flat
+              no-caps
+              align="left"
               :style="{
-                backgroundColor: tag.tagColor,
-                color: '#fff',
                 opacity:
                   globalSelection?.editingId &&
                   globalSelection.tagId !== tag.tagId
@@ -153,7 +164,20 @@
                     : 1
               }"
               @click="$emit('tagClick', tag.tagId)"
-            />
+            >
+              <template #default>
+                <q-icon
+                  :name="tag.tagPictogram"
+                  :style="{ color: tag.tagColor }"
+                  class="tag-icon"
+                />
+                <span class="tag-label">{{ tag.tagName }}</span>
+
+                <span class="text-caption text-grey-9 q-ml-auto">
+                  Confidence: {{ formatConfidence(tag.confidence) }}
+                </span>
+              </template>
+            </q-btn>
           </div>
         </template>
       </template>

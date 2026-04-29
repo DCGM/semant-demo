@@ -1,16 +1,63 @@
 <template>
   <q-page class="">
-    <div class="row q-col-gutter-lg">
+    <div class="row q-col-gutter-lg relative-position">
       <div class="col-12 col-md-8 left-pane">
+        <div class="row items-start q-mb-md">
+          <q-btn
+            flat
+            round
+            dense
+            icon="arrow_back"
+            @click="goBack"
+            class="q-mr-md"
+          >
+            <q-tooltip>Go back</q-tooltip>
+          </q-btn>
+          <h5 class="q-ma-none">
+            {{
+              pageLoading
+                ? 'Loading document...'
+                : documentDetail?.document.title || 'Untitled Document'
+            }}
+          </h5>
+
+          <q-space />
+        </div>
+        <div class="flex q-gutter-sm q-mb-md">
+          <q-btn
+            color="primary"
+            class=""
+            :label="showOnlyCollectionChunks ? 'Full view' : 'View only collection chunks'"
+            icon="view_week"
+            no-caps
+            unelevated
+            size="md"
+            :outline="true"
+            @click="toggleOnlyCollectionChunks"
+          />
+
+          <q-btn
+            color="primary"
+            class=""
+            :label="chunkExpansionButtonLabel"
+            :icon="chunkExpansionButtonIcon"
+            no-caps
+            unelevated
+            size="md"
+            :outline="true"
+            @click="cycleChunkExpansionPreset"
+          />
+        </div>
         <div class="left-pane-grid">
           <div class="chunks-column">
             <ChunkExpansionItem
-              v-for="chunk in chunks"
+              v-for="chunk in displayedChunks"
               :key="chunk.chunkId"
               :ref="(el) => setChunkItemRef(chunk.chunkId, el)"
               :chunk-id="chunk.chunkId"
               :chunk-text="chunk.textChunk"
               :in-user-collection="chunk.inUserCollection"
+              :is-expanded="getChunkExpanded(chunk)"
               :tag-spans="getVisibleTagSpans(chunk.chunkId)"
               :available-tags="availableTags"
               :is-processing="pageLoading"
@@ -22,10 +69,14 @@
               :show-selection-end-handle="
                 selectionBoundaryChunkIds.endChunkId === chunk.chunkId
               "
-              :selection-start-boundary="globalSelectionBoundaries.startBoundary"
+              :selection-start-boundary="
+                globalSelectionBoundaries.startBoundary
+              "
               :selection-end-boundary="globalSelectionBoundaries.endBoundary"
               :editing-span-id="globalSelection?.editingId || null"
-              :discovered-topic="discoveredTopicByChunkId[chunk.chunkId] || null"
+              :discovered-topic="
+                discoveredTopicByChunkId[chunk.chunkId] || null
+              "
               :hovered-annotation-marker="hoveredAnnotationMarker"
               :is-collection-updating="isChunkCollectionUpdating(chunk.chunkId)"
               @selection-change="handleSelectionChange"
@@ -39,6 +90,13 @@
               <q-card-section class="text-center text-grey-7 q-py-xl">
                 <q-icon name="description" size="48px" class="q-mb-sm" />
                 <div>No chunk is available for annotation.</div>
+              </q-card-section>
+            </q-card>
+
+            <q-card v-else-if="!displayedChunks.length" class="bg-grey-2">
+              <q-card-section class="text-center text-grey-7 q-py-xl">
+                <q-icon name="visibility_off" size="48px" class="q-mb-sm" />
+                <div>No chunks are visible with the current filter.</div>
               </q-card-section>
             </q-card>
           </div>
@@ -159,9 +217,16 @@
                 @decline-auto-span="handleDeclineAutoSpan"
                 @close="setActiveTool(null)"
               />
+
+              <q-btn
+                v-if="false"
+                @click="removeAllChunksFromCollection()"
+                label="Remove all chunks (debug)"
+                color="negative"
+                class="q-mt-md"
+              />
             </div>
           </div>
-
         </div>
       </div>
     </div>
@@ -178,6 +243,7 @@ import DocumentMetadataCard from './DocumentMetadataCard.vue'
 import TagCatalogMenu from './TagCatalogMenu.vue'
 import TagOptionsMenu from './TagOptionsMenu.vue'
 import { useTaggingPageState } from '../composables/useTaggingPageState'
+import { useRouter } from 'vue-router'
 
 interface Props {
   collectionId: string
@@ -196,8 +262,12 @@ const isSuggestingAnnotations = ref(false)
 const chunkItemRefs = ref<Record<string, ChunkExpansionItemExposed | null>>({})
 const railLayoutVersion = ref(0)
 const expandedChunks = ref<Record<string, boolean>>({})
-const activeTool = ref<'info' | 'suggest' | 'catalog' | 'tags' | null>(null)
+const activeTool = ref<'info' | 'suggest' | 'catalog' | 'tags' | null>('info')
 const hiddenTagIds = ref<Set<string>>(new Set())
+const showOnlyCollectionChunks = ref(false)
+const chunkExpansionPreset = ref<'collection' | 'all' | 'collapsed'>(
+  'collection'
+)
 
 const {
   DEBUG,
@@ -230,11 +300,46 @@ const {
   stopHoverFromAnnotationMarker,
   getChunkSelection,
   getDisplayedTagSpans,
-  getTagsForCollection
+  getTagsForCollection,
+  removeAllChunksFromCollection
 } = useTaggingPageState()
+
+const router = useRouter()
+
+const displayedChunks = computed(() => {
+  if (!showOnlyCollectionChunks.value) {
+    return chunks.value
+  }
+
+  return chunks.value.filter((chunk) => chunk.inUserCollection)
+})
 
 const isAutoSelection = computed(() => {
   return globalSelection.value?.spanType === SpanType.auto
+})
+
+const chunkExpansionButtonLabel = computed(() => {
+  if (chunkExpansionPreset.value === 'all') {
+    return 'Collapse all'
+  }
+
+  if (chunkExpansionPreset.value === 'collapsed') {
+    return 'Expand collection chunks'
+  }
+
+  return 'Expand all chunks'
+})
+
+const chunkExpansionButtonIcon = computed(() => {
+  if (chunkExpansionPreset.value === 'all') {
+    return 'unfold_less'
+  }
+
+  if (chunkExpansionPreset.value === 'collapsed') {
+    return 'unfold_more'
+  }
+
+  return 'unfold_more'
 })
 
 const railLayoutTrigger = computed(() => {
@@ -248,19 +353,34 @@ const railLayoutTrigger = computed(() => {
 })
 
 const visibleAnnotationMarkers = computed(() => {
+  const visibleChunkIds = new Set(
+    displayedChunks.value.map((chunk) => chunk.chunkId)
+  )
+
   return annotationMarkers.value.filter(
     (marker) =>
+      visibleChunkIds.has(marker.chunkId) &&
       expandedChunks.value[marker.chunkId] !== false &&
       !hiddenTagIds.value.has(marker.tagId)
   )
 })
 
 const tagCounts = computed<Record<string, number>>(() => {
-  return annotationMarkers.value.reduce<Record<string, number>>((acc, marker) => {
-    acc[marker.tagId] = (acc[marker.tagId] || 0) + 1
-    return acc
-  }, {})
+  return annotationMarkers.value.reduce<Record<string, number>>(
+    (acc, marker) => {
+      acc[marker.tagId] = (acc[marker.tagId] || 0) + 1
+      return acc
+    },
+    {}
+  )
 })
+
+const goBack = () => {
+  router.push({
+    name: 'collectionDocumentsTagging',
+    params: { collectionId: props.collectionId }
+  })
+}
 
 const getVisibleTagSpans = (chunkId: string) => {
   return getDisplayedTagSpans(chunkId).filter(
@@ -310,6 +430,50 @@ const soloTag = (tagId: string) => {
   hiddenTagIds.value = new Set(allTagIds.filter((id) => id !== tagId))
 }
 
+const getChunkExpanded = (chunk: {
+  chunkId: string
+  inUserCollection: boolean
+}) => {
+  if (chunkExpansionPreset.value === 'all') {
+    return expandedChunks.value[chunk.chunkId] ?? true
+  }
+
+  if (chunkExpansionPreset.value === 'collapsed') {
+    return expandedChunks.value[chunk.chunkId] ?? false
+  }
+
+  return expandedChunks.value[chunk.chunkId] ?? chunk.inUserCollection
+}
+
+const toggleOnlyCollectionChunks = () => {
+  showOnlyCollectionChunks.value = !showOnlyCollectionChunks.value
+}
+
+const cycleChunkExpansionPreset = () => {
+  const nextPreset =
+    chunkExpansionPreset.value === 'collection'
+      ? 'all'
+      : chunkExpansionPreset.value === 'all'
+        ? 'collapsed'
+        : 'collection'
+
+  chunkExpansionPreset.value = nextPreset
+
+  const nextState: Record<string, boolean> = {}
+
+  for (const chunk of chunks.value) {
+    nextState[chunk.chunkId] =
+      nextPreset === 'all'
+        ? true
+        : nextPreset === 'collapsed'
+          ? false
+          : chunk.inUserCollection
+  }
+
+  expandedChunks.value = nextState
+  railLayoutVersion.value += 1
+}
+
 watch(
   chunks,
   (nextChunks) => {
@@ -317,7 +481,12 @@ watch(
 
     for (const chunk of nextChunks) {
       nextExpanded[chunk.chunkId] =
-        expandedChunks.value[chunk.chunkId] ?? chunk.inUserCollection
+        expandedChunks.value[chunk.chunkId] ??
+        (chunkExpansionPreset.value === 'all'
+          ? true
+          : chunkExpansionPreset.value === 'collapsed'
+            ? false
+            : chunk.inUserCollection)
     }
 
     expandedChunks.value = nextExpanded
@@ -388,7 +557,11 @@ const handleStartSuggestions = async (selectedTagIds: string[]) => {
   isSuggestingAnnotations.value = true
   try {
     const nextSpanId = await startAutoAnnotationSuggestions(selectedTagIds)
-    activeTool.value = null
+
+    // Automatically open review panel when backend returns auto suggestions.
+    activeTool.value =
+      globalSelection.value?.spanType === SpanType.auto ? 'tags' : null
+
     await scrollToSpan(nextSpanId)
   } finally {
     isSuggestingAnnotations.value = false
@@ -458,13 +631,14 @@ onMounted(async () => {
 
 .tools-menu :deep(.right-panel-menu) {
   background: #f5f5f5;
-  border-radius: 16px;
-  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  box-shadow: none;
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .tools-menu :deep(.right-panel-menu-section) {
   background: white;
-  border-radius: 12px;
+  border-radius: 4px;
   padding: 12px;
 }
 

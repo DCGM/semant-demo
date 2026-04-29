@@ -2,15 +2,16 @@
   <div ref="rootEl">
     <q-card flat class="q-mb-sm relative-position" :bordered="true">
       <!-- Persistent Absolute Buttons on Top Right -->
-      <div class="absolute-top-right row items-center q-pa-xs floating-buttons">
+      <div class="absolute-top-right row items-center q-pa-xs q-gutter-md floating-buttons">
         <!-- Collection Button: Visible ONLY when open -->
         <q-btn
           v-if="isExpanded"
           dense
           flat
           round
-          :icon="inUserCollection ? 'remove_circle' : 'add_circle'"
-          :color="inUserCollection ? 'negative' : 'positive'"
+          :icon="inUserCollection ? 'check' : 'remove'"
+          size="sm"
+          :color="inUserCollection ? 'positive' : 'grey-9'"
           :loading="isCollectionUpdating"
           :disable="isCollectionUpdating || isProcessing"
           @click.stop="onToggleCollection"
@@ -18,8 +19,8 @@
           <q-tooltip>
             {{
               inUserCollection
-                ? 'Remove chunk from collection'
-                : 'Add chunk to collection'
+                ? 'In collection, click to remove'
+                : 'Not in collection, click to add'
             }}
           </q-tooltip>
         </q-btn>
@@ -40,7 +41,6 @@
       <q-expansion-item
         ref="expansionRef"
         v-model="isExpanded"
-        :default-opened="inUserCollection"
         hide-expand-icon
         :header-class="isExpanded ? 'chunk-header-open' : 'chunk-header-closed'"
       >
@@ -59,7 +59,7 @@
                 flat
                 round
                 @click.stop="() => {}"
-                :color="inUserCollection ? 'gray' : 'gray'"
+                :color="inUserCollection ? 'grey-7' : 'grey-7'"
                 :icon="inUserCollection ? 'check' : 'remove'"
                 size="xs"
                 ><q-tooltip>
@@ -67,7 +67,7 @@
                 </q-tooltip></q-btn
               >
               <span>{{ chunkTextShort }}</span>
-              <span class="q-ml-auto"
+              <span class="q-ml-auto text-weight-regular text-grey-7"
                 >{{ chunkAnnotationsCount }}
                 {{
                   chunkAnnotationsCount === 1 ? 'annotation' : 'annotations'
@@ -140,6 +140,7 @@ interface Props {
   chunkId: string
   chunkText: string
   inUserCollection: boolean
+  isExpanded: boolean
   tagSpans: TagSpan[]
   availableTags: AvailableTag[]
   isProcessing: boolean
@@ -159,7 +160,8 @@ const props = defineProps<Props>()
 
 const rootEl = ref<HTMLElement | null>(null)
 const expansionRef = ref()
-const isExpanded = ref(props.inUserCollection)
+const isExpanded = ref(props.isExpanded)
+const isSyncingExpanded = ref(false)
 
 const emit = defineEmits<{
   selectionChange: [payload: SelectionPayload]
@@ -169,7 +171,20 @@ const emit = defineEmits<{
   expansionChange: [chunkId: string, expanded: boolean]
 }>()
 
+watch(
+  () => props.isExpanded,
+  (nextExpanded) => {
+    isSyncingExpanded.value = true
+    isExpanded.value = nextExpanded
+    nextTick(() => {
+      isSyncingExpanded.value = false
+    })
+  },
+  { immediate: true }
+)
+
 watch(isExpanded, (expanded) => {
+  if (isSyncingExpanded.value) return
   emit('expansionChange', props.chunkId, expanded)
 })
 
