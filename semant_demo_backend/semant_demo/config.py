@@ -50,7 +50,7 @@ class Config:
         self.JWT_SECRET = os.getenv("JWT_SECRET", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_SECRET")
         
         # Topicer (AI assistance / tag proposal service)
-        self.TOPICER_URL = os.getenv("TOPICER_URL", "http://localhost:8089")
+        self.TOPICER_URL = os.getenv("TOPICER_URL", "http://semant.cz:8089")
         self.TOPICER_CONFIG_NAME = os.getenv("TOPICER_CONFIG_NAME", "openai")
         self.TOPICER_TIMEOUT = float(os.getenv("TOPICER_TIMEOUT", 600.0))
 
