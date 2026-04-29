@@ -20,7 +20,7 @@ export interface SpanChatStartArgs {
   spanId: string
 }
 
-const BACKEND_BASE_PATH = process.env.BACKEND_URL || 'http://pcvaskom.fit.vutbr.cz:8024'
+const BACKEND_BASE_PATH = process.env.BACKEND_URL ? process.env.BACKEND_URL + '/api' : 'http://localhost:8000/api'
 
 export function useSpanDiscussion() {
   const messages = ref<SpanChatMessage[]>([])
@@ -70,7 +70,7 @@ export function useSpanDiscussion() {
 
     const token = localStorage.getItem('auth_token')
     try {
-      const resp = await fetch(`${BACKEND_BASE_PATH}/api/ai/discuss_span`, {
+      const resp = await fetch(`${BACKEND_BASE_PATH}/ai/discuss_span`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

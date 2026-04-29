@@ -27,7 +27,7 @@ export interface AiAssistanceChunkEvent {
   error?: string | null
 }
 
-const BACKEND_BASE_PATH = process.env.BACKEND_URL || 'http://pcvaskom.fit.vutbr.cz:8024'
+const BACKEND_BASE_PATH = process.env.BACKEND_URL ? process.env.BACKEND_URL + '/api' : 'http://localhost:8000/api'
 
 const isRunning = ref(false)
 const lastError = ref<string | null>(null)
@@ -123,8 +123,8 @@ export function useAiAssistance() {
     totalSpansAdded.value = 0
 
     const path = req.mode === 'thorough'
-      ? '/api/ai/suggest_spans/thorough'
-      : '/api/ai/suggest_spans/optimized'
+      ? '/ai/suggest_spans/thorough'
+      : '/ai/suggest_spans/optimized'
     const token = localStorage.getItem('auth_token')
 
     try {
