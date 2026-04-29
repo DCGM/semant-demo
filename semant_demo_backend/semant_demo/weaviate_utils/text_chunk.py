@@ -284,7 +284,31 @@ class TextChunk():
             # 3. Handle Spans
             span_col = self.span_collection
 
-            if data.start is not None and data.end is not None:
+            if data.spanID is not None:
+                try:
+                    await span_col.data.update(uuid=data.spanID, properties={"type": "pos"})
+                    logging.info(f"Updated span {data.spanID} to 'pos'")
+                except Exception:
+                    logging.warning(
+                        "Could not update span by spanID during approve; creating a new span instead.",
+                        exc_info=True,
+                    )
+                    if data.start is not None and data.end is not None:
+                        await span_col.data.insert(
+                            properties={
+                                "start": data.start,
+                                "end": data.end,
+                                "type": "pos"
+                            },
+                            references={
+                                "tag": data.tagID,
+                                "text_chunk": data.chunkID
+                            }
+                        )
+                        logging.info("Created 1 new span with type 'pos' after spanID miss")
+                    else:
+                        logging.warning("Approve request had spanID but no coordinates to create fallback span.")
+            elif data.start is not None and data.end is not None:
                 # Check if this EXACT span already exists
                 span_filters = (
                     Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &
@@ -368,7 +392,31 @@ class TextChunk():
             # 3. Handle Spans
             span_col = self.span_collection
 
-            if data.start is not None and data.end is not None:
+            if data.spanID is not None:
+                try:
+                    await span_col.data.update(uuid=data.spanID, properties={"type": "neg"})
+                    logging.info(f"Updated span {data.spanID} to 'neg'")
+                except Exception:
+                    logging.warning(
+                        "Could not update span by spanID during disapprove; creating a new span instead.",
+                        exc_info=True,
+                    )
+                    if data.start is not None and data.end is not None:
+                        await span_col.data.insert(
+                            properties={
+                                "start": data.start,
+                                "end": data.end,
+                                "type": "neg"
+                            },
+                            references={
+                                "tag": data.tagID,
+                                "text_chunk": data.chunkID
+                            }
+                        )
+                        logging.info("Created 1 new span with type 'neg' after spanID miss")
+                    else:
+                        logging.warning("Disapprove request had spanID but no coordinates to create fallback span.")
+            elif data.start is not None and data.end is not None:
                 # Check if this EXACT span already exists
                 span_filters = (
                     Filter.by_ref("text_chunk").by_id().equal(data.chunkID) &

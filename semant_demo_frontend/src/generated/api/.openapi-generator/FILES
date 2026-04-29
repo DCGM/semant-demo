@@ -11,6 +11,9 @@ docs/AutoAnnotationSuggestion.md
 docs/AutoAnnotationSuggestionRequest.md
 docs/AutoAnnotationsSuggestionsResponse.md
 docs/BearerResponse.md
+docs/BestTagProposal.md
+docs/BestTagProposalRequest.md
+docs/BestTagProposalResponse.md
 docs/CancelTaskResponse.md
 docs/Chunk2CollectionReq.md
 docs/Collection.md
@@ -95,6 +98,9 @@ models/AutoAnnotationSuggestion.ts
 models/AutoAnnotationSuggestionRequest.ts
 models/AutoAnnotationsSuggestionsResponse.ts
 models/BearerResponse.ts
+models/BestTagProposal.ts
+models/BestTagProposalRequest.ts
+models/BestTagProposalResponse.ts
 models/CancelTaskResponse.ts
 models/Chunk2CollectionReq.ts
 models/Collection.ts

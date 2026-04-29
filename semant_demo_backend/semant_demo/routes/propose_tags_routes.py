@@ -131,6 +131,20 @@ def _topicer_proposal_to_auto_suggestions(
     return suggestions
 
 
+def _select_confident_suggestions(
+    suggestions: list[schemas.AutoAnnotationSuggestion],
+    confidence_threshold: float,
+    max_count: int = 3,
+) -> list[schemas.AutoAnnotationSuggestion]:
+    confident = [
+        suggestion
+        for suggestion in suggestions
+        if suggestion.confidence >= confidence_threshold
+    ]
+    confident.sort(key=lambda suggestion: suggestion.confidence, reverse=True)
+    return confident[:max_count]
+
+
 def _raise_topicer_gateway_error(detail: str) -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
@@ -222,7 +236,7 @@ async def propose_tags(
 
     try:
         async with httpx.AsyncClient() as client:
-            config_candidates = await _resolve_topicer_config_candidates(client)
+            config_candidates = ['ollama']
             method_not_applicable_configs: list[str] = []
 
             for config_name in config_candidates:
@@ -260,6 +274,102 @@ async def propose_tags(
                     all_suggestions.extend(chunk_suggestions)
                 else:
                     return schemas.AutoAnnotationsSuggestionsResponse(suggestions=all_suggestions)
+
+            if len(method_not_applicable_configs) > 0:
+                unique_configs = sorted(set(method_not_applicable_configs))
+                joined_configs = ", ".join(unique_configs)
+                _raise_topicer_gateway_error(
+                    "Tag proposal is not implemented for available Topicer configs: "
+                    f"{joined_configs}. Set TOPICER_CONFIG_NAME to a config that supports tag proposal."
+                )
+    except httpx.HTTPStatusError as exc:
+        response_text = _extract_topicer_error_detail(exc.response)[:500]
+        LOGGER.exception("Topicer returned an error response.")
+        _raise_topicer_gateway_error(
+            f"Topicer request failed with status {exc.response.status_code}: {response_text}"
+        )
+    except httpx.HTTPError as exc:
+        LOGGER.exception("Topicer request failed.")
+        _raise_topicer_gateway_error(f"Unable to contact Topicer: {exc}")
+    except ValueError as exc:
+        LOGGER.exception("Topicer configuration resolution failed.")
+        _raise_topicer_gateway_error(str(exc))
+
+    _raise_topicer_gateway_error("Topicer request did not produce a valid response.")
+
+
+@exp_router.post(
+    "/api/propose_best_tag",
+    response_model=schemas.BestTagProposalResponse,
+)
+async def propose_best_tag(
+    body: schemas.BestTagProposalRequest,
+) -> schemas.BestTagProposalResponse:
+    """Call Topicer tag proposal and return top confident tags."""
+    if body.text.strip() == "" or len(body.tags) == 0:
+        return schemas.BestTagProposalResponse(suggestions=[])
+
+    fallback_chunk_id = str(uuid.uuid4())
+    topicer_tags = _build_topicer_tags_payload(body.tags)
+    tag_by_id = {
+        _fallback_tag_id(tag): tag
+        for tag in body.tags
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            config_candidates = ["ollama"]
+            method_not_applicable_configs: list[str] = []
+
+            for config_name in config_candidates:
+                response = await client.post(
+                    f"{config.TOPICER_URL}{TOPICER_PROPOSE_TAGS_TEXTS_PATH}",
+                    params={"config_name": config_name},
+                    json={
+                        "text_chunk": {
+                            "id": fallback_chunk_id,
+                            "text": body.text,
+                        },
+                        "tags": topicer_tags,
+                    },
+                    timeout=config.TOPICER_TIMEOUT,
+                )
+
+                if response.status_code >= 400:
+                    if _is_method_not_applicable_error(response):
+                        method_not_applicable_configs.append(config_name)
+                        continue
+                    response.raise_for_status()
+
+                try:
+                    suggestions = _topicer_proposal_to_auto_suggestions(
+                        response.json(),
+                        fallback_chunk_id=fallback_chunk_id,
+                    )
+                except Exception as exc:
+                    LOGGER.exception("Topicer returned invalid propose tags payload.")
+                    _raise_topicer_gateway_error(
+                        f"Topicer returned invalid propose tags payload: {exc}"
+                    )
+
+                top_suggestions = _select_confident_suggestions(
+                    suggestions=suggestions,
+                    confidence_threshold=body.confidence_threshold,
+                    max_count=3,
+                )
+
+                return schemas.BestTagProposalResponse(
+                    suggestions=[
+                        schemas.BestTagProposal(
+                            tagId=suggestion.tagId,
+                            confidence=suggestion.confidence,
+                            start=suggestion.start,
+                            end=suggestion.end,
+                            tag=tag_by_id.get(suggestion.tagId),
+                        )
+                        for suggestion in top_suggestions
+                    ]
+                )
 
             if len(method_not_applicable_configs) > 0:
                 unique_configs = sorted(set(method_not_applicable_configs))

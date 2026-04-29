@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useTagging } from './useTagging'
 import { snapToWordBoundary } from '../utils'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
@@ -88,11 +88,23 @@ interface AutoSpanCandidate {
   span: TagSpanWithConfidence
 }
 
+interface ProbableTagSuggestion {
+  tagId: string
+  tagName: string
+  tagColor: string
+  tagPictogram: string
+  confidence: number
+}
+
+const PROBABLE_TAGS_DEBOUNCE_MS = 250
+
 const normalizeChunkId = (chunkId: string | null | undefined): string => {
   return (chunkId || '').trim().toLowerCase()
 }
 
 export function useTaggingPageState() {
+  const DEBUG = false
+
   const {
     documentDetail,
     availableTags,
@@ -112,7 +124,8 @@ export function useTaggingPageState() {
     deleteTagSpan,
     suggestAnnotations,
     discoverTopics,
-    getTagsForCollection
+    getTagsForCollection,
+    proposeBestTag
   } = useTagging()
 
   const tagSpansByChunkId = ref<Record<string, TagSpanWithConfidence[]>>({})
@@ -126,6 +139,13 @@ export function useTaggingPageState() {
   const globalSelection = ref<GlobalSelection | null>(null)
   const hoveredAnnotationMarker = ref<HoveredSpanMarker | null>(null)
   const useWordSnapping = ref(true)
+  const probableTagSuggestions = ref<ProbableTagSuggestion[]>([])
+  const isLoadingProbableTags = ref(false)
+  const probableTagsRequestToken = ref(0)
+  const lastProbableTagsQueryKey = ref<string | null>(null)
+  const probableTagsDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(
+    null
+  )
 
   const pageLoading = computed(
     () =>
@@ -743,8 +763,202 @@ export function useTaggingPageState() {
   }
 
   const clearSelection = () => {
+    if (probableTagsDebounceTimer.value) {
+      clearTimeout(probableTagsDebounceTimer.value)
+      probableTagsDebounceTimer.value = null
+    }
     globalSelection.value = null
+    probableTagSuggestions.value = []
+    lastProbableTagsQueryKey.value = null
   }
+
+  const getSelectedTextForGlobalSelection = (
+    selection: GlobalSelection
+  ): string => {
+    const startChunkIndex = chunkIndexById.value[selection.chunkId]
+    if (startChunkIndex === undefined) return ''
+
+    const firstChunkText = chunks.value[startChunkIndex]?.textChunk || ''
+    const start = Math.max(0, Math.min(selection.start, firstChunkText.length))
+    const end = Math.max(start, selection.end)
+
+    if (end <= firstChunkText.length) {
+      return firstChunkText.slice(start, end)
+    }
+
+    let collectedText = firstChunkText.slice(start)
+    let remaining = end - firstChunkText.length
+
+    for (
+      let chunkIndex = startChunkIndex + 1;
+      chunkIndex < chunks.value.length && remaining > 0;
+      chunkIndex += 1
+    ) {
+      const chunkText = chunks.value[chunkIndex].textChunk
+      if (remaining <= chunkText.length) {
+        collectedText += chunkText.slice(0, remaining)
+        remaining = 0
+      } else {
+        collectedText += chunkText
+        remaining -= chunkText.length
+      }
+    }
+
+    return collectedText
+  }
+
+  const mapCollectionTagsToTagData = () => {
+    return collectionTags.value
+      .filter((tag) => !!tag.id)
+      .map((tag) => ({
+        tagName: tag.name,
+        tagShorthand: tag.shorthand,
+        tagColor: tag.color,
+        tagPictogram: tag.pictogram,
+        tagDefinition: tag.definition,
+        tagExamples: tag.examples,
+        collectionName: currentCollectionId.value || '',
+        tagUuid: tag.id
+      }))
+  }
+
+  const refreshProbableTagsForSelection = async () => {
+    const requestToken = ++probableTagsRequestToken.value
+    const selection = globalSelection.value
+
+    if (!selection || selection.editingId || selection.spanType === SpanType.auto) {
+      probableTagSuggestions.value = []
+      isLoadingProbableTags.value = false
+      return
+    }
+
+    const tagsPayload = mapCollectionTagsToTagData()
+    if (!tagsPayload.length) {
+      probableTagSuggestions.value = []
+      isLoadingProbableTags.value = false
+      return
+    }
+
+    const selectedText = getSelectedTextForGlobalSelection(selection).trim()
+    if (!selectedText) {
+      probableTagSuggestions.value = []
+      isLoadingProbableTags.value = false
+      return
+    }
+
+    const tagsKey = tagsPayload
+      .map((tag) => tag.tagUuid)
+      .filter((tagUuid): tagUuid is string => !!tagUuid)
+      .sort()
+      .join('|')
+    const queryKey = [
+      selection.chunkId,
+      selection.start,
+      selection.end,
+      selectedText,
+      tagsKey
+    ].join('::')
+
+    if (lastProbableTagsQueryKey.value === queryKey) {
+      isLoadingProbableTags.value = false
+      return
+    }
+
+    lastProbableTagsQueryKey.value = queryKey
+
+    isLoadingProbableTags.value = true
+
+    try {
+      const response = await proposeBestTag({
+        text: selectedText,
+        tags: tagsPayload
+      })
+
+      if (requestToken !== probableTagsRequestToken.value) {
+        return
+      }
+
+      const normalizedResponse = response as
+        | {
+          suggestions?: Array<{
+            tagId: string
+            confidence: number
+            tag?: {
+              tagName?: string
+              tagColor?: string
+              tagPictogram?: string
+            } | null
+          }>
+          suggestion?: {
+            tagId: string
+            confidence: number
+            tag?: {
+              tagName?: string
+              tagColor?: string
+              tagPictogram?: string
+            } | null
+          } | null
+        }
+        | undefined
+
+      const sourceSuggestions =
+        normalizedResponse?.suggestions ||
+        (normalizedResponse?.suggestion ? [normalizedResponse.suggestion] : [])
+
+      probableTagSuggestions.value = sourceSuggestions.map((suggestion) => {
+        const availableTag = availableTags.value.find(
+          (tag) => tag.tagUuid === suggestion.tagId
+        )
+
+        return {
+          tagId: suggestion.tagId,
+          tagName:
+            availableTag?.tagName || suggestion.tag?.tagName || suggestion.tagId,
+          tagColor:
+            availableTag?.tagColor || suggestion.tag?.tagColor || '#1976d2',
+          tagPictogram:
+            availableTag?.tagPictogram || suggestion.tag?.tagPictogram || '',
+          confidence: suggestion.confidence
+        }
+      })
+    } catch (error) {
+      if (requestToken === probableTagsRequestToken.value) {
+        probableTagSuggestions.value = []
+        lastProbableTagsQueryKey.value = null
+      }
+    } finally {
+      if (requestToken === probableTagsRequestToken.value) {
+        isLoadingProbableTags.value = false
+      }
+    }
+  }
+
+  const scheduleProbableTagsRefresh = () => {
+    if (probableTagsDebounceTimer.value) {
+      clearTimeout(probableTagsDebounceTimer.value)
+      probableTagsDebounceTimer.value = null
+    }
+
+    probableTagsDebounceTimer.value = setTimeout(() => {
+      probableTagsDebounceTimer.value = null
+      void refreshProbableTagsForSelection()
+    }, PROBABLE_TAGS_DEBOUNCE_MS)
+  }
+
+  watch(
+    [globalSelection, collectionTags, availableTags],
+    () => {
+      scheduleProbableTagsRefresh()
+    },
+    { deep: true }
+  )
+
+  onBeforeUnmount(() => {
+    if (probableTagsDebounceTimer.value) {
+      clearTimeout(probableTagsDebounceTimer.value)
+      probableTagsDebounceTimer.value = null
+    }
+  })
 
   const handleTagClick = async (tagId: string | null) => {
     if (!globalSelection.value) return
@@ -817,6 +1031,7 @@ export function useTaggingPageState() {
           chunkID: selectedSpan.chunkId,
           tagID: selectedSpan.tagId,
           collectionID: currentCollectionId.value || '',
+          spanID: selectedSpan.id,
           start: selectedSpan.start,
           end: selectedSpan.end
         })
@@ -824,6 +1039,7 @@ export function useTaggingPageState() {
           chunkID: selectedSpan.chunkId,
           tagID: selectedSpan.tagId,
           collectionID: currentCollectionId.value || '',
+          spanID: selectedSpan.id,
           start: selectedSpan.start,
           end: selectedSpan.end
         })
@@ -1069,10 +1285,14 @@ export function useTaggingPageState() {
   }
 
   return {
+    DEBUG,
+    documentDetail,
     chunks,
     annotationMarkers,
     hoveredAnnotationMarker,
     availableTags,
+    probableTagSuggestions,
+    isLoadingProbableTags,
     discoveredTopics,
     discoveredTopicByChunkId,
     pageLoading,

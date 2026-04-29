@@ -174,6 +174,7 @@ export function useTagging() {
         tagUuid: tag.id,
         tagName: tag.name,
         tagColor: tag.color,
+        tagShorthand: tag.shorthand,
         tagPictogram: tag.pictogram
       }))
     } catch (error) {
@@ -283,6 +284,7 @@ export function useTagging() {
     chunkID,
     tagID,
     collectionID,
+    spanID,
     start,
     end
   }: Parameters<
@@ -295,6 +297,7 @@ export function useTagging() {
           chunkID,
           tagID,
           collectionID,
+          spanID,
           start,
           end
         }
@@ -312,6 +315,7 @@ export function useTagging() {
     chunkID,
     tagID,
     collectionID,
+    spanID,
     start,
     end
   }: Parameters<
@@ -324,6 +328,7 @@ export function useTagging() {
           chunkID,
           tagID,
           collectionID,
+          spanID,
           start,
           end
         }
@@ -334,6 +339,27 @@ export function useTagging() {
       return undefined
     } finally {
       isProcessing.value = false
+    }
+  }
+
+  const proposeBestTag = async ({
+    text,
+    tags
+  }: Parameters<
+    typeof api.proposeBestTagApiProposeBestTagPost
+  >[0]['bestTagProposalRequest']) => {
+    try {
+      const response = await api.proposeBestTagApiProposeBestTagPostRaw({
+        bestTagProposalRequest: {
+          text,
+          tags
+        }
+      })
+
+      return await response.raw.json()
+    } catch (error) {
+      console.error('Error proposing best tag:', error)
+      return undefined
     }
   }
 
@@ -361,6 +387,7 @@ export function useTagging() {
     addChunkToCollection,
     removeChunkFromCollection,
     suggestAnnotations,
-    discoverTopics
+    discoverTopics,
+    proposeBestTag
   }
 }

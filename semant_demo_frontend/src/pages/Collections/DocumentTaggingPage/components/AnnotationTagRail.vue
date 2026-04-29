@@ -15,16 +15,33 @@
         role="button"
         tabindex="0"
         @click="emit('markerClick', marker.rawMarker)"
+        @mouseenter="emit('markerHoverStart', marker.rawMarker)"
+        @mouseleave="emit('markerHoverEnd')"
         @keydown.enter.prevent="emit('markerClick', marker.rawMarker)"
         @keydown.space.prevent="emit('markerClick', marker.rawMarker)"
       >
         <span
           class="rail-color"
-          :style="{ backgroundColor: marker.tagColor, height: `${marker.height}px` }"
-          @mouseenter="emit('markerHoverStart', marker.rawMarker)"
-          @mouseleave="emit('markerHoverEnd')"
+          :style="{
+            backgroundColor: marker.tagColor,
+            height: `${marker.height}px`,
+            zIndex: marker.zIndex
+          }"
         />
-        <span class="rail-label">{{ marker.tagName }}</span>
+        <span
+          class="rail-label"
+          :style="{
+            zIndex: marker.zIndex + 1,
+            borderColor: marker.tagColor
+          }"
+        >
+          <q-icon
+            :name="marker.tagPictogram"
+            :style="{ color: marker.tagColor }"
+            class="rail-label-icon"
+          />
+          {{ marker.tagShorthand }}
+        </span>
       </div>
     </div>
   </div>
@@ -69,12 +86,15 @@ const markerPositions = ref<Record<string, { top: number; height: number }>>({})
 let rafId: number | null = null
 
 const tagsById = computed(() => {
-  return props.availableTags.reduce<Record<string, AvailableTag>>((acc, tag) => {
-    if (tag.tagUuid) {
-      acc[tag.tagUuid] = tag
-    }
-    return acc
-  }, {})
+  return props.availableTags.reduce<Record<string, AvailableTag>>(
+    (acc, tag) => {
+      if (tag.tagUuid) {
+        acc[tag.tagUuid] = tag
+      }
+      return acc
+    },
+    {}
+  )
 })
 
 const renderedMarkers = computed(() => {
@@ -96,6 +116,8 @@ const renderedMarkers = computed(() => {
         height: position.height,
         tagName: tag.tagName,
         tagColor: tag.tagColor,
+        tagPictogram: tag.tagPictogram,
+        tagShorthand: tag.tagShorthand,
         opacity: shouldDimOthers && !isActive ? 0.35 : 1
       }
     })
@@ -229,15 +251,16 @@ onBeforeUnmount(() => {
   width: max-content;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   cursor: pointer;
 }
 
 .rail-color {
   position: relative;
-  width: 10px;
-  min-width: 10px;
+  width: 6px;
+  min-width: 6px;
   border-radius: 8px;
+  z-index: 1;
 }
 
 .rail-color::before {
@@ -247,10 +270,23 @@ onBeforeUnmount(() => {
   right: -8px;
   bottom: -6px;
   left: -8px;
+  z-index: 0;
 }
 
 .rail-label {
   font-size: 1rem;
   color: #303030;
+  position: relative;
+  z-index: 2;
+  border: 1px solid transparent;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rail-label-icon {
+  font-size: 0.95rem;
 }
 </style>

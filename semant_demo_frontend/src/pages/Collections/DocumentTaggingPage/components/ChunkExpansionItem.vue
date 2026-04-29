@@ -1,6 +1,6 @@
 <template>
   <div ref="rootEl">
-    <q-card flat bordered class="q-mb-lg">
+    <q-card flat bordered class="q-mb-sm">
     <q-expansion-item
       ref="expansionRef"
       v-model="isExpanded"
@@ -8,7 +8,7 @@
       expand-separator
       switch-toggle-side
       :header-class="[
-        'chunk-expansion-header',
+        'chunk-expansion-header q-py-xs ',
         inUserCollection ? '' : 'bg-grey-2 text-grey-8'
       ]"
       :caption="
@@ -59,7 +59,7 @@
         </q-item-section>
       </template>
 
-      <q-card-section>
+      <q-card-section class="q-pa-none">
         <ChunkTagAnnotator
           :chunk-id="chunkId"
           :chunk-text="chunkText"
@@ -229,5 +229,6 @@ defineExpose({
 <style scoped>
 :deep(.chunk-expansion-header) {
   user-select: none;
+  min-height: 28px;
 }
 </style>

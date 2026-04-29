@@ -33,11 +33,11 @@
         @mousedown.prevent.stop="startDrag($event, 'end')"
         @touchstart.prevent.stop="startDrag($event, 'end')"
       ></span>
-      <q-tooltip v-if="seg.tags.length > 0 && !currentSelection?.editingId">
+      <!--<q-tooltip v-if="seg.tags.length > 0 && !currentSelection?.editingId">
         <div v-for="tag in seg.tags" :key="tag.tagId">
           {{ getTagName(tag.tagId) }}
         </div>
-      </q-tooltip>
+      </q-tooltip>-->
     </span>
   </div>
 </template>
@@ -76,6 +76,7 @@ export interface AvailableTag {
   tagName: string
   tagColor: string
   tagPictogram: string
+  tagShorthand: string
   tagUuid: string | null
 }
 
@@ -155,9 +156,7 @@ const emitSelection = (
   overrideSelection?: SelectionState | null
 ) => {
   const selectionToEmit =
-    overrideSelection === undefined
-      ? currentSelection.value
-      : overrideSelection
+    overrideSelection === undefined ? currentSelection.value : overrideSelection
 
   emit('selectionChange', {
     chunkId: overrideChunkId || props.chunkId,
@@ -194,8 +193,7 @@ const renderedSegments = computed(() => {
     const char = text[i]
 
     const activeTags = props.tagSpans.filter(
-      (t) =>
-        i >= t.start && i < t.end && t.id !== props.editingSpanId
+      (t) => i >= t.start && i < t.end && t.id !== props.editingSpanId
     )
 
     activeTags.sort((a, b) => {
@@ -203,7 +201,9 @@ const renderedSegments = computed(() => {
       const bKey = b.id ?? `${b.tagId}-${b.start}-${b.end}`
       return aKey.localeCompare(bKey)
     })
-    const spanIds = activeTags.map((t) => t.id).filter((id): id is string => !!id)
+    const spanIds = activeTags
+      .map((t) => t.id)
+      .filter((id): id is string => !!id)
     const tagsStr = activeTags
       .map((t) => t.id ?? `${t.tagId}-${t.start}-${t.end}`)
       .join(',')
@@ -735,7 +735,7 @@ const getHandleStyle = () => {
   font-size: 16px;
   line-height: 1.8;
   padding: 16px;
-  border-radius: 8px;
+  border-radius: 0 0 8px 8px;
   cursor: text;
   background-color: #fafafa;
 }

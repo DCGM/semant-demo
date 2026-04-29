@@ -39,6 +39,12 @@ export interface ApproveTagReq {
     tagID: string;
     /**
      * 
+     * @type {string}
+     * @memberof ApproveTagReq
+     */
+    spanID?: string | null;
+    /**
+     * 
      * @type {number}
      * @memberof ApproveTagReq
      */
@@ -74,6 +80,7 @@ export function ApproveTagReqFromJSONTyped(json: any, ignoreDiscriminator: boole
         'collectionID': json['collectionID'],
         'chunkID': json['chunkID'],
         'tagID': json['tagID'],
+        'spanID': json['spanID'] == null ? undefined : json['spanID'],
         'start': json['start'] == null ? undefined : json['start'],
         'end': json['end'] == null ? undefined : json['end'],
     };
@@ -93,6 +100,7 @@ export function ApproveTagReqToJSONTyped(value?: ApproveTagReq | null, ignoreDis
         'collectionID': value['collectionID'],
         'chunkID': value['chunkID'],
         'tagID': value['tagID'],
+        'spanID': value['spanID'],
         'start': value['start'],
         'end': value['end'],
     };

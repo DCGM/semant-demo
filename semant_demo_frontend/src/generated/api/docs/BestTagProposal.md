@@ -1,32 +1,30 @@
 
-# ApproveTagReq
+# BestTagProposal
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`collectionID` | string
-`chunkID` | string
-`tagID` | string
-`spanID` | string
+`tagId` | string
+`confidence` | number
 `start` | number
 `end` | number
+`tag` | [TagData](TagData.md)
 
 ## Example
 
 ```typescript
-import type { ApproveTagReq } from ''
+import type { BestTagProposal } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "collectionID": null,
-  "chunkID": null,
-  "tagID": null,
-  "spanID": null,
+  "tagId": null,
+  "confidence": null,
   "start": null,
   "end": null,
-} satisfies ApproveTagReq
+  "tag": null,
+} satisfies BestTagProposal
 
 console.log(example)
 
@@ -35,7 +33,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as ApproveTagReq
+const exampleParsed = JSON.parse(exampleJSON) as BestTagProposal
 console.log(exampleParsed)
 ```
 

@@ -401,6 +401,7 @@ class ApproveTagReq(BaseModel):
     collectionID: str
     chunkID: str
     tagID: str
+    spanID: str | None = None
     start: int | None = None
     end: int | None = None
 
@@ -509,6 +510,24 @@ class AutoAnnotationSuggestionRequest(BaseModel):
 class AutoAnnotationsSuggestionsResponse(BaseModel):
     suggestions: list[AutoAnnotationSuggestion]
 # /Automatic annotation suggestions
+
+
+class BestTagProposalRequest(BaseModel):
+    text: str
+    tags: list[TagData]
+    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class BestTagProposal(BaseModel):
+    tagId: str
+    confidence: float
+    start: int
+    end: int
+    tag: TagData | None = None
+
+
+class BestTagProposalResponse(BaseModel):
+    suggestions: list[BestTagProposal]
 
 
 # Topic discovery

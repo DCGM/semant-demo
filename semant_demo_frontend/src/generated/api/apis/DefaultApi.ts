@@ -20,6 +20,8 @@ import type {
   ApproveTagResponse,
   AutoAnnotationSuggestionRequest,
   AutoAnnotationsSuggestionsResponse,
+  BestTagProposalRequest,
+  BestTagProposalResponse,
   CancelTaskResponse,
   Chunk2CollectionReq,
   Collection,
@@ -73,6 +75,10 @@ import {
     AutoAnnotationSuggestionRequestToJSON,
     AutoAnnotationsSuggestionsResponseFromJSON,
     AutoAnnotationsSuggestionsResponseToJSON,
+    BestTagProposalRequestFromJSON,
+    BestTagProposalRequestToJSON,
+    BestTagProposalResponseFromJSON,
+    BestTagProposalResponseToJSON,
     CancelTaskResponseFromJSON,
     CancelTaskResponseToJSON,
     Chunk2CollectionReqFromJSON,
@@ -268,7 +274,15 @@ export interface GetTagApiTagsTagUuidGetRequest {
     tagUuid: string;
 }
 
+export interface ProposeBestTagApiProposeBestTagPostRequest {
+    bestTagProposalRequest: BestTagProposalRequest;
+}
+
 export interface ProposeTagsApiProposeTagsPostRequest {
+    autoAnnotationSuggestionRequest: AutoAnnotationSuggestionRequest;
+}
+
+export interface ProposeTagsMockApiProposeTagsMockPostRequest {
     autoAnnotationSuggestionRequest: AutoAnnotationSuggestionRequest;
 }
 
@@ -1055,6 +1069,30 @@ export interface DefaultApiInterface {
     getTagsApiTagsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse>;
 
     /**
+     * Creates request options for proposeBestTagApiProposeBestTagPost without sending the request
+     * @param {BestTagProposalRequest} bestTagProposalRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeBestTagApiProposeBestTagPostRequestOpts(requestParameters: ProposeBestTagApiProposeBestTagPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Call Topicer tag proposal and return only the highest-confidence tag.
+     * @summary Propose Best Tag
+     * @param {BestTagProposalRequest} bestTagProposalRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeBestTagApiProposeBestTagPostRaw(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BestTagProposalResponse>>;
+
+    /**
+     * Call Topicer tag proposal and return only the highest-confidence tag.
+     * Propose Best Tag
+     */
+    proposeBestTagApiProposeBestTagPost(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BestTagProposalResponse>;
+
+    /**
      * Creates request options for proposeTagsApiProposeTagsPost without sending the request
      * @param {AutoAnnotationSuggestionRequest} autoAnnotationSuggestionRequest 
      * @throws {RequiredError}
@@ -1063,7 +1101,7 @@ export interface DefaultApiInterface {
     proposeTagsApiProposeTagsPostRequestOpts(requestParameters: ProposeTagsApiProposeTagsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Call Topicer tag proposal on provided chunks and tags.
      * @summary Propose Tags
      * @param {AutoAnnotationSuggestionRequest} autoAnnotationSuggestionRequest 
      * @param {*} [options] Override http request option.
@@ -1073,10 +1111,34 @@ export interface DefaultApiInterface {
     proposeTagsApiProposeTagsPostRaw(requestParameters: ProposeTagsApiProposeTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AutoAnnotationsSuggestionsResponse>>;
 
     /**
-     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Call Topicer tag proposal on provided chunks and tags.
      * Propose Tags
      */
     proposeTagsApiProposeTagsPost(requestParameters: ProposeTagsApiProposeTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AutoAnnotationsSuggestionsResponse>;
+
+    /**
+     * Creates request options for proposeTagsMockApiProposeTagsMockPost without sending the request
+     * @param {AutoAnnotationSuggestionRequest} autoAnnotationSuggestionRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeTagsMockApiProposeTagsMockPostRequestOpts(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * @summary Propose Tags Mock
+     * @param {AutoAnnotationSuggestionRequest} autoAnnotationSuggestionRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeTagsMockApiProposeTagsMockPostRaw(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AutoAnnotationsSuggestionsResponse>>;
+
+    /**
+     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Propose Tags Mock
+     */
+    proposeTagsMockApiProposeTagsMockPost(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AutoAnnotationsSuggestionsResponse>;
 
     /**
      * Creates request options for questionApiQuestionQuestionTextPost without sending the request
@@ -2964,6 +3026,55 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for proposeBestTagApiProposeBestTagPost without sending the request
+     */
+    async proposeBestTagApiProposeBestTagPostRequestOpts(requestParameters: ProposeBestTagApiProposeBestTagPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['bestTagProposalRequest'] == null) {
+            throw new runtime.RequiredError(
+                'bestTagProposalRequest',
+                'Required parameter "bestTagProposalRequest" was null or undefined when calling proposeBestTagApiProposeBestTagPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/propose_best_tag`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BestTagProposalRequestToJSON(requestParameters['bestTagProposalRequest']),
+        };
+    }
+
+    /**
+     * Call Topicer tag proposal and return only the highest-confidence tag.
+     * Propose Best Tag
+     */
+    async proposeBestTagApiProposeBestTagPostRaw(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BestTagProposalResponse>> {
+        const requestOptions = await this.proposeBestTagApiProposeBestTagPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => BestTagProposalResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Call Topicer tag proposal and return only the highest-confidence tag.
+     * Propose Best Tag
+     */
+    async proposeBestTagApiProposeBestTagPost(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BestTagProposalResponse> {
+        const response = await this.proposeBestTagApiProposeBestTagPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for proposeTagsApiProposeTagsPost without sending the request
      */
     async proposeTagsApiProposeTagsPostRequestOpts(requestParameters: ProposeTagsApiProposeTagsPostRequest): Promise<runtime.RequestOpts> {
@@ -2993,7 +3104,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Call Topicer tag proposal on provided chunks and tags.
      * Propose Tags
      */
     async proposeTagsApiProposeTagsPostRaw(requestParameters: ProposeTagsApiProposeTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AutoAnnotationsSuggestionsResponse>> {
@@ -3004,11 +3115,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Call Topicer tag proposal on provided chunks and tags.
      * Propose Tags
      */
     async proposeTagsApiProposeTagsPost(requestParameters: ProposeTagsApiProposeTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AutoAnnotationsSuggestionsResponse> {
         const response = await this.proposeTagsApiProposeTagsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for proposeTagsMockApiProposeTagsMockPost without sending the request
+     */
+    async proposeTagsMockApiProposeTagsMockPostRequestOpts(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['autoAnnotationSuggestionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'autoAnnotationSuggestionRequest',
+                'Required parameter "autoAnnotationSuggestionRequest" was null or undefined when calling proposeTagsMockApiProposeTagsMockPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/propose_tags_mock`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AutoAnnotationSuggestionRequestToJSON(requestParameters['autoAnnotationSuggestionRequest']),
+        };
+    }
+
+    /**
+     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Propose Tags Mock
+     */
+    async proposeTagsMockApiProposeTagsMockPostRaw(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AutoAnnotationsSuggestionsResponse>> {
+        const requestOptions = await this.proposeTagsMockApiProposeTagsMockPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AutoAnnotationsSuggestionsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Propose Tags Mock
+     */
+    async proposeTagsMockApiProposeTagsMockPost(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AutoAnnotationsSuggestionsResponse> {
+        const response = await this.proposeTagsMockApiProposeTagsMockPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
