@@ -103,6 +103,39 @@ async def _fetch_chunk_with_doc(
     return dict(obj.properties), document_id
 
 
+async def _fetch_chunks_in_range(
+    searcher: WeaviateAbstraction,
+    document_id: str,
+    min_order: int,
+    max_order: int,
+) -> list[dict[str, Any]]:
+    """
+    Fetch chunks from the same document whose ``order`` falls in the
+    inclusive ``[min_order, max_order]`` range, ordered ascending. Returns a
+    list of ``{order, text}`` dicts.
+    """
+    if max_order < min_order:
+        return []
+    chunks_collection = searcher.client.collections.get(
+        searcher.collectionNames.chunks_collection_name
+    )
+    f = (
+        Filter.by_ref("document").by_id().equal(document_id)
+        & Filter.by_property("order").greater_or_equal(min_order)
+        & Filter.by_property("order").less_or_equal(max_order)
+    )
+    response = await chunks_collection.query.fetch_objects(
+        filters=f,
+        limit=max_order - min_order + 1,
+        sort=Sort.by_property("order", ascending=True),
+        return_properties=["text", "order"],
+    )
+    return [
+        {"order": obj.properties.get("order"), "text": obj.properties.get("text") or ""}
+        for obj in response.objects
+    ]
+
+
 async def _fetch_neighbour_chunks(
     searcher: WeaviateAbstraction,
     document_id: str,
@@ -112,29 +145,68 @@ async def _fetch_neighbour_chunks(
     """
     Fetch chunks from the same document with order in
     ``[centre_order - radius, centre_order + radius]`` (excluding the centre
-    itself), ordered ascending. Returns a list of ``{order, text}`` dicts.
+    itself), ordered ascending.
     """
     if radius <= 0:
         return []
-    chunks_collection = searcher.client.collections.get(
-        searcher.collectionNames.chunks_collection_name
+    chunks = await _fetch_chunks_in_range(
+        searcher, document_id, centre_order - radius, centre_order + radius
     )
-    f = (
-        Filter.by_ref("document").by_id().equal(document_id)
-        & Filter.by_property("order").greater_or_equal(centre_order - radius)
-        & Filter.by_property("order").less_or_equal(centre_order + radius)
+    return [c for c in chunks if c.get("order") != centre_order]
+
+
+async def _assemble_chunks_covering_span(
+    searcher: WeaviateAbstraction,
+    *,
+    document_id: str | None,
+    first_chunk_text: str,
+    first_chunk_order: int | None,
+    span_end: int,
+) -> tuple[str, list[int]]:
+    """
+    Build a contiguous string from the chunks the span occupies. Starts at
+    the first chunk (referenced by ``span.chunkId``) and keeps appending
+    consecutive following chunks until the running length covers ``span_end``
+    (a cross-chunk span's ``end`` is an offset measured across the
+    concatenation of all spanned chunks).
+
+    The returned text contains the span itself plus whatever lies before it
+    in the first chunk and after it in the last spanned chunk — the caller
+    slices the actual span / surrounding window out of this string.
+
+    Returns ``(assembled_text, consumed_orders)`` where ``consumed_orders``
+    lists the orders of all chunks that contributed (including the first).
+    """
+    consumed: list[int] = []
+    if first_chunk_order is not None:
+        consumed.append(first_chunk_order)
+    assembled = first_chunk_text
+
+    if (
+        span_end <= len(assembled)
+        or document_id is None
+        or first_chunk_order is None
+    ):
+        return assembled, consumed
+
+    # Pull a generous batch of following chunks in one go; chunk lengths vary
+    # but 8 is plenty for typical multi-chunk spans.
+    BATCH = 8
+    next_chunks = await _fetch_chunks_in_range(
+        searcher,
+        document_id,
+        min_order=first_chunk_order + 1,
+        max_order=first_chunk_order + BATCH,
     )
-    response = await chunks_collection.query.fetch_objects(
-        filters=f,
-        limit=2 * radius + 1,
-        sort=Sort.by_property("order", ascending=True),
-        return_properties=["text", "order"],
-    )
-    return [
-        {"order": obj.properties.get("order"), "text": obj.properties.get("text") or ""}
-        for obj in response.objects
-        if obj.properties.get("order") != centre_order
-    ]
+    for c in next_chunks:
+        order = c.get("order")
+        if order is None:
+            continue
+        assembled += c.get("text") or ""
+        consumed.append(order)
+        if len(assembled) >= span_end:
+            break
+    return assembled, consumed
 
 
 def _trim_context(text: str, span_start: int, span_end: int, window: int) -> tuple[str, str]:
@@ -169,7 +241,7 @@ async def build_context_message(
 
     # Chunk + document
     chunk_props, document_id = await _fetch_chunk_with_doc(searcher, span.chunkId)
-    chunk_text: str = (chunk_props or {}).get("text") or ""
+    first_chunk_text: str = (chunk_props or {}).get("text") or ""
     chunk_order: int | None = (chunk_props or {}).get("order")
 
     document = None
@@ -179,35 +251,51 @@ async def build_context_message(
         except Exception as e:
             logger.warning("Failed to load document %s: %s", document_id, e)
 
-    # Span text (defensive bounds — DB span offsets must lie in the chunk text)
-    s_start = max(0, min(span.start, len(chunk_text)))
-    s_end = max(s_start, min(span.end, len(chunk_text)))
-    span_text = chunk_text[s_start:s_end]
+    # Cross-chunk spans are stored as ``chunkId = first chunk`` with ``end``
+    # measured across the concatenation of consecutive chunks. Build that
+    # concatenation (only fetching extra chunks when actually needed).
+    assembled_text, consumed_orders = await _assemble_chunks_covering_span(
+        searcher,
+        document_id=document_id,
+        first_chunk_text=first_chunk_text,
+        first_chunk_order=chunk_order,
+        span_end=span.end,
+    )
 
-    # Surrounding context within the chunk
+    # Span text (defensive bounds — fall back to whatever we managed to fetch)
+    s_start = max(0, min(span.start, len(assembled_text)))
+    s_end = max(s_start, min(span.end, len(assembled_text)))
+    span_text = assembled_text[s_start:s_end]
+
+    # Surrounding context within the assembled (possibly multi-chunk) text
     window_chars = max(0, config.SPAN_CHAT_CONTEXT_CHARS)
-    before, after = _trim_context(chunk_text, s_start, s_end, window_chars)
+    before, after = _trim_context(assembled_text, s_start, s_end, window_chars)
 
-    # Optionally pull in neighbouring chunks if the in-chunk window doesn't
-    # provide enough characters on either side.
+    # Optionally pull in neighbouring chunks (outside the span itself) if the
+    # in-text window doesn't provide enough characters on either side.
     neighbours: list[dict[str, Any]] = []
-    if (
-        document_id
-        and chunk_order is not None
-        and (s_start < window_chars or len(chunk_text) - s_end < window_chars)
-    ):
+    needs_prev = s_start < window_chars
+    needs_next = len(assembled_text) - s_end < window_chars
+    if document_id and chunk_order is not None and (needs_prev or needs_next):
         try:
-            neighbours = await _fetch_neighbour_chunks(
-                searcher, document_id=document_id, centre_order=chunk_order, radius=2
+            last_consumed = consumed_orders[-1] if consumed_orders else chunk_order
+            min_o = chunk_order - 2
+            max_o = last_consumed + 2
+            chunks = await _fetch_chunks_in_range(
+                searcher, document_id, min_o, max_o
             )
+            consumed_set = set(consumed_orders)
+            neighbours = [c for c in chunks if c.get("order") not in consumed_set]
         except Exception as e:
             logger.warning("Failed to fetch neighbour chunks: %s", e)
 
     prev_text = " ".join(
         n["text"] for n in neighbours if n["order"] is not None and n["order"] < chunk_order
     )[-window_chars:] if neighbours else ""
+    last_consumed = consumed_orders[-1] if consumed_orders else chunk_order
     next_text = " ".join(
-        n["text"] for n in neighbours if n["order"] is not None and n["order"] > chunk_order
+        n["text"] for n in neighbours
+        if n["order"] is not None and last_consumed is not None and n["order"] > last_consumed
     )[:window_chars] if neighbours else ""
 
     # Build the prompt block

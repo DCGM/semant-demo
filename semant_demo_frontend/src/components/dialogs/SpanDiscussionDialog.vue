@@ -224,11 +224,10 @@ const showSuggestions = computed(() => {
   padding: 6px 10px;
   border-radius: 6px;
   border-left: 3px solid #1976d2;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
-  max-height: 4.5em;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-height: 8em;
+  overflow-y: auto;
 }
 
 .conversation {

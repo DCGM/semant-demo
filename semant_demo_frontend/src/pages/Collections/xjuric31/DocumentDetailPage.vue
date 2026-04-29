@@ -1072,15 +1072,26 @@ const onDiscussSpan = () => {
   const sel = annotations.selection.value
   if (!sel?.editingSpanId) return
 
-  // Resolve span text & tag info for the dialog header. The selection only
-  // exposes the start chunk; for spans crossing chunks we still slice from
-  // that chunk to keep the preview short.
-  const chunk = displayChunks.value.find((c) => c.id === sel.chunkId) ??
-    hiddenPreviewChunks.value.find((c) => c.id === sel.chunkId)
-  const text = chunk?.text || ''
-  const start = Math.max(0, Math.min(sel.start, text.length))
-  const end = Math.max(start, Math.min(sel.end, text.length))
-  const spanText = text.slice(start, end)
+  // Cross-chunk spans are stored as ``chunkId = first chunk`` with ``end``
+  // measured across the concatenation of consecutive chunks (see
+  // ``normalizeCrossChunkSelection`` in useTaggingPageState). To preview the
+  // full span we therefore have to walk forward through the ordered chunk
+  // list and concatenate text until we cover ``sel.end``.
+  const chunkPool = [...displayChunks.value, ...hiddenPreviewChunks.value]
+  const startChunk = chunkPool.find((c) => c.id === sel.chunkId)
+  let assembled = startChunk?.text ?? ''
+  if (startChunk && sel.end > assembled.length) {
+    const ordered = [...chunkPool]
+      .filter((c) => c.order > startChunk.order)
+      .sort((a, b) => a.order - b.order)
+    for (const c of ordered) {
+      assembled += c.text ?? ''
+      if (assembled.length >= sel.end) break
+    }
+  }
+  const start = Math.max(0, Math.min(sel.start, assembled.length))
+  const end = Math.max(start, Math.min(sel.end, assembled.length))
+  const spanText = assembled.slice(start, end)
 
   const tag = sel.tagId ? tags.value.find((t) => t.id === sel.tagId) : undefined
 
