@@ -397,7 +397,7 @@ const convertToMarkdown = (markdownText: string) => {
 // convert links
 const convertLinks = (text: string, sources: Source[] | undefined, msgIndex: number) => {
   return text.replace(/\[([^[\]]+)\]/g, (match, content) => {
-    return content.replace(/\b(?:doc|dokument)\s*(\d+)\b/gi, (docMatch, strIndex) => {
+    return content.replace(/\b(?:doc|dokument)\s*(\d+)\b/gi, (docMatch: string, strIndex: string) => {
       const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
       if (sources && sources[sourceIndex]) {
         return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
