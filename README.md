@@ -30,10 +30,16 @@
 semant-demo/
 ├── docs/                          # project documentation (see below)
 ├── deploy/                        # Docker Compose stack management
-│   ├── docker-compose.yaml        # Container definitions for the full stack
-│   ├── Dockerfile                 # Multi-stage build for backend & embedding service
+│   ├── docker-compose.app.yaml    # Production app stack (backend + frontend)
+│   ├── docker-compose.app-test.yml  # Test app stack (CI preview environments)
+│   ├── docker-compose.database.yml  # Weaviate database (production)
+│   ├── docker-compose.database-test.yml  # Weaviate database (test)
+│   ├── docker-compose.embedder.yml  # GPU embedding service
+│   ├── Dockerfile                 # Multi-stage build for backend + frontend
+│   ├── Dockerfile.embedder        # Build for the embedding service
 │   ├── update.sh                  # Helper script to run docker compose with .env
-│   ├── .env.example               # Environment variables template
+│   ├── .env.example               # Environment variables template (production)
+│   ├── .env.test.example          # Environment variables template (test/CI)
 │   └── README.md                  # Deployment instructions
 ├── embedding_service/             # Gemma embedding microservice (FastAPI, port 8001)
 ├── semant_demo_backend/           # main API server (FastAPI, port 8000)
@@ -218,7 +224,8 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `MODEL_TEMPERATURE` | `0.0` | Default LLM temperature |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |
-| `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin for frontend |
+| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Directory for the SQLite `tasks.db` database (mounted into the container) |
+| `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
 | `JWT_SECRET` | _(placeholder)_ | JWT signing secret — **must be overridden in production** with a long random string |

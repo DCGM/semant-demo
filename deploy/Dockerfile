@@ -1,24 +1,14 @@
 
 FROM alpine AS git
+LABEL project=semant-demo
 
 RUN apk add --no-cache git 
 
 ARG REPO=https://github.com/DCGM/semant-demo.git
 ARG BRANCH=main
-ARG NOW=x
 
 RUN mkdir -p /tmp/repo && \
-    git clone ${REPO} /tmp/repo && \
-    cd /tmp/repo && \
-    git checkout ${BRANCH} && \
-    git pull
-
-
-FROM python:3.12-slim AS embedding-service
-COPY --from=git /tmp/repo/embedding_service /app/embedding_service
-WORKDIR /app/embedding_service
-RUN pip install --no-cache-dir -r requirements.txt
-ENTRYPOINT ["python", "run.py"]
+    git clone --branch "${BRANCH}" --depth 1 "${REPO}" /tmp/repo
 
 
 FROM python:3.12-slim AS backend-openapi
