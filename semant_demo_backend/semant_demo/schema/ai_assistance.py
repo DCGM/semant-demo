@@ -57,7 +57,6 @@ class DiscussSpanRequest(BaseModel):
     context server-side and prepends it as a system message.
     """
     span_id: str
-    collection_id: str
     messages: list[SpanChatMessage]
 
 

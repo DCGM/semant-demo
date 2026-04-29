@@ -46,14 +46,12 @@ async def _stream(
     searcher: WeaviateAbstraction,
     *,
     span_id: str,
-    collection_id: str,
     body: DiscussSpanRequest,
 ) -> AsyncGenerator[bytes, None]:
     try:
         async for delta in stream_span_discussion(
             searcher,
             span_id=span_id,
-            collection_id=collection_id,
             messages=body.messages,
         ):
             yield _ndjson(SpanChatDelta(delta=delta))
@@ -88,7 +86,6 @@ async def discuss_span(
         _stream(
             searcher,
             span_id=body.span_id,
-            collection_id=body.collection_id,
             body=body,
         ),
         media_type=_NDJSON_MEDIA_TYPE,

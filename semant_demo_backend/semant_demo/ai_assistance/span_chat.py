@@ -225,7 +225,6 @@ async def build_context_message(
     searcher: WeaviateAbstraction,
     *,
     span: schemas.TagSpan,
-    collection_id: str,
 ) -> str:
     """
     Assemble the per-conversation context block (document metadata + tag info
@@ -342,7 +341,6 @@ async def stream_span_discussion(
     searcher: WeaviateAbstraction,
     *,
     span_id: str,
-    collection_id: str,
     messages: list[SpanChatMessage],
 ) -> AsyncGenerator[str, None]:
     """
@@ -362,9 +360,7 @@ async def stream_span_discussion(
     if span is None:
         raise ValueError(f"span {span_id} not found")
 
-    context_block = await build_context_message(
-        searcher, span=span, collection_id=collection_id
-    )
+    context_block = await build_context_message(searcher, span=span)
 
     # The Responses API takes a single ``instructions`` blob for the
     # system-level behaviour and a list of conversation turns in ``input``.

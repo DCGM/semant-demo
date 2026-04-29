@@ -18,7 +18,6 @@ export interface SpanChatMessage {
 
 export interface SpanChatStartArgs {
   spanId: string
-  collectionId: string
 }
 
 const BACKEND_BASE_PATH = process.env.BACKEND_URL || 'http://pcvaskom.fit.vutbr.cz:8024'
@@ -80,7 +79,6 @@ export function useSpanDiscussion() {
         },
         body: JSON.stringify({
           span_id: context.value.spanId,
-          collection_id: context.value.collectionId,
           // Strip the trailing empty assistant placeholder before sending.
           messages: messages.value
             .slice(0, assistantIndex)

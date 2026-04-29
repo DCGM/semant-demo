@@ -1097,7 +1097,6 @@ const onDiscussSpan = () => {
 
   openSpanDiscussionDialog({
     spanId: sel.editingSpanId,
-    collectionId: props.collectionId,
     spanText,
     tagName: tag?.name,
     tagColor: tag?.color
