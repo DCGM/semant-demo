@@ -100,7 +100,7 @@ class Config:
             },
             "qwen3_embedding_0_6b": {
                 "provider": EmbeddingProvider.ollama.value,
-                "model": os.getenv("OLLAMA_QWEN3_EMBEDDING_0_6B_MODEL", "qwen3-embedding-0.6b:latest"),
+                "model": os.getenv("OLLAMA_QWEN3_EMBEDDING_0_6B_MODEL", "qwen3-embedding:0.6b"),
                 "base_url": self.OLLAMA_URLS[0],
             },
         }
