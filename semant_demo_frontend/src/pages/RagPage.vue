@@ -206,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 import { useQuasar } from 'quasar'
@@ -294,6 +294,13 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside)
 })
 // ----------------------Main chat-----------------------------
+
+// reset chat when change RAG configuration
+watch(selectedRAG, (_, oldVal) => {
+  if (oldVal) {
+    resetChat()
+  }
+})
 
 const scrollToBottom = () => {
   nextTick(() => {
