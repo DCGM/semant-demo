@@ -1,85 +1,104 @@
 <template>
   <div ref="rootEl">
-    <q-card flat bordered class="q-mb-sm">
-    <q-expansion-item
-      ref="expansionRef"
-      v-model="isExpanded"
-      :default-opened="inUserCollection"
-      expand-separator
-      switch-toggle-side
-      :header-class="[
-        'chunk-expansion-header q-py-xs ',
-        inUserCollection ? '' : 'bg-grey-2 text-grey-8'
-      ]"
-      :caption="
-        inUserCollection
-          ? 'Chunk is in selected collection'
-          : 'Chunk is not in selected collection'
-      "
-    >
-      <template #header>
-        <q-item-section avatar>
-          <q-icon
-            :name="inUserCollection ? 'task_alt' : 'remove_circle_outline'"
-            :color="inUserCollection ? 'positive' : 'grey-7'"
+    <q-card flat class="q-mb-sm relative-position" :bordered="true">
+      <!-- Persistent Absolute Buttons on Top Right -->
+      <div class="absolute-top-right row items-center q-pa-xs floating-buttons">
+        <!-- Collection Button: Visible ONLY when open -->
+        <q-btn
+          v-if="isExpanded"
+          dense
+          flat
+          round
+          :icon="inUserCollection ? 'remove_circle' : 'add_circle'"
+          :color="inUserCollection ? 'negative' : 'positive'"
+          :loading="isCollectionUpdating"
+          :disable="isCollectionUpdating || isProcessing"
+          @click.stop="onToggleCollection"
+        >
+          <q-tooltip>
+            {{
+              inUserCollection
+                ? 'Remove chunk from collection'
+                : 'Add chunk to collection'
+            }}
+          </q-tooltip>
+        </q-btn>
+
+        <!-- Open/Close Toggle Button: Always visible -->
+        <q-btn
+          dense
+          flat
+          round
+          color="grey-7"
+          :icon="isExpanded ? 'expand_less' : 'expand_more'"
+          @click.stop="isExpanded = !isExpanded"
+        >
+          <q-tooltip>{{ isExpanded ? 'Collapse' : 'Expand' }}</q-tooltip>
+        </q-btn>
+      </div>
+
+      <q-expansion-item
+        ref="expansionRef"
+        v-model="isExpanded"
+        :default-opened="inUserCollection"
+        hide-expand-icon
+        :header-class="isExpanded ? 'chunk-header-open' : 'chunk-header-closed'"
+      >
+        <!-- MINIMAL CLOSED HEADER -->
+        <template #header>
+          <!--
+            Shows ONLY the chunk ID. Left icons, captions, and
+            collection status are completely removed.
+          -->
+          <q-item-section>
+            <q-item-label
+              class="text-weight-medium flex items-center q-gutter-sm"
+            >
+              <q-btn
+                dense
+                flat
+                round
+                @click.stop="() => {}"
+                :color="inUserCollection ? 'gray' : 'gray'"
+                :icon="inUserCollection ? 'check' : 'remove'"
+                size="xs"
+                ><q-tooltip>
+                  {{ inUserCollection ? 'In collection' : 'Not in collection' }}
+                </q-tooltip></q-btn
+              >
+              <span>{{ chunkTextShort }}</span>
+              <span class="q-ml-auto"
+                >{{ chunkAnnotationsCount }}
+                {{
+                  chunkAnnotationsCount === 1 ? 'annotation' : 'annotations'
+                }}</span
+              >
+            </q-item-label>
+          </q-item-section>
+        </template>
+
+        <!-- EXPANDED CONTENT AREA -->
+        <q-card-section class="q-pa-none">
+          <ChunkTagAnnotator
+            :chunk-id="chunkId"
+            :chunk-text="chunkText"
+            :tag-spans="tagSpans"
+            :available-tags="availableTags"
+            :is-processing="isProcessing"
+            :snap-to-words="snapToWords"
+            :selection="selection"
+            :show-selection-start-handle="showSelectionStartHandle"
+            :show-selection-end-handle="showSelectionEndHandle"
+            :selection-start-boundary="selectionStartBoundary"
+            :selection-end-boundary="selectionEndBoundary"
+            :editing-span-id="editingSpanId"
+            :external-hovered-marker="hoveredAnnotationMarker"
+            @selection-change="onSelectionChange"
+            @span-hover-start="onSpanHoverStart"
+            @span-hover-end="onSpanHoverEnd"
           />
-        </q-item-section>
-
-        <q-item-section>
-          <q-item-label class="text-weight-medium">
-            Chunk {{ chunkIdShort }}
-          </q-item-label>
-          <q-item-label v-if="discoveredTopic" caption class="text-blue-8">
-            Topic: {{ discoveredTopic }}
-          </q-item-label>
-          <!-- <q-item-label caption lines="2">
-            {{ chunkPreview }}
-          </q-item-label> -->
-        </q-item-section>
-
-        <q-item-section side>
-          <q-btn
-            dense
-            flat
-            round
-            :icon="inUserCollection ? 'remove_circle' : 'add_circle'"
-            :color="inUserCollection ? 'negative' : 'positive'"
-            :loading="isCollectionUpdating"
-            :disable="isCollectionUpdating || isProcessing"
-            @click.stop="onToggleCollection"
-          >
-            <q-tooltip>
-              {{
-                inUserCollection
-                  ? 'Remove chunk from collection'
-                  : 'Add chunk to collection'
-              }}
-            </q-tooltip>
-          </q-btn>
-        </q-item-section>
-      </template>
-
-      <q-card-section class="q-pa-none">
-        <ChunkTagAnnotator
-          :chunk-id="chunkId"
-          :chunk-text="chunkText"
-          :tag-spans="tagSpans"
-          :available-tags="availableTags"
-          :is-processing="isProcessing"
-          :snap-to-words="snapToWords"
-          :selection="selection"
-          :show-selection-start-handle="showSelectionStartHandle"
-          :show-selection-end-handle="showSelectionEndHandle"
-          :selection-start-boundary="selectionStartBoundary"
-          :selection-end-boundary="selectionEndBoundary"
-          :editing-span-id="editingSpanId"
-          :external-hovered-marker="hoveredAnnotationMarker"
-          @selection-change="onSelectionChange"
-          @span-hover-start="onSpanHoverStart"
-          @span-hover-end="onSpanHoverEnd"
-        />
-      </q-card-section>
-    </q-expansion-item>
+        </q-card-section>
+      </q-expansion-item>
     </q-card>
   </div>
 </template>
@@ -154,7 +173,15 @@ watch(isExpanded, (expanded) => {
   emit('expansionChange', props.chunkId, expanded)
 })
 
-const chunkIdShort = computed(() => props.chunkId.slice(0, 8))
+const chunkTextShort = computed(() => {
+  const maxLength = 60
+  if (props.chunkText.length <= maxLength) return props.chunkText
+  return props.chunkText.slice(0, maxLength) + '...'
+})
+
+const chunkAnnotationsCount = computed(() => {
+  return props.tagSpans.length
+})
 
 const onSelectionChange = (payload: SelectionPayload) => {
   emit('selectionChange', payload)
@@ -194,8 +221,6 @@ const scrollToSpan = async (
     ) as HTMLElement | null
   }
 
-  // Selected/editing span can be removed from segment tag IDs in annotator rendering.
-  // Fallback to locating segment by current selection start index.
   if (!target && startIndex !== undefined) {
     const segments = Array.from(
       rootEl.value?.querySelectorAll('.text-segment') || []
@@ -227,8 +252,31 @@ defineExpose({
 </script>
 
 <style scoped>
-:deep(.chunk-expansion-header) {
-  user-select: none;
-  min-height: 28px;
+/*
+  When opened: the header totally collapses and disappears (0 height)
+  leaving just the annotator component and the floating absolute buttons.
+*/
+:deep(.chunk-header-open) {
+  min-height: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+/*
+  When closed: Show basic header bar with sufficient right padding
+  so the chunk ID doesn't overlap the absolute expand button.
+*/
+:deep(.chunk-header-closed) {
+  min-height: 40px !important;
+  padding: 8px 50px 8px 4px !important;
+}
+
+.floating-buttons {
+  z-index: 100;
 }
 </style>
