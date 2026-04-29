@@ -129,6 +129,7 @@ class RagGenerator(BaseRag):
             type = self.search_type,
             hybrid_search_alpha = self.alpha,
             limit = self.chunk_limit,
+            vector_name = rag_search.vector_name or self.vector_name,
             min_year = rag_search.min_year,
             max_year = rag_search.max_year,
             min_date = rag_search.min_date,

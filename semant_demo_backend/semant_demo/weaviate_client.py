@@ -14,13 +14,14 @@ from weaviate.classes.query import Filter, Sort, QueryReference
 import logging
 
 class WeaviateSearch:
-    def __init__(self, client: WeaviateAsyncClient):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames):
         self.client = client
+        self.collectionNames = collectionNames
         # collections.get() is synchronous, no await needed
-        self.chunk_col = self.client.collections.get("Chunks_test")
+        self.chunk_col = self.client.collections.get(collectionNames.chunks_collection_name)
 
         try:
-            self.tagspan_col = self.client.collections.get("Span_test")
+            self.tagspan_col = self.client.collections.get(collectionNames.span_collection_name)
         except Exception:
             self.tagspan_col = None
     
@@ -37,7 +38,7 @@ class WeaviateSearch:
             logging.error("Weaviate is not ready.")
             await async_client.close()
             exit(-1)
-        return cls(async_client)
+        return cls(async_client, config.collectionNames)
 
     async def close(self):
         await self.client.close()  # :contentReference[oaicite:2]{index=2}
@@ -48,7 +49,7 @@ class WeaviateClient(WeaviateSearch):
         Retrieves all collections for given user
         """
         usercollection_collection = self.client.collections.get(
-            "UserCollection")
+            self.collectionNames.user_collection_name)
 
         filters = (
             Filter.by_property("user_id").equal(user_id)
@@ -76,7 +77,7 @@ class WeaviateClient(WeaviateSearch):
         """
 
         usercollection_collection = self.client.collections.get(
-            "UserCollection")
+            self.collectionNames.user_collection_name)
         response = await usercollection_collection.query.fetch_object_by_id(collection_id)
         if response is None:
             return None
@@ -101,7 +102,7 @@ class WeaviateClient(WeaviateSearch):
             return None
 
         # Compute documents count
-        documents_collection = self.client.collections.get("Documents")
+        documents_collection = self.client.collections.get(self.collectionNames.document_collection_name)
         documents_filters = (
             Filter.by_ref("collection").by_id().equal(collection_id)
         )
@@ -117,7 +118,7 @@ class WeaviateClient(WeaviateSearch):
             Filter.by_ref("userCollection").by_id().equal(collection_id)
         )
 
-        chunks_collection = self.client.collections.get("Chunks")
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
         chunks_count_response = await chunks_collection.aggregate.over_all(
             total_count=True,
             filters=chunks_filters
@@ -125,7 +126,7 @@ class WeaviateClient(WeaviateSearch):
         chunks_count = chunks_count_response.total_count or 0
 
         # Compute tags count
-        tags_collection = self.client.collections.get("Tag")
+        tags_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
         tags_filters = (
             Filter.by_ref("userCollection").by_id().equal(collection_id)
         )
@@ -139,7 +140,7 @@ class WeaviateClient(WeaviateSearch):
         # One annotation = one span object.
         # Span belongs to selected collection if linked chunk OR linked tag belongs to that collection.
 
-        spans_collection = self.client.collections.get("Span_test")
+        spans_collection = self.client.collections.get(self.collectionNames.span_collection_name)
 
         spans_filters = (
             Filter.by_ref("text_chunk").by_ref(
@@ -168,7 +169,7 @@ class WeaviateClient(WeaviateSearch):
         Creates new collection and returns its id
         """
         usercollection_collection = self.client.collections.get(
-            "UserCollection")
+            self.collectionNames.user_collection_name)
         now = datetime.now(timezone.utc)
 
         uuid = await usercollection_collection.data.insert(
@@ -188,7 +189,7 @@ class WeaviateClient(WeaviateSearch):
         Updates collection with given id, raises exception if collection with given id does not exist
         """
         usercollection_collection = self.client.collections.get(
-            "UserCollection")
+            self.collectionNames.user_collection_name)
         now = datetime.now(timezone.utc)
 
         # PATCH semantics: update only fields that were actually sent by the client.
@@ -206,11 +207,11 @@ class WeaviateClient(WeaviateSearch):
         Before deleting the collection object itself, remove references to it
         from chunks, documents, and tags.
         """
-        documents_collection = self.client.collections.get("Documents")
-        chunks_collection = self.client.collections.get("Chunks")
-        tags_collection = self.client.collections.get("Tag")
+        documents_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        tags_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
         usercollection_collection = self.client.collections.get(
-            "UserCollection")
+            self.collectionNames.user_collection_name)
 
         page_size = 100
 
@@ -256,7 +257,7 @@ class WeaviateClient(WeaviateSearch):
         """
         Retrieves document by its id, returns None if document with given id does not exist
         """
-        document_collection = self.client.collections.get("Documents")
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
         response = await document_collection.query.fetch_object_by_id(document_id)
         if response is None:
             return None
@@ -270,7 +271,7 @@ class WeaviateClient(WeaviateSearch):
         """
         Retrieves all documents - optionally can be filtered by collection id
         """
-        document_collection = self.client.collections.get("Documents")
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
         filters = None
         if collection_id is not None:
             filters = (
@@ -303,7 +304,7 @@ class WeaviateClient(WeaviateSearch):
         """
         Retrieves documents in pages with optional filters for browsing large datasets.
         """
-        document_collection = self.client.collections.get("Documents")
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
         filters = None
 
         def append_filter(current_filter, new_filter):
@@ -369,7 +370,7 @@ class WeaviateClient(WeaviateSearch):
         """
         Retrieves all tags - optionally filtered by collection id.
         """
-        tag_collection = self.client.collections.get("Tag")
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
         filters = None
         if collection_id is not None:
             filters = Filter.by_ref("userCollection").by_id().equal(collection_id)
@@ -405,7 +406,7 @@ class WeaviateClient(WeaviateSearch):
         Retrieves one tag by id, scoped to a collection.
         Returns None if not found or if the tag is not linked to the collection.
         """
-        tag_collection = self.client.collections.get("Tag")
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
         response = await tag_collection.query.fetch_object_by_id(
             tag_uuid,
             return_references=[QueryReference(link_on="userCollection")],
@@ -439,7 +440,7 @@ class WeaviateClient(WeaviateSearch):
         if collection is None:
             raise ValueError("Collection not found")
 
-        tag_collection = self.client.collections.get("Tag")
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
 
         filters = Filter.by_ref("userCollection").by_id().equal(collection_id)
         existing = await tag_collection.query.fetch_objects(
@@ -508,9 +509,9 @@ class WeaviateClient(WeaviateSearch):
         """
         Deletes a tag after removing every reference to it from Span and Chunk collections.
         """
-        tag_collection = self.client.collections.get("Tag")
-        span_collection = self.client.collections.get("Span_test")
-        chunk_collection = self.client.collections.get("Chunks")
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        span_collection = self.client.collections.get(self.collectionNames.span_collection_name)
+        chunk_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
 
         tag_response = await tag_collection.query.fetch_object_by_id(
             tag_uuid,
@@ -587,7 +588,7 @@ class WeaviateClient(WeaviateSearch):
         """
         Updates an existing tag in a collection.
         """
-        tag_collection = self.client.collections.get("Tag")
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
 
         tag_response = await tag_collection.query.fetch_object_by_id(
             tag_uuid,
@@ -632,8 +633,8 @@ class WeaviateClient(WeaviateSearch):
         """
         Adds a document to a collection and also links all its chunks to that collection.
         """
-        document_collection = self.client.collections.get("Documents")
-        chunks_collection = self.client.collections.get("Chunks")
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
         try:
             matched_chunks = 0
             already_linked_chunks = 0
@@ -704,8 +705,8 @@ class WeaviateClient(WeaviateSearch):
         """
         Removes a document from a collection by deleting the reference between them.
         """
-        document_collection = self.client.collections.get("Documents")
-        chunks_collection = self.client.collections.get("Chunks")
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
         try:
             await document_collection.data.reference_delete(
                 from_uuid=document_id,

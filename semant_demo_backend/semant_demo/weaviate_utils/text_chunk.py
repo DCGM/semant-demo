@@ -29,7 +29,7 @@ from weaviate.classes.query import Filter
 
 from semant_demo import schemas
 from semant_demo.config import Config
-from semant_demo.gemma_embedding import get_query_embedding, get_hyde_document_embedding
+from semant_demo.embedding_router import get_query_embedding, get_hyde_document_embedding
 from weaviate.classes.query import QueryReference
 from semant_demo.config import config
 
@@ -38,12 +38,18 @@ import logging
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
 class TextChunk():
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
+    def __init__(
+        self,
+        client: WeaviateAsyncClient,
+        collectionNames: schemas.CollectionNames,
+        vector_name: str | None = None,
+    ):
         self.client = client
         self.helpers = WeaviateHelpers(client, collectionNames)
         self.chunk_collection = self.client.collections.get(collectionNames.chunks_collection_name)
         self.span_collection = self.client.collections.get(collectionNames.span_collection_name)
         self.user_collection = self.client.collections.get(collectionNames.user_collection_name)
+        self.default_vector = config.resolve_chunk_vector(vector_name)
 
     #######
     # API #
@@ -104,18 +110,22 @@ class TextChunk():
                 "section", "region", "id_code"
         ]
 
+        target_vector = config.resolve_chunk_vector(search_request.vector_name or self.default_vector)
+        search_request.vector_name = target_vector
+
         t1 = time()
         if search_request.type == schemas.SearchType.hybrid:
             if search_request.is_hyde == False:
-                q_vector = await get_query_embedding(search_request.query)
+                q_vector = await get_query_embedding(search_request.query, vector_name=target_vector)
             else:
-                q_vector = await get_hyde_document_embedding(search_request.query)
+                q_vector = await get_hyde_document_embedding(search_request.query, vector_name=target_vector)
 
             # Execute hybrid search
             result = await self.chunk_collection.query.hybrid(
                 query=search_request.query,
                 alpha=search_request.hybrid_search_alpha,
                 vector=q_vector,
+                target_vector=target_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
                 return_references=[QueryReference(link_on="document", return_properties=document_properties_to_return),
@@ -149,12 +159,13 @@ class TextChunk():
             )
         elif search_request.type == schemas.SearchType.vector:
             if search_request.is_hyde == False:
-                q_vector = await get_query_embedding(search_request.query)
+                q_vector = await get_query_embedding(search_request.query, vector_name=target_vector)
             else:
-                q_vector = await get_hyde_document_embedding(search_request.query)
+                q_vector = await get_hyde_document_embedding(search_request.query, vector_name=target_vector)
 
             result = await self.chunk_collection.query.near_vector(
                 near_vector=q_vector,
+                target_vector=target_vector,
                 limit=search_request.limit,
                 filters=combined_filter,
                 return_references=[QueryReference(link_on="document", return_properties=document_properties_to_return),
@@ -177,6 +188,7 @@ class TextChunk():
         results: list[schemas.TextChunkWithDocument] = []
         log_entry = (
             f"Top {len(result.objects)} results for “{search_request.query}”. "
+            f"Vector: {search_request.vector_name}. "
             f"Retrieved in {search_time:.2f} seconds:"
         )
         logging.info(log_entry)
