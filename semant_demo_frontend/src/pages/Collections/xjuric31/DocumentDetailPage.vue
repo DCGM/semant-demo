@@ -17,6 +17,20 @@
         </q-btn>
       </div>
       <div class="paper-view-toolbar">
+        <q-btn
+          flat dense round
+          icon="format_indent_increase"
+          size="sm"
+          class="view-btn"
+          :class="{ 'view-btn--active': preserveWhitespace }"
+          :title="preserveWhitespace ? 'Switch to compact whitespace (collapse spaces & line breaks)' : 'Switch to original whitespace (preserve spaces & line breaks)'"
+          @click="preserveWhitespace = !preserveWhitespace"
+        >
+          <q-tooltip v-if="preserveWhitespace">Showing original whitespace — click to collapse</q-tooltip>
+          <q-tooltip v-else>Showing collapsed whitespace — click to preserve original</q-tooltip>
+        </q-btn>
+      </div>
+      <div class="paper-view-toolbar">
       <q-btn
         flat dense no-caps
         icon="playlist_add_check"
@@ -154,7 +168,7 @@
             />
           </div>
 
-          <div class="document-text" ref="documentTextRef" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="hoveredPreviewChunkId = null">
+          <div class="document-text" :class="{ 'document-text--preserve-whitespace': preserveWhitespace }" ref="documentTextRef" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="hoveredPreviewChunkId = null">
             <template v-for="(group, gIndex) in assembledParagraphs" :key="gIndex">
               <p>
                 <ChunkAnnotator
@@ -571,6 +585,10 @@ interface LeftGutterItem {
 const leftGutterItems = ref<LeftGutterItem[]>([])
 const totalDocumentChunks = ref<number | null>(null)
 const leftGutterVisible = ref(true)
+// Toggle between original-text whitespace (default) and HTML's collapsed
+// whitespace. Original-mode preserves consecutive spaces and line breaks
+// inside chunk text via CSS `white-space: pre-wrap`.
+const preserveWhitespace = ref(true)
 
 // ── Bulk selection ──
 const selectedChunkIds = ref<string[]>([])
@@ -1451,6 +1469,13 @@ onBeforeUnmount(() => {
 
 .document-text p {
   margin: 0 0 18px;
+}
+
+/* When the toolbar toggle is on, render text exactly as stored (preserve
+   consecutive spaces and line breaks inside each chunk). Wrapping is still
+   allowed so long lines don't overflow the column. */
+.document-text--preserve-whitespace :deep(.text-segment) {
+  white-space: pre-wrap;
 }
 
 /* Dim non-collection preview chunks slightly */
