@@ -197,7 +197,7 @@ class UserCollection():
 
         # Compute annotation stats from Span collection.
         # One annotation = one span object.
-        # Span belongs to selected collection if it references at least one chunk that belongs to the collection.
+        # Span belongs to selected collection if it references a chunk that belongs to the collection and also references a tag that belongs to the collection.
 
         spans_collection = self.client.collections.get(
             self.collectionNames.span_collection_name)
