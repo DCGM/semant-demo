@@ -22,8 +22,6 @@ docs/CollectionStats.md
 docs/CreateResponse.md
 docs/DefaultApi.md
 docs/Detail.md
-docs/DiscoverTopicsRequest.md
-docs/DiscoveredTopics.md
 docs/DocumentBrowse.md
 docs/DocumentDetail.md
 docs/DocumentDetailTextChunkWithUserCollectionInfo.md
@@ -81,7 +79,6 @@ docs/TaggingTaskReqTemplate.md
 docs/TextChunk.md
 docs/TextChunkWithDocumentInput.md
 docs/TextChunkWithDocumentOutput.md
-docs/Topic.md
 docs/Url.md
 docs/UserCreate.md
 docs/UserRead.md
@@ -108,8 +105,6 @@ models/CollectionChunks.ts
 models/CollectionStats.ts
 models/CreateResponse.ts
 models/Detail.ts
-models/DiscoverTopicsRequest.ts
-models/DiscoveredTopics.ts
 models/DocumentBrowse.ts
 models/DocumentDetail.ts
 models/DocumentDetailTextChunkWithUserCollectionInfo.ts
@@ -167,7 +162,6 @@ models/TaggingTaskReqTemplate.ts
 models/TextChunk.ts
 models/TextChunkWithDocumentInput.ts
 models/TextChunkWithDocumentOutput.ts
-models/Topic.ts
 models/Url.ts
 models/UserCreate.ts
 models/UserRead.ts

@@ -77,6 +77,8 @@ export interface AvailableTag {
   tagColor: string
   tagPictogram: string
   tagShorthand: string
+  tagDefinition?: string
+  tagExamples?: string[]
   tagUuid: string | null
 }
 
@@ -130,6 +132,7 @@ const emit = defineEmits<{
       dragHandle?: 'start' | 'end'
     }
   ]
+  selectionEnd: []
   spanHoverStart: [marker: ExternalHoveredMarker]
   spanHoverEnd: []
 }>()
@@ -370,6 +373,7 @@ const handleMouseUp = () => {
   ) {
     currentSelection.value = null
     emitBoundaries(startBoundary, endBoundary, 'mouse')
+    emit('selectionEnd')
     sel.removeAllRanges()
     return
   }
@@ -386,6 +390,7 @@ const handleMouseUp = () => {
 
   currentSelection.value = { start, end }
   emitSelection()
+  emit('selectionEnd')
   sel.removeAllRanges()
 }
 
@@ -491,6 +496,8 @@ const stopDrag = () => {
     setTimeout(() => {
       justFinishedDrag = false
     }, 100)
+    draggingHandle.value = null
+    emit('selectionEnd')
   }
   draggingHandle.value = null
 
@@ -530,6 +537,7 @@ const handleSegmentClick = (seg: RenderSegment) => {
     currentSelection.value =
       sourceChunkId === props.chunkId ? nextSelection : null
     emitSelection(sourceChunkId, nextSelection)
+    emit('selectionEnd')
   }
 }
 

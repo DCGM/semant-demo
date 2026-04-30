@@ -2,7 +2,9 @@
   <div ref="rootEl">
     <q-card flat class="q-mb-sm relative-position" :bordered="true">
       <!-- Persistent Absolute Buttons on Top Right -->
-      <div class="absolute-top-right row items-center q-pa-xs q-gutter-md floating-buttons">
+      <div
+        class="absolute-top-right row items-center q-pa-xs q-gutter-md floating-buttons"
+      >
         <!-- Collection Button: Visible ONLY when open -->
         <q-btn
           v-if="isExpanded"
@@ -96,6 +98,7 @@
             @selection-change="onSelectionChange"
             @span-hover-start="onSpanHoverStart"
             @span-hover-end="onSpanHoverEnd"
+            @selection-end="onSelectionEnd"
           />
         </q-card-section>
       </q-expansion-item>
@@ -169,6 +172,7 @@ const emit = defineEmits<{
   spanHoverStart: [marker: HoveredSpanMarker]
   spanHoverEnd: []
   expansionChange: [chunkId: string, expanded: boolean]
+  selectionEnd: []
 }>()
 
 watch(
@@ -200,6 +204,10 @@ const chunkAnnotationsCount = computed(() => {
 
 const onSelectionChange = (payload: SelectionPayload) => {
   emit('selectionChange', payload)
+}
+
+const onSelectionEnd = () => {
+  emit('selectionEnd')
 }
 
 const onToggleCollection = () => {

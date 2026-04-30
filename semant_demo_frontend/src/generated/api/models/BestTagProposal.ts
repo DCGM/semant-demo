@@ -57,6 +57,12 @@ export interface BestTagProposal {
      * @memberof BestTagProposal
      */
     tag?: TagData | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof BestTagProposal
+     */
+    reason?: string | null;
 }
 
 /**
@@ -85,6 +91,7 @@ export function BestTagProposalFromJSONTyped(json: any, ignoreDiscriminator: boo
         'start': json['start'],
         'end': json['end'],
         'tag': json['tag'] == null ? undefined : TagDataFromJSON(json['tag']),
+        'reason': json['reason'] == null ? undefined : json['reason'],
     };
 }
 
@@ -104,6 +111,7 @@ export function BestTagProposalToJSONTyped(value?: BestTagProposal | null, ignor
         'start': value['start'],
         'end': value['end'],
         'tag': TagDataToJSON(value['tag']),
+        'reason': value['reason'],
     };
 }
 

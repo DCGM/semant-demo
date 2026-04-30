@@ -1,5 +1,5 @@
 <template>
-  <q-card class="right-panel-menu">
+  <q-card flat class="right-panel-menu">
     <q-card-section class="right-panel-menu-section">
       <div class="metadata-header">
         <div>

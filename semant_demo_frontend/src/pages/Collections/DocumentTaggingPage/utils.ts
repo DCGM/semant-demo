@@ -3,9 +3,11 @@ export const snapToWordBoundary = (
   type: 'start' | 'end',
   text: string
 ): number => {
-  // Define what makes up a word. (\w includes letters, numbers, and underscores).
-  // You can adjust the regex to include accented chars or hyphens depending on your needs.
-  const isWordChar = (char: string) => /[\w]/.test(char)
+  // \p{L} matches ANY letter from ANY language (including ěščřžýáíé)
+  // \p{N} matches ANY number
+  // _ matches underscore (to keep parity with the original \w)
+  // The 'u' flag enables unicode matching
+  const isWordChar = (char: string) => /[\p{L}\p{N}_]/u.test(char)
 
   if (index < 0) return 0
   if (index > text.length) return text.length

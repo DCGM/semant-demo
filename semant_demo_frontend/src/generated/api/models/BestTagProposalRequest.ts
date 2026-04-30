@@ -39,6 +39,12 @@ export interface BestTagProposalRequest {
      * @memberof BestTagProposalRequest
      */
     tags: Array<TagData>;
+    /**
+     * 
+     * @type {number}
+     * @memberof BestTagProposalRequest
+     */
+    confidenceThreshold?: number;
 }
 
 /**
@@ -62,6 +68,7 @@ export function BestTagProposalRequestFromJSONTyped(json: any, ignoreDiscriminat
         
         'text': json['text'],
         'tags': ((json['tags'] as Array<any>).map(TagDataFromJSON)),
+        'confidenceThreshold': json['confidence_threshold'] == null ? undefined : json['confidence_threshold'],
     };
 }
 
@@ -78,6 +85,7 @@ export function BestTagProposalRequestToJSONTyped(value?: BestTagProposalRequest
         
         'text': value['text'],
         'tags': ((value['tags'] as Array<any>).map(TagDataToJSON)),
+        'confidence_threshold': value['confidenceThreshold'],
     };
 }
 

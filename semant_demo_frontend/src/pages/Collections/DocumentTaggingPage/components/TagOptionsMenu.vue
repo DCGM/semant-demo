@@ -1,5 +1,5 @@
 <template>
-  <q-card class="right-panel-menu">
+  <q-card flat class="right-panel-menu">
     <q-card-section class="right-panel-menu-section">
       <div class="row items-center justify-between q-mb-md">
         <div>
@@ -135,7 +135,7 @@
           v-if="isLoadingProbableTags"
           class="text-grey-7 text-caption q-mt-md"
         >
-          Loading probable tags...
+          Loading most probable tags...
         </div>
 
         <template v-else>
@@ -144,10 +144,10 @@
           </div>
           <div class="text-caption text-grey-7 q-mb-md">
             Confidence represents the certainty about relevance of tag to the
-            selected text.
+            selected text. Hover to view reason of suggestion.
           </div>
 
-          <div class="row q-gutter-sm tag-list">
+          <div class="tag-list">
             <q-btn
               v-for="tag in probableTags"
               :key="`probable-${tag.tagId}`"
@@ -176,6 +176,7 @@
                 <span class="text-caption text-grey-9 q-ml-auto">
                   Confidence: {{ formatConfidence(tag.confidence) }}
                 </span>
+                <q-tooltip class="text-body2">{{ tag.reason }}</q-tooltip>
               </template>
             </q-btn>
           </div>
@@ -228,6 +229,7 @@ interface ProbableTag {
   tagColor: string
   tagPictogram: string
   confidence: number
+  reason: string
 }
 
 const props = defineProps<{

@@ -29,17 +29,17 @@ import {
 export interface BestTagProposalResponse {
     /**
      * 
-     * @type {BestTagProposal}
+     * @type {Array<BestTagProposal>}
      * @memberof BestTagProposalResponse
      */
-    suggestion: BestTagProposal | null;
+    suggestions: Array<BestTagProposal>;
 }
 
 /**
  * Check if a given object implements the BestTagProposalResponse interface.
  */
 export function instanceOfBestTagProposalResponse(value: object): value is BestTagProposalResponse {
-    if (!('suggestion' in value) || value['suggestion'] === undefined) return false;
+    if (!('suggestions' in value) || value['suggestions'] === undefined) return false;
     return true;
 }
 
@@ -53,7 +53,7 @@ export function BestTagProposalResponseFromJSONTyped(json: any, ignoreDiscrimina
     }
     return {
         
-        'suggestion': BestTagProposalFromJSON(json['suggestion']),
+        'suggestions': ((json['suggestions'] as Array<any>).map(BestTagProposalFromJSON)),
     };
 }
 
@@ -68,7 +68,7 @@ export function BestTagProposalResponseToJSONTyped(value?: BestTagProposalRespon
 
     return {
         
-        'suggestion': BestTagProposalToJSON(value['suggestion']),
+        'suggestions': ((value['suggestions'] as Array<any>).map(BestTagProposalToJSON)),
     };
 }
 

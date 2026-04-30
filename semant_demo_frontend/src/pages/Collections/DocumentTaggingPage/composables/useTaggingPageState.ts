@@ -94,6 +94,7 @@ interface ProbableTagSuggestion {
   tagColor: string
   tagPictogram: string
   confidence: number
+  reason: string
 }
 
 const PROBABLE_TAGS_DEBOUNCE_MS = 250
@@ -109,7 +110,6 @@ export function useTaggingPageState() {
     documentDetail,
     availableTags,
     collectionTags,
-    discoveredTopics,
     discoveredTopicChunkIds,
     isProcessing,
     getDocumentDetail,
@@ -123,7 +123,6 @@ export function useTaggingPageState() {
     declineTagSpan,
     deleteTagSpan,
     suggestAnnotations,
-    discoverTopics,
     getTagsForCollection,
     proposeBestTag
   } = useTagging()
@@ -143,9 +142,6 @@ export function useTaggingPageState() {
   const isLoadingProbableTags = ref(false)
   const probableTagsRequestToken = ref(0)
   const lastProbableTagsQueryKey = ref<string | null>(null)
-  const probableTagsDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(
-    null
-  )
 
   const pageLoading = computed(
     () =>
@@ -160,39 +156,6 @@ export function useTaggingPageState() {
         inUserCollection: chunk.inUserCollection
       })) ?? []
     )
-  })
-
-  const discoveredTopicByChunkId = computed<Record<string, string>>(() => {
-    const topics = discoveredTopics.value?.topics || []
-    const topicDocuments = discoveredTopics.value?.topicDocuments || []
-    const chunkIds = discoveredTopicChunkIds.value
-
-    if (!topics.length || !topicDocuments.length || !chunkIds.length) {
-      return {}
-    }
-
-    const topicByChunkId: Record<string, string> = {}
-
-    for (let chunkIndex = 0; chunkIndex < chunkIds.length; chunkIndex += 1) {
-      let bestTopicName: string | null = null
-      let bestScore = Number.NEGATIVE_INFINITY
-
-      for (let topicIndex = 0; topicIndex < topics.length; topicIndex += 1) {
-        const score = topicDocuments[topicIndex]?.[chunkIndex]
-        if (score === undefined) continue
-
-        if (score > bestScore) {
-          bestScore = score
-          bestTopicName = topics[topicIndex].name
-        }
-      }
-
-      if (bestTopicName) {
-        topicByChunkId[chunkIds[chunkIndex]] = bestTopicName
-      }
-    }
-
-    return topicByChunkId
   })
 
   const annotationMarkers = computed<AnnotationMarker[]>(() => {
@@ -763,10 +726,6 @@ export function useTaggingPageState() {
   }
 
   const clearSelection = () => {
-    if (probableTagsDebounceTimer.value) {
-      clearTimeout(probableTagsDebounceTimer.value)
-      probableTagsDebounceTimer.value = null
-    }
     globalSelection.value = null
     probableTagSuggestions.value = []
     lastProbableTagsQueryKey.value = null
@@ -883,6 +842,7 @@ export function useTaggingPageState() {
           suggestions?: Array<{
             tagId: string
             confidence: number
+            reason: string
             tag?: {
               tagName?: string
               tagColor?: string
@@ -892,6 +852,7 @@ export function useTaggingPageState() {
           suggestion?: {
             tagId: string
             confidence: number
+            reason: string
             tag?: {
               tagName?: string
               tagColor?: string
@@ -918,7 +879,8 @@ export function useTaggingPageState() {
             availableTag?.tagColor || suggestion.tag?.tagColor || '#1976d2',
           tagPictogram:
             availableTag?.tagPictogram || suggestion.tag?.tagPictogram || '',
-          confidence: suggestion.confidence
+          confidence: suggestion.confidence,
+          reason: suggestion.reason
         }
       })
     } catch (error) {
@@ -933,32 +895,28 @@ export function useTaggingPageState() {
     }
   }
 
-  const scheduleProbableTagsRefresh = () => {
-    if (probableTagsDebounceTimer.value) {
-      clearTimeout(probableTagsDebounceTimer.value)
-      probableTagsDebounceTimer.value = null
-    }
-
-    probableTagsDebounceTimer.value = setTimeout(() => {
-      probableTagsDebounceTimer.value = null
-      void refreshProbableTagsForSelection()
-    }, PROBABLE_TAGS_DEBOUNCE_MS)
-  }
-
   watch(
-    [globalSelection, collectionTags, availableTags],
-    () => {
-      scheduleProbableTagsRefresh()
+    () => globalSelection.value,
+    (newSelection) => {
+      if (!newSelection || newSelection.editingId || newSelection.spanType === SpanType.auto) {
+        probableTagSuggestions.value = []
+        isLoadingProbableTags.value = false
+        lastProbableTagsQueryKey.value = null // reset query key so it can refetch if selected again
+      }
     },
     { deep: true }
   )
 
-  onBeforeUnmount(() => {
-    if (probableTagsDebounceTimer.value) {
-      clearTimeout(probableTagsDebounceTimer.value)
-      probableTagsDebounceTimer.value = null
-    }
-  })
+  // ✅ WATCH 2: Only re-fetch if the background tags change while a selection is active
+  watch(
+    [collectionTags, availableTags],
+    () => {
+      if (globalSelection.value) {
+        void refreshProbableTagsForSelection()
+      }
+    },
+    { deep: true }
+  )
 
   const handleTagClick = async (tagId: string | null) => {
     if (!globalSelection.value) return
@@ -1166,17 +1124,6 @@ export function useTaggingPageState() {
     return selectHighestConfidenceAutoSpan()
   }
 
-  const discoverTopicsForCurrentDocument = async (n = 3) => {
-    const chunksForDiscovery =
-      documentDetail.value?.chunks.filter((chunk) => chunk.inUserCollection) ||
-      []
-
-    return await discoverTopics({
-      chunks: chunksForDiscovery,
-      n
-    })
-  }
-
   const deleteEditedTag = async () => {
     if (!globalSelection.value?.editingId) return
 
@@ -1293,8 +1240,6 @@ export function useTaggingPageState() {
     availableTags,
     probableTagSuggestions,
     isLoadingProbableTags,
-    discoveredTopics,
-    discoveredTopicByChunkId,
     pageLoading,
     globalSelection,
     useWordSnapping,
@@ -1312,8 +1257,8 @@ export function useTaggingPageState() {
     approveSelectedAutoSpan,
     declineSelectedAutoSpan,
     startAutoAnnotationSuggestions,
-    discoverTopicsForCurrentDocument,
     handleSelectionChange,
+    refreshProbableTagsForSelection,
     selectSpanFromAnnotationMarker,
     startHoverFromAnnotationMarker,
     stopHoverFromAnnotationMarker,

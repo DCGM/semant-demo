@@ -11,6 +11,7 @@ Name | Type
 `start` | number
 `end` | number
 `tag` | [TagData](TagData.md)
+`reason` | string
 
 ## Example
 
@@ -24,6 +25,7 @@ const example = {
   "start": null,
   "end": null,
   "tag": null,
+  "reason": null,
 } satisfies BestTagProposal
 
 console.log(example)

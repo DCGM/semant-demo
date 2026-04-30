@@ -27,7 +27,11 @@
           <q-btn
             color="primary"
             class=""
-            :label="showOnlyCollectionChunks ? 'Full view' : 'View only collection chunks'"
+            :label="
+              showOnlyCollectionChunks
+                ? 'Full view'
+                : 'View only collection chunks'
+            "
             icon="view_week"
             no-caps
             unelevated
@@ -74,12 +78,10 @@
               "
               :selection-end-boundary="globalSelectionBoundaries.endBoundary"
               :editing-span-id="globalSelection?.editingId || null"
-              :discovered-topic="
-                discoveredTopicByChunkId[chunk.chunkId] || null
-              "
               :hovered-annotation-marker="hoveredAnnotationMarker"
               :is-collection-updating="isChunkCollectionUpdating(chunk.chunkId)"
               @selection-change="handleSelectionChange"
+              @selection-end="refreshProbableTagsForSelection"
               @toggle-collection="toggleChunkInCollection"
               @span-hover-start="startHoverFromAnnotationMarker"
               @span-hover-end="stopHoverFromAnnotationMarker"
@@ -234,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { SpanType } from 'src/generated/api/models/SpanType'
 import ChunkExpansionItem from './ChunkExpansionItem.vue'
 import AnnotationTagRail from './AnnotationTagRail.vue'
@@ -285,7 +287,6 @@ const {
   isChunkCollectionUpdating,
   toggleChunkInCollection,
   availableTags,
-  discoveredTopicByChunkId,
   loadChunks,
   clearSelection,
   handleTagClick,
@@ -295,6 +296,7 @@ const {
   declineSelectedAutoSpan,
   startAutoAnnotationSuggestions,
   handleSelectionChange,
+  refreshProbableTagsForSelection,
   selectSpanFromAnnotationMarker,
   startHoverFromAnnotationMarker,
   stopHoverFromAnnotationMarker,
@@ -578,9 +580,20 @@ const handleDeclineAutoSpan = async () => {
   await scrollToSpan(nextSpanId)
 }
 
+const handleEscapeKey = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    activeTool.value = null
+  }
+}
+
 onMounted(async () => {
   await loadChunks(props.documentId, props.collectionId)
   await getTagsForCollection(props.collectionId)
+  window.addEventListener('keydown', handleEscapeKey)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscapeKey)
 })
 </script>
 

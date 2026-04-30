@@ -8,6 +8,7 @@ Name | Type
 ------------ | -------------
 `text` | string
 `tags` | [Array&lt;TagData&gt;](TagData.md)
+`confidenceThreshold` | number
 
 ## Example
 
@@ -18,6 +19,7 @@ import type { BestTagProposalRequest } from ''
 const example = {
   "text": null,
   "tags": null,
+  "confidenceThreshold": null,
 } satisfies BestTagProposalRequest
 
 console.log(example)

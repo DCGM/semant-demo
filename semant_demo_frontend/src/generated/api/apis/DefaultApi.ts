@@ -27,8 +27,6 @@ import type {
   Collection,
   CollectionStats,
   CreateResponse,
-  DiscoverTopicsRequest,
-  DiscoveredTopics,
   DocumentBrowse,
   DocumentDetail,
   ExplainRequest,
@@ -89,10 +87,6 @@ import {
     CollectionStatsToJSON,
     CreateResponseFromJSON,
     CreateResponseToJSON,
-    DiscoverTopicsRequestFromJSON,
-    DiscoverTopicsRequestToJSON,
-    DiscoveredTopicsFromJSON,
-    DiscoveredTopicsToJSON,
     DocumentBrowseFromJSON,
     DocumentBrowseToJSON,
     DocumentDetailFromJSON,
@@ -219,10 +213,6 @@ export interface DeleteTagApiTagsTagUuidDeleteRequest {
 
 export interface DeleteTagSpanApiTagSpansSpanIdDeleteRequest {
     spanId: string;
-}
-
-export interface DiscoverTopicsApiDiscoverTopicsPostRequest {
-    discoverTopicsRequest: DiscoverTopicsRequest;
 }
 
 export interface ExplainSelectionApiRagExplainPostRequest {
@@ -670,30 +660,6 @@ export interface DefaultApiInterface {
     deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }>;
 
     /**
-     * Creates request options for discoverTopicsApiDiscoverTopicsPost without sending the request
-     * @param {DiscoverTopicsRequest} discoverTopicsRequest 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    discoverTopicsApiDiscoverTopicsPostRequestOpts(requestParameters: DiscoverTopicsApiDiscoverTopicsPostRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * Call Topicer dense topic discovery on the provided chunks.
-     * @summary Discover Topics
-     * @param {DiscoverTopicsRequest} discoverTopicsRequest 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    discoverTopicsApiDiscoverTopicsPostRaw(requestParameters: DiscoverTopicsApiDiscoverTopicsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DiscoveredTopics>>;
-
-    /**
-     * Call Topicer dense topic discovery on the provided chunks.
-     * Discover Topics
-     */
-    discoverTopicsApiDiscoverTopicsPost(requestParameters: DiscoverTopicsApiDiscoverTopicsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DiscoveredTopics>;
-
-    /**
      * Creates request options for explainSelectionApiRagExplainPost without sending the request
      * @param {ExplainRequest} explainRequest 
      * @throws {RequiredError}
@@ -1077,7 +1043,7 @@ export interface DefaultApiInterface {
     proposeBestTagApiProposeBestTagPostRequestOpts(requestParameters: ProposeBestTagApiProposeBestTagPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Call Topicer tag proposal and return only the highest-confidence tag.
+     * Call Topicer tag proposal and return top confident tags.
      * @summary Propose Best Tag
      * @param {BestTagProposalRequest} bestTagProposalRequest 
      * @param {*} [options] Override http request option.
@@ -1087,7 +1053,7 @@ export interface DefaultApiInterface {
     proposeBestTagApiProposeBestTagPostRaw(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BestTagProposalResponse>>;
 
     /**
-     * Call Topicer tag proposal and return only the highest-confidence tag.
+     * Call Topicer tag proposal and return top confident tags.
      * Propose Best Tag
      */
     proposeBestTagApiProposeBestTagPost(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BestTagProposalResponse>;
@@ -2195,55 +2161,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for discoverTopicsApiDiscoverTopicsPost without sending the request
-     */
-    async discoverTopicsApiDiscoverTopicsPostRequestOpts(requestParameters: DiscoverTopicsApiDiscoverTopicsPostRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['discoverTopicsRequest'] == null) {
-            throw new runtime.RequiredError(
-                'discoverTopicsRequest',
-                'Required parameter "discoverTopicsRequest" was null or undefined when calling discoverTopicsApiDiscoverTopicsPost().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-
-        let urlPath = `/api/discover_topics`;
-
-        return {
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: DiscoverTopicsRequestToJSON(requestParameters['discoverTopicsRequest']),
-        };
-    }
-
-    /**
-     * Call Topicer dense topic discovery on the provided chunks.
-     * Discover Topics
-     */
-    async discoverTopicsApiDiscoverTopicsPostRaw(requestParameters: DiscoverTopicsApiDiscoverTopicsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DiscoveredTopics>> {
-        const requestOptions = await this.discoverTopicsApiDiscoverTopicsPostRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => DiscoveredTopicsFromJSON(jsonValue));
-    }
-
-    /**
-     * Call Topicer dense topic discovery on the provided chunks.
-     * Discover Topics
-     */
-    async discoverTopicsApiDiscoverTopicsPost(requestParameters: DiscoverTopicsApiDiscoverTopicsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DiscoveredTopics> {
-        const response = await this.discoverTopicsApiDiscoverTopicsPostRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
      * Creates request options for explainSelectionApiRagExplainPost without sending the request
      */
     async explainSelectionApiRagExplainPostRequestOpts(requestParameters: ExplainSelectionApiRagExplainPostRequest): Promise<runtime.RequestOpts> {
@@ -3055,7 +2972,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Call Topicer tag proposal and return only the highest-confidence tag.
+     * Call Topicer tag proposal and return top confident tags.
      * Propose Best Tag
      */
     async proposeBestTagApiProposeBestTagPostRaw(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BestTagProposalResponse>> {
@@ -3066,7 +2983,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Call Topicer tag proposal and return only the highest-confidence tag.
+     * Call Topicer tag proposal and return top confident tags.
      * Propose Best Tag
      */
     async proposeBestTagApiProposeBestTagPost(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BestTagProposalResponse> {

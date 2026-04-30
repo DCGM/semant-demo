@@ -19,8 +19,6 @@ export function useTagging() {
   const isProcessing = ref(false)
   const availableTags = ref<AvailableTag[]>([])
   const collectionTags = ref<Tag[]>([])
-  const discoveredTopics =
-    ref<Awaited<ReturnType<typeof api.discoverTopicsApiDiscoverTopicsPost>>>()
   const discoveredTopicChunkIds = ref<string[]>([])
 
   const getDocumentDetail = async (
@@ -254,32 +252,6 @@ export function useTagging() {
     }
   }
 
-  const discoverTopics = async ({
-    chunks,
-    n
-  }: Parameters<
-    typeof api.discoverTopicsApiDiscoverTopicsPost
-  >[0]['discoverTopicsRequest']) => {
-    try {
-      const response = await api.discoverTopicsApiDiscoverTopicsPost({
-        discoverTopicsRequest: {
-          chunks,
-          n
-        }
-      })
-
-      discoveredTopics.value = response
-      discoveredTopicChunkIds.value = chunks.map((chunk) => String(chunk.id))
-
-      return response
-    } catch (error) {
-      console.error('Error discovering topics:', error)
-      discoveredTopics.value = undefined
-      discoveredTopicChunkIds.value = []
-      return undefined
-    }
-  }
-
   const approveTagSpan = async ({
     chunkID,
     tagID,
@@ -370,7 +342,6 @@ export function useTagging() {
     isProcessing,
     availableTags,
     collectionTags,
-    discoveredTopics,
     discoveredTopicChunkIds,
 
     // Methods
@@ -387,7 +358,6 @@ export function useTagging() {
     addChunkToCollection,
     removeChunkFromCollection,
     suggestAnnotations,
-    discoverTopics,
     proposeBestTag
   }
 }

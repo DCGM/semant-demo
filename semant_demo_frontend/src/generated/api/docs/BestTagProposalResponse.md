@@ -6,7 +6,7 @@
 
 Name | Type
 ------------ | -------------
-`suggestion` | [BestTagProposal](BestTagProposal.md)
+`suggestions` | [Array&lt;BestTagProposal&gt;](BestTagProposal.md)
 
 ## Example
 
@@ -15,7 +15,7 @@ import type { BestTagProposalResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "suggestion": null,
+  "suggestions": null,
 } satisfies BestTagProposalResponse
 
 console.log(example)

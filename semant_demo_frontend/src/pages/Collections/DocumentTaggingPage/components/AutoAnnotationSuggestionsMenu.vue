@@ -1,5 +1,5 @@
 <template>
-  <q-card class="right-panel-menu">
+  <q-card flat class="right-panel-menu">
     <q-card-section class="right-panel-menu-section">
       <div class="row items-center justify-between q-mb-md">
         <div class="text-subtitle1 text-weight-bold">
