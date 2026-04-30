@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
+from semant_demo import schemas
 from semant_demo.schema.documents import DocumentBrowse, Document
 from semant_demo.routes.dependencies import get_search
 
@@ -42,3 +43,16 @@ async def browse_documents(collection_id: str | None = None,
         publisher=publisher,
         document_type=document_type
     )
+
+
+@exp_router.get("/api/documents/{document_id}/{collection_id}/chunks", response_model=schemas.DocumentDetail, response_model_exclude_none=True)
+async def fetch_document_chunks(document_id: str,
+                                collection_id: str,
+                                searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.DocumentDetail:
+    """
+    Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
+    """
+    response = await searcher.document.read_document_chunks(document_id=document_id, collection_id=collection_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Document with id {document_id} not found")
+    return response

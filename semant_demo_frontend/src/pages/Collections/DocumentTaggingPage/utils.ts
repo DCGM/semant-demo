@@ -2,25 +2,44 @@ export const snapToWordBoundary = (
   index: number,
   type: 'start' | 'end',
   text: string
-) => {
-  if (!text || index < 0 || index > text.length) return index
+): number => {
+  // \p{L} matches ANY letter from ANY language (including ěščřžýáíé)
+  // \p{N} matches ANY number
+  // _ matches underscore (to keep parity with the original \w)
+  // The 'u' flag enables unicode matching
+  const isWordChar = (char: string) => /[\p{L}\p{N}_]/u.test(char)
 
-  // Matches any Unicode letter or number (supports accents, e.g., á, č, ř)
-  const isWordChar = (char: string) => /[\p{L}\p{N}]/u.test(char)
+  if (index < 0) return 0
+  if (index > text.length) return text.length
 
-  let i = index
   if (type === 'start') {
-    // When evaluating the start, look at the character just BEFORE the cursor
-    // and push the index left until we hit a space or punctuation.
-    while (i > 0 && isWordChar(text[i - 1])) {
-      i--
+    // Only snap backward if the character we landed on is ACTUALLY part of a word.
+    // If it's a space or a dot, we leave the index exactly where it is.
+    if (index < text.length && isWordChar(text[index])) {
+      let i = index
+      while (i > 0 && isWordChar(text[i - 1])) {
+        i--
+      }
+      return i
     }
-  } else {
-    // When evaluating the end, look at the character AT the cursor
-    // and push the index right until we hit a space or punctuation.
-    while (i < text.length && isWordChar(text[i])) {
-      i++
+  } else if (type === 'end') {
+    // For 'end', the index is positioned just *after* the selected character.
+    // We only snap forward to finish the word if the selection ended IN THE MIDDLE of a word.
+    // (Meaning the char just before index is a word char, AND the char at index is also a word char).
+    if (
+      index > 0 &&
+      index < text.length &&
+      isWordChar(text[index - 1]) &&
+      isWordChar(text[index])
+    ) {
+      let i = index
+      while (i < text.length && isWordChar(text[i])) {
+        i++
+      }
+      return i
     }
   }
-  return i
+
+  // If we selected a space or punctuation, just return the exact selected index without snapping.
+  return index
 }

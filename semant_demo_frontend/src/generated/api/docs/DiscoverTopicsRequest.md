@@ -1,32 +1,24 @@
 
-# ApproveTagReq
+# DiscoverTopicsRequest
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`collectionID` | string
-`chunkID` | string
-`tagID` | string
-`spanID` | string
-`start` | number
-`end` | number
+`chunks` | [Array&lt;TextChunk&gt;](TextChunk.md)
+`n` | number
 
 ## Example
 
 ```typescript
-import type { ApproveTagReq } from ''
+import type { DiscoverTopicsRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "collectionID": null,
-  "chunkID": null,
-  "tagID": null,
-  "spanID": null,
-  "start": null,
-  "end": null,
-} satisfies ApproveTagReq
+  "chunks": null,
+  "n": null,
+} satisfies DiscoverTopicsRequest
 
 console.log(example)
 
@@ -35,7 +27,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as ApproveTagReq
+const exampleParsed = JSON.parse(exampleJSON) as DiscoverTopicsRequest
 console.log(exampleParsed)
 ```
 

@@ -1,32 +1,34 @@
 
-# ApproveTagReq
+# AutoAnnotationSuggestion
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`collectionID` | string
-`chunkID` | string
-`tagID` | string
-`spanID` | string
+`id` | string
+`chunkId` | string
+`tagId` | string
 `start` | number
 `end` | number
+`type` | [SpanType](SpanType.md)
+`confidence` | number
 
 ## Example
 
 ```typescript
-import type { ApproveTagReq } from ''
+import type { AutoAnnotationSuggestion } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "collectionID": null,
-  "chunkID": null,
-  "tagID": null,
-  "spanID": null,
+  "id": null,
+  "chunkId": null,
+  "tagId": null,
   "start": null,
   "end": null,
-} satisfies ApproveTagReq
+  "type": null,
+  "confidence": null,
+} satisfies AutoAnnotationSuggestion
 
 console.log(example)
 
@@ -35,7 +37,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as ApproveTagReq
+const exampleParsed = JSON.parse(exampleJSON) as AutoAnnotationSuggestion
 console.log(exampleParsed)
 ```
 

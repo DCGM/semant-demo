@@ -2,47 +2,64 @@ import { useApi } from 'src/composables/useApi'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
 import { ref } from 'vue'
 import { AvailableTag } from '../components/ChunkTagAnnotator.vue'
+import { Tag } from 'src/generated/api/models/Tag'
+import { ReadTagSpansApiTagSpansGetRequest } from 'src/generated/api'
 
 export function useTagging() {
   const api = useApi().default
-  const collectionChunks = ref<
-    Awaited<
-      ReturnType<typeof api.getCollectionChunksApiUserCollectionChunksGet>
-    >['chunksOfCollection']
-  >([])
+  const documentDetail =
+    ref<
+      Awaited<
+        ReturnType<
+          typeof api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet
+        >
+      >
+    >()
+
   const tagSpans = ref<TagSpan[]>([])
   const isProcessing = ref(false)
   const availableTags = ref<AvailableTag[]>([])
+  const collectionTags = ref<Tag[]>([])
+  const discoveredTopicChunkIds = ref<string[]>([])
 
-  const getCollectionChunksPaged = async (
+  const getDocumentDetail = async (
+    documentId: Parameters<
+      typeof api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet
+    >[0]['documentId'],
     collectionId: Parameters<
-      typeof api.getCollectionChunksApiUserCollectionChunksGet
+      typeof api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet
     >[0]['collectionId']
   ) => {
     isProcessing.value = true
     try {
-      const response = await api.getCollectionChunksApiUserCollectionChunksGet({
-        collectionId
-      })
-      collectionChunks.value = response.chunksOfCollection
-      collectionChunks.value = response.chunksOfCollection
-      return response.chunksOfCollection
+      const response =
+        await api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet(
+          {
+            collectionId,
+            documentId
+          }
+        )
+
+      documentDetail.value = response
+      console.log('Fetched document detail:', response)
+      return response
     } catch (error) {
-      console.error('Error fetching collection chunks:', error)
-      return []
+      console.error('Error fetching document detail:', error)
+      documentDetail.value = undefined
+      return undefined
     } finally {
       isProcessing.value = false
     }
   }
 
-  const fetchTagSpansForChunk = async (
-    chunkId: Parameters<
-      typeof api.readTagSpansApiTagSpansChunkIdGet
-    >[0]['chunkId']
-  ): Promise<TagSpan[]> => {
+  const fetchTagSpansForChunk = async ({
+    chunkId,
+    collectionId
+  }: ReadTagSpansApiTagSpansGetRequest): Promise<TagSpan[]> => {
     try {
-      const response = await api.readTagSpansApiTagSpansChunkIdGet({
-        chunkId
+      const response = await api.readTagSpansApiTagSpansGet({
+        chunkId,
+        collectionId
       })
       return response
     } catch (error) {
@@ -51,10 +68,16 @@ export function useTagging() {
     }
   }
 
-  const fetchTagSpansMapForChunks = async (chunkIds: string[]) => {
+  const fetchTagSpansMapForChunks = async (
+    chunkIds: string[],
+    collectionId: string
+  ) => {
     const pairs = await Promise.all(
       chunkIds.map(async (chunkId) => {
-        const spans = await fetchTagSpansForChunk(chunkId)
+        const spans = await fetchTagSpansForChunk({
+          chunkId,
+          collectionId
+        })
         return [chunkId, spans] as const
       })
     )
@@ -66,13 +89,12 @@ export function useTagging() {
   }
 
   const getTagSpans = async (
-    chunkId: Parameters<
-      typeof api.readTagSpansApiTagSpansChunkIdGet
-    >[0]['chunkId']
+    chunkId: ReadTagSpansApiTagSpansGetRequest['chunkId'],
+    collectionId: ReadTagSpansApiTagSpansGetRequest['collectionId']
   ): Promise<TagSpan[]> => {
     isProcessing.value = true
     try {
-      const response = await fetchTagSpansForChunk(chunkId)
+      const response = await fetchTagSpansForChunk({ chunkId, collectionId })
       tagSpans.value = response
       console.log('Fetched tag spans:', response)
       return response
@@ -85,16 +107,12 @@ export function useTagging() {
   }
 
   const createTagSpan = async (
-    data: Parameters<
-      typeof api.upsertTagSpansApiTagSpansPost
-    >[0]['tagSpanCreateSeparateRequest']
+    span: Parameters<typeof api.createTagSpanApiTagSpansPost>[0]['postSpan']
   ) => {
     isProcessing.value = true
     try {
-      const response = await api.upsertTagSpansApiTagSpansPost({
-        tagSpanCreateSeparateRequest: {
-          span: data.span
-        }
+      const response = await api.createTagSpanApiTagSpansPost({
+        postSpan: span
       })
       console.log('Tag span(s) created successfully:', response)
     } catch (error) {
@@ -105,14 +123,13 @@ export function useTagging() {
   }
 
   const updateTagSpan = async (
-    data: Parameters<
-      typeof api.updateTagSpanApiTagSpansUpdatePatch
-    >[0]['tagSpanUpdateSeparateRequest']
+    data: Parameters<typeof api.updateTagSpanApiTagSpansSpanIdPatch>[0]
   ) => {
     isProcessing.value = true
     try {
-      const response = await api.updateTagSpanApiTagSpansUpdatePatch({
-        tagSpanUpdateSeparateRequest: data
+      const response = await api.updateTagSpanApiTagSpansSpanIdPatch({
+        patchSpan: data.patchSpan,
+        spanId: data.spanId
       })
       console.log('Tag updated successfully:', response)
     } catch (error) {
@@ -151,35 +168,197 @@ export function useTagging() {
         await api.getCollectionTagsApiCollectionsCollectionIdTagsGet({
           collectionId
         })
+      collectionTags.value = response
       availableTags.value = response.map((tag) => ({
         tagUuid: tag.id,
         tagName: tag.name,
         tagColor: tag.color,
+        tagShorthand: tag.shorthand,
         tagPictogram: tag.pictogram
       }))
     } catch (error) {
       console.error('Error fetching tags for collection:', error)
+      collectionTags.value = []
       availableTags.value = []
     } finally {
       isProcessing.value = false
     }
   }
 
+  const addChunkToCollection = async ({
+    chunkId,
+    collectionId
+  }: Parameters<
+    typeof api.addChunk2CollectionApiUserCollectionChunksPost
+  >[0]['chunk2CollectionReq']) => {
+    try {
+      const response = await api.addChunk2CollectionApiUserCollectionChunksPost(
+        {
+          chunk2CollectionReq: {
+            chunkId,
+            collectionId
+          }
+        }
+      )
+      console.log('Chunk added to collection successfully:', response)
+      return response
+    } catch (error) {
+      console.error('Error adding chunk to collection:', error)
+      return undefined
+    }
+  }
+
+  const removeChunkFromCollection = async ({
+    chunkId,
+    collectionId
+  }: Parameters<
+    typeof api.removeChunkFromCollectionApiUserCollectionChunksRemovePost
+  >[0]['chunk2CollectionReq']) => {
+    try {
+      const response =
+        await api.removeChunkFromCollectionApiUserCollectionChunksRemovePost({
+          chunk2CollectionReq: {
+            chunkId,
+            collectionId
+          }
+        })
+      console.log('Chunk removed from collection successfully:', response)
+      return response
+    } catch (error) {
+      console.error('Error removing chunk from collection:', error)
+      return undefined
+    }
+  }
+
+  const suggestAnnotations = async ({
+    chunks,
+    tags
+  }: Parameters<
+    typeof api.proposeTagsApiProposeTagsPost
+  >[0]['autoAnnotationSuggestionRequest']) => {
+    try {
+      const response = await api.proposeTagsApiProposeTagsPost({
+        autoAnnotationSuggestionRequest: {
+          chunks,
+          tags
+        }
+      })
+      console.log('Auto-annotation suggestions fetched successfully:', response)
+      return response
+    } catch (error) {
+      console.error('Error fetching auto-annotation suggestions:', error)
+      return {
+        suggestions: []
+      }
+    }
+  }
+
+  const approveTagSpan = async ({
+    chunkID,
+    tagID,
+    collectionID,
+    spanID,
+    start,
+    end
+  }: Parameters<
+    typeof api.approveSelectedTagChunkApiTagApprovePut
+  >[0]['approveTagReq']) => {
+    isProcessing.value = true
+    try {
+      const response = await api.approveSelectedTagChunkApiTagApprovePut({
+        approveTagReq: {
+          chunkID,
+          tagID,
+          collectionID,
+          spanID,
+          start,
+          end
+        }
+      })
+      return response
+    } catch (error) {
+      console.error('Error approving tag span:', error)
+      return undefined
+    } finally {
+      isProcessing.value = false
+    }
+  }
+
+  const declineTagSpan = async ({
+    chunkID,
+    tagID,
+    collectionID,
+    spanID,
+    start,
+    end
+  }: Parameters<
+    typeof api.approveSelectedTagChunkApiTagDisapprovePut
+  >[0]['approveTagReq']) => {
+    isProcessing.value = true
+    try {
+      const response = await api.approveSelectedTagChunkApiTagDisapprovePut({
+        approveTagReq: {
+          chunkID,
+          tagID,
+          collectionID,
+          spanID,
+          start,
+          end
+        }
+      })
+      return response
+    } catch (error) {
+      console.error('Error declining tag span:', error)
+      return undefined
+    } finally {
+      isProcessing.value = false
+    }
+  }
+
+  const proposeBestTag = async ({
+    text,
+    tags
+  }: Parameters<
+    typeof api.proposeBestTagApiProposeBestTagPost
+  >[0]['bestTagProposalRequest']) => {
+    try {
+      const response = await api.proposeBestTagApiProposeBestTagPostRaw({
+        bestTagProposalRequest: {
+          text,
+          tags
+        }
+      })
+
+      return await response.raw.json()
+    } catch (error) {
+      console.error('Error proposing best tag:', error)
+      return undefined
+    }
+  }
+
   return {
     // State
-    collectionChunks,
+    documentDetail,
     tagSpans,
     isProcessing,
     availableTags,
+    collectionTags,
+    discoveredTopicChunkIds,
 
     // Methods
-    getCollectionChunksPaged,
+    getDocumentDetail,
     fetchTagSpansForChunk,
     fetchTagSpansMapForChunks,
     getTagSpans,
     createTagSpan,
     updateTagSpan,
+    approveTagSpan,
+    declineTagSpan,
     deleteTagSpan,
-    getTagsForCollection
+    getTagsForCollection,
+    addChunkToCollection,
+    removeChunkFromCollection,
+    suggestAnnotations,
+    proposeBestTag
   }
 }
