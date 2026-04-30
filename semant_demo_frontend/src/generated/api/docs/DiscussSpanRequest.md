@@ -8,7 +8,6 @@ Request body for ``POST /api/ai/discuss_span``.  The frontend sends the full cha
 Name | Type
 ------------ | -------------
 `spanId` | string
-`collectionId` | string
 `messages` | [Array&lt;SpanChatMessage&gt;](SpanChatMessage.md)
 
 ## Example
@@ -19,7 +18,6 @@ import type { DiscussSpanRequest } from ''
 // TODO: Update the object below with actual values
 const example = {
   "spanId": null,
-  "collectionId": null,
   "messages": null,
 } satisfies DiscussSpanRequest
 

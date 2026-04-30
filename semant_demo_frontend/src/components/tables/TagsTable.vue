@@ -280,10 +280,15 @@ const handleBulkDelete = () => {
       color: 'negative'
     },
     persistent: true
-  }).onOk(() => {
+  }).onOk(async () => {
     const ids = selected.value.map(tag => tag.id)
     selected.value = []
-    deleteManyTags(ids)
+    try {
+      await deleteManyTags(ids)
+    } catch {
+      // refetch to sync UI with backend after a partial/total failure
+      await loadTagsByCollection(collectionId.value)
+    }
   })
 }
 

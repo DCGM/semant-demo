@@ -1315,6 +1315,27 @@ export interface DefaultApiInterface {
     getTagsApiTagsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse>;
 
     /**
+     * Creates request options for healthHealthGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    healthHealthGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Health
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    healthHealthGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+
+    /**
+     * Health
+     */
+    healthHealthGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+
+    /**
      * Creates request options for questionApiQuestionQuestionTextPost without sending the request
      * @param {string} questionText 
      * @param {SearchResponseInput} searchResponseInput 
@@ -3687,6 +3708,47 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getTagsApiTagsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetTagsResponse> {
         const response = await this.getTagsApiTagsGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for healthHealthGet without sending the request
+     */
+    async healthHealthGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/health`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Health
+     */
+    async healthHealthGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+        const requestOptions = await this.healthHealthGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        if (this.isJsonMime(response.headers.get('content-type'))) {
+            return new runtime.JSONApiResponse<any>(response);
+        } else {
+            return new runtime.TextApiResponse(response) as any;
+        }
+    }
+
+    /**
+     * Health
+     */
+    async healthHealthGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+        const response = await this.healthHealthGetRaw(initOverrides);
         return await response.value();
     }
 

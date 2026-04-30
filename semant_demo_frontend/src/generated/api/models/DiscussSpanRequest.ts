@@ -39,12 +39,6 @@ export interface DiscussSpanRequest {
     spanId: string;
     /**
      * 
-     * @type {string}
-     * @memberof DiscussSpanRequest
-     */
-    collectionId: string;
-    /**
-     * 
      * @type {Array<SpanChatMessage>}
      * @memberof DiscussSpanRequest
      */
@@ -56,7 +50,6 @@ export interface DiscussSpanRequest {
  */
 export function instanceOfDiscussSpanRequest(value: object): value is DiscussSpanRequest {
     if (!('spanId' in value) || value['spanId'] === undefined) return false;
-    if (!('collectionId' in value) || value['collectionId'] === undefined) return false;
     if (!('messages' in value) || value['messages'] === undefined) return false;
     return true;
 }
@@ -72,7 +65,6 @@ export function DiscussSpanRequestFromJSONTyped(json: any, ignoreDiscriminator: 
     return {
         
         'spanId': json['span_id'],
-        'collectionId': json['collection_id'],
         'messages': ((json['messages'] as Array<any>).map(SpanChatMessageFromJSON)),
     };
 }
@@ -89,7 +81,6 @@ export function DiscussSpanRequestToJSONTyped(value?: DiscussSpanRequest | null,
     return {
         
         'span_id': value['spanId'],
-        'collection_id': value['collectionId'],
         'messages': ((value['messages'] as Array<any>).map(SpanChatMessageToJSON)),
     };
 }
