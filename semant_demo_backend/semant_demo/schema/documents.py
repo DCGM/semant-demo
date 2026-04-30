@@ -31,3 +31,11 @@ class DocumentBrowse(BaseModel):
     next_offset: int | None = None
     has_more: bool
     total_count: int
+
+class DocumentStats(BaseModel):
+    document_id: str
+    collection_id: str
+    chunks_in_collection: int
+    total_chunks: int
+    annotations_count: int
+    distinct_tags_count: int

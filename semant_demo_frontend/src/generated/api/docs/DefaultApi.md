@@ -9,43 +9,57 @@ All URIs are relative to *http://localhost*
 | [**approveSelectedTagChunkApiTagApprovePut**](DefaultApi.md#approveselectedtagchunkapitagapproveput) | **PUT** /api/tag/approve | Approve Selected Tag Chunk |
 | [**approveSelectedTagChunkApiTagDisapprovePut**](DefaultApi.md#approveselectedtagchunkapitagdisapproveput) | **PUT** /api/tag/disapprove | Approve Selected Tag Chunk |
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
+| [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
 | [**cancelTaskApiTagTaskTaskIdDelete**](DefaultApi.md#canceltaskapitagtasktaskiddelete) | **DELETE** /api/tag/task/{taskId} | Cancel Task |
 | [**checkStatusApiTagTaskStatusTaskIdGet**](DefaultApi.md#checkstatusapitagtaskstatustaskidget) | **GET** /api/tag/task/status/{taskId} | Check Status |
+| [**countDocumentChunksApiDocumentsDocumentIdChunksCountGet**](DefaultApi.md#countdocumentchunksapidocumentsdocumentidchunkscountget) | **GET** /api/documents/{document_id}/chunks/count | Count Document Chunks |
 | [**createTagApiTagsPost**](DefaultApi.md#createtagapitagspost) | **POST** /api/tags | Create Tag |
+| [**createTagSpanApiTagSpansPost**](DefaultApi.md#createtagspanapitagspanspost) | **POST** /api/tag_spans | Create Tag Span |
 | [**createUserCollectionApiUserCollectionsPost**](DefaultApi.md#createusercollectionapiusercollectionspost) | **POST** /api/user_collections | Create User Collection |
+| [**deleteAutoSpansApiAiAutoSpansDeletePost**](DefaultApi.md#deleteautospansapiaiautospansdeletepost) | **POST** /api/ai/auto_spans/delete | Delete Auto Spans |
 | [**deleteCollectionApiCollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapicollectionscollectioniddelete) | **DELETE** /api/collections/{collection_id} | Delete Collection |
+| [**deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost**](DefaultApi.md#deletespansfortagsindocumentapitagspansindocumentdeletepost) | **POST** /api/tag_spans/in_document/delete | Delete Spans For Tags In Document |
 | [**deleteTagApiTagsTagUuidDelete**](DefaultApi.md#deletetagapitagstaguuiddelete) | **DELETE** /api/tags/{tag_uuid} | Delete Tag |
 | [**deleteTagSpanApiTagSpansSpanIdDelete**](DefaultApi.md#deletetagspanapitagspansspaniddelete) | **DELETE** /api/tag_spans/{span_id} | Delete Tag Span |
+| [**discussSpanApiAiDiscussSpanPost**](DefaultApi.md#discussspanapiaidiscussspanpost) | **POST** /api/ai/discuss_span | Discuss Span |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
 | [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
 | [**fetchDocumentApiDocumentDocumentIdGet**](DefaultApi.md#fetchdocumentapidocumentdocumentidget) | **GET** /api/document/{document_id} | Fetch Document |
 | [**filterChunksByTagsApiTagsFilterPost**](DefaultApi.md#filterchunksbytagsapitagsfilterpost) | **POST** /api/tags/filter | Filter Chunks By Tags |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
+| [**getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet**](DefaultApi.md#getchunksinrangeapicollectionscollectioniddocumentsdocumentidchunksget) | **GET** /api/collections/{collection_id}/documents/{document_id}/chunks | Get Chunks In Range |
 | [**getCollectionChunksApiUserCollectionChunksGet**](DefaultApi.md#getcollectionchunksapiusercollectionchunksget) | **GET** /api/user_collection/chunks | Get Collection Chunks |
+| [**getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet**](DefaultApi.md#getcollectiondocumentchunksapicollectionscollectioniddocumentsdocumentidget) | **GET** /api/collections/{collection_id}/documents/{document_id} | Get Collection Document Chunks |
 | [**getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet**](DefaultApi.md#getcollectiondocumentsapiusercollectioncollectioniddocumentsget) | **GET** /api/user_collection/{collection_id}/documents | Get Collection Documents |
 | [**getCollectionStatsApiUserCollectionCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiusercollectioncollectionidstatsget) | **GET** /api/user_collection/{collection_id}/stats | Get Collection Stats |
 | [**getCollectionTagsApiCollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapicollectionscollectionidtagsget) | **GET** /api/collections/{collection_id}/tags | Get Collection Tags |
 | [**getConfigsApiTagConfigsGet**](DefaultApi.md#getconfigsapitagconfigsget) | **GET** /api/tag/configs | Get Configs |
+| [**getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet**](DefaultApi.md#getdocumentstatsapicollectionscollectioniddocumentsdocumentidstatsget) | **GET** /api/collections/{collection_id}/documents/{document_id}/stats | Get Document Stats |
+| [**getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet**](DefaultApi.md#getneighbourchunkapicollectionscollectioniddocumentsdocumentidneighbourget) | **GET** /api/collections/{collection_id}/documents/{document_id}/neighbour | Get Neighbour Chunk |
 | [**getSelectedTagsChunksApiTagTextChunksPost**](DefaultApi.md#getselectedtagschunksapitagtextchunkspost) | **POST** /api/tag/textChunks | Get Selected Tags Chunks |
 | [**getTagApiTagsTagUuidGet**](DefaultApi.md#gettagapitagstaguuidget) | **GET** /api/tags/{tag_uuid} | Get Tag |
 | [**getTagTasksApiTagTasksInfoGet**](DefaultApi.md#gettagtasksapitagtasksinfoget) | **GET** /api/tag/tasks/info | Get Tag Tasks |
 | [**getTagsApiTagsGet**](DefaultApi.md#gettagsapitagsget) | **GET** /api/tags | Get Tags |
+| [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
 | [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
-| [**readTagSpansApiTagSpansChunkIdGet**](DefaultApi.md#readtagspansapitagspanschunkidget) | **GET** /api/tag_spans/{chunk_id} | Read Tag Spans |
+| [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
+| [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
 | [**removeAutomaticTagsApiTagsAutomaticDelete**](DefaultApi.md#removeautomatictagsapitagsautomaticdelete) | **DELETE** /api/tags/automatic | Remove Automatic Tags |
+| [**removeChunkFromCollectionApiUserCollectionChunksDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectionchunksdelete) | **DELETE** /api/user_collection/chunks | Remove Chunk From Collection |
 | [**removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapicollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
 | [**searchUsersApiUsersSearchGet**](DefaultApi.md#searchusersapiuserssearchget) | **GET** /api/users/search | Search Users |
 | [**startTaggingApiTagTaskPost**](DefaultApi.md#starttaggingapitagtaskpost) | **POST** /api/tag/task | Start Tagging |
+| [**suggestSpansOptimizedApiAiSuggestSpansOptimizedPost**](DefaultApi.md#suggestspansoptimizedapiaisuggestspansoptimizedpost) | **POST** /api/ai/suggest_spans/optimized | Suggest Spans Optimized |
+| [**suggestSpansThoroughApiAiSuggestSpansThoroughPost**](DefaultApi.md#suggestspansthoroughapiaisuggestspansthoroughpost) | **POST** /api/ai/suggest_spans/thorough | Suggest Spans Thorough |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
-| [**updateTagSpanApiTagSpansUpdatePatch**](DefaultApi.md#updatetagspanapitagspansupdatepatch) | **PATCH** /api/tag_spans/update | Update Tag Span |
-| [**upsertTagSpansApiTagSpansPost**](DefaultApi.md#upserttagspansapitagspanspost) | **POST** /api/tag_spans | Upsert Tag Spans |
+| [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
 
 
 
@@ -428,6 +442,74 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## bulkUpdateTagSpansApiTagSpansBulkUpdatePost
+
+> BulkUpdateSpansResponse bulkUpdateTagSpansApiTagSpansBulkUpdatePost(bulkUpdateSpansRequest)
+
+Bulk Update Tag Spans
+
+Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // BulkUpdateSpansRequest
+    bulkUpdateSpansRequest: ...,
+  } satisfies BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest;
+
+  try {
+    const data = await api.bulkUpdateTagSpansApiTagSpansBulkUpdatePost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **bulkUpdateSpansRequest** | [BulkUpdateSpansRequest](BulkUpdateSpansRequest.md) |  | |
+
+### Return type
+
+[**BulkUpdateSpansResponse**](BulkUpdateSpansResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## cancelTaskApiTagTaskTaskIdDelete
 
 > CancelTaskResponse cancelTaskApiTagTaskTaskIdDelete(taskId)
@@ -572,6 +654,74 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## countDocumentChunksApiDocumentsDocumentIdChunksCountGet
+
+> number countDocumentChunksApiDocumentsDocumentIdChunksCountGet(documentId)
+
+Count Document Chunks
+
+Returns the total number of chunks in the given document.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    documentId: documentId_example,
+  } satisfies CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest;
+
+  try {
+    const data = await api.countDocumentChunksApiDocumentsDocumentIdChunksCountGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+**number**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## createTagApiTagsPost
 
 > Tag createTagApiTagsPost(collectionId, postTag)
@@ -642,6 +792,74 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **201** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## createTagSpanApiTagSpansPost
+
+> TagSpan createTagSpanApiTagSpansPost(postSpan)
+
+Create Tag Span
+
+Adds new TagSpan
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CreateTagSpanApiTagSpansPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // PostSpan
+    postSpan: ...,
+  } satisfies CreateTagSpanApiTagSpansPostRequest;
+
+  try {
+    const data = await api.createTagSpanApiTagSpansPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **postSpan** | [PostSpan](PostSpan.md) |  | |
+
+### Return type
+
+[**TagSpan**](TagSpan.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -719,6 +937,78 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## deleteAutoSpansApiAiAutoSpansDeletePost
+
+> DeleteAutoSpansResponse deleteAutoSpansApiAiAutoSpansDeletePost(deleteAutoSpansRequest)
+
+Delete Auto Spans
+
+Bulk-delete unresolved AI proposals (&#x60;&#x60;type &#x3D;&#x3D; \&#39;auto\&#39;&#x60;&#x60;) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DeleteAutoSpansApiAiAutoSpansDeletePostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // DeleteAutoSpansRequest
+    deleteAutoSpansRequest: ...,
+  } satisfies DeleteAutoSpansApiAiAutoSpansDeletePostRequest;
+
+  try {
+    const data = await api.deleteAutoSpansApiAiAutoSpansDeletePost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **deleteAutoSpansRequest** | [DeleteAutoSpansRequest](DeleteAutoSpansRequest.md) |  | |
+
+### Return type
+
+[**DeleteAutoSpansResponse**](DeleteAutoSpansResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## deleteCollectionApiCollectionsCollectionIdDelete
 
 > deleteCollectionApiCollectionsCollectionIdDelete(collectionId)
@@ -780,6 +1070,74 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **204** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost
+
+> DeleteSpansForTagsResponse deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(deleteSpansForTagsRequest)
+
+Delete Spans For Tags In Document
+
+Bulk-delete approved (&#x60;&#x60;type &#x3D;&#x3D; \&#39;pos\&#39;&#x60;&#x60;) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // DeleteSpansForTagsRequest
+    deleteSpansForTagsRequest: ...,
+  } satisfies DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest;
+
+  try {
+    const data = await api.deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **deleteSpansForTagsRequest** | [DeleteSpansForTagsRequest](DeleteSpansForTagsRequest.md) |  | |
+
+### Return type
+
+[**DeleteSpansForTagsResponse**](DeleteSpansForTagsResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -855,7 +1213,7 @@ No authorization required
 
 ## deleteTagSpanApiTagSpansSpanIdDelete
 
-> { [key: string]: any; } deleteTagSpanApiTagSpansSpanIdDelete(spanId)
+> deleteTagSpanApiTagSpansSpanIdDelete(spanId)
 
 Delete Tag Span
 
@@ -900,7 +1258,7 @@ example().catch(console.error);
 
 ### Return type
 
-**{ [key: string]: any; }**
+`void` (Empty response body)
 
 ### Authorization
 
@@ -909,6 +1267,78 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## discussSpanApiAiDiscussSpanPost
+
+> discussSpanApiAiDiscussSpanPost(discussSpanRequest)
+
+Discuss Span
+
+Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DiscussSpanApiAiDiscussSpanPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // DiscussSpanRequest
+    discussSpanRequest: ...,
+  } satisfies DiscussSpanApiAiDiscussSpanPostRequest;
+
+  try {
+    const data = await api.discussSpanApiAiDiscussSpanPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **discussSpanRequest** | [DiscussSpanRequest](DiscussSpanRequest.md) |  | |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 
@@ -1061,7 +1491,7 @@ No authorization required
 
 ## fetchCollectionsApiUserCollectionsGet
 
-> Array&lt;Collection&gt; fetchCollectionsApiUserCollectionsGet(userId)
+> Array&lt;Collection&gt; fetchCollectionsApiUserCollectionsGet()
 
 Fetch Collections
 
@@ -1084,13 +1514,8 @@ async function example() {
   });
   const api = new DefaultApi(config);
 
-  const body = {
-    // string
-    userId: userId_example,
-  } satisfies FetchCollectionsApiUserCollectionsGetRequest;
-
   try {
-    const data = await api.fetchCollectionsApiUserCollectionsGet(body);
+    const data = await api.fetchCollectionsApiUserCollectionsGet();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1103,10 +1528,7 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **userId** | `string` |  | [Defaults to `undefined`] |
+This endpoint does not need any parameter.
 
 ### Return type
 
@@ -1126,7 +1548,6 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -1332,6 +1753,83 @@ This endpoint does not need any parameter.
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet
+
+> Array&lt;Chunk | null&gt; getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(collectionId, documentId, orderGt, orderLt)
+
+Get Chunks In Range
+
+Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    documentId: documentId_example,
+    // number (optional)
+    orderGt: 56,
+    // number (optional)
+    orderLt: 56,
+  } satisfies GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest;
+
+  try {
+    const data = await api.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+| **orderGt** | `number` |  | [Optional] [Defaults to `undefined`] |
+| **orderLt** | `number` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;Chunk | null&gt;**](Chunk.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## getCollectionChunksApiUserCollectionChunksGet
 
 > GetCollectionChunksResponse getCollectionChunksApiUserCollectionChunksGet(collectionId)
@@ -1388,6 +1886,77 @@ example().catch(console.error);
 ### Authorization
 
 [OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet
+
+> Array&lt;Chunk&gt; getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(collectionId, documentId)
+
+Get Collection Document Chunks
+
+Returns chunks which belong to document and collection given by id
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    documentId: documentId_example,
+  } satisfies GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest;
+
+  try {
+    const data = await api.getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;Chunk&gt;**](Chunk.md)
+
+### Authorization
+
+No authorization required
 
 ### HTTP request headers
 
@@ -1669,6 +2238,154 @@ This endpoint does not need any parameter.
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet
+
+> DocumentStats getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet(collectionId, documentId)
+
+Get Document Stats
+
+Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    documentId: documentId_example,
+  } satisfies GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest;
+
+  try {
+    const data = await api.getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**DocumentStats**](DocumentStats.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet
+
+> Chunk getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(collectionId, documentId, direction, boundaryOrder)
+
+Get Neighbour Chunk
+
+Returns the chunk immediately before (direction&#x3D;prev) or after (direction&#x3D;next) the given boundary_order within the document. Marks in_collection accordingly.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    documentId: documentId_example,
+    // string
+    direction: direction_example,
+    // number
+    boundaryOrder: 56,
+  } satisfies GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest;
+
+  try {
+    const data = await api.getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+| **direction** | `string` |  | [Defaults to `undefined`] |
+| **boundaryOrder** | `number` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Chunk**](Chunk.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## getSelectedTagsChunksApiTagTextChunksPost
 
 > GetTaggedChunksResponse getSelectedTagsChunksApiTagTextChunksPost(getTaggedChunksReq)
@@ -1931,6 +2648,63 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## healthHealthGet
+
+> any healthHealthGet()
+
+Health
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { HealthHealthGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  try {
+    const data = await api.healthHealthGet();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+**any**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## questionApiQuestionQuestionTextPost
 
 > SummaryResponse questionApiQuestionQuestionTextPost(questionText, searchResponseInput)
@@ -2074,13 +2848,13 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## readTagSpansApiTagSpansChunkIdGet
+## readTagSpansApiTagSpansGet
 
-> Array&lt;TagSpan&gt; readTagSpansApiTagSpansChunkIdGet(chunkId)
+> Array&lt;TagSpan&gt; readTagSpansApiTagSpansGet(chunkId, collectionId)
 
 Read Tag Spans
 
-Get stored TagSpans for a given chunk ID.
+Get stored TagSpans for a given chunk ID and collection ID.
 
 ### Example
 
@@ -2089,19 +2863,21 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { ReadTagSpansApiTagSpansChunkIdGetRequest } from '';
+import type { ReadTagSpansApiTagSpansGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   const body = {
-    // string
+    // string | Filter spans by chunk ID (optional)
     chunkId: chunkId_example,
-  } satisfies ReadTagSpansApiTagSpansChunkIdGetRequest;
+    // string | Filter spans by collection ID (optional)
+    collectionId: collectionId_example,
+  } satisfies ReadTagSpansApiTagSpansGetRequest;
 
   try {
-    const data = await api.readTagSpansApiTagSpansChunkIdGet(body);
+    const data = await api.readTagSpansApiTagSpansGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2117,7 +2893,8 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **chunkId** | `string` |  | [Defaults to `undefined`] |
+| **chunkId** | `string` | Filter spans by chunk ID | [Optional] [Defaults to `undefined`] |
+| **collectionId** | `string` | Filter spans by collection ID | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -2130,6 +2907,74 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## readTagSpansBatchApiTagSpansBatchPost
+
+> { [key: string]: Array&lt;TagSpan&gt;; } readTagSpansBatchApiTagSpansBatchPost(tagSpanBatchRequest)
+
+Read Tag Spans Batch
+
+Get stored TagSpans for multiple chunk IDs in a single request.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReadTagSpansBatchApiTagSpansBatchPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // TagSpanBatchRequest
+    tagSpanBatchRequest: ...,
+  } satisfies ReadTagSpansBatchApiTagSpansBatchPostRequest;
+
+  try {
+    const data = await api.readTagSpansBatchApiTagSpansBatchPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **tagSpanBatchRequest** | [TagSpanBatchRequest](TagSpanBatchRequest.md) |  | |
+
+### Return type
+
+**{ [key: string]: Array<TagSpan>; }**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 
@@ -2194,6 +3039,78 @@ example().catch(console.error);
 ### Return type
 
 [**RemoveTagsResponse**](RemoveTagsResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## removeChunkFromCollectionApiUserCollectionChunksDelete
+
+> CreateResponse removeChunkFromCollectionApiUserCollectionChunksDelete(chunk2CollectionReq)
+
+Remove Chunk From Collection
+
+Removes a chunk from a user collection.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // Chunk2CollectionReq
+    chunk2CollectionReq: ...,
+  } satisfies RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest;
+
+  try {
+    const data = await api.removeChunkFromCollectionApiUserCollectionChunksDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **chunk2CollectionReq** | [Chunk2CollectionReq](Chunk2CollectionReq.md) |  | |
+
+### Return type
+
+[**CreateResponse**](CreateResponse.md)
 
 ### Authorization
 
@@ -2633,6 +3550,150 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## suggestSpansOptimizedApiAiSuggestSpansOptimizedPost
+
+> suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(suggestSpansRequest)
+
+Suggest Spans Optimized
+
+Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // SuggestSpansRequest
+    suggestSpansRequest: ...,
+  } satisfies SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest;
+
+  try {
+    const data = await api.suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **suggestSpansRequest** | [SuggestSpansRequest](SuggestSpansRequest.md) |  | |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/x-ndjson`, `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Stream of SuggestSpansChunkResult, one JSON object per line. |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## suggestSpansThoroughApiAiSuggestSpansThoroughPost
+
+> suggestSpansThoroughApiAiSuggestSpansThoroughPost(suggestSpansRequest)
+
+Suggest Spans Thorough
+
+Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type &#x60;&#x60;auto&#x60;&#x60;. The endpoint streams NDJSON lines (&#x60;&#x60;application/x-ndjson&#x60;&#x60;); each line is a :class:&#x60;SuggestSpansChunkResult&#x60;.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // SuggestSpansRequest
+    suggestSpansRequest: ...,
+  } satisfies SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest;
+
+  try {
+    const data = await api.suggestSpansThoroughApiAiSuggestSpansThoroughPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **suggestSpansRequest** | [SuggestSpansRequest](SuggestSpansRequest.md) |  | |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/x-ndjson`, `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Stream of SuggestSpansChunkResult, one JSON object per line. |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## summarizeApiSummarizeSummaryTypePost
 
 > SummaryResponse summarizeApiSummarizeSummaryTypePost(summaryType, searchResponseInput)
@@ -2848,9 +3909,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## updateTagSpanApiTagSpansUpdatePatch
+## updateTagSpanApiTagSpansSpanIdPatch
 
-> { [key: string]: any; } updateTagSpanApiTagSpansUpdatePatch(tagSpanUpdateSeparateRequest)
+> TagSpan updateTagSpanApiTagSpansSpanIdPatch(spanId, patchSpan)
 
 Update Tag Span
 
@@ -2863,19 +3924,21 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { UpdateTagSpanApiTagSpansUpdatePatchRequest } from '';
+import type { UpdateTagSpanApiTagSpansSpanIdPatchRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new DefaultApi();
 
   const body = {
-    // TagSpanUpdateSeparateRequest
-    tagSpanUpdateSeparateRequest: ...,
-  } satisfies UpdateTagSpanApiTagSpansUpdatePatchRequest;
+    // string
+    spanId: spanId_example,
+    // PatchSpan
+    patchSpan: ...,
+  } satisfies UpdateTagSpanApiTagSpansSpanIdPatchRequest;
 
   try {
-    const data = await api.updateTagSpanApiTagSpansUpdatePatch(body);
+    const data = await api.updateTagSpanApiTagSpansSpanIdPatch(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2891,79 +3954,12 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **tagSpanUpdateSeparateRequest** | [TagSpanUpdateSeparateRequest](TagSpanUpdateSeparateRequest.md) |  | |
+| **spanId** | `string` |  | [Defaults to `undefined`] |
+| **patchSpan** | [PatchSpan](PatchSpan.md) |  | |
 
 ### Return type
 
-**{ [key: string]: any; }**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## upsertTagSpansApiTagSpansPost
-
-> TagSpanWriteResponse upsertTagSpansApiTagSpansPost(tagSpanCreateSeparateRequest)
-
-Upsert Tag Spans
-
-Adds new TagSpan
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { UpsertTagSpansApiTagSpansPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // TagSpanCreateSeparateRequest
-    tagSpanCreateSeparateRequest: ...,
-  } satisfies UpsertTagSpansApiTagSpansPostRequest;
-
-  try {
-    const data = await api.upsertTagSpansApiTagSpansPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **tagSpanCreateSeparateRequest** | [TagSpanCreateSeparateRequest](TagSpanCreateSeparateRequest.md) |  | |
-
-### Return type
-
-[**TagSpanWriteResponse**](TagSpanWriteResponse.md)
+[**TagSpan**](TagSpan.md)
 
 ### Authorization
 

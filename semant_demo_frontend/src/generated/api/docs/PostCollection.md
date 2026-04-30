@@ -7,7 +7,6 @@
 Name | Type
 ------------ | -------------
 `name` | string
-`userId` | string
 `description` | string
 `color` | string
 
@@ -19,7 +18,6 @@ import type { PostCollection } from ''
 // TODO: Update the object below with actual values
 const example = {
   "name": null,
-  "userId": null,
   "description": null,
   "color": null,
 } satisfies PostCollection

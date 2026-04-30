@@ -8,7 +8,7 @@ Name | Type
 ------------ | -------------
 `id` | string
 `name` | string
-`userId` | string
+`owner` | string
 `description` | string
 `createdAt` | Date
 `updatedAt` | Date
@@ -23,7 +23,7 @@ import type { Collection } from ''
 const example = {
   "id": null,
   "name": null,
-  "userId": null,
+  "owner": null,
   "description": null,
   "createdAt": null,
   "updatedAt": null,

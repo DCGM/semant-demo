@@ -30,7 +30,7 @@ async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Dep
     if req.user_collection_id is not None:
         if current_user is None:
             raise HTTPException(status_code=401, detail="Unauthorized: user collection specified but no user authenticated")
-        collections = await searcher.userCollection.read_all(str(current_user.id))
+        collections = await searcher.userCollection.read_all(current_user)
         user_collection_ids = {str(col.id) for col in collections}
         if req.user_collection_id not in user_collection_ids:
             raise HTTPException(status_code=403, detail="Forbidden: user does not have access to the specified collection")
