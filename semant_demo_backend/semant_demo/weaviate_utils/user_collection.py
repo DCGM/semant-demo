@@ -573,15 +573,27 @@ class UserCollection():
         # Distinct tags used in those spans
         distinct_tag_ids: set[str] = set()
         if annotations_count > 0:
-            spans_objects = await spans_collection.query.fetch_objects(
-                filters=spans_filter,
-                limit=10000,
-                return_references=[QueryReference(link_on="tag")],
-            )
-            for obj in spans_objects.objects:
-                if obj.references and "tag" in obj.references:
-                    for ref in obj.references["tag"].objects:
-                        distinct_tag_ids.add(str(ref.uuid))
+            batch_size = 500
+            offset = 0
+            while True:
+                spans_objects = await spans_collection.query.fetch_objects(
+                    filters=spans_filter,
+                    limit=batch_size,
+                    offset=offset,
+                    return_references=[QueryReference(link_on="tag")],
+                )
+                if not spans_objects.objects:
+                    break
+
+                for obj in spans_objects.objects:
+                    if obj.references and "tag" in obj.references:
+                        for ref in obj.references["tag"].objects:
+                            distinct_tag_ids.add(str(ref.uuid))
+
+                fetched_count = len(spans_objects.objects)
+                offset += fetched_count
+                if fetched_count < batch_size:
+                    break
 
         return DocumentStats(
             document_id=document_id,
