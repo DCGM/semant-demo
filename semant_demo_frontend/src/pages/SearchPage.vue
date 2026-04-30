@@ -62,9 +62,9 @@
               <q-card-section class="bg-grey-1">
                 <div class="row q-col-gutter-xl">
 
-                  <div class="col-12 col-md-4">
+                  <div v-if="userStore.isLoggedIn" class="col-12 col-md-4">
                     <q-select
-                      v-model="selectedCollectionId"
+                      v-model="searchForm.user_collection_id"
                       :options="collectionOptions"
                       label="Select a Collection"
                       outlined
@@ -211,6 +211,32 @@
           </div>
         </div>
 
+        <q-slide-transition>
+          <div v-show="userStore.isLoggedIn && selectedResults.length > 0" class="q-mb-lg">
+            <q-card flat bordered class="bg-primary text-white">
+              <q-card-section class="row items-center justify-between q-pa-sm">
+                <div class="text-subtitle2 q-ml-sm">{{ selectedResults.length }} item(s) selected</div>
+                <div class="row q-gutter-sm items-center">
+                  <q-select
+                    v-model="targetCollectionId"
+                    :options="collectionOptions"
+                    label="Select Collection"
+                    dense
+                    outlined
+                    dark
+                    emit-value
+                    map-options
+                    style="min-width: 220px"
+                  />
+                  <q-btn flat color="white" icon="library_add" label="Add Chunks" @click="addSelectedChunksToCollection" />
+                  <q-btn flat color="white" icon="post_add" label="Add Documents" @click="addSelectedDocumentsToCollection" />
+                  <q-btn flat color="white" icon="close" round dense @click="selectedResults = []" />
+                </div>
+              </q-card-section>
+            </q-card>
+          </div>
+        </q-slide-transition>
+
         <div class="q-gutter-y-md">
           <q-card
             v-for="(chunk, index) in paginatedResults"
@@ -235,6 +261,9 @@
                 <div class="text-caption text-grey-8 q-mt-xs" v-if="chunk.document_object.title">
                   <strong>Source:</strong> {{ chunk.document_object.title }}
                 </div>
+              </div>
+              <div class="q-mr-md q-mt-xs">
+                <q-checkbox v-model="selectedResults" :val="chunk.id" color="primary" dense />
               </div>
             </q-card-section>
 
@@ -266,23 +295,6 @@
                 </div>
               </div>
             </q-card-section>
-
-            <q-card-actions class="bg-grey-1 row items-center q-pa-md ">
-              <q-btn
-                icon="library_add"
-                label="Add Chunk to Collection"
-                color="primary"
-                flat
-                @click="() => addChunkToCollection(chunk.id)"
-              />
-              <q-btn
-                icon="post_add"
-                label="Add Document to Collection"
-                color="secondary"
-                flat
-                @click="() => addDocumentToCollection(chunk.document_object.id)"
-              />
-            </q-card-actions>
           </q-card>
         </div>
 
@@ -304,12 +316,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QCheckbox, QRange, QPagination, Notify } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, CreateResponse } from 'src/models'
+import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument } from 'src/models'
+import type { Chunk2CollectionReq } from 'src/generated/api'
 import { api } from 'src/boot/axios'
+import { useApi } from 'src/composables/useApi'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
 import { useUserStore } from 'src/stores/user-store'
+import useDocuments from 'src/composables/useDocuments'
 
 // Search Form State
 const showFilters = ref(false)
@@ -317,6 +332,7 @@ const showSummarizeOptions = ref(false)
 const searchForm = ref<SearchRequest>({
   query: '',
   limit: 50, // Increased default to show pagination better
+  user_collection_id: null,
   type: 'hybrid',
   search_title_generate: false,
   search_summary_generate: false,
@@ -349,6 +365,8 @@ const yearRange = ref({ min: 1800, max: 2026 })
 const loading = ref(false)
 let searchResponse: SearchResponse | null = null
 const results = ref<TextChunkWithDocument[]>([])
+const selectedResults = ref<string[]>([])
+const targetCollectionId = ref<string | null>(null)
 const timeSpent = ref(0)
 const searchLog = ref<string[]>([])
 const lastSearchRequest = ref<SearchRequest | null>(null)
@@ -369,11 +387,13 @@ const brevityTypes = [
   { label: 'Detailed', value: 'detailed' }
 ]
 
-const summaryScope = ref('broader')
+const summaryScopeDefault = 'broader'
+const summaryScope = ref(summaryScopeDefault)
 const scopeOptions = [
   { label: 'Focused', value: 'focused' },
   { label: 'Broader', value: 'broader' },
-  { label: 'Extensive', value: 'extensive' }
+  { label: 'Extensive', value: 'extensive' },
+  { label: 'Selected', value: 'selected' }
 ]
 
 const scopeOptionsKMapping: Record<string, number | null> = {
@@ -388,11 +408,13 @@ const summaryTimeSpent = ref(0)
 const highlightedDocNumber = ref<number | null>(null)
 let clearHighlightTimer: number | null = null
 
+const summarizedResultIndices = ref<number[]>([])
+
 type SummaryToken =
   | { type: 'text'; value: string }
   | { type: 'citation'; docNumber: number }
 
-function parseSummaryTokens (text: string): SummaryToken[] {
+function parseSummaryTokens (text: string, indicesMap: number[]): SummaryToken[] {
   const tokens: SummaryToken[] = []
   const citationRegex = /\[(doc([1-9][0-9]*))]/g
   let lastIndex = 0
@@ -405,7 +427,8 @@ function parseSummaryTokens (text: string): SummaryToken[] {
     if (index > lastIndex) {
       tokens.push({ type: 'text', value: text.slice(lastIndex, index) })
     }
-    tokens.push({ type: 'citation', docNumber: number })
+    const translatedNumber = indicesMap[number - 1] ?? number
+    tokens.push({ type: 'citation', docNumber: translatedNumber })
 
     lastIndex = index + matchText.length
   }
@@ -417,7 +440,7 @@ function parseSummaryTokens (text: string): SummaryToken[] {
   return tokens
 }
 
-const parsedSummaryTokens = computed(() => parseSummaryTokens(summary.value))
+const parsedSummaryTokens = computed(() => parseSummaryTokens(summary.value, summarizedResultIndices.value))
 
 async function jumpToResult (docNumber: number) {
   const resultIndex = docNumber - 1
@@ -447,8 +470,42 @@ async function jumpToResult (docNumber: number) {
 // Collections & User State
 const collectionStore = useCollectionStore()
 const userStore = useUserStore()
-const username = ref('')
-const selectedCollectionId = ref<string | null>(null)
+const apiClients = useApi()
+const apiDocumentClient = useDocuments()
+
+async function loadCollections () {
+  if (!userStore.isLoggedIn || !userStore.getUserId) return
+
+  collectionStore.setUser(userStore.getUserId)
+  loading.value = true
+  try {
+    await collectionStore.fetchCollections(collectionStore.userId)
+  } catch (err) {
+    console.error(err)
+    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
+  } finally {
+    loading.value = false
+  }
+}
+
+watch(
+  selectedResults,
+  () => {
+    if (selectedResults.value.length === 0) {
+      summaryScope.value = summaryScopeDefault
+    } else {
+      summaryScope.value = 'selected'
+    }
+  }
+)
+
+watch(
+  () => userStore.getUserId,
+  async () => {
+    await loadCollections()
+  },
+  { immediate: true }
+)
 
 const collectionOptions = computed(() =>
   collectionStore.collections.map(c => ({
@@ -466,9 +523,9 @@ type ActiveFilterBadge = {
 }
 
 const selectedCollectionLabel = computed(() => {
-  if (!selectedCollectionId.value) return null
-  const option = collectionOptions.value.find(option => option.value === selectedCollectionId.value)
-  return option?.label ?? `Collection ${selectedCollectionId.value}`
+  if (!searchForm.value.user_collection_id) return null
+  const option = collectionOptions.value.find(option => option.value === searchForm.value.user_collection_id)
+  return option?.label ?? `Collection ${searchForm.value.user_collection_id}`
 })
 
 const isYearFilterActive = computed(() => (
@@ -479,12 +536,12 @@ const isYearFilterActive = computed(() => (
 const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
   const badges: ActiveFilterBadge[] = []
 
-  if (selectedCollectionId.value) {
+  if (searchForm.value.user_collection_id) {
     badges.push({
-      key: `collection:${selectedCollectionId.value}`,
+      key: `collection:${searchForm.value.user_collection_id}`,
       type: 'collection',
       icon: 'folder',
-      label: selectedCollectionLabel.value ?? selectedCollectionId.value
+      label: selectedCollectionLabel.value ?? searchForm.value.user_collection_id
     })
   }
 
@@ -512,7 +569,7 @@ const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
 
 function removeFilterBadge (badge: ActiveFilterBadge) {
   if (badge.type === 'collection') {
-    selectedCollectionId.value = null
+    searchForm.value.user_collection_id = null
     return
   }
 
@@ -561,8 +618,10 @@ function updateYearFilters (val: { min: number; max: number }) {
 async function onSearch () {
   loading.value = true
   results.value = []
+  selectedResults.value = []
   summary.value = ''
   summaryTimeSpent.value = 0
+  summarizedResultIndices.value = []
   currentPage.value = 1 // reset pagination
   searchResponse = null
 
@@ -597,6 +656,9 @@ async function onSearch () {
     timeSpent.value = data.time_spent
     searchLog.value = data.search_log
     lastSearchRequest.value = data.search_request
+    if (results.value.length === 0) {
+      Notify.create({ message: 'No results found', position: 'top', color: 'info' })
+    }
   } catch (e) {
     console.error(e)
     Notify.create({ message: 'Search failed', position: 'top', color: 'negative' })
@@ -616,12 +678,33 @@ async function onSummarize () {
   const scopedSearchResponse: SearchResponse = {
     ...searchResponse
   }
-  if (summarizeK !== null) {
+
+  let currentIndices: number[] = []
+
+  if (summaryScope.value === 'selected') {
+    if (selectedResults.value.length === 0) {
+      Notify.create({ message: 'Please select at least one result for summarization.', position: 'top', color: 'warning' })
+      summarizing.value = false
+      return
+    }
+    scopedSearchResponse.results = []
+    results.value.forEach((r, index) => {
+      if (selectedResults.value.includes(r.id)) {
+        scopedSearchResponse.results.push(r)
+        currentIndices.push(index + 1)
+      }
+    })
+  } else if (summarizeK !== null) {
     scopedSearchResponse.results = results.value.slice(0, summarizeK)
+    currentIndices = scopedSearchResponse.results.map((_, i) => i + 1)
+  } else {
+    scopedSearchResponse.results = results.value
+    currentIndices = results.value.map((_, i) => i + 1)
   }
 
   try {
     const { data } = await api.post<SummaryResponse>('/summarize/results', scopedSearchResponse)
+    summarizedResultIndices.value = currentIndices
     summary.value = data.summary
     summaryTimeSpent.value = data.time_spent
   } catch (e) {
@@ -632,75 +715,64 @@ async function onSummarize () {
   }
 }
 
-const handleAddUser = async () => {
-  if (username.value.trim()) {
-    userStore.setUser(username.value)
-    await loadCollections()
-  }
-}
-
-const loadCollections = async () => {
-  if (!collectionStore.userId) {
-    Notify.create({ message: 'No user set', position: 'top', color: 'negative' })
-    return
-  }
-
-  loading.value = true
-  try {
-    await collectionStore.fetchCollections(collectionStore.userId)
-  } catch (err) {
-    console.error(err)
-    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
-  } finally {
-    loading.value = false
-  }
-}
-
-async function addChunkToCollection (currentChunkId: string) {
-  if (!selectedCollectionId.value) {
+async function addSelectedChunksToCollection () {
+  if (!targetCollectionId.value) {
     Notify.create({ message: 'Please select a collection first.', position: 'top', color: 'warning' })
     return
   }
-  const payload = { collectionId: selectedCollectionId.value, chunkId: currentChunkId }
-  try {
-    const { data } = await api.post<CreateResponse>('/chunk_2_collection', payload)
-    if (data.created) {
-      Notify.create({ message: 'Chunk added to collection', position: 'top', color: 'positive' })
-    } else {
-      Notify.create({ message: 'Failed to add chunk to collection', position: 'top', color: 'negative' })
-    }
-  } catch (e) {
-    Notify.create({ message: 'Error adding chunk to collection', position: 'top', color: 'negative' })
+  if (selectedResults.value.length === 0) {
+    Notify.create({ message: 'No chunks selected.', position: 'top', color: 'warning' })
+    return
   }
+
+  let successCount = 0
+  for (const chunkId of selectedResults.value) {
+    const chunk2CollectionReq: Chunk2CollectionReq = {
+      collectionId: targetCollectionId.value as string,
+      chunkId
+    }
+    try {
+      const data = await apiClients.default.addChunk2CollectionApiUserCollectionChunksPost({ chunk2CollectionReq })
+      if (data.created) successCount++
+    } catch (e) {
+      console.error(e)
+    }
+  }
+  Notify.create({ message: `Added ${successCount} chunk(s) to collection`, position: 'top', color: 'positive' })
 }
 
-async function addDocumentToCollection (documentId: string | number | undefined) {
-  if (!selectedCollectionId.value) {
+async function addSelectedDocumentsToCollection () {
+  if (!targetCollectionId.value) {
     Notify.create({ message: 'Please select a collection first.', position: 'top', color: 'warning' })
     return
   }
-  if (!documentId) {
-    Notify.create({ message: 'Document ID not found.', position: 'top', color: 'negative' })
+  if (selectedResults.value.length === 0) {
+    Notify.create({ message: 'No chunks selected.', position: 'top', color: 'warning' })
     return
   }
-  const payload = { collectionId: selectedCollectionId.value, documentId }
-  try {
-    // Replace the endpoint with your actual document addition endpoint
-    const { data } = await api.post<CreateResponse>('/document_2_collection', payload)
-    if (data.created) {
-      Notify.create({ message: 'Full document added to collection', position: 'top', color: 'positive' })
-    } else {
-      Notify.create({ message: 'Failed to add document to collection', position: 'top', color: 'negative' })
+
+  let successCount = 0
+  const docIds = new Set(
+    results.value
+      .filter(r => selectedResults.value.includes(r.id))
+      .map(r => r.document_object.id)
+      .filter(id => id !== undefined)
+  )
+
+  for (const documentId of docIds) {
+    try {
+      await apiDocumentClient.addDocToCollection(documentId, targetCollectionId.value)
+      successCount++
+    } catch (e) {
+      console.error(e)
     }
-  } catch (e) {
-    Notify.create({ message: 'Error adding document to collection', position: 'top', color: 'negative' })
   }
+  Notify.create({ message: `Added ${successCount} document(s) to collection`, position: 'top', color: 'positive' })
 }
 
 onMounted(async () => {
-  username.value = userStore.user?.id ?? 'xjuric'
   await fetchFilterMocks()
-  await handleAddUser()
+  await loadCollections()
 })
 
 onBeforeUnmount(() => {

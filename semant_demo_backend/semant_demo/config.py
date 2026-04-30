@@ -52,6 +52,26 @@ class Config:
 
         # Auth – override JWT_SECRET in production with a strong random value
         self.JWT_SECRET = os.getenv("JWT_SECRET", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_SECRET")
+        
+        # Topicer (AI assistance / tag proposal service)
+        self.TOPICER_URL = os.getenv("TOPICER_URL", "http://localhost:8089")
+        self.TOPICER_CONFIG_NAME = os.getenv("TOPICER_CONFIG_NAME", "openai")
+        self.TOPICER_TIMEOUT = float(os.getenv("TOPICER_TIMEOUT", 600.0))
+
+        # Span discussion chat (OpenAI-compatible endpoint).
+        # Defaults reuse the generic OPENAI_* settings so a single API key
+        # can drive both generic LLM use and the span chat unless overridden.
+        self.SPAN_CHAT_API_KEY = os.getenv("SPAN_CHAT_API_KEY", self.OPENAI_API_KEY)
+        self.SPAN_CHAT_API_URL = os.getenv("SPAN_CHAT_API_URL", self.OPENAI_API_URL)
+        self.SPAN_CHAT_MODEL = os.getenv("SPAN_CHAT_MODEL", self.OPENAI_MODEL)
+        self.SPAN_CHAT_TEMPERATURE = float(os.getenv("SPAN_CHAT_TEMPERATURE", 0.4))
+        self.SPAN_CHAT_MAX_TOKENS = int(os.getenv("SPAN_CHAT_MAX_TOKENS", 1024))
+        # Number of characters of surrounding chunk text to include before/after
+        # the span when building the assistant context.
+        self.SPAN_CHAT_CONTEXT_CHARS = int(os.getenv("SPAN_CHAT_CONTEXT_CHARS", 1500))
+        # Cap on the number of user/assistant messages kept from history
+        # (system + context + last N exchanges).
+        self.SPAN_CHAT_HISTORY_LIMIT = int(os.getenv("SPAN_CHAT_HISTORY_LIMIT", 20))
 
         # path to rag configs
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
@@ -63,7 +83,7 @@ class Config:
             tag_collection_name = "Tag",
             user_collection_name = "UserCollection",
             document_collection_name= "Documents",
-            span_collection_name = "Span_test",
+            span_collection_name = "Span",
             user_collection_link_name = "userCollection",
             tag_to_user_collection_link_name= "tagToUserCollection",
         )

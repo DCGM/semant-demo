@@ -33,6 +33,8 @@ async def rag(request: schemas.RagRequestMain, searcher: WeaviateAbstraction = D
     if id not in RAG_INSTANCES:
         raise HTTPException(status_code=400, detail=f"Unknown RAG configuration: {id}.")
     
+    logging.info(f"RAG request received for RAG ID: {id} with question: {request.rag_request.question}")
+    
     #load class and call instance
     rag_instance = RAG_INSTANCES[id]
     return await rag_instance.rag_request(request=request.rag_request, searcher=searcher)
@@ -44,6 +46,8 @@ async def explain_selection(request: schemas.ExplainRequest,
     if id not in RAG_INSTANCES:
         raise HTTPException(status_code=400, detail=f"Unknown RAG configuration: {id} used for explaining.")
     
+    logging.info(f"Explain request received for RAG ID: {id} with selected text: {request.selected_text}")
+
     #load class and call instance
     rag_instance = RAG_INSTANCES[id]
     return await rag_instance.explain_selection(request=request)

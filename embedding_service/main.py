@@ -14,6 +14,7 @@ class EmbeddingGemma:
             model_kwargs={"torch_dtype": torch.float16}
         )
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Using device: {self.device}")
         self.model = self.model.to(self.device)
         self.instruction = 'Given a web search query, retrieve relevant passages that answer the query.'
         self.prompt = f'<instruct>{self.instruction}\n<query>'

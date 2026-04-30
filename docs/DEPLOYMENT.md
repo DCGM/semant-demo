@@ -23,7 +23,17 @@
 
 ---
 
-## Step-by-Step Deployment
+## Docker / Production Deployment
+
+For server deployments, use the compose files in `deploy/` instead of the manual steps below. A full description of the Docker stack, environment variables, and CI/CD automation is in [deploy/README.md](../deploy/README.md).
+
+The CI/CD pipeline (GitHub Actions, self-hosted runner) handles:
+- **Production** — triggered by a `v*.*.*` tag pushed from `main`
+- **Test previews** — one persistent instance for `main`, plus ephemeral per-PR instances that are automatically torn down when the PR closes
+
+---
+
+## Step-by-Step Deployment (local / development)
 
 ### 1. Weaviate
 
@@ -32,7 +42,7 @@ cd weaviate_utils
 docker compose up -d
 ```
 
-Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures HNSW indexing. Weaviate version: **1.30.2**.
+Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures HNSW indexing. Weaviate version: **1.34.4**.
 
 To verify:
 ```bash
@@ -151,8 +161,12 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 | `RAG_CONFIGS_PATH` | `rag/rag_configs/configs` | No | Directory with RAG YAML configs |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | No | Summariser config path |
 | `LANGCHAIN_API_KEY` | _(empty)_ | No | LangChain/LangSmith tracing key |
-
-> **Note:** `GEMMA_URL` (embedding service URL) is hardcoded to `http://localhost:8001` in `config.py`. To change it, edit the source directly.
+| `EMBEDDING_SERVICE_HOST` | `embedding-service` | No | Embedding service hostname (used to build the internal URL) |
+| `EMBEDDING_SERVICE_PORT` | `8001` | No | Embedding service port |
+| `SQL_DB_PATH` | _(none)_ | No | Used by Docker Compose for the `tasks.db` bind mount, not read by the backend itself. The backend always uses `tasks.db` in its working directory; for Docker deployments, set `SQL_DB_PATH` and ensure the target `tasks.db` file already exists |
+| `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION_…` | **Yes (prod)** | JWT signing secret — must be overridden in production with a long random string |
+| `FEEDBACK_WEBHOOK_URL` | _(empty)_ | No | Webhook URL for RAG feedback delivery |
+| `FEEDBACK_LOG_PATH` | `feedback.log.jsonl` | No | Path for writing feedback logs |
 
 ### Embedding Service
 
@@ -182,7 +196,7 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 - Test RAG routing with the `TestRag` class (returns a static response)
 
 ### Tagging Debugging
-- Poll `GET /api/tag_status/{taskId}` to see `processed_count` / `all_texts_count` progress
+- Poll `GET /api/tag/task/status/{taskId}` to see `processed_count` / `all_texts_count` progress
 - `tag_processing_data` field contains per-chunk tagging decisions
 - Check SQLite directly: `sqlite3 tasks.db "SELECT * FROM tasks"`
 
@@ -196,4 +210,4 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 4. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
 5. **SQLite limitations** — consider switching to PostgreSQL for concurrent tagging tasks under load
 6. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
-7. **Embedding service scaling** — can run multiple instances behind a load balancer; however `GEMMA_URL` is currently hardcoded to `http://localhost:8001` in `config.py` and must be changed in source to point to the balancer (see TODO.md for making this configurable)
+7. **Embedding service scaling** — can run multiple instances behind a load balancer. The endpoint is built from `EMBEDDING_SERVICE_HOST` (default `embedding-service` in Docker, `localhost` outside) and `EMBEDDING_SERVICE_PORT` (default `8001`); point both at your load balancer to scale.

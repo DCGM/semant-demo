@@ -83,12 +83,23 @@ erDiagram
         datetime updated_at
     }
 
+    Span {
+        uuid id PK
+        int start
+        int end
+        text type "pos | neg | auto"
+        text reason "AI-only, optional"
+        number confidence "AI-only, optional"
+    }
+
     Chunks }o--|| Documents : "document (many:1)"
     Chunks }o--o{ Tag : "automaticTag (many:many)"
     Chunks }o--o{ Tag : "positiveTag (many:many)"
     Chunks }o--o{ Tag : "negativeTag (many:many)"
     Chunks }o--o{ UserCollection : "userCollection (many:many)"
     Tag }o--o{ UserCollection : "userCollection (many:many)"
+    Span }o--|| Tag : "tag (many:1)"
+    Span }o--|| Chunks : "text_chunk (many:1)"
 ```
 
 ### Collection: `Documents`
@@ -140,6 +151,31 @@ Named collections of chunks per user:
 - `description` — optional description
 - `color` — UI color identifier
 - `created_at`, `updated_at` — timestamps managed by backend
+
+### Collection: `Span`
+
+Character-level annotations of a tag inside a single chunk. Spans drive both the manual highlighting UI and the AI-assisted tagging workflow.
+
+Properties:
+- `start` (`INT`) — character offset (inclusive) inside the chunk text
+- `end` (`INT`) — character offset (exclusive)
+- `type` (`TEXT`, enum `SpanType`) — one of:
+  - `pos` — manually confirmed positive span
+  - `neg` — manually rejected span (negative example)
+  - `auto` — AI-proposed span awaiting review
+- `reason` (`TEXT`, optional) — natural-language justification produced by the AI tagger; only set on `auto` spans
+- `confidence` (`NUMBER`, optional) — model self-reported confidence in `[0, 1]`; only set on `auto` spans
+
+References:
+
+| Reference | Target | Cardinality | Description |
+|---|---|---|---|
+| `tag` | Tag | 1 | The tag this span instantiates |
+| `text_chunk` | Chunks | 1 | The chunk inside which the span lives |
+
+> **Lazy schema migration.** Older deployments created the `Span` collection without `reason` / `confidence`. The backend (`Span._ensure_ai_properties` in `weaviate_utils/span.py`) idempotently adds these properties on first AI-write, so no manual migration is required.
+
+> **Cascade on tag/chunk delete.** Deleting a Tag or a Chunk also removes all Spans referencing them; this is enforced by the backend (`weaviate_utils/helpers.py`, `delete_span_cascade`) rather than by Weaviate itself.
 
 ---
 

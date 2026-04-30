@@ -173,8 +173,8 @@
       rounded
       dense
       unelevated
-      class="absolute z-top"
-      :style="{ top: selectionData.y + 'px', left: selectionData.x + 'px', position: 'absolute' }"
+      class="absolute z-top shadow-10"
+      :style="{ top: selectionData.y + 'px', left: selectionData.x + 'px', position: 'fixed' }"
       @click="explainSelection"
     />
 
@@ -206,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 import { useQuasar } from 'quasar'
@@ -294,6 +294,13 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside)
 })
 // ----------------------Main chat-----------------------------
+
+// reset chat when change RAG configuration
+watch(selectedRAG, (_, oldVal) => {
+  if (oldVal) {
+    resetChat()
+  }
+})
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -396,15 +403,14 @@ const convertToMarkdown = (markdownText: string) => {
 
 // convert links
 const convertLinks = (text: string, sources: Source[] | undefined, msgIndex: number) => {
-  const sourcesRegex = /(?:\[doc\s*(\d+)\]|Dokument\s*(\d+))/gi // /\[doc\s*(\d+)\]/g
-
-  // replace sources links
-  return text.replace(sourcesRegex, (match, strIndex) => {
-    const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
-    if (sources && sources[sourceIndex]) {
-      return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
-    }
-    return match
+  return text.replace(/\[([^[\]]+)\]/g, (match, content) => {
+    return content.replace(/\b(?:doc|dokument)\s*(\d+)\b/gi, (docMatch: string, strIndex: string) => {
+      const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
+      if (sources && sources[sourceIndex]) {
+        return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
+      }
+      return docMatch
+    })
   })
 }
 
@@ -467,13 +473,14 @@ const handleMouseUp = (index: number) => {
   if (selectedText.length > 5 && messages.value[index].sender === 'AI') {
     if (!selection || selection.rangeCount === 0) return
     const range = selection!.getRangeAt(0)
-    const rect = range.getBoundingClientRect()
+    const rect = range.getClientRects()
+    const lastRect = rect[rect.length - 1]
 
     // get button location
     selectionData.value = {
       show: true,
-      x: rect.left + window.scrollX,
-      y: rect.top + window.scrollY - 35,
+      x: lastRect.right + 8,
+      y: lastRect.bottom + 4,
       text: selectedText,
       msgIndex: index
     }

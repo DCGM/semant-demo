@@ -1,0 +1,35 @@
+services:
+  embedding-service:
+    hostname: embedding-service
+    build:
+      context: .
+      target: embedding-service
+      dockerfile: Dockerfile.embedder
+      args:
+        - REPO=${REPO}
+        - BRANCH=${BRANCH}
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      - CUDA_VISIBLE_DEVICES=${GPU_DEVICE:-0}
+      - GEMMA_MODEL=${GEMMA_MODEL}
+    ports:
+      - "127.0.0.1:8001:8001"
+    volumes:
+      - /mnt/ssd2/huggingface_cache:/root/.cache/huggingface:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    networks:
+      - semant_demo_embedder
+    restart: always
+
+networks:
+  semant_demo_embedder:
+    name: semant_demo_embedder
+    driver: bridge

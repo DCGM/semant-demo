@@ -25,7 +25,18 @@ async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Dep
                  summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
                  current_user: User | None = Depends(current_active_optional_user)) -> schemas.SearchResponse:
     start_time = time.time()
-    
+
+    # <authorization>
+    if req.user_collection_id is not None:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Unauthorized: user collection specified but no user authenticated")
+        collections = await searcher.userCollection.read_all(current_user)
+        user_collection_ids = {str(col.id) for col in collections}
+        if req.user_collection_id not in user_collection_ids:
+            raise HTTPException(status_code=403, detail="Forbidden: user does not have access to the specified collection")
+
+    # </authorization>
+
     response = await searcher.textChunk.search(req)
     await summarizer(req, response)
 

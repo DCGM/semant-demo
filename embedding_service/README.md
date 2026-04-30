@@ -23,6 +23,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> **Note — GPU support for PyTorch:** `pip install torch` defaults to the CPU-only build from PyPI. If the service ends up running on CPU only, install PyTorch explicitly from the CUDA index **after** installing the requirements:
+> ```bash
+> pip install torch --extra-index-url https://download.pytorch.org/whl/cu130
+> ```
+> Replace `cu130` with the CUDA version on your machine (e.g. `cu128`, `cu124`). See [pytorch.org/get-started](https://pytorch.org/get-started/locally/) to find the right URL.
+
 ## Running the service
 ### Without screen
 - Activate the virtual environment: 

@@ -11,9 +11,13 @@
 |---|---|
 | **Hybrid search** | BM25 + vector (HNSW) with configurable alpha; metadata & tag filters |
 | **Summarisation** | Per-result titles, per-result summaries and overall query summary via configurable LLM |
-| **RAG chat** | Multi-turn question answering with source citations; little/pipeline variants: `rag_generator`, `adaptive_rag`, `adaptive_rag_og`, `incremental_rag`, `agentic_rag` (recommended: incremental variant) |
-| **Tagging** | Manual & LLM-assisted tag propagation across document collections |
-| **User collections** | Group chunks into named collections per user |
+| **RAG chat** | Multi-turn question answering with source citations; pipeline variants: `rag_generator`, `adaptive_rag`, `adaptive_rag_og`, `incremental_rag`, `agentic_rag` (recommended: `incremental_rag`) |
+| **Tagging** | Manual & LLM-assisted tag propagation across user collections |
+| **Tag spans** | Character-level annotations of tags inside chunks (manual `pos`/`neg` and AI-suggested `auto` spans, the latter carrying `reason` + `confidence`) |
+| **AI span suggestions** | Two NDJSON-streaming endpoints (thorough / optimised) backed by the external Topicer service |
+| **Span discussion chat** | Streaming assistant chat around a single span using its tag, document metadata and surrounding chunk text |
+| **User collections** | Group documents (and their chunks) into named collections per user |
+| **App feedback** | In-app feedback form persisted server-side as JSONL |
 
 ## Technology Stack
 
@@ -30,46 +34,79 @@
 semant-demo/
 ├── docs/                          # project documentation (see below)
 ├── deploy/                        # Docker Compose stack management
-│   ├── docker-compose.yaml        # Container definitions for the full stack
-│   ├── Dockerfile                 # Multi-stage build for backend & embedding service
+│   ├── docker-compose.app.yaml    # Production app stack (backend + frontend)
+│   ├── docker-compose.app-test.yml  # Test app stack (CI preview environments)
+│   ├── docker-compose.database.yml  # Weaviate database (production)
+│   ├── docker-compose.database-test.yml  # Weaviate database (test)
+│   ├── docker-compose.embedder.yml  # GPU embedding service
+│   ├── Dockerfile                 # Multi-stage build for backend + frontend
+│   ├── Dockerfile.embedder        # Build for the embedding service
 │   ├── update.sh                  # Helper script to run docker compose with .env
-│   ├── .env.example               # Environment variables template
+│   ├── .env.example               # Environment variables template (production)
+│   ├── .env.test.example          # Environment variables template (test/CI)
 │   └── README.md                  # Deployment instructions
 ├── embedding_service/             # Gemma embedding microservice (FastAPI, port 8001)
 ├── semant_demo_backend/           # main API server (FastAPI, port 8000)
 │   ├── semant_demo/
 │   │   ├── main.py                # FastAPI app, startup, core endpoints
 │   │   ├── config.py              # env-based configuration (Config singleton)
-│   │   ├── schemas.py             # Pydantic models + SQLAlchemy Task model
+│   │   ├── schemas.py             # legacy Pydantic models + SQLAlchemy Task model
+│   │   ├── schema/                # focused per-domain Pydantic schemas
+│   │   │   ├── ai_assistance.py   # span suggestion + span discussion chat schemas
+│   │   │   ├── spans.py           # PostSpan, PatchSpan, BulkUpdateSpansRequest, …
+│   │   │   ├── tags.py            # Tag CRUD + bulk schemas
+│   │   │   ├── chunks.py          # Chunk-related request/response schemas
+│   │   │   ├── documents.py       # Document schemas
+│   │   │   └── collections.py     # User-collection schemas
 │   │   ├── gemma_embedding.py     # HTTP client to embedding_service
 │   │   ├── ollama_proxy.py        # round-robin Ollama client
+│   │   ├── ai_assistance/         # external AI integrations
+│   │   │   ├── topicer_client.py  # async HTTP client for the Topicer span-proposal service
+│   │   │   └── span_chat.py       # streaming "discuss this span" chat
 │   │   ├── configs/               # YAML configs (summariser prompts)
-│   │   ├── llm_api/               # async LLM abstraction (OpenAI, Ollama)
+│   │   ├── llm_api/               # async LLM abstraction (OpenAI, Ollama, Gemini)
 │   │   ├── rag/                   # RAG implementations + YAML configs
-│   │   ├── routes/                # FastAPI routers (rag, tags, collections)
+│   │   ├── routes/                # FastAPI routers (search, rag, tags, spans,
+│   │   │                          # ai_assistance, span_chat, collections,
+│   │   │                          # documents, users, feedback)
 │   │   ├── summarization/         # search-result summariser (Jinja2 templates)
 │   │   ├── tagging/               # LLM-based tag propagation logic
-│   │   ├── weaviate_utils/        # Weaviate abstraction layer (CRUD operations per collection)
-│   │   │   ├── weaviate_abstraction.py  # Main abstraction class organizing all collections
+│   │   ├── users/                 # FastAPI Users (auth model, manager, JWT)
+│   │   ├── weaviate_utils/        # Weaviate abstraction layer (CRUD per collection)
+│   │   │   ├── weaviate_abstraction.py  # Main facade exposing every collection handler
 │   │   │   ├── document.py        # Document collection operations
 │   │   │   ├── text_chunk.py      # TextChunk collection operations
 │   │   │   ├── tag.py             # Tag collection operations
-│   │   │   ├── span.py            # Span collection operations
+│   │   │   ├── span.py            # Span collection (manual + auto spans, AI metadata)
 │   │   │   ├── user_collection.py # UserCollection (user-defined grouping) operations
 │   │   │   └── helpers.py         # Shared utility functions
 │   │   └── utils/                 # Jinja2 template helpers
-│   └── tests/                     # unit tests (llm_api, summarization, utils)
+│   └── tests/                     # unit tests (auth, llm_api, summarization, utils)
 ├── semant_demo_frontend/          # Vue/Quasar SPA
 │   └── src/
-│       ├── pages/                 # SearchPage, RagPage, TagManagementPage, …
-│       ├── stores/                # Pinia stores (user, collections)
+│       ├── pages/                 # SearchPage, RagPage, TagManagementPage,
+│       │                          # FeedbackPage, AboutPage, OldUserCollectionsPage,
+│       │                          # Collections/* (UserCollectionsPage,
+│       │                          #   CollectionOverviewPage, CollectionDocumentsPage,
+│       │                          #   CollectionTagsPage, CollectionTaggingJobsPage,
+│       │                          #   CollectionMembersPage, DocumentDetailPageV2,
+│       │                          #   DocumentTaggingPage/)
+│       ├── stores/                # Pinia stores (user-store, collectionsStore,
+│       │                          # collectionStatsStore, chunksStore,
+│       │                          # chunk_collection-store, documentsStore,
+│       │                          # tagsStore, tagSpansStore)
+│       ├── composables/           # reusable hooks (useSpanDiscussion, useTags, …)
+│       ├── repositories/          # thin wrappers over the generated API client
+│       ├── generated/             # OpenAPI-generated TS client (do not edit by hand)
 │       ├── models.ts              # TypeScript interfaces mirroring backend schemas
 │       └── boot/axios.ts          # Axios instance & base URL config
 └── weaviate_utils/                # DB bootstrap & inspection scripts
     ├── docker-compose.yml         # Weaviate container definition
+    ├── build_db/                  # standalone schema + data bootstrap helpers
     ├── db_insert_jsonl.py         # bulk-insert documents + chunks from JSONL
-    ├── inspect_chunks.py          # CLI to dump chunks
-    └── inspect_documents.py       # CLI to dump documents
+    ├── inspect_*.py               # CLI tools to dump chunks, documents, etc.
+    ├── delete_*.py                # CLI tools for cleaning collections
+    └── migrate.py                 # schema-migration helpers
 ```
 
 ## Architecture Overview
@@ -141,7 +178,7 @@ self.collectionNames = CollectionNames(
     tag_collection_name = "Tag",
     user_collection_name = "UserCollection",
     document_collection_name = "Documents",
-    span_collection_name = "Span_test",
+    span_collection_name = "Span",
     user_collection_link_name = "userCollection",
     tag_to_user_collection_link_name = "tagToUserCollection",
 )
@@ -218,10 +255,23 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `MODEL_TEMPERATURE` | `0.0` | Default LLM temperature |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |
-| `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin for frontend |
+| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Directory for the SQLite `tasks.db` database (mounted into the container) |
+| `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
 | `JWT_SECRET` | _(placeholder)_ | JWT signing secret — **must be overridden in production** with a long random string |
+| `JWT_LIFETIME_SECONDS` | `3600` | JWT token lifetime |
+| **AI assistance** | | |
+| `TOPICER_URL` | `http://semant.cz:8089` | Base URL of the external Topicer span-proposal service |
+| `TOPICER_CONFIG_NAME` | `openai` | Name of the Topicer-side LLM config to use |
+| `TOPICER_TIMEOUT` | `600.0` | HTTP timeout (seconds) for Topicer streaming calls |
+| `SPAN_CHAT_API_KEY` | _(falls back to `OPENAI_API_KEY`)_ | API key for the OpenAI-compatible endpoint used by the span discussion chat |
+| `SPAN_CHAT_API_URL` | _(falls back to `OPENAI_API_URL`)_ | Base URL of the chat endpoint (override for OpenRouter / local) |
+| `SPAN_CHAT_MODEL` | _(falls back to `OPENAI_MODEL`)_ | Chat model used to discuss individual spans |
+| `SPAN_CHAT_TEMPERATURE` | `0.4` | Sampling temperature for the span discussion chat |
+| `SPAN_CHAT_MAX_TOKENS` | `1024` | Max tokens generated per assistant reply |
+| `SPAN_CHAT_CONTEXT_CHARS` | `1500` | Characters of neighbour-chunk text included around the span |
+| `SPAN_CHAT_HISTORY_LIMIT` | `20` | Max chat-history messages forwarded to the LLM |
 
 ---
 
@@ -260,7 +310,20 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `PUT` | `/api/tag/disapprove` | Reject a tag assignment |
 | `POST` | `/api/tags/filter` | Filter chunks by tag UUIDs |
 | `POST` | `/api/tag/textChunks` | Get chunks tagged with specific tags |
-| `POST` | `/api/user_collections` | Create user collection |
+| **Tag spans** | | |
+| `POST` | `/api/tag_spans` | Create one tag span (manual `pos`/`neg`) |
+| `GET` | `/api/tag_spans` | List spans (filterable by chunk / tag / collection) |
+| `POST` | `/api/tag_spans/batch` | Batch-fetch spans for many chunks |
+| `PATCH` | `/api/tag_spans/{span_id}` | Update span boundaries / type |
+| `DELETE` | `/api/tag_spans/{span_id}` | Delete a span |
+| `POST` | `/api/tag_spans/bulk_update` | Bulk update many spans in one call |
+| `POST` | `/api/tag_spans/in_document/delete` | Delete all spans for given tags inside a document |
+| **AI assistance** | | |
+| `POST` | `/api/ai/suggest_spans/thorough` | Stream span proposals chunk-by-chunk via Topicer (NDJSON) |
+| `POST` | `/api/ai/suggest_spans/optimized` | Stream span proposals via Topicer's DB-streaming endpoint (NDJSON) |
+| `POST` | `/api/ai/auto_spans/delete` | Delete `auto`-typed spans for a tag (optionally scoped to a document) |
+| `POST` | `/api/ai/discuss_span` | Stream a chat reply discussing a single span (NDJSON deltas) |
+| **User collections** | | |
 | `GET` | `/api/user_collections` | List collections for a user |
 | `GET` | `/api/user_collections/{collection_id}` | Get collection by ID |
 | `PATCH` | `/api/user_collections/{collection_id}` | Update collection metadata |
@@ -272,6 +335,13 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `POST` | `/api/collections/{collection_id}/documents/{document_id}` | Attach document (and its chunks) to collection |
 | `DELETE` | `/api/collections/{collection_id}/documents/{document_id}` | Detach document (and matching chunk refs) from collection |
 | `GET` | `/api/collections/{collection_id}/tags` | List tags in collection |
+| `GET` | `/api/collections/{collection_id}/documents/{document_id}/stats` | Per-document statistics inside a collection |
+| `GET` | `/api/collections/{collection_id}/documents/{document_id}/chunks/neighbours` | Fetch neighbour chunks around a target chunk |
+| `GET` | `/api/collections/{collection_id}/documents/{document_id}/chunks/range` | Fetch a chunk range inside a document |
+| `GET` | `/api/collections/{collection_id}/documents/{document_id}/chunks/count` | Count chunks of a document inside a collection |
+| **Users / feedback** | | |
+| `GET` | `/api/users/search` | Search users by partial email/username (for sharing collections) |
+| `POST` | `/api/v1/feedback` | Submit in-app feedback (persisted as JSONL) |
 
 ## Testing
 
