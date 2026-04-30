@@ -524,7 +524,7 @@ class BestTagProposal(BaseModel):
     start: int
     end: int
     tag: TagData | None = None
-
+    reason: str | None = None
 
 class BestTagProposalResponse(BaseModel):
     suggestions: list[BestTagProposal]
