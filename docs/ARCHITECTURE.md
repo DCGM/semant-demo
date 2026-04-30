@@ -62,14 +62,20 @@ flowchart LR
         SUM_R[summarizer_routes]
         RAG_R[rag_routes]
         TAG_R[tag_routes]
+        SPAN_R[span_routes]
+        AI_R[ai_assistance_routes]
+        CHAT_R[span_chat_routes]
+        DOC_R[document_routes]
         COL_R[user_collection_routes]
+        USR_R[user_routes]
+        FB_R[feedback_routes]
         AUTH_R["users/<br/>(auth, register, users)"]
     end
 
     subgraph Core
         WS[weaviate_utils/weaviate_abstraction.py]
         CFG[config.py]
-        SCH[schemas.py]
+        SCH["schemas.py + schema/"]
     end
 
     subgraph LLM
@@ -82,19 +88,23 @@ flowchart LR
         RAG_F[rag/]
         SUM[summarization/]
         TAG_F[tagging/]
+        AI_F["ai_assistance/<br/>(topicer_client, span_chat)"]
         USERS[users/]
     end
 
     APP --> DI & RAG_F & USERS
-    SUM_R & RAG_R & TAG_R & COL_R & AUTH_R --> DI
+    SUM_R & RAG_R & TAG_R & SPAN_R & AI_R & CHAT_R & DOC_R & COL_R & USR_R & FB_R & AUTH_R --> DI
     DI --> WS
     RAG_R --> RAG_F
     SUM_R --> SUM
     TAG_R --> TAG_F
+    AI_R --> AI_F
+    CHAT_R --> AI_F
     WS --> GEMMA
     RAG_F --> LLM_API
     SUM --> LLM_API
     TAG_F --> OLLP
+    AI_F --> LLM_API
     AUTH_R --> USERS
 ```
 
@@ -106,8 +116,9 @@ A singleton `Config` class that reads environment variables with sensible defaul
 - **LLM endpoints** — Ollama URLs (comma-separated for load balancing), model names, API keys
 - **Application** — port, CORS origin, static file path
 - **Database** — SQLite URL for task tracking and user accounts
-- **Auth** — `JWT_SECRET` (override in production with a long random string)
+- **Auth** — `JWT_SECRET` (override in production with a long random string), `JWT_LIFETIME_SECONDS`
 - **RAG** — config directory path
+- **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_*` group for the OpenAI-compatible "discuss this span" chat (`SPAN_CHAT_API_KEY`, `SPAN_CHAT_API_URL`, `SPAN_CHAT_MODEL` — all falling back to the corresponding `OPENAI_*` values — plus `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT`)
 
 #### Dependency Injection (`routes/dependencies.py`)
 
@@ -299,6 +310,34 @@ LLM-assisted tag propagation:
 5. Users can approve (→ `positiveTag`) or reject automatic tags.
 6. Task progress tracked in SQLite (`Task` model) with polling endpoint.
 
+#### Tag Spans (`weaviate_utils/span.py`, `routes/span_routes.py`)
+
+Tags can additionally be anchored to specific character ranges inside a chunk via the `Span` collection. Three span types coexist:
+
+- `pos` — manually confirmed positive span (created by a human reviewer).
+- `neg` — manually rejected span (negative example, useful for AI training/filtering).
+- `auto` — AI-proposed span; carries optional `reason` (LLM justification) and `confidence` ∈ `[0, 1]`.
+
+Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `text_chunk` → `Chunks` — rather than as plain UUID properties. The backend lazily ensures `reason`/`confidence` properties exist on legacy collections (`Span._ensure_ai_properties`).
+
+REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/collection), `POST /batch`, `PATCH /{id}`, `DELETE /{id}`, `POST /bulk_update`, `POST /in_document/delete` (delete spans for given tags inside a single document).
+
+#### AI Assistance (`ai_assistance/`, `routes/ai_assistance_routes.py`, `routes/span_chat_routes.py`)
+
+External AI integrations that produce or critique spans. All streaming endpoints use NDJSON (`application/x-ndjson`) so the frontend can render partial results incrementally.
+
+**Topicer span proposal.** `topicer_client.py` is an async `httpx` client for the Topicer service (`TOPICER_URL`, default `http://localhost:8089`). Topicer returns proposed `(start, end, reason, confidence)` triples per `(chunk, tag)` pair. The backend exposes two routes:
+
+| Route | Topicer call | Behaviour |
+|---|---|---|
+| `POST /api/ai/suggest_spans/thorough` | `POST /v1/tags/propose/texts` (per chunk) | Backend iterates over chunks of the target collection, calling Topicer per chunk and emitting one NDJSON line per completed chunk. Slower but resilient to per-chunk failures. |
+| `POST /api/ai/suggest_spans/optimized` | `POST /v1/tags/propose/db/stream` | Backend forwards Topicer's own DB-streaming response straight to the client, line-by-line. Fastest path; Topicer pulls chunks directly from Weaviate. |
+| `POST /api/ai/auto_spans/delete` | — | Cleanup endpoint: deletes all `auto`-typed spans for the given tag(s), optionally scoped to a single document. |
+
+Approved proposals are written to the `Span` collection as `auto` spans; reviewers then promote them to `pos` (or remove them) through the standard span endpoints.
+
+**Span discussion chat.** `span_chat.py` builds a rich system prompt around a single span — tag definition + examples, host document metadata, the span's chunk text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a configurable window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters drawn from the same and neighbouring chunks of the document) — and streams the assistant reply from any OpenAI-compatible Chat Completions endpoint. The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON deltas; configuration lives in the `SPAN_CHAT_*` env-var group.
+
 #### LLM API Abstraction (`llm_api/`)
 
 A `classconfig`-based abstraction supporting:
@@ -313,13 +352,21 @@ Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
 
 | Route | Page | Description |
 |---|---|---|
-| `/search/` | SearchPage | Main search interface with filters, results, summaries |
-| `/rag/` | RagPage | Multi-turn RAG chat with source citations |
-| `/tag_manage/` | TagManagementPage | Create tags, start/monitor tagging tasks |
-| `/collections` | UserCollectionsPage | Manage user document collections |
-| `/about/` | AboutPage | Project information |
+| `/search` | `SearchPage` | Main search interface with filters, results, summaries |
+| `/rag` | `RagPage` | Multi-turn RAG chat with source citations |
+| `/tag_manage` | `TagManagementPage` | Create tags, start/monitor tagging tasks |
+| `/collections` | `Collections/UserCollectionsPage` | List user collections |
+| `/collections/:cid/overview` | `Collections/CollectionOverviewPage` | Collection summary & stats |
+| `/collections/:cid/documents` | `Collections/CollectionDocumentsPage` | Documents inside a collection |
+| `/collections/:cid/tags` | `Collections/CollectionTagsPage` | Tags scoped to the collection |
+| `/collections/:cid/tagging_jobs` | `Collections/CollectionTaggingJobsPage` | Async tagging job monitor |
+| `/collections/:cid/members` | `Collections/CollectionMembersPage` | Collection sharing / role management |
+| `/collections/:cid/documents/:did/v1` | `Collections/xjuric31/DocumentDetailPage` | Document detail — variant V1 |
+| `/collections/:cid/documents/:did/v2` | `Collections/DocumentDetailPageV2` | Document detail — variant V2 |
+| `/feedback` | `FeedbackPage` | In-app feedback form |
+| `/about` | `AboutPage` | Project information |
 
-State management via Pinia stores (`user-store`, `chunk_collection-store`). API communication through a shared Axios instance with configurable `BACKEND_URL`.
+State management via Pinia stores (`user-store`, `collectionsStore`, `collectionStatsStore`, `chunksStore`, `chunk_collection-store`, `documentsStore`, `tagsStore`, `tagSpansStore`). Reusable streaming logic lives in `composables/` (e.g. `useSpanDiscussion` for the NDJSON span chat). API communication goes through repositories that wrap the OpenAPI-generated TypeScript client (`src/generated/`); raw streaming endpoints (span suggestions, span discussion) use the generated `*Raw` variants and read `apiResponse.raw.body` directly.
 
 ### 4. Weaviate + Utilities (`weaviate_utils/`)
 
