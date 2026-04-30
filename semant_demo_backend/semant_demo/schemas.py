@@ -23,6 +23,11 @@ class APIType(str, Enum):
     metacentrum = "METACENTRUM"
 
 
+class EmbeddingProvider(str, Enum):
+    ollama = "OLLAMA"
+    openrouter = "OPENROUTER"
+
+
 class SummaryRequestBase(BaseModel):
     search_title_generate: bool = True
     search_title_prompt: str | None = None
@@ -49,6 +54,7 @@ class SearchRequest(SummaryRequestBase):
     user_collection_id: str | None = None
     type: SearchType = SearchType.hybrid
     hybrid_search_alpha: float = 0.5
+    vector_name: str | None = None
     search_llm_filter: bool = False
 
     min_year: int | None = None
@@ -169,6 +175,7 @@ class RagSearch(BaseModel):
     alpha: float = 0.5
     limit: int = 10
     search_query: str | None = None
+    vector_name: str | None = None
     min_year: int | None = None
     max_year: int | None = None
     min_date: datetime | None = None
@@ -218,6 +225,7 @@ class AdaptiveRagState(TypedDict):
     language: str | None  # ces, des, eng, ...
     question: str
     original_question: str
+    vector_name: str
     queries: list[str]
     context_sufficient: bool
     history: list[Any]

@@ -269,6 +269,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     type = self.search_type,
                     hybrid_search_alpha = alpha,
                     limit = limit,
+                    vector_name = state.get("vector_name", self.vector_name),
                     min_year = metadata.get("min_year"),
                     max_year = metadata.get("max_year"),
                     min_date = metadata.get("min_date"),
@@ -652,6 +653,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             intial_state_values = {
                 "original_question" : request.question,
                 "question" : request.question,
+                "vector_name": request.rag_search.vector_name or self.vector_name,
                 "queries" : [],
                 "context_sufficient" : False,
                 "history": history_preprocessed,
