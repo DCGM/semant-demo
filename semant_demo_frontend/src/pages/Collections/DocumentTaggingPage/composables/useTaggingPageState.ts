@@ -8,6 +8,16 @@ type TagSpanWithConfidence = TagSpan & {
   confidence?: number
 }
 
+const normalizeSpanConfidence = (
+  span: TagSpan | TagSpanWithConfidence
+): TagSpanWithConfidence => ({
+  ...span,
+  confidence:
+    span.confidence === null || span.confidence === undefined
+      ? undefined
+      : span.confidence
+})
+
 interface SelectionState {
   start: number
   end: number
@@ -273,10 +283,16 @@ export function useTaggingPageState() {
 
     isPreloading.value = true
     try {
-      const loadedMap = await fetchTagSpansMapForChunks(missingChunkIds)
+      const loadedMap = await fetchTagSpansMapForChunks(missingChunkIds, currentCollectionId.value || '')
+      const normalizedLoadedMap = Object.fromEntries(
+        Object.entries(loadedMap).map(([chunkId, spans]) => [
+          chunkId,
+          spans.map(normalizeSpanConfidence)
+        ])
+      ) as Record<string, TagSpanWithConfidence[]>
       tagSpansByChunkId.value = {
         ...tagSpansByChunkId.value,
-        ...loadedMap
+        ...normalizedLoadedMap
       }
     } finally {
       isPreloading.value = false
@@ -284,10 +300,13 @@ export function useTaggingPageState() {
   }
 
   const refreshChunkSpans = async (chunkId: string) => {
-    const refreshedSpans = await fetchTagSpansForChunk(chunkId)
+    const refreshedSpans = await fetchTagSpansForChunk({
+      chunkId,
+      collectionId: currentCollectionId.value || undefined
+    })
     tagSpansByChunkId.value = {
       ...tagSpansByChunkId.value,
-      [chunkId]: refreshedSpans
+      [chunkId]: refreshedSpans.map(normalizeSpanConfidence)
     }
   }
 
@@ -330,13 +349,19 @@ export function useTaggingPageState() {
     const uniqueChunkIds = [...new Set(chunkIds)].filter(Boolean)
     if (!uniqueChunkIds.length) return {}
 
-    const loadedMap = await fetchTagSpansMapForChunks(uniqueChunkIds)
+    const loadedMap = await fetchTagSpansMapForChunks(uniqueChunkIds, currentCollectionId.value || '')
+    const normalizedLoadedMap = Object.fromEntries(
+      Object.entries(loadedMap).map(([chunkId, spans]) => [
+        chunkId,
+        spans.map(normalizeSpanConfidence)
+      ])
+    ) as Record<string, TagSpanWithConfidence[]>
     tagSpansByChunkId.value = {
       ...tagSpansByChunkId.value,
-      ...loadedMap
+      ...normalizedLoadedMap
     }
 
-    return loadedMap
+    return normalizedLoadedMap
   }
 
   const getSortedAutoSpanCandidates = (): AutoSpanCandidate[] => {
@@ -478,13 +503,11 @@ export function useTaggingPageState() {
 
   const handleCreateTagSpan = async (payload: CreatePayload) => {
     await createTagSpan({
-      span: {
-        chunkId: payload.chunkId,
-        tagId: payload.tagId,
-        start: payload.start,
-        end: payload.end,
-        type: SpanType.pos
-      }
+      chunkId: payload.chunkId,
+      tagId: payload.tagId,
+      start: payload.start,
+      end: payload.end,
+      type: SpanType.pos
     })
     await refreshChunkSpans(payload.chunkId)
   }
@@ -495,13 +518,11 @@ export function useTaggingPageState() {
     if (previousOwnerChunkId && previousOwnerChunkId !== payload.chunkId) {
       await deleteTagSpan(payload.spanId)
       await createTagSpan({
-        span: {
-          chunkId: payload.chunkId,
-          tagId: payload.tagId,
-          start: payload.start,
-          end: payload.end,
-          type: payload.spanType ?? SpanType.pos
-        }
+        chunkId: payload.chunkId,
+        tagId: payload.tagId,
+        start: payload.start,
+        end: payload.end,
+        type: payload.spanType ?? SpanType.pos
       })
 
       await refreshSelectedChunkSpans([previousOwnerChunkId, payload.chunkId])
@@ -510,7 +531,7 @@ export function useTaggingPageState() {
 
     await updateTagSpan({
       spanId: payload.spanId,
-      tagSpan: {
+      patchSpan: {
         tagId: payload.tagId,
         start: payload.start,
         end: payload.end
@@ -785,7 +806,11 @@ export function useTaggingPageState() {
     const requestToken = ++probableTagsRequestToken.value
     const selection = globalSelection.value
 
-    if (!selection || selection.editingId || selection.spanType === SpanType.auto) {
+    if (
+      !selection ||
+      selection.editingId ||
+      selection.spanType === SpanType.auto
+    ) {
       probableTagSuggestions.value = []
       isLoadingProbableTags.value = false
       return
@@ -839,27 +864,27 @@ export function useTaggingPageState() {
 
       const normalizedResponse = response as
         | {
-          suggestions?: Array<{
-            tagId: string
-            confidence: number
-            reason: string
-            tag?: {
-              tagName?: string
-              tagColor?: string
-              tagPictogram?: string
+            suggestions?: Array<{
+              tagId: string
+              confidence: number
+              reason: string
+              tag?: {
+                tagName?: string
+                tagColor?: string
+                tagPictogram?: string
+              } | null
+            }>
+            suggestion?: {
+              tagId: string
+              confidence: number
+              reason: string
+              tag?: {
+                tagName?: string
+                tagColor?: string
+                tagPictogram?: string
+              } | null
             } | null
-          }>
-          suggestion?: {
-            tagId: string
-            confidence: number
-            reason: string
-            tag?: {
-              tagName?: string
-              tagColor?: string
-              tagPictogram?: string
-            } | null
-          } | null
-        }
+          }
         | undefined
 
       const sourceSuggestions =
@@ -874,7 +899,9 @@ export function useTaggingPageState() {
         return {
           tagId: suggestion.tagId,
           tagName:
-            availableTag?.tagName || suggestion.tag?.tagName || suggestion.tagId,
+            availableTag?.tagName ||
+            suggestion.tag?.tagName ||
+            suggestion.tagId,
           tagColor:
             availableTag?.tagColor || suggestion.tag?.tagColor || '#1976d2',
           tagPictogram:
@@ -898,7 +925,11 @@ export function useTaggingPageState() {
   watch(
     () => globalSelection.value,
     (newSelection) => {
-      if (!newSelection || newSelection.editingId || newSelection.spanType === SpanType.auto) {
+      if (
+        !newSelection ||
+        newSelection.editingId ||
+        newSelection.spanType === SpanType.auto
+      ) {
         probableTagSuggestions.value = []
         isLoadingProbableTags.value = false
         lastProbableTagsQueryKey.value = null // reset query key so it can refetch if selected again
