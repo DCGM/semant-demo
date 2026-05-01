@@ -41,7 +41,7 @@ The stack is split across several compose files that are started independently a
 | Compose file | Service | Network | Notes |
 |---|---|---|---|
 | `docker-compose.database.yml` | `weaviate` | `semant_demo_database` | Production Weaviate (REST :8080, gRPC :50051) |
-| `docker-compose.database-test.yml` | `weaviate-test` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
+| `docker-compose.database-test.yml` | `weaviate` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
 | `docker-compose.embedder.yml` | `embedding-service` | `semant_demo_embedder` | Single GPU embedder shared by **production and all test instances** (port 8001) |
 | `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder` | Production app instance; own `tasks.db` mounted via `$SQL_DB_PATH` |
 | `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder` | One container per test instance (CI/CD managed); each has its own `tasks.db` mounted via `$SQL_DB_PATH` |
