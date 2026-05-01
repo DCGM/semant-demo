@@ -52,7 +52,17 @@
         <div class="tabs-wrapper q-mx-md q-mt-md">
           <q-tabs v-model="drawerTab" dense align="justify" class="drawer-tabs" indicator-color="transparent">
             <q-tab name="tags" label="Tags" />
-            <q-tab name="ai" label="AI assist" />
+            <q-tab name="ai">
+              <div class="ai-tab-label">
+                <span>AI assist</span>
+                <q-spinner
+                  v-if="aiAssist.isRunning.value || aiAssist.isSelectionRunning.value"
+                  color="primary"
+                  size="1em"
+                  class="q-ml-xs"
+                />
+              </div>
+            </q-tab>
             <q-tab name="document" label="Document" />
           </q-tabs>
         </div>
@@ -288,6 +298,28 @@
                 Processed {{ aiAssist.processedChunkCount.value }} chunks,
                 {{ aiAssist.totalSpansAdded.value }} suggestions.
               </span>
+            </div>
+
+            <!-- Selection-scoped run (triggered from the in-text "Suggest tags"
+                 popover button). Lives next to the document-wide progress so
+                 the user can see something is happening even after the
+                 popover closes. -->
+            <div v-if="aiAssist.isSelectionRunning.value" class="ai-progress q-mb-sm">
+              <q-spinner color="primary" size="1.2em" class="q-mr-xs" />
+              <span class="text-body2">Generating annotation suggestions for the selected passage…</span>
+              <q-space />
+              <q-btn
+                flat dense no-caps
+                size="sm"
+                color="negative"
+                icon="stop"
+                label="Cancel"
+                @click="aiAssist.cancelSelection"
+              />
+            </div>
+
+            <div v-if="aiAssist.lastSelectionError.value" class="ai-error q-mb-sm">
+              {{ aiAssist.lastSelectionError.value }}
             </div>
 
             <div v-if="aiAssist.lastError.value" class="ai-error q-mb-sm">
@@ -620,6 +652,19 @@ watch(drawerTab, (val) => {
   aiAssist.aiTabActive.value = val === 'ai'
   if (val !== 'ai') aiAssist.highlightedAutoSpanId.value = null
 }, { immediate: true })
+
+// External callers (e.g. the in-text selection popover's "Suggest tags"
+// button) can request that we switch to the AI assist tab via
+// ``aiAssist.requestOpenAiPanel()``. The composable bumps a nonce we watch
+// here so each call re-triggers, even if we're already on the tab.
+watch(
+  () => aiAssist.aiPanelRequestNonce.value,
+  (n, prev) => {
+    if (n === prev) return
+    drawerOpen.value = true
+    drawerTab.value = 'ai'
+  }
+)
 
 onBeforeUnmount(() => {
   aiAssist.aiTabActive.value = false
