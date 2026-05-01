@@ -1273,34 +1273,51 @@ const onConfirmAiTagPicker = async () => {
   }
 
   // Resolve which chunks the highlighted passage covers. Selections are
-  // stored anchored on the start chunk with ``end`` measured across the
-  // concatenation of consecutive chunks (see ``setCrossChunkSelection`` in
-  // useAnnotations) — walk forward by ``order`` accumulating text until we
-  // cover ``sel.end`` and remember each chunk we touch.
-  const chunkPool = [...displayChunks.value, ...hiddenPreviewChunks.value]
-  const startChunk = chunkPool.find((c) => c.id === sel.chunkId)
-  if (!startChunk) return
-  const chunkIds: string[] = [startChunk.id]
-  let assembledLen = (startChunk.text ?? '').length
-  if (sel.end > assembledLen) {
-    const ordered = [...chunkPool]
-      .filter((c) => c.order > startChunk.order)
-      .sort((a, b) => a.order - b.order)
-    let lastOrder = startChunk.order
-    for (const c of ordered) {
-      // Stop at document gaps — the backend concatenation only makes sense
-      // for consecutive chunks.
-      if (c.order !== lastOrder + 1) break
-      chunkIds.push(c.id)
-      assembledLen += (c.text ?? '').length
-      lastOrder = c.order
-      if (assembledLen >= sel.end) break
-    }
+  // anchored on the start chunk with ``end`` measured across the
+  // concatenation of *all known* consecutive chunks (display + hidden gap
+  // chunks loaded by ``preloadGapChunks``) — see ``setCrossChunkSelection``
+  // in useAnnotations. Here we want to send Topicer only the *visible*
+  // chunks that overlap the selection: any hidden gap chunks that the user
+  // has chosen not to display should be skipped, and the selection offsets
+  // must be re-mapped into the concatenation of the surviving chunks.
+  const visibleIds = new Set(displayChunks.value.map((c) => c.id))
+  const allKnown = [...displayChunks.value, ...hiddenPreviewChunks.value]
+    .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i)
+    .sort((a, b) => a.order - b.order)
+  const startIdx = allKnown.findIndex((c) => c.id === sel.chunkId)
+  if (startIdx === -1) return
+
+  // Walk forward through known consecutive chunks, mapping each one into
+  // the global concat coordinates that ``sel.start`` / ``sel.end`` live in.
+  const chunkIds: string[] = []
+  let assembledLen = 0
+  let start = -1
+  let end = -1
+  let cursor = 0 // offset of the current chunk in the all-known concat
+  for (let i = startIdx; i < allKnown.length; i++) {
+    if (i > startIdx && allKnown[i].order !== allKnown[i - 1].order + 1) break
+    const c = allKnown[i]
+    const len = (c.text ?? '').length
+    const chunkStartGlobal = cursor
+    const chunkEndGlobal = cursor + len
+    cursor = chunkEndGlobal
+
+    if (chunkStartGlobal >= sel.end) break
+    if (chunkEndGlobal <= sel.start) continue
+    // Hidden gap chunks should not be sent to the backend, even though
+    // ``sel.start``/``sel.end`` were computed across them.
+    if (!visibleIds.has(c.id)) continue
+
+    const localStart = Math.max(0, sel.start - chunkStartGlobal)
+    const localEnd = Math.min(len, sel.end - chunkStartGlobal)
+
+    if (start === -1) start = assembledLen + localStart
+    end = assembledLen + localEnd
+    chunkIds.push(c.id)
+    assembledLen += len
   }
 
-  const start = Math.max(0, Math.min(sel.start, assembledLen))
-  const end = Math.max(start, Math.min(sel.end, assembledLen))
-  if (end <= start) return
+  if (!chunkIds.length || start < 0 || end <= start) return
 
   // Switch the right drawer to the AI assist tab right away so the user
   // sees the spinner and any incoming suggestions in context, then close
