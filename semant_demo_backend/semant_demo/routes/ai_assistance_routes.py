@@ -40,6 +40,8 @@ from semant_demo.schema.ai_assistance import (
     DeleteAutoSpansResponse,
     SuggestSpansChunkResult,
     SuggestSpansRequest,
+    SuggestSpansSelectionRequest,
+    SuggestSpansSelectionResponse,
 )
 from semant_demo.schema.spans import PostSpan
 from semant_demo.users.auth import current_active_user
@@ -359,6 +361,63 @@ async def suggest_spans_optimized(
             searcher,
             collection_id=body.collection_id,
             document_id=body.document_id,
+            tag_ids=body.tag_ids,
+        ),
+        media_type=_NDJSON_MEDIA_TYPE,
+    )
+
+
+@exp_router.post(
+    "/api/ai/suggest_spans/selection",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": (
+                "Stream of SuggestSpansChunkResult, one JSON object per line. "
+                "One event per persisted auto span; a final event with "
+                "empty ``spans`` and a populated ``error`` is emitted on "
+                "Topicer failure."
+            ),
+            "content": {_NDJSON_MEDIA_TYPE: {}},
+        }
+    },
+)
+async def suggest_spans_selection(
+    body: SuggestSpansSelectionRequest,
+    searcher: WeaviateAbstraction = Depends(get_search),
+    current_user: User = Depends(current_active_user),
+):
+    """
+    Run AI span suggestion on a single user-selected passage that may
+    span multiple consecutive chunks. The frontend sends the chunk IDs
+    in document order; offsets are measured against the concatenation of
+    their text.
+
+    The endpoint streams NDJSON
+    (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per
+    persisted span — so the UI can render suggestions incrementally and
+    abort the run mid-flight by closing the connection.
+
+    Each persisted span is anchored on the chunk that contains its
+    *start* offset (mirroring how non-AI cross-chunk spans are stored),
+    not on the first chunk of the selection.
+    """
+    if not body.tag_ids:
+        raise HTTPException(status_code=400, detail="tag_ids must not be empty")
+    if not body.chunk_ids:
+        raise HTTPException(status_code=400, detail="chunk_ids must not be empty")
+    if body.selection_end <= body.selection_start:
+        raise HTTPException(
+            status_code=400,
+            detail="selection_end must be greater than selection_start",
+        )
+
+    return StreamingResponse(
+        _selection_stream(
+            searcher,
+            chunk_ids=body.chunk_ids,
+            selection_start=body.selection_start,
+            selection_end=body.selection_end,
             tag_ids=body.tag_ids,
         ),
         media_type=_NDJSON_MEDIA_TYPE,
