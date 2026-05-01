@@ -51,7 +51,7 @@ class Config:
         
         # Topicer (AI assistance / tag proposal service)
         self.TOPICER_URL = os.getenv("TOPICER_URL", "http://topicer:8089")
-        self.TOPICER_CONFIG_NAME = os.getenv("TOPICER_CONFIG_NAME", "openai-xjuric")
+        self.TOPICER_CONFIG_NAME = os.getenv("TOPICER_CONFIG_NAME", "openai")
         self.TOPICER_TIMEOUT = float(os.getenv("TOPICER_TIMEOUT", 600.0))
 
         # Span discussion chat (OpenAI-compatible endpoint).
