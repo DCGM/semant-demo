@@ -139,7 +139,7 @@
         <div class="col">
           <q-input
             v-model="newMessage"
-            placeholder="What is your question?"
+            placeholder="Vaše otázka?"
             outlined
             rounded
             dense
@@ -232,7 +232,7 @@ interface RagRouteConfig {
 
 // First message from AI
 const messages = ref<Message[]>([
-  { sender: 'AI', text: 'Hello, what is your question? If you want to verify a statement, simply select it and click on the "Explain" button. / Ahoj, máte na mě nějakou otázku? Pokud chcete ověřit tvrzení, jednoduše jej vyberte a klikněte na tlačítko „Explain“.' }
+  { sender: 'AI', text: 'Ahoj, máte na mě nějakou otázku?\n\n**Tip:** Označte část odpovědi a klikněte na **Explain** pro ověření tvrzení.' }
 ])
 
 const newMessage = ref('')
@@ -449,7 +449,7 @@ const singleSourceClicks = (event: Event) => {
 // put chat into starting state
 const resetChat = () => {
   messages.value = [
-    { sender: 'AI', text: 'Hello, what is your question? If you want to verify a statement, simply select it and click on the "Explain" button. / Ahoj, máte na mě nějakou otázku? Pokud chcete ověřit tvrzení, jednoduše jej vyberte a klikněte na tlačítko „Explain“.' }
+    { sender: 'AI', text: 'Ahoj, máte na mě nějakou otázku?\n\n**Tip:** Označte část odpovědi a klikněte na **Explain** pro ověření tvrzení.' }
   ]
   newMessage.value = ''
   isAiThinking.value = false
