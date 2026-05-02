@@ -1768,7 +1768,7 @@ onBeforeUnmount(() => {
 
 /* Highlight the chunk's text background while hovering its left-gutter row. */
 :deep(.chunk-gutter-hovered) {
-  background: rgba(15, 23, 42, 0.06);
+  background: rgba(15, 23, 42, 0.1);
   border-radius: 4px;
   transition: background 0.12s ease;
 }
