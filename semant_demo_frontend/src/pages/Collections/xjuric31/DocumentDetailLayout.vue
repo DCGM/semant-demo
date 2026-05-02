@@ -293,14 +293,14 @@
             </div>
             <div
               v-if="lastStatusKind === 'deleted' && lastDeletedCount != null"
-              class="text-caption text-grey-7 q-mb-sm"
+              class="text-caption text-grey-7"
             >
               Removed {{ lastDeletedCount }} unresolved suggestion(s).
             </div>
 
             <div
               v-else-if="lastStatusKind === 'processed' && (aiAssist.isRunning.value || aiAssist.processedChunkCount.value > 0)"
-              class="ai-progress q-mb-sm"
+              class="ai-progress"
             >
               <q-spinner v-if="aiAssist.isRunning.value" color="primary" size="1.2em" class="q-mr-xs" />
               <span class="text-body2">
@@ -313,7 +313,7 @@
                  popover button). Lives next to the document-wide progress so
                  the user can see something is happening even after the
                  popover closes. -->
-            <div v-if="aiAssist.isSelectionRunning.value" class="ai-progress q-mb-sm">
+            <div v-if="aiAssist.isSelectionRunning.value" class="ai-progress q-mb-xs">
               <q-spinner color="primary" size="1.2em" class="q-mr-xs" />
               <span class="text-body2">Generating annotation suggestions for the selected passage…</span>
               <q-space />
@@ -327,11 +327,11 @@
               />
             </div>
 
-            <div v-if="aiAssist.lastSelectionError.value" class="ai-error q-mb-sm">
+            <div v-if="aiAssist.lastSelectionError.value" class="ai-error q-mb-xs">
               {{ aiAssist.lastSelectionError.value }}
             </div>
 
-            <div v-if="aiAssist.lastError.value" class="ai-error q-mb-sm">
+            <div v-if="aiAssist.lastError.value" class="ai-error q-mb-xs">
               {{ aiAssist.lastError.value }}
             </div>
 
@@ -1338,16 +1338,11 @@ onBeforeUnmount(() => {
 }
 
 .ai-panel.has-pending .ai-tag-list {
-  /* Take up to 1/4 of the *remaining* space (tag-list : pending = 1 : 3),
-     but never grow beyond the intrinsic content size — when tags are short,
-     the unused share is absorbed by .auto-span-list thanks to its higher
-     flex-grow. */
   flex: 1 1 0;
-  max-height: max-content;
 }
 
 .ai-panel.has-pending .auto-span-list {
-  flex: 3 1 0;
+  flex: 4 1 0;
 }
 
 .ai-section-title {
