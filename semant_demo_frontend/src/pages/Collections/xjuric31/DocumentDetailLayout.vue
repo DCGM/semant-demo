@@ -1338,7 +1338,12 @@ onBeforeUnmount(() => {
 }
 
 .ai-panel.has-pending .ai-tag-list {
+  /* Take up to 1/4 of the *remaining* space (tag-list : pending = 1 : 3),
+     but never grow beyond the intrinsic content size — when tags are short,
+     the unused share is absorbed by .auto-span-list thanks to its higher
+     flex-grow. */
   flex: 1 1 0;
+  max-height: max-content;
 }
 
 .ai-panel.has-pending .auto-span-list {
