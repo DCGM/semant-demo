@@ -571,6 +571,12 @@ const submitFeedback = async () => {
   height: calc(100vh - 52px);
 }
 
+.q-pa-md.flex-1.overflow-auto {
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 .message-bubble {
   max-width: 70%;
 }
@@ -587,5 +593,27 @@ const submitFeedback = async () => {
 
 .source-link:hover {
   text-decoration: underline;
+}
+
+.markdown-body {
+  word-wrap: break-word;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  padding-left: 1.5rem !important;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  list-style-position: outside;
+}
+
+.markdown-body :deep(li) {
+  margin-bottom: 4px;
+}
+
+.q-chat-message-text {
+  max-width: 100%;
 }
 </style>
