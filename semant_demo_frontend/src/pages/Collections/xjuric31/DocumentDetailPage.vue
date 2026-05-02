@@ -77,6 +77,8 @@
           :class="{ 'is-checked': selectedChunkIds.includes(item.chunkId), 'is-hovered': hoveredChunkId === item.chunkId }"
           :style="{ top: item.top + 'px', height: item.height + 'px' }"
           :title="selectedChunkIds.includes(item.chunkId) ? 'Deselect chunk' : 'Select chunk'"
+          @mouseenter="gutterHoveredChunkId = item.chunkId"
+          @mouseleave="gutterHoveredChunkId = null"
           @click.stop="toggleChunkSelection(item.chunkId)"
         >
           <q-icon
@@ -96,8 +98,8 @@
             class="chunk-gutter-item"
             :class="{ 'chunk-gutter-item--text-hover': hoveredChunkId === item.chunkId }"
             :style="{ top: item.top + 'px', height: item.height + 'px' }"
-            @mouseenter="hoveredChunkId = item.chunkId; if (!item.inCollection) hoveredPreviewChunkId = item.chunkId"
-            @mouseleave="hoveredChunkId = null; hoveredPreviewChunkId = null"
+            @mouseenter="hoveredChunkId = item.chunkId; gutterHoveredChunkId = item.chunkId; if (!item.inCollection) hoveredPreviewChunkId = item.chunkId"
+            @mouseleave="hoveredChunkId = null; gutterHoveredChunkId = null; hoveredPreviewChunkId = null"
           >
             <div
               class="chunk-bar"
@@ -180,7 +182,7 @@
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
                   :highlight-span-id="hoveredSpanId || highlightedAutoSpanId"
-                  :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id }"
+                  :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id, 'chunk-gutter-hovered': gutterHoveredChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
               </p>
@@ -816,6 +818,7 @@ async function onBulkRemove() {
 
 const hoveredPreviewChunkId = ref<string | null>(null)
 const hoveredChunkId = ref<string | null>(null)
+const gutterHoveredChunkId = ref<string | null>(null)
 
 function onDocumentPointerMove(e: PointerEvent) {
   if (!documentTextRef.value) return
@@ -1761,6 +1764,13 @@ onBeforeUnmount(() => {
 }
 :deep(.chunk-preview.chunk-preview--active) {
   opacity: 1;
+}
+
+/* Highlight the chunk's text background while hovering its left-gutter row. */
+:deep(.chunk-gutter-hovered) {
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 4px;
+  transition: background 0.12s ease;
 }
 
 /* ── Left chunk-control gutter ── */
