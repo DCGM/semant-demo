@@ -1338,8 +1338,7 @@ onBeforeUnmount(() => {
 }
 
 .ai-panel.has-pending .ai-tag-list {
-  flex: 0 1 0;
-  min-height: min(15%, max-content);
+  flex: 0 1 auto;
 }
 
 .ai-panel.has-pending .auto-span-list {
@@ -1367,7 +1366,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 240px;
+  max-height: 15%;
   overflow-y: auto;
   padding: 4px 6px;
   background: rgba(15, 23, 42, 0.03);
