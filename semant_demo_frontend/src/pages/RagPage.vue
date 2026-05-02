@@ -1,6 +1,7 @@
 <template>
   <q-page padding>
-    <div class="full-height flex column no-wrap"></div>
+    <div style="max-width: 900px; margin: 0 auto; width: 100%;">
+
       <div class="q-pa-md flex-1 overflow-auto" ref="chatArea">
         <q-chat-message
           v-for="(message, index) in messages"
@@ -12,38 +13,108 @@
           class="message-bubble"
         >
           <template v-slot:default>
-            <!-- message TEXT  -->
-            <div
-              v-html="replaceSourcesAndConvertToMarcdown(message, index)" class="markdown-body"
-              @mouseup="handleMouseUp(index)"
-              @click.capture="singleSourceClicks"
-            ></div>
-            <!-- show sources - bottom button  -->
-            <div v-if="message.sender === 'AI' && message.sources && message.sources.length > 0" class="q-mt-sm">
-              <a href="#" @click.prevent="openSourcesDialog(message.sources)" class="source-link">Sources</a>
-            </div>
-            <!-- like and dislike -->
-            <div v-if="message.sender === 'AI' && index > 0" class="row items-center q-gutter-x-sm q-mt-xs">
-              <q-btn
-                flat round dense
-                size="sm"
-                icon="thumb_up"
-                :color="message.userRating === 1 ? 'green' : 'grey'"
-                :disable="message.userRating === 1"
-                @click="handleFeedback(index, 1)"
-              />
-              <q-btn
-                flat round dense
-                size="sm"
-                icon="thumb_down"
-                :color="message.userRating === -1 ? 'red' : 'grey'"
-                :disable="message.userRating === -1"
-                @click="handleFeedback(index, -1)"
-              />
+            <div class="row items-center justify-between q-mt-sm q-pt-xs" style="border-top: 1px solid rgba(0,0,0,0.05)">
+              <!-- message TEXT  -->
+              <div
+                v-html="replaceSourcesAndConvertToMarcdown(message, index)" class="markdown-body"
+                @mouseup="handleMouseUp(index)"
+                @click.capture="singleSourceClicks"
+              ></div>
+              <!-- show sources - bottom button  -->
+              <div v-if="message.sender === 'AI' && message.sources && message.sources.length > 0" class="row items-center justify-between q-mt-sm">
+                <a href="#" @click.prevent="openSourcesDialog(message.sources)" class="source-link">Sources</a>
+              </div>
+              <!-- like and dislike -->
+              <div v-if="message.sender === 'AI' && index > 0" class="row items-center q-gutter-x-xs">
+                <q-btn
+                  flat round dense
+                  size="sm"
+                  icon="thumb_up"
+                  :color="message.userRating === 1 ? 'green' : 'grey'"
+                  :disable="message.userRating === 1"
+                  @click="handleFeedback(index, 1)"
+                />
+                <q-btn
+                  flat round dense
+                  size="sm"
+                  icon="thumb_down"
+                  :color="message.userRating === -1 ? 'red' : 'grey'"
+                  :disable="message.userRating === -1"
+                  @click="handleFeedback(index, -1)"
+                />
+              </div>
             </div>
           </template>
         </q-chat-message>
       </div>
+
+      <!-- bool while waiting for response --- 3 dots -->
+      <q-chat-message v-if="isAiThinking" name="AI" bg-color="grey-2">
+        <q-spinner-dots size="2em" />
+      </q-chat-message>
+
+      <!-- question input box -->
+        <div class="q-pa-md bg-white input-area">
+          <div class="row items-center no-wrap q-gutter-x-sm">
+            <!-- reset chat button -->
+            <q-btn
+              icon="refresh"
+              round
+              flat
+              @click="resetChat"
+              class="q-mr-sm"
+              title="Reset chat"
+            />
+              <q-select
+                v-model="selectedRAG"
+                :options="rags"
+                option-label="name"
+                label="RAG configuration"
+                :loading="isLoadingRagConfigs"
+                :disable="isLoadingRagConfigs || rags.length === 0"
+                dense
+                outlined
+                style="min-width: 300px">
+                <template v-slot:option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section>
+                      <q-item-label>{{scope.opt.name }}</q-item-label>
+                      <q-item-label caption lines="2">
+                        {{ scope.opt.description }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+          </div>
+          <!-- input box with send button -->
+          <div class="col">
+            <q-input
+              v-model="newMessage"
+              placeholder="Vaše otázka?"
+              outlined
+              rounded
+              dense
+              class="q-px-md"
+              :disable="isAiThinking"
+              @keyup.enter="sendMessage"
+            >
+              <template v-slot:append>
+                <!-- Button call send directly - doesnt work with submit -->
+                <q-btn
+                  icon="send"
+                  round
+                  dense
+                  flat
+                  color="primary"
+                  :loading="isAiThinking"
+                  @click="sendMessage"
+                />
+              </template>
+            </q-input>
+          </div>
+        </div>
+    </div>
       <!-- dislike dialog  -->
       <q-dialog v-model="showFeedbackDialog">
         <q-card style="min-width: 400px">
@@ -69,7 +140,7 @@
 
       <!-- sources window -->
       <q-dialog v-model="showSourcesDialog">
-        <q-card style="width: 700px; max-width: 80vw;">
+        <q-card style="width: 900px; max-width: 80vw;">
           <q-card-section>
             <div class="text-h6">Sources</div>
           </q-card-section>
@@ -96,72 +167,6 @@
           </q-card-actions>
         </q-card>
       </q-dialog>
-      <!-- bool while waiting for response --- 3 dots -->
-      <q-chat-message v-if="isAiThinking" name="AI" bg-color="grey-2">
-        <q-spinner-dots size="2em" />
-      </q-chat-message>
-
-      <!-- question input box -->
-      <div class="q-pa-md bg-white input-area">
-         <div class="row items-center no-wrap q-gutter-x-sm">
-          <!-- reset chat button -->
-          <q-btn
-            icon="refresh"
-            round
-            flat
-            @click="resetChat"
-            class="q-mr-sm"
-            title="Reset chat"
-          />
-            <q-select
-              v-model="selectedRAG"
-              :options="rags"
-              option-label="name"
-              label="RAG configuration"
-              :loading="isLoadingRagConfigs"
-              :disable="isLoadingRagConfigs || rags.length === 0"
-              dense
-              outlined
-              style="min-width: 300px">
-              <template v-slot:option="scope">
-                <q-item v-bind="scope.itemProps">
-                  <q-item-section>
-                    <q-item-label>{{scope.opt.name }}</q-item-label>
-                    <q-item-label caption lines="2">
-                      {{ scope.opt.description }}
-                    </q-item-label>
-                  </q-item-section>
-                </q-item>
-              </template>
-            </q-select>
-        </div>
-         <!-- input box with send button -->
-        <div class="col">
-          <q-input
-            v-model="newMessage"
-            placeholder="Vaše otázka?"
-            outlined
-            rounded
-            dense
-            class="q-px-md"
-            :disable="isAiThinking"
-            @keyup.enter="sendMessage"
-          >
-            <template v-slot:append>
-              <!-- Button call send directly - doesnt work with submit -->
-              <q-btn
-                icon="send"
-                round
-                dense
-                flat
-                color="primary"
-                :loading="isAiThinking"
-                @click="sendMessage"
-              />
-            </template>
-          </q-input>
-        </div>
-      </div>
 
       <!-- explaination functionality -->
       <q-btn
@@ -577,8 +582,8 @@ const submitFeedback = async () => {
   width: 100%;
 }
 
-.message-bubble {
-  max-width: 70%;
+.message-bubble :deep(.q-chat-message-text) {
+  padding: 8px 12px;
 }
 
 .input-area {
