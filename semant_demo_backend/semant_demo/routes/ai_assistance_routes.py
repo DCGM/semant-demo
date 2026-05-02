@@ -40,6 +40,8 @@ from semant_demo.schema.ai_assistance import (
     DeleteAutoSpansResponse,
     SuggestSpansChunkResult,
     SuggestSpansRequest,
+    SuggestSpansSelectionRequest,
+    SuggestSpansSelectionResponse,
 )
 from semant_demo.schema.spans import PostSpan
 from semant_demo.users.auth import current_active_user
@@ -283,6 +285,142 @@ async def _optimized_stream(
                 ))
 
 
+# ── Selection mode ─────────────────────────────────────────────────────────
+
+
+async def _selection_stream(
+    searcher: WeaviateAbstraction,
+    *,
+    chunk_ids: list[str],
+    selection_start: int,
+    selection_end: int,
+    tag_ids: list[str],
+) -> AsyncGenerator[bytes, None]:
+    """Yield NDJSON events for a selection-scoped run.
+
+    The Topicer call itself is not streamed (the per-text endpoint returns
+    one batch), but each proposal is persisted and emitted individually so
+    the UI can render suggestions as they're being saved. The Topicer call
+    is wrapped in a task so a client disconnect / cancel cancels the
+    upstream HTTP request promptly.
+    """
+    tags = await _load_tag_dicts(searcher, tag_ids)
+    if not tags:
+        return
+
+    # Fetch text of every chunk in the selection so we can concatenate
+    # them and compute the slice the LLM should see, plus the cumulative
+    # offsets used to remap each proposal back to its starting chunk.
+    chunks_collection = searcher.client.collections.get(
+        searcher.collectionNames.chunks_collection_name
+    )
+    chunk_texts: list[str] = []
+    for cid in chunk_ids:
+        obj = await chunks_collection.query.fetch_object_by_id(cid)
+        if obj is None:
+            yield _ndjson_line(SuggestSpansChunkResult(
+                chunk_id=cid, spans=[], error=f"Chunk {cid} not found",
+            ))
+            return
+        chunk_texts.append(obj.properties.get("text") or "")
+
+    # ``cum_offsets[i]`` = char offset of ``chunk_ids[i]`` from start of
+    # the concatenation. ``cum_offsets[len(chunk_ids)]`` = total length.
+    cum_offsets: list[int] = [0]
+    for text in chunk_texts:
+        cum_offsets.append(cum_offsets[-1] + len(text))
+    total_length = cum_offsets[-1]
+
+    sel_start = max(0, selection_start)
+    sel_end = min(total_length, selection_end)
+    if sel_end <= sel_start:
+        return
+    selected_text = "".join(chunk_texts)[sel_start:sel_end]
+
+    def _anchor_for(span_start: int) -> tuple[int, int] | None:
+        """Return (chunk_index, local_start) for a concat-coord offset."""
+        for i in range(len(chunk_ids)):
+            chunk_start = cum_offsets[i]
+            chunk_end = cum_offsets[i + 1]
+            # Last chunk gets the inclusive upper bound so a span ending
+            # exactly at total_length still maps to the last chunk.
+            if span_start < chunk_end or (i == len(chunk_ids) - 1 and span_start <= chunk_end):
+                return i, span_start - chunk_start
+        return None
+
+    async with topicer_client() as client:
+        # Wrap the Topicer call in a task so a client disconnect (StreamingResponse
+        # generator cancellation) cancels the upstream HTTP request promptly.
+        topicer_task = asyncio.create_task(
+            propose_for_text_chunk(
+                client,
+                chunk_id=chunk_ids[0],
+                chunk_text=selected_text,
+                tags=tags,
+            )
+        )
+        try:
+            try:
+                proposals = await topicer_task
+            except TopicerError as e:
+                yield _ndjson_line(SuggestSpansChunkResult(
+                    chunk_id=chunk_ids[0], spans=[], error=f"topicer: {e}",
+                ))
+                return
+
+            for proposal in proposals:
+                tag_obj = proposal.get("tag") or {}
+                tag_id = tag_obj.get("id")
+                if not tag_id:
+                    continue
+                sub_start = proposal.get("span_start")
+                sub_end = proposal.get("span_end")
+                if sub_start is None or sub_end is None:
+                    continue
+                # Topicer offsets are relative to the substring we sent;
+                # shift back into the concatenation coordinate system,
+                # then clamp inside the user's highlighted range.
+                concat_start = max(sel_start, sel_start + int(sub_start))
+                concat_end = min(sel_end, sel_start + int(sub_end))
+                if concat_end <= concat_start:
+                    continue
+
+                anchor = _anchor_for(concat_start)
+                if anchor is None:
+                    continue
+                anchor_idx, local_start = anchor
+                anchor_chunk_id = chunk_ids[anchor_idx]
+                # ``end`` measured from the anchor chunk; may exceed the
+                # anchor's text length when the proposal extends into
+                # later chunks (cross-chunk auto span, same convention
+                # as user-created cross-chunk spans).
+                local_end = concat_end - cum_offsets[anchor_idx]
+                # ``_persist_proposal`` clamps end to its ``chunk_length``
+                # argument — pass the remaining concat length so we don't
+                # accidentally truncate a cross-chunk span.
+                remaining = total_length - cum_offsets[anchor_idx]
+
+                span = await _persist_proposal(
+                    searcher,
+                    chunk_id=anchor_chunk_id,
+                    chunk_length=remaining,
+                    tag_id=str(tag_id),
+                    span_start=local_start,
+                    span_end=local_end,
+                    reason=proposal.get("reason"),
+                    confidence=proposal.get("confidence"),
+                )
+                if span is not None:
+                    yield _ndjson_line(SuggestSpansChunkResult(
+                        chunk_id=anchor_chunk_id,
+                        spans=[span],
+                        error=None,
+                    ))
+        finally:
+            if not topicer_task.done():
+                topicer_task.cancel()
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────
 
 
@@ -359,6 +497,63 @@ async def suggest_spans_optimized(
             searcher,
             collection_id=body.collection_id,
             document_id=body.document_id,
+            tag_ids=body.tag_ids,
+        ),
+        media_type=_NDJSON_MEDIA_TYPE,
+    )
+
+
+@exp_router.post(
+    "/api/ai/suggest_spans/selection",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": (
+                "Stream of SuggestSpansChunkResult, one JSON object per line. "
+                "One event per persisted auto span; a final event with "
+                "empty ``spans`` and a populated ``error`` is emitted on "
+                "Topicer failure."
+            ),
+            "content": {_NDJSON_MEDIA_TYPE: {}},
+        }
+    },
+)
+async def suggest_spans_selection(
+    body: SuggestSpansSelectionRequest,
+    searcher: WeaviateAbstraction = Depends(get_search),
+    current_user: User = Depends(current_active_user),
+):
+    """
+    Run AI span suggestion on a single user-selected passage that may
+    span multiple consecutive chunks. The frontend sends the chunk IDs
+    in document order; offsets are measured against the concatenation of
+    their text.
+
+    The endpoint streams NDJSON
+    (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per
+    persisted span — so the UI can render suggestions incrementally and
+    abort the run mid-flight by closing the connection.
+
+    Each persisted span is anchored on the chunk that contains its
+    *start* offset (mirroring how non-AI cross-chunk spans are stored),
+    not on the first chunk of the selection.
+    """
+    if not body.tag_ids:
+        raise HTTPException(status_code=400, detail="tag_ids must not be empty")
+    if not body.chunk_ids:
+        raise HTTPException(status_code=400, detail="chunk_ids must not be empty")
+    if body.selection_end <= body.selection_start:
+        raise HTTPException(
+            status_code=400,
+            detail="selection_end must be greater than selection_start",
+        )
+
+    return StreamingResponse(
+        _selection_stream(
+            searcher,
+            chunk_ids=body.chunk_ids,
+            selection_start=body.selection_start,
+            selection_end=body.selection_end,
             tag_ids=body.tag_ids,
         ),
         media_type=_NDJSON_MEDIA_TYPE,

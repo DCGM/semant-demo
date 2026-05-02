@@ -52,12 +52,22 @@
         <div class="tabs-wrapper q-mx-md q-mt-md">
           <q-tabs v-model="drawerTab" dense align="justify" class="drawer-tabs" indicator-color="transparent">
             <q-tab name="tags" label="Tags" />
-            <q-tab name="ai" label="AI assist" />
+            <q-tab name="ai">
+              <div class="ai-tab-label">
+                <span>AI assist</span>
+                <q-spinner
+                  v-if="aiAssist.isRunning.value || aiAssist.isSelectionRunning.value"
+                  color="primary"
+                  size="1em"
+                  class="q-ml-xs"
+                />
+              </div>
+            </q-tab>
             <q-tab name="document" label="Document" />
           </q-tabs>
         </div>
 
-        <q-tab-panels v-model="drawerTab" class="drawer-panels">
+        <q-tab-panels v-model="drawerTab" animated>
           <q-tab-panel name="tags" class="q-pa-md">
             <div class="tags-toolbar">
               <q-btn
@@ -169,10 +179,13 @@
             </div>
           </q-tab-panel>
 
-          <q-tab-panel name="ai" class="q-pa-md ai-panel">
-            <div class="ai-section-title">AI assistance</div>
-            <div class="text-caption text-grey-7 q-mb-sm">
-              Pick the tags the AI should look for in this document and choose a mode. Suggestions are shown as dashed grey markers in the text.
+          <q-tab-panel
+            name="ai"
+            class="q-pa-md ai-panel"
+            :class="{ 'has-pending': pendingAutoSpans.length > 0 }"
+          >
+            <div class="text-caption text-grey-7 q-mb-xs">
+              Pick the tags the AI should look for in this document and choose a mode.
             </div>
 
             <div class="ai-section-label">Mode</div>
@@ -181,7 +194,7 @@
               :options="aiModeOptions"
               type="radio"
               dense
-              class="q-mb-md"
+              class="q-mb-xs"
               :disable="aiAssist.isRunning.value"
             />
 
@@ -192,10 +205,10 @@
               <q-btn flat dense no-caps size="sm" label="All" @click="selectAllAiTags" :disable="aiAssist.isRunning.value" />
               <q-btn flat dense no-caps size="sm" label="None" @click="clearAiTags" :disable="aiAssist.isRunning.value" />
             </div>
-            <div v-if="!tags.length" class="text-body2 text-grey-6 q-mb-md">
+            <div v-if="!tags.length" class="text-body2 text-grey-6 q-mb-sm">
               No tags in this collection yet.
             </div>
-            <div v-else class="ai-tag-list q-mb-md">
+            <div v-else class="ai-tag-list q-mb-sm">
               <div
                 v-for="tag in tags"
                 :key="tag.id"
@@ -245,7 +258,7 @@
               </div>
             </div>
 
-            <div class="ai-actions q-mb-md">
+            <div class="ai-actions q-mb-xs">
               <q-btn
                 v-if="!aiAssist.isRunning.value"
                 color="primary"
@@ -278,11 +291,17 @@
                 </q-tooltip>
               </q-btn>
             </div>
-            <div v-if="lastDeletedCount != null" class="text-caption text-grey-7 q-mb-sm">
+            <div
+              v-if="lastStatusKind === 'deleted' && lastDeletedCount != null"
+              class="text-caption text-grey-7"
+            >
               Removed {{ lastDeletedCount }} unresolved suggestion(s).
             </div>
 
-            <div v-if="aiAssist.isRunning.value || aiAssist.processedChunkCount.value > 0" class="ai-progress q-mb-sm">
+            <div
+              v-else-if="lastStatusKind === 'processed' && (aiAssist.isRunning.value || aiAssist.processedChunkCount.value > 0)"
+              class="ai-progress"
+            >
               <q-spinner v-if="aiAssist.isRunning.value" color="primary" size="1.2em" class="q-mr-xs" />
               <span class="text-body2">
                 Processed {{ aiAssist.processedChunkCount.value }} chunks,
@@ -290,11 +309,33 @@
               </span>
             </div>
 
-            <div v-if="aiAssist.lastError.value" class="ai-error q-mb-sm">
+            <!-- Selection-scoped run (triggered from the in-text "Suggest tags"
+                 popover button). Lives next to the document-wide progress so
+                 the user can see something is happening even after the
+                 popover closes. -->
+            <div v-if="aiAssist.isSelectionRunning.value" class="ai-progress q-mb-xs">
+              <q-spinner color="primary" size="1.2em" class="q-mr-xs" />
+              <span class="text-body2">Generating annotation suggestions for the selected passage…</span>
+              <q-space />
+              <q-btn
+                flat dense no-caps
+                size="sm"
+                color="negative"
+                icon="stop"
+                label="Cancel"
+                @click="aiAssist.cancelSelection"
+              />
+            </div>
+
+            <div v-if="aiAssist.lastSelectionError.value" class="ai-error q-mb-xs">
+              {{ aiAssist.lastSelectionError.value }}
+            </div>
+
+            <div v-if="aiAssist.lastError.value" class="ai-error q-mb-xs">
               {{ aiAssist.lastError.value }}
             </div>
 
-            <q-separator class="q-my-md" />
+            <q-separator class="q-my-xs" />
 
             <div class="ai-section-label">
               Pending suggestions
@@ -613,6 +654,22 @@ const selectedAiTagIds = ref<string[]>([])
 const busyAutoSpanIds = ref<Set<string>>(new Set())
 const isBulkDeleting = ref(false)
 const lastDeletedCount = ref<number | null>(null)
+// Tracks which of the two mutually-exclusive status messages should be
+// visible — whichever event happened most recently wins.
+const lastStatusKind = ref<'deleted' | 'processed' | null>(null)
+
+watch(
+  () => aiAssist.processedChunkCount.value,
+  (n, prev) => {
+    if (n !== prev) lastStatusKind.value = 'processed'
+  }
+)
+watch(
+  () => aiAssist.isRunning.value,
+  (v) => {
+    if (v) lastStatusKind.value = 'processed'
+  }
+)
 
 // Track which drawer tab is active so the document page can hide auto spans
 // outside of the AI assist tab.
@@ -620,6 +677,19 @@ watch(drawerTab, (val) => {
   aiAssist.aiTabActive.value = val === 'ai'
   if (val !== 'ai') aiAssist.highlightedAutoSpanId.value = null
 }, { immediate: true })
+
+// External callers (e.g. the in-text selection popover's "Suggest tags"
+// button) can request that we switch to the AI assist tab via
+// ``aiAssist.requestOpenAiPanel()``. The composable bumps a nonce we watch
+// here so each call re-triggers, even if we're already on the tab.
+watch(
+  () => aiAssist.aiPanelRequestNonce.value,
+  (n, prev) => {
+    if (n === prev) return
+    drawerOpen.value = true
+    drawerTab.value = 'ai'
+  }
+)
 
 onBeforeUnmount(() => {
   aiAssist.aiTabActive.value = false
@@ -834,6 +904,7 @@ async function onBulkDelete() {
       }
     })
     lastDeletedCount.value = result.deleted
+    lastStatusKind.value = 'deleted'
     // Refresh auto spans currently in memory by dropping them from the store
     // for the affected (chunk, tag) pairs.
     const tagIdSet = new Set(selectedAiTagIds.value)
@@ -976,6 +1047,7 @@ watch(
     aiAssist.reset()
     selectedSuggestionIds.value = new Set()
     lastDeletedCount.value = null
+    lastStatusKind.value = null
     tagSpans.clearAll()
     await loadDocument(documentId)
   },
@@ -1226,13 +1298,51 @@ onBeforeUnmount(() => {
 }
 
 /* ── AI assistance tab ── */
-.ai-panel {
-  display: block;
+
+/* Make the q-tab-panels container fill the drawer's available height so the
+   AI tab can use a flex layout and never overflow. */
+.drawer-content :deep(.q-tab-panels) {
+  flex: 1 1 0;
+  min-height: 0;
+  background: transparent;
+  overflow: hidden;
+}
+.drawer-content :deep(.q-panel) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.drawer-content :deep(.q-tab-panel) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.ai-panel .ai-tag-list,
+.ai-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ai-panel .ai-tag-list {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
 .ai-panel .auto-span-list {
-  flex: none;
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+}
+
+.ai-panel.has-pending .ai-tag-list {
+  flex: 0 1 auto;
+}
+
+.ai-panel.has-pending .auto-span-list {
+  flex: 4 1 0;
 }
 
 .ai-section-title {
@@ -1249,7 +1359,6 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: rgba(71, 85, 105, 0.85);
-  margin-top: 4px;
   margin-bottom: 6px;
 }
 
@@ -1257,7 +1366,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 240px;
+  max-height: 15%;
   overflow-y: auto;
   padding: 4px 6px;
   background: rgba(15, 23, 42, 0.03);

@@ -42,6 +42,16 @@ let activeAbort: AbortController | null = null
 const aiTabActive = ref(false)
 const highlightedAutoSpanId = ref<string | null>(null)
 
+// Bumped when something outside the layout (e.g. the in-text selection
+// popover's "Suggest tags" button) wants the right drawer to switch to the
+// "AI assist" tab. The layout owns ``drawerTab`` / ``drawerOpen`` so we use a
+// nonce-watch handshake instead of trying to share that state across files.
+const aiPanelRequestNonce = ref(0)
+
+const isSelectionRunning = ref(false)
+const lastSelectionError = ref<string | null>(null)
+let activeSelectionAbort: AbortController | null = null
+
 export function useAiAssistance() {
   const spansStore = useTagSpansStore()
 
@@ -226,14 +236,165 @@ export function useAiAssistance() {
   }
 
   /**
+   * Run AI suggestion on a single user-selected passage that may span
+   * multiple consecutive chunks.
+   *
+   * Hits the backend's NDJSON-streaming ``/ai/suggest_spans/selection``
+   * endpoint and pushes each persisted auto span into the shared store
+   * as it arrives so the user sees suggestions appear progressively.
+   * Each event's ``chunk_id`` is the *anchor chunk* of that specific
+   * span — i.e. the chunk where the span starts — matching how
+   * non-AI cross-chunk spans are stored, so the gutter / panel pick the
+   * span up automatically.
+   *
+   * Aborting the request via :func:`cancelSelection` cancels the upstream
+   * Topicer call too.
+   */
+  const runOnSelection = async (req: {
+    collectionId: string
+    documentId: string
+    chunkIds: string[]
+    selectionStart: number
+    selectionEnd: number
+    tagIds: string[]
+  }): Promise<TagSpan[]> => {
+    if (!req.tagIds.length) {
+      lastSelectionError.value = 'No tags selected for AI suggestion.'
+      return []
+    }
+    if (!req.chunkIds.length) {
+      lastSelectionError.value = 'Empty selection.'
+      return []
+    }
+    if (req.selectionEnd <= req.selectionStart) {
+      lastSelectionError.value = 'Empty selection.'
+      return []
+    }
+
+    cancelSelection() // make sure no stale controller
+    const abort = new AbortController()
+    activeSelectionAbort = abort
+    isSelectionRunning.value = true
+    lastSelectionError.value = null
+    const token = localStorage.getItem('auth_token')
+    const collected: TagSpan[] = []
+
+    try {
+      const resp = await fetch(`${BACKEND_BASE_PATH}/ai/suggest_spans/selection`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/x-ndjson',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          collection_id: req.collectionId,
+          document_id: req.documentId,
+          chunk_ids: req.chunkIds,
+          selection_start: req.selectionStart,
+          selection_end: req.selectionEnd,
+          tag_ids: req.tagIds
+        }),
+        signal: abort.signal
+      })
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '')
+        throw new Error(`AI selection backend error (${resp.status}): ${text || resp.statusText}`)
+      }
+      if (!resp.body) {
+        throw new Error('AI selection backend did not return a streaming body.')
+      }
+
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+
+      const handleLine = (line: string) => {
+        const trimmed = line.trim()
+        if (!trimmed) return
+        let parsed: { chunk_id?: string; spans?: TagSpan[]; error?: string | null }
+        try {
+          parsed = JSON.parse(trimmed)
+        } catch (e) {
+          console.warn('AI selection: failed to parse NDJSON line', trimmed, e)
+          return
+        }
+        if (parsed.error) {
+          lastSelectionError.value = parsed.error
+        }
+        const anchorChunkId = parsed.chunk_id || ''
+        const fresh = parsed.spans || []
+        if (!anchorChunkId || !fresh.length) return
+
+        const existing = spansStore.spansByChunkId[anchorChunkId] || []
+        const known = new Set(existing.map((s) => s.id).filter(Boolean) as string[])
+        const newOnes = fresh.filter((s) => !s.id || !known.has(s.id))
+        if (!newOnes.length) return
+        spansStore.spansByChunkId = {
+          ...spansStore.spansByChunkId,
+          [anchorChunkId]: [...existing, ...newOnes]
+        }
+        totalSpansAdded.value += newOnes.length
+        collected.push(...newOnes)
+      }
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let newlineIdx = buffer.indexOf('\n')
+        while (newlineIdx !== -1) {
+          handleLine(buffer.slice(0, newlineIdx))
+          buffer = buffer.slice(newlineIdx + 1)
+          newlineIdx = buffer.indexOf('\n')
+        }
+      }
+      buffer += decoder.decode()
+      if (buffer.trim()) handleLine(buffer)
+      return collected
+    } catch (e: unknown) {
+      const err = e as { name?: string; message?: string }
+      if (err?.name === 'AbortError') {
+        // Cancelled by user — not an error.
+        return collected
+      }
+      console.error('AI selection assistance failed', e)
+      lastSelectionError.value = err?.message || 'AI selection request failed'
+      return collected
+    } finally {
+      if (activeSelectionAbort === abort) activeSelectionAbort = null
+      isSelectionRunning.value = false
+    }
+  }
+
+  const cancelSelection = () => {
+    if (activeSelectionAbort) {
+      activeSelectionAbort.abort()
+      activeSelectionAbort = null
+    }
+  }
+
+  /**
+   * Ask the document layout to switch the right drawer to the "AI assist"
+   * tab (and open it if it's collapsed). Implemented via a nonce so that
+   * repeated calls each trigger the layout's watcher.
+   */
+  const requestOpenAiPanel = () => {
+    aiPanelRequestNonce.value += 1
+  }
+
+  /**
    * Reset all run-state (counters, errors, highlight). Called when the user
    * navigates between documents so stale "Processed X chunks" / pending
    * suggestions don't leak across documents.
    */
   const reset = () => {
     cancel()
+    cancelSelection()
     isRunning.value = false
     lastError.value = null
+    lastSelectionError.value = null
     processedChunkIds.value = new Set()
     totalSpansAdded.value = 0
     highlightedAutoSpanId.value = null
@@ -243,11 +404,17 @@ export function useAiAssistance() {
     run,
     cancel,
     reset,
+    runOnSelection,
+    cancelSelection,
+    requestOpenAiPanel,
     isRunning: computed(() => isRunning.value),
+    isSelectionRunning: computed(() => isSelectionRunning.value),
     lastError: computed(() => lastError.value),
+    lastSelectionError: computed(() => lastSelectionError.value),
     processedChunkCount: computed(() => processedChunkIds.value.size),
     totalSpansAdded: computed(() => totalSpansAdded.value),
     aiTabActive,
+    aiPanelRequestNonce,
     highlightedAutoSpanId,
     pendingAutoSpans,
     nextPendingSuggestionAfter,
