@@ -1339,7 +1339,7 @@ onBeforeUnmount(() => {
 
 .ai-panel.has-pending .ai-tag-list {
   flex: 0 1 0;
-  min-height: 15%;
+  min-height: min(15%, max-content);
 }
 
 .ai-panel.has-pending .auto-span-list {
