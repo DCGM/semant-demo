@@ -16,6 +16,7 @@ LOGGER = logging.getLogger(__name__)
 TOPICER_PROPOSE_TAGS_TEXTS_PATH = "/v1/tags/propose/texts"
 TOPICER_CONFIGS_PATH = "/v1/configs"
 TOPICER_PROPOSE_MOST_PROBABLE_TAG_PATH = "/v1/tags/propose/texts/most_probable"
+CONFIG_NAME = "openai_gpt"
 
 
 def _topicer_http_timeout() -> httpx.Timeout:
@@ -196,7 +197,7 @@ async def propose_tags(
 
     try:
         async with httpx.AsyncClient() as client:
-            config_name = "openai_gpt"
+            CONFIG_NAME = "openai_gpt"
             method_not_applicable_configs: list[str] = []
 
             all_suggestions: list[schemas.AutoAnnotationSuggestion] = []
@@ -204,7 +205,7 @@ async def propose_tags(
             for chunk in body.chunks:
                 response = await client.post(
                     f"{config.TOPICER_URL}{TOPICER_PROPOSE_TAGS_TEXTS_PATH}",
-                    params={"config_name": config_name},
+                    params={"config_name": CONFIG_NAME},
                     json={
                         "text_chunk": {
                             "id": str(chunk.id),
@@ -225,7 +226,7 @@ async def propose_tags(
 
                 if response.status_code >= 400:
                     if _is_method_not_applicable_error(response):
-                        method_not_applicable_configs.append(config_name)
+                        method_not_applicable_configs.append(CONFIG_NAME)
                         break
                     response.raise_for_status()
 
@@ -298,7 +299,7 @@ async def propose_best_tag(
         async with httpx.AsyncClient() as client:
             # Zde musí být název configu, pod kterým jsi Topicer API spustil
             # (např. název yaml souboru bez přípony). Zůstávám u tvého openai_gpt.
-            config_candidates = ["openai_gpt"]
+            config_candidates = [CONFIG_NAME]
             method_not_applicable_configs: list[str] = []
 
             for config_name in config_candidates:
