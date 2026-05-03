@@ -7,7 +7,7 @@
       >
         <div
           v-if="chunkOrder !== null && chunkTotal > 0 && isExpanded"
-          class="chunk-order-indicator text-caption text-grey-8"
+          class="chunk-order-indicator text-caption text-grey-8 user-select-none"
         >
           {{ chunkOrder }} / {{ chunkTotal }}
         </div>
@@ -79,7 +79,7 @@
 
               <div
                 v-if="chunkOrder !== null && chunkTotal > 0 && !isExpanded"
-                class="chunk-order-indicator q-ml-auto q-mr-sm text-caption text-grey-8"
+                class="chunk-order-indicator q-ml-auto q-mr-sm text-caption text-grey-8 user-select-none"
               >
                 {{ chunkOrder }} / {{ chunkTotal }}
               </div>
@@ -325,5 +325,9 @@ defineExpose({
   border-radius: 4px;
   padding: 1px 6px;
   line-height: 1.3;
+}
+
+.user-select-none {
+  user-select: none;
 }
 </style>

@@ -110,38 +110,66 @@
       <div v-if="isAutoSelection" class="q-mt-md">
         <div class="auto-progress-box q-mb-sm">
           <div class="text-caption text-grey-7">Auto suggestions</div>
-          <div class="text-body2 text-weight-medium">
-            {{ autoSuggestionProgress.current }} /
-            {{ autoSuggestionProgress.total }}
+          <div class="row items-center justify-start q-gutter-xs">
+            <q-btn
+              flat
+              round
+              dense
+              icon="chevron_left"
+              :disable="
+                pageLoading || autoSuggestionProgress.total <= 1 || !autoSuggestionProgress.hasPending
+              "
+              @click="$emit('previousAutoSpan')"
+            >
+              <q-tooltip>Previous suggestion</q-tooltip>
+            </q-btn>
+
+            <div class="text-body2 text-weight-medium auto-progress-count">
+              {{ autoSuggestionProgress.current }} /
+              {{ autoSuggestionProgress.remaining }}
+            </div>
+
+            <q-btn
+              flat
+              round
+              dense
+              icon="chevron_right"
+              :disable="
+                pageLoading || autoSuggestionProgress.total <= 1 || !autoSuggestionProgress.hasPending
+              "
+              @click="$emit('nextAutoSpan')"
+            >
+              <q-tooltip>Next suggestion</q-tooltip>
+            </q-btn>
           </div>
           <div class="text-caption text-grey-7">
-            {{ autoSuggestionProgress.remaining }} remaining
+            {{ autoSuggestionProgress.remaining }} remaining <br />Suggestions are ordered by confidence from highest.
           </div>
         </div>
 
         <div class="row q-gutter-sm">
-        <q-btn
-          color="positive"
-          icon="thumb_up"
-          label="Approve"
-          :loading="pageLoading"
-          @click="$emit('approveAutoSpan')"
-        />
-        <q-btn
-          color="negative"
-          icon="thumb_down"
-          label="Decline"
-          :loading="pageLoading"
-          @click="$emit('declineAutoSpan')"
-        />
-        <q-btn
-          outline
-          color="negative"
-          icon="remove_done"
-          label="Decline remaining"
-          :disable="pageLoading || !autoSuggestionProgress.hasPending"
-          @click="$emit('declineRemainingAutoSpans')"
-        />
+          <q-btn
+            color="positive"
+            icon="thumb_up"
+            label="Approve"
+            :loading="pageLoading"
+            @click="$emit('approveAutoSpan')"
+          />
+          <q-btn
+            color="negative"
+            icon="thumb_down"
+            label="Decline"
+            :loading="pageLoading"
+            @click="$emit('declineAutoSpan')"
+          />
+          <q-btn
+            outline
+            color="negative"
+            icon="remove_done"
+            label="Decline remaining"
+            :disable="pageLoading || !autoSuggestionProgress.hasPending"
+            @click="$emit('declineRemainingAutoSpans')"
+          />
         </div>
       </div>
 
@@ -165,7 +193,7 @@
           </div>
           <div class="text-caption text-grey-7 q-mb-md">
             Confidence represents the certainty about relevance of tag to the
-            selected text. Hover to view reason of suggestion.
+            selected text.
           </div>
 
           <div class="tag-list">
@@ -203,6 +231,15 @@
           </div>
         </template>
       </template>
+
+      <p
+        v-if="
+          showProbableTagsSection && !isLoadingProbableTags && !hasProbableTags
+        "
+        class="text-grey-7 q-mt-lg"
+      >
+        There were no relevant tags suggested for the selected text.
+      </p>
 
       <q-separator v-if="!isAutoSelection" class="q-mt-lg" />
 
@@ -278,6 +315,8 @@ const emit = defineEmits<{
   approveAutoSpan: []
   declineAutoSpan: []
   declineRemainingAutoSpans: []
+  previousAutoSpan: []
+  nextAutoSpan: []
   close: []
 }>()
 
@@ -311,6 +350,11 @@ const handleClose = () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.auto-progress-count {
+  min-width: 72px;
+  text-align: center;
 }
 
 .tag-list-item {

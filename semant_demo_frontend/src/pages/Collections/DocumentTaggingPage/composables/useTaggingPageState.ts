@@ -159,11 +159,28 @@ export function useTaggingPageState() {
   const autoSuggestionProgress = computed(() => {
     const total = autoSuggestionBatchTotal.value
     const remaining = pendingAutoSuggestions.value.length
+    const currentIndex = getSortedAutoSpanCandidates().findIndex((candidate) => {
+      const selection = globalSelection.value
+      if (!selection || selection.spanType !== SpanType.auto) {
+        return false
+      }
+
+      if (selection.editingId && candidate.span.id === selection.editingId) {
+        return true
+      }
+
+      return (
+        normalizeChunkId(candidate.chunkId) === normalizeChunkId(selection.chunkId) &&
+        candidate.span.tagId === selection.tagId &&
+        candidate.span.start === selection.start &&
+        candidate.span.end === selection.end
+      )
+    })
 
     return {
       total,
       remaining,
-      current: total > 0 && remaining > 0 ? total - remaining + 1 : 0,
+      current: currentIndex >= 0 ? currentIndex + 1 : 0,
       hasPending: remaining > 0
     }
   })
@@ -415,6 +432,55 @@ export function useTaggingPageState() {
 
     if (!nextAutoSpan) {
       clearSelection()
+      return null
+    }
+
+    globalSelection.value = {
+      chunkId: nextAutoSpan.chunkId,
+      start: nextAutoSpan.span.start,
+      end: nextAutoSpan.span.end,
+      editingId: nextAutoSpan.span.id || undefined,
+      tagId: nextAutoSpan.span.tagId,
+      spanType: nextAutoSpan.span.type,
+      confidence: nextAutoSpan.span.confidence
+    }
+
+    return nextAutoSpan.span.id || null
+  }
+
+  const selectAdjacentAutoSpan = (direction: -1 | 1): string | null => {
+    const candidates = getSortedAutoSpanCandidates()
+
+    if (!candidates.length) {
+      clearSelection()
+      return null
+    }
+
+    const currentIndex = candidates.findIndex((candidate) => {
+      const selection = globalSelection.value
+      if (!selection || selection.spanType !== SpanType.auto) {
+        return false
+      }
+
+      if (selection.editingId && candidate.span.id === selection.editingId) {
+        return true
+      }
+
+      return (
+        normalizeChunkId(candidate.chunkId) === normalizeChunkId(selection.chunkId) &&
+        candidate.span.tagId === selection.tagId &&
+        candidate.span.start === selection.start &&
+        candidate.span.end === selection.end
+      )
+    })
+
+    const nextIndex =
+      currentIndex < 0
+        ? 0
+        : (currentIndex + direction + candidates.length) % candidates.length
+    const nextAutoSpan = candidates[nextIndex]
+
+    if (!nextAutoSpan) {
       return null
     }
 
@@ -1316,6 +1382,7 @@ export function useTaggingPageState() {
     approveSelectedAutoSpan,
     declineSelectedAutoSpan,
     declineRemainingAutoSpans,
+    selectAdjacentAutoSpan,
     startAutoAnnotationSuggestions,
     handleSelectionChange,
     refreshProbableTagsForSelection,

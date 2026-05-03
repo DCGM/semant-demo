@@ -221,6 +221,8 @@
                 @approve-auto-span="handleApproveAutoSpan"
                 @decline-auto-span="handleDeclineAutoSpan"
                 @decline-remaining-auto-spans="declineRemainingAutoSpans"
+                @previous-auto-span="handlePreviousAutoSpan"
+                @next-auto-span="handleNextAutoSpan"
                 @close="setActiveTool(null)"
               />
 
@@ -300,6 +302,7 @@ const {
   approveSelectedAutoSpan,
   declineSelectedAutoSpan,
   declineRemainingAutoSpans,
+  selectAdjacentAutoSpan,
   startAutoAnnotationSuggestions,
   handleSelectionChange,
   refreshProbableTagsForSelection,
@@ -603,6 +606,16 @@ const handleApproveAutoSpan = async () => {
 
 const handleDeclineAutoSpan = async () => {
   const nextSpanId = await declineSelectedAutoSpan()
+  await scrollToSpan(nextSpanId)
+}
+
+const handlePreviousAutoSpan = async () => {
+  const nextSpanId = await selectAdjacentAutoSpan(-1)
+  await scrollToSpan(nextSpanId)
+}
+
+const handleNextAutoSpan = async () => {
+  const nextSpanId = await selectAdjacentAutoSpan(1)
   await scrollToSpan(nextSpanId)
 }
 
