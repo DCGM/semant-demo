@@ -72,7 +72,7 @@
               size="sm"
               :icon="isExpanded(tag.tagUuid) ? 'expand_less' : 'info'"
               :disable="!tag.tagUuid"
-              @click="toggleDetails(tag.tagUuid)"
+              @click.stop="toggleDetails(tag.tagUuid)"
             >
               <q-tooltip>
                 {{ isExpanded(tag.tagUuid) ? 'Hide details' : 'Show details' }}
@@ -106,7 +106,7 @@
           </div>
 
           <q-slide-transition>
-            <div v-show="isExpanded(tag.tagUuid)" class="tag-catalog-details">
+            <div v-if="isExpanded(tag.tagUuid)" class="tag-catalog-details">
               <div v-if="tag.tagDefinition" class="tag-catalog-definition">
                 {{ tag.tagDefinition }}
               </div>
@@ -154,7 +154,7 @@ const props = defineProps<{
   tagCounts: Record<string, number>
 }>()
 
-const expandedTagId = ref<string | null>(null)
+const expandedTagIds = ref<Record<string, boolean>>({})
 
 const emit = defineEmits<{
   close: []
@@ -188,7 +188,7 @@ const getTagCount = (tagId: string | null) => {
 
 const isExpanded = (tagId: string | null) => {
   if (!tagId) return false
-  return expandedTagId.value === tagId
+  return !!expandedTagIds.value[tagId]
 }
 
 const hasExamples = (tag: AvailableTag) => {
@@ -197,7 +197,10 @@ const hasExamples = (tag: AvailableTag) => {
 
 const toggleDetails = (tagId: string | null) => {
   if (!tagId) return
-  expandedTagId.value = expandedTagId.value === tagId ? null : tagId
+  expandedTagIds.value = {
+    ...expandedTagIds.value,
+    [tagId]: !expandedTagIds.value[tagId]
+  }
 }
 
 const totalAnnotations = computed(() => {
@@ -278,8 +281,8 @@ const goToTagManagement = () => {
 }
 
 .tag-catalog-details {
-  border-top: 1px solid #e8e8e8;
-  padding-top: 8px;
+  /* border-top: 1px solid #e8e8e8; */
+  /* padding-top: 8px; */
   display: flex;
   flex-direction: column;
   gap: 8px;

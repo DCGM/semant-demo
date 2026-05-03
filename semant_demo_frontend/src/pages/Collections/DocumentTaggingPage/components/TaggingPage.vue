@@ -29,7 +29,7 @@
             class=""
             :label="
               showOnlyCollectionChunks
-                ? 'Full view'
+                ? 'View all chunks'
                 : 'View only collection chunks'
             "
             icon="view_week"
@@ -268,7 +268,7 @@ const railLayoutVersion = ref(0)
 const expandedChunks = ref<Record<string, boolean>>({})
 const activeTool = ref<'info' | 'suggest' | 'catalog' | 'tags' | null>('info')
 const hiddenTagIds = ref<Set<string>>(new Set())
-const showOnlyCollectionChunks = ref(false)
+const showOnlyCollectionChunks = ref(true)
 const chunkExpansionPreset = ref<'collection' | 'all' | 'collapsed'>(
   'collection'
 )

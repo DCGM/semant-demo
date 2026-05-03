@@ -174,7 +174,9 @@ export function useTagging() {
         tagName: tag.name,
         tagColor: tag.color,
         tagShorthand: tag.shorthand,
-        tagPictogram: tag.pictogram
+        tagPictogram: tag.pictogram,
+        tagDefinition: tag.definition || undefined,
+        tagExamples: tag.examples || undefined
       }))
     } catch (error) {
       console.error('Error fetching tags for collection:', error)

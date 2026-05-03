@@ -6,7 +6,7 @@
         class="absolute-top-right row items-center q-pa-xs q-gutter-md floating-buttons"
       >
         <div
-          v-if="chunkOrder !== null && chunkTotal > 0"
+          v-if="chunkOrder !== null && chunkTotal > 0 && isExpanded"
           class="chunk-order-indicator text-caption text-grey-8"
         >
           {{ chunkOrder }} / {{ chunkTotal }}
@@ -76,7 +76,14 @@
                 </q-tooltip></q-btn
               >
               <span>{{ chunkTextShort }}</span>
-              <span class="q-ml-auto text-weight-regular text-grey-7"
+
+              <div
+                v-if="chunkOrder !== null && chunkTotal > 0 && !isExpanded"
+                class="chunk-order-indicator q-ml-auto q-mr-sm text-caption text-grey-8"
+              >
+                {{ chunkOrder }} / {{ chunkTotal }}
+              </div>
+              <span class="text-weight-regular text-grey-7"
                 >{{ chunkAnnotationsCount }}
                 {{
                   chunkAnnotationsCount === 1 ? 'annotation' : 'annotations'
