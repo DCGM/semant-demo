@@ -182,7 +182,7 @@
 
               <AutoAnnotationSuggestionsMenu
                 v-else-if="activeTool === 'suggest'"
-                :available-tags="availableTags"
+                :available-tags="sortedAvailableTags"
                 :is-loading="isSuggestingAnnotations"
                 :collection-id="props.collectionId"
                 @start-suggestions="handleStartSuggestions"
@@ -192,7 +192,7 @@
 
               <TagCatalogMenu
                 v-else-if="activeTool === 'catalog'"
-                :available-tags="availableTags"
+                :available-tags="sortedAvailableTags"
                 :collection-id="props.collectionId"
                 :hidden-tag-ids="[...hiddenTagIds]"
                 :tag-counts="tagCounts"
@@ -209,7 +209,7 @@
                 :debug="DEBUG"
                 :page-loading="pageLoading"
                 :is-auto-selection="isAutoSelection"
-                :available-tags="availableTags"
+                :available-tags="sortedAvailableTags"
                 :probable-tags="probableTagSuggestions"
                 :is-loading-probable-tags="isLoadingProbableTags"
                 :collection-id="props.collectionId"
@@ -388,6 +388,19 @@ const tagCounts = computed<Record<string, number>>(() => {
     },
     {}
   )
+})
+
+const sortedAvailableTags = computed(() => {
+  return [...availableTags.value].sort((leftTag, rightTag) => {
+    const leftCount = leftTag.tagUuid ? tagCounts.value[leftTag.tagUuid] ?? 0 : -1
+    const rightCount = rightTag.tagUuid ? tagCounts.value[rightTag.tagUuid] ?? 0 : -1
+
+    if (leftCount !== rightCount) {
+      return rightCount - leftCount
+    }
+
+    return leftTag.tagName.localeCompare(rightTag.tagName)
+  })
 })
 
 const goBack = () => {
