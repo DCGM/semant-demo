@@ -97,7 +97,7 @@
         >
           No tags available for this collection.
         </p>
-        <div v-if="availableTags.length === 0" class="q-mt-none q-ml-sm">
+        <div v-if="availableTags.length === 0" class="q-mt-none">
           <go-to-tag-management
             :collectionId="props.collectionId"
             :before-redirect="() => $emit('clearSelection')"

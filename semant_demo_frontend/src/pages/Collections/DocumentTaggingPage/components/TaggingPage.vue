@@ -59,6 +59,8 @@
               :key="chunk.chunkId"
               :ref="(el) => setChunkItemRef(chunk.chunkId, el)"
               :chunk-id="chunk.chunkId"
+              :chunk-order="chunkOrderById[chunk.chunkId] ?? null"
+              :chunk-total="chunks.length"
               :chunk-text="chunk.textChunk"
               :in-user-collection="chunk.inUserCollection"
               :is-expanded="getChunkExpanded(chunk)"
@@ -314,6 +316,13 @@ const displayedChunks = computed(() => {
   }
 
   return chunks.value.filter((chunk) => chunk.inUserCollection)
+})
+
+const chunkOrderById = computed<Record<string, number>>(() => {
+  return chunks.value.reduce<Record<string, number>>((acc, chunk, index) => {
+    acc[chunk.chunkId] = index + 1
+    return acc
+  }, {})
 })
 
 const isAutoSelection = computed(() => {

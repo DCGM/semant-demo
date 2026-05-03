@@ -5,6 +5,13 @@
       <div
         class="absolute-top-right row items-center q-pa-xs q-gutter-md floating-buttons"
       >
+        <div
+          v-if="chunkOrder !== null && chunkTotal > 0"
+          class="chunk-order-indicator text-caption text-grey-8"
+        >
+          {{ chunkOrder }} / {{ chunkTotal }}
+        </div>
+
         <!-- Collection Button: Visible ONLY when open -->
         <q-btn
           v-if="isExpanded"
@@ -141,6 +148,8 @@ interface HoveredSpanMarker {
 
 interface Props {
   chunkId: string
+  chunkOrder: number | null
+  chunkTotal: number
   chunkText: string
   inUserCollection: boolean
   isExpanded: boolean
@@ -301,5 +310,13 @@ defineExpose({
 
 .floating-buttons {
   z-index: 100;
+}
+
+.chunk-order-indicator {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  padding: 1px 6px;
+  line-height: 1.3;
 }
 </style>
