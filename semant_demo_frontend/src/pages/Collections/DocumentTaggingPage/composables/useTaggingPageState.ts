@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useTagging } from './useTagging'
 import { snapToWordBoundary } from '../utils'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
@@ -107,8 +107,6 @@ interface ProbableTagSuggestion {
   reason: string
 }
 
-const PROBABLE_TAGS_DEBOUNCE_MS = 250
-
 const normalizeChunkId = (chunkId: string | null | undefined): string => {
   return (chunkId || '').trim().toLowerCase()
 }
@@ -120,7 +118,6 @@ export function useTaggingPageState() {
     documentDetail,
     availableTags,
     collectionTags,
-    discoveredTopicChunkIds,
     isProcessing,
     getDocumentDetail,
     addChunkToCollection,
@@ -140,6 +137,7 @@ export function useTaggingPageState() {
   const tagSpansByChunkId = ref<Record<string, TagSpanWithConfidence[]>>({})
   const pendingAutoSuggestions = ref<AutoSpanCandidate[]>([])
   const reviewedAutoSuggestionChunkIds = ref<string[]>([])
+  const autoSuggestionBatchTotal = ref(0)
   const isPreloading = ref(false)
   const collectionActionChunkId = ref<string | null>(null)
   const isBulkCollectionUpdating = ref(false)
@@ -157,6 +155,18 @@ export function useTaggingPageState() {
     () =>
       isProcessing.value || isPreloading.value || isBulkCollectionUpdating.value
   )
+
+  const autoSuggestionProgress = computed(() => {
+    const total = autoSuggestionBatchTotal.value
+    const remaining = pendingAutoSuggestions.value.length
+
+    return {
+      total,
+      remaining,
+      current: total > 0 && remaining > 0 ? total - remaining + 1 : 0,
+      hasPending: remaining > 0
+    }
+  })
 
   const chunks = computed<TaggingChunk[]>(() => {
     return (
@@ -1064,6 +1074,7 @@ export function useTaggingPageState() {
     if (pendingAutoSuggestions.value.length === 0) {
       await refreshSelectedChunkSpans(reviewedAutoSuggestionChunkIds.value)
       reviewedAutoSuggestionChunkIds.value = []
+      autoSuggestionBatchTotal.value = 0
     }
 
     return selectHighestConfidenceAutoSpan()
@@ -1075,6 +1086,20 @@ export function useTaggingPageState() {
 
   const declineSelectedAutoSpan = async () => {
     return await updateSelectedAutoSpanType(SpanType.neg)
+  }
+
+  const declineRemainingAutoSpans = async (): Promise<void> => {
+    while (
+      pendingAutoSuggestions.value.length > 0 &&
+      globalSelection.value?.spanType === SpanType.auto
+    ) {
+      const currentSelectionId = globalSelection.value.editingId ?? null
+      const nextSpanId = await declineSelectedAutoSpan()
+
+      if (nextSpanId === currentSelectionId) {
+        break
+      }
+    }
   }
 
   const startAutoAnnotationSuggestions = async (
@@ -1127,9 +1152,11 @@ export function useTaggingPageState() {
     if (!suggestedSpans.length) {
       pendingAutoSuggestions.value = []
       reviewedAutoSuggestionChunkIds.value = []
+      autoSuggestionBatchTotal.value = 0
       return null
     }
 
+    autoSuggestionBatchTotal.value = suggestedSpans.length
     pendingAutoSuggestions.value = suggestedSpans.map((span) => ({
       chunkId: span.chunkId,
       span
@@ -1271,6 +1298,7 @@ export function useTaggingPageState() {
     availableTags,
     probableTagSuggestions,
     isLoadingProbableTags,
+    autoSuggestionProgress,
     pageLoading,
     globalSelection,
     useWordSnapping,
@@ -1287,6 +1315,7 @@ export function useTaggingPageState() {
     deleteEditedTag,
     approveSelectedAutoSpan,
     declineSelectedAutoSpan,
+    declineRemainingAutoSpans,
     startAutoAnnotationSuggestions,
     handleSelectionChange,
     refreshProbableTagsForSelection,

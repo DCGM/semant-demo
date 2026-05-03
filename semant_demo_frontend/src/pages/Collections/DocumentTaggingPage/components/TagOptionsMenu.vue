@@ -107,7 +107,19 @@
 
       <q-separator v-if="isAutoSelection" class="q-mt-lg" />
 
-      <div v-if="isAutoSelection" class="row q-gutter-sm q-mt-md">
+      <div v-if="isAutoSelection" class="q-mt-md">
+        <div class="auto-progress-box q-mb-sm">
+          <div class="text-caption text-grey-7">Auto suggestions</div>
+          <div class="text-body2 text-weight-medium">
+            {{ autoSuggestionProgress.current }} /
+            {{ autoSuggestionProgress.total }}
+          </div>
+          <div class="text-caption text-grey-7">
+            {{ autoSuggestionProgress.remaining }} remaining
+          </div>
+        </div>
+
+        <div class="row q-gutter-sm">
         <q-btn
           color="positive"
           icon="thumb_up"
@@ -122,6 +134,15 @@
           :loading="pageLoading"
           @click="$emit('declineAutoSpan')"
         />
+        <q-btn
+          outline
+          color="negative"
+          icon="remove_done"
+          label="Decline remaining"
+          :disable="pageLoading || !autoSuggestionProgress.hasPending"
+          @click="$emit('declineRemainingAutoSpans')"
+        />
+        </div>
       </div>
 
       <template
@@ -241,6 +262,12 @@ const props = defineProps<{
   probableTags: ProbableTag[]
   isLoadingProbableTags: boolean
   collectionId: string
+  autoSuggestionProgress: {
+    total: number
+    remaining: number
+    current: number
+    hasPending: boolean
+  }
 }>()
 
 const emit = defineEmits<{
@@ -250,6 +277,7 @@ const emit = defineEmits<{
   deleteEditedTag: []
   approveAutoSpan: []
   declineAutoSpan: []
+  declineRemainingAutoSpans: []
   close: []
 }>()
 
@@ -307,5 +335,13 @@ const handleClose = () => {
 .tag-label {
   font-size: 0.95rem;
   color: #1a1a1a;
+}
+
+.auto-progress-box {
+  min-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #fafafa;
 }
 </style>

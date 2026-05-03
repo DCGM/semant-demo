@@ -18,7 +18,7 @@
           dense
           flat
           round
-          :icon="inUserCollection ? 'check' : 'remove'"
+          :icon="inUserCollection ? 'check' : 'add'"
           size="sm"
           :color="inUserCollection ? 'positive' : 'grey-9'"
           :loading="isCollectionUpdating"

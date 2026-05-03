@@ -213,12 +213,14 @@
                 :probable-tags="probableTagSuggestions"
                 :is-loading-probable-tags="isLoadingProbableTags"
                 :collection-id="props.collectionId"
+                :auto-suggestion-progress="autoSuggestionProgress"
                 @tag-click="handleTagClick"
                 @clear-selection="clearSelection"
                 @save-edited-tag="saveEditedTag"
                 @delete-edited-tag="deleteEditedTag"
                 @approve-auto-span="handleApproveAutoSpan"
                 @decline-auto-span="handleDeclineAutoSpan"
+                @decline-remaining-auto-spans="declineRemainingAutoSpans"
                 @close="setActiveTool(null)"
               />
 
@@ -284,6 +286,7 @@ const {
   useWordSnapping,
   probableTagSuggestions,
   isLoadingProbableTags,
+  autoSuggestionProgress,
   selectionBoundaryChunkIds,
   globalSelectionBoundaries,
   isChunkCollectionUpdating,
@@ -296,6 +299,7 @@ const {
   deleteEditedTag,
   approveSelectedAutoSpan,
   declineSelectedAutoSpan,
+  declineRemainingAutoSpans,
   startAutoAnnotationSuggestions,
   handleSelectionChange,
   refreshProbableTagsForSelection,
