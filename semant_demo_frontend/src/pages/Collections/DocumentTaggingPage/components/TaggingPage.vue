@@ -65,7 +65,7 @@
               :in-user-collection="chunk.inUserCollection"
               :is-expanded="getChunkExpanded(chunk)"
               :tag-spans="getVisibleTagSpans(chunk.chunkId)"
-              :available-tags="availableTags"
+              :available-tags="sortedAvailableTags"
               :is-processing="pageLoading"
               :snap-to-words="useWordSnapping"
               :selection="getChunkSelection(chunk.chunkId)"
@@ -108,7 +108,7 @@
           <div class="rails-column">
             <AnnotationTagRail
               :markers="visibleAnnotationMarkers"
-              :available-tags="availableTags"
+              :available-tags="sortedAvailableTags"
               :layout-trigger="railLayoutTrigger"
               :hovered-marker="hoveredAnnotationMarker"
               @marker-click="selectSpanFromAnnotationMarker"
