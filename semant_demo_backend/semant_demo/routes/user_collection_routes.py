@@ -110,8 +110,7 @@ async def remove_chunk_from_collection(req: schemas.Chunk2CollectionReq,
     Removes connection between chunk and user collection.
     """
     try:
-        err = await searcher.userCollection.remove_chunks(src_id=req.chunkId,
-                                                          target_collection_id=req.collectionId)
+        err = await searcher.userCollection.remove_chunk(chunk_id=req.chunkId, collection_id=req.collectionId)
         if err == False:
             raise Exception("weaviate error, reference not removed")
         return schemas.CreateResponse(created=True, message="Chunk removed from collection")

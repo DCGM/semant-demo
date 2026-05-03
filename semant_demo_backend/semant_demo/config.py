@@ -23,6 +23,7 @@ class Config:
         self.TOPICER_URL = os.getenv("TOPICER_URL", "http://localhost:8089")
         self.TOPICER_CONFIG_NAME = os.getenv("TOPICER_CONFIG_NAME", "")
         self.TOPICER_TIMEOUT = float(os.getenv("TOPICER_TIMEOUT", 30.0))
+        self.TOPICER_READ_WRITE_TIMEOUT = float(os.getenv("TOPICER_RW_TIMEOUT", 600.0))
 
         self.PRODUCTION = os.getenv("PRODUCTION", str(False)).lower() in TRUE_VALUES
         self.MODEL_NAME = os.getenv("MODEL_NAME", 'clip-ViT-L-14')

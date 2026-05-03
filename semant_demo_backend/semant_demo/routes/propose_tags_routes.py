@@ -15,13 +15,14 @@ LOGGER = logging.getLogger(__name__)
 
 TOPICER_PROPOSE_TAGS_TEXTS_PATH = "/v1/tags/propose/texts"
 TOPICER_CONFIGS_PATH = "/v1/configs"
+TOPICER_PROPOSE_MOST_PROBABLE_TAG_PATH = "/v1/tags/propose/texts/most_probable"
 
 
 def _topicer_http_timeout() -> httpx.Timeout:
     return httpx.Timeout(
-        connect=config.TOPICER_CONNECT_TIMEOUT,
-        read=config.TOPICER_READ_TIMEOUT,
-        write=config.TOPICER_TIMEOUT,
+        connect=config.TOPICER_TIMEOUT,
+        read=config.TOPICER_READ_WRITE_TIMEOUT,
+        write=config.TOPICER_READ_WRITE_TIMEOUT,
         pool=config.TOPICER_TIMEOUT,
     )
 
@@ -68,12 +69,6 @@ def _build_suggestions(
     return suggestions
 
 
-def _build_topicer_chunk_payload(
-    chunks: list[schemas.TextChunk],
-) -> list[dict[str, str]]:
-    return [{"id": str(chunk.id), "text": chunk.text} for chunk in chunks]
-
-
 def _build_topicer_tags_payload(
     tags: list[schemas.TagData],
 ) -> list[dict[str, str]]:
@@ -87,10 +82,14 @@ def _build_topicer_tags_payload(
     ]
 
 
+class AutoAnnotationSuggestionWithReason(schemas.AutoAnnotationSuggestion):
+    reason: str | None = None
+
+
 def _topicer_proposal_to_auto_suggestions(
     payload: object,
     fallback_chunk_id: str,
-) -> list[schemas.AutoAnnotationSuggestion]:
+) -> list[AutoAnnotationSuggestionWithReason]:
     if not isinstance(payload, dict):
         raise ValueError("Topicer propose tags payload must be an object.")
 
@@ -103,7 +102,7 @@ def _topicer_proposal_to_auto_suggestions(
         raise ValueError(
             "Topicer propose tags payload is missing 'tag_span_proposals'.")
 
-    suggestions: list[schemas.AutoAnnotationSuggestion] = []
+    suggestions: list[AutoAnnotationSuggestionWithReason] = []
     for proposal in proposals:
         if not isinstance(proposal, dict):
             raise ValueError("Topicer tag span proposal must be an object.")
@@ -126,8 +125,10 @@ def _topicer_proposal_to_auto_suggestions(
         confidence = proposal.get("confidence")
         confidence_value = float(confidence) if confidence is not None else 0.0
 
+        reason = proposal.get("reason")
+
         suggestions.append(
-            schemas.AutoAnnotationSuggestion(
+            AutoAnnotationSuggestionWithReason(
                 id=str(uuid.uuid4()),
                 chunkId=chunk_id,
                 tagId=tag_id,
@@ -135,24 +136,11 @@ def _topicer_proposal_to_auto_suggestions(
                 end=span_end,
                 type=schemas.SpanType.auto,
                 confidence=confidence_value,
+                reason=reason,
             )
         )
 
     return suggestions
-
-
-def _select_confident_suggestions(
-    suggestions: list[schemas.AutoAnnotationSuggestion],
-    confidence_threshold: float,
-    max_count: int = 3,
-) -> list[schemas.AutoAnnotationSuggestion]:
-    confident = [
-        suggestion
-        for suggestion in suggestions
-        if suggestion.confidence >= confidence_threshold
-    ]
-    confident.sort(key=lambda suggestion: suggestion.confidence, reverse=True)
-    return confident[:max_count]
 
 
 def _raise_topicer_gateway_error(detail: str) -> NoReturn:
@@ -160,28 +148,6 @@ def _raise_topicer_gateway_error(detail: str) -> NoReturn:
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail=detail,
     )
-
-
-async def _resolve_topicer_config_candidates(client: httpx.AsyncClient) -> list[str]:
-    if config.TOPICER_CONFIG_NAME:
-        return [config.TOPICER_CONFIG_NAME]
-
-    response = await client.get(
-        f"{config.TOPICER_URL}{TOPICER_CONFIGS_PATH}",
-        timeout=_topicer_http_timeout(),
-    )
-    response.raise_for_status()
-
-    names = response.json()
-    if not isinstance(names, list) or len(names) == 0:
-        raise ValueError("Topicer returned no available configs.")
-
-    valid_names = [name for name in names if isinstance(
-        name, str) and name != ""]
-    if len(valid_names) == 0:
-        raise ValueError("Topicer returned invalid config list.")
-
-    return valid_names
 
 
 def _extract_topicer_error_detail(response: httpx.Response) -> str:
@@ -200,23 +166,6 @@ def _extract_topicer_error_detail(response: httpx.Response) -> str:
 
 def _is_method_not_applicable_error(response: httpx.Response) -> bool:
     return "method not applicable" in _extract_topicer_error_detail(response).lower()
-
-
-def _sparse_topic_documents_to_dense(
-    sparse_topic_documents: list[list[tuple[int, float]]],
-    chunk_count: int,
-) -> list[list[float]]:
-    dense_topic_documents = [
-        [0.0 for _ in range(chunk_count)]
-        for _ in range(len(sparse_topic_documents))
-    ]
-
-    for topic_index, topic_documents in enumerate(sparse_topic_documents):
-        for chunk_index, probability in topic_documents:
-            if 0 <= chunk_index < chunk_count:
-                dense_topic_documents[topic_index][chunk_index] = probability
-
-    return dense_topic_documents
 
 
 @exp_router.post(
@@ -247,54 +196,53 @@ async def propose_tags(
 
     try:
         async with httpx.AsyncClient() as client:
-            config_candidates = ['openai_gpt5']
+            config_name = "openai_gpt"
             method_not_applicable_configs: list[str] = []
 
-            for config_name in config_candidates:
-                all_suggestions: list[schemas.AutoAnnotationSuggestion] = []
+            all_suggestions: list[schemas.AutoAnnotationSuggestion] = []
 
-                for chunk in body.chunks:
-                    response = await client.post(
-                        f"{config.TOPICER_URL}{TOPICER_PROPOSE_TAGS_TEXTS_PATH}",
-                        params={"config_name": config_name},
-                        json={
-                            "text_chunk": {
-                                "id": str(chunk.id),
-                                "text": chunk.text,
-                            },
-                            "tags": topicer_tags,
-                        },
-                        timeout=_topicer_http_timeout(),
-                    )
-
-                    print({
+            for chunk in body.chunks:
+                response = await client.post(
+                    f"{config.TOPICER_URL}{TOPICER_PROPOSE_TAGS_TEXTS_PATH}",
+                    params={"config_name": config_name},
+                    json={
                         "text_chunk": {
                             "id": str(chunk.id),
                             "text": chunk.text,
                         },
                         "tags": topicer_tags,
-                    },)
+                    },
+                    timeout=_topicer_http_timeout(),
+                )
 
-                    if response.status_code >= 400:
-                        if _is_method_not_applicable_error(response):
-                            method_not_applicable_configs.append(config_name)
-                            break
-                        response.raise_for_status()
+                print({
+                    "text_chunk": {
+                        "id": str(chunk.id),
+                        "text": chunk.text,
+                    },
+                    "tags": topicer_tags,
+                },)
 
-                    try:
-                        chunk_suggestions = _topicer_proposal_to_auto_suggestions(
-                            response.json(),
-                            fallback_chunk_id=str(chunk.id),
-                        )
-                    except Exception as exc:
-                        LOGGER.exception(
-                            "Topicer returned invalid propose tags payload.")
-                        _raise_topicer_gateway_error(
-                            f"Topicer returned invalid propose tags payload: {exc}")
+                if response.status_code >= 400:
+                    if _is_method_not_applicable_error(response):
+                        method_not_applicable_configs.append(config_name)
+                        break
+                    response.raise_for_status()
 
-                    all_suggestions.extend(chunk_suggestions)
-                else:
-                    return schemas.AutoAnnotationsSuggestionsResponse(suggestions=all_suggestions)
+                try:
+                    chunk_suggestions = _topicer_proposal_to_auto_suggestions(
+                        response.json(),
+                        fallback_chunk_id=str(chunk.id),
+                    )
+                except Exception as exc:
+                    LOGGER.exception(
+                        "Topicer returned invalid propose tags payload.")
+                    _raise_topicer_gateway_error(
+                        f"Topicer returned invalid propose tags payload: {exc}")
+
+                all_suggestions.extend(chunk_suggestions)
+            else:
+                return schemas.AutoAnnotationsSuggestionsResponse(suggestions=all_suggestions)
 
             if len(method_not_applicable_configs) > 0:
                 unique_configs = sorted(set(method_not_applicable_configs))
@@ -307,7 +255,7 @@ async def propose_tags(
         LOGGER.exception("Topicer request timed out.")
         _raise_topicer_gateway_error(
             "Topicer request timed out while waiting for LLM response. "
-            "Increase TOPICER_READ_TIMEOUT (or TOPICER_TIMEOUT)."
+            "Increase TOPICER_READ_WRITE_TIMEOUT (or TOPICER_TIMEOUT)."
         )
     except httpx.HTTPStatusError as exc:
         response_text = _extract_topicer_error_detail(exc.response)[:500]
@@ -333,12 +281,14 @@ async def propose_tags(
 async def propose_best_tag(
     body: schemas.BestTagProposalRequest,
 ) -> schemas.BestTagProposalResponse:
-    """Call Topicer tag proposal and return top confident tags."""
+    """Call Topicer BERT zero-shot tag proposal and return the single most confident tag."""
     if body.text.strip() == "" or len(body.tags) == 0:
         return schemas.BestTagProposalResponse(suggestions=[])
 
     fallback_chunk_id = str(uuid.uuid4())
     topicer_tags = _build_topicer_tags_payload(body.tags)
+
+    # Rychlý lookup slovník pro namapování zpět na původní tag
     tag_by_id = {
         _fallback_tag_id(tag): tag
         for tag in body.tags
@@ -346,12 +296,15 @@ async def propose_best_tag(
 
     try:
         async with httpx.AsyncClient() as client:
-            config_candidates = ["openai_gpt5"]
+            # Zde musí být název configu, pod kterým jsi Topicer API spustil
+            # (např. název yaml souboru bez přípony). Zůstávám u tvého openai_gpt.
+            config_candidates = ["openai_gpt"]
             method_not_applicable_configs: list[str] = []
 
             for config_name in config_candidates:
                 response = await client.post(
-                    f"{config.TOPICER_URL}{TOPICER_PROPOSE_TAGS_TEXTS_PATH}",
+                    # VOLÁME NOVÝ ENDPOINT
+                    f"{config.TOPICER_URL}{TOPICER_PROPOSE_MOST_PROBABLE_TAG_PATH}",
                     params={"config_name": config_name},
                     json={
                         "text_chunk": {
@@ -370,48 +323,60 @@ async def propose_best_tag(
                     response.raise_for_status()
 
                 try:
-                    suggestions = _topicer_proposal_to_auto_suggestions(
-                        response.json(),
-                        fallback_chunk_id=fallback_chunk_id,
-                    )
+                    # Nový endpoint vrací rovnou {"tag": {...}, "confidence": 0.95} nebo null
+                    payload = response.json()
                 except Exception as exc:
-                    LOGGER.exception(
-                        "Topicer returned invalid propose tags payload.")
+                    LOGGER.exception("Topicer returned invalid JSON payload.")
                     _raise_topicer_gateway_error(
-                        f"Topicer returned invalid propose tags payload: {exc}"
-                    )
+                        f"Topicer returned invalid JSON: {exc}")
 
-                top_suggestions = _select_confident_suggestions(
-                    suggestions=suggestions,
-                    confidence_threshold=body.confidence_threshold,
-                    max_count=3,
+                # Pokud model nenašel vůbec nic (vrátil None/null)
+                if not payload:
+                    return schemas.BestTagProposalResponse(suggestions=[])
+
+                # Extrakce dat z nového formátu
+                topicer_tag = payload.get("tag", {})
+                tag_id = topicer_tag.get("id")
+                confidence = payload.get("confidence", 0.0)
+
+                if not tag_id:
+                    _raise_topicer_gateway_error(
+                        "Topicer response missing tag ID.")
+
+                # Filtrování podle threshold hodnoty z requestu
+                if confidence < body.confidence_threshold:
+                    return schemas.BestTagProposalResponse(suggestions=[])
+
+                # Sestavení odpovědi. BERT zero-shot klasifikuje text jako celek,
+                # proto je span od 0 do konce textu.
+                proposal = schemas.BestTagProposal(
+                    tagId=tag_id,
+                    confidence=confidence,
+                    start=0,
+                    end=len(body.text),
+                    tag=tag_by_id.get(tag_id),
+                    # reason=f"Klasifikováno modelem BERT s jistotou {confidence:.2f}"
+                    reason=f"Classification with confidence of {confidence * 100:.1f}%"
                 )
 
                 return schemas.BestTagProposalResponse(
-                    suggestions=[
-                        schemas.BestTagProposal(
-                            tagId=suggestion.tagId,
-                            confidence=suggestion.confidence,
-                            start=suggestion.start,
-                            end=suggestion.end,
-                            tag=tag_by_id.get(suggestion.tagId),
-                        )
-                        for suggestion in top_suggestions
-                    ]
+                    suggestions=[proposal]
                 )
 
+            # Pokud smyčka doběhne a žádný config neměl metodu implementovanou
             if len(method_not_applicable_configs) > 0:
                 unique_configs = sorted(set(method_not_applicable_configs))
                 joined_configs = ", ".join(unique_configs)
                 _raise_topicer_gateway_error(
-                    "Tag proposal is not implemented for available Topicer configs: "
-                    f"{joined_configs}. Set TOPICER_CONFIG_NAME to a config that supports tag proposal."
+                    "Method 'find_most_probable_tag' is not implemented for available configs: "
+                    f"{joined_configs}."
                 )
+
     except httpx.ReadTimeout as exc:
         LOGGER.exception("Topicer request timed out.")
         _raise_topicer_gateway_error(
-            "Topicer request timed out while waiting for LLM response. "
-            "Increase TOPICER_READ_TIMEOUT (or TOPICER_TIMEOUT)."
+            "Topicer request timed out while waiting for BERT response. "
+            "Increase TOPICER_READ_WRITE_TIMEOUT (or TOPICER_TIMEOUT)."
         )
     except httpx.HTTPStatusError as exc:
         response_text = _extract_topicer_error_detail(exc.response)[:500]
