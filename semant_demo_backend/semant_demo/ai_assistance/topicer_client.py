@@ -58,15 +58,20 @@ async def propose_for_text_chunk(
         "text_chunk": {"id": str(chunk_id), "text": chunk_text},
         "tags": [_tag_payload(t) for t in tags],
     }
+    path = "/v1/tags/propose/texts"
+    full_url = f"{str(client.base_url).rstrip('/')}{path}?config_name={config.TOPICER_CONFIG_NAME}"
     try:
         resp = await client.post(
-            "/v1/tags/propose/texts",
+            path,
             params={"config_name": config.TOPICER_CONFIG_NAME},
             json=body,
         )
         resp.raise_for_status()
     except httpx.HTTPError as e:
-        logger.warning("Topicer /tags/propose/texts failed for chunk %s: %s", chunk_id, e)
+        logger.warning(
+            "Topicer POST %s failed for chunk %s: %s (%s)",
+            full_url, chunk_id, e, type(e).__name__,
+        )
         raise TopicerError(str(e)) from e
 
     data = resp.json()
@@ -93,10 +98,12 @@ async def propose_for_db_stream(
             "document_id": str(document_id),
         },
     }
+    path = "/v1/tags/propose/db/stream"
+    full_url = f"{str(client.base_url).rstrip('/')}{path}?config_name={config.TOPICER_CONFIG_NAME}"
     try:
         async with client.stream(
             "POST",
-            "/v1/tags/propose/db/stream",
+            path,
             params={"config_name": config.TOPICER_CONFIG_NAME},
             json=body,
         ) as resp:
@@ -110,7 +117,7 @@ async def propose_for_db_stream(
                     logger.warning("Topicer stream produced non-JSON line: %r", line)
     except httpx.HTTPError as e:
         logger.warning(
-            "Topicer /tags/propose/db/stream failed (tag=%s, doc=%s): %s",
-            tag.get("id"), document_id, e,
+            "Topicer POST %s failed (tag=%s, doc=%s): %s (%s)",
+            full_url, tag.get("id"), document_id, e, type(e).__name__,
         )
         raise TopicerError(str(e)) from e

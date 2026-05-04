@@ -17,6 +17,20 @@
         </q-btn>
       </div>
       <div class="paper-view-toolbar">
+        <q-btn
+          flat dense round
+          icon="format_indent_increase"
+          size="sm"
+          class="view-btn"
+          :class="{ 'view-btn--active': preserveWhitespace }"
+          :title="preserveWhitespace ? 'Switch to compact whitespace (collapse spaces & line breaks)' : 'Switch to original whitespace (preserve spaces & line breaks)'"
+          @click="preserveWhitespace = !preserveWhitespace"
+        >
+          <q-tooltip v-if="preserveWhitespace">Showing original whitespace — click to collapse</q-tooltip>
+          <q-tooltip v-else>Showing collapsed whitespace — click to preserve original</q-tooltip>
+        </q-btn>
+      </div>
+      <div class="paper-view-toolbar">
       <q-btn
         flat dense no-caps
         icon="playlist_add_check"
@@ -63,6 +77,8 @@
           :class="{ 'is-checked': selectedChunkIds.includes(item.chunkId), 'is-hovered': hoveredChunkId === item.chunkId }"
           :style="{ top: item.top + 'px', height: item.height + 'px' }"
           :title="selectedChunkIds.includes(item.chunkId) ? 'Deselect chunk' : 'Select chunk'"
+          @mouseenter="gutterHoveredChunkId = item.chunkId"
+          @mouseleave="gutterHoveredChunkId = null"
           @click.stop="toggleChunkSelection(item.chunkId)"
         >
           <q-icon
@@ -82,8 +98,8 @@
             class="chunk-gutter-item"
             :class="{ 'chunk-gutter-item--text-hover': hoveredChunkId === item.chunkId }"
             :style="{ top: item.top + 'px', height: item.height + 'px' }"
-            @mouseenter="hoveredChunkId = item.chunkId; if (!item.inCollection) hoveredPreviewChunkId = item.chunkId"
-            @mouseleave="hoveredChunkId = null; hoveredPreviewChunkId = null"
+            @mouseenter="hoveredChunkId = item.chunkId; gutterHoveredChunkId = item.chunkId; if (!item.inCollection) hoveredPreviewChunkId = item.chunkId"
+            @mouseleave="hoveredChunkId = null; gutterHoveredChunkId = null; hoveredPreviewChunkId = null"
           >
             <div
               class="chunk-bar"
@@ -154,7 +170,7 @@
             />
           </div>
 
-          <div class="document-text" ref="documentTextRef" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="hoveredPreviewChunkId = null">
+          <div class="document-text" :class="{ 'document-text--preserve-whitespace': preserveWhitespace }" ref="documentTextRef" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="hoveredPreviewChunkId = null">
             <template v-for="(group, gIndex) in assembledParagraphs" :key="gIndex">
               <p>
                 <ChunkAnnotator
@@ -166,7 +182,7 @@
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
                   :highlight-span-id="hoveredSpanId || highlightedAutoSpanId"
-                  :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id }"
+                  :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id, 'chunk-gutter-hovered': gutterHoveredChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
               </p>
@@ -258,6 +274,7 @@
       <Teleport to="body">
         <div
           v-if="annotations.hasSelection.value"
+          ref="popoverEl"
           class="annotation-popover"
           :style="popoverStyle"
           @mousedown.stop
@@ -306,6 +323,69 @@
             </div>
           </template>
 
+          <!-- AI tag picker mode (multi-select for selection-scoped Topicer run) -->
+          <template v-else-if="showAiTagPicker">
+            <div class="popover-header">
+              <span class="popover-title">Tags to consider</span>
+              <q-btn flat dense round icon="arrow_back" size="sm" @click="showAiTagPicker = false" />
+            </div>
+            <q-input
+              v-model="aiTagSearch"
+              dense
+              outlined
+              placeholder="Search tags..."
+              class="tag-search"
+              autofocus
+              clearable
+            >
+              <template #prepend>
+                <q-icon name="search" size="xs" />
+              </template>
+            </q-input>
+            <div class="ai-picker-toolbar">
+              <span class="ai-picker-count">
+                {{ aiTagPickerSelected.size }} / {{ tags.length }} selected
+              </span>
+              <q-space />
+              <q-btn flat dense no-caps size="sm" label="All" @click="aiPickerSelectAll" />
+              <q-btn flat dense no-caps size="sm" label="None" @click="aiPickerSelectNone" />
+            </div>
+            <div class="tag-list">
+              <div
+                v-for="tag in aiPickerFilteredTags"
+                :key="tag.id"
+                class="tag-row"
+                :class="{ 'is-active': aiTagPickerSelected.has(tag.id) }"
+                @click="toggleAiPickerTag(tag.id)"
+              >
+                <q-checkbox
+                  :model-value="aiTagPickerSelected.has(tag.id)"
+                  dense
+                  size="xs"
+                  class="tag-check"
+                  @click.stop
+                  @update:model-value="toggleAiPickerTag(tag.id)"
+                />
+                <span class="tag-dot" :style="{ backgroundColor: tag.color }"></span>
+                <span class="tag-name">{{ tag.name }}</span>
+                <span class="tag-shorthand">{{ tag.shorthand }}</span>
+              </div>
+              <div v-if="aiPickerFilteredTags.length === 0" class="tag-row-empty">No tags found</div>
+            </div>
+            <div class="popover-actions ai-picker-actions">
+              <q-btn
+                no-caps unelevated
+                icon="auto_awesome"
+                label="Run AI"
+                color="primary"
+                class="popover-btn"
+                :loading="aiAssist.isSelectionRunning.value"
+                :disable="aiAssist.isSelectionRunning.value || aiTagPickerSelected.size === 0"
+                @click="onConfirmAiTagPicker"
+              />
+            </div>
+          </template>
+
           <!-- Default action mode -->
           <template v-else>
             <div class="popover-actions">
@@ -338,6 +418,21 @@
                 class="popover-btn"
                 @click="showTagPicker = true"
               />
+              <q-btn
+                v-if="!annotations.isEditing.value"
+                no-caps outline
+                icon="auto_awesome"
+                label="Suggest tags"
+                color="primary"
+                class="popover-btn"
+                :loading="aiAssist.isSelectionRunning.value"
+                :disable="aiAssist.isSelectionRunning.value || !tags.length"
+                @click="onOpenAiTagPicker"
+              >
+                <q-tooltip>
+                  Ask AI to suggest tags for the highlighted text only.
+                </q-tooltip>
+              </q-btn>
               <q-btn
                 v-if="annotations.positionChanged.value"
                 no-caps outline
@@ -428,6 +523,7 @@
 
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useQuasar } from 'quasar'
 import useChunks from 'src/composables/useChunks'
 import useTags from 'src/composables/useTags'
 import { useAnnotations } from 'src/composables/useAnnotations'
@@ -571,6 +667,10 @@ interface LeftGutterItem {
 const leftGutterItems = ref<LeftGutterItem[]>([])
 const totalDocumentChunks = ref<number | null>(null)
 const leftGutterVisible = ref(true)
+// Toggle between original-text whitespace (default) and HTML's collapsed
+// whitespace. Original-mode preserves consecutive spaces and line breaks
+// inside chunk text via CSS `white-space: pre-wrap`.
+const preserveWhitespace = ref(true)
 
 // ── Bulk selection ──
 const selectedChunkIds = ref<string[]>([])
@@ -718,6 +818,7 @@ async function onBulkRemove() {
 
 const hoveredPreviewChunkId = ref<string | null>(null)
 const hoveredChunkId = ref<string | null>(null)
+const gutterHoveredChunkId = ref<string | null>(null)
 
 function onDocumentPointerMove(e: PointerEvent) {
   if (!documentTextRef.value) return
@@ -747,7 +848,12 @@ const filteredTags = computed(() => {
 })
 
 // ── Popover positioning ──
+const popoverEl = ref<HTMLElement | null>(null)
 const popoverPos = ref({ x: 0, y: 0 })
+// Anchor point (mouse coordinates at the time the popover opened) — we keep
+// it so we can re-clamp the position when the popover changes size (e.g. the
+// user switches into the tag picker or the AI tag picker).
+const popoverAnchor = ref<{ x: number; y: number } | null>(null)
 
 const popoverStyle = computed(() => ({
   position: 'fixed' as const,
@@ -756,9 +862,47 @@ const popoverStyle = computed(() => ({
   zIndex: 9999
 }))
 
+const POPOVER_VIEWPORT_MARGIN = 8
+
+/**
+ * Position the popover relative to the anchor (mouse position) but keep it
+ * fully inside the viewport. Default placement is to the bottom-right of the
+ * cursor; flip to the left if it would overflow the right edge and flip
+ * above the cursor if it would overflow the bottom edge. A final clamp
+ * guards against the popover being larger than the remaining space.
+ */
+function clampPopover() {
+  const anchor = popoverAnchor.value
+  const el = popoverEl.value
+  if (!anchor || !el) return
+
+  const rect = el.getBoundingClientRect()
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const m = POPOVER_VIEWPORT_MARGIN
+
+  let x = anchor.x + 12
+  let y = anchor.y - 8
+
+  if (x + rect.width + m > vw) {
+    x = anchor.x - rect.width - 12
+  }
+  x = Math.max(m, Math.min(x, vw - rect.width - m))
+
+  if (y + rect.height + m > vh) {
+    y = anchor.y - rect.height - 8
+  }
+  y = Math.max(m, Math.min(y, vh - rect.height - m))
+
+  popoverPos.value = { x, y }
+}
+
 const updatePopoverPos = (e?: MouseEvent) => {
   if (e) {
+    popoverAnchor.value = { x: e.clientX, y: e.clientY }
+    // Provisional position; corrected once the popover is rendered/measured.
     popoverPos.value = { x: e.clientX + 12, y: e.clientY - 8 }
+    void nextTick(() => clampPopover())
   }
 }
 const tagInfoMap = computed(() => {
@@ -1065,6 +1209,149 @@ const onDeleteSpan = async () => {
   await annotations.deleteSpan()
 }
 
+// ── Suggest tags via AI for the highlighted selection ──
+const $q = useQuasar()
+
+// Popover sub-mode that lets the user pick which tags should be considered
+// for the AI suggestion run (separate from ``showTagPicker``, which is the
+// single-pick mode used for manual tagging).
+const showAiTagPicker = ref(false)
+const aiTagPickerSelected = ref<Set<string>>(new Set())
+const aiTagSearch = ref('')
+
+const aiPickerFilteredTags = computed(() => {
+  const q = aiTagSearch.value.toLowerCase().trim()
+  if (!q) return tags.value
+  return tags.value.filter(
+    (t) =>
+      t.name.toLowerCase().includes(q) ||
+      (t.shorthand && t.shorthand.toLowerCase().includes(q))
+  )
+})
+
+const onOpenAiTagPicker = () => {
+  if (!tags.value.length) return
+  // Default to all tags selected — matches the document-wide "AI assist"
+  // panel, where the user typically wants Topicer to look for everything.
+  aiTagPickerSelected.value = new Set(tags.value.map((t) => t.id))
+  aiTagSearch.value = ''
+  showAiTagPicker.value = true
+}
+
+const toggleAiPickerTag = (tagId: string) => {
+  const next = new Set(aiTagPickerSelected.value)
+  if (next.has(tagId)) next.delete(tagId)
+  else next.add(tagId)
+  aiTagPickerSelected.value = next
+}
+
+const aiPickerSelectAll = () => {
+  aiTagPickerSelected.value = new Set(tags.value.map((t) => t.id))
+}
+
+const aiPickerSelectNone = () => {
+  aiTagPickerSelected.value = new Set()
+}
+
+// Reset the AI picker whenever the selection itself changes — otherwise the
+// picker would still be open the next time the user highlights something.
+watch(
+  () => annotations.selection.value,
+  () => {
+    showAiTagPicker.value = false
+  }
+)
+
+const onConfirmAiTagPicker = async () => {
+  const sel = annotations.selection.value
+  if (!sel) return
+  const tagIds = Array.from(aiTagPickerSelected.value)
+  if (!tagIds.length) {
+    $q.notify({
+      type: 'warning',
+      message: 'Select at least one tag.',
+      timeout: 2500
+    })
+    return
+  }
+
+  // Resolve which chunks the highlighted passage covers. Selections are
+  // anchored on the start chunk with ``end`` measured across the
+  // concatenation of *all known* consecutive chunks (display + hidden gap
+  // chunks loaded by ``preloadGapChunks``) — see ``setCrossChunkSelection``
+  // in useAnnotations. Here we want to send Topicer only the *visible*
+  // chunks that overlap the selection: any hidden gap chunks that the user
+  // has chosen not to display should be skipped, and the selection offsets
+  // must be re-mapped into the concatenation of the surviving chunks.
+  const visibleIds = new Set(displayChunks.value.map((c) => c.id))
+  const allKnown = [...displayChunks.value, ...hiddenPreviewChunks.value]
+    .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i)
+    .sort((a, b) => a.order - b.order)
+  const startIdx = allKnown.findIndex((c) => c.id === sel.chunkId)
+  if (startIdx === -1) return
+
+  // Walk forward through known consecutive chunks, mapping each one into
+  // the global concat coordinates that ``sel.start`` / ``sel.end`` live in.
+  const chunkIds: string[] = []
+  let assembledLen = 0
+  let start = -1
+  let end = -1
+  let cursor = 0 // offset of the current chunk in the all-known concat
+  for (let i = startIdx; i < allKnown.length; i++) {
+    if (i > startIdx && allKnown[i].order !== allKnown[i - 1].order + 1) break
+    const c = allKnown[i]
+    const len = (c.text ?? '').length
+    const chunkStartGlobal = cursor
+    const chunkEndGlobal = cursor + len
+    cursor = chunkEndGlobal
+
+    if (chunkStartGlobal >= sel.end) break
+    if (chunkEndGlobal <= sel.start) continue
+    // Hidden gap chunks should not be sent to the backend, even though
+    // ``sel.start``/``sel.end`` were computed across them.
+    if (!visibleIds.has(c.id)) continue
+
+    const localStart = Math.max(0, sel.start - chunkStartGlobal)
+    const localEnd = Math.min(len, sel.end - chunkStartGlobal)
+
+    if (start === -1) start = assembledLen + localStart
+    end = assembledLen + localEnd
+    chunkIds.push(c.id)
+    assembledLen += len
+  }
+
+  if (!chunkIds.length || start < 0 || end <= start) return
+
+  // Switch the right drawer to the AI assist tab right away so the user
+  // sees the spinner and any incoming suggestions in context, then close
+  // the popover.
+  aiAssist.requestOpenAiPanel()
+  showAiTagPicker.value = false
+  annotations.clearSelection()
+
+  const created = await aiAssist.runOnSelection({
+    collectionId: props.collectionId,
+    documentId: props.documentId,
+    chunkIds,
+    selectionStart: start,
+    selectionEnd: end,
+    tagIds
+  })
+  if (!created.length && !aiAssist.lastSelectionError.value) {
+    $q.notify({
+      type: 'info',
+      message: 'AI did not suggest any tag for this selection.',
+      timeout: 2500
+    })
+  } else if (aiAssist.lastSelectionError.value) {
+    $q.notify({
+      type: 'negative',
+      message: aiAssist.lastSelectionError.value,
+      timeout: 3500
+    })
+  }
+}
+
 // ── Discuss-with-AI ──
 const { openSpanDiscussionDialog } = useSpanDiscussionDialog()
 
@@ -1356,6 +1643,16 @@ watch(
   (tagId) => tagNav.setActiveTagId(tagId ?? null)
 )
 
+// Re-clamp the popover whenever its content (and therefore size) changes —
+// switching into the tag picker / AI tag picker, or the editing-state of the
+// current selection toggling Approve/Reject/Save buttons on or off.
+watch(
+  [showTagPicker, showAiTagPicker, () => annotations.selection.value],
+  () => {
+    void nextTick(() => clampPopover())
+  }
+)
+
 // ── Dismiss on click-outside / Escape ──
 
 const onClickOutside = (e: MouseEvent) => {
@@ -1453,6 +1750,13 @@ onBeforeUnmount(() => {
   margin: 0 0 18px;
 }
 
+/* When the toolbar toggle is on, render text exactly as stored (preserve
+   consecutive spaces and line breaks inside each chunk). Wrapping is still
+   allowed so long lines don't overflow the column. */
+.document-text--preserve-whitespace :deep(.text-segment) {
+  white-space: pre-wrap;
+}
+
 /* Dim non-collection preview chunks slightly */
 :deep(.chunk-preview) {
   opacity: 0.6;
@@ -1460,6 +1764,13 @@ onBeforeUnmount(() => {
 }
 :deep(.chunk-preview.chunk-preview--active) {
   opacity: 1;
+}
+
+/* Highlight the chunk's text background while hovering its left-gutter row. */
+:deep(.chunk-gutter-hovered) {
+  background: rgba(15, 23, 42, 0.1);
+  border-radius: 4px;
+  transition: background 0.12s ease;
 }
 
 /* ── Left chunk-control gutter ── */
@@ -1683,6 +1994,28 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 4px;
   width: 100%;
+}
+
+.ai-picker-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: 2px;
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+.ai-picker-count {
+  font-weight: 500;
+}
+
+.ai-picker-actions {
+  margin-top: 4px;
+}
+
+.tag-check {
+  margin-right: 2px;
 }
 
 .popover-btn {

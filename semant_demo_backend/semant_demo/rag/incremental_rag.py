@@ -95,7 +95,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.rag = self.workflow.compile()
 
         if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 25_4_3")
+            print("Adaptive RAG version 25_5")
 
     # initialize model
     def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
@@ -604,25 +604,28 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                         all_results.extend(list(set(results)))
 
                 unique_results = list(dict.fromkeys(all_results))
-                return "\n".join(unique_results)
+                return unique_results
   
             uuid_tmp = uuid.uuid4()
             search_result = await asyncio.to_thread(ddg, search_queries)
+            search_chunks = []
 
-            search_chunk = TextChunkWithDocument(
-                id=uuid_tmp,
-                title="DuckDuckGo Search",
-                start_page_id= uuid_tmp,
-                from_page=0,
-                to_page=0,
-                order=0,
-                text= search_result,
-                document=uuid_tmp,
-                document_object=Document(id=uuid_tmp, library="web_search", title="DuckDuckGo Search", yearIssued = 2026)
-            )
+            for result_text in search_result:
+                search_chunk = TextChunkWithDocument(
+                    id=uuid_tmp,
+                    title="DuckDuckGo Search",
+                    start_page_id= uuid_tmp,
+                    from_page=0,
+                    to_page=0,
+                    order=0,
+                    text= result_text,
+                    document=uuid_tmp,
+                    document_object=Document(id=uuid_tmp, library="web_search", title="DuckDuckGo Search", yearIssued = 2026)
+                )
+                search_chunks.append(search_chunk)
             if (DEBUG_PRINT):
-                print(f"Internet search result: {search_chunk}")
-            return {"documents" : [search_chunk], "web_search_performed" : True, "feedback" : "supported"}
+                print(f"Internet search result: {search_chunks}")
+            return {"documents" : search_chunks, "web_search_performed" : True, "feedback" : "supported"}
                 
         except Exception as e:
             if (DEBUG_PRINT):

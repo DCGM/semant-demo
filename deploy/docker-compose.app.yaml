@@ -22,6 +22,7 @@ services:
       - web
       - semant_demo_database
       - semant_demo_embedder
+      - semant_demo_topicer
     labels:
       - traefik.enable=true
       - traefik.http.routers.semant-demo.rule=Host(`${DOMAIN}`)
@@ -36,4 +37,7 @@ networks:
     external: true
   semant_demo_embedder:
     name: semant_demo_embedder
+    external: true
+  semant_demo_topicer:
+    name: semant_demo_topicer
     external: true
