@@ -16,7 +16,7 @@ LOGGER = logging.getLogger(__name__)
 TOPICER_PROPOSE_TAGS_TEXTS_PATH = "/v1/tags/propose/texts"
 TOPICER_CONFIGS_PATH = "/v1/configs"
 TOPICER_PROPOSE_MOST_PROBABLE_TAG_PATH = "/v1/tags/propose/texts/most_probable"
-CONFIG_NAME = "openai_gpt"
+CONFIG_NAME = "openai-xsucha"
 
 
 def _topicer_http_timeout() -> httpx.Timeout:
@@ -197,7 +197,6 @@ async def propose_tags(
 
     try:
         async with httpx.AsyncClient() as client:
-            CONFIG_NAME = "openai_gpt"
             method_not_applicable_configs: list[str] = []
 
             all_suggestions: list[schemas.AutoAnnotationSuggestion] = []
