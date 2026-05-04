@@ -16,7 +16,7 @@ LOGGER = logging.getLogger(__name__)
 TOPICER_PROPOSE_TAGS_TEXTS_PATH = "/v1/tags/propose/texts"
 TOPICER_CONFIGS_PATH = "/v1/configs"
 TOPICER_PROPOSE_MOST_PROBABLE_TAG_PATH = "/v1/tags/propose/texts/most_probable"
-CONFIG_NAME = "openai-xsucha"
+CONFIG_NAME = "openai-xsucha-2"
 
 
 def _topicer_http_timeout() -> httpx.Timeout:
