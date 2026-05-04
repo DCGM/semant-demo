@@ -184,6 +184,7 @@
                 v-else-if="activeTool === 'suggest'"
                 :available-tags="sortedAvailableTags"
                 :is-loading="isSuggestingAnnotations"
+                :no-suggestions-found="noSuggestionsFound"
                 :collection-id="props.collectionId"
                 @start-suggestions="handleStartSuggestions"
                 @cancel-suggestions="setActiveTool(null)"
@@ -267,6 +268,7 @@ interface ChunkExpansionItemExposed {
 
 const props = defineProps<Props>()
 const isSuggestingAnnotations = ref(false)
+const noSuggestionsFound = ref(false)
 const chunkItemRefs = ref<Record<string, ChunkExpansionItemExposed | null>>({})
 const railLayoutVersion = ref(0)
 const expandedChunks = ref<Record<string, boolean>>({})
@@ -395,8 +397,12 @@ const tagCounts = computed<Record<string, number>>(() => {
 
 const sortedAvailableTags = computed(() => {
   return [...availableTags.value].sort((leftTag, rightTag) => {
-    const leftCount = leftTag.tagUuid ? tagCounts.value[leftTag.tagUuid] ?? 0 : -1
-    const rightCount = rightTag.tagUuid ? tagCounts.value[rightTag.tagUuid] ?? 0 : -1
+    const leftCount = leftTag.tagUuid
+      ? (tagCounts.value[leftTag.tagUuid] ?? 0)
+      : -1
+    const rightCount = rightTag.tagUuid
+      ? (tagCounts.value[rightTag.tagUuid] ?? 0)
+      : -1
 
     if (leftCount !== rightCount) {
       return rightCount - leftCount
@@ -542,6 +548,10 @@ watch(
 const setActiveTool = (
   tool: 'info' | 'suggest' | 'catalog' | 'tags' | null
 ) => {
+  if (tool === 'suggest') {
+    noSuggestionsFound.value = false
+  }
+
   activeTool.value = tool
 }
 
@@ -586,12 +596,17 @@ const scrollToSpan = async (spanId: string | null | undefined) => {
 
 const handleStartSuggestions = async (selectedTagIds: string[]) => {
   isSuggestingAnnotations.value = true
+  noSuggestionsFound.value = false
+
   try {
     const nextSpanId = await startAutoAnnotationSuggestions(selectedTagIds)
+    const hasAutoSelection = globalSelection.value?.spanType === SpanType.auto
+
+    // Keep the menu open and show feedback when no suggestions were generated.
+    noSuggestionsFound.value = !nextSpanId
 
     // Automatically open review panel when backend returns auto suggestions.
-    activeTool.value =
-      globalSelection.value?.spanType === SpanType.auto ? 'tags' : null
+    activeTool.value = hasAutoSelection ? 'tags' : 'suggest'
 
     await scrollToSpan(nextSpanId)
   } finally {
@@ -622,6 +637,7 @@ const handleNextAutoSpan = async () => {
 const handleEscapeKey = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
     activeTool.value = null
+    clearSelection()
   }
 }
 

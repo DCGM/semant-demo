@@ -82,6 +82,16 @@
         <span>Generating suggestions...</span>
       </div>
 
+      <q-banner
+        v-else-if="noSuggestionsFound"
+        inline-actions
+        dense
+        rounded
+        class="bg-red-1 text-red-9 q-mt-md"
+      >
+        No suggestions were found for the selected tags.
+      </q-banner>
+
       <q-separator class="q-my-md" />
 
       <div class="row justify-between items-center">
@@ -113,10 +123,12 @@ import GoToTagManagement from './GoToTagManagement.vue'
 const props = defineProps<{
   availableTags: AvailableTag[]
   isLoading?: boolean
+  noSuggestionsFound?: boolean
   collectionId: string
 }>()
 
 const isLoading = computed(() => !!props.isLoading)
+const noSuggestionsFound = computed(() => !!props.noSuggestionsFound)
 
 const emit = defineEmits<{
   startSuggestions: [selectedTagIds: string[]]

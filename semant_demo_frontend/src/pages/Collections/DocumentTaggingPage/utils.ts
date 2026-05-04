@@ -8,6 +8,27 @@ export const snapToWordBoundary = (
   // _ matches underscore (to keep parity with the original \w)
   // The 'u' flag enables unicode matching
   const isWordChar = (char: string) => /[\p{L}\p{N}_]/u.test(char)
+  const isLineBreakChar = (char: string) => char === '\n' || char === '\r'
+
+  const trimLineBreakBoundary = (boundaryIndex: number): number => {
+    let nextIndex = boundaryIndex
+
+    if (type === 'start') {
+      while (
+        nextIndex < text.length &&
+        isLineBreakChar(text[nextIndex] as string)
+      ) {
+        nextIndex++
+      }
+      return nextIndex
+    }
+
+    while (nextIndex > 0 && isLineBreakChar(text[nextIndex - 1] as string)) {
+      nextIndex--
+    }
+
+    return nextIndex
+  }
 
   if (index < 0) return 0
   if (index > text.length) return text.length
@@ -20,7 +41,7 @@ export const snapToWordBoundary = (
       while (i > 0 && isWordChar(text[i - 1])) {
         i--
       }
-      return i
+      return trimLineBreakBoundary(i)
     }
   } else if (type === 'end') {
     // For 'end', the index is positioned just *after* the selected character.
@@ -36,10 +57,10 @@ export const snapToWordBoundary = (
       while (i < text.length && isWordChar(text[i])) {
         i++
       }
-      return i
+      return trimLineBreakBoundary(i)
     }
   }
 
   // If we selected a space or punctuation, just return the exact selected index without snapping.
-  return index
+  return trimLineBreakBoundary(index)
 }

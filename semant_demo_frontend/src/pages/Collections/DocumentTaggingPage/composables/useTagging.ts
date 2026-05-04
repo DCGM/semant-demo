@@ -40,7 +40,15 @@ export function useTagging() {
           }
         )
 
-      documentDetail.value = response
+      documentDetail.value = {
+        ...response,
+        chunks: [...response.chunks].sort((leftChunk, rightChunk) => {
+          const leftOrder = leftChunk.order ?? 0
+          const rightOrder = rightChunk.order ?? 0
+
+          return leftOrder - rightOrder
+        })
+      }
       console.log('Fetched document detail:', response)
       return response
     } catch (error) {

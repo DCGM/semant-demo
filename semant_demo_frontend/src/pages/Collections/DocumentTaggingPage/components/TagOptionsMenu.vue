@@ -117,7 +117,9 @@
               dense
               icon="chevron_left"
               :disable="
-                pageLoading || autoSuggestionProgress.total <= 1 || !autoSuggestionProgress.hasPending
+                pageLoading ||
+                autoSuggestionProgress.total <= 1 ||
+                !autoSuggestionProgress.hasPending
               "
               @click="$emit('previousAutoSpan')"
             >
@@ -135,7 +137,9 @@
               dense
               icon="chevron_right"
               :disable="
-                pageLoading || autoSuggestionProgress.total <= 1 || !autoSuggestionProgress.hasPending
+                pageLoading ||
+                autoSuggestionProgress.total <= 1 ||
+                !autoSuggestionProgress.hasPending
               "
               @click="$emit('nextAutoSpan')"
             >
@@ -143,7 +147,8 @@
             </q-btn>
           </div>
           <div class="text-caption text-grey-7">
-            {{ autoSuggestionProgress.remaining }} remaining <br />Suggestions are ordered by confidence from highest.
+            {{ autoSuggestionProgress.remaining }} remaining <br />Suggestions
+            are ordered by confidence from highest.
           </div>
         </div>
 
@@ -180,9 +185,13 @@
       >
         <q-separator class="q-mt-lg" />
 
+        <div class="text-subtitle2 q-mt-md q-mb-sm">
+          Most probable tags for selected text
+        </div>
+
         <div
           v-if="isLoadingProbableTags"
-          class="text-grey-7 text-caption q-mt-md"
+          class="text-grey-7 text-caption"
         >
           Loading most probable tags...
         </div>
@@ -232,16 +241,22 @@
         </template>
       </template>
 
-      <p
+      <template
         v-if="
           showProbableTagsSection && !isLoadingProbableTags && !hasProbableTags
         "
-        class="text-grey-7 q-mt-lg"
       >
-        There were no relevant tags suggested for the selected text.
-      </p>
+        <q-separator class="q-mt-lg" />
 
-      <q-separator v-if="!isAutoSelection" class="q-mt-lg" />
+        <div class="text-subtitle2 q-mt-md q-mb-sm">
+          Most probable tags for selected text
+        </div>
+        <p class="text-grey-7 text-caption">
+          There were no relevant tags suggested for the selected text.
+        </p>
+      </template>
+
+      <q-separator v-if="!isAutoSelection" class="q-mt-md" />
 
       <div v-if="!isAutoSelection" class="q-mt-md">
         <div class="row q-gutter-sm">
