@@ -16,7 +16,7 @@ services:
     networks:
       - semant_demo_test_topicer
       - semant_demo_embedder
-      - semant_demo_test_database
+      - semant_demo_database
     volumes:
     - './data:/app/data'
     restart: always
@@ -33,8 +33,8 @@ networks:
   semant_demo_test_topicer:
     name: semant_demo_test_topicer
     driver: bridge
-  semant_demo_test_database:
-    name: semant_demo_test_database
+  semant_demo_database:
+    name: semant_demo_database
     external: true
   semant_demo_embedder:
     name: semant_demo_embedder
