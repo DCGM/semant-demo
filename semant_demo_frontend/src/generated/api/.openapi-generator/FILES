@@ -73,6 +73,7 @@ docs/SemantDemoSchemasDocument.md
 docs/SpanChatMessage.md
 docs/SpanType.md
 docs/SuggestSpansRequest.md
+docs/SuggestSpansSelectionRequest.md
 docs/SummaryResponse.md
 docs/Tag.md
 docs/TagData.md
@@ -165,6 +166,7 @@ models/SemantDemoSchemasDocument.ts
 models/SpanChatMessage.ts
 models/SpanType.ts
 models/SuggestSpansRequest.ts
+models/SuggestSpansSelectionRequest.ts
 models/SummaryResponse.ts
 models/Tag.ts
 models/TagData.ts

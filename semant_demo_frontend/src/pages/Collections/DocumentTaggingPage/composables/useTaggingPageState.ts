@@ -25,6 +25,7 @@ interface SelectionState {
   tagId?: string
   spanType?: TagSpan['type']
   confidence?: number
+  reason?: string
 }
 
 interface DisplayedTagSpan extends TagSpanWithConfidence {
@@ -442,7 +443,8 @@ export function useTaggingPageState() {
       editingId: nextAutoSpan.span.id || undefined,
       tagId: nextAutoSpan.span.tagId,
       spanType: nextAutoSpan.span.type,
-      confidence: nextAutoSpan.span.confidence
+      confidence: nextAutoSpan.span.confidence,
+      reason: nextAutoSpan.span.reason
     }
 
     return nextAutoSpan.span.id || null
@@ -491,7 +493,8 @@ export function useTaggingPageState() {
       editingId: nextAutoSpan.span.id || undefined,
       tagId: nextAutoSpan.span.tagId,
       spanType: nextAutoSpan.span.type,
-      confidence: nextAutoSpan.span.confidence
+      confidence: nextAutoSpan.span.confidence,
+      reason: nextAutoSpan.span.reason
     }
 
     return nextAutoSpan.span.id || null
@@ -667,7 +670,8 @@ export function useTaggingPageState() {
       editingId: spanMatch.id as string | undefined,
       tagId: spanMatch.tagId,
       spanType: spanMatch.type,
-      confidence: (spanMatch as TagSpanWithConfidence).confidence
+      confidence: (spanMatch as TagSpanWithConfidence).confidence,
+      reason: spanMatch.reason
     }
   }
 
@@ -819,6 +823,7 @@ export function useTaggingPageState() {
       ).find((span) => span.id === globalSelection.value?.editingId)
 
       globalSelection.value.confidence = selectedSpan?.confidence
+      globalSelection.value.reason = selectedSpan?.reason
     }
   }
 

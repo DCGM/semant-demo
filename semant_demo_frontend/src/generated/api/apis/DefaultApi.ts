@@ -64,6 +64,7 @@ import type {
   SearchResponseOutput,
   SemantDemoSchemaDocumentsDocument,
   SuggestSpansRequest,
+  SuggestSpansSelectionRequest,
   SummaryResponse,
   Tag,
   TagSpan,
@@ -171,6 +172,8 @@ import {
     SemantDemoSchemaDocumentsDocumentToJSON,
     SuggestSpansRequestFromJSON,
     SuggestSpansRequestToJSON,
+    SuggestSpansSelectionRequestFromJSON,
+    SuggestSpansSelectionRequestToJSON,
     SummaryResponseFromJSON,
     SummaryResponseToJSON,
     TagFromJSON,
@@ -407,6 +410,10 @@ export interface StartTaggingApiTagTaskPostRequest {
 
 export interface SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest {
     suggestSpansRequest: SuggestSpansRequest;
+}
+
+export interface SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest {
+    suggestSpansSelectionRequest: SuggestSpansSelectionRequest;
 }
 
 export interface SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest {
@@ -1406,7 +1413,7 @@ export interface DefaultApiInterface {
     proposeBestTagApiProposeBestTagPostRequestOpts(requestParameters: ProposeBestTagApiProposeBestTagPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Call Topicer tag proposal and return top confident tags.
+     * Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
      * @summary Propose Best Tag
      * @param {BestTagProposalRequest} bestTagProposalRequest 
      * @param {*} [options] Override http request option.
@@ -1416,7 +1423,7 @@ export interface DefaultApiInterface {
     proposeBestTagApiProposeBestTagPostRaw(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BestTagProposalResponse>>;
 
     /**
-     * Call Topicer tag proposal and return top confident tags.
+     * Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
      * Propose Best Tag
      */
     proposeBestTagApiProposeBestTagPost(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BestTagProposalResponse>;
@@ -1804,6 +1811,30 @@ export interface DefaultApiInterface {
      * Suggest Spans Optimized
      */
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for suggestSpansSelectionApiAiSuggestSpansSelectionPost without sending the request
+     * @param {SuggestSpansSelectionRequest} suggestSpansSelectionRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    suggestSpansSelectionApiAiSuggestSpansSelectionPostRequestOpts(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * @summary Suggest Spans Selection
+     * @param {SuggestSpansSelectionRequest} suggestSpansSelectionRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    suggestSpansSelectionApiAiSuggestSpansSelectionPostRaw(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Suggest Spans Selection
+     */
+    suggestSpansSelectionApiAiSuggestSpansSelectionPost(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for suggestSpansThoroughApiAiSuggestSpansThoroughPost without sending the request
@@ -3995,7 +4026,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Call Topicer tag proposal and return top confident tags.
+     * Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
      * Propose Best Tag
      */
     async proposeBestTagApiProposeBestTagPostRaw(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BestTagProposalResponse>> {
@@ -4006,7 +4037,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Call Topicer tag proposal and return top confident tags.
+     * Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
      * Propose Best Tag
      */
     async proposeBestTagApiProposeBestTagPost(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BestTagProposalResponse> {
@@ -4858,6 +4889,59 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for suggestSpansSelectionApiAiSuggestSpansSelectionPost without sending the request
+     */
+    async suggestSpansSelectionApiAiSuggestSpansSelectionPostRequestOpts(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['suggestSpansSelectionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'suggestSpansSelectionRequest',
+                'Required parameter "suggestSpansSelectionRequest" was null or undefined when calling suggestSpansSelectionApiAiSuggestSpansSelectionPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/ai/suggest_spans/selection`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SuggestSpansSelectionRequestToJSON(requestParameters['suggestSpansSelectionRequest']),
+        };
+    }
+
+    /**
+     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Suggest Spans Selection
+     */
+    async suggestSpansSelectionApiAiSuggestSpansSelectionPostRaw(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.suggestSpansSelectionApiAiSuggestSpansSelectionPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Suggest Spans Selection
+     */
+    async suggestSpansSelectionApiAiSuggestSpansSelectionPost(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.suggestSpansSelectionApiAiSuggestSpansSelectionPostRaw(requestParameters, initOverrides);
     }
 
     /**

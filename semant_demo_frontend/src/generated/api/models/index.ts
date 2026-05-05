@@ -69,6 +69,7 @@ export * from './SemantDemoSchemasDocument';
 export * from './SpanChatMessage';
 export * from './SpanType';
 export * from './SuggestSpansRequest';
+export * from './SuggestSpansSelectionRequest';
 export * from './SummaryResponse';
 export * from './Tag';
 export * from './TagData';

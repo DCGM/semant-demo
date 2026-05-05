@@ -69,6 +69,12 @@ export interface AutoAnnotationSuggestion {
      * @memberof AutoAnnotationSuggestion
      */
     confidence: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AutoAnnotationSuggestion
+     */
+    reason?: string | null;
 }
 
 
@@ -103,6 +109,7 @@ export function AutoAnnotationSuggestionFromJSONTyped(json: any, ignoreDiscrimin
         'end': json['end'],
         'type': json['type'] == null ? undefined : SpanTypeFromJSON(json['type']),
         'confidence': json['confidence'],
+        'reason': json['reason'] == null ? undefined : json['reason'],
     };
 }
 
@@ -124,6 +131,7 @@ export function AutoAnnotationSuggestionToJSONTyped(value?: AutoAnnotationSugges
         'end': value['end'],
         'type': SpanTypeToJSON(value['type']),
         'confidence': value['confidence'],
+        'reason': value['reason'],
     };
 }
 

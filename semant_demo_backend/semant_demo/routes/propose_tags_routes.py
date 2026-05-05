@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 import uuid
@@ -83,14 +84,10 @@ def _build_topicer_tags_payload(
     ]
 
 
-class AutoAnnotationSuggestionWithReason(schemas.AutoAnnotationSuggestion):
-    reason: str | None = None
-
-
 def _topicer_proposal_to_auto_suggestions(
     payload: object,
     fallback_chunk_id: str,
-) -> list[AutoAnnotationSuggestionWithReason]:
+) -> list[schemas.AutoAnnotationSuggestion]:
     if not isinstance(payload, dict):
         raise ValueError("Topicer propose tags payload must be an object.")
 
@@ -103,7 +100,7 @@ def _topicer_proposal_to_auto_suggestions(
         raise ValueError(
             "Topicer propose tags payload is missing 'tag_span_proposals'.")
 
-    suggestions: list[AutoAnnotationSuggestionWithReason] = []
+    suggestions: list[schemas.AutoAnnotationSuggestion] = []
     for proposal in proposals:
         if not isinstance(proposal, dict):
             raise ValueError("Topicer tag span proposal must be an object.")
@@ -129,7 +126,7 @@ def _topicer_proposal_to_auto_suggestions(
         reason = proposal.get("reason")
 
         suggestions.append(
-            AutoAnnotationSuggestionWithReason(
+            schemas.AutoAnnotationSuggestion(
                 id=str(uuid.uuid4()),
                 chunkId=chunk_id,
                 tagId=tag_id,
@@ -214,14 +211,6 @@ async def propose_tags(
                     },
                     timeout=_topicer_http_timeout(),
                 )
-
-                print({
-                    "text_chunk": {
-                        "id": str(chunk.id),
-                        "text": chunk.text,
-                    },
-                    "tags": topicer_tags,
-                },)
 
                 if response.status_code >= 400:
                     if _is_method_not_applicable_error(response):

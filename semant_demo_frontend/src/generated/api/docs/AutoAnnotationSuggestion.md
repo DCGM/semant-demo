@@ -13,6 +13,7 @@ Name | Type
 `end` | number
 `type` | [SpanType](SpanType.md)
 `confidence` | number
+`reason` | string
 
 ## Example
 
@@ -28,6 +29,7 @@ const example = {
   "end": null,
   "type": null,
   "confidence": null,
+  "reason": null,
 } satisfies AutoAnnotationSuggestion
 
 console.log(example)

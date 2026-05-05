@@ -1,7 +1,7 @@
 <template>
   <q-card flat class="right-panel-menu">
     <q-card-section class="right-panel-menu-section">
-      <div class="row items-center justify-between q-mb-md">
+      <div class="items-start justify-between no-wrap q-mb-sm row">
         <div>
           <div class="text-subtitle1 text-weight-bold">
             {{
@@ -55,6 +55,15 @@
         </div>
       </div>
 
+      <div
+        v-if="isAutoSelection && globalSelection?.reason"
+        class="text-grey-8 q-mb-md"
+      >
+        Reason for the suggestion: <br /><strong>{{
+          globalSelection.reason
+        }}</strong>
+      </div>
+
       <div class="tag-list">
         <q-btn
           v-for="tag in availableTags"
@@ -105,7 +114,7 @@
         </div>
       </div>
 
-      <q-separator v-if="isAutoSelection" class="q-mt-lg" />
+      <q-separator v-if="isAutoSelection" class="q-mt-md" />
 
       <div v-if="isAutoSelection" class="q-mt-md">
         <div class="auto-progress-box q-mb-sm">
@@ -189,17 +198,14 @@
           Most probable tags for selected text
         </div>
 
-        <div
-          v-if="isLoadingProbableTags"
-          class="text-grey-7 text-caption"
-        >
+        <div v-if="isLoadingProbableTags" class="text-grey-7 text-caption">
           Loading most probable tags...
         </div>
 
         <template v-else>
-          <div class="text-subtitle2 q-mt-md q-mb-sm">
+          <!-- <div class="text-subtitle2 q-mt-md q-mb-sm">
             Most probable tags for selected text
-          </div>
+          </div> -->
           <div class="text-caption text-grey-7 q-mb-md">
             Confidence represents the certainty about relevance of tag to the
             selected text.
@@ -294,6 +300,7 @@ interface GlobalSelection {
   tagId?: string
   spanType?: TagSpan['type']
   confidence?: number
+  reason?: string
 }
 
 interface ProbableTag {

@@ -511,6 +511,7 @@ class AutoAnnotationSuggestion(BaseModel):
     end: int
     type: SpanType = SpanType.auto
     confidence: float
+    reason: str | None = None
 
 
 class AutoAnnotationSuggestionRequest(BaseModel):
