@@ -160,6 +160,19 @@
               />
 
               <q-btn
+                v-if="showTestingOptions"
+                color="warning"
+                class="full-width"
+                label="Testing options"
+                icon="science"
+                no-caps
+                unelevated
+                size="md"
+                :outline="activeTool !== 'testing'"
+                @click="setActiveTool('testing')"
+              />
+
+              <q-btn
                 color="accent"
                 class="full-width"
                 label="Tag selection"
@@ -227,13 +240,81 @@
                 @close="setActiveTool(null)"
               />
 
-              <q-btn
-                v-if="false"
-                @click="removeAllChunksFromCollection()"
-                label="Remove all chunks (debug)"
-                color="negative"
-                class="q-mt-md"
-              />
+              <q-card
+                v-else-if="activeTool === 'testing'"
+                flat
+                class="right-panel-menu"
+              >
+                <q-card-section class="right-panel-menu-section">
+                  <div class="row items-center justify-between q-mb-md">
+                    <div>
+                      <div class="text-subtitle1 text-weight-bold">
+                        Testing options
+                      </div>
+                      <div class="text-caption text-grey-7">
+                        Confirmed annotations: {{ confirmedAnnotationCount }}
+                      </div>
+                    </div>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      icon="close"
+                      @click="setActiveTool(null)"
+                    >
+                      <q-tooltip>Close testing options</q-tooltip>
+                    </q-btn>
+                  </div>
+
+                  <div class="q-mb-md">
+                    <q-checkbox
+                      v-model="inlineTaggingEnabled"
+                      label="Inline tagging enabled"
+                    />
+                    <div class="text-caption text-grey-7 q-mt-xs">
+                      Disables probable-tag suggestions when off.
+                    </div>
+                  </div>
+
+                  <q-separator class="q-my-md" />
+
+                  <div class="q-mb-md">
+                    <div class="row items-center justify-between">
+                      <div>
+                        <div class="text-subtitle2 text-weight-medium">
+                          Timer
+                        </div>
+                        <div class="text-h6">{{ timerDisplay }}</div>
+                      </div>
+                      <div class="row items-center q-gutter-sm">
+                        <q-btn
+                          color="primary"
+                          label="Start"
+                          :disable="isTimerRunning"
+                          @click="startTestingTimer"
+                        />
+                        <q-btn
+                          color="grey-8"
+                          label="Stop"
+                          :disable="!isTimerRunning"
+                          @click="stopTestingTimer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <q-separator class="q-my-md" />
+
+                  <q-btn
+                    label="Remove all chunks from collection"
+                    color="negative"
+                    class="full-width"
+                    :loading="isBulkCollectionUpdating"
+                    :disable="pageLoading"
+                    @click="removeAllChunksFromCollection()"
+                  />
+                </q-card-section>
+              </q-card>
             </div>
           </div>
         </div>
@@ -272,12 +353,20 @@ const noSuggestionsFound = ref(false)
 const chunkItemRefs = ref<Record<string, ChunkExpansionItemExposed | null>>({})
 const railLayoutVersion = ref(0)
 const expandedChunks = ref<Record<string, boolean>>({})
-const activeTool = ref<'info' | 'suggest' | 'catalog' | 'tags' | null>('info')
+const activeTool = ref<
+  'info' | 'suggest' | 'catalog' | 'tags' | 'testing' | null
+>('info')
 const hiddenTagIds = ref<Set<string>>(new Set())
 const showOnlyCollectionChunks = ref(true)
 const chunkExpansionPreset = ref<'collection' | 'all' | 'collapsed'>(
   'collection'
 )
+
+const timerElapsedMs = ref(0)
+const timerBaseElapsedMs = ref(0)
+const timerStartTimestamp = ref<number | null>(null)
+const timerIntervalId = ref<number | null>(null)
+const showTestingOptions = ref(true)
 
 const {
   DEBUG,
@@ -294,8 +383,11 @@ const {
   selectionBoundaryChunkIds,
   globalSelectionBoundaries,
   isChunkCollectionUpdating,
+  isBulkCollectionUpdating,
   toggleChunkInCollection,
   availableTags,
+  inlineTaggingEnabled,
+  confirmedAnnotationCount,
   loadChunks,
   clearSelection,
   handleTagClick,
@@ -546,7 +638,7 @@ watch(
 )
 
 const setActiveTool = (
-  tool: 'info' | 'suggest' | 'catalog' | 'tags' | null
+  tool: 'info' | 'suggest' | 'catalog' | 'tags' | 'testing' | null
 ) => {
   if (tool === 'suggest') {
     noSuggestionsFound.value = false
@@ -567,6 +659,41 @@ const handleChunkExpansionChange = (chunkId: string, expanded: boolean) => {
 
   railLayoutVersion.value += 1
 }
+
+const updateTimerElapsed = () => {
+  if (timerStartTimestamp.value === null) return
+
+  timerElapsedMs.value =
+    timerBaseElapsedMs.value + (Date.now() - timerStartTimestamp.value)
+}
+
+const startTestingTimer = () => {
+  if (timerIntervalId.value !== null) return
+
+  timerStartTimestamp.value = Date.now()
+  updateTimerElapsed()
+  timerIntervalId.value = window.setInterval(updateTimerElapsed, 1000)
+}
+
+const stopTestingTimer = () => {
+  if (timerIntervalId.value === null) return
+
+  updateTimerElapsed()
+  timerBaseElapsedMs.value = timerElapsedMs.value
+  timerStartTimestamp.value = null
+  window.clearInterval(timerIntervalId.value)
+  timerIntervalId.value = null
+}
+
+const isTimerRunning = computed(() => timerIntervalId.value !== null)
+
+const timerDisplay = computed(() => {
+  const totalSeconds = Math.floor(timerElapsedMs.value / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+})
 
 const setChunkItemRef = (chunkId: string, el: unknown) => {
   chunkItemRefs.value[chunkId] =
@@ -649,6 +776,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscapeKey)
+
+  if (timerIntervalId.value !== null) {
+    window.clearInterval(timerIntervalId.value)
+  }
 })
 </script>
 

@@ -147,6 +147,7 @@ export function useTaggingPageState() {
   const globalSelection = ref<GlobalSelection | null>(null)
   const hoveredAnnotationMarker = ref<HoveredSpanMarker | null>(null)
   const useWordSnapping = ref(true)
+  const inlineTaggingEnabled = ref(true)
   const probableTagSuggestions = ref<ProbableTagSuggestion[]>([])
   const isLoadingProbableTags = ref(false)
   const probableTagsRequestToken = ref(0)
@@ -211,6 +212,18 @@ export function useTaggingPageState() {
           tagId: span.tagId
         }))
     )
+  })
+
+  const confirmedAnnotationCount = computed(() => {
+    return Object.values(tagSpansByChunkId.value).reduce((total, spans) => {
+      let count = 0
+      for (const span of spans) {
+        if (span.type === SpanType.pos) {
+          count += 1
+        }
+      }
+      return total + count
+    }, 0)
   })
 
   const chunkIndexById = computed(() => {
@@ -887,6 +900,13 @@ export function useTaggingPageState() {
     const requestToken = ++probableTagsRequestToken.value
     const selection = globalSelection.value
 
+    if (!inlineTaggingEnabled.value) {
+      probableTagSuggestions.value = []
+      isLoadingProbableTags.value = false
+      lastProbableTagsQueryKey.value = null
+      return
+    }
+
     if (
       !selection ||
       selection.editingId ||
@@ -1019,11 +1039,29 @@ export function useTaggingPageState() {
     { deep: true }
   )
 
+  watch(
+    inlineTaggingEnabled,
+    (enabled) => {
+      if (!enabled) {
+        probableTagsRequestToken.value += 1
+        probableTagSuggestions.value = []
+        isLoadingProbableTags.value = false
+        lastProbableTagsQueryKey.value = null
+        return
+      }
+
+      if (globalSelection.value) {
+        void refreshProbableTagsForSelection()
+      }
+    },
+    { immediate: true }
+  )
+
   // ✅ WATCH 2: Only re-fetch if the background tags change while a selection is active
   watch(
     [collectionTags, availableTags],
     () => {
-      if (globalSelection.value) {
+      if (globalSelection.value && inlineTaggingEnabled.value) {
         void refreshProbableTagsForSelection()
       }
     },
@@ -1367,6 +1405,8 @@ export function useTaggingPageState() {
     annotationMarkers,
     hoveredAnnotationMarker,
     availableTags,
+    inlineTaggingEnabled,
+    confirmedAnnotationCount,
     probableTagSuggestions,
     isLoadingProbableTags,
     autoSuggestionProgress,
