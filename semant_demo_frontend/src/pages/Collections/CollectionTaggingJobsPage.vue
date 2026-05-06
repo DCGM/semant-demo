@@ -213,21 +213,21 @@
                     />
                   </q-item-section>
                   <q-item-section avatar>
-                    <q-item-label>{{ scope.opt.tag_pictogram }}</q-item-label>
-                    <q-icon :name="scope.opt.tag_pictogram" />
+                    <q-item-label>{{ scope.opt.pictogram }}</q-item-label>
+                    <q-icon :name="scope.opt.pictogram" />
                   </q-item-section>
                   <q-item-section>
-                    <q-item-label>{{ scope.opt.tag_name }}</q-item-label>
+                    <q-item-label>{{ scope.opt.name }}</q-item-label>
                   </q-item-section>
                   <q-item-section>
                     <q-item-label> Definition: </q-item-label>
                     <q-item-label caption>
-                      {{ scope.opt.tag_definition }}
+                      {{ scope.opt.definition }}
                     </q-item-label>
                   </q-item-section>
                   <q-item-section>
                     <q-item-label> Examples: </q-item-label>
-                    <div v-for="(example, index) in scope.opt.tag_examples" :key="index" class="row items-center q-mb-sm">
+                    <div v-for="(example, index) in scope.opt.examples" :key="index" class="row items-center q-mb-sm">
                       <q-item-label caption>
                         {{ example }}
                       </q-item-label>
@@ -259,30 +259,36 @@
                   </q-item-section>  -->
                   <q-item-section>
                     <div class="row q-gutter-md items-center">
-                    <AvatarItem
-                      :annotation-class="{
-                        short: tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_shorthand || '?',
-                        colorString: tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_color || '#ccc',
-                        textColor: 'black'
-                      }"
-                      size="sm"
-                    />
-                    <q-space/>
-                    <div class="col-grow">
-                      <q-item-label>{{ tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_pictogram }}</q-item-label>
-                      <q-icon :name="tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_pictogram" />
+                      <AvatarItem
+                        :annotation-class="{
+                          short: tags.find(t => t.id === tagFormManage.tag_uuids[index].id)?.shorthand || '?',
+                          colorString: tags.find(t => t.id === tagFormManage.tag_uuids[index].id)?.color || '#ccc',
+                          textColor: 'black'
+                        }"
+                        size="sm"
+                      />
+                      <q-space/>
+                      <div class="col-grow">
+                        <q-item-label>
+                          {{ tags.find(t => t.id === tagFormManage.tag_uuids[index].id)?.pictogram }}
+                        </q-item-label>
+                        <q-icon
+                          :name="tags.find(t => t.id === tagFormManage.tag_uuids[index].id)?.pictogram"
+                        />
+                      </div>
+                      <div class="col-grow">
+                        <q-item-label caption> Name: </q-item-label>
+                        <q-item-label>
+                          {{ tags.find(t => t.id === tagFormManage.tag_uuids[index].id)?.name }}
+                        </q-item-label>
+                      </div>
+                      <div class="col-grow">
+                        <q-item-label caption>Tag uuid:</q-item-label>
+                        <q-item-label caption class="text-mono">
+                          {{ tagFormManage.tag_uuids[index].id }}
+                        </q-item-label>
+                      </div>
                     </div>
-                    <div class="col-grow">
-                      <q-item-label caption> Name: </q-item-label>
-                      <q-item-label> {{ tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_name }} </q-item-label>
-                    </div>
-                    <div class="col-grow">
-                      <q-item-label caption>Tag uuid:</q-item-label>
-                      <q-item-label caption class="text-mono">
-                        {{ tagFormManage.tag_uuids[index] }}
-                      </q-item-label>
-                    </div>
-                  </div>
                   </q-item-section>
                 </q-item>
               </template>
