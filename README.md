@@ -1,4 +1,4 @@
-# semANT — Demo Application 
+# semANT — Demo Application
 
 **Quezio** (working name: semANT demo) is a web application for semantic exploration of digitised Czech cultural-heritage texts. It combines full-text, vector and hybrid search over a Weaviate database with LLM-powered summarisation, Retrieval-Augmented Generation (RAG), and AI-assisted text tagging.
 
