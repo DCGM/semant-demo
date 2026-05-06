@@ -142,6 +142,10 @@ const textContainer = ref<HTMLElement | null>(null)
 const draggingHandle = ref<'start' | 'end' | null>(null)
 let justFinishedDrag = false
 
+const isAutoApprovalActive = computed(() => {
+  return currentSelection.value?.spanType === SpanType.auto
+})
+
 watch(
   () => props.selection,
   (nextSelection) => {
@@ -666,6 +670,34 @@ const applyHoverVisualState = (
   }
 }
 
+const applyAutoApprovalFocusState = (
+  seg: RenderSegment,
+  baseStyle: Record<string, string | undefined>
+) => {
+  if (!isAutoApprovalActive.value || !currentSelection.value) {
+    return baseStyle
+  }
+
+  if (seg.isSelected) {
+    return {
+      ...baseStyle,
+      boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.2)'
+    }
+  }
+
+  if (seg.tags.length > 0) {
+    return {
+      ...baseStyle,
+      opacity: '0.35'
+    }
+  }
+
+  return {
+    ...baseStyle,
+    opacity: '0.7'
+  }
+}
+
 const segmentHasOutline = (seg: RenderSegment) => {
   return seg.isSelected || seg.tags.length > 0
 }
@@ -702,7 +734,8 @@ const getSegmentStyle = (seg: RenderSegment, index: number) => {
         true
       )
       const hoveredStyle = applyHoverVisualState(seg, selectedStyle)
-      return mergeOutlineByNeighbors(seg, index, hoveredStyle)
+      const focusedStyle = applyAutoApprovalFocusState(seg, hoveredStyle)
+      return mergeOutlineByNeighbors(seg, index, focusedStyle)
     }
 
     const selectedStyle = {
@@ -713,16 +746,18 @@ const getSegmentStyle = (seg: RenderSegment, index: number) => {
     }
 
     const hoveredStyle = applyHoverVisualState(seg, selectedStyle)
-    return mergeOutlineByNeighbors(seg, index, hoveredStyle)
+    const focusedStyle = applyAutoApprovalFocusState(seg, hoveredStyle)
+    return mergeOutlineByNeighbors(seg, index, focusedStyle)
   }
 
   if (seg.tags.length > 0) {
     const taggedStyle = getTagColorStyle(seg.tags[0].tagId, seg.tags[0].type)
     const hoveredStyle = applyHoverVisualState(seg, taggedStyle)
-    return mergeOutlineByNeighbors(seg, index, hoveredStyle)
+    const focusedStyle = applyAutoApprovalFocusState(seg, hoveredStyle)
+    return mergeOutlineByNeighbors(seg, index, focusedStyle)
   }
 
-  return {}
+  return applyAutoApprovalFocusState(seg, {})
 }
 
 const getHandleStyle = () => {
@@ -752,7 +787,9 @@ const getHandleStyle = () => {
   transition:
     background-color 0.15s,
     border-color 0.15s,
-    outline-color 0.15s;
+    outline-color 0.15s,
+    opacity 0.15s,
+    box-shadow 0.15s;
   border-color: transparent;
   border-style: solid;
   border-width: 0;
