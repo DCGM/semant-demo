@@ -1,0 +1,15 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  tagging_worker:
+    build: .
+    depends_on:
+      redis:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
+    restart: on-failure

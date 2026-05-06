@@ -433,6 +433,440 @@
   </div>
   </q-page>
 
+  <q-page class="q-pa-md">
+    <q-dialog v-model="tagCreateDialogVisible">
+      <q-card style="width: 25rem; max-width: 90vw;">
+        <q-card-section class="q-pa-md">
+          <div class="row items-center">
+            <div class="col text-center">
+              <div class="text-h6">Create Tag</div>
+            </div>
+            <div class="col-auto absolute-right q-mr-sm">
+              <q-btn flat dense round icon="close" @click="tagCreateDialogVisible = false" />
+            </div>
+          </div>
+        </q-card-section>
+        <q-card-section>
+          <q-form @submit.prevent="onCreateTag">
+            <div class="col q-col-gutter-md">
+              <!--
+              <div class="row justify-center">
+                <span class="text-h6">Create Tag</span>
+              </div> -->
+              <div class="row">
+                <!-- current collection is selected by route / layout -->
+                <q-input
+                  v-model="tagForm.collection_name"
+                  label="Collection"
+                  dense
+                  outlined
+                  readonly
+                  :style="{ width: '300px' }"
+                />
+              </div>
+              <div class="row">
+                <div class="col">
+                  <q-input v-model="tagForm.tag_name" label="Tag Name" dense outlined required />
+                </div>
+                <div class="col">
+                  <q-input v-model="tagForm.tag_shorthand" type="text" label="Shorthand" dense outlined />
+                </div>
+              </div>
+              <div class="row">
+                <!-- Color -->
+                <div class="col">
+                  <q-select
+                    v-model="tagForm.tag_color"
+                    :options="colors"
+                    option-label="name"
+                    option-value="color" type="text" label="Color" emit-value map-options dense outlined
+                  >
+                  <template v-slot:option="scope">
+                    <q-item v-bind="scope.itemProps">
+                    <q-item-section avatar>
+                      <div
+                        class="color-swatch"
+                        :style="{ backgroundColor: scope.opt.color }"
+                      ></div>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.name }}</q-item-label>
+                    </q-item-section>
+                    </q-item>
+                  </template>
+                  <template v-slot:selected>
+                    <q-item v-if="tagForm.tag_color">
+                      <q-item-section avatar>
+                        <div class="color-swatch" :style="{ backgroundColor: tagForm.tag_color }">
+                        </div>
+                      </q-item-section>
+                      <q-item-section>
+                        {{ colors.find(c => c.color === tagForm.tag_color)?.name }}
+                      </q-item-section>
+                    </q-item>
+                  </template>
+                  </q-select>
+                </div>
+                <!-- Pictogram -->
+                <div class="col">
+                  <q-select
+                    v-model="tagForm.tag_pictogram"
+                    :options="pictograms"
+                    option-label="name"
+                    option-value="icon" type="text" label="Pictogram" emit-value map-options dense outlined
+                  >
+                  <template v-slot:option="scope">
+                    <q-item v-bind="scope.itemProps">
+                    <q-item-section avatar>
+                      <q-icon :name="scope.opt.icon" />
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.name }}</q-item-label>
+                    </q-item-section>
+                    </q-item>
+                  </template>
+                  <template v-slot:selected>
+                    <q-item v-if="tagForm.tag_pictogram">
+                      <q-item-section avatar>
+                        <q-icon :name="tagForm.tag_pictogram" />
+                      </q-item-section>
+                      <q-item-section>
+                        {{ pictograms.find(p => p.icon === tagForm.tag_pictogram)?.name }}
+                      </q-item-section>
+                    </q-item>
+                  <!--span v-else>Select a Pictogram</span-->
+                  </template>
+                  </q-select>
+                </div>
+              </div>
+              <div class="col">
+                <q-input v-model="tagForm.tag_definition" type="text" label="Tag definition" dense outlined />
+              </div>
+              <div class="col">
+                <div class="text-caption q-mb-sm">Tag Examples</div>
+                <div v-for="(example, index) in tagForm.tag_examples" :key="index" class="row items-center q-mb-sm">
+                  <q-input
+                    v-model="tagForm.tag_examples[index]"
+                    label="Example"
+                    dense
+                    outlined
+                    class="col-grow"
+                  />
+                  <q-btn
+                    v-if="tagForm.tag_examples.length > 1"
+                    @click="removeExample(index)"
+                    icon="delete"
+                    color="negative"
+                    flat
+                    dense
+                    class="q-ml-sm"
+                  />
+                </div>
+                <q-btn
+                  @click="addExample"
+                  icon="add"
+                  label="Add Another Example"
+                  color="primary"
+                  outline
+                  dense
+                />
+              </div>
+              <div class="col-auto flex flex-center">
+                <q-btn type="submit" color="primary" label="Create Tag" :loading="loading" />
+              </div>
+            </div>
+          </q-form>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
+    <div v-if="tagCreation.action == true" class="col-auto flex flex-center">
+      <div v-if="tagCreation.created == true" class="q-mt-sm">
+        <div class="text-caption">Tag created</div>
+      </div>
+      <div v-if="tagCreation.created == false" class="q-mt-sm">
+        <div class="text-caption">Tag not created</div>
+      </div>
+    </div>
+
+    <!-- Tag Confirmation - automatic tags -->
+
+    <q-form @submit.prevent="onTagManage">
+      <div class="col q-col-gutter-md">
+        <!--
+        <div class="row justify-center">
+          <span class="text-h6">Manage automatic tags</span>
+        </div>-->
+
+        <div class="row items-center q-mb-md">
+          <div class="col">
+            <div class="text-caption text-grey-6 q-mb-xs">Collection</div>
+            <div class="text-h6 text-weight-medium">
+              {{ selectedCollection?.name ?? 'Loading...' }}
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <!--<div class="text-caption q-mb-sm">Choose Tags</div>-->
+          <div v-for="(example, index) in tagFormManage.tag_uuids" :key="index" class="row items-center q-mb-sm">
+            <q-select
+              v-model="tagFormManage.tag_uuids[index]"
+              :options="tags"
+              option-label="tag_name"
+              option-value="tag_uuid"
+              type="text"
+              label="Choose Tag"
+              class="col"
+              emit-value
+              map-options
+              dense
+              outlined
+              :loading="loadingSpinnerTags"
+              @popup-show="fetchTags"
+            >
+              <!-- No option slot -->
+              <template v-slot:no-option>
+                <q-item>
+                  <q-item-section class="text-grey">
+                    No tags found
+                  </q-item-section>
+                </q-item>
+              </template>
+              <!-- Custom option rendering -->
+              <template v-slot:option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section avatar>
+                    <AvatarItem
+                      :annotation-class="{
+                        short: scope.opt.tag_shorthand || '?',
+                        colorString: scope.opt.tag_color || '#ccc',
+                        textColor: 'black'
+                      }"
+                      size="sm"
+                    />
+                  </q-item-section>
+                  <q-item-section avatar>
+                    <q-item-label>{{ scope.opt.tag_pictogram }}</q-item-label>
+                    <q-icon :name="scope.opt.tag_pictogram" />
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label>{{ scope.opt.tag_name }}</q-item-label>
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label> Definition: </q-item-label>
+                    <q-item-label caption>
+                      {{ scope.opt.tag_definition }}
+                    </q-item-label>
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label> Examples: </q-item-label>
+                    <div v-for="(example, index) in scope.opt.tag_examples" :key="index" class="row items-center q-mb-sm">
+                      <q-item-label caption>
+                        {{ example }}
+                      </q-item-label>
+                    </div>
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label> Collection name: </q-item-label>
+                    <q-item-label caption>
+                      {{ scope.opt.collection_name }}
+                    </q-item-label>
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label> Tag uuid: </q-item-label>
+                    <q-item-label caption>
+                      {{ scope.opt.tag_uuid }}
+                    </q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+
+              <!-- Custom selected rendering -->
+              <template v-slot:selected>
+                <q-item v-if="tagFormManage.tag_uuids[index]">
+                  <!--<q-item-section avatar>
+                    <div
+                      class="color-swatch"
+                      :style="{ backgroundColor: tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_color }"
+                    ></div>
+                  </q-item-section>  -->
+                  <q-item-section>
+                    <div class="row q-gutter-md items-center">
+                    <AvatarItem
+                      :annotation-class="{
+                        short: tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_shorthand || '?',
+                        colorString: tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_color || '#ccc',
+                        textColor: 'black'
+                      }"
+                      size="sm"
+                    />
+                    <q-space/>
+                    <div class="col-grow">
+                      <q-item-label>{{ tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_pictogram }}</q-item-label>
+                      <q-icon :name="tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_pictogram" />
+                    </div>
+                    <div class="col-grow">
+                      <q-item-label caption> Name: </q-item-label>
+                      <q-item-label> {{ tags.find(t => t.tag_uuid === tagFormManage.tag_uuids[index])?.tag_name }} </q-item-label>
+                    </div>
+                    <div class="col-grow">
+                      <q-item-label caption>Tag uuid:</q-item-label>
+                      <q-item-label caption class="text-mono">
+                        {{ tagFormManage.tag_uuids[index] }}
+                      </q-item-label>
+                    </div>
+                  </div>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+            <q-btn
+              v-if="tagFormManage.tag_uuids.length > 1"
+              @click="removeTag(index)"
+              icon="fa fa-close"
+              color="negative"
+              flat
+              dense
+              class="q-ml-sm"
+            />
+          </div>
+          <q-btn
+            @click="addTag"
+            v-if="tagsLen > tagFormManage.tag_uuids.length"
+            icon="add"
+            label="Add Another Tag"
+            color="primary"
+            outline
+            dense
+          />
+
+           <div class="col-auto flex justify-end">
+            <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loadingSpinnerRemoveTags" @click="removeSelectedTags" />
+          </div>
+        </div>
+
+        <DocumentTable v-model="selectedDocumentIds" />
+
+        <div class="row items-center" style="width: 100%; ">
+          <div class="col-auto flex justify-end">
+            <q-btn type="submit" color="primary" label="Get tagged texts" :loading="loadingSpinnerTaggedChunks" />
+          </div>
+          <div class="col"></div>
+
+          <div class="col">
+            <q-select
+              v-model="selectedConfig"
+              :options="taggingConfigs"
+              option-label="name"
+              label="Select Tagging Config"
+              outlined
+              dense
+              @click="loadTaggingConfigs"
+            />
+          </div>
+
+          <div class="col">
+            <q-btn
+              @click="onRunTask"
+              icon="assignment"
+              label="Run Tagging task"
+              color="primary"
+              outline
+              dense
+            />
+          </div>
+        </div>
+      </div>
+    </q-form>
+
+    <div class="row">
+  <!-- Text Chunk Data All Automatic, Positive, Negative -->
+  <div class="col-12 col-md-6">
+    <div v-if="mergedChunks.length">
+      <div v-for="chunk in mergedChunks" :key="chunk.chunk_id" class="q-mb-md">
+        <q-card>
+          <q-card-section>
+            <div class="col">
+              <!--<div class="text-subtitle2">Chunk ID: {{ chunk.chunk_id }}</div> -->
+              <div class="text-body1">{{ chunk.text_chunk }}</div>
+              <div class="text-subtitle2">Chunk Collection Name: {{ chunk.chunk_collection_name }}</div>
+
+              <div class="text-caption q-mt-sm">Tags</div>
+              <div class="row q-gutter-sm">
+              <div v-for="tag in chunk.tags" :key="tag.tag_uuid" class="q-mb-md">
+                <div class="col">
+                  <BadgeAvatar
+                    :annotation-class="{
+                      short: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_name || '?',
+                      colorString: tags.find(t => t.tag_uuid === tag.tag_uuid)?.tag_color || '#a19e6d',
+                      textColor: 'black',
+                      approved: tag.tag_type as ApprovedState,
+                    }"
+                    @approve-click="approveTag(true, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
+                    @disapprove-click="approveTag(false, chunk.chunk_id, tag.tag_uuid, chunk.chunk_collection_name)"
+                    size="sm"
+                  />
+                </div>
+                </div>
+              </div> <!-- end tag -->
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+  </div>
+      <div class="col-12 col-md-6">
+        <!-- tasks item -->
+        <q-expansion-item icon="assignment" label="Tasks" expand-separator ref="tasksExpansion" @show="onShowTasks">
+                <!-- Task Status Cards -->
+                <div v-for="task in allTaskInfo" :key="task.task_id" class="row q-mt-lg">
+                  <q-card :class="getTaskCardClass(task.status)" class="col-12">
+                    <q-card-section>
+                      <div class="row items-center">
+                        <q-icon :name="getTaskIcon(task.status)" class="q-mr-sm" />
+                        <div class="text-h6">Task #{{ allTaskInfo.length - allTaskInfo.indexOf(task) }}</div>
+                        <q-space />
+                        <div v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" >
+                          <q-btn
+                            @click="() => cancelTask(task.task_id)"
+                                    icon="fa fa-close"
+                                    label="Cancel Task"
+                                    color="negative"
+                                    outline
+                                    dense
+                            />
+                        </div>
+                        <div class="text-caption">{{ formatDate(task.timestamp) }}</div>
+                      </div>
+                    </q-card-section>
+                    <q-card-section>
+                      <div class="text-subtitle2">ID: {{ task.task_id }}</div>
+                      <div class="text-caption">Status: {{ task.status }}</div>
+                      <q-linear-progress v-if="task.status === 'PROCESSING' || task.status === 'PENDING' || task.status === 'RUNNING' || task.status === 'STARTED'" indeterminate class="q-mt-sm"/>
+                      <div v-if="task.status === 'RUNNING' || task.status === 'PENDING'" class="q-mt-sm">
+                        <div class="text-caption">Processed: {{ task.processed_count ?? 0 }} / {{ task.all_texts_count ?? 0 }}</div>
+                      </div>
+                      <div v-if="task.status === 'COMPLETED'" class="q-mt-sm">
+                        <div class="text-positive">Completed</div>
+                        <div v-if="task.result" class="q-mt-sm">
+                          <div class="text-weight-bold">Results:</div>
+                          <div v-for="(item, idx) in task.tag_processing_data" :key="idx" class="q-pl-md">
+                            {{ idx + 1 }}. <strong>{{ item.tag }}</strong> : {{ item.text }}
+                          </div>
+                        </div>
+                      </div>
+                      <div v-if="task.status === 'FAILED'" class="text-negative q-mt-sm">
+                        Error: {{ task.error }}
+                      </div>
+                    </q-card-section>
+                  </q-card>
+                </div>
+        </q-expansion-item>
+      </div>
+  </div>
+  </q-page>
+
 </template>
 
 <script setup lang="ts">

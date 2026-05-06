@@ -918,6 +918,8 @@ async function fetchTags () {
     if (selectedCollectionId.value == null) {
       filteredTags.value = tags.value
     }
+  } catch (e) {
+    console.error('Error fetching tags:', e)
   } finally {
     loadingSpinnerTags.value = false
   }
