@@ -181,6 +181,8 @@ const onClose = () => {
 
 <style scoped>
 .tag-catalog {
+  max-height: 300px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;

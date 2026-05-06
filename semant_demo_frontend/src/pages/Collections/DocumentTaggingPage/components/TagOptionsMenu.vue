@@ -97,6 +97,13 @@
               name="check"
               class="q-ml-xs"
             />
+            <span class="tag-count q-ml-auto">
+              {{
+                getTagCount(tag.tagUuid) !== 0
+                  ? `${getTagCount(tag.tagUuid)}`
+                  : ''
+              }}
+            </span>
           </template>
         </q-btn>
 
@@ -321,6 +328,7 @@ const props = defineProps<{
   probableTags: ProbableTag[]
   isLoadingProbableTags: boolean
   collectionId: string
+  tagCounts: Record<string, number>
   autoSuggestionProgress: {
     total: number
     remaining: number
@@ -347,6 +355,11 @@ const formatConfidence = (confidence?: number) => {
   return `${(confidence * 100).toFixed(1)}%`
 }
 
+const getTagCount = (tagId: string | null) => {
+  if (!tagId) return 0
+  return props.tagCounts[tagId] ?? 0
+}
+
 const showProbableTagsSection = computed(() => {
   return (
     !!props.globalSelection &&
@@ -370,6 +383,8 @@ const handleClose = () => {
 <style scoped>
 .tag-list {
   display: flex;
+  max-height: 300px;
+  overflow-y: auto;
   flex-direction: column;
   gap: 6px;
 }
@@ -381,10 +396,11 @@ const handleClose = () => {
 
 .tag-list-item {
   width: 100%;
-  justify-content: flex-start;
-  padding: 6px 10px;
-  min-height: 32px;
-  border-radius: 8px;
+  border-radius: 4px;
+  gap: 8px;
+  padding: 8px 10px;
+  display: flex;
+  justify-content: center;
   border: 1px solid #e0e0e0;
   font-family: 'system-ui';
 }
@@ -401,6 +417,11 @@ const handleClose = () => {
 .tag-label {
   font-size: 0.95rem;
   color: #1a1a1a;
+}
+
+.tag-count {
+  font-size: 0.8rem;
+  color: #6a6a6a;
 }
 
 .auto-progress-box {

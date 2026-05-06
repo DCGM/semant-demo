@@ -227,6 +227,7 @@
                 :probable-tags="probableTagSuggestions"
                 :is-loading-probable-tags="isLoadingProbableTags"
                 :collection-id="props.collectionId"
+                :tag-counts="tagCounts"
                 :auto-suggestion-progress="autoSuggestionProgress"
                 @tag-click="handleTagClick"
                 @clear-selection="clearSelection"

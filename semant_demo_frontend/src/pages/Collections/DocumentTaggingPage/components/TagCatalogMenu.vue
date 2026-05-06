@@ -24,13 +24,7 @@
             label="Hide all"
             @click="$emit('hideAll')"
           />
-          <q-btn
-            flat
-            round
-            dense
-            icon="edit"
-            @click="goToTagManagement"
-          >
+          <q-btn flat round dense icon="edit" @click="goToTagManagement">
             <q-tooltip>Edit tags</q-tooltip>
           </q-btn>
           <q-btn flat round dense icon="close" @click="$emit('close')">
@@ -100,7 +94,11 @@
               @click="toggleVisibility(tag.tagUuid)"
             >
               <q-tooltip>
-                {{ isHidden(tag.tagUuid) ? 'Show annotations' : 'Hide annotations' }}
+                {{
+                  isHidden(tag.tagUuid)
+                    ? 'Show annotations'
+                    : 'Hide annotations'
+                }}
               </q-tooltip>
             </q-btn>
           </div>
@@ -217,6 +215,8 @@ const goToTagManagement = () => {
 
 <style scoped>
 .tag-catalog {
+  max-height: 400px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
