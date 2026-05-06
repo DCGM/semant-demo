@@ -55,26 +55,6 @@
         </div>
       </div>
 
-      <div v-if="isAutoSelection && suggestedTag" class="q-mb-sm">
-        <div class="text-caption text-grey-7 q-mb-xs">Proposed tag</div>
-        <q-btn
-          class="tag-list-item proposed-tag is-suggested-tag"
-          flat
-          no-caps
-          align="left"
-          disable
-        >
-          <template #default>
-            <q-icon
-              :name="suggestedTag.tagPictogram"
-              :style="{ color: suggestedTag.tagColor }"
-              class="tag-icon"
-            />
-            <span class="tag-label">{{ suggestedTag.tagName }}</span>
-          </template>
-        </q-btn>
-      </div>
-
       <div
         v-if="isAutoSelection && globalSelection?.reason"
         class="text-grey-8 q-mb-md"
@@ -93,10 +73,6 @@
           no-caps
           align="left"
           :disable="!globalSelection || pageLoading || isAutoSelection"
-          :class="{
-            'is-suggested-tag':
-              isAutoSelection && globalSelection?.tagId === tag.tagUuid
-          }"
           :style="{
             opacity:
               globalSelection?.editingId &&
@@ -394,26 +370,6 @@ const showProbableTagsSection = computed(() => {
 
 const hasProbableTags = computed(() => props.probableTags.length > 0)
 
-const suggestedTag = computed(() => {
-  const tagId = props.globalSelection?.tagId
-  if (!tagId) return null
-
-  const match = props.availableTags.find((tag) => tag.tagUuid === tagId)
-  if (!match) {
-    return {
-      tagName: tagId,
-      tagColor: '#9e9e9e',
-      tagPictogram: ''
-    }
-  }
-
-  return {
-    tagName: match.tagName,
-    tagColor: match.tagColor,
-    tagPictogram: match.tagPictogram
-  }
-})
-
 const handleClose = () => {
   if (!props.isAutoSelection) {
     emit('clearSelection')
@@ -447,10 +403,6 @@ const handleClose = () => {
   justify-content: center;
   border: 1px solid #e0e0e0;
   font-family: 'system-ui';
-}
-
-.tag-list-item.is-suggested-tag.q-btn--disabled {
-  opacity: 1;
 }
 
 .tag-list-item:hover {
