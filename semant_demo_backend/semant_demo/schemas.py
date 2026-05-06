@@ -46,6 +46,7 @@ class SummaryRequestBase(BaseModel):
 class SearchRequest(SummaryRequestBase):
     query: str
     limit: int = 10
+    user_collection_id: str | None = None
     type: SearchType = SearchType.hybrid
     hybrid_search_alpha: float = 0.5
     search_llm_filter: bool = False
@@ -446,6 +447,11 @@ class TagSpan(BaseModel):
     start: int
     end: int
     type: SpanType | None = None
+    # Optional metadata produced by AI/automatic taggers. Always None for
+    # manual spans; populated when an LLM proposes a span via the Topicer
+    # service. Stored alongside the span itself in the database.
+    reason: str | None = None
+    confidence: float | None = None
 
 
 class TagSpanUpdate(BaseModel):
@@ -467,6 +473,11 @@ class TagSpanCreateEmbeddedRequest(BaseModel):
 
 class TagSpanWriteResponse(BaseModel):
     stored_in: list[SpanStoreMode]
+
+
+class TagSpanBatchRequest(BaseModel):
+    chunk_ids: list[str] | None = None
+    collection_id: str | None = None
 
 
 class TagSpanUpdateSeparateRequest(BaseModel):

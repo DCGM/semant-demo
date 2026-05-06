@@ -1,0 +1,43 @@
+services:
+  app:
+    restart: unless-stopped
+    build:
+      context: .
+      target: backend
+      dockerfile: Dockerfile
+      args:
+        - REPO=${REPO}
+        - BRANCH=${BRANCH}
+        - BACKEND_URL=${BACKEND_URL}
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - type: bind
+        source: ${SQL_DB_PATH}/tasks.db
+        target: /app/tasks.db
+        bind:
+          create_host_path: false
+    networks:
+      - web
+      - semant_demo_database
+      - semant_demo_embedder
+      - semant_demo_topicer
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.semant-demo.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.semant-demo.entrypoints=websecure
+      - traefik.http.services.semant-demo.loadbalancer.server.port=8000
+
+networks:
+  web:
+    external: true
+  semant_demo_database:
+    name: semant_demo_database
+    external: true
+  semant_demo_embedder:
+    name: semant_demo_embedder
+    external: true
+  semant_demo_topicer:
+    name: semant_demo_topicer
+    external: true

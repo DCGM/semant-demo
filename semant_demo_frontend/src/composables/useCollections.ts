@@ -5,11 +5,12 @@ import { computed } from 'vue'
 const useCollections = () => {
   const collectionsStore = useCollectionsStore()
 
-  const loadCollections = (userId: string) => collectionsStore.fetchCollections(userId)
+  const loadCollections = () => collectionsStore.fetchCollections()
   const loadCollection = (collectionId: string) => collectionsStore.fetchCollection(collectionId)
   const createCollection = (collectionData: PostCollection) => collectionsStore.createCollection(collectionData)
   const updateCollection = (collectionId: string, collectionData: PatchCollection) => collectionsStore.updateCollection(collectionId, collectionData)
   const deleteCollection = (collectionId: string) => collectionsStore.deleteCollection(collectionId)
+  const deleteManyCollections = (collectionIds: string[]) => collectionsStore.deleteManyCollections(collectionIds)
 
   const collections = computed(() => collectionsStore.collections)
   const activeCollection = computed(() => collectionsStore.activeCollection)
@@ -22,6 +23,7 @@ const useCollections = () => {
     createCollection,
     updateCollection,
     deleteCollection,
+    deleteManyCollections,
 
     collections,
     activeCollection,

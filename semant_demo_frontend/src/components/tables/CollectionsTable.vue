@@ -8,6 +8,8 @@
     :columns="columns"
     :visible-columns="visibleColumns"
     row-key="id"
+    selection="multiple"
+    v-model:selected="selected"
     :row-class="() => 'cursor-pointer'"
     @row-click="handleRowClick"
     style="border-bottom: 1px solid rgba(0, 0, 0, 0.25)"
@@ -102,6 +104,30 @@
       </q-td>
     </template>
   </q-table>
+
+  <Teleport to="body">
+    <transition name="fade-slide-up">
+      <div v-if="selected.length > 0" class="bulk-action-bar">
+        <span class="bulk-count">{{ selected.length }} selected</span>
+        <q-btn
+          flat dense no-caps
+          icon="delete_sweep"
+          label="Delete selected"
+          color="negative"
+          size="md"
+          @click="handleBulkDelete"
+        />
+        <q-btn
+          flat dense round
+          icon="close"
+          size="md"
+          color="grey-4"
+          title="Clear selection"
+          @click="selected = []"
+        />
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -124,9 +150,11 @@ const emit = defineEmits<
   {(event: 'enter', collectionId: string): void
   (event: 'edit', collection: Collection): void
   (event: 'delete', collection: Collection): void
+  (event: 'deleteMany', collectionIds: string[]): void
 }>()
 
 const $q = useQuasar()
+const selected = ref<Collection[]>([])
 
 const initialPagination = {
   sortBy: 'collectionName',
@@ -148,7 +176,7 @@ const columns: QTableColumn<Collection>[] = [
   {
     name: 'collectionName',
     label: 'Name',
-    field: (row) => row.name,
+    field: (row) => row.name || '-',
     align: 'left',
     sortable: true,
     required: true
@@ -156,33 +184,33 @@ const columns: QTableColumn<Collection>[] = [
   {
     name: 'color',
     label: 'Color',
-    field: (row) => row.color,
+    field: (row) => row.color || '-',
     align: 'center'
   },
   {
     name: 'description',
     label: 'Description',
-    field: (row) => row.description ?? '-',
+    field: (row) => row.description || '-',
     align: 'left',
     style: 'max-width: 300px;'
   },
   {
     name: 'owner',
     label: 'Owner',
-    field: (row) => row.userId,
+    field: (row) => row.owner || '-',
     align: 'left'
   },
   {
     name: 'createdAt',
     label: 'Created',
-    field: (row) => row.createdAt.toLocaleDateString(),
+    field: (row) => row.createdAt ? row.createdAt.toLocaleDateString() : '-',
     align: 'left',
     sortable: true
   },
   {
     name: 'updatedAt',
     label: 'Updated',
-    field: (row) => row.updatedAt.toLocaleDateString(),
+    field: (row) => row.updatedAt ? row.updatedAt.toLocaleDateString() : '-',
     align: 'left',
     sortable: true
   }
@@ -190,6 +218,25 @@ const columns: QTableColumn<Collection>[] = [
 
 const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
 const columnOptions = columns.filter((column) => !column.required)
+
+const handleBulkDelete = () => {
+  if (selected.value.length === 0) return
+  const count = selected.value.length
+  $q.dialog({
+    title: 'Delete Selected Collections',
+    html: true,
+    message: `Are you sure you want to delete <strong>${count}</strong> selected collection${count === 1 ? '' : 's'}?`,
+    cancel: true,
+    ok: {
+      label: 'Delete selected',
+      color: 'negative'
+    },
+    persistent: true
+  }).onOk(() => {
+    emit('deleteMany', selected.value.map(c => c.id))
+    selected.value = []
+  })
+}
 
 const handleRowClick = (_evt: Event, row: Collection) => {
   emit('enter', row.id)
@@ -207,5 +254,39 @@ const loading = computed(() => props.loading)
   border-radius: 6px;
   margin: 0 auto;
   border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.bulk-action-bar {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #1c2636;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  z-index: 9000;
+  white-space: nowrap;
+}
+
+.bulk-count {
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0 10px;
+  color: #f1f5f9;
+}
+
+.fade-slide-up-enter-active,
+.fade-slide-up-leave-active {
+  transition: all 0.2s ease;
+}
+
+.fade-slide-up-enter-from,
+.fade-slide-up-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
 }
 </style>

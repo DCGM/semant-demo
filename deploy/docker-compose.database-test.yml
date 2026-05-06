@@ -1,0 +1,35 @@
+services:
+  weaviate:
+    hostname: weaviate
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --scheme
+      - http
+    image: cr.weaviate.io/semitechnologies/weaviate:1.34.4
+    ports:
+      - "127.0.0.1:8082:8080"
+      - "127.0.0.1:50053:50051"
+    volumes:
+      - /mnt/ssd2/weaviate_semant_test:/var/lib/weaviate
+    restart: always
+    stop_grace_period: 120s
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      ENABLE_API_BASED_MODULES: 'true'
+      CLUSTER_HOSTNAME: 'node1'
+      DISK_USE_READONLY_PERCENTAGE: "90"
+      DISK_USE_WARNING_PERCENTAGE: "50"
+    mem_limit: 32g
+    memswap_limit: 0g
+    networks:
+      - semant_demo_test_database
+
+networks:
+  semant_demo_test_database:
+    name: semant_demo_test_database
+    driver: bridge

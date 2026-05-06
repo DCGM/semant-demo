@@ -11,7 +11,10 @@ client.collections.create(
     properties=[
         Property(name="start", data_type=DataType.INT),
         Property(name="end", data_type=DataType.INT),
-        Property(name="type", data_type=DataType.TEXT)   
+        Property(name="type", data_type=DataType.TEXT),
+        # Optional metadata produced by AI/automatic taggers (Topicer service).
+        Property(name="reason", data_type=DataType.TEXT),
+        Property(name="confidence", data_type=DataType.NUMBER),
     ],
     references=[
         ReferenceProperty(

@@ -100,30 +100,71 @@
         </div>
       </q-td>
     </template>
+    <template #body-cell-docStats="props">
+      <q-td :props="props" @click.stop>
+        <div v-if="statsLoading" class="doc-stats-cell doc-stats-cell--loading">
+          <q-spinner size="14px" color="grey-5" />
+        </div>
+        <div v-else-if="documentStatsMap[props.row.id]" class="doc-stats-cell">
+          <span class="doc-stat">
+            <q-icon name="view_list" size="13px" />
+            {{ documentStatsMap[props.row.id].chunksInCollection }}&thinsp;/&thinsp;{{ documentStatsMap[props.row.id].totalChunks }}
+            <q-tooltip>
+              <div class="doc-stat-tooltip">
+                <strong>Chunks in collection</strong><br />
+                {{ documentStatsMap[props.row.id].chunksInCollection }} out of {{ documentStatsMap[props.row.id].totalChunks }} total chunks of this document are added to the collection.
+              </div>
+            </q-tooltip>
+          </span>
+          <span class="doc-stat">
+            <q-icon name="format_quote" size="13px" />
+            {{ documentStatsMap[props.row.id].annotationsCount }}
+            <q-tooltip>
+              <div class="doc-stat-tooltip">
+                <strong>Annotations</strong><br />
+                {{ documentStatsMap[props.row.id].annotationsCount }} tag span{{ documentStatsMap[props.row.id].annotationsCount === 1 ? '' : 's' }} annotated in this document within this collection.
+              </div>
+            </q-tooltip>
+          </span>
+          <span class="doc-stat">
+            <q-icon name="label" size="13px" />
+            {{ documentStatsMap[props.row.id].distinctTagsCount }}
+            <q-tooltip>
+              <div class="doc-stat-tooltip">
+                <strong>Distinct tags</strong><br />
+                {{ documentStatsMap[props.row.id].distinctTagsCount }} unique tag{{ documentStatsMap[props.row.id].distinctTagsCount === 1 ? '' : 's' }} used in annotations across this document.
+              </div>
+            </q-tooltip>
+          </span>
+        </div>
+        <span v-else class="text-grey-4">—</span>
+      </q-td>
+    </template>
   </q-table>
 
-  <transition name="fade-slide-up">
-    <q-page-sticky
-      v-if="selected.length > 0"
-      position="bottom"
-      :offset="[0, 30]"
-    >
-      <q-card class="bulk-actions-card q-px-md q-py-sm">
-        <div class="row items-center q-gutter-md">
-          <div class="text-body1 text-weight-medium">
-            Selected: {{ selected.length }}
-          </div>
-          <q-space />
-          <q-btn
-            color="negative"
-            icon="delete_sweep"
-            label="Remove Selected"
-            @click="handleBulkRemoveFromCollection"
-          />
-        </div>
-      </q-card>
-    </q-page-sticky>
-  </transition>
+  <Teleport to="body">
+    <transition name="fade-slide-up">
+      <div v-if="selected.length > 0" class="bulk-action-bar">
+        <span class="bulk-count">{{ selected.length }} selected</span>
+        <q-btn
+          flat dense no-caps
+          icon="delete_sweep"
+          label="Remove selected"
+          color="negative"
+          size="md"
+          @click="handleBulkRemoveFromCollection"
+        />
+        <q-btn
+          flat dense round
+          icon="close"
+          size="md"
+          color="grey-4"
+          title="Clear selection"
+          @click="selected = []"
+        />
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -135,9 +176,15 @@ import RefreshButton from '../custom/RefreshButton.vue'
 import AddDocumentDropdownBtn from '../custom/AddDocumentDropdownBtn.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
+import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
+import type { DocumentStats } from 'src/generated/api'
 
 const { documents, loadDocumentsByCollection, removeDoc, removeManyDocs, loading } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
+const documentsRepository = useDocumentsRepository()
+
+const documentStatsMap = ref<Record<string, DocumentStats>>({})
+const statsLoading = ref(false)
 
 const $q = useQuasar()
 const $route = useRoute()
@@ -152,10 +199,31 @@ const collectionId = computed<string>(() => {
 
 onMounted(async () => {
   await loadDocumentsByCollection(collectionId.value)
+  void loadAllDocumentStats()
 })
+
+const loadAllDocumentStats = async () => {
+  if (!documents.value.length) return
+  statsLoading.value = true
+  try {
+    const results = await Promise.all(
+      documents.value.map(doc =>
+        documentsRepository.getStats(collectionId.value, doc.id).catch(() => null)
+      )
+    )
+    const map: Record<string, DocumentStats> = {}
+    for (const stats of results) {
+      if (stats) map[stats.documentId] = stats
+    }
+    documentStatsMap.value = map
+  } finally {
+    statsLoading.value = false
+  }
+}
 
 const handleRefresh = async () => {
   await loadDocumentsByCollection(collectionId.value)
+  void loadAllDocumentStats()
 }
 
 const handleBrowseLibrary = () => {
@@ -231,6 +299,7 @@ const initialPagination = {
 const visibleColumns = ref<string[]>([
   'actions',
   'documentTitle',
+  'docStats',
   'author',
   'yearIssued',
   'language',
@@ -260,6 +329,12 @@ const columns: QTableColumn<Document>[] = [
     name: 'author',
     label: 'Author',
     field: (doc) => doc.author?.join(', ') ?? '-',
+    align: 'center' as const
+  },
+  {
+    name: 'docStats',
+    label: 'Usage in collection',
+    field: () => '',
     align: 'center' as const
   },
   {
@@ -312,13 +387,27 @@ const columnOptions = columns.filter((col) => !col.required)
 </script>
 
 <style scoped>
-.bulk-actions-card {
-  min-width: 360px;
-  width: min(92vw, 550px);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-  backdrop-filter: saturate(120%) blur(2px);
+.bulk-action-bar {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #1c2636;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  z-index: 9000;
+  white-space: nowrap;
+}
+
+.bulk-count {
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0 10px;
+  color: #f1f5f9;
 }
 
 .fade-slide-up-enter-active,
@@ -329,6 +418,35 @@ const columnOptions = columns.filter((col) => !col.required)
 .fade-slide-up-enter-from,
 .fade-slide-up-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateX(-50%) translateY(10px);
+}
+
+.doc-stats-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.doc-stats-cell--loading {
+  justify-content: center;
+}
+
+.doc-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.78rem;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.doc-stat-tooltip {
+  max-width: 220px;
+  line-height: 1.5;
 }
 </style>

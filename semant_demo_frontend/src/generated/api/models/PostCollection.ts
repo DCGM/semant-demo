@@ -30,12 +30,6 @@ export interface PostCollection {
      * @type {string}
      * @memberof PostCollection
      */
-    userId: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof PostCollection
-     */
     description?: string | null;
     /**
      * 
@@ -50,7 +44,6 @@ export interface PostCollection {
  */
 export function instanceOfPostCollection(value: object): value is PostCollection {
     if (!('name' in value) || value['name'] === undefined) return false;
-    if (!('userId' in value) || value['userId'] === undefined) return false;
     if (!('color' in value) || value['color'] === undefined) return false;
     return true;
 }
@@ -66,7 +59,6 @@ export function PostCollectionFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
         
         'name': json['name'],
-        'userId': json['user_id'],
         'description': json['description'] == null ? undefined : json['description'],
         'color': json['color'],
     };
@@ -84,7 +76,6 @@ export function PostCollectionToJSONTyped(value?: PostCollection | null, ignoreD
     return {
         
         'name': value['name'],
-        'user_id': value['userId'],
         'description': value['description'],
         'color': value['color'],
     };

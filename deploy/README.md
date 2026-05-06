@@ -6,27 +6,51 @@ This folder manages the full application stack — backend, embedding service, a
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yaml` | Defines three services: `semant-demo`, `embedding-service`, `weaviate` |
-| `Dockerfile` | Multi-stage build for the backend and embedding service |
+| `docker-compose.app.yaml` | Production app stack: backend + built frontend |
+| `docker-compose.app-test.yml` | Test app stack for CI/CD preview environments |
+| `docker-compose.database.yml` | Weaviate database container (production) |
+| `docker-compose.database-test.yml` | Weaviate database container (test) |
+| `docker-compose.embedder.yml` | GPU embedding service container |
+| `Dockerfile` | Multi-stage build for the backend + frontend |
+| `Dockerfile.embedder` | Build for the embedding service |
 | `update.sh` | Wrapper script — loads `.env`, sets variables and forwards arguments to `docker compose` |
-| `.env.example` | Template for environment variables |
+| `.env.example` | Environment variables template for production |
+| `.env.test.example` | Environment variables template for test/CI environments |
 
 ## Folder structure
 
 ```
 deploy/
-├─ .env.example        # environment template
-├─ docker-compose.yaml # compose definition for services
-├─ Dockerfile          # multi-stage build for backend/frontend/embedding
-├─ update.sh           # helper wrapper to run docker compose with .env
-└─ README.md           # this file
+├─ .env.example                  # production environment template
+├─ .env.test.example             # test/CI environment template
+├─ docker-compose.app.yaml       # production app stack
+├─ docker-compose.app-test.yml   # test app stack (CI preview)
+├─ docker-compose.database.yml   # Weaviate database (production)
+├─ docker-compose.database-test.yml  # Weaviate database (test)
+├─ docker-compose.embedder.yml   # GPU embedding service
+├─ Dockerfile                    # multi-stage build for backend + frontend
+├─ Dockerfile.embedder           # build for the embedding service
+├─ update.sh                     # helper wrapper to run docker compose with .env
+└─ README.md                     # this file
 ```
 
 ## Services
 
-- **`semant-demo`** — backend + built frontend (port 8000, behind Traefik)
-- **`embedding-service`** — GPU embedding model, BAAI/bge-multilingual-gemma2 (port 8001)
-- **`weaviate`** — vector database (REST :8080, gRPC :50051)
+The stack is split across several compose files that are started independently and communicate via shared Docker networks:
+
+| Compose file | Service | Network | Notes |
+|---|---|---|---|
+| `docker-compose.database.yml` | `weaviate` | `semant_demo_database` | Production Weaviate (REST :8080, gRPC :50051) |
+| `docker-compose.database-test.yml` | `weaviate` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
+| `docker-compose.embedder.yml` | `embedding-service` | `semant_demo_embedder` | Single GPU embedder shared by **production and all test instances** (port 8001) |
+| `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder` | Production app instance; own `tasks.db` mounted via `$SQL_DB_PATH` |
+| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder` | One container per test instance (CI/CD managed); each has its own `tasks.db` mounted via `$SQL_DB_PATH` |
+
+**Note on `SQL_DB_PATH` construction:**
+- **Production** (`ci-cd.yml`): `SQL_DB_PATH` is set directly to `$SQL_DB_DIR` from GitHub variables
+- **Test** (`ci-cd-test.yml`): `SQL_DB_PATH` is constructed per instance as a unique subdirectory under `$SQL_DB_DIR_TEST`:
+  - `test-main`: `${SQL_DB_DIR_TEST}/test-main`
+  - `test-pr-{N}`: `${SQL_DB_DIR_TEST}/test-pr-${PR_NUMBER}`
 
 ## Requirements
 
@@ -77,6 +101,7 @@ cp .env.example .env
 | `MODEL_TEMPERATURE` | `0.0` | Default LLM temperature |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |
+| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Directory for the SQLite `tasks.db` database (mounted into the container) |
 | `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
@@ -167,3 +192,56 @@ python db_insert_jsonl.py --source-dir /path/to/jsonl_data --delete-old
 ```
 
 The script connects to `localhost:8080` while the stack continues running—nothing breaks.
+
+---
+
+## CI/CD — GitHub Actions
+
+Deployment is fully automated via GitHub Actions on a self-hosted runner (`semant-server`).
+
+### Workflows
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `ci-cd.yml` | Push of a `v*.*.*` tag from `main` | Deploy to production |
+| `ci-cd-test.yml` | Push to `main` | Deploy/update `test-main` preview |
+| `ci-cd-test.yml` | PR opened / updated | Deploy ephemeral `test-pr-<N>` preview |
+| `ci-cd-test.yml` | PR closed | Tear down `test-pr-<N>` preview and remove its database |
+
+### Required GitHub Variables
+
+Set these in **Settings → Secrets and variables → Actions → Variables**:
+
+| Variable | Example value | Description |
+|---|---|---|
+| `BASE_DOMAIN` | `demo.semant.cz` | Base domain; `DOMAIN`, `BACKEND_URL`, `ALLOWED_ORIGIN` are derived from it |
+| `RUNNER_WORKDIR` | `/home/runner/semant-demo` | Working directory on the runner |
+| `DEPLOY_SUBDIR` | `semant-demo` | Subdirectory under `RUNNER_WORKDIR` for the production deploy |
+| `SQL_DB_DIR` | `/mnt/ssd2/semant_demo_app_data` | Production SQLite database directory (must exist, owned by `runner`) |
+| `SQL_DB_DIR_TEST` | `/mnt/ssd2/semant_demo_app_test_data` | Test SQLite database root (subdirectories are created per instance) |
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI / OpenRouter API key |
+
+### First-time Server Setup
+
+Create the database directories and grant the runner user ownership:
+
+```bash
+sudo mkdir -p /mnt/ssd2/semant_demo_app_data
+sudo mkdir -p /mnt/ssd2/semant_demo_app_test_data
+sudo chown runner:runner /mnt/ssd2/semant_demo_app_data
+sudo chown runner:runner /mnt/ssd2/semant_demo_app_test_data
+```
+
+### Production Deployment
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The workflow validates the database directory, clones the tagged deploy files, builds and starts the containers, runs a health check, and rolls back automatically if the health check fails.
