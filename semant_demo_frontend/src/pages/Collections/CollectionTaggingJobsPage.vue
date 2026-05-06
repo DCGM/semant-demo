@@ -1,8 +1,5 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="row justify-center">
-      <span class="text-h6">Manage automatic tags</span>
-    </div>
     <q-dialog v-model="tagCreateDialogVisible">
       <q-card style="width: 25rem; max-width: 90vw;">
         <q-card-section class="q-pa-md">
@@ -181,7 +178,7 @@
           <div v-for="(example, index) in tagFormManage.tag_uuids" :key="index" class="row items-center q-mb-sm">
             <q-select
               v-model="tagFormManage.tag_uuids[index]"
-              :options="filteredTags"
+              :options="tags"
               option-label="tag_name"
               option-value="tag_uuid"
               type="text"
@@ -314,6 +311,9 @@
             <q-btn type="button" color="negative" label="Remove Selected Automatic Tags" icon="delete" :loading="loadingSpinnerRemoveTags" @click="removeSelectedTags" />
           </div>
         </div>
+
+        <DocumentTable v-model="selectedDocumentIds" />
+
         <div class="row items-center" style="width: 100%; ">
           <div class="col-auto flex justify-end">
             <q-btn type="submit" color="primary" label="Get tagged texts" :loading="loadingSpinnerTaggedChunks" />
@@ -447,6 +447,11 @@ import { useUserStore } from 'src/stores/user-store'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
 import useCollections from 'src/composables/useCollections'
 import { QExpansionItem, Notify } from 'quasar'
+import useTags from 'src/composables/useTags'
+
+import DocumentTable from 'src/components/tables/SimpleDocumentsTable.vue'
+
+const selectedDocumentIds = ref<string[]>([])
 
 // TODO put back status 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'CANCELED';
 
@@ -535,7 +540,7 @@ const tagCreation = ref<TagCreationOption>({
   error: ""
 })
 
-const tags = ref<TagData[]>([])
+// const tags = ref<TagData[]>([])
 const loadingSpinnerTags = ref(false)
 const loadingSpinnerTaggedChunks = ref(false)
 const loadingSpinnerRemoveTags = ref(false)
@@ -567,6 +572,8 @@ const tasksExpansion = ref<QExpansionItem | null>(null)
 
 const taggingConfigs = ref<TaggingConfig[]>([]) // store for configurations
 const selectedConfig = ref<TaggingConfig>()
+
+const { tags, loadTagsByCollection } = useTags()
 
 interface MergedTag {
   tag_uuid: string
@@ -631,6 +638,7 @@ onMounted(async () => {
     tagForm.value.collection_name = selectedCollection.value?.name || tagForm.value.collection_name
   }
   await onShowTasks()
+  // await loadTagsByCollection(collectionId.value) // load tags for the current collection to show in the dropdown and use for tag info in the tagged chunks list
   // the tag management part
   /*
   loadingSpinner.value = true
@@ -671,9 +679,11 @@ function getTaskIcon (status: string): string {
 async function loadExistingTagsList () {
   loadingSpinnerTags.value = true
   try {
-    const res = await axios.get('/api/tags')
+    const res = await api.get('/tags')
     tags.value = res.data.tags_lst
     // filter based on currently selected collection
+    console.log('Selected collection:', selectedCollection.value)
+    console.log('All tags:', tags.value)
     if (selectedCollection.value?.name) {
       filteredTags.value = tags.value.filter(
         tag => tag.collection_name === selectedCollection.value?.name
@@ -681,6 +691,7 @@ async function loadExistingTagsList () {
     } else {
       filteredTags.value = []
     }
+    console.log('Filtered tags:', filteredTags.value)
     tagsLen.value = filteredTags.value.length
   } catch (e) {
     console.error('Error loading existing tags:', e)
@@ -902,7 +913,7 @@ async function fetchTags () {
 }
 
 async function onShowTasks () {
-  const res = await axios.get('/api/all_tasks')
+  const res = await api.get('/tag/tasks/info')
   const tasks = res.data.taskData
   for (const task of tasks) {
     // skip if this task is already in allTaskInfo
