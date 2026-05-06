@@ -383,7 +383,7 @@ const handleClose = () => {
 <style scoped>
 .tag-list {
   display: flex;
-  max-height: 300px;
+  max-height: 220px;
   overflow-y: auto;
   flex-direction: column;
   gap: 6px;
