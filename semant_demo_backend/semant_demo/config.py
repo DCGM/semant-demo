@@ -10,7 +10,7 @@ class Config:
     def __init__(self):
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
         self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://openrouter.ai/api/v1")
-        
+
         self.WEAVIATE_HOST = os.getenv("WEAVIATE_HOST", "localhost")
         self.WEAVIATE_REST_PORT = os.getenv("WEAVIATE_REST_PORT", 8080)
         self.WEAVIATE_GRPC_PORT = os.getenv("WEAVIATE_GRPC_PORT", 50051)
@@ -19,6 +19,11 @@ class Config:
         embedding_service_port = os.getenv("EMBEDDING_SERVICE_PORT",8001)
         self.GEMMA_URL = f"http://{embedding_service_host}:{embedding_service_port}"
         #self.GEMMA_URL = "http://localhost:8001"
+
+        self.TOPICER_URL = os.getenv("TOPICER_URL", "http://localhost:8089")
+        self.TOPICER_CONFIG_NAME = os.getenv("TOPICER_CONFIG_NAME", "")
+        self.TOPICER_TIMEOUT = float(os.getenv("TOPICER_TIMEOUT", 30.0))
+        self.TOPICER_READ_WRITE_TIMEOUT = float(os.getenv("TOPICER_RW_TIMEOUT", 600.0))
 
         self.PRODUCTION = os.getenv("PRODUCTION", str(False)).lower() in TRUE_VALUES
         self.MODEL_NAME = os.getenv("MODEL_NAME", 'clip-ViT-L-14')

@@ -102,6 +102,21 @@ async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
         logging.error(e)
         return {"created": False, "message": f"Chunk not added to collection becacause of: {e}"}
 
+@exp_router.post("/api/user_collection/chunks/remove", response_model=schemas.CreateResponse)
+async def remove_chunk_from_collection(req: schemas.Chunk2CollectionReq,
+                                       searcher: WeaviateAbstraction = Depends(get_search),
+                                       current_user: User = Depends(current_active_user)) -> schemas.CreateResponse:
+    """
+    Removes connection between chunk and user collection.
+    """
+    try:
+        err = await searcher.userCollection.remove_chunk(chunk_id=req.chunkId, collection_id=req.collectionId)
+        if err == False:
+            raise Exception("weaviate error, reference not removed")
+        return schemas.CreateResponse(created=True, message="Chunk removed from collection")
+    except Exception as e:
+        logging.error(e)
+        return schemas.CreateResponse(created=False, message=f"Chunk not removed from collection because of: {e}")
 
 @exp_router.get("/api/user_collection/chunks", response_model=schemas.GetCollectionChunksResponse)
 async def get_collection_chunks(collection_id: str,

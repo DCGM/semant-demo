@@ -14,12 +14,15 @@ from semant_demo.routes.dependencies import get_search, get_summarizer #, get_en
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 import logging
+from openai import AsyncOpenAI
 
 
 exp_router = APIRouter()
 
 
-openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+def get_openai_client() -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+
 @exp_router.post("/api/search", response_model=schemas.SearchResponse)
 async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Depends(get_search),
                  summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
@@ -93,7 +96,7 @@ async def question(search_response: schemas.SearchResponse, question_text: str,
     print(messages)
 
     try:
-        resp = await openai_client.chat.completions.create(
+        resp = await get_openai_client().chat.completions.create(
             model="gpt-4.1-mini",
             messages=messages,
             temperature=0.0,

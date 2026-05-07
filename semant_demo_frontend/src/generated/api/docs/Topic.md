@@ -1,32 +1,26 @@
 
-# ApproveTagReq
+# Topic
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`collectionID` | string
-`chunkID` | string
-`tagID` | string
-`spanID` | string
-`start` | number
-`end` | number
+`name` | string
+`nameExplanation` | string
+`description` | string
 
 ## Example
 
 ```typescript
-import type { ApproveTagReq } from ''
+import type { Topic } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "collectionID": null,
-  "chunkID": null,
-  "tagID": null,
-  "spanID": null,
-  "start": null,
-  "end": null,
-} satisfies ApproveTagReq
+  "name": null,
+  "nameExplanation": null,
+  "description": null,
+} satisfies Topic
 
 console.log(example)
 
@@ -35,7 +29,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as ApproveTagReq
+const exampleParsed = JSON.parse(exampleJSON) as Topic
 console.log(exampleParsed)
 ```
 

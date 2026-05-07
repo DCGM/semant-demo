@@ -26,6 +26,7 @@ All URIs are relative to *http://localhost*
 | [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
 | [**fetchDocumentApiDocumentDocumentIdGet**](DefaultApi.md#fetchdocumentapidocumentdocumentidget) | **GET** /api/document/{document_id} | Fetch Document |
+| [**fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet**](DefaultApi.md#fetchdocumentchunksapidocumentsdocumentidcollectionidchunksget) | **GET** /api/documents/{document_id}/{collection_id}/chunks | Fetch Document Chunks |
 | [**filterChunksByTagsApiTagsFilterPost**](DefaultApi.md#filterchunksbytagsapitagsfilterpost) | **POST** /api/tags/filter | Filter Chunks By Tags |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
 | [**getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet**](DefaultApi.md#getchunksinrangeapicollectionscollectioniddocumentsdocumentidchunksget) | **GET** /api/collections/{collection_id}/documents/{document_id}/chunks | Get Chunks In Range |
@@ -42,12 +43,16 @@ All URIs are relative to *http://localhost*
 | [**getTagTasksApiTagTasksInfoGet**](DefaultApi.md#gettagtasksapitagtasksinfoget) | **GET** /api/tag/tasks/info | Get Tag Tasks |
 | [**getTagsApiTagsGet**](DefaultApi.md#gettagsapitagsget) | **GET** /api/tags | Get Tags |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
+| [**proposeBestTagApiProposeBestTagPost**](DefaultApi.md#proposebesttagapiproposebesttagpost) | **POST** /api/propose_best_tag | Propose Best Tag |
+| [**proposeTagsApiProposeTagsPost**](DefaultApi.md#proposetagsapiproposetagspost) | **POST** /api/propose_tags | Propose Tags |
+| [**proposeTagsMockApiProposeTagsMockPost**](DefaultApi.md#proposetagsmockapiproposetagsmockpost) | **POST** /api/propose_tags_mock | Propose Tags Mock |
 | [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
 | [**removeAutomaticTagsApiTagsAutomaticDelete**](DefaultApi.md#removeautomatictagsapitagsautomaticdelete) | **DELETE** /api/tags/automatic | Remove Automatic Tags |
 | [**removeChunkFromCollectionApiUserCollectionChunksDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectionchunksdelete) | **DELETE** /api/user_collection/chunks | Remove Chunk From Collection |
+| [**removeChunkFromCollectionApiUserCollectionChunksRemovePost**](DefaultApi.md#removechunkfromcollectionapiusercollectionchunksremovepost) | **POST** /api/user_collection/chunks/remove | Remove Chunk From Collection |
 | [**removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapicollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
@@ -55,6 +60,7 @@ All URIs are relative to *http://localhost*
 | [**searchUsersApiUsersSearchGet**](DefaultApi.md#searchusersapiuserssearchget) | **GET** /api/users/search | Search Users |
 | [**startTaggingApiTagTaskPost**](DefaultApi.md#starttaggingapitagtaskpost) | **POST** /api/tag/task | Start Tagging |
 | [**suggestSpansOptimizedApiAiSuggestSpansOptimizedPost**](DefaultApi.md#suggestspansoptimizedapiaisuggestspansoptimizedpost) | **POST** /api/ai/suggest_spans/optimized | Suggest Spans Optimized |
+| [**suggestSpansSelectionApiAiSuggestSpansSelectionPost**](DefaultApi.md#suggestspansselectionapiaisuggestspansselectionpost) | **POST** /api/ai/suggest_spans/selection | Suggest Spans Selection |
 | [**suggestSpansThoroughApiAiSuggestSpansThoroughPost**](DefaultApi.md#suggestspansthoroughapiaisuggestspansthoroughpost) | **POST** /api/ai/suggest_spans/thorough | Suggest Spans Thorough |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
@@ -1620,6 +1626,77 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet
+
+> DocumentDetail fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet(documentId, collectionId)
+
+Fetch Document Chunks
+
+Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    documentId: documentId_example,
+    // string
+    collectionId: collectionId_example,
+  } satisfies FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest;
+
+  try {
+    const data = await api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**DocumentDetail**](DocumentDetail.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## filterChunksByTagsApiTagsFilterPost
 
 > FilterChunksByTagsResponse filterChunksByTagsApiTagsFilterPost(filterChunksByTagsRequest)
@@ -2705,6 +2782,210 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## proposeBestTagApiProposeBestTagPost
+
+> BestTagProposalResponse proposeBestTagApiProposeBestTagPost(bestTagProposalRequest)
+
+Propose Best Tag
+
+Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ProposeBestTagApiProposeBestTagPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // BestTagProposalRequest
+    bestTagProposalRequest: ...,
+  } satisfies ProposeBestTagApiProposeBestTagPostRequest;
+
+  try {
+    const data = await api.proposeBestTagApiProposeBestTagPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **bestTagProposalRequest** | [BestTagProposalRequest](BestTagProposalRequest.md) |  | |
+
+### Return type
+
+[**BestTagProposalResponse**](BestTagProposalResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## proposeTagsApiProposeTagsPost
+
+> AutoAnnotationsSuggestionsResponse proposeTagsApiProposeTagsPost(autoAnnotationSuggestionRequest)
+
+Propose Tags
+
+Call Topicer tag proposal on provided chunks and tags.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ProposeTagsApiProposeTagsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // AutoAnnotationSuggestionRequest
+    autoAnnotationSuggestionRequest: ...,
+  } satisfies ProposeTagsApiProposeTagsPostRequest;
+
+  try {
+    const data = await api.proposeTagsApiProposeTagsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **autoAnnotationSuggestionRequest** | [AutoAnnotationSuggestionRequest](AutoAnnotationSuggestionRequest.md) |  | |
+
+### Return type
+
+[**AutoAnnotationsSuggestionsResponse**](AutoAnnotationsSuggestionsResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## proposeTagsMockApiProposeTagsMockPost
+
+> AutoAnnotationsSuggestionsResponse proposeTagsMockApiProposeTagsMockPost(autoAnnotationSuggestionRequest)
+
+Propose Tags Mock
+
+Mock of Topicer propose_tags that returns random auto suggestions.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ProposeTagsMockApiProposeTagsMockPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // AutoAnnotationSuggestionRequest
+    autoAnnotationSuggestionRequest: ...,
+  } satisfies ProposeTagsMockApiProposeTagsMockPostRequest;
+
+  try {
+    const data = await api.proposeTagsMockApiProposeTagsMockPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **autoAnnotationSuggestionRequest** | [AutoAnnotationSuggestionRequest](AutoAnnotationSuggestionRequest.md) |  | |
+
+### Return type
+
+[**AutoAnnotationsSuggestionsResponse**](AutoAnnotationsSuggestionsResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## questionApiQuestionQuestionTextPost
 
 > SummaryResponse questionApiQuestionQuestionTextPost(questionText, searchResponseInput)
@@ -3091,6 +3372,78 @@ async function example() {
 
   try {
     const data = await api.removeChunkFromCollectionApiUserCollectionChunksDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **chunk2CollectionReq** | [Chunk2CollectionReq](Chunk2CollectionReq.md) |  | |
+
+### Return type
+
+[**CreateResponse**](CreateResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## removeChunkFromCollectionApiUserCollectionChunksRemovePost
+
+> CreateResponse removeChunkFromCollectionApiUserCollectionChunksRemovePost(chunk2CollectionReq)
+
+Remove Chunk From Collection
+
+Removes connection between chunk and user collection.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // Chunk2CollectionReq
+    chunk2CollectionReq: ...,
+  } satisfies RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest;
+
+  try {
+    const data = await api.removeChunkFromCollectionApiUserCollectionChunksRemovePost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -3617,6 +3970,78 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Stream of SuggestSpansChunkResult, one JSON object per line. |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## suggestSpansSelectionApiAiSuggestSpansSelectionPost
+
+> suggestSpansSelectionApiAiSuggestSpansSelectionPost(suggestSpansSelectionRequest)
+
+Suggest Spans Selection
+
+Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (&#x60;&#x60;application/x-ndjson&#x60;&#x60;) — one :class:&#x60;SuggestSpansChunkResult&#x60; per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // SuggestSpansSelectionRequest
+    suggestSpansSelectionRequest: ...,
+  } satisfies SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest;
+
+  try {
+    const data = await api.suggestSpansSelectionApiAiSuggestSpansSelectionPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **suggestSpansSelectionRequest** | [SuggestSpansSelectionRequest](SuggestSpansSelectionRequest.md) |  | |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/x-ndjson`, `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Stream of SuggestSpansChunkResult, one JSON object per line. One event per persisted auto span; a final event with empty &#x60;&#x60;spans&#x60;&#x60; and a populated &#x60;&#x60;error&#x60;&#x60; is emitted on Topicer failure. |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
