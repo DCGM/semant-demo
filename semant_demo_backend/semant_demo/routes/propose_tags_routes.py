@@ -18,6 +18,7 @@ TOPICER_PROPOSE_TAGS_TEXTS_PATH = "/v1/tags/propose/texts"
 TOPICER_CONFIGS_PATH = "/v1/configs"
 TOPICER_PROPOSE_MOST_PROBABLE_TAG_PATH = "/v1/tags/propose/texts/most_probable"
 CONFIG_NAME = "openai-xsucha"
+MAX_INLINE_SUGGESTIONS = 3
 
 
 def _topicer_http_timeout() -> httpx.Timeout:
@@ -323,33 +324,36 @@ async def propose_best_tag(
                 if not payload:
                     return schemas.BestTagProposalResponse(suggestions=[])
 
-                # Extrakce dat z nového formátu
-                topicer_tag = payload.get("tag", {})
-                tag_id = topicer_tag.get("id")
-                confidence = payload.get("confidence", 0.0)
+                suggestions: list[schemas.BestTagProposal] = []
 
-                if not tag_id:
-                    _raise_topicer_gateway_error(
-                        "Topicer response missing tag ID.")
+                for item in payload:
+                    topicer_tag = item.get("tag", {})
+                    tag_id = topicer_tag.get("id")
+                    confidence = item.get("confidence", 0.0)
 
-                # Filtrování podle threshold hodnoty z requestu
-                if confidence < body.confidence_threshold:
-                    return schemas.BestTagProposalResponse(suggestions=[])
+                    if not tag_id:
+                        continue
 
-                # Sestavení odpovědi. BERT zero-shot klasifikuje text jako celek,
-                # proto je span od 0 do konce textu.
-                proposal = schemas.BestTagProposal(
-                    tagId=tag_id,
-                    confidence=confidence,
-                    start=0,
-                    end=len(body.text),
-                    tag=tag_by_id.get(tag_id),
-                    # reason=f"Klasifikováno modelem BERT s jistotou {confidence:.2f}"
-                    reason=f"Classification with confidence of {confidence * 100:.1f}%"
-                )
+                    # threshold filtering
+                    if confidence < body.confidence_threshold:
+                        continue
+
+                    if len(suggestions) >= MAX_INLINE_SUGGESTIONS:
+                        break
+
+                    suggestions.append(
+                        schemas.BestTagProposal(
+                            tagId=tag_id,
+                            confidence=confidence,
+                            start=0,
+                            end=len(body.text),
+                            tag=tag_by_id.get(tag_id),
+                            reason=f"Classification with confidence of {confidence * 100:.1f}%"
+                        )
+                    )
 
                 return schemas.BestTagProposalResponse(
-                    suggestions=[proposal]
+                    suggestions=suggestions
                 )
 
             # Pokud smyčka doběhne a žádný config neměl metodu implementovanou
