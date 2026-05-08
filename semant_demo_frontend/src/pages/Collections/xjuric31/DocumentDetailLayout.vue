@@ -1300,7 +1300,9 @@ onBeforeUnmount(() => {
 /* ── AI assistance tab ── */
 
 /* Make the q-tab-panels container fill the drawer's available height so the
-   AI tab can use a flex layout and never overflow. */
+   AI tab can use a flex layout and never overflow. The other tabs (Tags,
+   Document) keep their natural height and scroll vertically when their
+   content exceeds the drawer. */
 .drawer-content :deep(.q-tab-panels) {
   flex: 1 1 0;
   min-height: 0;
@@ -1315,6 +1317,11 @@ onBeforeUnmount(() => {
 .drawer-content :deep(.q-tab-panel) {
   height: 100%;
   min-height: 0;
+  overflow-y: auto;
+}
+/* The AI panel manages its own internal scrolling (only the suggestions
+   list scrolls), so the panel itself must never scroll as a whole. */
+.drawer-content :deep(.q-tab-panel.ai-panel) {
   overflow: hidden;
 }
 
@@ -1323,7 +1330,6 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  overflow: hidden;
 }
 
 .ai-panel .ai-tag-list {
