@@ -389,6 +389,16 @@
           <!-- Default action mode -->
           <template v-else>
             <div class="popover-actions">
+              <!-- Save position (position changed) — shown first when applicable -->
+              <q-btn
+                v-if="annotations.positionChanged.value"
+                no-caps unelevated
+                icon="save"
+                label="Save position"
+                color="primary"
+                class="popover-btn"
+                @click="onSavePosition"
+              />
               <!-- Approve / reject shortcut for auto spans (AI suggestions) -->
               <template v-if="editingAutoSpan">
                 <q-btn
@@ -433,15 +443,6 @@
                   Ask AI to suggest tags for the highlighted text only.
                 </q-tooltip>
               </q-btn>
-              <q-btn
-                v-if="annotations.positionChanged.value"
-                no-caps outline
-                icon="save"
-                label="Save"
-                color="primary"
-                class="popover-btn"
-                @click="onSavePosition"
-              />
               <q-btn
                 v-if="annotations.isEditing.value"
                 no-caps outline
