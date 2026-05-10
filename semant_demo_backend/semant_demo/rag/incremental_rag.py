@@ -28,7 +28,7 @@ from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 #import prompts from prompt file
 from semant_demo.rag.incremental_rag_prompts import *
 
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 
 @register_rag_class
 class IncrementalAdaptiveRagGenerator(BaseRag):
@@ -41,6 +41,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.identify_language_prompt_answer = ChatPromptTemplate.from_messages(identify_language_answer_prompt_template)
         self.check_sufficient_context_prompt = ChatPromptTemplate.from_messages(check_sufficient_context_prompt_template)
         
+        #prompts for different nodes based on language, if language is not supported default to eng
+        # in the future we can create different prompts for different languages - simply by adding them to the dictionary with corresponding key
         self.prompts = {
             "ces" : {
                 "history_transformation" : ChatPromptTemplate.from_messages(cze_refrase_question_from_history_prompt_template),
@@ -128,15 +130,16 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             )
     
     def _create_extract_model(self):
-        #TODO can add optional model to config
         return self.model
     
+    #obtain prompt based on language, if language is not supported return default (ces) prompt
     def _get_prompt_by_language(self, node_type: str, language: str):
         lang_dict = self.prompts.get(language, self.prompts.get("ces"))
         return lang_dict.get(node_type, self.prompts["ces"].get(node_type))
 
 
      # create the graph
+     # definition of nodes, edges and conditional edges (cycles) - this is where the logic of RAG is defined
     def _build_rag(self):
         #define nodes
         workflow = StateGraph(AdaptiveRagState)
@@ -202,7 +205,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-# creation of the chain
+    # creation of the chain
     def _create_chain(self, model, prompt):    
         return prompt | model | self.output_parser
     
@@ -235,6 +238,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         return ("\n".join(snippets))
     
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+    # retrieval node
+    # use to get relevant documents from database based on question, history and metadata (if extracted)
     async def node_retrieve(self, state: AdaptiveRagState):
         try:
             #get metadata
@@ -244,12 +249,15 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             limit = self.chunk_limit
             alpha = self.alpha
             use_hyde_embedding = False
+            # mimick basic rag retrieval in the first iteration
             if (iteration == 0):
                 limit = 5
+            # multiquery approach in second iteration
             elif (iteration == 1):
                 limit = self.chunk_limit
             elif (iteration == 2):  # hyde
                 #use document embedding instead of query embedding
+                # using higher alpha because semantic search is preferred in this case
                 limit = 10
                 use_hyde_embedding = True
                 alpha = 0.9
@@ -312,6 +320,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     "retrieval_iteration_counter" : counter_value
                     }
     
+    # funciton called at the beggining of the graph
+    # detect language of the question to use best prompts
+    # default is eng
     async def node_detect_language(self, state: AdaptiveRagState):
         chain = self._create_chain(model=self.model, prompt=self.identify_language_prompt)
         result = await chain.ainvoke({"question_string" : state["question"]})
@@ -327,6 +338,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
 
     #rephrase question to search desired data in database
+    # this node enable to have converstation with RAG system
     async def node_history_transformation(self, state: AdaptiveRagState):
         if (state["history"]):
             #create desired chain
@@ -342,12 +354,14 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             })
 
             if (DEBUG_PRINT):
-                print(f"Refrased question: {correct_question}")
+                print(f"Rephrased question: {correct_question}")
 
             return {"question" : correct_question}
         else:
             return {"question" : state["original_question"]}
-        
+
+    # node to check if the context from previous interraction is sufficent to answer new question
+    # it helps to answer more quicker if the question is related to previous one and the context is still relevant    
     async def node_check_context(self, state: AdaptiveRagState):
         if (state["history"] and state["documents"]):
             chain = self._create_chain(model=self.model, prompt=self.check_sufficient_context_prompt)
@@ -362,7 +376,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         return {"context_sufficient" : False}
             
-
+    # function to decide after context check if we should start retrieval or we can skip it and generate answer right away
     def decide_after_check(self, state: AdaptiveRagState):
         if (state["context_sufficient"] == True):
             if (DEBUG_PRINT):
@@ -373,6 +387,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 print(f"Starting  DB search.")
             return "insufficient"
 
+    # node to extract metadata from question
+    # extracts year and language information
+    # note: language is in library format (ces, eng...) - NOT cs, en...
     async def node_extract_metadata(self, state: AdaptiveRagState):
         if state.get("retrieval_iteration_counter", 0) == 1:
             if (state["metadata_extraction_allowed"] == True):
@@ -399,7 +416,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             return {"metadata" : state["metadata"]}
 
         return {"metadata" : {}}
-        
+    
+    # retrive strategy node
+    # first iteration is simple retrieval, second use multiquer with step-back approach and thirs uses hyde
     async def node_multi_query(self, state: AdaptiveRagState):
         iteration = state.get("retrieval_iteration_counter", 0)
         language = state.get("language", "ces")
@@ -435,8 +454,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
             return {"queries" : queries}
 
-
-
+    # grade retrieved documents
+    # filtrate docs which were asssigned as not relevant to lower probability of halucunations
     async def node_grade_context(self, state: AdaptiveRagState):
         #first basic rag query
         if (len(state["documents"]) <= 5 or state["retrieval_iteration_counter"] == 1):
@@ -481,6 +500,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         filtered_documents = filtered_documents[:5]
         return {"documents" : filtered_documents}
     
+    # choose path base on previous decision of context grader node
+    # if no relevant documents were found go straight to web search if enabled to make pipe more effective
     def after_context_grade (self, state: AdaptiveRagState):
         ret_count = state.get("retrieval_iteration_counter", 0)
         if (state["documents"] and len(state["documents"]) > 0):
@@ -498,6 +519,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         return "generate"
 
     # generate an answer
+    # there are two different prompts based on if there is history or not
     async def node_generate(self, state: AdaptiveRagState):
         language = state.get("language", "ces")
         
@@ -506,7 +528,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         if (DEBUG_PRINT):
             print(f"DEBUG: Context length (chars): {len(final_context)}")
 
-        if (state["history"]):
+        if (state["history"]):  #if there is history use different prompt which include history in the input
             prompt = self._get_prompt_by_language("generate_with_history", language)
             chain = self._create_chain(model=self.model, prompt=prompt)
             #get history in desired format
@@ -518,7 +540,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "question_string" : state["question"],
                 "prompt_history" : prompt_history
             })
-        else:
+        else: # if there is no history use simpler prompt
             prompt = self._get_prompt_by_language("generate_no_history", language)
             chain = self._create_chain(model=self.model, prompt=prompt)
             answer = await chain.ainvoke({
@@ -531,6 +553,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         return {"generation": answer}
     
+    # grade generated answer
+    # if the answer is not sufficient route back to retrieval with multiquery or hyde to get more relevant documents and generate again
     async def node_grade_generation (self, state: AdaptiveRagState):
         gen_value = state.get("generation_iteration_counter", 0) + 1
         language = state.get("language", "ces")
@@ -558,6 +582,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 print(f"GRADER ERROR: {e}. Defaulting to finish.")
             return {"feedback": "supported", "generation_iteration_counter": gen_value}
 
+    # decide where to go based on answer grading
     def decide_after_generation (self, state: AdaptiveRagState):
         retrieval_count = state.get("retrieval_iteration_counter", 0)
         web_search_done = state.get("web_search_performed", False)
@@ -565,19 +590,22 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             if (DEBUG_PRINT): 
                 print("FINISHING: Answer satisfactory.")
             return "finish"
-        if (retrieval_count < self.max_retries):
+        if (retrieval_count < self.max_retries):    #max tries
             if (DEBUG_PRINT): 
                 print("Retrying with multiquery or hyde.")
             return "retry"
-        if (web_search_done == False and self.web_search_enabled == True):
+        if (web_search_done == False and self.web_search_enabled == True): #web search fallback
             return "web_search"
         
         return "finish"
     
+    # internet fallback node
+    # very helpful if database is lacking information about the question topic
     async def node_web_search (self, state: AdaptiveRagState):
         if (DEBUG_PRINT):
             print(f"Extracting keyword for the internet search.")
 
+        # extract keywords from question to expand search
         try:
             language = state.get("language", "ces")
             prompt = self._get_prompt_by_language("extract_keyword", language)
@@ -610,6 +638,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             search_result = await asyncio.to_thread(ddg, search_queries)
             search_chunks = []
 
+            # create hypothetical document which contations web search results
+            # metavalues are dummies because they are not used anyway
             for result_text in search_result:
                 search_chunk = TextChunkWithDocument(
                     id=uuid_tmp,
@@ -639,7 +669,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     async def rag_request(self, request: RagRequest, searcher: WeaviateAbstraction) -> RagResponse:
         if (self.searcher == None):
             self.searcher = searcher
-        
+        # get history and previous documents from request
         previous_documents = []
         if request.history:
             history_preprocessed = [msg.model_dump() for msg in request.history]
@@ -648,7 +678,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             history_preprocessed = []
 
         print(previous_documents)
-        # call model
+        # call rag graph
         try:
             t1 = time()
 
@@ -682,7 +712,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         answer_id = str(uuid.uuid4())
 
-        # answer
+        # answer in required format
         return RagResponse(
             rag_answer=generated_result["generation"].strip(),
             sources=generated_result["documents"],
@@ -692,13 +722,22 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     
     #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
     # explain selection method
+    # method to explain specific part of the answer based on selected text and sources used for generation
     async def explain_selection(self, request : ExplainRequest):
         full_answer = request.full_answer
         sources_raw = request.sources
         selected_text = request.selected_text
         history_preprocessed = []
+
         if request.history:
             history_preprocessed = [msg.model_dump() for msg in request.history]
+        
+        # should not occured but there was problem with it once, this should prevent it
+        if history_preprocessed:
+            last_msg = history_preprocessed[-1]
+            role = last_msg.get("role", "")
+            if (role == "user"):
+                history_preprocessed.pop() # remove last user message
 
         if (DEBUG_PRINT):
             print(f"EXPLAIN SELECTION: Full answer: {full_answer}, Selected text: {selected_text}")
