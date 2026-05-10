@@ -251,43 +251,63 @@ flowchart TD
 
 **RagGenerator** — Simple single-pass RAG: reformulate question with history → search → generate answer with citations.
 
-**AdaptiveRagGenerator** — LangGraph-based stateful workflow with iterative search and answer grading.
+**AdaptiveRagGenerator** — LangGraph-based stateful workflow with iterative retrieval and answer grading.
 
 **AdaptiveRagGeneratorOg** — Original AdaptiveRAG variant; stable base for experimentation.
 
-**IncrementalAdaptiveRagGenerator** — Latest recommended variant that incrementally expands context & retrieval, with best accuracy/tuning in this branch.
+**IncrementalAdaptiveRagGenerator** — Current production-ready variant that incrementally expands retrieval, grades context and outputs, and uses fallback search strategies when the initial retrieval is insufficient.
 
-**xmartiAgentRag** — Agentic workflow with tool orchestration (query expand, decomposition, retrieval quality assessment, evidence synthesis). OpenAI-based models in all RAG implementations (`rag_generator`, `adaptive_rag`, `adaptive_rag_og`, `incremental_rag`, `agentic_rag`) use `OPENAI_API_URL` for endpoint routing.
+**xmartiAgentRag** — Agentic workflow with tool orchestration (query expansion, decomposition, retrieval quality assessment, evidence synthesis).
 
+#### Incremental RAG:
 ```mermaid
 flowchart TD
-    START((Start)) --> TH[Transform History]
-    TH --> CC{Check Context<br/>Sufficient?}
-    CC -->|yes| GEN[Generate Answer]
-    CC -->|no| SRB[Start Retrieval]
+    START((Start)) --> DET[Detect Language]
+    DET --> TH[Transform History]
+    TH --> CC{Check Previous Context<br/>Sufficient?}
 
-    SRB --> MQ[Multi-Query / HyDE]
+    CC -->|yes| GEN[Generate Answer]
+    CC -->|no| SRB[Start Retrieval Branch]
+
+    SRB --> MQ[Build Queries]
     SRB --> EM[Extract Metadata]
     MQ --> RET[Retrieve from Weaviate]
     EM --> RET
-    RET --> GC{Grade Context}
+    RET --> GC[Grade Retrieved Context]
 
-    GC -->|good enough| GEN
+    GC -->|enough| GEN
     GC -->|retry| SRB
     GC -->|web search| WS[Web Search - DDG]
 
     WS --> GEN
-    GEN --> GG{Grade Generation}
+    GEN --> GG[Grade Generation]
+
     GG -->|supported| END((End))
-    GG -->|not supported| GEN
+    GG -->|retry| SRB
     GG -->|web search| WS
 ```
 
-Configurable parameters per RAG config YAML:
+IncrementalAdaptiveRagGenerator is implemented as a `langgraph` state machine. The workflow is:
+- detect the question language first, then choose Czech/English prompt templates
+- rewrite conversational history into a standalone search question only when history exists
+- if the request includes `previous_documents`, optionally reuse them and skip retrieval when a context sufficiency check passes
+- otherwise enter an incremental retrieval branch with explicit iteration state:
+  - retrieval iteration 0 uses the original query and a small chunk limit
+  - retrieval iteration 1 generates multiple query variants for broader coverage
+  - retrieval iteration 2 performs a HyDE-style search with the query treated like a document embedding and a higher hybrid alpha
+- metadata extraction runs only on the second retrieval iteration when `metadata_extraction_allowed` is true, to infer year/language filters from the question text
+- retrieval results are deduplicated and, when enough candidates exist, the returned chunks are graded for relevance before answer generation
+- if no relevant documents remain, the router retries retrieval or falls back to DuckDuckGo web search when enabled
+- answer generation uses history-aware prompts if conversation history exists
+- the generated answer is graded for completeness, and incomplete responses can trigger another retrieval pass or web search fallback
+
+This incremental RAG process is more resilient than a single-pass pipeline: it adapts retrieval strategy based on result quality, tightens search with inferred metadata, and validates both retrieved evidence and the final answer before finishing.
+
+Configurable parameters per RAG config YAML include:
 - `model_type` — OLLAMA / OPENAI / GOOGLE
-- `qt_strategy` — multi_query / hyde / step_back / nothing
-- `max_retries`, `web_search_enabled`, `self_reflection`, `metadata_extraction_allowed`
+- `api_key`, `model_name`, `temperature`
 - `chunk_limit`, `alpha`, `search_type`
+- `max_retries`, `web_search_enabled`, `metadata_extraction_allowed`
 
 #### Summarisation (`summarization/`)
 
