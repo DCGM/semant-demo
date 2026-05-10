@@ -95,19 +95,19 @@ export function useAiAssistance() {
   }
 
   /**
-   * Resolve a single auto span (approve = pos / reject = neg) and advance
-   * the highlight to the next pending suggestion in the same order. Used
-   * both from the AI panel and from the gutter popover so the behaviour
-   * stays consistent.
+   * Resolve a single auto span (approve = pos / reject = neg). Clears the
+   * highlight afterwards so no auto-scroll to the next pending suggestion
+   * happens — the user navigates manually.
    */
   const resolveAutoSpan = async (
     span: TagSpan,
     type: SpanType
   ): Promise<void> => {
     if (!span.id) return
-    const nextId = nextPendingSuggestionAfter(span.id)
     await spansStore.updateSpan(span.id, span.chunkId, { type })
-    highlightedAutoSpanId.value = nextId
+    if (highlightedAutoSpanId.value === span.id) {
+      highlightedAutoSpanId.value = null
+    }
   }
 
   /**
