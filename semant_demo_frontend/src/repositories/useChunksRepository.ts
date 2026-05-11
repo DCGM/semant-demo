@@ -47,7 +47,7 @@ export function useChunksRepository() {
       documentId: string,
       orderGt?: number | null,
       orderLt?: number | null
-    ): Promise<import('src/generated/api').Chunk[]> => {
+    ): Promise<(Chunk | null)[]> => {
       return api.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet({
         collectionId,
         documentId,

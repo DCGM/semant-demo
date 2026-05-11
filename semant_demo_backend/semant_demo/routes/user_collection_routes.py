@@ -248,15 +248,3 @@ async def get_chunks_in_range(
         order_gt=order_gt,
         order_lt=order_lt,
     )
-
-
-@exp_router.get(
-    "/api/documents/{document_id}/chunks/count",
-    response_model=int,
-)
-async def count_document_chunks(
-    document_id: str,
-    searcher: WeaviateAbstraction = Depends(get_search),
-) -> int:
-    """Returns the total number of chunks in the given document."""
-    return await searcher.userCollection.count_document_chunks(document_id=document_id)
