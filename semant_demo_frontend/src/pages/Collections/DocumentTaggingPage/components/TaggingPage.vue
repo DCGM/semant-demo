@@ -367,7 +367,7 @@ const timerElapsedMs = ref(0)
 const timerBaseElapsedMs = ref(0)
 const timerStartTimestamp = ref<number | null>(null)
 const timerIntervalId = ref<number | null>(null)
-const showTestingOptions = ref(true)
+const showTestingOptions = ref(false)
 
 const {
   DEBUG,
