@@ -338,7 +338,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
 
     #rephrase question to search desired data in database
-    # this node enable to have converstation with RAG system
+    # this node enables having a converstation with RAG system
     async def node_history_transformation(self, state: AdaptiveRagState):
         if (state["history"]):
             #create desired chain
@@ -732,7 +732,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         if request.history:
             history_preprocessed = [msg.model_dump() for msg in request.history]
         
-        # should not occured but there was problem with it once, this should prevent it
+        # should not occure but there was problem with it once, this should prevent it
         if history_preprocessed:
             last_msg = history_preprocessed[-1]
             role = last_msg.get("role", "")
