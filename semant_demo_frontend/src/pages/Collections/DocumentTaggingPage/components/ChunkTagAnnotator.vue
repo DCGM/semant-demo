@@ -6,13 +6,16 @@
     @mouseup="handleMouseUp"
   >
     <span
-      v-for="seg in renderedSegments"
+      v-for="(seg, idx) in renderedSegments"
       :key="`${seg.start}-${seg.end}`"
       :data-chunk-id="chunkId"
       :data-start="seg.start"
       :data-end="seg.end"
-      :style="getSegmentStyle(seg)"
+      :data-span-ids="seg.spanIds.length ? seg.spanIds.join(' ') : undefined"
+      :style="getSegmentStyle(seg, idx)"
       class="text-segment"
+      @mouseenter="handleSegmentMouseEnter(seg)"
+      @mouseleave="handleSegmentMouseLeave(seg)"
       @click="handleSegmentClick(seg)"
     >
       <span
@@ -30,11 +33,11 @@
         @mousedown.prevent.stop="startDrag($event, 'end')"
         @touchstart.prevent.stop="startDrag($event, 'end')"
       ></span>
-      <q-tooltip v-if="seg.tags.length > 0 && !currentSelection?.editingId">
+      <!--<q-tooltip v-if="seg.tags.length > 0 && !currentSelection?.editingId">
         <div v-for="tag in seg.tags" :key="tag.tagId">
           {{ getTagName(tag.tagId) }}
         </div>
-      </q-tooltip>
+      </q-tooltip>-->
     </span>
   </div>
 </template>
@@ -48,6 +51,7 @@ import { SpanType } from 'src/generated/api/models/SpanType'
 interface RenderSegment {
   text: string
   tags: TagSpan[]
+  spanIds: string[]
   isSelected: boolean
   start: number
   end: number
@@ -72,12 +76,21 @@ export interface AvailableTag {
   tagName: string
   tagColor: string
   tagPictogram: string
+  tagShorthand: string
+  tagDefinition?: string
+  tagExamples?: string[]
   tagUuid: string | null
 }
 
 interface SpanWithSourceMeta extends TagSpan {
   sourceStart?: number
   sourceEnd?: number
+}
+
+interface ExternalHoveredMarker {
+  spanId: string | null
+  tagId: string
+  spanType?: TagSpan['type'] | null
 }
 
 const props = withDefaults(
@@ -94,6 +107,7 @@ const props = withDefaults(
     selectionStartBoundary?: SelectionBoundary | null
     selectionEndBoundary?: SelectionBoundary | null
     editingSpanId?: string | null
+    externalHoveredMarker?: ExternalHoveredMarker | null
   }>(),
   {
     snapToWords: true,
@@ -102,7 +116,8 @@ const props = withDefaults(
     showSelectionEndHandle: true,
     selectionStartBoundary: null,
     selectionEndBoundary: null,
-    editingSpanId: null
+    editingSpanId: null,
+    externalHoveredMarker: null
   }
 )
 
@@ -117,12 +132,19 @@ const emit = defineEmits<{
       dragHandle?: 'start' | 'end'
     }
   ]
+  selectionEnd: []
+  spanHoverStart: [marker: ExternalHoveredMarker]
+  spanHoverEnd: []
 }>()
 
 const currentSelection = ref<SelectionState | null>(null)
 const textContainer = ref<HTMLElement | null>(null)
 const draggingHandle = ref<'start' | 'end' | null>(null)
 let justFinishedDrag = false
+
+const isAutoApprovalActive = computed(() => {
+  return currentSelection.value?.spanType === SpanType.auto
+})
 
 watch(
   () => props.selection,
@@ -141,9 +163,7 @@ const emitSelection = (
   overrideSelection?: SelectionState | null
 ) => {
   const selectionToEmit =
-    overrideSelection === undefined
-      ? currentSelection.value
-      : overrideSelection
+    overrideSelection === undefined ? currentSelection.value : overrideSelection
 
   emit('selectionChange', {
     chunkId: overrideChunkId || props.chunkId,
@@ -180,12 +200,20 @@ const renderedSegments = computed(() => {
     const char = text[i]
 
     const activeTags = props.tagSpans.filter(
-      (t) =>
-        i >= t.start && i < t.end && t.id !== props.editingSpanId
+      (t) => i >= t.start && i < t.end && t.id !== props.editingSpanId
     )
 
-    activeTags.sort((a, b) => a.tagId.localeCompare(b.tagId))
-    const tagsStr = activeTags.map((t) => t.tagId).join(',')
+    activeTags.sort((a, b) => {
+      const aKey = a.id ?? `${a.tagId}-${a.start}-${a.end}`
+      const bKey = b.id ?? `${b.tagId}-${b.start}-${b.end}`
+      return aKey.localeCompare(bKey)
+    })
+    const spanIds = activeTags
+      .map((t) => t.id)
+      .filter((id): id is string => !!id)
+    const tagsStr = activeTags
+      .map((t) => t.id ?? `${t.tagId}-${t.start}-${t.end}`)
+      .join(',')
 
     const isSelected =
       currentSelection.value !== null &&
@@ -213,6 +241,7 @@ const renderedSegments = computed(() => {
       currentSeg = {
         text: char,
         tags: activeTags,
+        spanIds,
         isSelected,
         start: i,
         end: i + 1
@@ -348,6 +377,7 @@ const handleMouseUp = () => {
   ) {
     currentSelection.value = null
     emitBoundaries(startBoundary, endBoundary, 'mouse')
+    emit('selectionEnd')
     sel.removeAllRanges()
     return
   }
@@ -364,6 +394,7 @@ const handleMouseUp = () => {
 
   currentSelection.value = { start, end }
   emitSelection()
+  emit('selectionEnd')
   sel.removeAllRanges()
 }
 
@@ -469,6 +500,8 @@ const stopDrag = () => {
     setTimeout(() => {
       justFinishedDrag = false
     }, 100)
+    draggingHandle.value = null
+    emit('selectionEnd')
   }
   draggingHandle.value = null
 
@@ -479,10 +512,11 @@ const stopDrag = () => {
 }
 
 const handleSegmentClick = (seg: RenderSegment) => {
-  if (currentSelection.value !== null || props.isProcessing || justFinishedDrag)
-    return
+  if (props.isProcessing || justFinishedDrag) return
 
   if (seg.tags.length > 0) {
+    clearLocalHoverMarker()
+
     const tagToEdit = seg.tags[0] as SpanWithSourceMeta | undefined
     if (!tagToEdit) return
 
@@ -507,7 +541,51 @@ const handleSegmentClick = (seg: RenderSegment) => {
     currentSelection.value =
       sourceChunkId === props.chunkId ? nextSelection : null
     emitSelection(sourceChunkId, nextSelection)
+    emit('selectionEnd')
   }
+}
+
+const clearLocalHoverMarker = () => {
+  emit('spanHoverEnd')
+}
+
+const resolvePrimaryHoveredMarker = (
+  targetSeg: RenderSegment
+): ExternalHoveredMarker | null => {
+  if (!targetSeg.spanIds.length) return null
+  const primaryHoveredTag = targetSeg.tags[0]
+  if (!primaryHoveredTag?.id) return null
+
+  return {
+    spanId: primaryHoveredTag.id,
+    tagId: primaryHoveredTag.tagId,
+    spanType: primaryHoveredTag.type
+  }
+}
+
+const handleSegmentMouseEnter = (seg: RenderSegment) => {
+  if (currentSelection.value?.editingId) {
+    clearLocalHoverMarker()
+    return
+  }
+
+  const marker = resolvePrimaryHoveredMarker(seg)
+  if (!marker) {
+    clearLocalHoverMarker()
+    return
+  }
+
+  emit('spanHoverStart', marker)
+}
+
+const handleSegmentMouseLeave = (seg: RenderSegment) => {
+  if (currentSelection.value?.editingId) {
+    clearLocalHoverMarker()
+    return
+  }
+
+  if (!seg.spanIds.length) return
+  clearLocalHoverMarker()
 }
 
 const getTagName = (tagId: string) => {
@@ -515,50 +593,171 @@ const getTagName = (tagId: string) => {
   return tag ? tag.tagName : 'Unknown Tag'
 }
 
-const getSegmentStyle = (seg: RenderSegment) => {
-  if (seg.isSelected) {
-    if (currentSelection.value?.tagId) {
-      const draftTag = props.availableTags.find(
-        (tag) => tag.tagUuid === currentSelection.value?.tagId
-      )
-      if (draftTag) {
-        return {
-          backgroundColor: `${draftTag.tagColor}60`,
-          borderBottom: `2px solid ${draftTag.tagColor}`,
-          color: '#000'
-        }
-      }
-    }
+const getEffectiveHoveredMarker = (): ExternalHoveredMarker | null => {
+  return props.externalHoveredMarker
+}
 
+const getTagColorStyle = (
+  tagId: string | null | undefined,
+  spanType: TagSpan['type'] | null | undefined,
+  selected = false
+) => {
+  const tag = props.availableTags.find((item) => item.tagUuid === tagId)
+  const color = tag?.tagColor || '#cccccc'
+
+  if (selected) {
     return {
-      backgroundColor: '#ffe082',
-      borderBottom: '2px solid #ffca28',
+      backgroundColor: `${color}60`,
+      borderColor: color,
+      borderStyle: 'solid',
       color: '#000'
     }
   }
 
-  if (seg.tags.length > 0) {
-    const tag = props.availableTags.find(
-      (item) => item.tagUuid === seg.tags[0].tagId
-    )
-    const color = tag ? tag.tagColor : '#cccccc'
-
-    if (seg.tags[0].type === SpanType.auto) {
-      return {
-        backgroundColor: `${color}24`,
-        borderBottom: `2px dashed ${color}`,
-        cursor: 'pointer'
-      }
-    }
-
+  if (spanType === SpanType.auto) {
     return {
-      backgroundColor: `${color}40`,
-      borderBottom: `2px solid ${color}`,
+      backgroundColor: `${color}24`,
+      borderColor: color,
+      borderStyle: 'dashed',
       cursor: 'pointer'
     }
   }
 
-  return {}
+  return {
+    backgroundColor: `${color}40`,
+    borderColor: color,
+    borderStyle: 'solid',
+    cursor: 'pointer'
+  }
+}
+
+const applyHoverVisualState = (
+  seg: RenderSegment,
+  baseStyle: Record<string, string | undefined>
+) => {
+  const effectiveHoveredMarker = getEffectiveHoveredMarker()
+  const effectiveHoveredSpanIds = effectiveHoveredMarker?.spanId
+    ? [effectiveHoveredMarker.spanId]
+    : []
+  const hoverIsActive =
+    !currentSelection.value?.editingId && effectiveHoveredSpanIds.length > 0
+  const isTaggedSegment = seg.spanIds.length > 0
+  const isHoveredSpanSegment =
+    hoverIsActive &&
+    isTaggedSegment &&
+    seg.spanIds.some((spanId) => effectiveHoveredSpanIds.includes(spanId))
+
+  if (!hoverIsActive || !isTaggedSegment) {
+    return baseStyle
+  }
+
+  if (!isHoveredSpanSegment) {
+    return {
+      ...baseStyle,
+      opacity: '0.45'
+    }
+  }
+
+  const hoveredColorStyle = getTagColorStyle(
+    effectiveHoveredMarker?.tagId,
+    effectiveHoveredMarker?.spanType
+  )
+
+  return {
+    ...baseStyle,
+    ...hoveredColorStyle,
+    opacity: '1'
+  }
+}
+
+const applyAutoApprovalFocusState = (
+  seg: RenderSegment,
+  baseStyle: Record<string, string | undefined>
+) => {
+  if (!isAutoApprovalActive.value || !currentSelection.value) {
+    return baseStyle
+  }
+
+  if (seg.isSelected) {
+    return {
+      ...baseStyle,
+      boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.2)'
+    }
+  }
+
+  if (seg.tags.length > 0) {
+    return {
+      ...baseStyle,
+      opacity: '0.35'
+    }
+  }
+
+  return {
+    ...baseStyle,
+    opacity: '0.7'
+  }
+}
+
+const segmentHasOutline = (seg: RenderSegment) => {
+  return seg.isSelected || seg.tags.length > 0
+}
+
+const mergeOutlineByNeighbors = (
+  seg: RenderSegment,
+  index: number,
+  style: Record<string, string | undefined>
+) => {
+  if (!style.borderColor || !style.borderStyle) {
+    return style
+  }
+
+  const prevSeg = renderedSegments.value[index - 1]
+  const nextSeg = renderedSegments.value[index + 1]
+  const prevHasOutline = !!prevSeg && segmentHasOutline(prevSeg)
+  const nextHasOutline = !!nextSeg && segmentHasOutline(nextSeg)
+
+  return {
+    ...style,
+    borderTopWidth: '2px',
+    borderBottomWidth: '2px',
+    borderLeftWidth: prevHasOutline ? '0px' : '2px',
+    borderRightWidth: nextHasOutline ? '0px' : '2px'
+  }
+}
+
+const getSegmentStyle = (seg: RenderSegment, index: number) => {
+  if (seg.isSelected) {
+    if (currentSelection.value?.tagId) {
+      const selectedStyle = getTagColorStyle(
+        currentSelection.value.tagId,
+        currentSelection.value.spanType,
+        true
+      )
+      const hoveredStyle = applyHoverVisualState(seg, selectedStyle)
+      const focusedStyle = applyAutoApprovalFocusState(seg, hoveredStyle)
+      return mergeOutlineByNeighbors(seg, index, focusedStyle)
+    }
+
+    const selectedStyle = {
+      backgroundColor: '#ffe082',
+      borderColor: '#ffca28',
+      borderStyle: 'solid',
+      color: '#000'
+    }
+
+    const hoveredStyle = applyHoverVisualState(seg, selectedStyle)
+    const focusedStyle = applyAutoApprovalFocusState(seg, hoveredStyle)
+    return mergeOutlineByNeighbors(seg, index, focusedStyle)
+  }
+
+  if (seg.tags.length > 0) {
+    const taggedStyle = getTagColorStyle(seg.tags[0].tagId, seg.tags[0].type)
+    const hoveredStyle = applyHoverVisualState(seg, taggedStyle)
+    const focusedStyle = applyAutoApprovalFocusState(seg, hoveredStyle)
+    return mergeOutlineByNeighbors(seg, index, focusedStyle)
+  }
+
+  return applyAutoApprovalFocusState(seg, {})
 }
 
 const getHandleStyle = () => {
@@ -578,8 +777,8 @@ const getHandleStyle = () => {
   white-space: pre-wrap;
   font-size: 16px;
   line-height: 1.8;
-  padding: 16px;
-  border-radius: 8px;
+  padding: 10px 16px 4px 16px;
+  border-radius: 0 0 8px 8px;
   cursor: text;
   background-color: #fafafa;
 }
@@ -587,16 +786,25 @@ const getHandleStyle = () => {
 .text-segment {
   transition:
     background-color 0.15s,
-    border-bottom 0.15s;
-  border-bottom: 2px solid transparent;
-  border-radius: 2px;
+    border-color 0.15s,
+    outline-color 0.15s,
+    opacity 0.15s,
+    box-shadow 0.15s;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 0;
+  border-radius: 0;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 4px 0px;
+  margin: -3px 0;
 }
 
 .selection-handle {
   display: inline-block;
   position: relative;
   width: 4px;
-  height: 1.1em;
+  height: 24px;
   background-color: var(--handle-color);
   cursor: ew-resize;
   vertical-align: text-bottom;
@@ -618,7 +826,7 @@ const getHandleStyle = () => {
 .handle-end::after {
   content: '';
   position: absolute;
-  bottom: -6px;
+  bottom: -9px;
   left: -3px;
   width: 10px;
   height: 10px;

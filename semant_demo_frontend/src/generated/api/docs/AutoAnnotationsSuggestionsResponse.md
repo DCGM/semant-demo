@@ -1,32 +1,22 @@
 
-# ApproveTagReq
+# AutoAnnotationsSuggestionsResponse
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`collectionID` | string
-`chunkID` | string
-`tagID` | string
-`spanID` | string
-`start` | number
-`end` | number
+`suggestions` | [Array&lt;AutoAnnotationSuggestion&gt;](AutoAnnotationSuggestion.md)
 
 ## Example
 
 ```typescript
-import type { ApproveTagReq } from ''
+import type { AutoAnnotationsSuggestionsResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "collectionID": null,
-  "chunkID": null,
-  "tagID": null,
-  "spanID": null,
-  "start": null,
-  "end": null,
-} satisfies ApproveTagReq
+  "suggestions": null,
+} satisfies AutoAnnotationsSuggestionsResponse
 
 console.log(example)
 
@@ -35,7 +25,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as ApproveTagReq
+const exampleParsed = JSON.parse(exampleJSON) as AutoAnnotationsSuggestionsResponse
 console.log(exampleParsed)
 ```
 

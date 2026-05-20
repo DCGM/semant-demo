@@ -7,7 +7,6 @@
 Name | Type
 ------------ | -------------
 `successful` | boolean
-`approved` | boolean
 
 ## Example
 
@@ -17,7 +16,6 @@ import type { ApproveTagResponse } from ''
 // TODO: Update the object below with actual values
 const example = {
   "successful": null,
-  "approved": null,
 } satisfies ApproveTagResponse
 
 console.log(example)

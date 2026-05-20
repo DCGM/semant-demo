@@ -276,11 +276,11 @@ async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
         logging.info("Approving...")
         response = await searcher.textChunk.approve_tag(approveData)
         logging.info(f"{response}")
-        return {"successful": response, "approved": approveData.approved}
+        return {"successful": response}
     except Exception as e:
         logging.error(f"{e}")
-        return {"successful": False, "approved": approveData.approved}
-    
+        return {"successful": False}
+
 @exp_router.put("/api/tag/disapprove", response_model=schemas.ApproveTagResponse)
 async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
                                      searcher: WeaviateAbstraction = Depends(get_search),
@@ -292,10 +292,10 @@ async def approve_selected_tag_chunk(approveData: schemas.ApproveTagReq,
         logging.info("Approving...")
         response = await searcher.textChunk.disapprove_tag(approveData)
         logging.info(f"{response}")
-        return {"successful": response, "approved": approveData.approved}
+        return {"successful": response}
     except Exception as e:
         logging.error(f"{e}")
-        return {"successful": False, "approved": approveData.approved}
+        return {"successful": False}
 
 @exp_router.post("/api/tags/filter", response_model=schemas.FilterChunksByTagsResponse)
 async def filter_chunks_by_tags(requestedData: schemas.FilterChunksByTagsRequest,

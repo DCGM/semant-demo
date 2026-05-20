@@ -114,6 +114,15 @@ class TextChunkWithDocument(TextChunk):
     document_object: Document
 
 
+class DocumentDetailTextChunkWithUserCollectionInfo(TextChunk):
+    in_user_collection: bool
+
+
+class DocumentDetail(BaseModel):
+    document: Document
+    chunks: list[DocumentDetailTextChunkWithUserCollectionInfo]
+
+
 class FilteredChunksByTags(BaseModel):
     chunk_id: str
     positive_tags_ids: list[str]
@@ -388,16 +397,17 @@ class GetTaggedChunksResponse(BaseModel):
     chunks_with_tags: list[TaggedChunks]
 
 
+# approves/disapproves or creates a new span in database
 class ApproveTagReq(BaseModel):
-    approved: bool
+    collectionID: str
     chunkID: str
     tagID: str
-    chunk_collection_name: str
-
+    spanID: str | None = None
+    start: int | None = None
+    end: int | None = None
 
 class ApproveTagResponse(BaseModel):
     successful: bool
-    approved: bool
 
 
 class RemoveTagsResponse(BaseModel):
@@ -490,6 +500,46 @@ class TagSpanUpdateEmbeddedRequest(BaseModel):
     index: int | None = None
     tagSpan: TagSpanUpdate
 # /TagSpans
+
+
+# Automatic annotation suggestions
+class AutoAnnotationSuggestion(BaseModel):
+    id: str
+    chunkId: str
+    tagId: str
+    start: int
+    end: int
+    type: SpanType = SpanType.auto
+    confidence: float
+    reason: str | None = None
+
+
+class AutoAnnotationSuggestionRequest(BaseModel):
+    chunks: list[TextChunk]
+    tags: list[TagData]
+
+
+class AutoAnnotationsSuggestionsResponse(BaseModel):
+    suggestions: list[AutoAnnotationSuggestion]
+# /Automatic annotation suggestions
+
+
+class BestTagProposalRequest(BaseModel):
+    text: str
+    tags: list[TagData]
+    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class BestTagProposal(BaseModel):
+    tagId: str
+    confidence: float
+    start: int
+    end: int
+    tag: TagData | None = None
+    reason: str | None = None
+
+class BestTagProposalResponse(BaseModel):
+    suggestions: list[BestTagProposal]
 
 
 # Task Model

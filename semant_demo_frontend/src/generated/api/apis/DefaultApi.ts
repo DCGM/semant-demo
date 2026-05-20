@@ -18,6 +18,10 @@ import type {
   AppFeedbackRequest,
   ApproveTagReq,
   ApproveTagResponse,
+  AutoAnnotationSuggestionRequest,
+  AutoAnnotationsSuggestionsResponse,
+  BestTagProposalRequest,
+  BestTagProposalResponse,
   BulkUpdateSpansRequest,
   BulkUpdateSpansResponse,
   CancelTaskResponse,
@@ -32,6 +36,7 @@ import type {
   DeleteSpansForTagsResponse,
   DiscussSpanRequest,
   DocumentBrowse,
+  DocumentDetail,
   DocumentStats,
   ExplainRequest,
   FeedbackRequest,
@@ -59,6 +64,7 @@ import type {
   SearchResponseOutput,
   SemantDemoSchemaDocumentsDocument,
   SuggestSpansRequest,
+  SuggestSpansSelectionRequest,
   SummaryResponse,
   Tag,
   TagSpan,
@@ -74,6 +80,14 @@ import {
     ApproveTagReqToJSON,
     ApproveTagResponseFromJSON,
     ApproveTagResponseToJSON,
+    AutoAnnotationSuggestionRequestFromJSON,
+    AutoAnnotationSuggestionRequestToJSON,
+    AutoAnnotationsSuggestionsResponseFromJSON,
+    AutoAnnotationsSuggestionsResponseToJSON,
+    BestTagProposalRequestFromJSON,
+    BestTagProposalRequestToJSON,
+    BestTagProposalResponseFromJSON,
+    BestTagProposalResponseToJSON,
     BulkUpdateSpansRequestFromJSON,
     BulkUpdateSpansRequestToJSON,
     BulkUpdateSpansResponseFromJSON,
@@ -102,6 +116,8 @@ import {
     DiscussSpanRequestToJSON,
     DocumentBrowseFromJSON,
     DocumentBrowseToJSON,
+    DocumentDetailFromJSON,
+    DocumentDetailToJSON,
     DocumentStatsFromJSON,
     DocumentStatsToJSON,
     ExplainRequestFromJSON,
@@ -156,6 +172,8 @@ import {
     SemantDemoSchemaDocumentsDocumentToJSON,
     SuggestSpansRequestFromJSON,
     SuggestSpansRequestToJSON,
+    SuggestSpansSelectionRequestFromJSON,
+    SuggestSpansSelectionRequestToJSON,
     SummaryResponseFromJSON,
     SummaryResponseToJSON,
     TagFromJSON,
@@ -266,6 +284,11 @@ export interface FetchDocumentApiDocumentDocumentIdGetRequest {
     documentId: string;
 }
 
+export interface FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest {
+    documentId: string;
+    collectionId: string;
+}
+
 export interface FilterChunksByTagsApiTagsFilterPostRequest {
     filterChunksByTagsRequest: FilterChunksByTagsRequest;
 }
@@ -318,6 +341,18 @@ export interface GetTagApiTagsTagUuidGetRequest {
     tagUuid: string;
 }
 
+export interface ProposeBestTagApiProposeBestTagPostRequest {
+    bestTagProposalRequest: BestTagProposalRequest;
+}
+
+export interface ProposeTagsApiProposeTagsPostRequest {
+    autoAnnotationSuggestionRequest: AutoAnnotationSuggestionRequest;
+}
+
+export interface ProposeTagsMockApiProposeTagsMockPostRequest {
+    autoAnnotationSuggestionRequest: AutoAnnotationSuggestionRequest;
+}
+
 export interface QuestionApiQuestionQuestionTextPostRequest {
     questionText: string;
     searchResponseInput: SearchResponseInput;
@@ -341,6 +376,10 @@ export interface RemoveAutomaticTagsApiTagsAutomaticDeleteRequest {
 }
 
 export interface RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest {
+    chunk2CollectionReq: Chunk2CollectionReq;
+}
+
+export interface RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest {
     chunk2CollectionReq: Chunk2CollectionReq;
 }
 
@@ -371,6 +410,10 @@ export interface StartTaggingApiTagTaskPostRequest {
 
 export interface SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest {
     suggestSpansRequest: SuggestSpansRequest;
+}
+
+export interface SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest {
+    suggestSpansSelectionRequest: SuggestSpansSelectionRequest;
 }
 
 export interface SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest {
@@ -949,6 +992,32 @@ export interface DefaultApiInterface {
     fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SemantDemoSchemaDocumentsDocument>;
 
     /**
+     * Creates request options for fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet without sending the request
+     * @param {string} documentId 
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequestOpts(requestParameters: FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
+     * @summary Fetch Document Chunks
+     * @param {string} documentId 
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRaw(requestParameters: FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentDetail>>;
+
+    /**
+     * Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
+     * Fetch Document Chunks
+     */
+    fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet(requestParameters: FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentDetail>;
+
+    /**
      * Creates request options for filterChunksByTagsApiTagsFilterPost without sending the request
      * @param {FilterChunksByTagsRequest} filterChunksByTagsRequest 
      * @throws {RequiredError}
@@ -1336,6 +1405,78 @@ export interface DefaultApiInterface {
     healthHealthGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
+     * Creates request options for proposeBestTagApiProposeBestTagPost without sending the request
+     * @param {BestTagProposalRequest} bestTagProposalRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeBestTagApiProposeBestTagPostRequestOpts(requestParameters: ProposeBestTagApiProposeBestTagPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
+     * @summary Propose Best Tag
+     * @param {BestTagProposalRequest} bestTagProposalRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeBestTagApiProposeBestTagPostRaw(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BestTagProposalResponse>>;
+
+    /**
+     * Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
+     * Propose Best Tag
+     */
+    proposeBestTagApiProposeBestTagPost(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BestTagProposalResponse>;
+
+    /**
+     * Creates request options for proposeTagsApiProposeTagsPost without sending the request
+     * @param {AutoAnnotationSuggestionRequest} autoAnnotationSuggestionRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeTagsApiProposeTagsPostRequestOpts(requestParameters: ProposeTagsApiProposeTagsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Call Topicer tag proposal on provided chunks and tags.
+     * @summary Propose Tags
+     * @param {AutoAnnotationSuggestionRequest} autoAnnotationSuggestionRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeTagsApiProposeTagsPostRaw(requestParameters: ProposeTagsApiProposeTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AutoAnnotationsSuggestionsResponse>>;
+
+    /**
+     * Call Topicer tag proposal on provided chunks and tags.
+     * Propose Tags
+     */
+    proposeTagsApiProposeTagsPost(requestParameters: ProposeTagsApiProposeTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AutoAnnotationsSuggestionsResponse>;
+
+    /**
+     * Creates request options for proposeTagsMockApiProposeTagsMockPost without sending the request
+     * @param {AutoAnnotationSuggestionRequest} autoAnnotationSuggestionRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeTagsMockApiProposeTagsMockPostRequestOpts(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * @summary Propose Tags Mock
+     * @param {AutoAnnotationSuggestionRequest} autoAnnotationSuggestionRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    proposeTagsMockApiProposeTagsMockPostRaw(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AutoAnnotationsSuggestionsResponse>>;
+
+    /**
+     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Propose Tags Mock
+     */
+    proposeTagsMockApiProposeTagsMockPost(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AutoAnnotationsSuggestionsResponse>;
+
+    /**
      * Creates request options for questionApiQuestionQuestionTextPost without sending the request
      * @param {string} questionText 
      * @param {SearchResponseInput} searchResponseInput 
@@ -1480,6 +1621,30 @@ export interface DefaultApiInterface {
      * Remove Chunk From Collection
      */
     removeChunkFromCollectionApiUserCollectionChunksDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
+
+    /**
+     * Creates request options for removeChunkFromCollectionApiUserCollectionChunksRemovePost without sending the request
+     * @param {Chunk2CollectionReq} chunk2CollectionReq 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    removeChunkFromCollectionApiUserCollectionChunksRemovePostRequestOpts(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Removes connection between chunk and user collection.
+     * @summary Remove Chunk From Collection
+     * @param {Chunk2CollectionReq} chunk2CollectionReq 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    removeChunkFromCollectionApiUserCollectionChunksRemovePostRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+
+    /**
+     * Removes connection between chunk and user collection.
+     * Remove Chunk From Collection
+     */
+    removeChunkFromCollectionApiUserCollectionChunksRemovePost(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
 
     /**
      * Creates request options for removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete without sending the request
@@ -1646,6 +1811,30 @@ export interface DefaultApiInterface {
      * Suggest Spans Optimized
      */
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for suggestSpansSelectionApiAiSuggestSpansSelectionPost without sending the request
+     * @param {SuggestSpansSelectionRequest} suggestSpansSelectionRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    suggestSpansSelectionApiAiSuggestSpansSelectionPostRequestOpts(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * @summary Suggest Spans Selection
+     * @param {SuggestSpansSelectionRequest} suggestSpansSelectionRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    suggestSpansSelectionApiAiSuggestSpansSelectionPostRaw(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Suggest Spans Selection
+     */
+    suggestSpansSelectionApiAiSuggestSpansSelectionPost(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for suggestSpansThoroughApiAiSuggestSpansThoroughPost without sending the request
@@ -2940,6 +3129,61 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet without sending the request
+     */
+    async fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequestOpts(requestParameters: FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet().'
+            );
+        }
+
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/documents/{document_id}/{collection_id}/chunks`;
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
+     * Fetch Document Chunks
+     */
+    async fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRaw(requestParameters: FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentDetail>> {
+        const requestOptions = await this.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentDetailFromJSON(jsonValue));
+    }
+
+    /**
+     * Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
+     * Fetch Document Chunks
+     */
+    async fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet(requestParameters: FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentDetail> {
+        const response = await this.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for filterChunksByTagsApiTagsFilterPost without sending the request
      */
     async filterChunksByTagsApiTagsFilterPostRequestOpts(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest): Promise<runtime.RequestOpts> {
@@ -3753,6 +3997,153 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for proposeBestTagApiProposeBestTagPost without sending the request
+     */
+    async proposeBestTagApiProposeBestTagPostRequestOpts(requestParameters: ProposeBestTagApiProposeBestTagPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['bestTagProposalRequest'] == null) {
+            throw new runtime.RequiredError(
+                'bestTagProposalRequest',
+                'Required parameter "bestTagProposalRequest" was null or undefined when calling proposeBestTagApiProposeBestTagPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/propose_best_tag`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BestTagProposalRequestToJSON(requestParameters['bestTagProposalRequest']),
+        };
+    }
+
+    /**
+     * Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
+     * Propose Best Tag
+     */
+    async proposeBestTagApiProposeBestTagPostRaw(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BestTagProposalResponse>> {
+        const requestOptions = await this.proposeBestTagApiProposeBestTagPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => BestTagProposalResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
+     * Propose Best Tag
+     */
+    async proposeBestTagApiProposeBestTagPost(requestParameters: ProposeBestTagApiProposeBestTagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BestTagProposalResponse> {
+        const response = await this.proposeBestTagApiProposeBestTagPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for proposeTagsApiProposeTagsPost without sending the request
+     */
+    async proposeTagsApiProposeTagsPostRequestOpts(requestParameters: ProposeTagsApiProposeTagsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['autoAnnotationSuggestionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'autoAnnotationSuggestionRequest',
+                'Required parameter "autoAnnotationSuggestionRequest" was null or undefined when calling proposeTagsApiProposeTagsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/propose_tags`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AutoAnnotationSuggestionRequestToJSON(requestParameters['autoAnnotationSuggestionRequest']),
+        };
+    }
+
+    /**
+     * Call Topicer tag proposal on provided chunks and tags.
+     * Propose Tags
+     */
+    async proposeTagsApiProposeTagsPostRaw(requestParameters: ProposeTagsApiProposeTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AutoAnnotationsSuggestionsResponse>> {
+        const requestOptions = await this.proposeTagsApiProposeTagsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AutoAnnotationsSuggestionsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Call Topicer tag proposal on provided chunks and tags.
+     * Propose Tags
+     */
+    async proposeTagsApiProposeTagsPost(requestParameters: ProposeTagsApiProposeTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AutoAnnotationsSuggestionsResponse> {
+        const response = await this.proposeTagsApiProposeTagsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for proposeTagsMockApiProposeTagsMockPost without sending the request
+     */
+    async proposeTagsMockApiProposeTagsMockPostRequestOpts(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['autoAnnotationSuggestionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'autoAnnotationSuggestionRequest',
+                'Required parameter "autoAnnotationSuggestionRequest" was null or undefined when calling proposeTagsMockApiProposeTagsMockPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/propose_tags_mock`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AutoAnnotationSuggestionRequestToJSON(requestParameters['autoAnnotationSuggestionRequest']),
+        };
+    }
+
+    /**
+     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Propose Tags Mock
+     */
+    async proposeTagsMockApiProposeTagsMockPostRaw(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AutoAnnotationsSuggestionsResponse>> {
+        const requestOptions = await this.proposeTagsMockApiProposeTagsMockPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AutoAnnotationsSuggestionsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Mock of Topicer propose_tags that returns random auto suggestions.
+     * Propose Tags Mock
+     */
+    async proposeTagsMockApiProposeTagsMockPost(requestParameters: ProposeTagsMockApiProposeTagsMockPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AutoAnnotationsSuggestionsResponse> {
+        const response = await this.proposeTagsMockApiProposeTagsMockPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for questionApiQuestionQuestionTextPost without sending the request
      */
     async questionApiQuestionQuestionTextPostRequestOpts(requestParameters: QuestionApiQuestionQuestionTextPostRequest): Promise<runtime.RequestOpts> {
@@ -4065,6 +4456,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async removeChunkFromCollectionApiUserCollectionChunksDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
         const response = await this.removeChunkFromCollectionApiUserCollectionChunksDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for removeChunkFromCollectionApiUserCollectionChunksRemovePost without sending the request
+     */
+    async removeChunkFromCollectionApiUserCollectionChunksRemovePostRequestOpts(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['chunk2CollectionReq'] == null) {
+            throw new runtime.RequiredError(
+                'chunk2CollectionReq',
+                'Required parameter "chunk2CollectionReq" was null or undefined when calling removeChunkFromCollectionApiUserCollectionChunksRemovePost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collection/chunks/remove`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: Chunk2CollectionReqToJSON(requestParameters['chunk2CollectionReq']),
+        };
+    }
+
+    /**
+     * Removes connection between chunk and user collection.
+     * Remove Chunk From Collection
+     */
+    async removeChunkFromCollectionApiUserCollectionChunksRemovePostRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
+        const requestOptions = await this.removeChunkFromCollectionApiUserCollectionChunksRemovePostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Removes connection between chunk and user collection.
+     * Remove Chunk From Collection
+     */
+    async removeChunkFromCollectionApiUserCollectionChunksRemovePost(requestParameters: RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
+        const response = await this.removeChunkFromCollectionApiUserCollectionChunksRemovePostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -4444,6 +4889,59 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for suggestSpansSelectionApiAiSuggestSpansSelectionPost without sending the request
+     */
+    async suggestSpansSelectionApiAiSuggestSpansSelectionPostRequestOpts(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['suggestSpansSelectionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'suggestSpansSelectionRequest',
+                'Required parameter "suggestSpansSelectionRequest" was null or undefined when calling suggestSpansSelectionApiAiSuggestSpansSelectionPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/ai/suggest_spans/selection`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SuggestSpansSelectionRequestToJSON(requestParameters['suggestSpansSelectionRequest']),
+        };
+    }
+
+    /**
+     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Suggest Spans Selection
+     */
+    async suggestSpansSelectionApiAiSuggestSpansSelectionPostRaw(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.suggestSpansSelectionApiAiSuggestSpansSelectionPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Suggest Spans Selection
+     */
+    async suggestSpansSelectionApiAiSuggestSpansSelectionPost(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.suggestSpansSelectionApiAiSuggestSpansSelectionPostRaw(requestParameters, initOverrides);
     }
 
     /**

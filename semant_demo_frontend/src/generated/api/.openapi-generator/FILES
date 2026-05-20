@@ -7,7 +7,13 @@ docs/AppFeedbackRequest.md
 docs/ApproveTagReq.md
 docs/ApproveTagResponse.md
 docs/AuthApi.md
+docs/AutoAnnotationSuggestion.md
+docs/AutoAnnotationSuggestionRequest.md
+docs/AutoAnnotationsSuggestionsResponse.md
 docs/BearerResponse.md
+docs/BestTagProposal.md
+docs/BestTagProposalRequest.md
+docs/BestTagProposalResponse.md
 docs/BulkUpdateSpansRequest.md
 docs/BulkUpdateSpansResponse.md
 docs/CancelTaskResponse.md
@@ -25,6 +31,8 @@ docs/DeleteSpansForTagsResponse.md
 docs/Detail.md
 docs/DiscussSpanRequest.md
 docs/DocumentBrowse.md
+docs/DocumentDetail.md
+docs/DocumentDetailTextChunkWithUserCollectionInfo.md
 docs/DocumentInput.md
 docs/DocumentStats.md
 docs/ErrorModel.md
@@ -65,6 +73,7 @@ docs/SemantDemoSchemasDocument.md
 docs/SpanChatMessage.md
 docs/SpanType.md
 docs/SuggestSpansRequest.md
+docs/SuggestSpansSelectionRequest.md
 docs/SummaryResponse.md
 docs/Tag.md
 docs/TagData.md
@@ -77,6 +86,7 @@ docs/TaggingConfigInput.md
 docs/TaggingConfigOutput.md
 docs/TaggingConfigParams.md
 docs/TaggingTaskReqTemplate.md
+docs/TextChunk.md
 docs/TextChunkWithDocumentInput.md
 docs/TextChunkWithDocumentOutput.md
 docs/Url.md
@@ -91,7 +101,13 @@ models/APIType.ts
 models/AppFeedbackRequest.ts
 models/ApproveTagReq.ts
 models/ApproveTagResponse.ts
+models/AutoAnnotationSuggestion.ts
+models/AutoAnnotationSuggestionRequest.ts
+models/AutoAnnotationsSuggestionsResponse.ts
 models/BearerResponse.ts
+models/BestTagProposal.ts
+models/BestTagProposalRequest.ts
+models/BestTagProposalResponse.ts
 models/BulkUpdateSpansRequest.ts
 models/BulkUpdateSpansResponse.ts
 models/CancelTaskResponse.ts
@@ -108,6 +124,8 @@ models/DeleteSpansForTagsResponse.ts
 models/Detail.ts
 models/DiscussSpanRequest.ts
 models/DocumentBrowse.ts
+models/DocumentDetail.ts
+models/DocumentDetailTextChunkWithUserCollectionInfo.ts
 models/DocumentInput.ts
 models/DocumentStats.ts
 models/ErrorModel.ts
@@ -148,6 +166,7 @@ models/SemantDemoSchemasDocument.ts
 models/SpanChatMessage.ts
 models/SpanType.ts
 models/SuggestSpansRequest.ts
+models/SuggestSpansSelectionRequest.ts
 models/SummaryResponse.ts
 models/Tag.ts
 models/TagData.ts
@@ -160,6 +179,7 @@ models/TaggingConfigInput.ts
 models/TaggingConfigOutput.ts
 models/TaggingConfigParams.ts
 models/TaggingTaskReqTemplate.ts
+models/TextChunk.ts
 models/TextChunkWithDocumentInput.ts
 models/TextChunkWithDocumentOutput.ts
 models/Url.ts
