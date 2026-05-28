@@ -94,6 +94,7 @@ jobs:
           sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"      "$DEPLOY_PATH/.env"
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "${{ secrets.OPENAI_API_KEY }}")|"  "$DEPLOY_PATH/.env"
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "${{ secrets.JWT_SECRET }}")|"  "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 
@@ -231,6 +232,7 @@ jobs:
           sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"      "$DEPLOY_PATH/.env"
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "${{ secrets.OPENAI_API_KEY }}")|"  "$DEPLOY_PATH/.env"
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "${{ secrets.JWT_SECRET }}")|"  "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 
