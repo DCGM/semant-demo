@@ -107,6 +107,7 @@ jobs:
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${{ secrets.JWT_SECRET }}|" "$DEPLOY_PATH/.env"
 
       - name: Initialize SQLite database (first run only)
         run: |
