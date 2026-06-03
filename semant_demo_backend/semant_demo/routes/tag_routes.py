@@ -9,7 +9,6 @@ from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 import asyncio
 #import aiofiles # load multiple files simultaneously
 
-from semant_demo.tagging.tagging_utils import tag_and_store
 import uuid
 from pathlib import Path
 
@@ -41,6 +40,9 @@ from semant_demo.users.auth import current_active_optional_user, current_active_
 from semant_demo.users.models import User
 from semant_demo.schema.tags import PatchTag, Tag, PostTag
 from semant_demo.weaviate_exceptions import WeaviateOperationError
+
+# Import Celery
+from celery import Celery
 
 logging.basicConfig(level=logging.INFO)
 
@@ -101,13 +103,13 @@ async def update_tag(tag_uuid: str, tag_update: PatchTag,
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from exc
 
-@exp_router.post("/api/tag/task", response_model=schemas.TagStartResponse)
-async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
+@exp_router.post("/api/tag/task_old", response_model=schemas.TagStartResponse)
+async def start_tagging_old(tagReq: schemas.TaggingTaskReqTemplate,
                         searcher: WeaviateAbstraction = Depends(get_search),
                         session: AsyncSession = Depends(get_async_session),
                         current_user: User = Depends(current_active_user)) -> schemas.TagStartResponse:
     """
-    Starts tagging task in form of asyncio.create_task
+    Starts tagging task using Celery worker
     """
     logging.info("Tagging...")
     taskId = str(uuid.uuid4())  # generate id for current task
@@ -119,7 +121,7 @@ async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
         except exc.SQLAlchemyError as e:
             logging.exception(f'Failed adding object to database. Task ID={taskId}')
             raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
-
+        """
         _, global_async_session_maker = get_engine()
 
         task = asyncio.create_task(tag_and_store(tagReq, taskId, searcher, global_async_session_maker))
@@ -135,6 +137,48 @@ async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
         except exc.SQLAlchemyError as e:
             logging.exception(f'Failed adding object to database. Task ID={taskId}')
             raise DBError(f'Failed adding new task object to database. Task ID={taskId}') from e
+        """
+        # Send task to Celery worker
+        celery_app = Celery("tagging_worker")
+        celery_app.conf.broker_url = "redis://localhost:6379/0"
+        celery_app.conf.result_backend = "redis://localhost:6379/0"
+        
+        # Convert tagReq to dict for Celery serialization
+        tag_req_dict = tagReq.model_dump() # dict()
+        
+        # Send task to Celery
+        celery_task = celery_app.send_task('tag_and_store', args=[tag_req_dict, taskId])
+        
+        logging.info(f"Task sent to Celery worker with ID: {celery_task.id}")
+
+        return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
+    except Exception as e:
+        logging.error(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@exp_router.post("/api/tag/task", response_model=schemas.TagStartResponse)
+async def start_tagging(tagReq: schemas.TaggingTaskReqTemplate,
+                        searcher: WeaviateAbstraction = Depends(get_search),
+                        session: AsyncSession = Depends(get_async_session),
+                        current_user: User = Depends(current_active_user)) -> schemas.TagStartResponse:
+    """
+    Starts tagging task using Celery worker
+    """
+    logging.info("Tagging...")
+    taskId = str(uuid.uuid4())  # generate id for current task
+    try:
+        # Send task to Celery worker
+        celery_app = Celery("tagging_worker")
+        celery_app.conf.broker_url = "redis://localhost:6379/0"
+        celery_app.conf.result_backend = "redis://localhost:6379/0"
+        
+        # Convert tagReq to dict for Celery serialization
+        tag_req_dict = tagReq.model_dump() # dict()
+        
+        # Send task to Celery
+        celery_task = celery_app.send_task('tag_and_store', args=[tag_req_dict, taskId])
+        
+        logging.info(f"Task sent to Celery worker with ID: {celery_task.id}")
 
         return {"job_started": True, "task_id": taskId, "message": "Tagging task started in the background"}
     except Exception as e:

@@ -5,7 +5,9 @@ services:
       - "6379:6379"
 
   tagging_worker:
-    build: .
+    build: 
+      context: ..  # Build from semant-demo directory
+      dockerfile: tagging_worker/Dockerfile  # Specify the Dockerfile location
     depends_on:
       redis:
         condition: service_started

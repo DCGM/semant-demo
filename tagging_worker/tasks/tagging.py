@@ -25,13 +25,22 @@ import logging
 import json
 import sys
 from pathlib import Path
+
+# Add root directory to path so we can import semant_demo_backend
+# This must come BEFORE importing semant_demo_backend modules
+# __file__ is tagging_worker/tasks/tagging.py, so go up 3 levels to reach the project root
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from celery import Task
 from weaviate.classes.query import Filter, QueryReference
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
-# Add parent directory to path so we can import sibling modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import asyncio
+
+from semant_demo_backend.semant_demo.routes.dependencies import get_search
+from semant_demo_backend.semant_demo.tagging.tagging_utils import tag_chunks_with_llm_automatic, tag_chunks_with_llm
+
 
 from worker import celery
 from redis_client import redis_client
@@ -231,11 +240,10 @@ def tag_and_store(self: Task, tag_req: dict, task_id: str):
         raise self.retry(exc=e, countdown=10)
 
 
-def _add_or_get_tag_sync(client, req: TaggingTaskReqTemplate):
+async def _add_or_get_tag_sync(req: TaggingTaskReqTemplate):
     """Sync version of add_or_get_tag — adjust to match your existing logic."""
-    from semant_demo.weaviate_tag import WeaviateSearchAndTag
     # Re-use existing logic if it's already sync-compatible, otherwise inline it here
-    tagger = WeaviateSearchAndTag.__new__(WeaviateSearchAndTag)
-    tagger.client = client
-    import asyncio
+    tagger = get_search()
+    response = await tag_chunks_with_llm_automatic(tagger, req)
+    return response
     return asyncio.run(tagger.add_or_get_tag(req))  # only async call left — isolate here
