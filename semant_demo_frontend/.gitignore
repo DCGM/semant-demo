@@ -1,2 +1,7 @@
 # src/generated/api/
 # openapi.json
+
+CohereLabs/
+gpt*/
+openai/
+random*/
