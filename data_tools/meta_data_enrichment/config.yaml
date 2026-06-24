@@ -3,15 +3,26 @@ weaviate_port: 8080 # Weaviate HTTP/REST port
 weaviate_grpc_port: 50051 # Weaviate gRPC port (required for client v4)
 weaviate_api_key: # Authentication API Key for Weaviate instance
 weaviate_headers: # Additional HTTP headers (e.g. API keys for third-party vectorizers)
-collection: Document # Name of the Weaviate collection to enrich
+collection: Chunks_test # Name of the Weaviate collection to enrich
 field_tasks: # Mapping of Weaviate property names (keys) to their classification task names (values)
+  communicative_mode: communicative_mode
   complexity: complexity
+  documentary_role: documentary_role
   emotional_tone: emotional_tone
+  geographic_scope: geographic_scope
+  information_granularity: information_granularity
+  intertextual_density: intertextual_density
+  named_entity_focus: named_entity_focus
+  narrative_perspective: narrative_perspective
+  quantitative_content_density: quantitative_content_density
+  reliability_signals: reliability_signals
+  structural_form: structural_form
+  style: style
+  subject_domain: subject_domain
+  temporal_reference_frame: temporal_reference_frame
+  textual_stance: textual_stance
 filters: # List of query filters.
-- property: language
-  operator: Equal
-  value: ces
-batch_size: 32 # Number of records to fetch per batch
+batch_size: 64 # Number of records to fetch per batch
 max_records: # Maximum total records to process (None or 0 for unlimited)
 model: # Model configuration (local HF transformers, OpenAI-compatible API, or PyTorch Lightning)
   cls: LocalHFClassifierModel  # name of class that is subclass of Model

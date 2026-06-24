@@ -39,15 +39,29 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
     
     collection: str = ConfigurableValue(
         desc="Name of the Weaviate collection to enrich",
-        user_default="Document"
+        user_default="Chunks"
     )
     
     # Pipeline execution settings
     field_tasks: dict = ConfigurableValue(
         desc="Mapping of Weaviate property names (keys) to their classification task names (values)",
         user_default={
+            "communicative_mode": "communicative_mode",
             "complexity": "complexity",
-            "emotional_tone": "emotional_tone"
+            "documentary_role": "documentary_role",
+            "emotional_tone": "emotional_tone",
+            "geographic_scope": "geographic_scope",
+            "information_granularity": "information_granularity",
+            "intertextual_density": "intertextual_density",
+            "named_entity_focus": "named_entity_focus",
+            "narrative_perspective": "narrative_perspective",
+            "quantitative_content_density": "quantitative_content_density",
+            "reliability_signals": "reliability_signals",
+            "structural_form": "structural_form",
+            "style": "style",
+            "subject_domain": "subject_domain",
+            "temporal_reference_frame": "temporal_reference_frame",
+            "textual_stance": "textual_stance"
         }
     )
     filters: list = ConfigurableValue(
