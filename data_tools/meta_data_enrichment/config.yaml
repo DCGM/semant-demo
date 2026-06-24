@@ -1,0 +1,21 @@
+weaviate_host: localhost  # Weaviate host address
+weaviate_port: 8080 # Weaviate HTTP/REST port
+weaviate_grpc_port: 50051 # Weaviate gRPC port (required for client v4)
+weaviate_api_key: # Authentication API Key for Weaviate instance
+weaviate_headers: # Additional HTTP headers (e.g. API keys for third-party vectorizers)
+collection: Document # Name of the Weaviate collection to enrich
+field_tasks: # Mapping of Weaviate property names (keys) to their classification task names (values)
+  complexity: complexity
+  emotional_tone: emotional_tone
+filters: # List of query filters.
+- property: language
+  operator: Equal
+  value: ces
+batch_size: 32 # Number of records to fetch per batch
+max_records: # Maximum total records to process (None or 0 for unlimited)
+model: # Model configuration (local HF transformers, OpenAI-compatible API, or PyTorch Lightning)
+  cls: LocalHFClassifierModel  # name of class that is subclass of Model
+  config: # configuration for defined class
+    model_path: converted_model/  # Path to the converted model directory containing config.json, pytorch_model.bin and heads.bin
+    device: cuda # Device to load the model on (cpu, cuda, etc.)
+    input_prompt: '{{ text }}' # Jinja2 template for the input text. You can use any record fields.
