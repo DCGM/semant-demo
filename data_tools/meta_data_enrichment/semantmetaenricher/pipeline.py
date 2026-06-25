@@ -81,6 +81,15 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
         voluntary=True
     )
     
+    max_retries: int = ConfigurableValue(
+        desc="Maximum number of retries for database updates in case of connection errors",
+        user_default=5
+    )
+    retry_delay: float = ConfigurableValue(
+        desc="Delay in seconds between retries",
+        user_default=10.0
+    )
+    
     # Model settings
     model: Model = ConfigurableSubclassFactory(
         parent_cls_type=Model,
@@ -180,11 +189,24 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
                         if generated_val is not None:
                             update_properties[field_name] = generated_val
                     
+                    import time
+                    
                     # Save back to Weaviate
-                    collection.data.update(
-                        uuid=obj.uuid,
-                        properties=update_properties
-                    )
+                    retries = 0
+                    while True:
+                        try:
+                            collection.data.update(
+                                uuid=obj.uuid,
+                                properties=update_properties
+                            )
+                            break
+                        except Exception as e:
+                            if retries >= self.max_retries:
+                                print(f"\n[Error] Database update failed for record {obj.uuid} after {self.max_retries} retries.")
+                                raise e
+                            retries += 1
+                            print(f"\n[Warning] Database update failed for record {obj.uuid}: {e}. Retrying in {self.retry_delay}s... (Attempt {retries}/{self.max_retries})")
+                            time.sleep(self.retry_delay)
 
                     total_processed += 1
                     pbar.update(1)
