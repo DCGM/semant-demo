@@ -22,8 +22,10 @@ field_tasks: # Mapping of Weaviate property names (keys) to their classification
   temporal_reference_frame: temporal_reference_frame
   textual_stance: textual_stance
 filters: # List of query filters.
-batch_size: 64 # Number of records to fetch per batch
+batch_size: 32 # Number of records to fetch per batch
 max_records: # Maximum total records to process (None or 0 for unlimited)
+max_retries: 5 # Maximum number of retries for database updates in case of connection errors
+retry_delay: 10.0 # Delay in seconds between retries
 model: # Model configuration (local HF transformers, OpenAI-compatible API, or PyTorch Lightning)
   cls: LocalHFClassifierModel  # name of class that is subclass of Model
   config: # configuration for defined class
