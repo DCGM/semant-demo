@@ -316,37 +316,7 @@ class LocalHFClassifierModel(Model):
         self._model = py_model
 
     def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, str]:
-        self._init_model()
-        import torch
-
-        prompt = self.input_prompt_template.render(**database_record)
-        inputs = self._tokenizer(
-            prompt, 
-            return_tensors="pt", 
-            padding=True, 
-            truncation=True, 
-            max_length=512
-        )
-        inputs = {k: v.to(self._device) for k, v in inputs.items()}
-
-        with torch.no_grad():
-            outputs = self._model.encoder(**inputs)
-            cls_repr = outputs.last_hidden_state[:, 0, :]
-            
-            res = {}
-            for task in tasks:
-                if task not in self._model.heads:
-                    print(f"Warning: Task '{task}' not found in model heads. Skipping.")
-                    continue
-                logits = self._model.heads[task].linear(cls_repr)
-                pred_idx = logits.argmax(dim=-1).item()
-                
-                classes = self.task_classes.get(task) or TASK_CLASSES.get(task)
-                if classes and pred_idx < len(classes):
-                    res[task] = str(classes[pred_idx])
-                else:
-                    res[task] = str(pred_idx)
-            return res
+        return self.generate_batch([database_record], tasks)[0]
 
     def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, str]]:
         self._init_model()
