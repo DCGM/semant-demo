@@ -88,7 +88,7 @@ class Model(ConfigurableMixin, CreatableMixin, abc.ABC):
     """Base class for configurable models."""
     
     @abc.abstractmethod
-    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, str]:
+    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, list[str]]:
         """Perform classification for the given tasks on the database record.
         
         Args:
@@ -100,7 +100,7 @@ class Model(ConfigurableMixin, CreatableMixin, abc.ABC):
         """
         pass
 
-    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, str]]:
+    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, list[str]]]:
         """Perform classification for the given tasks on a batch of database records.
         
         Args:
@@ -165,7 +165,7 @@ class APIModel(Model):
             base_url=self.base_url
         )
 
-    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, str]:
+    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, list[str]]:
         self._init_client()
         
         # Render prompt templates
@@ -240,7 +240,7 @@ class APIModel(Model):
             
         predictions = {}
         for task in tasks:
-            predictions[task] = str(result.get(task, ""))
+            predictions[task] = [str(result.get(task, ""))]
             
         return predictions
 
@@ -259,6 +259,10 @@ class LocalHFClassifierModel(Model):
     input_prompt: str = ConfigurableValue(
         desc="Jinja2 template for the input text. You can use any record fields.",
         user_default="{{ text }}"
+    )
+    threshold: float = ConfigurableValue(
+        desc="Threshold for assignment of task classes",
+        user_default=0.5
     )
 
     def __init__(self, *args, **kwargs):
@@ -315,10 +319,10 @@ class LocalHFClassifierModel(Model):
 
         self._model = py_model
 
-    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, str]:
+    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, list[str]]:
         return self.generate_batch([database_record], tasks)[0]
 
-    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, str]]:
+    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, list[str]]]:
         self._init_model()
         import torch
 
@@ -342,14 +346,12 @@ class LocalHFClassifierModel(Model):
                     print(f"Warning: Task '{task}' not found in model heads. Skipping.")
                     continue
                 logits = self._model.heads[task].linear(cls_reprs)
-                pred_idxs = logits.argmax(dim=-1).tolist()
+                prob = torch.sigmoid(logits)
+                predictions = (prob > self.threshold).tolist()
                 
                 classes = self.task_classes.get(task) or TASK_CLASSES.get(task)
-                for i, pred_idx in enumerate(pred_idxs):
-                    if classes and pred_idx < len(classes):
-                        res_list[i][task] = str(classes[pred_idx])
-                    else:
-                        res_list[i][task] = str(pred_idx)
+                for i, pred_row in enumerate(predictions):
+                    res_list[i][task] = [str(classes[j]) for j, pred in enumerate(pred_row) if pred]
             return res_list
 
 
