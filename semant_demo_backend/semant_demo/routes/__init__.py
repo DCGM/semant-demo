@@ -10,6 +10,7 @@ from .span_routes import exp_router as span_router
 from .ai_assistance_routes import exp_router as ai_assistance_router
 from .span_chat_routes import exp_router as span_chat_router
 from .propose_tags_routes import exp_router as propose_tags_router
+from .search_routes import exp_router as search_router
 
 export_router = APIRouter()
 export_router.include_router(user_router)
@@ -23,5 +24,6 @@ export_router.include_router(span_router)
 export_router.include_router(ai_assistance_router)
 export_router.include_router(span_chat_router)
 export_router.include_router(propose_tags_router)
+export_router.include_router(search_router)
 
 __all__ = ["export_router"]
