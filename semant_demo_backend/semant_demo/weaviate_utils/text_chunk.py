@@ -34,6 +34,7 @@ from weaviate.classes.query import QueryReference
 from semant_demo.config import config
 
 import logging
+from typing import Any
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
@@ -52,26 +53,31 @@ class TextChunk():
         filters = Filter()
         return await self.helpers.fetch_chunks(filters=filters)
 
-    async def search(self, search_request: schemas.SearchRequest) -> schemas.SearchResponse:
+    async def search(
+        self,
+        search_request: schemas.SearchRequest,
+        filters: list[Any] | None = None
+    ) -> schemas.SearchResponse:
         # Build filters
-        filters = []
+        query_filters = []
         if search_request.user_collection_id:
-            filters.append(
+            query_filters.append(
                 Filter.by_ref(link_on=self.helpers.collectionNames.user_collection_link_name)
                 .by_id()
                 .equal(search_request.user_collection_id)
             )
 
-        if search_request.min_year:
-            filters.append(
-                Filter.by_ref(link_on="document").by_property("yearIssued").greater_or_equal(search_request.min_year)
-            )
-        if search_request.max_year:
-            filters.append(
-                Filter.by_ref(link_on="document").by_property("yearIssued").less_or_equal(search_request.max_year)
-            )
-        if search_request.language:
-            filters.append(Filter.by_property("language").equal(search_request.language))
+        if filters is None:
+            # legacy fallback
+            # TODO: Remove when all usages are updated
+            if search_request.min_year:
+                query_filters.append(Filter.by_ref(link_on="document").by_property("yearIssued").greater_or_equal(search_request.min_year))
+            if search_request.max_year:
+                query_filters.append(Filter.by_ref(link_on="document").by_property("yearIssued").less_or_equal(search_request.max_year))
+            if search_request.language:
+                query_filters.append(Filter.by_property("language").equal(search_request.language))
+        else:
+            query_filters.extend(filters)
 
         tagFilters = []
         if search_request.tag_uuids:
@@ -88,13 +94,13 @@ class TextChunk():
                 combined_tag_filters = combined_tag_filters | f
 
         if combined_tag_filters:
-            filters.append(combined_tag_filters)
+            query_filters.append(combined_tag_filters)
             
         # Combine with AND logic
         combined_filter = None
-        if filters:
-            combined_filter = filters[0]
-            for f in filters[1:]:
+        if query_filters:
+            combined_filter = query_filters[0]
+            for f in query_filters[1:]:
                 combined_filter &= f
 
         document_properties_to_return = [
