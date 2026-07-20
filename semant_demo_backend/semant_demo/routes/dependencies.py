@@ -44,3 +44,8 @@ async def get_summarizer() -> TemplatedSearchResultsSummarizer:
     if _summarizer is None:
         _summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
     return _summarizer
+
+
+def get_search_filters():
+    from semant_demo.search_filters import load_search_filters_config
+    return load_search_filters_config(config.SEARCH_FILTERS_CONFIG)

@@ -23,6 +23,38 @@ class APIType(str, Enum):
     metacentrum = "METACENTRUM"
 
 
+class FilterType(str, Enum):
+    nominal = "nominal"
+    interval = "interval"
+
+
+class NominalFilterValue(BaseModel):
+    user_form: str
+    backend_form: str
+
+
+class SearchFilter(BaseModel):
+    id: str
+    name: str
+    type: FilterType
+    description: str
+    target_property: str
+    values: list[NominalFilterValue] | None = None
+    min_value: int | float | None = None
+    max_value: int | float | None = None
+
+
+class SearchFilterInput(BaseModel):
+    id: str
+    values: list[str | int | float] | str | int | float | None = None
+    min_value: int | float | datetime | None = None
+    max_value: int | float | datetime | None = None
+
+
+class SearchFiltersResponse(BaseModel):
+    filters: list[SearchFilter]
+
+
 class SummaryRequestBase(BaseModel):
     search_title_generate: bool = True
     search_title_prompt: str | None = None
@@ -50,6 +82,8 @@ class SearchRequest(SummaryRequestBase):
     type: SearchType = SearchType.hybrid
     hybrid_search_alpha: float = 0.5
     search_llm_filter: bool = False
+
+    filters: list[SearchFilterInput] | None = None
 
     min_year: int | None = None
     max_year: int | None = None
