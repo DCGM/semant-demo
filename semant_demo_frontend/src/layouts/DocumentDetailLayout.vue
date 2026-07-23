@@ -27,8 +27,21 @@ const $router = useRouter()
 
 const viewOptions = [
   { label: 'V1', value: 'v1' },
-  { label: 'V2', value: 'v2' }
+  { label: 'V2', value: 'v2' },
+  { label: 'V3', value: 'v3' }
 ]
+
+const routeNameByView: Record<string, string> = {
+  v1: 'documentDetailV1',
+  v2: 'documentDetailV2',
+  v3: 'documentDetailV3'
+}
+
+const viewByRouteName: Record<string, string> = {
+  documentDetailV1: 'v1',
+  documentDetailV2: 'v2',
+  documentDetailV3: 'v3'
+}
 
 const getRouteParams = () => ({
   collectionId: $route.params.collectionId ?? '',
@@ -36,11 +49,9 @@ const getRouteParams = () => ({
 })
 
 const selectedView = computed({
-  get: () => ($route.name === 'documentDetailV1' ? 'v1' : 'v2'),
+  get: () => viewByRouteName[$route.name as string] ?? 'v1',
   set: async (value: string) => {
-    const targetName = value === 'v1' ? 'documentDetailV1' : 'documentDetailV2'
-
-    console.log('set has been called with value:', value)
+    const targetName = routeNameByView[value]
 
     if ($route.name === targetName) {
       return
