@@ -273,7 +273,7 @@
       <!-- Context popover — shows near the mouse when selection or editing -->
       <Teleport to="body">
         <div
-          v-if="annotations.hasSelection.value"
+          v-if="annotations.hasSelection.value && !quickTagging"
           ref="popoverEl"
           class="annotation-popover"
           :style="popoverStyle"
@@ -285,7 +285,7 @@
             icon="close"
             size="sm"
             class="popover-close"
-            @click="annotations.clearSelection()"
+            @click="endQuickTagging()"
           />
 
           <!-- Tag picker mode (plain single-pick, or AI multi-select sub-mode) -->
@@ -382,7 +382,7 @@
             <div class="popover-actions">
               <!-- Save position (position changed) — shown first when applicable -->
               <q-btn
-                v-if="annotations.positionChanged.value"
+                v-if="annotations.isEditing.value && annotations.positionChanged.value"
                 no-caps unelevated
                 icon="save"
                 label="Save position"
@@ -600,7 +600,7 @@ async function changeEditingSpanType(type: SpanType) {
     await aiAssist.resolveAutoSpan(span, type)
   } finally {
     approveRejectBusy.value = false
-    annotations.clearSelection()
+    endQuickTagging()
   }
 }
 
@@ -632,6 +632,18 @@ const hoveredSpanId = ref<string | null>(null)
 const gutterItems = ref<GutterItem[]>([])
 const showTagPicker = ref(false)
 const tagSearch = ref('')
+// The tag of the span whose marker was last clicked. While set, drag-selecting
+// new text quick-tags it with this same tag (see handleDocumentMouseUp) —
+// stays active across multiple selections until explicitly ended.
+const quickTagId = ref<string | null>(null)
+// True for the brief window between a quick-tag selection and its span
+// being created — suppresses the popover entirely so "Add tag" never flashes.
+const quickTagging = ref(false)
+
+const endQuickTagging = () => {
+  quickTagId.value = null
+  annotations.clearSelection()
+}
 
 // ── Left chunk-control gutter ──
 interface LeftGutterItem {
@@ -1008,6 +1020,7 @@ const onGutterClick = (item: GutterItem, e: MouseEvent) => {
     start: item.start,
     end: item.end
   })
+  quickTagId.value = item.tagId
   updatePopoverPos(e)
   showTagPicker.value = false
   tagSearch.value = ''
@@ -1142,36 +1155,44 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
   if (!startPoint || !endPoint) return
 
-  // Preserve editing context when re-selecting during edit mode
-  const editingSpanId = annotations.selection.value?.editingSpanId
-  const editingTagId = annotations.selection.value?.tagId
-
   if (startPoint.chunkId === endPoint.chunkId) {
     const start = Math.min(startPoint.charOffset, endPoint.charOffset)
     const end = Math.max(startPoint.charOffset, endPoint.charOffset)
     if (end > start) {
-      annotations.setSelection(startPoint.chunkId, start, end, editingSpanId, editingTagId)
+      annotations.setSelection(startPoint.chunkId, start, end)
     }
   } else {
     annotations.setCrossChunkSelection(
       startPoint.chunkId, startPoint.charOffset,
-      endPoint.chunkId, endPoint.charOffset,
-      editingSpanId, editingTagId
+      endPoint.chunkId, endPoint.charOffset
     )
   }
 
   updatePopoverPos(e)
-  // Fresh (non-editing) selections open straight into the tag picker, as if
-  // "Add tag" had already been clicked; re-selecting while editing keeps the
-  // default action screen (Change tag/Approve/Reject/etc).
-  showTagPicker.value = !editingSpanId
+  domSelection.removeAllRanges()
+
+  // A marker's tag stays "active" (see quickTagId) until explicitly ended,
+  // so every subsequent selection here quick-tags that new text with it
+  // instead of opening the picker — repositioning the original span is
+  // still done via its drag handles.
+  if (quickTagId.value) {
+    quickTagging.value = true
+    void annotations.createSpan(quickTagId.value).finally(() => {
+      quickTagging.value = false
+    })
+    return
+  }
+
+  // Fresh selections open straight into the tag picker, as if "Add tag" had
+  // already been clicked.
+  showTagPicker.value = true
   showAiTagPicker.value = false
   tagSearch.value = ''
-  domSelection.removeAllRanges()
 }
 
 const onTagClick = async (tagId: string) => {
   if (annotations.isEditing.value) {
+    quickTagId.value = null
     await annotations.updateSpanTag(tagId)
   } else {
     await annotations.createSpan(tagId)
@@ -1187,6 +1208,7 @@ const onBoundaryDrag = (payload: { chunkId: string; handle: 'start' | 'end'; cha
 }
 
 const onDeleteSpan = async () => {
+  quickTagId.value = null
   await annotations.deleteSpan()
 }
 
@@ -1608,9 +1630,11 @@ watch(
 // When prev/next expand-rows appear/disappear they shift the text — remeasure
 watch([hasPrev, hasNext], () => nextTick(() => requestAnimationFrame(recalculateGutter)))
 
+// While quick-tagging is active, keep the tag highlighted in the right-hand
+// panel regardless of the selection briefly clearing between instances.
 watch(
-  () => annotations.selection.value?.tagId,
-  (tagId) => tagNav.setActiveTagId(tagId ?? null)
+  [() => annotations.selection.value?.tagId, quickTagId],
+  ([selectionTagId, activeQuickTagId]) => tagNav.setActiveTagId(activeQuickTagId ?? selectionTagId ?? null)
 )
 
 // Re-clamp the popover whenever its content (and therefore size) changes —
@@ -1632,12 +1656,12 @@ const onClickOutside = (e: MouseEvent) => {
   const popover = document.querySelector('.annotation-popover')
   if (popover?.contains(target)) return
   if (documentTextRef.value?.contains(target)) return
-  annotations.clearSelection()
+  endQuickTagging()
 }
 
 const onEscape = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && annotations.hasSelection.value) {
-    annotations.clearSelection()
+    endQuickTagging()
   }
 }
 
