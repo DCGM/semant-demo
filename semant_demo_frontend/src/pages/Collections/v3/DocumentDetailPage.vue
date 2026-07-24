@@ -290,10 +290,10 @@
 
           <!-- Tag picker mode (plain single-pick, or AI multi-select sub-mode) -->
           <template v-if="showTagPicker">
-            <div v-if="!annotations.isEditing.value && !showAiTagPicker" class="popover-suggest-row">
+            <div v-if="!annotations.isEditing.value" class="popover-suggest-row">
               <q-btn
+                v-if="!showAiTagPicker"
                 flat dense no-caps
-                size="sm"
                 icon="auto_awesome"
                 label="Suggest tags"
                 class="suggest-tags-btn"
@@ -304,13 +304,16 @@
                   Ask AI to suggest tags for the highlighted text only.
                 </q-tooltip>
               </q-btn>
+              <q-btn
+                v-else
+                flat dense round
+                icon="arrow_back"
+                class="suggest-tags-btn suggest-tags-back"
+                @click="showAiTagPicker = false"
+              />
             </div>
             <div class="popover-header">
               <span class="popover-title">Select tag</span>
-              <q-btn
-                flat dense round icon="arrow_back" size="sm"
-                @click="showAiTagPicker ? (showAiTagPicker = false) : (showTagPicker = false)"
-              />
             </div>
             <q-input
               v-model="tagSearch"
@@ -2004,16 +2007,27 @@ onBeforeUnmount(() => {
 }
 
 .popover-suggest-row {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  z-index: 1;
+  height: 22px;
   display: flex;
-  justify-content: flex-end;
-  width: 100%;
+  align-items: center;
 }
 
 .suggest-tags-btn {
   font-size: 0.74rem;
+  height: 22px;
   min-height: 22px;
-  padding: 2px 8px;
+  padding: 0 4px 0 0;
   color: #64748b;
+}
+
+.suggest-tags-btn.suggest-tags-back {
+  min-width: 22px;
+  width: 22px;
+  padding: 0;
 }
 
 .popover-title {
