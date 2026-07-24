@@ -288,11 +288,29 @@
             @click="annotations.clearSelection()"
           />
 
-          <!-- Tag picker mode -->
+          <!-- Tag picker mode (plain single-pick, or AI multi-select sub-mode) -->
           <template v-if="showTagPicker">
+            <div v-if="!annotations.isEditing.value && !showAiTagPicker" class="popover-suggest-row">
+              <q-btn
+                flat dense no-caps
+                size="sm"
+                icon="auto_awesome"
+                label="Suggest tags"
+                class="suggest-tags-btn"
+                :disable="!tags.length"
+                @click="onOpenAiTagPicker"
+              >
+                <q-tooltip>
+                  Ask AI to suggest tags for the highlighted text only.
+                </q-tooltip>
+              </q-btn>
+            </div>
             <div class="popover-header">
               <span class="popover-title">Select tag</span>
-              <q-btn flat dense round icon="arrow_back" size="sm" @click="showTagPicker = false" />
+              <q-btn
+                flat dense round icon="arrow_back" size="sm"
+                @click="showAiTagPicker ? (showAiTagPicker = false) : (showTagPicker = false)"
+              />
             </div>
             <q-input
               v-model="tagSearch"
@@ -307,42 +325,7 @@
                 <q-icon name="search" size="xs" />
               </template>
             </q-input>
-            <div class="tag-list">
-              <div
-                v-for="tag in filteredTags"
-                :key="tag.id"
-                class="tag-row"
-                :class="{ 'is-active': annotations.selection.value?.tagId === tag.id }"
-                @click="onTagClick(tag.id)"
-              >
-                <span class="tag-dot" :style="{ backgroundColor: tag.color }"></span>
-                <span class="tag-name">{{ tag.name }}</span>
-                <span class="tag-shorthand">{{ tag.shorthand }}</span>
-              </div>
-              <div v-if="filteredTags.length === 0" class="tag-row-empty">No tags found</div>
-            </div>
-          </template>
-
-          <!-- AI tag picker mode (multi-select for selection-scoped Topicer run) -->
-          <template v-else-if="showAiTagPicker">
-            <div class="popover-header">
-              <span class="popover-title">Tags to consider</span>
-              <q-btn flat dense round icon="arrow_back" size="sm" @click="showAiTagPicker = false" />
-            </div>
-            <q-input
-              v-model="aiTagSearch"
-              dense
-              outlined
-              placeholder="Search tags..."
-              class="tag-search"
-              autofocus
-              clearable
-            >
-              <template #prepend>
-                <q-icon name="search" size="xs" />
-              </template>
-            </q-input>
-            <div class="ai-picker-toolbar">
+            <div v-if="showAiTagPicker" class="ai-picker-toolbar">
               <span class="ai-picker-count">
                 {{ aiTagPickerSelected.size }} / {{ tags.length }} selected
               </span>
@@ -352,13 +335,18 @@
             </div>
             <div class="tag-list">
               <div
-                v-for="tag in aiPickerFilteredTags"
+                v-for="tag in filteredTags"
                 :key="tag.id"
                 class="tag-row"
-                :class="{ 'is-active': aiTagPickerSelected.has(tag.id) }"
-                @click="toggleAiPickerTag(tag.id)"
+                :class="{
+                  'is-active': showAiTagPicker
+                    ? aiTagPickerSelected.has(tag.id)
+                    : annotations.selection.value?.tagId === tag.id
+                }"
+                @click="showAiTagPicker ? toggleAiPickerTag(tag.id) : onTagClick(tag.id)"
               >
                 <q-checkbox
+                  v-if="showAiTagPicker"
                   :model-value="aiTagPickerSelected.has(tag.id)"
                   dense
                   size="xs"
@@ -370,9 +358,9 @@
                 <span class="tag-name">{{ tag.name }}</span>
                 <span class="tag-shorthand">{{ tag.shorthand }}</span>
               </div>
-              <div v-if="aiPickerFilteredTags.length === 0" class="tag-row-empty">No tags found</div>
+              <div v-if="filteredTags.length === 0" class="tag-row-empty">No tags found</div>
             </div>
-            <div class="popover-actions ai-picker-actions">
+            <div v-if="showAiTagPicker" class="popover-actions ai-picker-actions">
               <q-btn
                 no-caps unelevated
                 icon="auto_awesome"
@@ -428,21 +416,6 @@
                 class="popover-btn"
                 @click="showTagPicker = true"
               />
-              <q-btn
-                v-if="!annotations.isEditing.value"
-                no-caps outline
-                icon="auto_awesome"
-                label="Suggest tags"
-                color="primary"
-                class="popover-btn"
-                :loading="aiAssist.isSelectionRunning.value"
-                :disable="aiAssist.isSelectionRunning.value || !tags.length"
-                @click="onOpenAiTagPicker"
-              >
-                <q-tooltip>
-                  Ask AI to suggest tags for the highlighted text only.
-                </q-tooltip>
-              </q-btn>
               <q-btn
                 v-if="annotations.isEditing.value"
                 no-caps outline
@@ -1185,7 +1158,11 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
   }
 
   updatePopoverPos(e)
-  showTagPicker.value = false
+  // Fresh (non-editing) selections open straight into the tag picker, as if
+  // "Add tag" had already been clicked; re-selecting while editing keeps the
+  // default action screen (Change tag/Approve/Reject/etc).
+  showTagPicker.value = !editingSpanId
+  showAiTagPicker.value = false
   tagSearch.value = ''
   domSelection.removeAllRanges()
 }
@@ -1218,24 +1195,13 @@ const $q = useQuasar()
 // single-pick mode used for manual tagging).
 const showAiTagPicker = ref(false)
 const aiTagPickerSelected = ref<Set<string>>(new Set())
-const aiTagSearch = ref('')
-
-const aiPickerFilteredTags = computed(() => {
-  const q = aiTagSearch.value.toLowerCase().trim()
-  if (!q) return tags.value
-  return tags.value.filter(
-    (t) =>
-      t.name.toLowerCase().includes(q) ||
-      (t.shorthand && t.shorthand.toLowerCase().includes(q))
-  )
-})
 
 const onOpenAiTagPicker = () => {
   if (!tags.value.length) return
   // Default to all tags selected — matches the document-wide "AI assist"
   // panel, where the user typically wants Topicer to look for everything.
   aiTagPickerSelected.value = new Set(tags.value.map((t) => t.id))
-  aiTagSearch.value = ''
+  tagSearch.value = ''
   showAiTagPicker.value = true
 }
 
@@ -2035,6 +2001,19 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   width: 100%;
   margin-bottom: 2px;
+}
+
+.popover-suggest-row {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.suggest-tags-btn {
+  font-size: 0.74rem;
+  min-height: 22px;
+  padding: 2px 8px;
+  color: #64748b;
 }
 
 .popover-title {
