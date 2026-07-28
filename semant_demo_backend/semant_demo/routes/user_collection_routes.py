@@ -16,13 +16,14 @@ from semant_demo import schemas
 import logging
 # from semant_demo.weaviate_tag import WeaviateAbstraction
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 import logging
 
 from semant_demo.schemas import TasksBase
-from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection
+from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner
 from semant_demo.schema.documents import DocumentStats
 from semant_demo.schema.documents import Document, DocumentBrowse
 from semant_demo.schema.tags import Tag
@@ -83,6 +84,31 @@ async def update_collection(collection_id: str, collectionReq: PatchCollection,
         return response
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+@exp_router.patch("/api/collections/{collection_id}/owner", response_model=Collection)
+async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
+                                  searcher: WeaviateAbstraction = Depends(get_search),
+                                  session: AsyncSession = Depends(get_async_session),
+                                  current_user: User = Depends(current_active_user)) -> Collection:
+    """
+    Reassigns ownership of a collection to a different user. Superuser only.
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Forbidden: superuser access required")
+
+    result = await session.execute(select(User).where(User.id == req.user_id))
+    new_owner = result.scalar_one_or_none()
+    if new_owner is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"User with id {req.user_id} not found")
+
+    try:
+        response = await searcher.userCollection.change_owner(collection_id, new_owner)
+        return response
+    except WeaviateOperationError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
 
 @exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
 async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
