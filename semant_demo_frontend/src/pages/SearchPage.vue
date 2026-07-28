@@ -58,8 +58,24 @@
 
           <q-slide-transition>
             <div v-show="showFilters">
-              <q-separator inset />
-              <q-card-section class="bg-grey-1">
+              <div class="relative-position q-pt-sm">
+                <q-separator inset />
+                <div class="absolute bg-white q-px-sm" style="z-index: 1; bottom: 0; left: 50%; transform: translate(-50%, 50%);" v-if="activeFilterBadges.length">
+                  <q-btn
+                    outline
+                    dense
+                    color="negative"
+                    @click="clearAllFilters"
+                    class="bg-white q-px-sm"
+                  >
+                    <div class="row items-center no-wrap" style="line-height: 1;">
+                      <q-icon name="delete" size="16px" class="q-mr-xs" />
+                      <span>Clear Filters</span>
+                    </div>
+                  </q-btn>
+                </div>
+              </div>
+              <q-card-section class="bg-grey-1" :style="activeFilterBadges.length ? 'padding-top: 24px;' : ''">
                 <div class="row q-col-gutter-md">
 
                   <div v-if="userStore.isLoggedIn" class="col-12 col-sm-6 col-md-4">
@@ -622,6 +638,19 @@ function removeFilterBadge (badge: ActiveFilterBadge) {
       filterValues.value[badge.filterId] = current.filter(v => v !== badge.value)
     }
   }
+}
+
+function clearAllFilters () {
+  searchForm.value.user_collection_id = null
+  availableSearchFilters.value.forEach(filter => {
+    if (filter.type === 'interval') {
+      const min = filter.min_value != null ? Math.floor(filter.min_value) : 1800
+      const max = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
+      filterValues.value[filter.id] = { min, max }
+    } else if (filter.type === 'nominal') {
+      filterValues.value[filter.id] = []
+    }
+  })
 }
 
 // Methods
