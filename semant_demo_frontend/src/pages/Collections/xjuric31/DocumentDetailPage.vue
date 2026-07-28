@@ -273,7 +273,7 @@
       <!-- Context popover — shows near the mouse when selection or editing -->
       <Teleport to="body">
         <div
-          v-if="annotations.hasSelection.value"
+          v-if="annotations.hasSelection.value && !quickTagging"
           ref="popoverEl"
           class="annotation-popover"
           :style="popoverStyle"
@@ -285,14 +285,35 @@
             icon="close"
             size="sm"
             class="popover-close"
-            @click="annotations.clearSelection()"
+            @click="endQuickTagging()"
           />
 
-          <!-- Tag picker mode -->
+          <!-- Tag picker mode (plain single-pick, or AI multi-select sub-mode) -->
           <template v-if="showTagPicker">
+            <div v-if="!annotations.isEditing.value" class="popover-suggest-row">
+              <q-btn
+                v-if="!showAiTagPicker"
+                flat dense no-caps
+                icon="auto_awesome"
+                label="Suggest tags"
+                class="suggest-tags-btn"
+                :disable="!tags.length"
+                @click="onOpenAiTagPicker"
+              >
+                <q-tooltip>
+                  Ask AI to suggest tags for the highlighted text only.
+                </q-tooltip>
+              </q-btn>
+              <q-btn
+                v-else
+                flat dense round
+                icon="arrow_back"
+                class="suggest-tags-btn suggest-tags-back"
+                @click="showAiTagPicker = false"
+              />
+            </div>
             <div class="popover-header">
               <span class="popover-title">Select tag</span>
-              <q-btn flat dense round icon="arrow_back" size="sm" @click="showTagPicker = false" />
             </div>
             <q-input
               v-model="tagSearch"
@@ -307,42 +328,7 @@
                 <q-icon name="search" size="xs" />
               </template>
             </q-input>
-            <div class="tag-list">
-              <div
-                v-for="tag in filteredTags"
-                :key="tag.id"
-                class="tag-row"
-                :class="{ 'is-active': annotations.selection.value?.tagId === tag.id }"
-                @click="onTagClick(tag.id)"
-              >
-                <span class="tag-dot" :style="{ backgroundColor: tag.color }"></span>
-                <span class="tag-name">{{ tag.name }}</span>
-                <span class="tag-shorthand">{{ tag.shorthand }}</span>
-              </div>
-              <div v-if="filteredTags.length === 0" class="tag-row-empty">No tags found</div>
-            </div>
-          </template>
-
-          <!-- AI tag picker mode (multi-select for selection-scoped Topicer run) -->
-          <template v-else-if="showAiTagPicker">
-            <div class="popover-header">
-              <span class="popover-title">Tags to consider</span>
-              <q-btn flat dense round icon="arrow_back" size="sm" @click="showAiTagPicker = false" />
-            </div>
-            <q-input
-              v-model="aiTagSearch"
-              dense
-              outlined
-              placeholder="Search tags..."
-              class="tag-search"
-              autofocus
-              clearable
-            >
-              <template #prepend>
-                <q-icon name="search" size="xs" />
-              </template>
-            </q-input>
-            <div class="ai-picker-toolbar">
+            <div v-if="showAiTagPicker" class="ai-picker-toolbar">
               <span class="ai-picker-count">
                 {{ aiTagPickerSelected.size }} / {{ tags.length }} selected
               </span>
@@ -352,13 +338,18 @@
             </div>
             <div class="tag-list">
               <div
-                v-for="tag in aiPickerFilteredTags"
+                v-for="tag in filteredTags"
                 :key="tag.id"
                 class="tag-row"
-                :class="{ 'is-active': aiTagPickerSelected.has(tag.id) }"
-                @click="toggleAiPickerTag(tag.id)"
+                :class="{
+                  'is-active': showAiTagPicker
+                    ? aiTagPickerSelected.has(tag.id)
+                    : annotations.selection.value?.tagId === tag.id
+                }"
+                @click="showAiTagPicker ? toggleAiPickerTag(tag.id) : onTagClick(tag.id)"
               >
                 <q-checkbox
+                  v-if="showAiTagPicker"
                   :model-value="aiTagPickerSelected.has(tag.id)"
                   dense
                   size="xs"
@@ -370,9 +361,9 @@
                 <span class="tag-name">{{ tag.name }}</span>
                 <span class="tag-shorthand">{{ tag.shorthand }}</span>
               </div>
-              <div v-if="aiPickerFilteredTags.length === 0" class="tag-row-empty">No tags found</div>
+              <div v-if="filteredTags.length === 0" class="tag-row-empty">No tags found</div>
             </div>
-            <div class="popover-actions ai-picker-actions">
+            <div v-if="showAiTagPicker" class="popover-actions ai-picker-actions">
               <q-btn
                 no-caps unelevated
                 icon="auto_awesome"
@@ -391,7 +382,7 @@
             <div class="popover-actions">
               <!-- Save position (position changed) — shown first when applicable -->
               <q-btn
-                v-if="annotations.positionChanged.value"
+                v-if="annotations.isEditing.value && annotations.positionChanged.value"
                 no-caps unelevated
                 icon="save"
                 label="Save position"
@@ -428,21 +419,6 @@
                 class="popover-btn"
                 @click="showTagPicker = true"
               />
-              <q-btn
-                v-if="!annotations.isEditing.value"
-                no-caps outline
-                icon="auto_awesome"
-                label="Suggest tags"
-                color="primary"
-                class="popover-btn"
-                :loading="aiAssist.isSelectionRunning.value"
-                :disable="aiAssist.isSelectionRunning.value || !tags.length"
-                @click="onOpenAiTagPicker"
-              >
-                <q-tooltip>
-                  Ask AI to suggest tags for the highlighted text only.
-                </q-tooltip>
-              </q-btn>
               <q-btn
                 v-if="annotations.isEditing.value"
                 no-caps outline
@@ -624,7 +600,7 @@ async function changeEditingSpanType(type: SpanType) {
     await aiAssist.resolveAutoSpan(span, type)
   } finally {
     approveRejectBusy.value = false
-    annotations.clearSelection()
+    endQuickTagging()
   }
 }
 
@@ -656,6 +632,18 @@ const hoveredSpanId = ref<string | null>(null)
 const gutterItems = ref<GutterItem[]>([])
 const showTagPicker = ref(false)
 const tagSearch = ref('')
+// The tag of the span whose marker was last clicked. While set, drag-selecting
+// new text quick-tags it with this same tag (see handleDocumentMouseUp) —
+// stays active across multiple selections until explicitly ended.
+const quickTagId = ref<string | null>(null)
+// True for the brief window between a quick-tag selection and its span
+// being created — suppresses the popover entirely so "Add tag" never flashes.
+const quickTagging = ref(false)
+
+const endQuickTagging = () => {
+  quickTagId.value = null
+  annotations.clearSelection()
+}
 
 // ── Left chunk-control gutter ──
 interface LeftGutterItem {
@@ -822,21 +810,12 @@ const hoveredChunkId = ref<string | null>(null)
 const gutterHoveredChunkId = ref<string | null>(null)
 
 function onDocumentPointerMove(e: PointerEvent) {
-  if (!documentTextRef.value) return
-  for (const chunk of displayChunks.value) {
-    const el = documentTextRef.value.querySelector(`[data-chunk-id="${chunk.id}"]`) as HTMLElement | null
-    if (!el) continue
-    const rect = el.getBoundingClientRect()
-    if (e.clientX >= rect.left && e.clientX <= rect.right &&
-        e.clientY >= rect.top && e.clientY <= rect.bottom) {
-      hoveredChunkId.value = chunk.id
-      if (!chunk.inCollection) hoveredPreviewChunkId.value = chunk.id
-      else hoveredPreviewChunkId.value = null
-      return
-    }
-  }
-  hoveredChunkId.value = null
-  hoveredPreviewChunkId.value = null
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-chunk-id]')
+  const chunkId = el?.dataset.chunkId ?? null
+  hoveredChunkId.value = chunkId
+
+  const chunk = chunkId ? displayChunks.value.find(c => c.id === chunkId) : null
+  hoveredPreviewChunkId.value = chunk && !chunk.inCollection ? chunk.id : null
 }
 
 const filteredTags = computed(() => {
@@ -936,6 +915,12 @@ function recalculateGutter() {
   const cardRect = cardEl.getBoundingClientRect()
   const items: GutterItem[] = []
 
+  // Use all known chunks (display + hidden) so the gutter bar bridges gaps caused by removed chunks.
+  // Built once per call — doesn't depend on the current chunk/span.
+  const allKnown = [...displayChunks.value, ...hiddenPreviewChunks.value]
+    .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
+    .sort((a, b) => a.order - b.order)
+
   for (const chunk of displayChunks.value) {
     const chunkSpans = annotations.spansByChunkId.value[chunk.id] || []
 
@@ -946,11 +931,6 @@ function recalculateGutter() {
 
       let minTop = Infinity
       let maxBottom = -Infinity
-
-      // Use all known chunks (display + hidden) so the gutter bar bridges gaps caused by removed chunks
-      const allKnown = [...displayChunks.value, ...hiddenPreviewChunks.value]
-        .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
-        .sort((a, b) => a.order - b.order)
 
       const startAllIndex = allKnown.findIndex(c => c.id === chunk.id)
       if (startAllIndex === -1) continue
@@ -1032,6 +1012,7 @@ const onGutterClick = (item: GutterItem, e: MouseEvent) => {
     start: item.start,
     end: item.end
   })
+  quickTagId.value = item.tagId
   updatePopoverPos(e)
   showTagPicker.value = false
   tagSearch.value = ''
@@ -1166,32 +1147,44 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
   if (!startPoint || !endPoint) return
 
-  // Preserve editing context when re-selecting during edit mode
-  const editingSpanId = annotations.selection.value?.editingSpanId
-  const editingTagId = annotations.selection.value?.tagId
-
   if (startPoint.chunkId === endPoint.chunkId) {
     const start = Math.min(startPoint.charOffset, endPoint.charOffset)
     const end = Math.max(startPoint.charOffset, endPoint.charOffset)
     if (end > start) {
-      annotations.setSelection(startPoint.chunkId, start, end, editingSpanId, editingTagId)
+      annotations.setSelection(startPoint.chunkId, start, end)
     }
   } else {
     annotations.setCrossChunkSelection(
       startPoint.chunkId, startPoint.charOffset,
-      endPoint.chunkId, endPoint.charOffset,
-      editingSpanId, editingTagId
+      endPoint.chunkId, endPoint.charOffset
     )
   }
 
   updatePopoverPos(e)
-  showTagPicker.value = false
-  tagSearch.value = ''
   domSelection.removeAllRanges()
+
+  // A marker's tag stays "active" (see quickTagId) until explicitly ended,
+  // so every subsequent selection here quick-tags that new text with it
+  // instead of opening the picker — repositioning the original span is
+  // still done via its drag handles.
+  if (quickTagId.value) {
+    quickTagging.value = true
+    void annotations.createSpan(quickTagId.value).finally(() => {
+      quickTagging.value = false
+    })
+    return
+  }
+
+  // Fresh selections open straight into the tag picker, as if "Add tag" had
+  // already been clicked.
+  showTagPicker.value = true
+  showAiTagPicker.value = false
+  tagSearch.value = ''
 }
 
 const onTagClick = async (tagId: string) => {
   if (annotations.isEditing.value) {
+    quickTagId.value = null
     await annotations.updateSpanTag(tagId)
   } else {
     await annotations.createSpan(tagId)
@@ -1207,6 +1200,7 @@ const onBoundaryDrag = (payload: { chunkId: string; handle: 'start' | 'end'; cha
 }
 
 const onDeleteSpan = async () => {
+  quickTagId.value = null
   await annotations.deleteSpan()
 }
 
@@ -1218,24 +1212,13 @@ const $q = useQuasar()
 // single-pick mode used for manual tagging).
 const showAiTagPicker = ref(false)
 const aiTagPickerSelected = ref<Set<string>>(new Set())
-const aiTagSearch = ref('')
-
-const aiPickerFilteredTags = computed(() => {
-  const q = aiTagSearch.value.toLowerCase().trim()
-  if (!q) return tags.value
-  return tags.value.filter(
-    (t) =>
-      t.name.toLowerCase().includes(q) ||
-      (t.shorthand && t.shorthand.toLowerCase().includes(q))
-  )
-})
 
 const onOpenAiTagPicker = () => {
   if (!tags.value.length) return
   // Default to all tags selected — matches the document-wide "AI assist"
   // panel, where the user typically wants Topicer to look for everything.
   aiTagPickerSelected.value = new Set(tags.value.map((t) => t.id))
-  aiTagSearch.value = ''
+  tagSearch.value = ''
   showAiTagPicker.value = true
 }
 
@@ -1626,9 +1609,8 @@ watch(
 )
 
 watch(
-  () => annotations.spansByChunkId.value,
-  () => nextTick(recalculateGutter),
-  { deep: true }
+  () => annotations.spansVersion.value,
+  () => nextTick(recalculateGutter)
 )
 
 watch(
@@ -1639,9 +1621,11 @@ watch(
 // When prev/next expand-rows appear/disappear they shift the text — remeasure
 watch([hasPrev, hasNext], () => nextTick(() => requestAnimationFrame(recalculateGutter)))
 
+// While quick-tagging is active, keep the tag highlighted in the right-hand
+// panel regardless of the selection briefly clearing between instances.
 watch(
-  () => annotations.selection.value?.tagId,
-  (tagId) => tagNav.setActiveTagId(tagId ?? null)
+  [() => annotations.selection.value?.tagId, quickTagId],
+  ([selectionTagId, activeQuickTagId]) => tagNav.setActiveTagId(activeQuickTagId ?? selectionTagId ?? null)
 )
 
 // Re-clamp the popover whenever its content (and therefore size) changes —
@@ -1657,18 +1641,21 @@ watch(
 // ── Dismiss on click-outside / Escape ──
 
 const onClickOutside = (e: MouseEvent) => {
-  if (!annotations.hasSelection.value) return
+  // quickTagId can stay active with no current selection — createSpan()
+  // clears the selection right after each quick-tag, but fast-labeling
+  // mode itself keeps going until explicitly ended.
+  if (!annotations.hasSelection.value && !quickTagId.value) return
   const target = e.target as HTMLElement
   // Don't dismiss if clicking inside the popover or document text area
   const popover = document.querySelector('.annotation-popover')
   if (popover?.contains(target)) return
   if (documentTextRef.value?.contains(target)) return
-  annotations.clearSelection()
+  endQuickTagging()
 }
 
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && annotations.hasSelection.value) {
-    annotations.clearSelection()
+  if (e.key === 'Escape' && (annotations.hasSelection.value || quickTagId.value)) {
+    endQuickTagging()
   }
 }
 
@@ -2035,6 +2022,30 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   width: 100%;
   margin-bottom: 2px;
+}
+
+.popover-suggest-row {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  z-index: 1;
+  height: 22px;
+  display: flex;
+  align-items: center;
+}
+
+.suggest-tags-btn {
+  font-size: 0.74rem;
+  height: 22px;
+  min-height: 22px;
+  padding: 0 4px 0 0;
+  color: #64748b;
+}
+
+.suggest-tags-btn.suggest-tags-back {
+  min-width: 22px;
+  width: 22px;
+  padding: 0;
 }
 
 .popover-title {

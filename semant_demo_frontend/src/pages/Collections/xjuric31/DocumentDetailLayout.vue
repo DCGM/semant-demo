@@ -87,16 +87,21 @@
                 <q-tooltip>Hide all</q-tooltip>
               </q-btn>
             </div>
+            <TagSearch ref="tagSearchRef" v-model="searchedTagName" class="q-mb-sm" />
             <div v-if="tagsLoading" class="flex flex-center q-pa-lg">
               <q-spinner size="2em" color="grey-6" />
             </div>
             <div v-else-if="!tags.length" class="text-body2 text-grey-6">
               No tags in this collection.
             </div>
-            <div v-else class="tags-list">
+            <div v-else-if="!filteredTags.length" class="text-body2 text-grey-6">
+              No tags match "{{ searchedTagName }}".
+            </div>
+            <div v-else ref="tagsListRef" class="tags-list">
               <div
-                v-for="tag in sortedTags"
+                v-for="tag in filteredTags"
                 :key="tag.id"
+                :data-tag-id="tag.id"
                 class="tag-card"
                 :class="{
                   'is-active': tagNav.activeTagId.value === tag.id,
@@ -522,6 +527,8 @@ import useTagSpans from 'src/composables/useTagSpans'
 import { useApi } from 'src/composables/useApi'
 import { SpanType } from 'src/generated/api'
 import type { TagSpan } from 'src/models/tagSpans'
+import TagSearch from 'src/components/TagSearch.vue'
+import { useTagSearch } from 'src/composables/useTagSearch'
 
 interface Props {
   collectionId: string
@@ -554,6 +561,32 @@ const sortedTags = computed(() => {
     const ai = orderMap.get(a.id) ?? Infinity
     const bi = orderMap.get(b.id) ?? Infinity
     return ai - bi
+  })
+})
+
+// ── Tag search ──
+const searchedTagName = ref('')
+const tagSearchRef = ref<InstanceType<typeof TagSearch> | null>(null)
+const { filteredTags } = useTagSearch(sortedTags, searchedTagName)
+
+function onCtrlF(e: KeyboardEvent) {
+  if (!e.ctrlKey) return
+  if (e.key.toLowerCase() !== 'f') return
+  if (drawerTab.value !== 'tags') return
+  e.preventDefault()
+  drawerOpen.value = true
+  void nextTick(() => tagSearchRef.value?.focus())
+}
+
+// Scroll the tags list to whichever tag becomes active (e.g. clicking a span
+// marker in the gutter) so the right panel follows the selection.
+const tagsListRef = ref<HTMLElement | null>(null)
+
+watch(() => tagNav.activeTagId.value, (tagId) => {
+  if (!tagId) return
+  void nextTick(() => {
+    const el = tagsListRef.value?.querySelector<HTMLElement>(`[data-tag-id="${tagId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   })
 })
 
@@ -1069,11 +1102,13 @@ onMounted(async () => {
 
   window.addEventListener('resize', updateLayoutHeight, { passive: true })
   window.addEventListener('scroll', updateLayoutHeight, { passive: true })
+  window.addEventListener('keydown', onCtrlF)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateLayoutHeight)
   window.removeEventListener('scroll', updateLayoutHeight)
+  window.removeEventListener('keydown', onCtrlF)
 })
 </script>
 

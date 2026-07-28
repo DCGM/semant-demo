@@ -27,20 +27,17 @@ const $router = useRouter()
 
 const viewOptions = [
   { label: 'V1', value: 'v1' },
-  { label: 'V2', value: 'v2' },
-  { label: 'V3', value: 'v3' }
+  { label: 'V2', value: 'v2' }
 ]
 
 const routeNameByView: Record<string, string> = {
   v1: 'documentDetailV1',
-  v2: 'documentDetailV2',
-  v3: 'documentDetailV3'
+  v2: 'documentDetailV2'
 }
 
 const viewByRouteName: Record<string, string> = {
   documentDetailV1: 'v1',
-  documentDetailV2: 'v2',
-  documentDetailV3: 'v3'
+  documentDetailV2: 'v2'
 }
 
 const getRouteParams = () => ({
