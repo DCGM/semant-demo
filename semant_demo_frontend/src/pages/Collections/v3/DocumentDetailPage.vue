@@ -1650,7 +1650,10 @@ watch(
 // ── Dismiss on click-outside / Escape ──
 
 const onClickOutside = (e: MouseEvent) => {
-  if (!annotations.hasSelection.value) return
+  // quickTagId can stay active with no current selection — createSpan()
+  // clears the selection right after each quick-tag, but fast-labeling
+  // mode itself keeps going until explicitly ended.
+  if (!annotations.hasSelection.value && !quickTagId.value) return
   const target = e.target as HTMLElement
   // Don't dismiss if clicking inside the popover or document text area
   const popover = document.querySelector('.annotation-popover')
@@ -1660,7 +1663,7 @@ const onClickOutside = (e: MouseEvent) => {
 }
 
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && annotations.hasSelection.value) {
+  if (e.key === 'Escape' && (annotations.hasSelection.value || quickTagId.value)) {
     endQuickTagging()
   }
 }
