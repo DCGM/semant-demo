@@ -97,10 +97,11 @@
             <div v-else-if="!filteredTags.length" class="text-body2 text-grey-6">
               No tags match "{{ searchedTagName }}".
             </div>
-            <div v-else class="tags-list">
+            <div v-else ref="tagsListRef" class="tags-list">
               <div
                 v-for="tag in filteredTags"
                 :key="tag.id"
+                :data-tag-id="tag.id"
                 class="tag-card"
                 :class="{
                   'is-active': tagNav.activeTagId.value === tag.id,
@@ -576,6 +577,18 @@ function onCtrlF(e: KeyboardEvent) {
   drawerOpen.value = true
   void nextTick(() => tagSearchRef.value?.focus())
 }
+
+// Scroll the tags list to whichever tag becomes active (e.g. clicking a span
+// marker in the gutter) so the right panel follows the selection.
+const tagsListRef = ref<HTMLElement | null>(null)
+
+watch(() => tagNav.activeTagId.value, (tagId) => {
+  if (!tagId) return
+  void nextTick(() => {
+    const el = tagsListRef.value?.querySelector<HTMLElement>(`[data-tag-id="${tagId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
+})
 
 // Sync tagOrder when tags change (new tags appended at end).
 // Initial order favours tags that already have annotations — most occurrences
