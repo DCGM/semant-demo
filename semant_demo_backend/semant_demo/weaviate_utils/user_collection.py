@@ -255,6 +255,34 @@ class UserCollection():
 
         return updated_collection
 
+    async def change_owner(self, collection_id: str, new_owner: User) -> Collection:
+        """
+        Reassigns ownership of a collection to a different user.
+        """
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+        collection_in_db = await self.read(collection_id)
+        if collection_in_db is None:
+            raise WeaviateOperationError(
+                f"Collection with id {collection_id} not found")
+
+        now = datetime.now(timezone.utc)
+        await usercollection_collection.data.update(
+            uuid=collection_id,
+            properties={
+                "owner": new_owner.name,
+                "user_id": new_owner.id,
+                "updated_at": now
+            }
+        )
+
+        updated_collection = await self.read(collection_id)
+        if updated_collection is None:
+            raise WeaviateOperationError(
+                "Weaviate error: collection not found after update")
+
+        return updated_collection
+
     async def delete(self, collection_id: str) -> None:
         """
         Deletes collection with given id.
