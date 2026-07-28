@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 
 from semant_demo import schemas
 from semant_demo.config import config
-from semant_demo.users.auth import current_active_user, current_active_optional_user
+from semant_demo.users.auth import current_active_user, current_active_optional_user, current_active_admin
 from semant_demo.users.models import User
 
 from semant_demo.weaviate_exceptions import WeaviateOperationError
@@ -16,7 +16,6 @@ from semant_demo import schemas
 import logging
 # from semant_demo.weaviate_tag import WeaviateAbstraction
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -89,22 +88,12 @@ async def update_collection(collection_id: str, collectionReq: PatchCollection,
 async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
                                   searcher: WeaviateAbstraction = Depends(get_search),
                                   session: AsyncSession = Depends(get_async_session),
-                                  current_user: User = Depends(current_active_user)) -> Collection:
+                                  current_user: User = Depends(current_active_admin)) -> Collection:
     """
-    Reassigns ownership of a collection to a different user. Superuser only.
+    Reassigns ownership of a collection to a different user. Admin only.
     """
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Forbidden: superuser access required")
-
-    result = await session.execute(select(User).where(User.id == req.user_id))
-    new_owner = result.scalar_one_or_none()
-    if new_owner is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"User with id {req.user_id} not found")
-
     try:
-        response = await searcher.userCollection.change_owner(collection_id, new_owner)
+        response = await searcher.userCollection.change_owner(collection_id, req.user_id, session)
         return response
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

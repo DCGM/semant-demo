@@ -4,6 +4,9 @@ import logging
 from uuid import UUID
 from datetime import datetime, timezone
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference, Sort
 from weaviate.exceptions import (
@@ -255,10 +258,15 @@ class UserCollection():
 
         return updated_collection
 
-    async def change_owner(self, collection_id: str, new_owner: User) -> Collection:
+    async def change_owner(self, collection_id: str, user_id: UUID, session: AsyncSession) -> Collection:
         """
         Reassigns ownership of a collection to a different user.
         """
+        result = await session.execute(select(User).where(User.id == user_id))
+        new_owner = result.scalar_one_or_none()
+        if new_owner is None:
+            raise WeaviateOperationError(f"User with id {user_id} not found")
+
         usercollection_collection = self.client.collections.get(
             self.collectionNames.user_collection_name)
         collection_in_db = await self.read(collection_id)
