@@ -810,21 +810,12 @@ const hoveredChunkId = ref<string | null>(null)
 const gutterHoveredChunkId = ref<string | null>(null)
 
 function onDocumentPointerMove(e: PointerEvent) {
-  if (!documentTextRef.value) return
-  for (const chunk of displayChunks.value) {
-    const el = documentTextRef.value.querySelector(`[data-chunk-id="${chunk.id}"]`) as HTMLElement | null
-    if (!el) continue
-    const rect = el.getBoundingClientRect()
-    if (e.clientX >= rect.left && e.clientX <= rect.right &&
-        e.clientY >= rect.top && e.clientY <= rect.bottom) {
-      hoveredChunkId.value = chunk.id
-      if (!chunk.inCollection) hoveredPreviewChunkId.value = chunk.id
-      else hoveredPreviewChunkId.value = null
-      return
-    }
-  }
-  hoveredChunkId.value = null
-  hoveredPreviewChunkId.value = null
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-chunk-id]')
+  const chunkId = el?.dataset.chunkId ?? null
+  hoveredChunkId.value = chunkId
+
+  const chunk = chunkId ? displayChunks.value.find(c => c.id === chunkId) : null
+  hoveredPreviewChunkId.value = chunk && !chunk.inCollection ? chunk.id : null
 }
 
 const filteredTags = computed(() => {
@@ -924,6 +915,12 @@ function recalculateGutter() {
   const cardRect = cardEl.getBoundingClientRect()
   const items: GutterItem[] = []
 
+  // Use all known chunks (display + hidden) so the gutter bar bridges gaps caused by removed chunks.
+  // Built once per call — doesn't depend on the current chunk/span.
+  const allKnown = [...displayChunks.value, ...hiddenPreviewChunks.value]
+    .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
+    .sort((a, b) => a.order - b.order)
+
   for (const chunk of displayChunks.value) {
     const chunkSpans = annotations.spansByChunkId.value[chunk.id] || []
 
@@ -934,11 +931,6 @@ function recalculateGutter() {
 
       let minTop = Infinity
       let maxBottom = -Infinity
-
-      // Use all known chunks (display + hidden) so the gutter bar bridges gaps caused by removed chunks
-      const allKnown = [...displayChunks.value, ...hiddenPreviewChunks.value]
-        .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
-        .sort((a, b) => a.order - b.order)
 
       const startAllIndex = allKnown.findIndex(c => c.id === chunk.id)
       if (startAllIndex === -1) continue
@@ -1617,9 +1609,8 @@ watch(
 )
 
 watch(
-  () => annotations.spansByChunkId.value,
-  () => nextTick(recalculateGutter),
-  { deep: true }
+  () => annotations.spansVersion.value,
+  () => nextTick(recalculateGutter)
 )
 
 watch(
