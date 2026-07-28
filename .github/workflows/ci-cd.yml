@@ -1,22 +1,85 @@
-name: Deploy
+name: CI/CD Pipeline
 
-# 1
 on:
   push:
-    tags: ["v*.*.*"]
+    branches: [ "**" ] 
+    tags: ["v*.*.*"]   
+  pull_request:
+    types: [opened, synchronize, reopened, closed] 
+  workflow_dispatch:
 
 concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && github.event.action != 'closed' }}
 
 jobs:
-  deploy:
-    name: Deploy ${{ github.ref_name }}
-    if: github.ref_type == 'tag'
+  discover-backend-tests:
+    name: Discover backend test files
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-server]
+    outputs:
+      tests: ${{ steps.find.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        working-directory: semant_demo_backend
+        run: |
+          set -euo pipefail
+          FILES_JSON=$(python3 - <<'EOF'
+          import json, pathlib
+          files = sorted(
+              str(p) for p in pathlib.Path("tests").rglob("*.py")
+              if p.name.startswith("test_") or p.name.endswith("_test.py")
+          )
+          print(json.dumps(files))
+          EOF
+          )
+          echo "Found tests: $FILES_JSON"
+          echo "tests=$FILES_JSON" >> "$GITHUB_OUTPUT"
+
+  test-backend:
+    name: "Backend test: ${{ matrix.file }}"
+    needs: discover-backend-tests
+    if: github.event.action != 'closed' && needs.discover-backend-tests.outputs.tests != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-server]
+    container: python:3.12-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        file: ${{ fromJson(needs.discover-backend-tests.outputs.tests) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        working-directory: semant_demo_backend
+        run: |
+          pip install --no-cache-dir -r requirements.txt
+          pip install --no-cache-dir -e .
+      - name: Run test
+        working-directory: semant_demo_backend
+        run: pytest "${{ matrix.file }}" -v
+
+  test-frontend:
+    name: CI Test Frontend
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-server]
+    container: node:20-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        working-directory: semant_demo_frontend
+        run: npm ci
+      - name: Lint
+        working-directory: semant_demo_frontend
+        run: npm run lint
+
+  deploy-production:
+    name: Deploy Production ${{ github.ref_name }}
+    needs: [test-backend, test-frontend]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: [self-hosted, semant-server]
     environment: production
     timeout-minutes: 30
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -173,3 +236,307 @@ jobs:
           sed -i "s|^BRANCH=.*|BRANCH=$PREV|" .env
           docker compose -p semant-demo -f ./docker-compose.app.yaml up -d
           echo "Rollback complete."
+
+  deploy-test-main:
+    name: Deploy test-main
+    needs: [test-backend, test-frontend]
+    if: github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, semant-server]
+    timeout-minutes: 30
+
+    steps:
+      - name: Validate SQL database directory
+        run: |
+          SQL_DB_DIR="${{ vars.SQL_DB_DIR_TEST }}"
+          if [ ! -d "$SQL_DB_DIR" ]; then
+            echo "ERROR: SQL database directory does not exist: $SQL_DB_DIR" >&2
+            echo "Please create it with: sudo mkdir -p $SQL_DB_DIR && sudo chown runner $SQL_DB_DIR" >&2
+            exit 1
+          fi
+          echo "SQL database directory validated: $SQL_DB_DIR"
+
+      - name: Validate and prepare deploy directory
+        run: |
+          set -euo pipefail
+          RUNNER_WORKDIR="${{ vars.RUNNER_WORKDIR }}"
+          DEPLOY_SUBDIR="${{ vars.DEPLOY_SUBDIR }}-test-main"
+
+          if [[ -z "$RUNNER_WORKDIR" ]]; then
+            echo "ERROR: RUNNER_WORKDIR must be set" ; exit 1
+          fi
+
+          CANONICAL=$(cd "$RUNNER_WORKDIR" && pwd)
+          FULL_PATH="$RUNNER_WORKDIR/$DEPLOY_SUBDIR"
+          if [[ ! "$FULL_PATH" == "$CANONICAL"* ]]; then
+            echo "ERROR: Path traversal detected" ; exit 1
+          fi
+
+          if [ ! -d "$FULL_PATH" ]; then
+            mkdir -p "$FULL_PATH"
+            echo "Created deploy directory: $FULL_PATH"
+          else
+            echo "Deploy directory already exists: $FULL_PATH"
+          fi
+
+      - name: Update deploy files
+        run: |
+          set -euo pipefail
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-main"
+          TMP_DIR="/tmp/semant-test-main-deploy"
+
+          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
+
+          git clone --depth=1 --filter=blob:none --sparse \
+            --branch "main" \
+            "https://github.com/DCGM/semant-demo.git" \
+            "$TMP_DIR/repo"
+
+          cd "$TMP_DIR/repo"
+          git sparse-checkout set deploy/docker-compose.app-test.yml deploy/Dockerfile deploy/.env.test.example
+
+          if [ ! -f "deploy/docker-compose.app-test.yml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.test.example" ]; then
+            echo "ERROR: Required files not found in deploy/ for branch main" >&2 ; exit 1
+          fi
+
+          cp deploy/docker-compose.app-test.yml "$DEPLOY_PATH/"
+          cp deploy/Dockerfile "$DEPLOY_PATH/"
+          cp deploy/.env.test.example "$DEPLOY_PATH/"
+          rm -rf "$TMP_DIR"
+
+      - name: Create .env
+        run: |
+          BASE_DOMAIN="${{ vars.BASE_DOMAIN }}"
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-main"
+          TEST_SUBDOMAIN="test-main.${BASE_DOMAIN}"
+          TEST_ROUTER_NAME="semant-demo-test-main"
+          SQL_DB_PATH="${{ vars.SQL_DB_DIR_TEST }}/test-main"
+
+          escape_sed_replacement() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
+
+          cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
+          sed -i "s|^BRANCH=.*|BRANCH=main|"                                                                                    "$DEPLOY_PATH/.env"
+          sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
+          sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
+          sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
+          sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"      "$DEPLOY_PATH/.env"
+          sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
+          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "${{ secrets.OPENAI_API_KEY }}")|"  "$DEPLOY_PATH/.env"
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "${{ secrets.JWT_SECRET }}")|"  "$DEPLOY_PATH/.env"
+
+          echo "Test URL: https://${TEST_SUBDOMAIN}"
+
+      - name: Initialize SQLite database (first run only)
+        run: |
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-main"
+          SQL_DB_PATH=$(grep "^SQL_DB_PATH=" "$DEPLOY_PATH/.env" | cut -d= -f2)
+          
+          if [ ! -d "$SQL_DB_PATH" ]; then
+            mkdir -p "$SQL_DB_PATH"
+            echo "Created new SQL database directory"
+          else
+            echo "SQL database directory already exists"
+          fi
+          
+          if [ ! -f "$SQL_DB_PATH/tasks.db" ]; then
+            touch "$SQL_DB_PATH/tasks.db"
+            echo "Created new SQLite database"
+          else
+            echo "Using existing SQLite database"
+          fi
+
+      - name: Build and start
+        run: |
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-main"
+          cd "$DEPLOY_PATH"
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml down --rmi local 2>/dev/null || true
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml build --no-cache
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml up -d
+
+      - name: Health check
+        run: |
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-main"
+          TEST_SUBDOMAIN=$(grep "^TEST_SUBDOMAIN=" "$DEPLOY_PATH/.env" | cut -d= -f2)
+          TEST_URL="https://${TEST_SUBDOMAIN}/health"
+          for i in $(seq 1 6); do
+            sleep 10
+            echo "Attempt $i/6..."
+            if curl --fail --silent --max-time 10 "$TEST_URL"; then
+              echo ""
+              echo "Health check passed: $TEST_URL"
+              exit 0
+            fi
+          done
+          echo "Health check failed after 6 attempts."
+          exit 1
+
+  deploy-test-pr:
+    name: "Deploy test PR #${{ github.event.pull_request.number }}"
+    needs: [test-backend, test-frontend]
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, semant-server]
+    timeout-minutes: 30
+
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      BRANCH: ${{ github.head_ref }}
+
+    steps:
+      - name: Validate SQL database directory
+        run: |
+          SQL_DB_DIR="${{ vars.SQL_DB_DIR_TEST }}"
+          if [ ! -d "$SQL_DB_DIR" ]; then
+            echo "ERROR: SQL database directory does not exist: $SQL_DB_DIR" >&2
+            echo "Please create it with: sudo mkdir -p $SQL_DB_DIR && sudo chown runner $SQL_DB_DIR" >&2
+            exit 1
+          fi
+          echo "SQL database directory validated: $SQL_DB_DIR"
+
+      - name: Validate and prepare deploy directory
+        run: |
+          set -euo pipefail
+          RUNNER_WORKDIR="${{ vars.RUNNER_WORKDIR }}"
+          DEPLOY_SUBDIR="${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
+
+          if [[ -z "$RUNNER_WORKDIR" ]]; then
+            echo "ERROR: RUNNER_WORKDIR must be set" ; exit 1
+          fi
+          if [[ "$DEPLOY_SUBDIR" == *".."* ]] || [[ "$DEPLOY_SUBDIR" == /* ]]; then
+            echo "ERROR: Invalid DEPLOY_SUBDIR" ; exit 1
+          fi
+
+          CANONICAL=$(cd "$RUNNER_WORKDIR" && pwd)
+          FULL_PATH="$RUNNER_WORKDIR/$DEPLOY_SUBDIR"
+          if [[ ! "$FULL_PATH" == "$CANONICAL"* ]]; then
+            echo "ERROR: Path traversal detected" ; exit 1
+          fi
+
+          if [ ! -d "$FULL_PATH" ]; then
+            mkdir -p "$FULL_PATH"
+            echo "Created deploy directory: $FULL_PATH"
+          else
+            echo "Deploy directory already exists: $FULL_PATH"
+          fi
+
+      - name: Update deploy files
+        run: |
+          set -euo pipefail
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
+          TMP_DIR="/tmp/semant-test-deploy-${PR_NUMBER}"
+
+          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
+
+          git clone --depth=1 --filter=blob:none --sparse \
+            --branch "$BRANCH" \
+            "https://github.com/DCGM/semant-demo.git" \
+            "$TMP_DIR/repo"
+
+          cd "$TMP_DIR/repo"
+          git sparse-checkout set deploy/docker-compose.app-test.yml deploy/Dockerfile deploy/.env.test.example
+
+          if [ ! -f "deploy/docker-compose.app-test.yml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.test.example" ]; then
+            echo "ERROR: Required files not found in deploy/ for branch $BRANCH" >&2 ; exit 1
+          fi
+
+          cp deploy/docker-compose.app-test.yml "$DEPLOY_PATH/"
+          cp deploy/Dockerfile "$DEPLOY_PATH/"
+          cp deploy/.env.test.example "$DEPLOY_PATH/"
+          rm -rf "$TMP_DIR"
+
+      - name: Create .env
+        run: |
+          BASE_DOMAIN="${{ vars.BASE_DOMAIN }}"
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
+          TEST_SUBDOMAIN="test-pr-${PR_NUMBER}.${BASE_DOMAIN}"
+          TEST_ROUTER_NAME="semant-demo-test-pr-${PR_NUMBER}"
+          SQL_DB_PATH="${{ vars.SQL_DB_DIR_TEST }}/test-pr-${PR_NUMBER}"
+
+          escape_sed_replacement() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
+
+          cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
+          sed -i "s|^BRANCH=.*|BRANCH=$(escape_sed_replacement "${BRANCH}")|"                                      "$DEPLOY_PATH/.env"
+          sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
+          sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
+          sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
+          sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"      "$DEPLOY_PATH/.env"
+          sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
+          sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "${{ secrets.OPENAI_API_KEY }}")|"  "$DEPLOY_PATH/.env"
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "${{ secrets.JWT_SECRET }}")|"  "$DEPLOY_PATH/.env"
+
+          echo "Test URL: https://${TEST_SUBDOMAIN}"
+
+      - name: Initialize SQLite database (first run only)
+        run: |
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
+          SQL_DB_PATH=$(grep "^SQL_DB_PATH=" "$DEPLOY_PATH/.env" | cut -d= -f2)
+          
+          if [ ! -d "$SQL_DB_PATH" ]; then
+            mkdir -p "$SQL_DB_PATH"
+            echo "Created new SQL database directory"
+          else
+            echo "SQL database directory already exists"
+          fi
+
+          if [ ! -f "$SQL_DB_PATH/tasks.db" ]; then
+            touch "$SQL_DB_PATH/tasks.db"
+            echo "Created new SQLite database"
+          else
+            echo "Using existing SQLite database"
+          fi
+
+      - name: Build and start
+        run: |
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
+          cd "$DEPLOY_PATH"
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml down --rmi local 2>/dev/null || true
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml build --no-cache
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml up -d
+
+      - name: Health check
+        run: |
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
+          TEST_SUBDOMAIN=$(grep "^TEST_SUBDOMAIN=" "$DEPLOY_PATH/.env" | cut -d= -f2)
+          TEST_URL="https://${TEST_SUBDOMAIN}/health"
+          for i in $(seq 1 6); do
+            sleep 10
+            echo "Attempt $i/6..."
+            if curl --fail --silent --max-time 10 "$TEST_URL"; then
+              echo ""
+              echo "Health check passed: $TEST_URL"
+              exit 0
+            fi
+          done
+          echo "Health check failed after 6 attempts."
+          exit 1
+
+  teardown-test-pr:
+    name: "Teardown test PR #${{ github.event.pull_request.number }}"
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, semant-server]
+    timeout-minutes: 10
+
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Stop and remove test instance
+        run: |
+          set -euo pipefail
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
+
+          if [ ! -d "$DEPLOY_PATH" ]; then
+            echo "No instance found at $DEPLOY_PATH, nothing to clean up."
+            exit 0
+          fi
+
+          cd "$DEPLOY_PATH"
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml down --rmi local
+          
+          # Clean up SQLite database directory
+          if [ -f "$DEPLOY_PATH/.env" ]; then
+            SQL_DB_PATH=$(grep "^SQL_DB_PATH=" "$DEPLOY_PATH/.env" | cut -d= -f2)
+            rm -rf "$SQL_DB_PATH"
+          fi
+          
+          rm -rf "$DEPLOY_PATH"
+          
+          echo "Test instance for PR #${PR_NUMBER} removed."
