@@ -10,6 +10,13 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   const spansByChunkId = ref<Record<string, TagSpans>>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
+  /**
+   * Bumped on every span mutation (create/update/bulkUpdate/delete). The
+   * chunk-keyed mutations below don't change `spansByChunkId`'s top-level
+   * identity, so a non-deep watcher can't see them directly — this counter
+   * gives callers a lightweight, non-deep-watchable signal instead.
+   */
+  const spansVersion = ref(0)
 
   const fetchSpansForChunkInCollection = async (chunkId: string, collectionId: string) => {
     try {
@@ -42,6 +49,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     try {
       const newSpan = await repo.create(span)
       spansByChunkId.value[span.chunkId] = [...(spansByChunkId.value[span.chunkId] || []), newSpan]
+      spansVersion.value++
     } catch (err) {
       console.error('Failed to create span', err)
       error.value = 'Failed to create span'
@@ -53,6 +61,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     try {
       const updatedSpan = await repo.update(spanId, update)
       spansByChunkId.value[chunkId] = spansByChunkId.value[chunkId].map((s) => (s.id === spanId ? updatedSpan : s))
+      spansVersion.value++
     } catch (err) {
       console.error('Failed to update span', err)
       error.value = 'Failed to update span'
@@ -92,6 +101,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
       }
 
       spansByChunkId.value = next
+      spansVersion.value++
     } catch (err) {
       console.error('Failed to bulk-update spans', err)
       error.value = 'Failed to bulk-update spans'
@@ -103,6 +113,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     try {
       await repo.delete(spanId)
       spansByChunkId.value[chunkId] = spansByChunkId.value[chunkId].filter((s) => s.id !== spanId)
+      spansVersion.value++
     } catch (err) {
       console.error('Failed to delete span', err)
       error.value = 'Failed to delete span'
@@ -127,10 +138,12 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
       next[chunkId] = list.filter((s) => !predicate(s, chunkId))
     }
     spansByChunkId.value = next
+    spansVersion.value++
   }
 
   return {
     spansByChunkId,
+    spansVersion,
     loading,
     error,
     fetchSpansForChunkInCollection,

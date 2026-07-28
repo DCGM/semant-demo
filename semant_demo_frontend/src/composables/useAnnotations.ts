@@ -67,6 +67,7 @@ export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => 
   })
 
   const spansByChunkId = computed(() => store.spansByChunkId)
+  const spansVersion = computed(() => store.spansVersion)
   const loading = computed(() => store.loading)
 
   // ── Span loading ──
@@ -117,87 +118,113 @@ export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => 
   // ── Selection projection ──
 
   /**
-   * Project the global selection into a specific chunk's local coordinates.
-   * Returns null if the selection does not overlap this chunk.
+   * Project the global selection into every chunk's local coordinates, keyed
+   * by chunk id. Memoized so it only recomputes when `chunks` or `selection`
+   * actually change, instead of on every render (e.g. hover-only ones).
+   */
+  const localSelectionByChunkId = computed(() => {
+    const map: Record<string, LocalSelection> = {}
+    const sel = selection.value
+    if (!sel) return map
+
+    for (const chunk of chunks.value) {
+      const offset = getOffsetBetweenChunks(sel.chunkId, chunk.id)
+      if (offset === null) continue
+
+      const chunkLength = chunk.text.length
+      const localStart = Math.max(0, sel.start - offset)
+      const localEnd = Math.min(chunkLength, sel.end - offset)
+      if (localEnd <= localStart) continue
+
+      // Only show start/end handle if the real selection boundary is in this chunk
+      const showStartHandle = sel.start - offset >= 0 && sel.start - offset <= chunkLength
+      const showEndHandle = sel.end - offset >= 0 && sel.end - offset <= chunkLength
+
+      map[chunk.id] = {
+        start: localStart,
+        end: localEnd,
+        editingSpanId: sel.editingSpanId,
+        tagId: sel.tagId,
+        showStartHandle,
+        showEndHandle
+      }
+    }
+
+    return map
+  })
+
+  /**
+   * Get the global selection projected into a specific chunk's local
+   * coordinates. Returns null if the selection does not overlap this chunk.
    */
   const getLocalSelection = (chunkId: string): LocalSelection | null => {
-    if (!selection.value) return null
-
-    const offset = getOffsetBetweenChunks(selection.value.chunkId, chunkId)
-    if (offset === null) return null
-
-    const chunkIndex = chunkIndexById.value[chunkId]
-    const chunkLength = chunks.value[chunkIndex].text.length
-
-    const localStart = Math.max(0, selection.value.start - offset)
-    const localEnd = Math.min(chunkLength, selection.value.end - offset)
-
-    if (localEnd <= localStart) return null
-
-    // Only show start handle if the real selection start is in this chunk
-    const showStartHandle = selection.value.start - offset >= 0 && selection.value.start - offset <= chunkLength
-    // Only show end handle if the real selection end is in this chunk
-    const showEndHandle = selection.value.end - offset >= 0 && selection.value.end - offset <= chunkLength
-
-    return {
-      start: localStart,
-      end: localEnd,
-      editingSpanId: selection.value.editingSpanId,
-      tagId: selection.value.tagId,
-      showStartHandle,
-      showEndHandle
-    }
+    return localSelectionByChunkId.value[chunkId] ?? null
   }
 
   // ── Span projection ──
 
   /**
-   * Get all visible spans projected into a specific chunk's local coordinates.
-   * Spans from earlier chunks that overflow into this chunk are included.
-   * Negative (declined) spans are filtered out.
+   * All visible spans, pre-projected into every known chunk's local
+   * coordinates and keyed by chunk id. Memoized so the O(N²)-ish walk (every
+   * chunk re-checks every earlier chunk's spans) only reruns when the
+   * underlying chunks/spans change, instead of on every render.
    */
-  const getProjectedSpans = (targetChunkId: string): ProjectedSpan[] => {
-    const targetIndex = allKnownChunkIndexById.value[targetChunkId]
-    if (targetIndex === undefined) return []
+  const projectedSpansByChunkId = computed(() => {
+    const map: Record<string, ProjectedSpan[]> = {}
+    const known = allKnownChunks.value
 
-    const targetLength = allKnownChunks.value[targetIndex].text.length
-    const result: ProjectedSpan[] = []
+    for (let targetIndex = 0; targetIndex < known.length; targetIndex++) {
+      const targetChunkId = known[targetIndex].id
+      const targetLength = known[targetIndex].text.length
+      const result: ProjectedSpan[] = []
 
-    // Check all known chunks (incl. hidden gap chunks) from the start up to and including the target
-    for (let srcIndex = 0; srcIndex <= targetIndex; srcIndex++) {
-      const srcChunk = allKnownChunks.value[srcIndex]
-      const srcSpans = spansByChunkId.value[srcChunk.id] || []
+      // Check all known chunks (incl. hidden gap chunks) from the start up to and including the target
+      for (let srcIndex = 0; srcIndex <= targetIndex; srcIndex++) {
+        const srcChunk = known[srcIndex]
+        const srcSpans = spansByChunkId.value[srcChunk.id] || []
 
-      for (const span of srcSpans) {
-        if (span.type === SpanType.neg) continue
+        for (const span of srcSpans) {
+          if (span.type === SpanType.neg) continue
 
-        if (srcIndex === targetIndex) {
-          // Same chunk — no projection needed
-          result.push({ ...span })
-        } else {
-          // Cross-chunk projection — only if every intermediate known chunk is consecutive
-          if (!areConsecutiveChunks(srcIndex, targetIndex)) continue
+          if (srcIndex === targetIndex) {
+            // Same chunk — no projection needed
+            result.push({ ...span })
+          } else {
+            // Cross-chunk projection — only if every intermediate known chunk is consecutive
+            if (!areConsecutiveChunks(srcIndex, targetIndex)) continue
 
-          let offsetToTarget = 0
-          for (let i = srcIndex; i < targetIndex; i++) {
-            offsetToTarget += allKnownChunks.value[i].text.length
+            let offsetToTarget = 0
+            for (let i = srcIndex; i < targetIndex; i++) {
+              offsetToTarget += known[i].text.length
+            }
+
+            const localStart = Math.max(0, span.start - offsetToTarget)
+            const localEnd = Math.min(targetLength, span.end - offsetToTarget)
+
+            if (localEnd <= localStart) continue
+
+            result.push({
+              ...span,
+              start: localStart,
+              end: localEnd
+            })
           }
-
-          const localStart = Math.max(0, span.start - offsetToTarget)
-          const localEnd = Math.min(targetLength, span.end - offsetToTarget)
-
-          if (localEnd <= localStart) continue
-
-          result.push({
-            ...span,
-            start: localStart,
-            end: localEnd
-          })
         }
       }
+
+      map[targetChunkId] = result
     }
 
-    return result
+    return map
+  })
+
+  /**
+   * Get all visible spans projected into a specific chunk's local
+   * coordinates. Spans from earlier chunks that overflow into this chunk are
+   * included. Negative (declined) spans are filtered out.
+   */
+  const getProjectedSpans = (targetChunkId: string): ProjectedSpan[] => {
+    return projectedSpansByChunkId.value[targetChunkId] ?? []
   }
 
   // ── Selection handling ──
@@ -478,6 +505,7 @@ export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => 
     hasSelection,
     positionChanged,
     spansByChunkId,
+    spansVersion,
 
     // Loading
     loadAllSpans,

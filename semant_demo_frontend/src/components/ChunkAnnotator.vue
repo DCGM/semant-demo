@@ -10,7 +10,7 @@
         'is-auto': segment.isAuto,
         'is-highlighted': segment.isHighlighted
       }"
-      :style="getSegmentStyle(segment)"
+      :style="segment.style"
       :data-start="segment.start"
       :data-end="segment.end"
     ><span
@@ -44,6 +44,7 @@ interface TextSegment {
   isHighlighted: boolean
   isSelectionStart: boolean
   isSelectionEnd: boolean
+  style: Record<string, string>
 }
 
 const props = defineProps<{
@@ -128,7 +129,8 @@ const renderedSegments = computed((): TextSegment[] => {
       isAuto,
       isHighlighted,
       isSelectionStart: isSelected && start === props.selection?.start && (props.selection?.showStartHandle ?? true),
-      isSelectionEnd: isSelected && end === props.selection?.end && (props.selection?.showEndHandle ?? true)
+      isSelectionEnd: isSelected && end === props.selection?.end && (props.selection?.showEndHandle ?? true),
+      style: computeSegmentStyle(isSelected, activeTags, isHighlighted, isAuto)
     })
   }
 
@@ -224,35 +226,40 @@ onBeforeUnmount(() => {
   stopDrag()
 })
 
-const getSegmentStyle = (segment: TextSegment) => {
+const computeSegmentStyle = (
+  isSelected: boolean,
+  tags: ProjectedSpan[],
+  isHighlighted: boolean,
+  isAuto: boolean
+) => {
   const style: Record<string, string> = {}
 
-  if (segment.isSelected) {
+  if (isSelected) {
     if (props.selection?.editingSpanId) {
       // Editing existing span — use the currently selected tag color (from toolbar)
       const color = props.selection.tagId
         ? (tagColorMap.value[props.selection.tagId] || '#3b82f6')
-        : (segment.tags.length > 0 ? tagColorMap.value[segment.tags[0].tagId] || '#3b82f6' : '#3b82f6')
+        : (tags.length > 0 ? tagColorMap.value[tags[0].tagId] || '#3b82f6' : '#3b82f6')
       style.backgroundColor = hexToRgba(color, 0.35)
     } else {
       // New selection — always yellow
       style.backgroundColor = '#ffe082'
     }
-  } else if (segment.isHighlighted && segment.tags.length > 0) {
+  } else if (isHighlighted && tags.length > 0) {
     // Find the hovered span's tag color specifically
-    const hovered = segment.tags.find(t => t.id === props.highlightSpanId)
+    const hovered = tags.find(t => t.id === props.highlightSpanId)
     const color = hovered
       ? (tagColorMap.value[hovered.tagId] || '#3b82f6')
-      : (tagColorMap.value[segment.tags[0].tagId] || '#3b82f6')
+      : (tagColorMap.value[tags[0].tagId] || '#3b82f6')
     style.backgroundColor = hexToRgba(color, 0.25)
-    style.borderBottom = segment.isAuto ? `2px dashed ${color}` : `2px solid ${color}`
-  } else if (segment.tags.length > 0) {
+    style.borderBottom = isAuto ? `2px dashed ${color}` : `2px solid ${color}`
+  } else if (tags.length > 0) {
     // Stack underlines for each tag via layered background gradients
     const LINE_H = 2 // line thickness
     const GAP = 1 // gap between lines
     const step = LINE_H + GAP
-    const totalH = segment.tags.length * LINE_H + (segment.tags.length - 1) * GAP
-    const gradients = segment.tags.map((tag, i) => {
+    const totalH = tags.length * LINE_H + (tags.length - 1) * GAP
+    const gradients = tags.map((tag, i) => {
       const c = tagColorMap.value[tag.tagId] || '#3b82f6'
       const isDashed = tag.type === 'auto'
       const rgba = hexToRgba(c, isDashed ? 0.35 : 0.6)
