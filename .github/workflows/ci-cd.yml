@@ -13,12 +13,31 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type != 'tag' && github.event.action != 'closed' }}
 
 jobs:
+  build-test-image:
+    name: Build backend test image
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-server]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        continue-on-error: true
+      - name: Build image
+        continue-on-error: true
+        run: |
+          docker build -t semant-ci-backend-test:latest -f .github/docker/backend-test.Dockerfile .github/docker || {
+            echo "::warning::Build vlastního test image selhal, fallback na python:3.12-slim (bez gitu, test-reporter check nemusí projít)."
+            docker pull python:3.12-slim
+            docker tag python:3.12-slim semant-ci-backend-test:latest
+          }
+
   test-backend:
     name: Backend tests
+    needs: [build-test-image]
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, semant-server]
     container:
-      image: python:3.12-slim
+      image: semant-ci-backend-test:latest
       options: --user 1025:1027
     env:
       HOME: /tmp
