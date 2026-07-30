@@ -18,7 +18,7 @@ jobs:
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, semant-server]
     container:
-      image: python:3.12
+      image: python:3.12-slim
       options: --user 1025:1027
     env:
       HOME: /tmp
