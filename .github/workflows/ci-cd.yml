@@ -26,7 +26,7 @@ jobs:
       contents: read
       checks: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         continue-on-error: true
       - name: Set up virtual environment
         continue-on-error: true
@@ -53,8 +53,8 @@ jobs:
 
       - name: Publish test results
         if: always()
-        continue-on-error: true
-        uses: dorny/test-reporter@dc3a92680fcc15842eef52e8c4606ea7ce6bd3f3 # v2.1.1
+        continue-on-error: true 
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         with:
           name: Backend test results
           path: semant_demo_backend/test-results.xml
@@ -86,8 +86,8 @@ jobs:
     timeout-minutes: 30
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout repository 
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
