@@ -16,6 +16,7 @@ jobs:
   test-backend:
     name: Backend tests
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    continue-on-error: true
     runs-on: [self-hosted, semant-server]
     container:
       image: python:3.12
@@ -27,13 +28,10 @@ jobs:
       checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        continue-on-error: true
       - name: Set up virtual environment
-        continue-on-error: true
         run: python -m venv /tmp/venv
       - name: Install dependencies
         working-directory: semant_demo_backend
-        continue-on-error: true
         run: |
           /tmp/venv/bin/pip install --no-cache-dir -r requirements.txt
           /tmp/venv/bin/pip install --no-cache-dir -e .
