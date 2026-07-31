@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ "**" ] 
+    branches: [ main ]
     tags: ["v*.*.*"]   
   pull_request:
     types: [opened, synchronize, reopened, closed] 
