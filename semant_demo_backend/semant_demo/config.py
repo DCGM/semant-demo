@@ -80,6 +80,12 @@ class Config:
         test_configs_path = SCRIPT_PATH / "rag" / "rag_configs" / "tests"
         self.RAG_CONFIGS_PATH = os.getenv("RAG_CONFIGS_PATH", default_config_path)
 
+        # OpenTelemetry - disabled by default so local/test runs never try to reach a collector
+        self.OTEL_ENABLED = os.getenv("OTEL_ENABLED", str(False)).lower() in TRUE_VALUES
+        self.OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://lgtm:4318")
+        self.OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "semant-demo-backend")
+        self.DEPLOYMENT_ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "unknown")
+
         self.collectionNames = CollectionNames(
             chunks_collection_name = "Chunks",
             tag_collection_name = "Tag",

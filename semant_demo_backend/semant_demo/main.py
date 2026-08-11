@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 import logging
 
 from semant_demo.config import config
+from semant_demo.opentelemetry import setup_logging_export
 from semant_demo.rag.rag_factory import rag_factory
 from semant_demo.routes.dependencies import cleanup_dependencies, get_engine, get_search, get_summarizer
 from time import time
@@ -17,6 +18,7 @@ from semant_demo.users.auth import auth_router, register_router, users_router
 import semant_demo.users.models  # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
+setup_logging_export()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
