@@ -347,7 +347,9 @@ class LocalHFClassifierModel(Model):
                     continue
                 logits = self._model.heads[task].linear(cls_reprs)
                 prob = torch.sigmoid(logits)
-                predictions = (prob > self.threshold).tolist()
+                predictions = (
+                    (prob > self.threshold) | (prob == prob.max(dim=-1, keepdim=True).values)
+                ).tolist()
                 
                 classes = self.task_classes.get(task) or TASK_CLASSES.get(task)
                 for i, pred_row in enumerate(predictions):
