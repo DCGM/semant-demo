@@ -285,7 +285,7 @@ class LocalHFClassifierModel(Model):
         print(f"Loading configuration from '{config_path}'...")
         with open(config_path, "r") as f:
             config_data = json.load(f)
-        self.task_classes = config_data.get("task_classes", {})
+        self.task_classes = config_data.get("task_classes", {})  # FIXME: here could be a fallback to the global TASK_CLASSES, but I'm not sure we should not do that - the model should have its own task_classes defined in its config.json
 
         print(f"Loading tokenizer from '{self.model_path}'...")
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
