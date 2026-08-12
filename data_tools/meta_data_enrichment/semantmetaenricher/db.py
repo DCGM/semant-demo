@@ -57,9 +57,12 @@ def ensure_property_exists(
     collection = client.collections.get(collection_name)
     schema_config = collection.config.get()
     
-    existing_properties = {prop.name for prop in schema_config.properties}
+    existing_properties = {prop.name: prop for prop in schema_config.properties}
     if prop_name in existing_properties:
-        return  # TODO: Optionally check if the existing property has the correct type and raise a warning if not.
+        if existing_properties[prop_name].data_type.value == prop_type:
+            return
+        else:
+            raise ValueError(f"Property '{prop_name}' has different data_type in Weaviate database. {existing_properties[prop_name].data_type.value = }, {prop_type = }")
         
     print(f"Property '{prop_name}' is missing in collection '{collection_name}'. Creating on the fly...")
     
