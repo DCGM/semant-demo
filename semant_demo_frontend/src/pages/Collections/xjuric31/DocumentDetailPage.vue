@@ -178,7 +178,7 @@
                   :key="chunk.id"
                   :chunk-id="chunk.id"
                   :text="chunk.text"
-                  :spans="annotations.getProjectedSpans(chunk.id).filter(s => tagNav.isTagVisible(s.tagId) && (aiTabActive || s.type !== SpanType.auto))"
+                  :spans="getVisibleSpans(chunk.id)"
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
                   :highlight-span-id="hoveredSpanId || highlightedAutoSpanId"
@@ -338,6 +338,14 @@
             </div>
             <div class="tag-list">
               <div
+                v-if="!showAiTagPicker"
+                class="tag-row tag-row--create"
+                @click="onCreateTagClick"
+              >
+                <q-icon name="add_circle_outline" size="16px" class="tag-row-create-icon" />
+                <span class="tag-name">Create new tag</span>
+              </div>
+              <div
                 v-for="tag in filteredTags"
                 :key="tag.id"
                 class="tag-row"
@@ -418,6 +426,16 @@
                 color="primary"
                 class="popover-btn"
                 @click="showTagPicker = true"
+              />
+              <q-btn
+                v-if="annotations.isEditing.value"
+                no-caps outline
+                icon="settings"
+                label="Tag details"
+                color="primary"
+                class="popover-btn"
+                :disable="!currentSpanTag"
+                @click="onOpenTagDetails"
               />
               <q-btn
                 v-if="annotations.isEditing.value"
@@ -504,7 +522,10 @@ import { useQuasar } from 'quasar'
 import useChunks from 'src/composables/useChunks'
 import useTags from 'src/composables/useTags'
 import { useAnnotations } from 'src/composables/useAnnotations'
+import type { ProjectedSpan } from 'src/composables/useAnnotations'
 import useTagSpans from 'src/composables/useTagSpans'
+import useTagsDialog from 'src/composables/dialogs/useTagsDialog'
+import type { PostTag, PatchTag, Tag } from 'src/models/tags'
 import { SpanType } from 'src/generated/api'
 import type { Chunk } from 'src/generated/api'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
@@ -553,7 +574,8 @@ const props = defineProps<{
 }>()
 
 const { chunks, loading, error, loadChunksInCollectionDocument, addChunkToCollection, removeChunkFromCollection, getNeighbourChunk, countDocumentChunks, getChunksInRange } = useChunks()
-const { tags, loadTagsByCollection } = useTags()
+const { tags, loadTagsByCollection, createTag, updateTag } = useTags()
+const { openTagsDialog } = useTagsDialog()
 
 // Local display chunks — a superset of collection chunks plus any expanded previews
 const displayChunks = ref<Chunk[]>([])
@@ -816,6 +838,25 @@ function onDocumentPointerMove(e: PointerEvent) {
 
   const chunk = chunkId ? displayChunks.value.find(c => c.id === chunkId) : null
   hoveredPreviewChunkId.value = chunk && !chunk.inCollection ? chunk.id : null
+}
+
+// Memoized per-chunk visible-span lists for ChunkAnnotator's `:spans` prop.
+// Must NOT depend on `annotations.selection` (which changes on every
+// boundary-drag pointermove) — otherwise every visible chunk gets a new
+// array identity each drag tick, forcing a full re-render/flicker across
+// the whole document instead of just the chunk being dragged.
+const visibleSpansByChunkId = computed<Record<string, ProjectedSpan[]>>(() => {
+  const map: Record<string, ProjectedSpan[]> = {}
+  for (const chunk of displayChunks.value) {
+    map[chunk.id] = annotations.getProjectedSpans(chunk.id).filter(
+      (s) => tagNav.isTagVisible(s.tagId) && (aiTabActive.value || s.type !== SpanType.auto)
+    )
+  }
+  return map
+})
+
+function getVisibleSpans(chunkId: string): ProjectedSpan[] {
+  return visibleSpansByChunkId.value[chunkId] ?? []
 }
 
 const filteredTags = computed(() => {
@@ -1189,6 +1230,29 @@ const onTagClick = async (tagId: string) => {
   } else {
     await annotations.createSpan(tagId)
   }
+}
+
+const onCreateTagClick = () => {
+  openTagsDialog({ dialogType: 'CREATE' }).onOk(async (tagData: PostTag) => {
+    const newTag = await createTag(props.collectionId, tagData)
+    await loadTagsByCollection(props.collectionId)
+    await onTagClick(newTag.id)
+  })
+}
+
+const currentSpanTag = computed<Tag | null>(() => {
+  const tagId = annotations.selection.value?.tagId
+  if (!tagId) return null
+  return tags.value.find((t) => t.id === tagId) ?? null
+})
+
+const onOpenTagDetails = () => {
+  const tag = currentSpanTag.value
+  if (!tag) return
+  openTagsDialog({ dialogType: 'EDIT', tag }).onOk(async (updatedData: PatchTag) => {
+    await updateTag(tag.id, updatedData)
+    await loadTagsByCollection(props.collectionId)
+  })
 }
 
 const onSavePosition = async () => {
@@ -1646,10 +1710,15 @@ const onClickOutside = (e: MouseEvent) => {
   // mode itself keeps going until explicitly ended.
   if (!annotations.hasSelection.value && !quickTagId.value) return
   const target = e.target as HTMLElement
-  // Don't dismiss if clicking inside the popover or document text area
+  // Don't dismiss if clicking inside the popover, the document text area,
+  // or a Quasar dialog opened from the popover (e.g. the create/edit-tag
+  // dialog) — those are teleported outside both containers, so without this
+  // check the selection would be cleared out from under the dialog's own
+  // onOk handler while the user is still filling it in.
   const popover = document.querySelector('.annotation-popover')
   if (popover?.contains(target)) return
   if (documentTextRef.value?.contains(target)) return
+  if (target.closest('.q-dialog')) return
   endQuickTagging()
 }
 
@@ -2095,6 +2164,22 @@ onBeforeUnmount(() => {
 
 .tag-row.is-active {
   background: #e0f2fe;
+}
+
+.tag-row--create {
+  color: #2563eb;
+  font-weight: 600;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 2px;
+  padding-bottom: 7px;
+}
+
+.tag-row--create .tag-name {
+  color: inherit;
+}
+
+.tag-row-create-icon {
+  color: #2563eb;
 }
 
 .tag-dot {
