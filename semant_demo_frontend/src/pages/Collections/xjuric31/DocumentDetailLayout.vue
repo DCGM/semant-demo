@@ -427,6 +427,14 @@
                   <q-space />
                   <q-btn
                     flat dense round size="xs"
+                    icon="settings"
+                    :disable="!entry.tag || busyAutoSpanIds.has(entry.span.id || '')"
+                    @click.stop="onEditEntryTag(entry)"
+                  >
+                    <q-tooltip>Tag details</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat dense round size="xs"
                     icon="check"
                     color="positive"
                     :disable="busyAutoSpanIds.has(entry.span.id || '')"
@@ -1012,6 +1020,11 @@ const handleEditTag = (tag: Tag) => {
     await updateTag(tag.id, updatedData)
     await loadTagsByCollection(props.collectionId)
   })
+}
+
+function onEditEntryTag(entry: AutoSpanEntry) {
+  if (!entry.tag) return
+  handleEditTag(entry.tag)
 }
 
 const handleExamplesUpdate = async (tag: Tag, examples: string[]) => {
