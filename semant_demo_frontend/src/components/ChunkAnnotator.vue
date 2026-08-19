@@ -1,8 +1,8 @@
 <template>
   <div class="chunk-annotator" :data-chunk-id="chunkId" :class="{ 'is-dragging': draggingHandle }">
     <span
-      v-for="(segment, i) in renderedSegments"
-      :key="i"
+      v-for="segment in renderedSegments"
+      :key="`${segment.start}-${segment.end}`"
       class="text-segment"
       :class="{
         'is-tagged': segment.tags.length > 0,
@@ -168,6 +168,20 @@ function resolveCharOffset(clientX: number, clientY: number): { chunkId: string;
   const segmentEl = element?.closest<HTMLElement>('.text-segment[data-start][data-end]')
   if (!segmentEl) return null
 
+  // caretPositionFromPoint/caretRangeFromPoint resolve to the *closest text
+  // position in the whole document*, not necessarily anything actually
+  // rendered under the cursor. While transiting the vertical gap between
+  // lines (this component uses a tall line-height, so that gap is
+  // sizeable), that "closest" position can land in a distant segment or
+  // even a different chunk, which then gets committed as the new boundary
+  // and balloons the selection. Cross-check against a real hit-test at the
+  // same point — if it doesn't land on the same segment, the cursor isn't
+  // actually over text right now, so skip this tick instead of committing
+  // a jump; the boundary resumes updating once the cursor reaches real text.
+  const hitSegmentEl = document.elementFromPoint(clientX, clientY)
+    ?.closest<HTMLElement>('.text-segment[data-start][data-end]')
+  if (hitSegmentEl !== segmentEl) return null
+
   const chunkId = segmentEl.closest<HTMLElement>('[data-chunk-id]')?.dataset.chunkId
   if (!chunkId) return null
 
@@ -175,7 +189,37 @@ function resolveCharOffset(clientX: number, clientY: number): { chunkId: string;
   const segEnd = Number(segmentEl.dataset.end ?? segStart)
   if (!Number.isFinite(segStart) || !Number.isFinite(segEnd)) return null
 
-  const rawOffset = node.nodeType === Node.TEXT_NODE ? segStart + offset : segStart
+  // The browser's caret API doesn't always resolve to a text node — at
+  // segment/line-wrap boundaries, over whitespace, and (critically) when
+  // the cursor is right on top of the drag-handle <span> itself (an empty
+  // element with no children of its own — very easy to hit, since that's
+  // literally what's being dragged), it resolves to an element instead,
+  // with `offset` as a child-node index rather than a character offset.
+  // Summing *that node's own* children only works for handle-start (whose
+  // fallback of "0 chars in" happens to equal segStart) — for handle-end,
+  // hitting the empty handle span the same way must resolve near segEnd,
+  // not segStart, since the handle sits after the text. So walk the
+  // *segment's* children instead, accumulating text length of the ones
+  // that precede the hit node (or the hit node's own offset, if the hit
+  // node is a direct child of the segment).
+  let charsBefore = 0
+  if (node.nodeType === Node.TEXT_NODE && node.parentElement === segmentEl) {
+    charsBefore = offset
+  } else {
+    for (const child of Array.from(segmentEl.childNodes)) {
+      if (child === node || (child instanceof HTMLElement && node instanceof Node && child.contains(node))) {
+        if (node.nodeType !== Node.TEXT_NODE) {
+          const limit = Math.min(offset, node.childNodes.length)
+          for (let i = 0; i < limit; i++) {
+            charsBefore += node.childNodes[i].textContent?.length ?? 0
+          }
+        }
+        break
+      }
+      charsBefore += child.textContent?.length ?? 0
+    }
+  }
+  const rawOffset = segStart + charsBefore
   const charOffset = Math.max(segStart, Math.min(segEnd, rawOffset))
 
   return { chunkId, charOffset }
@@ -302,6 +346,10 @@ const hexToRgba = (hex: string, alpha: number): string => {
 
 .text-segment.is-highlighted {
   transition: background-color 0.2s ease;
+}
+
+.chunk-annotator.is-dragging .text-segment {
+  transition: none;
 }
 
 /* Drag handles */
