@@ -6,16 +6,25 @@ from ollama import ChatResponse
 
 from semant_demo.llm_api import APIOutput, APIModelResponseOllama, APIRequest
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer, ModelOptions
-
+from semant_demo.utils.template import Template
 
 class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.api = AsyncMock()
         self.summarizer = TemplatedSearchResultsSummarizer(
             api=self.api,
+            gen_title_model="gpt-oss:20b",
             gen_title_model_options=ModelOptions(),
+            gen_results_summary_model="gpt-oss:20b",
             gen_results_summary_model_options=ModelOptions(),
-            gen_query_summary_model_options=ModelOptions()
+            gen_query_summary_model="gpt-oss:20b",
+            gen_query_summary_model_options=ModelOptions(),
+            gen_title_system_prompt=Template("Jsi užitečný asistent, který generuje nadpisy pro texty historických dokumentů. {% if brevity %}Nadpis by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze nadpisem, bez dalších komentářů nebo úvodních frází."),
+            gen_title_prompt=Template("Vygeneruj nadpis pro následující text historického dokumentu.\n\"{{ text.text }}\"\nNadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".\n"),
+            gen_results_summary_system_prompt=Template("Jsi asistent pro sumarizaci textů.  \nDostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc1], [doc2], … [doc15].  \nTvým úkolem je vytvořit jediný, stručný souhrn, který pokryje všechny klíčové body relevantní k uživatelskému vyhledávacímu dotazu.  \nPo každém faktu, který z úryvku získáš, připoj ID daného úryvku v hranatých závorkách – například: „Gen ABC je nadregulován v nádorových buňkách [doc3].“  \nPokud stejný fakt podporuje více úryvků, uveď všechna jejich ID oddělená čárkami: „Tento přístup zlepšil přesnost o 12 % [doc2, doc7, doc11].“  \nNevymýšlej žádná fakta, která v úryvcích nejsou. Soustřeď se pouze na informace relevantní k uživatelskému dotazu.  \nPiš přehledně a stručně.\n{% if brevity %} Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}\nOdpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.\n"),
+            gen_results_summary_prompt=Template("Vytvoř souhrn následujících výsledků vyhledávání.\n\nUživatel zadal do vyhledávače historických dokumentů dotaz:\n\n\"{{ query }}\"\n\nTento dotaz mu vrátil následující výsledky:\n{% for result in results %}\n[doc{{ loop.index }}] {{ result.text }}\n{% endfor %}\n"),
+            gen_query_summary_system_prompt=Template("Jsi užitečný asistent, který generuje sumarizace textů historických dokumentů. {% if brevity %}Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází."),
+            gen_query_summary_prompt=Template("Prosím vytvoř krátký souhrn následujícího textu, který je relevantní k vyhledávacímu dotazu. Souhrn by měl být výstižný a obsahovat klíčové informace z textu.\nText historického dokumentu:\n\"{{ text.text }}\"\nUživatel zadal do vyhledávače historických dokumentů dotaz:\n\"{{ query }}\"\n")
         )
 
     async def test_gen_title(self):

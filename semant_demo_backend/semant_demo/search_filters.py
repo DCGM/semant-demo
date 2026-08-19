@@ -415,11 +415,6 @@ def parse_and_validate_search_filters(
             else:
                 mapped_values = [str(v) for v in values_list]
 
-            if len(mapped_values) == 1:
-                weaviate_filters.append(_get_prop_filter(target_prop).equal(mapped_values[0]))
-            else:
-                weaviate_filters.append(_get_prop_filter(target_prop).contains_any(mapped_values))
-
-
+            weaviate_filters.append(_get_prop_filter(target_prop).contains_any(mapped_values))
 
     return weaviate_filters
