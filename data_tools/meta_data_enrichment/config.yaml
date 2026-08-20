@@ -32,3 +32,4 @@ model: # Model configuration (local HF transformers, OpenAI-compatible API, or P
     model_path: converted_model/  # Path to the converted model directory containing config.json, pytorch_model.bin and heads.bin
     device: cuda # Device to load the model on (cpu, cuda, etc.)
     input_prompt: '{{ text }}' # Jinja2 template for the input text. You can use any record fields.
+    threshold: 0.5  # Threshold for assignment of task classes

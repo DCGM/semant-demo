@@ -123,7 +123,7 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
                     client=client,
                     collection_name=self.collection,
                     prop_name=field_name,
-                    prop_type="text"
+                    prop_type="text[]"
                 )
             
             # 3. Get collection and build filters
@@ -135,7 +135,8 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
             max_rec = self.max_records or 0
             
             print(f"Starting metadata enrichment pipeline on collection '{self.collection}'...")
-            pbar = tqdm(desc="Enriching records")
+            total_count = collection.aggregate.over_all(total_count=True, filters=weaviate_filters).total_count
+            pbar = tqdm(total=total_count, desc="Enriching records")
             
             last_uuid = None
             

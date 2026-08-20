@@ -57,9 +57,12 @@ def ensure_property_exists(
     collection = client.collections.get(collection_name)
     schema_config = collection.config.get()
     
-    existing_properties = {prop.name for prop in schema_config.properties}
+    existing_properties = {prop.name: prop for prop in schema_config.properties}
     if prop_name in existing_properties:
-        return
+        if existing_properties[prop_name].data_type.value == prop_type:
+            return
+        else:
+            raise ValueError(f"Property '{prop_name}' has different data_type in Weaviate database. {existing_properties[prop_name].data_type.value = }, {prop_type = }")
         
     print(f"Property '{prop_name}' is missing in collection '{collection_name}'. Creating on the fly...")
     
@@ -125,7 +128,7 @@ def build_weaviate_filters(filters_list: List[Dict[str, Any]]) -> Optional[Any]:
             weaviate_filters.append(prop_filter.less_or_equal(value))
         elif operator == "is_none":
             # Cast value to bool (e.g. True to filter for is_none, False for is_not_none)
-            weaviate_filters.append(prop_filter.is_none(bool(value)))
+            weaviate_filters.append(prop_filter.is_none(bool(value)))  # FIXME: value should be a boolean on the user side, but we cast it here just in case - we should validate this in the config schema instead
         elif operator == "contains_any":
             weaviate_filters.append(prop_filter.contains_any(value))
         elif operator == "contains_all":
