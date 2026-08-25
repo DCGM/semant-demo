@@ -1,68 +1,79 @@
 import abc
+import asyncio
+import functools
 import json
 import os
-from typing import Optional
+from typing import Annotated, Literal, Optional
 
+import openai
 from classconfig import ConfigurableMixin, CreatableMixin, ConfigurableValue
 from jinja2 import Environment
+from jinja2.exceptions import TemplateError
+from openai import AsyncOpenAI
+from pydantic import BaseModel, Field, create_model
 
 # Global registry of multitask classification labels
 TASK_CLASSES = {
     "communicative_mode": [
         "narration", "description", "exposition", "argumentation",
-        "instruction", "record", "interaction", "expression", "rhetorics"
+        "instruction", "record", "interaction", "expression", "rhetorics",
+        "uncertain"
     ],
     "complexity": [
-        "very_easy", "easy", "moderate", "advanced", "expert"
+        "very_easy", "easy", "moderate", "advanced", "expert", "uncertain"
     ],
     "documentary_role": [
         "journalistic", "scholarly", "literary", "legal", "administrative",
         "religious", "educational", "commercial", "personal",
-        "official_public_communication", "reference"
+        "official_public_communication", "reference", "uncertain"
     ],
     "emotional_tone": [
         "neutral_or_detached", "solemn_or_grave", "celebratory_or_triumphant",
         "anxious_or_alarmed", "mournful_or_elegiac", "indignant_or_outraged",
         "hopeful_or_aspirational", "reverent_or_devotional", "ironic_or_sardonic",
-        "affectionate_or_tender"
+        "affectionate_or_tender", "uncertain"
     ],
     "geographic_scope": [
         "hyper_local", "local_or_municipal", "regional", "national",
-        "multi_national_or_continental", "global_or_universal", "non_geographic"
+        "multi_national_or_continental", "global_or_universal", "non_geographic",
+        "uncertain"
     ],
     "information_granularity": [
-        "general_overview", "detailed_account", "highly_specific", "definitional", "enumerative"
+        "general_overview", "detailed_account", "highly_specific", "definitional",
+        "enumerative", "uncertain"
     ],
     "intertextual_density": [
         "no_references", "sparse", "moderate", "dense", "uncertain"
     ],
     "named_entity_focus": [
         "person_centric", "organization_centric", "place_centric", "event_centric",
-        "work_centric", "concept_or_topic_centric", "mixed"
+        "work_centric", "concept_or_topic_centric", "mixed", "uncertain"
     ],
     "narrative_perspective": [
         "first_person_singular", "first_person_plural", "second_person",
-        "third_person_personal", "third_person_impersonal", "mixed_or_shifting"
+        "third_person_personal", "third_person_impersonal", "mixed_or_shifting",
+        "uncertain"
     ],
     "quantitative_content_density": [
-        "no_quantitative", "incidental_numbers", "moderate_quantitative", "data_rich"
+        "no_quantitative", "incidental_numbers", "moderate_quantitative", "data_rich",
+        "uncertain"
     ],
     "reliability_signals": [
         "evidence_based", "source_attributed", "first_hand_account",
         "procedurally_documented", "analytical_inference", "speculative_or_uncertain",
         "asserted_without_support", "promotional_or_advocacy",
-        "partisan_or_propagandistic", "fictional_or_imaginative_frame"
+        "partisan_or_propagandistic", "fictional_or_imaginative_frame", "uncertain"
     ],
     "structural_form": [
         "continuous_prose", "verse_lines", "list_or_enumeration", "tabular",
         "form_based_record", "ledger_or_account_entry", "header_or_title_block",
         "dialogue_turns", "navigation_or_reference_apparatus", "quoted_block",
-        "entry_like_units", "other_structure", "garbage"
+        "entry_like_units", "other_structure", "garbage", "uncertain"
     ],
     "style": [
         "formal", "neutral", "informal", "bureaucratic", "scholarly",
         "journalistic", "didactic", "devotional", "literary", "promotional",
-        "formulaic"
+        "formulaic", "uncertain"
     ],
     "subject_domain": [
         "ddc_000_generalia", "ddc_100_philosophy_psychology", "ddc_200_religion",
@@ -70,7 +81,7 @@ TASK_CLASSES = {
         "ddc_600_applied_sciences", "ddc_700_arts_recreation", "ddc_800_literature",
         "ddc_900_history_geography", "news_and_current_affairs",
         "official_and_legal_documents", "personal_and_private_documents",
-        "commercial_and_trade_documents"
+        "commercial_and_trade_documents", "uncertain"
     ],
     "temporal_reference_frame": [
         "contemporary_to_authorship", "historical_past", "remote_or_mythological_past",
@@ -79,14 +90,46 @@ TASK_CLASSES = {
     "textual_stance": [
         "neutral_descriptive", "interpretive", "evaluative", "persuasive",
         "normative", "committed_assertive", "hedged_or_cautious",
-        "partisan_or_polemical", "satirical_or_ironic"
+        "partisan_or_polemical", "satirical_or_ironic", "uncertain"
     ]
 }
+
+# Directory bundled with the package containing the default Jinja2 prompt template for each task.
+PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "prompts")
+
+
+def default_task_prompt_paths() -> dict[str, str]:
+    """Path to the bundled default Jinja2 prompt template file for every task in TASK_CLASSES."""
+    return {task: os.path.join(PROMPTS_DIR, f"{task}.j2") for task in TASK_CLASSES}
+
+
+@functools.lru_cache(maxsize=None)
+def build_structured_output_model(task: str) -> type[BaseModel]:
+    """Build a per-task structured output model whose `cls` field is restricted to that task's own labels.
+
+    Using a `Literal` of TASK_CLASSES[task] instead of a general `str` lets the API's
+    structured-output / JSON-schema enforcement reject any label outside the task's class list,
+    rather than relying on the model to only ever produce a valid one.
+
+    :param task: The task name for which to build the structured output model.
+    :return: A Pydantic model class with a `cls` field restricted to the task's own labels.
+    """
+    label_type = Literal[tuple(TASK_CLASSES[task])]
+
+    cls_field = (Annotated[list[label_type], Field(min_length=1, max_length=2)], ...)
+
+    return create_model(f"StructuredOutput_{task}", cls=cls_field)
 
 
 class Model(ConfigurableMixin, CreatableMixin, abc.ABC):
     """Base class for configurable models."""
-    
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
     @abc.abstractmethod
     def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, list[str]]:
         """Perform classification for the given tasks on the database record.
@@ -137,112 +180,95 @@ class APIModel(Model):
         desc="Maximum number of tokens to generate",
         user_default=150
     )
-    system_prompt: Optional[str] = ConfigurableValue(
-        desc="Jinja2 template for system instructions. You can use any record fields.",
-        user_default=None,
-        voluntary=True
+    task_prompts: dict[str, str] = ConfigurableValue(
+        desc="Dictionary mapping task names to paths of Jinja2 prompt template files",
+        user_default=default_task_prompt_paths()
     )
-    user_prompt: str = ConfigurableValue(
-        desc="Jinja2 template for user prompt. You can use any record fields.",
-        user_default="Classify the following text: {{ text }}"
+    concurrency_limit: int = ConfigurableValue(
+        desc="Maximum number of concurrent API requests",
+        user_default=5
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._client = None
         self.jinja_env = Environment()
-        self.system_prompt_template = self.jinja_env.from_string(self.system_prompt) if self.system_prompt else None
-        self.user_prompt_template = self.jinja_env.from_string(self.user_prompt)
+        self.task_templates = {}
+        for task, prompt_path in self.task_prompts.items():
+            with open(prompt_path, encoding="utf-8") as f:
+                self.task_templates[task] = self.jinja_env.from_string(f.read())
 
-    def _init_client(self):
-        if self._client is not None:
-            return
-            
-        from openai import OpenAI
-        api_key = self.api_key or os.environ.get("OPENAI_API_KEY") or "dummy-key"
-        self._client = OpenAI(
-            api_key=api_key,
+    def __enter__(self):
+        self._loop = asyncio.new_event_loop()
+        self.client = AsyncOpenAI(
+            api_key=self.api_key or os.environ.get("OPENAI_API_KEY") or "dummy-key",
             base_url=self.base_url
         )
+        self.semaphore = asyncio.Semaphore(self.concurrency_limit)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            self._loop.run_until_complete(self.client.close())
+        finally:
+            self._loop.close()
+        return False
 
     def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, list[str]]:
-        self._init_client()
-        
-        # Render prompt templates
-        sys_prompt_rendered = ""
-        if self.system_prompt_template:
-            sys_prompt_rendered = self.system_prompt_template.render(**database_record)
-            
-        user_prompt_rendered = self.user_prompt_template.render(**database_record)
-        
-        # Build JSON Schema properties based on target tasks
-        properties_schema = {}
-        system_instruction = (
-            "You are a text classification assistant.\n"
-            "You must classify the input text according to the following tasks and allowed classes:\n"
-        )
-        for task in tasks:
-            class_list = TASK_CLASSES.get(task, [])
-            properties_schema[task] = {
-                "type": "string",
-                "enum": class_list
-            }
-            system_instruction += f"- {task}: must be one of {class_list}\n"
-        
-        system_instruction += "\nYou must output a JSON object containing the predicted class labels."
-        
-        messages = [
-            {"role": "system", "content": f"{system_instruction}\n\n{sys_prompt_rendered}".strip()},
-            {"role": "user", "content": user_prompt_rendered}
-        ]
-        
-        json_schema = {
-            "name": "classification_result",
-            "strict": True,
-            "schema": {
-                "type": "object",
-                "properties": properties_schema,
-                "required": list(properties_schema.keys()),
-                "additionalProperties": False
-            }
-        }
-        
+        return self.generate_batch([database_record], tasks)[0]
+
+    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, list[str]]]:
+        return self._loop.run_until_complete(self._generate_batch_async(database_records, tasks))
+
+    async def _generate_batch_async(
+        self, database_records: list[dict[str, str]], tasks: list[str]
+    ) -> list[dict[str, list[str]]]:
+        res_list = [{} for _ in database_records]
+        jobs = []
+        for i, record in enumerate(database_records):
+            for task in tasks:
+                if task not in self.task_templates:
+                    print(f"Warning: Task '{task}' not found in task_prompts. Skipping.")
+                    continue
+                jobs.append((i, task, self._classify_one(record, task)))
+
+        results = await asyncio.gather(*(job[2] for job in jobs))
+        for (i, task, _), cls_value in zip(jobs, results):
+            res_list[i][task] = cls_value
+        return res_list
+
+    async def _classify_one(self, database_record: dict[str, str], task: str) -> list[str]:
         try:
-            # Try structured output (JSON schema format)
-            response = self._client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": json_schema
-                }
-            )
-        except Exception as e:
-            # Fall back to standard JSON object format
-            print(f"Warning: JSON schema format failed ({e}). Falling back to simple JSON object mode...")
-            response = self._client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={"type": "json_object"}
-            )
-            
-        content = response.choices[0].message.content.strip()
-        
+            prompt = self.task_templates[task].render(**database_record)
+        except TemplateError as e:
+            print(f"Warning: Failed to render prompt template for task '{task}': {e}. Skipping.")
+            return []
+
         try:
-            result = json.loads(content)
-        except Exception as parse_error:
-            print(f"Failed to parse API output as JSON: {content}. Error: {parse_error}")
-            raise parse_error
-            
-        predictions = {}
-        for task in tasks:
-            predictions[task] = [str(result.get(task, ""))]
-            
-        return predictions
+            response_model = build_structured_output_model(task)
+        except KeyError:
+            print(f"Warning: Task '{task}' has no registered classes in TASK_CLASSES. Skipping.")
+            return []
+
+        try:
+            async with self.semaphore:
+                completion = await self.client.beta.chat.completions.parse(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format=response_model,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+        except openai.OpenAIError as e:
+            print(f"Warning: API request for task '{task}' failed: {e}. Skipping.")
+            return []
+
+        message = completion.choices[0].message
+        if message.refusal:
+            print(f"Warning: Task '{task}' request was refused by the model: {message.refusal}")
+            return []
+
+        return message.parsed.cls
+
 
 
 class LocalHFClassifierModel(Model):
