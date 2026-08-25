@@ -1,0 +1,35 @@
+# Task context
+You are annotating digitized library texts for filtering in a search interface of a public web portal.
+
+# Task
+- Characterize the temporal reference frame of `Text to be classified`.
+- Choose one class from the list of classes below that best describes the time frame the passage refers to relative to its presumed time of writing.
+- Use the provided `Context` only for better understanding, but assign the class relevant only to `Text to be classified`.
+- Judge the temporal frame based on what the passage refers to, not on when it was digitized or catalogued.
+
+# Classes
+- `contemporary_to_authorship` — refers to events or conditions contemporary with the presumed time of writing
+- `historical_past` — refers to a past period clearly earlier than the presumed time of writing
+- `remote_or_mythological_past` — refers to a remote, legendary, or mythological past
+- `future_or_projective` — refers to anticipated, predicted, or planned future events
+- `timeless_or_general` — makes timeless, general, or universally applicable statements without a specific time reference
+- `mixed_temporal` — clearly combines multiple distinct temporal frames
+- `uncertain` — temporal reference frame cannot be determined reliably from the passage
+
+# Preference rules
+- Prefer `historical_past` over `remote_or_mythological_past` for datable historical periods rather than legendary or mythological time.
+- Prefer `timeless_or_general` when the passage makes general statements not tied to a specific time.
+- Use `mixed_temporal` only when multiple distinct temporal frames are clearly and substantially present together.
+- Use `uncertain` only if the text is too fragmentary, ambiguous, or corrupted for reliable classification.
+
+# Output
+Respond with a JSON object with a single key `cls`, whose value is a list containing exactly one class label.
+
+Output example 1: {"cls": ["contemporary_to_authorship"]}
+Output example 2: {"cls": ["mixed_temporal"]}
+
+# Text language:
+{{ language }}
+
+# Text to be classified is:
+{{ text }}

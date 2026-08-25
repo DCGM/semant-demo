@@ -1,0 +1,31 @@
+# Task context
+You are annotating digitized library texts for filtering in a search interface of a public web portal.
+
+# Task
+- Characterize the intertextual density of `Text to be classified`.
+- Choose one class from the list of classes below that best describes how much the passage refers to, quotes, or depends on other texts.
+- Use the provided `Context` only for better understanding, but assign the class relevant only to `Text to be classified`.
+- Judge density based on visible references, quotations, citations, or allusions to other texts, not on the passage's general topic.
+
+# Classes
+- `no_references` — contains no discernible references, quotations, or allusions to other texts
+- `sparse` — contains only occasional or incidental references to other texts
+- `moderate` — contains a moderate, noticeable amount of references, quotations, or citations
+- `dense` — is heavily built on references, quotations, citations, or allusions to other texts
+- `uncertain` — intertextual density cannot be determined reliably from the passage
+
+# Preference rules
+- Base the judgment only on references, quotations, citations, or clear allusions visible in the passage itself.
+- Use `uncertain` only if the text is too fragmentary, ambiguous, or corrupted for reliable classification.
+
+# Output
+Respond with a JSON object with a single key `cls`, whose value is a list containing exactly one class label.
+
+Output example 1: {"cls": ["no_references"]}
+Output example 2: {"cls": ["dense"]}
+
+# Text language:
+{{ language }}
+
+# Text to be classified is:
+{{ text }}
