@@ -1,0 +1,35 @@
+# Task context
+You are annotating digitized library texts for filtering in a search interface of a public web portal.
+
+# Task
+- Characterize the named entity focus of `Text to be classified`.
+- Choose one class from the list of classes below that best describes what kind of entity the passage is mainly about.
+- Use the provided `Context` only for better understanding, but assign the class relevant only to `Text to be classified`.
+- Judge focus based on what the passage's content is mainly centered on, not on incidental mentions.
+
+# Classes
+- `person_centric` — mainly concerns a specific person or persons
+- `organization_centric` — mainly concerns a specific organization, institution, or company
+- `place_centric` — mainly concerns a specific place, location, or geographic entity
+- `event_centric` — mainly concerns a specific event, incident, or occurrence
+- `work_centric` — mainly concerns a specific work, such as a book, artwork, law, or document
+- `concept_or_topic_centric` — mainly concerns an abstract concept, topic, or subject rather than a specific named entity
+- `mixed` — no single entity type is clearly dominant, or several entity types are equally central
+- `uncertain` — named entity focus cannot be determined reliably from the passage
+
+# Preference rules
+- Prefer the entity type that the passage's content is mainly organized around, not entities mentioned only in passing.
+- Use `mixed` only when no single entity type is clearly dominant.
+- Use `uncertain` only if the text is too fragmentary, ambiguous, or corrupted for reliable classification.
+
+# Output
+Respond with a JSON object with a single key `cls`, whose value is a list containing exactly one class label.
+
+Output example 1: {"cls": ["person_centric"]}
+Output example 2: {"cls": ["mixed"]}
+
+# Text language:
+{{ language }}
+
+# Text to be classified is:
+{{ text }}
