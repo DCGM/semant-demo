@@ -104,17 +104,18 @@ def default_task_prompt_paths() -> dict[str, str]:
 
 
 @functools.lru_cache(maxsize=None)
-def build_structured_output_model(task: str) -> type[BaseModel]:
+def build_structured_output_model(task: str, classes: tuple[str, ...]) -> type[BaseModel]:
     """Build a per-task structured output model whose `cls` field is restricted to that task's own labels.
 
-    Using a `Literal` of TASK_CLASSES[task] instead of a general `str` lets the API's
+    Using a `Literal` of the given classes instead of a general `str` lets the API's
     structured-output / JSON-schema enforcement reject any label outside the task's class list,
     rather than relying on the model to only ever produce a valid one.
 
     :param task: The task name for which to build the structured output model.
+    :param classes: The task's valid classification labels.
     :return: A Pydantic model class with a `cls` field restricted to the task's own labels.
     """
-    label_type = Literal[tuple(TASK_CLASSES[task])]
+    label_type = Literal[classes]
 
     cls_field = (Annotated[list[label_type], Field(min_length=1, max_length=2)], ...)
 
@@ -184,6 +185,10 @@ class APIModel(Model):
         desc="Dictionary mapping task names to paths of Jinja2 prompt template files",
         user_default=default_task_prompt_paths()
     )
+    task_classes: dict[str, list[str]] = ConfigurableValue(
+        desc="Dictionary mapping task names to their list of valid classification labels",
+        user_default=TASK_CLASSES
+    )
     concurrency_limit: int = ConfigurableValue(
         desc="Maximum number of concurrent API requests",
         user_default=5
@@ -229,6 +234,8 @@ class APIModel(Model):
                 if task not in self.task_templates:
                     print(f"Warning: Task '{task}' not found in task_prompts. Skipping.")
                     continue
+                if task not in self.task_classes:
+                    raise ValueError(f"Task '{task}' has no registered classes in task_classes configuration.")
                 jobs.append((i, task, self._classify_one(record, task)))
 
         results = await asyncio.gather(*(job[2] for job in jobs))
@@ -243,11 +250,7 @@ class APIModel(Model):
             print(f"Warning: Failed to render prompt template for task '{task}': {e}. Skipping.")
             return []
 
-        try:
-            response_model = build_structured_output_model(task)
-        except KeyError:
-            print(f"Warning: Task '{task}' has no registered classes in TASK_CLASSES. Skipping.")
-            return []
+        response_model = build_structured_output_model(task, tuple(self.task_classes[task]))
 
         try:
             async with self.semaphore:
@@ -311,7 +314,7 @@ class LocalHFClassifierModel(Model):
         print(f"Loading configuration from '{config_path}'...")
         with open(config_path, "r") as f:
             config_data = json.load(f)
-        self.task_classes = config_data.get("task_classes", {})  # FIXME: here could be a fallback to the global TASK_CLASSES, but I'm not sure we should not do that - the model should have its own task_classes defined in its config.json
+        self.task_classes = config_data.get("task_classes", {})
 
         print(f"Loading tokenizer from '{self.model_path}'...")
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
@@ -377,7 +380,9 @@ class LocalHFClassifierModel(Model):
                     (prob > self.threshold) | (prob == prob.max(dim=-1, keepdim=True).values)
                 ).tolist()
                 
-                classes = self.task_classes.get(task) or TASK_CLASSES.get(task)
+                classes = self.task_classes.get(task)
+                if classes is None:
+                    raise ValueError(f"Task '{task}' has no registered classes in the model's config.json.")
                 for i, pred_row in enumerate(predictions):
                     res_list[i][task] = [str(classes[j]) for j, pred in enumerate(pred_row) if pred]
             return res_list
