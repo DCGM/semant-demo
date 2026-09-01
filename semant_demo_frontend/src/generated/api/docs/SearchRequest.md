@@ -24,6 +24,7 @@ Name | Type
 `type` | [SearchType](SearchType.md)
 `hybridSearchAlpha` | number
 `searchLlmFilter` | boolean
+`filters` | [Array&lt;SearchFilterInput&gt;](SearchFilterInput.md)
 `minYear` | number
 `maxYear` | number
 `minDate` | Date
@@ -59,6 +60,7 @@ const example = {
   "type": null,
   "hybridSearchAlpha": null,
   "searchLlmFilter": null,
+  "filters": null,
   "minYear": null,
   "maxYear": null,
   "minDate": null,

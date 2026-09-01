@@ -37,6 +37,7 @@ import logging
 from typing import Any
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
+from semant_demo.chunk_metadata import load_chunk_metadata_whitelist, extract_chunk_metadata
 
 class TextChunk():
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
@@ -193,9 +194,11 @@ class TextChunk():
                 return []
             return [str(r.uuid) for r in ref_block.objects]
         tags_result = []
+        metadata_whitelist = load_chunk_metadata_whitelist(config.CHUNK_METADATA_WHITELIST_CONFIG)
 
         for obj in result.objects:
             chunk_data = obj.properties
+            chunk_metadata = extract_chunk_metadata(chunk_data, metadata_whitelist)
             doc_objs = obj.references.get("document").objects
             if not doc_objs:
                 continue
@@ -210,6 +213,7 @@ class TextChunk():
             chunk = schemas.TextChunkWithDocument(
                 id=obj.uuid,
                 **chunk_data,
+                metadata=chunk_metadata,
                 document_object=document_obj,
                 document=first_doc.uuid
             )

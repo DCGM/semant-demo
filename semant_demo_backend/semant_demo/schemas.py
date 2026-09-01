@@ -140,6 +140,8 @@ class TextChunk(BaseModel):
     ner_M: list[str] | None = None  # Media entities
     ner_O: list[str] | None = None  # Cultural artifacts
 
+    metadata: dict[str, Any] | None = None
+
 
 class TextChunkWithDocument(TextChunk):
     query_title: str | None = None
