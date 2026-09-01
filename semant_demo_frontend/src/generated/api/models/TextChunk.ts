@@ -121,6 +121,12 @@ export interface TextChunk {
      * @memberof TextChunk
      */
     nerO?: Array<string> | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof TextChunk
+     */
+    metadata?: { [key: string]: any; } | null;
 }
 
 /**
@@ -164,6 +170,7 @@ export function TextChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'nerI': json['ner_I'] == null ? undefined : json['ner_I'],
         'nerM': json['ner_M'] == null ? undefined : json['ner_M'],
         'nerO': json['ner_O'] == null ? undefined : json['ner_O'],
+        'metadata': json['metadata'] == null ? undefined : json['metadata'],
     };
 }
 
@@ -195,6 +202,7 @@ export function TextChunkToJSONTyped(value?: TextChunk | null, ignoreDiscriminat
         'ner_I': value['nerI'],
         'ner_M': value['nerM'],
         'ner_O': value['nerO'],
+        'metadata': value['metadata'],
     };
 }
 

@@ -1,22 +1,30 @@
 
-# GetConfigsResponse
+# TaggingConfig
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`configs` | [Array&lt;TaggingConfig&gt;](TaggingConfig.md)
+`name` | string
+`description` | string
+`className` | string
+`promptTemplate` | string
+`params` | [TaggingConfigParams](TaggingConfigParams.md)
 
 ## Example
 
 ```typescript
-import type { GetConfigsResponse } from ''
+import type { TaggingConfig } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "configs": null,
-} satisfies GetConfigsResponse
+  "name": null,
+  "description": null,
+  "className": null,
+  "promptTemplate": null,
+  "params": null,
+} satisfies TaggingConfig
 
 console.log(example)
 
@@ -25,7 +33,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as GetConfigsResponse
+const exampleParsed = JSON.parse(exampleJSON) as TaggingConfig
 console.log(exampleParsed)
 ```
 

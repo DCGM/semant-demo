@@ -1,22 +1,22 @@
 
-# GetConfigsResponse
+# PatchCollectionOwner
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`configs` | [Array&lt;TaggingConfig&gt;](TaggingConfig.md)
+`userId` | string
 
 ## Example
 
 ```typescript
-import type { GetConfigsResponse } from ''
+import type { PatchCollectionOwner } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "configs": null,
-} satisfies GetConfigsResponse
+  "userId": null,
+} satisfies PatchCollectionOwner
 
 console.log(example)
 
@@ -25,7 +25,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as GetConfigsResponse
+const exampleParsed = JSON.parse(exampleJSON) as PatchCollectionOwner
 console.log(exampleParsed)
 ```
 
