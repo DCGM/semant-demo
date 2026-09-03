@@ -23,6 +23,9 @@ fastapi-users[sqlalchemy]
 python-multipart
 opentelemetry-sdk
 opentelemetry-exporter-otlp-proto-http
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-logging
+opentelemetry-instrumentation-system-metrics
 # testing
 pytest
 pytest-asyncio

@@ -4,7 +4,7 @@ from time import perf_counter, time
 from uuid import uuid4
 
 from semant_demo.config import config
-from semant_demo.opentelemetry import setup_logging_export
+from semant_demo.opentelemetry import initialize_opentelemetry
 from semant_demo.rag.rag_factory import rag_factory
 from semant_demo.routes.dependencies import cleanup_dependencies, get_engine, get_search, get_summarizer
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +20,7 @@ import semant_demo.users.models  # noqa: F401
 
 logging.basicConfig(level=config.LOG_LEVEL)
 
-telemetry = setup_logging_export()
+telemetry = initialize_opentelemetry()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -104,3 +104,6 @@ if os.path.isdir(config.STATIC_PATH):
 else:
     logging.warning(
         f"'{config.STATIC_PATH}' directory not found. Static files will not be served.")
+
+if telemetry is not None:
+    telemetry.instrument_app(app)

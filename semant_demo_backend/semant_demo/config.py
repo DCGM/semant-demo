@@ -85,6 +85,9 @@ class Config:
         self.OTEL_ENABLED = os.getenv("OTEL_ENABLED", str(False)).lower() in TRUE_VALUES
         self.OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://lgtm:4318")
         self.OTEL_EXPORTER_OTLP_LOGS_PATH = os.getenv("OTEL_EXPORTER_OTLP_LOGS_PATH", "/v1/logs")
+        self.OTEL_EXPORTER_OTLP_TRACES_PATH = os.getenv("OTEL_EXPORTER_OTLP_TRACES_PATH", "/v1/traces")
+        self.OTEL_EXPORTER_OTLP_METRICS_PATH = os.getenv("OTEL_EXPORTER_OTLP_METRICS_PATH", "/v1/metrics")
+        self.OTEL_METRIC_EXPORT_INTERVAL_MS = int(os.getenv("OTEL_METRIC_EXPORT_INTERVAL_MS", 10000))
         self.OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "semant-demo-backend")
         self.DEPLOYMENT_ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "unknown")
 
