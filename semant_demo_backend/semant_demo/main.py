@@ -1,11 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 import logging
+from time import perf_counter, time
+from uuid import uuid4
 
 from semant_demo.config import config
 from semant_demo.opentelemetry import setup_logging_export
 from semant_demo.rag.rag_factory import rag_factory
 from semant_demo.routes.dependencies import cleanup_dependencies, get_engine, get_search, get_summarizer
-from time import time
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -17,8 +18,9 @@ from semant_demo.users.auth import auth_router, register_router, users_router
 # Import User model so its table is included in TasksBase.metadata
 import semant_demo.users.models  # noqa: F401
 
-logging.basicConfig(level=logging.INFO)
-setup_logging_export()
+logging.basicConfig(level=config.LOG_LEVEL)
+
+telemetry = setup_logging_export()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,8 +34,12 @@ async def lifespan(app: FastAPI):
     yield
 
     #shutdown all dependencies
-    await cleanup_dependencies()
-    logging.info(f"Application cleanup complete.")
+    try:
+        await cleanup_dependencies()
+        logging.info("Application cleanup complete.")
+    finally:
+        if telemetry is not None:
+            telemetry.shutdown()
 
 #app definition
 app = FastAPI(lifespan=lifespan)
@@ -46,6 +52,42 @@ app.include_router(users_router, prefix="/api/users", tags=["users"])
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.middleware("http")
+async def log_http_request(request: Request, call_next):
+    """Create one structured log record for every completed HTTP request."""
+    request_id = request.headers.get("X-Request-ID", str(uuid4()))
+    started_at = perf_counter()
+    attributes = {
+        "request.id": request_id,
+        "http.request.method": request.method,
+        "url.path": request.url.path,
+    }
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        attributes["http.response.status_code"] = 500
+        attributes["http.server.request.duration_ms"] = round(
+            (perf_counter() - started_at) * 1000, 2
+        )
+        logging.getLogger(__name__).exception(
+            "HTTP request failed",
+            extra=attributes,
+        )
+        raise
+
+    attributes["http.response.status_code"] = response.status_code
+    attributes["http.server.request.duration_ms"] = round(
+        (perf_counter() - started_at) * 1000, 2
+    )
+    logging.getLogger(__name__).info(
+        "HTTP request completed",
+        extra=attributes,
+    )
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 app.add_middleware(
     CORSMiddleware,

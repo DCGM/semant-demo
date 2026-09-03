@@ -105,6 +105,15 @@ cp .env.example .env
 | `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
+| `LOG_LEVEL` | `INFO` | Minimum Python/OTLP log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`) |
+| **Observability** | | |
+| `OTEL_ENABLED` | `true` | Enables OTLP log export for production, `test-main`, and PR deployments. CI also sets it explicitly. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://lgtm:4318` | Base URL of the OTLP/HTTP receiver on the shared `web` network |
+| `OTEL_EXPORTER_OTLP_LOGS_PATH` | `/v1/logs` | OTLP/HTTP path used for log records |
+| `OTEL_SERVICE_NAME` | `semant-demo-app` | Service label used to find the application in Grafana |
+| `DEPLOYMENT_ENVIRONMENT` | `production` | Environment resource attribute (`production`, `test-main`, etc.) |
+
+See [Observability](../docs/OBSERVABILITY.md) for the phase-1 verification steps and the phase-2 plan.
 
 ---
 
