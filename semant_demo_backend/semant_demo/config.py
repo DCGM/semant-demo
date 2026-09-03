@@ -31,6 +31,7 @@ class Config:
         self.PORT = int(os.getenv("PORT", 8000))
         self.STATIC_PATH = os.getenv("STATIC_PATH", "./static")
         self.ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:9000")
+        self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
         self.OLLAMA_URLS = os.getenv("OLLAMA_URLS", "http://localhost:11434").split(",")
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:12b")
@@ -79,6 +80,16 @@ class Config:
         default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
         test_configs_path = SCRIPT_PATH / "rag" / "rag_configs" / "tests"
         self.RAG_CONFIGS_PATH = os.getenv("RAG_CONFIGS_PATH", default_config_path)
+
+        # OpenTelemetry - disabled by default so local/test runs never try to reach a collector
+        self.OTEL_ENABLED = os.getenv("OTEL_ENABLED", str(False)).lower() in TRUE_VALUES
+        self.OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://lgtm:4318")
+        self.OTEL_EXPORTER_OTLP_LOGS_PATH = os.getenv("OTEL_EXPORTER_OTLP_LOGS_PATH", "/v1/logs")
+        self.OTEL_EXPORTER_OTLP_TRACES_PATH = os.getenv("OTEL_EXPORTER_OTLP_TRACES_PATH", "/v1/traces")
+        self.OTEL_EXPORTER_OTLP_METRICS_PATH = os.getenv("OTEL_EXPORTER_OTLP_METRICS_PATH", "/v1/metrics")
+        self.OTEL_METRIC_EXPORT_INTERVAL_MS = int(os.getenv("OTEL_METRIC_EXPORT_INTERVAL_MS", 10000))
+        self.OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "semant-demo-backend")
+        self.DEPLOYMENT_ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "unknown")
 
         self.collectionNames = CollectionNames(
             chunks_collection_name = "Chunks",
