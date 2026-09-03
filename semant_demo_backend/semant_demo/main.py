@@ -82,7 +82,7 @@ async def log_http_request(request: Request, call_next):
     attributes["http.server.request.duration_ms"] = round(
         (perf_counter() - started_at) * 1000, 2
     )
-    logging.getLogger(__name__).info(
+    logging.getLogger(__name__).debug(
         "HTTP request completed",
         extra=attributes,
     )
