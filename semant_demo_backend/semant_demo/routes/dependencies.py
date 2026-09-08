@@ -1,5 +1,8 @@
+from fastapi import Depends
+
 from semant_demo.config import config
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.weaviate_utils.document_repository import DocumentRepository
 #from semant_demo.weaviate_tag import WeaviateSearchAndTag
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -27,10 +30,25 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 async def get_search() -> WeaviateAbstraction:
+    """
+    Legacy dependency: returns the shared bag of all Weaviate repositories.
+
+    Still needed by code that touches several repositories in one call
+    (e.g. semant_demo/rag/, semant_demo/tagging/tagging_utils.py). New
+    routes that only need one repository should depend on that
+    repository's dedicated provider instead (e.g. get_document_repository
+    below), which reuses the same underlying client/connection.
+    """
     global _searcher
     if _searcher is None:
         _searcher = await WeaviateAbstraction.create(config)
     return _searcher
+
+
+async def get_document_repository(
+    repositories: WeaviateAbstraction = Depends(get_search),
+) -> DocumentRepository:
+    return repositories.document
 
 async def cleanup_dependencies():
     global _engine, _async_session_maker, _searcher
