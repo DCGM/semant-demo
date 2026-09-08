@@ -9,11 +9,11 @@ from semant_demo.routes.dependencies import get_document_repository
 exp_router = APIRouter()
 
 @exp_router.get("/api/document/{document_id}", response_model=Document, response_model_exclude_none=True)
-async def fetch_document(document_id: str, documents: DocumentRepository = Depends(get_document_repository)) -> Document:
+async def fetch_document(document_id: str, document_repository: DocumentRepository = Depends(get_document_repository)) -> Document:
     """
     Retrieves document by its id
     """
-    response = await documents.read(document_id)
+    response = await document_repository.read(document_id)
     if response is None:
         raise HTTPException(status_code=404, detail=f"Document with id {document_id} not found")
     return response
@@ -28,11 +28,11 @@ async def browse_documents(collection_id: str | None = None,
                            author: str | None = None,
                            publisher: str | None = None,
                            document_type: str | None = None,
-                           documents: DocumentRepository = Depends(get_document_repository)) -> DocumentBrowse:
+                           document_repository: DocumentRepository = Depends(get_document_repository)) -> DocumentBrowse:
     """
         Browses documents which belong to collection given by id with pagination, filtering and sorting options
     """
-    return await documents.browse(
+    return await document_repository.browse(
         collection_id=collection_id,
         limit=limit,
         offset=offset,
@@ -48,11 +48,11 @@ async def browse_documents(collection_id: str | None = None,
 @exp_router.get("/api/documents/{document_id}/{collection_id}/chunks", response_model=schemas.DocumentDetail, response_model_exclude_none=True)
 async def fetch_document_chunks(document_id: str,
                                 collection_id: str,
-                                documents: DocumentRepository = Depends(get_document_repository)) -> schemas.DocumentDetail:
+                                document_repository: DocumentRepository = Depends(get_document_repository)) -> schemas.DocumentDetail:
     """
     Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
     """
-    response = await documents.read_chunks(document_id=document_id, collection_id=collection_id)
+    response = await document_repository.read_chunks(document_id=document_id, collection_id=collection_id)
     if response is None:
         raise HTTPException(status_code=404, detail=f"Document with id {document_id} not found")
     return response
