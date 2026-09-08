@@ -38,7 +38,7 @@ from typing import Any
 
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 
-class TextChunk():
+class TextChunkRepository():
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
         self.client = client
         self.helpers = WeaviateHelpers(client, collectionNames)
