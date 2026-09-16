@@ -156,19 +156,6 @@ class DocumentDetail(BaseModel):
     document: Document
     chunks: list[DocumentDetailTextChunkWithUserCollectionInfo]
 
-
-class FilteredChunksByTags(BaseModel):
-    chunk_id: str
-    positive_tags_ids: list[str]
-    automatic_tags_ids: list[str]
-
-
-class FilterChunksByTagsRequest(BaseModel):
-    chunkIds: list[str]
-    tagIds: list[str]
-    positive: bool
-    automatic: bool
-
 class SearchResponse(BaseModel):
     results: list[TextChunkWithDocument]
     # Optional overall query-based summary of the results
@@ -176,18 +163,13 @@ class SearchResponse(BaseModel):
     search_request: SearchRequest
     time_spent: float
     search_log: list[str]
-    # TODO: Should it be here or in Chunks? (xtomas36)
-    tags_result: list[FilteredChunksByTags]
-
 
 class SummaryRequest(SummaryRequestBase):
     search_response: SearchResponse
 
-
 class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
-
 
 class RagRouteConfig(BaseModel):
     id: str
@@ -195,7 +177,6 @@ class RagRouteConfig(BaseModel):
     description: str
 
 # rag message format for purpose of history
-
 
 class RagChatMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -319,20 +300,6 @@ class CollectionNames(BaseModel):
     span_collection_name: str
     user_collection_link_name: str
     tag_to_user_collection_link_name: str
-
-# Tagging configuration
-
-
-class TaggingConfigParams(BaseModel):
-    model_type: APIType
-    model_name: str
-    temperature: float = 1.0
-
-class TagType(str, Enum):
-    positive = "positive"
-    negative = "negative"
-    automatic = "automatic"
-
 class TagData(BaseModel):
     tag_name: str  # name of the tag
     tag_shorthand: str  # shorthand for the name
@@ -363,58 +330,6 @@ class TagSpan(BaseModel):
     # service. Stored alongside the span itself in the database.
     reason: str | None = None
     confidence: float | None = None
-
-class TagSpanUpdateSeparateRequest(BaseModel):
-    span_id: str
-    tagSpan: TagSpanUpdate
-
-
-class TagSpanUpdateEmbeddedRequest(BaseModel):
-    chunk_id: str | None = None
-    index: int | None = None
-    tagSpan: TagSpanUpdate
-# /TagSpans
-
-
-# Automatic annotation suggestions
-class AutoAnnotationSuggestion(BaseModel):
-    id: str
-    chunkId: str
-    tagId: str
-    start: int
-    end: int
-    type: SpanType = SpanType.auto
-    confidence: float
-    reason: str | None = None
-
-
-class AutoAnnotationSuggestionRequest(BaseModel):
-    chunks: list[TextChunk]
-    tags: list[TagData]
-
-
-class AutoAnnotationsSuggestionsResponse(BaseModel):
-    suggestions: list[AutoAnnotationSuggestion]
-# /Automatic annotation suggestions
-
-
-class BestTagProposalRequest(BaseModel):
-    text: str
-    tags: list[TagData]
-    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
-
-
-class BestTagProposal(BaseModel):
-    tagId: str
-    confidence: float
-    start: int
-    end: int
-    tag: TagData | None = None
-    reason: str | None = None
-
-class BestTagProposalResponse(BaseModel):
-    suggestions: list[BestTagProposal]
-
 
 # Task Model
 TasksBase = declarative_base()
