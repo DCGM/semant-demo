@@ -1,42 +1,14 @@
-import os
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
+from fastapi import APIRouter, Depends, Query, status, Response
 
 from semant_demo import schemas
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
-# from semant_demo.rag.rag_generator import RagGenerator
-import asyncio
-# import aiofiles # load multiple files simultaneously
-
-from semant_demo.tagging.tagging_utils import tag_and_store
-import uuid
-from pathlib import Path
-
-from sqlalchemy.ext.asyncio import AsyncSession
-# from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, JSON
-from glob import glob
-from sqlalchemy import select, update, bindparam, asc
-from typing import AsyncGenerator
-# import db
-from sqlalchemy import select, update, asc
-# import db
-from sqlalchemy import exc
-from datetime import timezone
 
 import logging
 
-from semant_demo.schemas import Task, TasksBase
-
-import json
-import yaml
-
-from semant_demo.tagging.sql_utils import DBError, update_task_status
-from semant_demo.tagging.tagging_utils import getTaskByName
-
 # import dependencies
-from semant_demo.routes.dependencies import get_async_session, get_engine, get_search
+from semant_demo.routes.dependencies import get_search
 from semant_demo.schema.spans import (
     PostSpan,
     PatchSpan,
@@ -47,14 +19,8 @@ from semant_demo.schema.spans import (
 )
 logging.basicConfig(level=logging.INFO)
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-TAG_CONFIG_DIR = BASE_DIR / "tagging" / "configs"
-# TAG_CONFIG_DIR = r"semant_demo_backend\semant_demo\tagging\configs"
-
 exp_router = APIRouter()
 
-
-# TagSpans
 @exp_router.post("/api/tag_spans", response_model=schemas.TagSpan)
 async def create_tag_span(span: PostSpan, tagger: WeaviateAbstraction = Depends(get_search)) -> schemas.TagSpan:
     """
@@ -156,5 +122,3 @@ async def delete_spans_for_tags_in_document(
         tag_ids=body.tag_ids,
     )
     return DeleteSpansForTagsResponse(deleted=deleted)
-
-# /TagSpans
