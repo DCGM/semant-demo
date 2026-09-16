@@ -29,14 +29,6 @@ async def create_tag(collection_id: str, tag: PostTag,
         return await searcher.tag.create(collection_id=collection_id, tag=tag)
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
-    
-@exp_router.get("/api/tags", response_model=schemas.GetTagsResponse)
-async def get_tags(searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.GetTagsResponse:
-    """
-    Retrieve all tags
-    """
-    response = await searcher.tag.read_all()
-    return {"tags_lst": response}
 
 @exp_router.get("/api/tags/{tag_uuid}", response_model=Tag)
 async def get_tag(tag_uuid: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Tag:
