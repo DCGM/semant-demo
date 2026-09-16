@@ -218,50 +218,6 @@ class TextChunk():
     def get_tags():
         pass
 
-    async def filterChunksByTags(self, requestedData: schemas.FilterChunksByTagsRequest):
-        """
-        Filters chunks by tags - for search results filtration after initial search
-        get tag objects, chunk objects,
-        then filter the chunks that has positive tags and automatic tags referces to any of
-        the selected tags and return the data
-        """
-        try:
-            # get all chunks from the list and filter them by the tag
-            filters = [Filter.by_id().contains_any([str(uuid) for uuid in requestedData.chunkIds])]
-            if requestedData.positive:
-                filters.append(Filter.by_ref("automaticTag").by_id().contains_any(requestedData.tagIds))
-            if requestedData.automatic:
-                filters.append(Filter.by_ref("positiveTag").by_id().contains_any(requestedData.tagIds))
-            combinedFilters = filters[0]
-            for f in filters[1:]:
-                combinedFilters |= f
-
-            chunk_results = await self.helpers.fetch_chunks(filters=combinedFilters)
-
-            # helper to extract UUID strings from reference block
-            def ref_uuids(ref_block):
-                if not ref_block:
-                    return []
-                return [str(r.uuid) for r in ref_block.objects]
-
-            resultLst = []
-            for chunk in chunk_results:
-                refs = chunk.references or {}
-
-                auto_ids = ref_uuids(refs.get("automaticTag"))
-                pos_ids = ref_uuids(refs.get("positiveTag"))
-
-                requested_ids = requestedData.tagIds
-
-                auto_ids = list(set(auto_ids) & set(requested_ids))
-                pos_ids = list(set(pos_ids) & set(requested_ids))
-                resultLst.append({'chunk_id': str(chunk.uuid), 'positive_tags_ids': pos_ids, 'automatic_tags_ids': auto_ids})
-            logging.info(f'"chunkTags": {resultLst} ')
-            return { "chunkTags": resultLst }
-        except Exception as e:
-            logging.error(f"Error in chunk filtering: {e}")
-            return { "chunkTags": [] }
-
     ###########
     # Helpers #
     ###########
