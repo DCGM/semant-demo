@@ -364,33 +364,6 @@ class TagSpan(BaseModel):
     reason: str | None = None
     confidence: float | None = None
 
-
-class TagSpanUpdate(BaseModel):
-    tagId: str | None = None
-    start: int | None = None
-    end: int | None = None
-    type: SpanType | None = None
-
-
-class TagSpanCreateSeparateRequest(BaseModel):
-    span: TagSpan
-
-
-class TagSpanCreateEmbeddedRequest(BaseModel):
-    chunk_id: str
-    tag_id: str
-    spans: list[TagSpan]
-
-
-class TagSpanWriteResponse(BaseModel):
-    stored_in: list[SpanStoreMode]
-
-
-class TagSpanBatchRequest(BaseModel):
-    chunk_ids: list[str] | None = None
-    collection_id: str | None = None
-
-
 class TagSpanUpdateSeparateRequest(BaseModel):
     span_id: str
     tagSpan: TagSpanUpdate

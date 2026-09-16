@@ -51,3 +51,7 @@ class DeleteSpansForTagsRequest(BaseModel):
 class DeleteSpansForTagsResponse(BaseModel):
     """Result of a bulk per-tag deletion."""
     deleted: int
+
+class TagSpanBatchRequest(BaseModel):
+    chunk_ids: list[str] | None = None
+    collection_id: str | None = None
