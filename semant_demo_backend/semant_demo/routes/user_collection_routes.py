@@ -4,27 +4,22 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 
 from semant_demo import schemas
-from semant_demo.config import config
 from semant_demo.users.auth import current_active_user, current_active_optional_user, current_active_admin
 from semant_demo.users.models import User
 
 from semant_demo.weaviate_exceptions import WeaviateOperationError
 
-import os
-import openai
 from semant_demo import schemas
 import logging
-# from semant_demo.weaviate_tag import WeaviateAbstraction
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 import logging
 
-from semant_demo.schemas import TasksBase
 from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner
 from semant_demo.schema.documents import DocumentStats
-from semant_demo.schema.documents import Document, DocumentBrowse
+from semant_demo.schema.documents import Document
 from semant_demo.schema.tags import Tag
 
 # import dependencies
@@ -97,20 +92,6 @@ async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
         return response
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-
-@exp_router.get("/api/user_collection/chunks", response_model=schemas.GetCollectionChunksResponse)
-async def get_collection_chunks(collection_id: str,
-                                searcher: WeaviateAbstraction = Depends(get_search),
-                                current_user: User = Depends(current_active_user)) -> schemas.GetCollectionChunksResponse:
-    """
-    Returns chunks which belong to collection given by id
-    """
-    try:
-        logging.info(f"In get collection chunks {collection_id}")
-        response = await searcher.userCollection.read_all_chunks(collection_id)
-        return response
-    except Exception as e:
-        logging.error(f"{e}")
 
 
 @exp_router.get("/api/user_collection/{collection_id}/stats", response_model=CollectionStats)
