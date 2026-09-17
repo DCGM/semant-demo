@@ -16,6 +16,7 @@ from semant_demo.schema.spans import (
     DeleteSpansForTagsResponse,
     BulkUpdateSpansRequest,
     BulkUpdateSpansResponse,
+    TagSpanBatchRequest,
 )
 logging.basicConfig(level=logging.INFO)
 
@@ -45,7 +46,7 @@ async def read_tag_spans(
 
 @exp_router.post("/api/tag_spans/batch", response_model=dict[str, list[schemas.TagSpan]])
 async def read_tag_spans_batch(
-    body: schemas.TagSpanBatchRequest,
+    body: TagSpanBatchRequest,
     tagger: WeaviateAbstraction = Depends(get_search)
 ) -> dict[str, list[schemas.TagSpan]]:
     """
