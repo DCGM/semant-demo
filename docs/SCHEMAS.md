@@ -1,0 +1,1 @@
+// TODO: describe the guidelines for working with schemas in this project
