@@ -4,27 +4,22 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 
 from semant_demo import schemas
-from semant_demo.config import config
 from semant_demo.users.auth import current_active_user, current_active_optional_user, current_active_admin
 from semant_demo.users.models import User
 
 from semant_demo.weaviate_exceptions import WeaviateOperationError
 
-import os
-import openai
 from semant_demo import schemas
 import logging
-# from semant_demo.weaviate_tag import WeaviateAbstraction
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 import logging
 
-from semant_demo.schemas import TasksBase
 from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner
 from semant_demo.schema.documents import DocumentStats
-from semant_demo.schema.documents import Document, DocumentBrowse
+from semant_demo.schema.documents import Document
 from semant_demo.schema.tags import Tag
 
 # import dependencies
@@ -99,55 +94,6 @@ async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@exp_router.post("/api/user_collection/chunks", response_model=schemas.CreateResponse)
-async def add_chunk_2_collection(req: schemas.Chunk2CollectionReq,
-                                 searcher: WeaviateAbstraction = Depends(get_search),
-                                 current_user: User = Depends(current_active_user)) -> schemas.CreateResponse:
-    """
-    Connects chunk with user collection
-    """
-    try:
-
-        err = await searcher.userCollection.add_chunk(chunk_id=req.chunkId,
-                                                      collection_id=req.collectionId)
-        if err == False:
-            raise Exception(f"weaviate error, reference not created")
-        return {"created": True, "message": f"Chunk added to collection"}
-    except Exception as e:
-        logging.error(e)
-        return {"created": False, "message": f"Chunk not added to collection becacause of: {e}"}
-
-@exp_router.post("/api/user_collection/chunks/remove", response_model=schemas.CreateResponse)
-async def remove_chunk_from_collection(req: schemas.Chunk2CollectionReq,
-                                       searcher: WeaviateAbstraction = Depends(get_search),
-                                       current_user: User = Depends(current_active_user)) -> schemas.CreateResponse:
-    """
-    Removes connection between chunk and user collection.
-    """
-    try:
-        err = await searcher.userCollection.remove_chunk(chunk_id=req.chunkId, collection_id=req.collectionId)
-        if err == False:
-            raise Exception("weaviate error, reference not removed")
-        return schemas.CreateResponse(created=True, message="Chunk removed from collection")
-    except Exception as e:
-        logging.error(e)
-        return schemas.CreateResponse(created=False, message=f"Chunk not removed from collection because of: {e}")
-
-@exp_router.get("/api/user_collection/chunks", response_model=schemas.GetCollectionChunksResponse)
-async def get_collection_chunks(collection_id: str,
-                                searcher: WeaviateAbstraction = Depends(get_search),
-                                current_user: User = Depends(current_active_user)) -> schemas.GetCollectionChunksResponse:
-    """
-    Returns chunks which belong to collection given by id
-    """
-    try:
-        logging.info(f"In get collection chunks {collection_id}")
-        response = await searcher.userCollection.read_all_chunks(collection_id)
-        return response
-    except Exception as e:
-        logging.error(f"{e}")
-
-
 @exp_router.get("/api/user_collection/{collection_id}/stats", response_model=CollectionStats)
 async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> CollectionStats:
     response = await searcher.userCollection.read_collection_stats(collection_id)
@@ -211,25 +157,6 @@ async def get_collection_document_chunks(collection_id: str, document_id: str, s
     """
     response = await searcher.userCollection.read_all_chunks_by_document(document_id, collection_id)
     return response
-
-
-@exp_router.delete("/api/user_collection/chunks", response_model=schemas.CreateResponse)
-async def remove_chunk_from_collection(
-    req: schemas.Chunk2CollectionReq,
-    searcher: WeaviateAbstraction = Depends(get_search),
-    current_user: User = Depends(current_active_user),
-) -> schemas.CreateResponse:
-    """
-    Removes a chunk from a user collection.
-    """
-    try:
-        ok = await searcher.userCollection.remove_chunk(chunk_id=req.chunkId, collection_id=req.collectionId)
-        if not ok:
-            return {"created": False, "message": "Chunk not removed from collection"}
-        return {"created": True, "message": "Chunk removed from collection"}
-    except Exception as e:
-        logging.error(e)
-        return {"created": False, "message": f"Error: {e}"}
 
 
 @exp_router.get(

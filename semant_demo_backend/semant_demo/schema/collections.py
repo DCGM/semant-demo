@@ -36,3 +36,4 @@ class CollectionStats(BaseModel):
     chunks_count: int
     annotations_count: int
     tags_count: int
+
