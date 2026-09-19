@@ -49,6 +49,7 @@ import type {
   GetTagsResponse,
   HTTPValidationError,
   PatchCollection,
+  PatchCollectionOwner,
   PatchSpan,
   PatchTag,
   PostCollection,
@@ -59,6 +60,7 @@ import type {
   RagRouteConfig,
   RemoveTagReq,
   RemoveTagsResponse,
+  SearchFiltersResponse,
   SearchRequest,
   SearchResponseInput,
   SearchResponseOutput,
@@ -142,6 +144,8 @@ import {
     HTTPValidationErrorToJSON,
     PatchCollectionFromJSON,
     PatchCollectionToJSON,
+    PatchCollectionOwnerFromJSON,
+    PatchCollectionOwnerToJSON,
     PatchSpanFromJSON,
     PatchSpanToJSON,
     PatchTagFromJSON,
@@ -162,6 +166,8 @@ import {
     RemoveTagReqToJSON,
     RemoveTagsResponseFromJSON,
     RemoveTagsResponseToJSON,
+    SearchFiltersResponseFromJSON,
+    SearchFiltersResponseToJSON,
     SearchRequestFromJSON,
     SearchRequestToJSON,
     SearchResponseInputFromJSON,
@@ -428,6 +434,11 @@ export interface SummarizeApiSummarizeSummaryTypePostRequest {
 export interface UpdateCollectionApiUserCollectionsCollectionIdPatchRequest {
     collectionId: string;
     patchCollection: PatchCollection;
+}
+
+export interface UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest {
+    collectionId: string;
+    patchCollectionOwner: PatchCollectionOwner;
 }
 
 export interface UpdateTagApiTagsTagUuidPatchRequest {
@@ -1040,6 +1051,27 @@ export interface DefaultApiInterface {
      * Filter Chunks By Tags
      */
     filterChunksByTagsApiTagsFilterPost(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FilterChunksByTagsResponse>;
+
+    /**
+     * Creates request options for getAvailableSearchFiltersApiSearchFiltersGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getAvailableSearchFiltersApiSearchFiltersGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * 
+     * @summary Get Available Search Filters
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getAvailableSearchFiltersApiSearchFiltersGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchFiltersResponse>>;
+
+    /**
+     * Get Available Search Filters
+     */
+    getAvailableSearchFiltersApiSearchFiltersGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchFiltersResponse>;
 
     /**
      * Creates request options for getAvalaibleRagConfigurationsApiRagConfigurationsGet without sending the request
@@ -1910,6 +1942,32 @@ export interface DefaultApiInterface {
      * Update Collection
      */
     updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
+
+    /**
+     * Creates request options for updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch without sending the request
+     * @param {string} collectionId 
+     * @param {PatchCollectionOwner} patchCollectionOwner 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequestOpts(requestParameters: UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Reassigns ownership of a collection to a different user. Admin only.
+     * @summary Update Collection Owner
+     * @param {string} collectionId 
+     * @param {PatchCollectionOwner} patchCollectionOwner 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRaw(requestParameters: UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>>;
+
+    /**
+     * Reassigns ownership of a collection to a different user. Admin only.
+     * Update Collection Owner
+     */
+    updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch(requestParameters: UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
 
     /**
      * Creates request options for updateTagApiTagsTagUuidPatch without sending the request
@@ -3234,6 +3292,43 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async filterChunksByTagsApiTagsFilterPost(requestParameters: FilterChunksByTagsApiTagsFilterPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FilterChunksByTagsResponse> {
         const response = await this.filterChunksByTagsApiTagsFilterPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getAvailableSearchFiltersApiSearchFiltersGet without sending the request
+     */
+    async getAvailableSearchFiltersApiSearchFiltersGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/search/filters`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get Available Search Filters
+     */
+    async getAvailableSearchFiltersApiSearchFiltersGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchFiltersResponse>> {
+        const requestOptions = await this.getAvailableSearchFiltersApiSearchFiltersGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SearchFiltersResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Get Available Search Filters
+     */
+    async getAvailableSearchFiltersApiSearchFiltersGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchFiltersResponse> {
+        const response = await this.getAvailableSearchFiltersApiSearchFiltersGetRaw(initOverrides);
         return await response.value();
     }
 
@@ -5111,6 +5206,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
         const response = await this.updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch without sending the request
+     */
+    async updateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequestOpts(requestParameters: UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch().'
+            );
+        }
+
+        if (requestParameters['patchCollectionOwner'] == null) {
+            throw new runtime.RequiredError(
+                'patchCollectionOwner',
+                'Required parameter "patchCollectionOwner" was null or undefined when calling updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/collections/{collection_id}/owner`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchCollectionOwnerToJSON(requestParameters['patchCollectionOwner']),
+        };
+    }
+
+    /**
+     * Reassigns ownership of a collection to a different user. Admin only.
+     * Update Collection Owner
+     */
+    async updateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRaw(requestParameters: UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>> {
+        const requestOptions = await this.updateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionFromJSON(jsonValue));
+    }
+
+    /**
+     * Reassigns ownership of a collection to a different user. Admin only.
+     * Update Collection Owner
+     */
+    async updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch(requestParameters: UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
+        const response = await this.updateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

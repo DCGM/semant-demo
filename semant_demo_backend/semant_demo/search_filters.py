@@ -31,6 +31,7 @@ LANGUAGE_MAP = {
     "und": "Undetermined",
 }
 
+# Use only as a fallback of a default during config creation, load from config otherwise
 TASK_CLASSES = {
     "communicative_mode": [
         "narration", "description", "exposition", "argumentation",
@@ -112,14 +113,26 @@ def get_language_user_form(code: str) -> str:
     return LANGUAGE_MAP.get(code.lower(), code.capitalize())
 
 
+_MINOR_TITLE_CASE_WORDS = {
+    "a", "an", "the", "and", "or", "but", "nor", "to", "of", "in", "on", "for", "at", "by", "with"
+}
+
+
+def _title_case(words: list[str]) -> str:
+    return " ".join(
+        word.lower() if i > 0 and word.lower() in _MINOR_TITLE_CASE_WORDS else word.capitalize()
+        for i, word in enumerate(words)
+    )
+
+
 def _format_user_form(backend_val: str) -> str:
     if backend_val.startswith("ddc_"):
         parts = backend_val.split("_")
         prefix = parts[0].upper()
         code = parts[1]
-        rest = " ".join(p.capitalize() for p in parts[2:])
+        rest = _title_case(parts[2:])
         return f"{prefix} {code} {rest}".strip()
-    return " ".join(word.capitalize() for word in backend_val.split("_"))
+    return _title_case(backend_val.split("_"))
 
 
 async def fetch_db_filter_stats(config_obj=None) -> tuple[int | None, int | None, list[str] | None]:
@@ -267,6 +280,7 @@ def save_search_filters_config(config_path: Union[str, Path], response: SearchFi
 def load_search_filters_config(config_path: Union[str, Path]) -> SearchFiltersResponse:
     path = Path(config_path)
     if not path.exists():
+        logging.warning(f"Search filters config not found at {path}, generating default filters")
         defaults = generate_default_filters()
         try:
             save_search_filters_config(path, defaults)
@@ -278,6 +292,7 @@ def load_search_filters_config(config_path: Union[str, Path]) -> SearchFiltersRe
         data = yaml.safe_load(f)
 
     if not data or "filters" not in data:
+        logging.warning(f"Search filters config at {path} is empty or invalid, generating default filters")
         return generate_default_filters()
 
     return SearchFiltersResponse.model_validate(data)

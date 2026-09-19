@@ -21,6 +21,8 @@ from semant_demo.weaviate_exceptions import (
 import semant_demo.schemas as schemas
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 from semant_demo.schema.documents import DocumentBrowse, Document as DocumentSchema
+from semant_demo.config import config
+from semant_demo.chunk_metadata import load_chunk_metadata_whitelist, extract_chunk_metadata
 
 
 class Document():
@@ -76,6 +78,7 @@ class Document():
         chunks: list[schemas.DocumentDetailTextChunkWithUserCollectionInfo] = []
         page_size = 100
         offset = 0
+        metadata_whitelist = load_chunk_metadata_whitelist(config.CHUNK_METADATA_WHITELIST_CONFIG)
 
         while True:
             chunk_response = await chunks_collection.query.fetch_objects(
@@ -92,11 +95,13 @@ class Document():
                 chunk_refs = chunk_obj.references.get("userCollection") if chunk_obj.references else None
                 current_collection_ids = [str(ref.uuid) for ref in (chunk_refs.objects if chunk_refs else [])]
                 in_user_collection = str(collection_id) in current_collection_ids
+                chunk_metadata = extract_chunk_metadata(chunk_obj.properties, metadata_whitelist)
 
                 chunks.append(
                     schemas.DocumentDetailTextChunkWithUserCollectionInfo(
                         id=chunk_obj.uuid,
                         **chunk_obj.properties,
+                        metadata=chunk_metadata,
                         document=document_response.uuid,
                         in_user_collection=in_user_collection,
                     )

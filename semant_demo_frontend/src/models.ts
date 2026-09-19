@@ -116,6 +116,7 @@ export interface TextChunk {
   ner_M?: string[] | null; // Media entities
   ner_O?: string[] | null; // Cultural artifacts
 
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface TextChunkWithDocument extends TextChunk {

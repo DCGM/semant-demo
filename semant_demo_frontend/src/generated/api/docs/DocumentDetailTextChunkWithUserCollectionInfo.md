@@ -23,6 +23,7 @@ Name | Type
 `nerI` | Array&lt;string&gt;
 `nerM` | Array&lt;string&gt;
 `nerO` | Array&lt;string&gt;
+`metadata` | { [key: string]: any; }
 `inUserCollection` | boolean
 
 ## Example
@@ -49,6 +50,7 @@ const example = {
   "nerI": null,
   "nerM": null,
   "nerO": null,
+  "metadata": null,
   "inUserCollection": null,
 } satisfies DocumentDetailTextChunkWithUserCollectionInfo
 

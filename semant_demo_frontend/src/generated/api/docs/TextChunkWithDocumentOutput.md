@@ -23,6 +23,7 @@ Name | Type
 `nerI` | Array&lt;string&gt;
 `nerM` | Array&lt;string&gt;
 `nerO` | Array&lt;string&gt;
+`metadata` | { [key: string]: any; }
 `queryTitle` | string
 `querySummary` | string
 `summary` | string
@@ -52,6 +53,7 @@ const example = {
   "nerI": null,
   "nerM": null,
   "nerO": null,
+  "metadata": null,
   "queryTitle": null,
   "querySummary": null,
   "summary": null,

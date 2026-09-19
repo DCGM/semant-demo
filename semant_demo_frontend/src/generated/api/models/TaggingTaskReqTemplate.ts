@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { TaggingConfigInput } from './TaggingConfigInput';
+import type { TaggingConfig } from './TaggingConfig';
 import {
-    TaggingConfigInputFromJSON,
-    TaggingConfigInputFromJSONTyped,
-    TaggingConfigInputToJSON,
-    TaggingConfigInputToJSONTyped,
-} from './TaggingConfigInput';
+    TaggingConfigFromJSON,
+    TaggingConfigFromJSONTyped,
+    TaggingConfigToJSON,
+    TaggingConfigToJSONTyped,
+} from './TaggingConfig';
 
 /**
  * 
@@ -71,10 +71,10 @@ export interface TaggingTaskReqTemplate {
     collectionName: string;
     /**
      * 
-     * @type {TaggingConfigInput}
+     * @type {TaggingConfig}
      * @memberof TaggingTaskReqTemplate
      */
-    taskConfig: TaggingConfigInput;
+    taskConfig: TaggingConfig;
 }
 
 /**
@@ -109,7 +109,7 @@ export function TaggingTaskReqTemplateFromJSONTyped(json: any, ignoreDiscriminat
         'tagDefinition': json['tag_definition'],
         'tagExamples': json['tag_examples'],
         'collectionName': json['collection_name'],
-        'taskConfig': TaggingConfigInputFromJSON(json['task_config']),
+        'taskConfig': TaggingConfigFromJSON(json['task_config']),
     };
 }
 
@@ -131,7 +131,7 @@ export function TaggingTaskReqTemplateToJSONTyped(value?: TaggingTaskReqTemplate
         'tag_definition': value['tagDefinition'],
         'tag_examples': value['tagExamples'],
         'collection_name': value['collectionName'],
-        'task_config': TaggingConfigInputToJSON(value['taskConfig']),
+        'task_config': TaggingConfigToJSON(value['taskConfig']),
     };
 }
 

@@ -1,22 +1,22 @@
 
-# GetConfigsResponse
+# SearchFiltersResponse
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`configs` | [Array&lt;TaggingConfig&gt;](TaggingConfig.md)
+`filters` | [Array&lt;SearchFilter&gt;](SearchFilter.md)
 
 ## Example
 
 ```typescript
-import type { GetConfigsResponse } from ''
+import type { SearchFiltersResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "configs": null,
-} satisfies GetConfigsResponse
+  "filters": null,
+} satisfies SearchFiltersResponse
 
 console.log(example)
 
@@ -25,7 +25,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as GetConfigsResponse
+const exampleParsed = JSON.parse(exampleJSON) as SearchFiltersResponse
 console.log(exampleParsed)
 ```
 

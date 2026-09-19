@@ -1,22 +1,28 @@
 
-# GetConfigsResponse
+# SearchFilterInput
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`configs` | [Array&lt;TaggingConfig&gt;](TaggingConfig.md)
+`id` | string
+`values` | [Values](Values.md)
+`minValue` | [MinValue1](MinValue1.md)
+`maxValue` | [MaxValue1](MaxValue1.md)
 
 ## Example
 
 ```typescript
-import type { GetConfigsResponse } from ''
+import type { SearchFilterInput } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "configs": null,
-} satisfies GetConfigsResponse
+  "id": null,
+  "values": null,
+  "minValue": null,
+  "maxValue": null,
+} satisfies SearchFilterInput
 
 console.log(example)
 
@@ -25,7 +31,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as GetConfigsResponse
+const exampleParsed = JSON.parse(exampleJSON) as SearchFilterInput
 console.log(exampleParsed)
 ```
 

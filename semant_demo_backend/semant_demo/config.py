@@ -36,6 +36,7 @@ class Config:
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:12b")
         self.SEARCH_SUMMARIZER_CONFIG = os.getenv("SEARCH_SUMMARIZER_CONFIG", str(SCRIPT_PATH / "configs" / "search_summarizer.yaml"))
         self.SEARCH_FILTERS_CONFIG = os.getenv("SEARCH_FILTERS_CONFIG", str(SCRIPT_PATH / "configs" / "search_filters.yaml"))
+        self.CHUNK_METADATA_WHITELIST_CONFIG = os.getenv("CHUNK_METADATA_WHITELIST_CONFIG", str(SCRIPT_PATH / "configs" / "chunk_metadata_whitelist.yaml"))
 
         self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-2.5-pro")
         self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")

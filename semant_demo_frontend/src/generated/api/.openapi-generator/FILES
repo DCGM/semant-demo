@@ -40,6 +40,7 @@ docs/ExplainRequest.md
 docs/FeedbackRequest.md
 docs/FilterChunksByTagsRequest.md
 docs/FilterChunksByTagsResponse.md
+docs/FilterType.md
 docs/FilteredChunksByTags.md
 docs/GetCollectionChunksResponse.md
 docs/GetConfigsResponse.md
@@ -49,8 +50,14 @@ docs/GetTagsResponse.md
 docs/HTTPValidationError.md
 docs/Keywords.md
 docs/LocationInner.md
+docs/MaxValue.md
+docs/MaxValue1.md
+docs/MinValue.md
+docs/MinValue1.md
+docs/NominalFilterValue.md
 docs/Partnumber.md
 docs/PatchCollection.md
+docs/PatchCollectionOwner.md
 docs/PatchSpan.md
 docs/PatchTag.md
 docs/PostCollection.md
@@ -64,6 +71,9 @@ docs/RagRouteConfig.md
 docs/RagSearch.md
 docs/RemoveTagReq.md
 docs/RemoveTagsResponse.md
+docs/SearchFilter.md
+docs/SearchFilterInput.md
+docs/SearchFiltersResponse.md
 docs/SearchRequest.md
 docs/SearchResponseInput.md
 docs/SearchResponseOutput.md
@@ -82,8 +92,7 @@ docs/TagSpanBatchRequest.md
 docs/TagStartResponse.md
 docs/TagType.md
 docs/TaggedChunks.md
-docs/TaggingConfigInput.md
-docs/TaggingConfigOutput.md
+docs/TaggingConfig.md
 docs/TaggingConfigParams.md
 docs/TaggingTaskReqTemplate.md
 docs/TextChunk.md
@@ -96,6 +105,8 @@ docs/UserSearchResult.md
 docs/UserUpdate.md
 docs/UsersApi.md
 docs/ValidationError.md
+docs/Values.md
+docs/ValuesAnyOfInner.md
 index.ts
 models/APIType.ts
 models/AppFeedbackRequest.ts
@@ -133,6 +144,7 @@ models/ExplainRequest.ts
 models/FeedbackRequest.ts
 models/FilterChunksByTagsRequest.ts
 models/FilterChunksByTagsResponse.ts
+models/FilterType.ts
 models/FilteredChunksByTags.ts
 models/GetCollectionChunksResponse.ts
 models/GetConfigsResponse.ts
@@ -142,8 +154,14 @@ models/GetTagsResponse.ts
 models/HTTPValidationError.ts
 models/Keywords.ts
 models/LocationInner.ts
+models/MaxValue.ts
+models/MaxValue1.ts
+models/MinValue.ts
+models/MinValue1.ts
+models/NominalFilterValue.ts
 models/Partnumber.ts
 models/PatchCollection.ts
+models/PatchCollectionOwner.ts
 models/PatchSpan.ts
 models/PatchTag.ts
 models/PostCollection.ts
@@ -157,6 +175,9 @@ models/RagRouteConfig.ts
 models/RagSearch.ts
 models/RemoveTagReq.ts
 models/RemoveTagsResponse.ts
+models/SearchFilter.ts
+models/SearchFilterInput.ts
+models/SearchFiltersResponse.ts
 models/SearchRequest.ts
 models/SearchResponseInput.ts
 models/SearchResponseOutput.ts
@@ -175,8 +196,7 @@ models/TagSpanBatchRequest.ts
 models/TagStartResponse.ts
 models/TagType.ts
 models/TaggedChunks.ts
-models/TaggingConfigInput.ts
-models/TaggingConfigOutput.ts
+models/TaggingConfig.ts
 models/TaggingConfigParams.ts
 models/TaggingTaskReqTemplate.ts
 models/TextChunk.ts
@@ -188,5 +208,7 @@ models/UserRead.ts
 models/UserSearchResult.ts
 models/UserUpdate.ts
 models/ValidationError.ts
+models/Values.ts
+models/ValuesAnyOfInner.ts
 models/index.ts
 runtime.ts
