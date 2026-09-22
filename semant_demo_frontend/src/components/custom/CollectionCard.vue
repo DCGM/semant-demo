@@ -34,8 +34,8 @@
         </q-card-section>
         <q-separator vertical />
         <q-card-actions vertical class="justify-around no-wrap">
-          <q-btn round flat icon="input" color="primary" @click.stop="handleEnterProject(props.collection.id)">
-            <q-tooltip> Enter project </q-tooltip>
+          <q-btn round flat icon="share" color="primary" @click.stop="handleShareProject">
+            <q-tooltip> Share project </q-tooltip>
           </q-btn>
           <q-btn
             round
@@ -66,7 +66,7 @@ interface Props {
   collection: Collection
 }
 
-const emit = defineEmits(['edit', 'delete', 'enter'])
+const emit = defineEmits(['edit', 'delete', 'enter', 'share'])
 
 const props = defineProps<Props>()
 
@@ -104,6 +104,10 @@ const handleDeleteProject = () => {
 const handleEnterProject = (collectionId: string) => {
   emit('enter', collectionId)
   console.log('Entering collection with id: ', collectionId)
+}
+
+const handleShareProject = () => {
+  emit('share', props.collection)
 }
 
 </script>
