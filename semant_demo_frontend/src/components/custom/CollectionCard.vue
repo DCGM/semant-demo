@@ -35,7 +35,7 @@
         <q-separator vertical />
         <q-card-actions vertical class="justify-around no-wrap">
           <q-btn round flat icon="share" color="primary" @click.stop="handleShareProject">
-            <q-tooltip> Share project </q-tooltip>
+            <q-tooltip> Share collection </q-tooltip>
           </q-btn>
           <q-btn
             round
