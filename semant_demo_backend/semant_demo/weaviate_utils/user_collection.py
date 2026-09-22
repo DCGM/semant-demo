@@ -712,8 +712,49 @@ class UserCollection():
             logging.error(f"Failed to remove chunk from collection: {e}")
             return False
 
-    def share():
-        pass
+    async def share(self, collection_id: str, user_id: UUID, current_user: User, session: AsyncSession) -> Collection:
+        """
+        Shares a collection with another user by adding them to its shared_with list.
+        Only the collection's owner may share it. No-op if already shared with that user.
+        """
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+        collection_obj = await usercollection_collection.query.fetch_object_by_id(collection_id)
+        if collection_obj is None:
+            raise WeaviateOperationError(
+                f"Collection with id {collection_id} not found")
+
+        props = collection_obj.properties
+        if str(props.get("user_id")) != str(current_user.id):
+            raise PermissionError("Only the collection owner can share it")
+
+        if user_id == current_user.id:
+            raise WeaviateDataValidationError(
+                "Cannot share a collection with its owner")
+
+        result = await session.execute(select(User).where(User.id == user_id))
+        target_user = result.scalar_one_or_none()
+        if target_user is None:
+            raise WeaviateOperationError(f"User with id {user_id} not found")
+
+        current_shared_with = {UUID(str(uid)) for uid in (props.get("shared_with") or [])}
+        current_shared_with.add(user_id)
+
+        now = datetime.now(timezone.utc)
+        await usercollection_collection.data.update(
+            uuid=collection_id,
+            properties={
+                "shared_with": list(current_shared_with),
+                "updated_at": now,
+            }
+        )
+
+        updated_collection = await self.read(collection_id)
+        if updated_collection is None:
+            raise WeaviateOperationError(
+                "Weaviate error: collection not found after update")
+
+        return updated_collection
 
     def unshare():
         pass
