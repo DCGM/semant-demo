@@ -56,6 +56,7 @@
         @enter="handleEnter"
         @edit="handleEdit"
         @delete="handleDelete"
+        @share="handleShare"
       />
     </div>
     <CollectionsTable
@@ -147,6 +148,10 @@ const handleCreate = () => {
 
 const handleEnter = async (collectionId: string) => {
   await $router.push({ name: 'collectionDetail', params: { collectionId } })
+}
+
+const handleShare = async (collection: Collection) => {
+  await $router.push({ name: 'collectionMembers', params: { collectionId: collection.id } })
 }
 
 const handleEdit = (collection: Collection) => {
