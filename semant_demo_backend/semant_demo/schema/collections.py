@@ -30,6 +30,10 @@ class PatchCollectionOwner(BaseModel):
     user_id: UUID
 
 
+class ShareCollectionRequest(BaseModel):
+    user_id: UUID
+
+
 class CollectionStats(BaseModel):
     collection_id: UUID
     documents_count: int

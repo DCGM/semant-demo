@@ -7,7 +7,7 @@ from semant_demo import schemas
 from semant_demo.users.auth import current_active_user, current_active_optional_user, current_active_admin
 from semant_demo.users.models import User
 
-from semant_demo.weaviate_exceptions import WeaviateOperationError
+from semant_demo.weaviate_exceptions import WeaviateOperationError, WeaviateDataValidationError
 
 from semant_demo import schemas
 import logging
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import logging
 
-from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner
+from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest
 from semant_demo.schema.documents import DocumentStats
 from semant_demo.schema.documents import Document
 from semant_demo.schema.tags import Tag
