@@ -4,14 +4,9 @@ All URIs are relative to *http://localhost*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**addChunk2CollectionApiUserCollectionChunksPost**](DefaultApi.md#addchunk2collectionapiusercollectionchunkspost) | **POST** /api/user_collection/chunks | Add Chunk 2 Collection |
 | [**addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapicollectionscollectioniddocumentsdocumentidpost) | **POST** /api/collections/{collection_id}/documents/{document_id} | Add Document To Collection |
-| [**approveSelectedTagChunkApiTagApprovePut**](DefaultApi.md#approveselectedtagchunkapitagapproveput) | **PUT** /api/tag/approve | Approve Selected Tag Chunk |
-| [**approveSelectedTagChunkApiTagDisapprovePut**](DefaultApi.md#approveselectedtagchunkapitagdisapproveput) | **PUT** /api/tag/disapprove | Approve Selected Tag Chunk |
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
-| [**cancelTaskApiTagTaskTaskIdDelete**](DefaultApi.md#canceltaskapitagtasktaskiddelete) | **DELETE** /api/tag/task/{taskId} | Cancel Task |
-| [**checkStatusApiTagTaskStatusTaskIdGet**](DefaultApi.md#checkstatusapitagtaskstatustaskidget) | **GET** /api/tag/task/status/{taskId} | Check Status |
 | [**countDocumentChunksApiDocumentsDocumentIdChunksCountGet**](DefaultApi.md#countdocumentchunksapidocumentsdocumentidchunkscountget) | **GET** /api/documents/{document_id}/chunks/count | Count Document Chunks |
 | [**createTagApiTagsPost**](DefaultApi.md#createtagapitagspost) | **POST** /api/tags | Create Tag |
 | [**createTagSpanApiTagSpansPost**](DefaultApi.md#createtagspanapitagspanspost) | **POST** /api/tag_spans | Create Tag Span |
@@ -27,118 +22,38 @@ All URIs are relative to *http://localhost*
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
 | [**fetchDocumentApiDocumentDocumentIdGet**](DefaultApi.md#fetchdocumentapidocumentdocumentidget) | **GET** /api/document/{document_id} | Fetch Document |
 | [**fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet**](DefaultApi.md#fetchdocumentchunksapidocumentsdocumentidcollectionidchunksget) | **GET** /api/documents/{document_id}/{collection_id}/chunks | Fetch Document Chunks |
-| [**filterChunksByTagsApiTagsFilterPost**](DefaultApi.md#filterchunksbytagsapitagsfilterpost) | **POST** /api/tags/filter | Filter Chunks By Tags |
+| [**getAvailableSearchFiltersApiSearchFiltersGet**](DefaultApi.md#getavailablesearchfiltersapisearchfiltersget) | **GET** /api/search/filters | Get Available Search Filters |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
 | [**getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet**](DefaultApi.md#getchunksinrangeapicollectionscollectioniddocumentsdocumentidchunksget) | **GET** /api/collections/{collection_id}/documents/{document_id}/chunks | Get Chunks In Range |
-| [**getCollectionChunksApiUserCollectionChunksGet**](DefaultApi.md#getcollectionchunksapiusercollectionchunksget) | **GET** /api/user_collection/chunks | Get Collection Chunks |
 | [**getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet**](DefaultApi.md#getcollectiondocumentchunksapicollectionscollectioniddocumentsdocumentidget) | **GET** /api/collections/{collection_id}/documents/{document_id} | Get Collection Document Chunks |
 | [**getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet**](DefaultApi.md#getcollectiondocumentsapiusercollectioncollectioniddocumentsget) | **GET** /api/user_collection/{collection_id}/documents | Get Collection Documents |
+| [**getCollectionMembersApiCollectionsCollectionIdMembersGet**](DefaultApi.md#getcollectionmembersapicollectionscollectionidmembersget) | **GET** /api/collections/{collection_id}/members | Get Collection Members |
 | [**getCollectionStatsApiUserCollectionCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiusercollectioncollectionidstatsget) | **GET** /api/user_collection/{collection_id}/stats | Get Collection Stats |
 | [**getCollectionTagsApiCollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapicollectionscollectionidtagsget) | **GET** /api/collections/{collection_id}/tags | Get Collection Tags |
-| [**getConfigsApiTagConfigsGet**](DefaultApi.md#getconfigsapitagconfigsget) | **GET** /api/tag/configs | Get Configs |
 | [**getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet**](DefaultApi.md#getdocumentstatsapicollectionscollectioniddocumentsdocumentidstatsget) | **GET** /api/collections/{collection_id}/documents/{document_id}/stats | Get Document Stats |
 | [**getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet**](DefaultApi.md#getneighbourchunkapicollectionscollectioniddocumentsdocumentidneighbourget) | **GET** /api/collections/{collection_id}/documents/{document_id}/neighbour | Get Neighbour Chunk |
-| [**getSelectedTagsChunksApiTagTextChunksPost**](DefaultApi.md#getselectedtagschunksapitagtextchunkspost) | **POST** /api/tag/textChunks | Get Selected Tags Chunks |
 | [**getTagApiTagsTagUuidGet**](DefaultApi.md#gettagapitagstaguuidget) | **GET** /api/tags/{tag_uuid} | Get Tag |
-| [**getTagTasksApiTagTasksInfoGet**](DefaultApi.md#gettagtasksapitagtasksinfoget) | **GET** /api/tag/tasks/info | Get Tag Tasks |
-| [**getTagsApiTagsGet**](DefaultApi.md#gettagsapitagsget) | **GET** /api/tags | Get Tags |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
-| [**proposeBestTagApiProposeBestTagPost**](DefaultApi.md#proposebesttagapiproposebesttagpost) | **POST** /api/propose_best_tag | Propose Best Tag |
-| [**proposeTagsApiProposeTagsPost**](DefaultApi.md#proposetagsapiproposetagspost) | **POST** /api/propose_tags | Propose Tags |
-| [**proposeTagsMockApiProposeTagsMockPost**](DefaultApi.md#proposetagsmockapiproposetagsmockpost) | **POST** /api/propose_tags_mock | Propose Tags Mock |
 | [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
-| [**removeAutomaticTagsApiTagsAutomaticDelete**](DefaultApi.md#removeautomatictagsapitagsautomaticdelete) | **DELETE** /api/tags/automatic | Remove Automatic Tags |
-| [**removeChunkFromCollectionApiUserCollectionChunksDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectionchunksdelete) | **DELETE** /api/user_collection/chunks | Remove Chunk From Collection |
-| [**removeChunkFromCollectionApiUserCollectionChunksRemovePost**](DefaultApi.md#removechunkfromcollectionapiusercollectionchunksremovepost) | **POST** /api/user_collection/chunks/remove | Remove Chunk From Collection |
 | [**removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapicollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
 | [**searchUsersApiUsersSearchGet**](DefaultApi.md#searchusersapiuserssearchget) | **GET** /api/users/search | Search Users |
-| [**startTaggingApiTagTaskPost**](DefaultApi.md#starttaggingapitagtaskpost) | **POST** /api/tag/task | Start Tagging |
+| [**shareCollectionApiCollectionsCollectionIdSharePost**](DefaultApi.md#sharecollectionapicollectionscollectionidsharepost) | **POST** /api/collections/{collection_id}/share | Share Collection |
 | [**suggestSpansOptimizedApiAiSuggestSpansOptimizedPost**](DefaultApi.md#suggestspansoptimizedapiaisuggestspansoptimizedpost) | **POST** /api/ai/suggest_spans/optimized | Suggest Spans Optimized |
 | [**suggestSpansSelectionApiAiSuggestSpansSelectionPost**](DefaultApi.md#suggestspansselectionapiaisuggestspansselectionpost) | **POST** /api/ai/suggest_spans/selection | Suggest Spans Selection |
 | [**suggestSpansThoroughApiAiSuggestSpansThoroughPost**](DefaultApi.md#suggestspansthoroughapiaisuggestspansthoroughpost) | **POST** /api/ai/suggest_spans/thorough | Suggest Spans Thorough |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
+| [**unshareCollectionApiCollectionsCollectionIdShareUserIdDelete**](DefaultApi.md#unsharecollectionapicollectionscollectionidshareuseriddelete) | **DELETE** /api/collections/{collection_id}/share/{user_id} | Unshare Collection |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
+| [**updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch**](DefaultApi.md#updatecollectionownerapicollectionscollectionidownerpatch) | **PATCH** /api/collections/{collection_id}/owner | Update Collection Owner |
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
 | [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
 
-
-
-## addChunk2CollectionApiUserCollectionChunksPost
-
-> CreateResponse addChunk2CollectionApiUserCollectionChunksPost(chunk2CollectionReq)
-
-Add Chunk 2 Collection
-
-Connects chunk with user collection
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { AddChunk2CollectionApiUserCollectionChunksPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // Chunk2CollectionReq
-    chunk2CollectionReq: ...,
-  } satisfies AddChunk2CollectionApiUserCollectionChunksPostRequest;
-
-  try {
-    const data = await api.addChunk2CollectionApiUserCollectionChunksPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **chunk2CollectionReq** | [Chunk2CollectionReq](Chunk2CollectionReq.md) |  | |
-
-### Return type
-
-[**CreateResponse**](CreateResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost
@@ -200,150 +115,6 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## approveSelectedTagChunkApiTagApprovePut
-
-> ApproveTagResponse approveSelectedTagChunkApiTagApprovePut(approveTagReq)
-
-Approve Selected Tag Chunk
-
-User approve a tag, changes the reference of the tag
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { ApproveSelectedTagChunkApiTagApprovePutRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // ApproveTagReq
-    approveTagReq: ...,
-  } satisfies ApproveSelectedTagChunkApiTagApprovePutRequest;
-
-  try {
-    const data = await api.approveSelectedTagChunkApiTagApprovePut(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **approveTagReq** | [ApproveTagReq](ApproveTagReq.md) |  | |
-
-### Return type
-
-[**ApproveTagResponse**](ApproveTagResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## approveSelectedTagChunkApiTagDisapprovePut
-
-> ApproveTagResponse approveSelectedTagChunkApiTagDisapprovePut(approveTagReq)
-
-Approve Selected Tag Chunk
-
-User disapprove a tag, changes the reference of the tag
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { ApproveSelectedTagChunkApiTagDisapprovePutRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // ApproveTagReq
-    approveTagReq: ...,
-  } satisfies ApproveSelectedTagChunkApiTagDisapprovePutRequest;
-
-  try {
-    const data = await api.approveSelectedTagChunkApiTagDisapprovePut(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **approveTagReq** | [ApproveTagReq](ApproveTagReq.md) |  | |
-
-### Return type
-
-[**ApproveTagResponse**](ApproveTagResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 
@@ -504,150 +275,6 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## cancelTaskApiTagTaskTaskIdDelete
-
-> CancelTaskResponse cancelTaskApiTagTaskTaskIdDelete(taskId)
-
-Cancel Task
-
-Cancel running task
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { CancelTaskApiTagTaskTaskIdDeleteRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // string
-    taskId: taskId_example,
-  } satisfies CancelTaskApiTagTaskTaskIdDeleteRequest;
-
-  try {
-    const data = await api.cancelTaskApiTagTaskTaskIdDelete(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **taskId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**CancelTaskResponse**](CancelTaskResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## checkStatusApiTagTaskStatusTaskIdGet
-
-> any checkStatusApiTagTaskStatusTaskIdGet(taskId)
-
-Check Status
-
-Polling to check task status
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { CheckStatusApiTagTaskStatusTaskIdGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // string
-    taskId: taskId_example,
-  } satisfies CheckStatusApiTagTaskStatusTaskIdGetRequest;
-
-  try {
-    const data = await api.checkStatusApiTagTaskStatusTaskIdGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **taskId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-**any**
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 
@@ -1697,13 +1324,11 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## filterChunksByTagsApiTagsFilterPost
+## getAvailableSearchFiltersApiSearchFiltersGet
 
-> FilterChunksByTagsResponse filterChunksByTagsApiTagsFilterPost(filterChunksByTagsRequest)
+> SearchFiltersResponse getAvailableSearchFiltersApiSearchFiltersGet()
 
-Filter Chunks By Tags
-
-Filter chunks by given tags and positive or/and automatic flags
+Get Available Search Filters
 
 ### Example
 
@@ -1712,23 +1337,14 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { FilterChunksByTagsApiTagsFilterPostRequest } from '';
+import type { GetAvailableSearchFiltersApiSearchFiltersGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // FilterChunksByTagsRequest
-    filterChunksByTagsRequest: ...,
-  } satisfies FilterChunksByTagsApiTagsFilterPostRequest;
+  const api = new DefaultApi();
 
   try {
-    const data = await api.filterChunksByTagsApiTagsFilterPost(body);
+    const data = await api.getAvailableSearchFiltersApiSearchFiltersGet();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1741,22 +1357,19 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **filterChunksByTagsRequest** | [FilterChunksByTagsRequest](FilterChunksByTagsRequest.md) |  | |
+This endpoint does not need any parameter.
 
 ### Return type
 
-[**FilterChunksByTagsResponse**](FilterChunksByTagsResponse.md)
+[**SearchFiltersResponse**](SearchFiltersResponse.md)
 
 ### Authorization
 
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+No authorization required
 
 ### HTTP request headers
 
-- **Content-Type**: `application/json`
+- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 
@@ -1764,7 +1377,6 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -1891,78 +1503,6 @@ example().catch(console.error);
 ### Authorization
 
 No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getCollectionChunksApiUserCollectionChunksGet
-
-> GetCollectionChunksResponse getCollectionChunksApiUserCollectionChunksGet(collectionId)
-
-Get Collection Chunks
-
-Returns chunks which belong to collection given by id
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetCollectionChunksApiUserCollectionChunksGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // string
-    collectionId: collectionId_example,
-  } satisfies GetCollectionChunksApiUserCollectionChunksGetRequest;
-
-  try {
-    const data = await api.getCollectionChunksApiUserCollectionChunksGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**GetCollectionChunksResponse**](GetCollectionChunksResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2118,6 +1658,78 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## getCollectionMembersApiCollectionsCollectionIdMembersGet
+
+> Array&lt;UserSearchResult&gt; getCollectionMembersApiCollectionsCollectionIdMembersGet(collectionId)
+
+Get Collection Members
+
+Returns the users a collection is currently shared with.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+  } satisfies GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest;
+
+  try {
+    const data = await api.getCollectionMembersApiCollectionsCollectionIdMembersGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;UserSearchResult&gt;**](UserSearchResult.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## getCollectionStatsApiUserCollectionCollectionIdStatsGet
 
 > CollectionStats getCollectionStatsApiUserCollectionCollectionIdStatsGet(collectionId)
@@ -2248,69 +1860,6 @@ No authorization required
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getConfigsApiTagConfigsGet
-
-> GetConfigsResponse getConfigsApiTagConfigsGet()
-
-Get Configs
-
-Load all config files
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetConfigsApiTagConfigsGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  try {
-    const data = await api.getConfigsApiTagConfigsGet();
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-This endpoint does not need any parameter.
-
-### Return type
-
-[**GetConfigsResponse**](GetConfigsResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -2463,78 +2012,6 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getSelectedTagsChunksApiTagTextChunksPost
-
-> GetTaggedChunksResponse getSelectedTagsChunksApiTagTextChunksPost(getTaggedChunksReq)
-
-Get Selected Tags Chunks
-
-Returns chunks which are tagged by certain type of tag (automatic, positive, negative)
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetSelectedTagsChunksApiTagTextChunksPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // GetTaggedChunksReq
-    getTaggedChunksReq: ...,
-  } satisfies GetSelectedTagsChunksApiTagTextChunksPostRequest;
-
-  try {
-    const data = await api.getSelectedTagsChunksApiTagTextChunksPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **getTaggedChunksReq** | [GetTaggedChunksReq](GetTaggedChunksReq.md) |  | |
-
-### Return type
-
-[**GetTaggedChunksResponse**](GetTaggedChunksResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
 ## getTagApiTagsTagUuidGet
 
 > Tag getTagApiTagsTagUuidGet(tagUuid)
@@ -2603,128 +2080,6 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getTagTasksApiTagTasksInfoGet
-
-> any getTagTasksApiTagTasksInfoGet()
-
-Get Tag Tasks
-
-Get task info to see history of tasks
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetTagTasksApiTagTasksInfoGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  try {
-    const data = await api.getTagTasksApiTagTasksInfoGet();
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-This endpoint does not need any parameter.
-
-### Return type
-
-**any**
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getTagsApiTagsGet
-
-> GetTagsResponse getTagsApiTagsGet()
-
-Get Tags
-
-Retrieve all tags
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { GetTagsApiTagsGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  try {
-    const data = await api.getTagsApiTagsGet();
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-This endpoint does not need any parameter.
-
-### Return type
-
-[**GetTagsResponse**](GetTagsResponse.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
 ## healthHealthGet
 
 > any healthHealthGet()
@@ -2778,210 +2133,6 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## proposeBestTagApiProposeBestTagPost
-
-> BestTagProposalResponse proposeBestTagApiProposeBestTagPost(bestTagProposalRequest)
-
-Propose Best Tag
-
-Call Topicer BERT zero-shot tag proposal and return the single most confident tag.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { ProposeBestTagApiProposeBestTagPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // BestTagProposalRequest
-    bestTagProposalRequest: ...,
-  } satisfies ProposeBestTagApiProposeBestTagPostRequest;
-
-  try {
-    const data = await api.proposeBestTagApiProposeBestTagPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **bestTagProposalRequest** | [BestTagProposalRequest](BestTagProposalRequest.md) |  | |
-
-### Return type
-
-[**BestTagProposalResponse**](BestTagProposalResponse.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## proposeTagsApiProposeTagsPost
-
-> AutoAnnotationsSuggestionsResponse proposeTagsApiProposeTagsPost(autoAnnotationSuggestionRequest)
-
-Propose Tags
-
-Call Topicer tag proposal on provided chunks and tags.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { ProposeTagsApiProposeTagsPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // AutoAnnotationSuggestionRequest
-    autoAnnotationSuggestionRequest: ...,
-  } satisfies ProposeTagsApiProposeTagsPostRequest;
-
-  try {
-    const data = await api.proposeTagsApiProposeTagsPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **autoAnnotationSuggestionRequest** | [AutoAnnotationSuggestionRequest](AutoAnnotationSuggestionRequest.md) |  | |
-
-### Return type
-
-[**AutoAnnotationsSuggestionsResponse**](AutoAnnotationsSuggestionsResponse.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## proposeTagsMockApiProposeTagsMockPost
-
-> AutoAnnotationsSuggestionsResponse proposeTagsMockApiProposeTagsMockPost(autoAnnotationSuggestionRequest)
-
-Propose Tags Mock
-
-Mock of Topicer propose_tags that returns random auto suggestions.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { ProposeTagsMockApiProposeTagsMockPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
-
-  const body = {
-    // AutoAnnotationSuggestionRequest
-    autoAnnotationSuggestionRequest: ...,
-  } satisfies ProposeTagsMockApiProposeTagsMockPostRequest;
-
-  try {
-    const data = await api.proposeTagsMockApiProposeTagsMockPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **autoAnnotationSuggestionRequest** | [AutoAnnotationSuggestionRequest](AutoAnnotationSuggestionRequest.md) |  | |
-
-### Return type
-
-[**AutoAnnotationsSuggestionsResponse**](AutoAnnotationsSuggestionsResponse.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -3252,222 +2403,6 @@ example().catch(console.error);
 ### Authorization
 
 No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## removeAutomaticTagsApiTagsAutomaticDelete
-
-> RemoveTagsResponse removeAutomaticTagsApiTagsAutomaticDelete(removeTagReq)
-
-Remove Automatic Tags
-
-Removes automatic tags
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { RemoveAutomaticTagsApiTagsAutomaticDeleteRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // RemoveTagReq
-    removeTagReq: ...,
-  } satisfies RemoveAutomaticTagsApiTagsAutomaticDeleteRequest;
-
-  try {
-    const data = await api.removeAutomaticTagsApiTagsAutomaticDelete(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **removeTagReq** | [RemoveTagReq](RemoveTagReq.md) |  | |
-
-### Return type
-
-[**RemoveTagsResponse**](RemoveTagsResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## removeChunkFromCollectionApiUserCollectionChunksDelete
-
-> CreateResponse removeChunkFromCollectionApiUserCollectionChunksDelete(chunk2CollectionReq)
-
-Remove Chunk From Collection
-
-Removes a chunk from a user collection.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // Chunk2CollectionReq
-    chunk2CollectionReq: ...,
-  } satisfies RemoveChunkFromCollectionApiUserCollectionChunksDeleteRequest;
-
-  try {
-    const data = await api.removeChunkFromCollectionApiUserCollectionChunksDelete(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **chunk2CollectionReq** | [Chunk2CollectionReq](Chunk2CollectionReq.md) |  | |
-
-### Return type
-
-[**CreateResponse**](CreateResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## removeChunkFromCollectionApiUserCollectionChunksRemovePost
-
-> CreateResponse removeChunkFromCollectionApiUserCollectionChunksRemovePost(chunk2CollectionReq)
-
-Remove Chunk From Collection
-
-Removes connection between chunk and user collection.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // Chunk2CollectionReq
-    chunk2CollectionReq: ...,
-  } satisfies RemoveChunkFromCollectionApiUserCollectionChunksRemovePostRequest;
-
-  try {
-    const data = await api.removeChunkFromCollectionApiUserCollectionChunksRemovePost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **chunk2CollectionReq** | [Chunk2CollectionReq](Chunk2CollectionReq.md) |  | |
-
-### Return type
-
-[**CreateResponse**](CreateResponse.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -3831,13 +2766,13 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## startTaggingApiTagTaskPost
+## shareCollectionApiCollectionsCollectionIdSharePost
 
-> TagStartResponse startTaggingApiTagTaskPost(taggingTaskReqTemplate)
+> Collection shareCollectionApiCollectionsCollectionIdSharePost(collectionId, shareCollectionRequest)
 
-Start Tagging
+Share Collection
 
-Starts tagging task in form of asyncio.create_task
+Shares a collection with another user. Only the collection\&#39;s owner may share it.
 
 ### Example
 
@@ -3846,7 +2781,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { StartTaggingApiTagTaskPostRequest } from '';
+import type { ShareCollectionApiCollectionsCollectionIdSharePostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -3857,12 +2792,14 @@ async function example() {
   const api = new DefaultApi(config);
 
   const body = {
-    // TaggingTaskReqTemplate
-    taggingTaskReqTemplate: ...,
-  } satisfies StartTaggingApiTagTaskPostRequest;
+    // string
+    collectionId: collectionId_example,
+    // ShareCollectionRequest
+    shareCollectionRequest: ...,
+  } satisfies ShareCollectionApiCollectionsCollectionIdSharePostRequest;
 
   try {
-    const data = await api.startTaggingApiTagTaskPost(body);
+    const data = await api.shareCollectionApiCollectionsCollectionIdSharePost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -3878,11 +2815,12 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **taggingTaskReqTemplate** | [TaggingTaskReqTemplate](TaggingTaskReqTemplate.md) |  | |
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **shareCollectionRequest** | [ShareCollectionRequest](ShareCollectionRequest.md) |  | |
 
 ### Return type
 
-[**TagStartResponse**](TagStartResponse.md)
+[**Collection**](Collection.md)
 
 ### Authorization
 
@@ -4192,6 +3130,81 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## unshareCollectionApiCollectionsCollectionIdShareUserIdDelete
+
+> Collection unshareCollectionApiCollectionsCollectionIdShareUserIdDelete(collectionId, userId)
+
+Unshare Collection
+
+Revokes a collection share. Only the collection\&#39;s owner may unshare it.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UnshareCollectionApiCollectionsCollectionIdShareUserIdDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    userId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies UnshareCollectionApiCollectionsCollectionIdShareUserIdDeleteRequest;
+
+  try {
+    const data = await api.unshareCollectionApiCollectionsCollectionIdShareUserIdDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **userId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Collection**](Collection.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## updateCollectionApiUserCollectionsCollectionIdPatch
 
 > Collection updateCollectionApiUserCollectionsCollectionIdPatch(collectionId, patchCollection)
@@ -4247,6 +3260,81 @@ example().catch(console.error);
 ### Authorization
 
 No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch
+
+> Collection updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch(collectionId, patchCollectionOwner)
+
+Update Collection Owner
+
+Reassigns ownership of a collection to a different user. Admin only.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // PatchCollectionOwner
+    patchCollectionOwner: ...,
+  } satisfies UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest;
+
+  try {
+    const data = await api.updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **patchCollectionOwner** | [PatchCollectionOwner](PatchCollectionOwner.md) |  | |
+
+### Return type
+
+[**Collection**](Collection.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 

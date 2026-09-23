@@ -1,5 +1,6 @@
 import { useApi } from 'src/composables/useApi'
 import { Collection, Collections, PostCollection, PatchCollection, CollectionStats } from 'src/models/collections'
+import { UserSearchResult } from 'src/generated/api'
 
 export function useCollectionRepository() {
   const api = useApi().default
@@ -32,6 +33,21 @@ export function useCollectionRepository() {
 
     remove: async (collectionId: string): Promise<void> => {
       await api.deleteCollectionApiCollectionsCollectionIdDelete({ collectionId })
+    },
+
+    getMembers: async (collectionId: string): Promise<UserSearchResult[]> => {
+      return api.getCollectionMembersApiCollectionsCollectionIdMembersGet({ collectionId })
+    },
+
+    share: async (collectionId: string, userId: string): Promise<Collection> => {
+      return api.shareCollectionApiCollectionsCollectionIdSharePost({
+        collectionId,
+        shareCollectionRequest: { userId }
+      })
+    },
+
+    unshare: async (collectionId: string, userId: string): Promise<Collection> => {
+      return api.unshareCollectionApiCollectionsCollectionIdShareUserIdDelete({ collectionId, userId })
     }
   }
 }
