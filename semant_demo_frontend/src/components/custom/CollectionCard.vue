@@ -30,6 +30,10 @@
               <span class="col-5"> Last modified: </span>
               <span class="col"> {{ updatedOn }} </span>
             </div>
+            <div v-if="sharingLabel" class="row no-wrap">
+              <span class="col-5"> Sharing: </span>
+              <span class="col"> {{ sharingLabel }} </span>
+            </div>
           </div>
         </q-card-section>
         <q-separator vertical />
@@ -75,6 +79,17 @@ const createdOn = computed(() => {
 })
 const updatedOn = computed(() => {
   return props.collection.updatedAt.toLocaleString()
+})
+
+const sharingLabel = computed(() => {
+  if (props.collection.isSharedWithMe) {
+    return `Shared by ${props.collection.owner}`
+  }
+  const count = props.collection.sharedWithCount ?? 0
+  if (count > 0) {
+    return `Shared to ${count} ${count === 1 ? 'person' : 'people'}`
+  }
+  return ''
 })
 
 const ownerInitials = computed(() => {
