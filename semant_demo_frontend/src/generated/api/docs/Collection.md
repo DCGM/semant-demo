@@ -13,6 +13,8 @@ Name | Type
 `createdAt` | Date
 `updatedAt` | Date
 `color` | string
+`sharedWithCount` | number
+`isSharedWithMe` | boolean
 
 ## Example
 
@@ -28,6 +30,8 @@ const example = {
   "createdAt": null,
   "updatedAt": null,
   "color": null,
+  "sharedWithCount": null,
+  "isSharedWithMe": null,
 } satisfies Collection
 
 console.log(example)

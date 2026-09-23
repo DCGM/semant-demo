@@ -105,9 +105,10 @@ class UserCollection():
         Retrieves all collections for given user
         """
         try:
-            # filter collections by user
+            # collections the user owns, or that have been shared with them
             filters = (
                 Filter.by_property("user_id").equal(user.id)
+                | Filter.by_property("shared_with").contains_any([user.id])
             )
             results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
                 filters=filters
@@ -120,6 +121,7 @@ class UserCollection():
                     # map collection data to expected response format
                     for o in collections:
                         props = o.properties
+                        shared_with = [UUID(str(uid)) for uid in (props.get("shared_with") or [])]
                         collections_response.append(Collection(
                             id=o.uuid,
                             name=props.get("name"),
@@ -127,7 +129,9 @@ class UserCollection():
                             description=props.get("description"),
                             created_at=props.get("created_at"),
                             updated_at=props.get("updated_at"),
-                            color=props.get("color")
+                            color=props.get("color"),
+                            shared_with_count=len(shared_with),
+                            is_shared_with_me=user.id in shared_with,
                         ))
 
             return collections_response

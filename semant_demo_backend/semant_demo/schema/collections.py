@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 from uuid import UUID
-from uuid import UUID
 from datetime import datetime
 
 
@@ -12,6 +11,8 @@ class Collection(BaseModel):
     created_at: datetime
     updated_at: datetime
     color: str
+    shared_with_count: int = 0
+    is_shared_with_me: bool = False
 
 
 class PostCollection(BaseModel):
