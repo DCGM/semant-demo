@@ -756,11 +756,58 @@ class UserCollection():
 
         return updated_collection
 
-    def unshare():
-        pass
+    async def unshare(self, collection_id: str, user_id: UUID, current_user: User) -> Collection:
+        """
+        Revokes a collection share, removing the user from its shared_with list.
+        Only the collection's owner may unshare it. No-op if not currently shared with that user.
+        """
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+        collection_obj = await usercollection_collection.query.fetch_object_by_id(collection_id)
+        if collection_obj is None:
+            raise WeaviateOperationError(
+                f"Collection with id {collection_id} not found")
 
-    def read_shared_users():
-        pass
+        props = collection_obj.properties
+        if str(props.get("user_id")) != str(current_user.id):
+            raise PermissionError("Only the collection owner can unshare it")
+
+        current_shared_with = {UUID(str(uid)) for uid in (props.get("shared_with") or [])}
+        current_shared_with.discard(user_id)
+
+        now = datetime.now(timezone.utc)
+        await usercollection_collection.data.update(
+            uuid=collection_id,
+            properties={
+                "shared_with": list(current_shared_with),
+                "updated_at": now,
+            }
+        )
+
+        updated_collection = await self.read(collection_id)
+        if updated_collection is None:
+            raise WeaviateOperationError(
+                "Weaviate error: collection not found after update")
+
+        return updated_collection
+
+    async def read_shared_users(self, collection_id: str, session: AsyncSession) -> list[User]:
+        """
+        Returns the users a collection is currently shared with.
+        """
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+        collection_obj = await usercollection_collection.query.fetch_object_by_id(collection_id)
+        if collection_obj is None:
+            raise WeaviateOperationError(
+                f"Collection with id {collection_id} not found")
+
+        shared_ids = [UUID(str(uid)) for uid in (collection_obj.properties.get("shared_with") or [])]
+        if not shared_ids:
+            return []
+
+        result = await session.execute(select(User).where(User.id.in_(shared_ids)))
+        return result.scalars().all()
 
     async def add_document(self, document_id: str, collection_id: str) -> None:
         """
