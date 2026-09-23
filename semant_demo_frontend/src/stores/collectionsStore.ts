@@ -134,6 +134,38 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     }
   }
 
+  const shareManyCollections = async (collectionIds: string[], userId: string) => {
+    if (collectionIds.length === 0) return
+    const notif = ongoingNotification(`Sharing ${collectionIds.length} collection${collectionIds.length === 1 ? '' : 's'}...`)
+    error.value = null
+    const results = await Promise.allSettled(
+      collectionIds.map((id) => collectionRepository.share(id, userId))
+    )
+    const failedCount = results.filter((r) => r.status === 'rejected').length
+    const succeededCount = results.length - failedCount
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        const collectionIndex = collections.value.findIndex((c) => c.id === collectionIds[index])
+        if (collectionIndex !== -1) {
+          collections.value[collectionIndex] = result.value
+        }
+      }
+    })
+
+    if (failedCount === 0) {
+      notif.success(`Shared ${succeededCount} collection${succeededCount === 1 ? '' : 's'}`)
+    } else if (succeededCount === 0) {
+      error.value = 'Failed to share the selected collections'
+      console.error('Error sharing collections:', results)
+      notif.error('Failed to share the selected collections')
+    } else {
+      error.value = `Shared ${succeededCount} of ${collectionIds.length} collections`
+      console.error('Error sharing some collections:', results)
+      notif.error(`Shared ${succeededCount} of ${collectionIds.length} collections — some failed`)
+    }
+  }
+
   return {
     collections: visibleCollections,
     activeCollection,
@@ -144,6 +176,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     createCollection,
     updateCollection,
     deleteCollection,
-    deleteManyCollections
+    deleteManyCollections,
+    shareManyCollections
   }
 })

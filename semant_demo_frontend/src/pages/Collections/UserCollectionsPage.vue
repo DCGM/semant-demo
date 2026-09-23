@@ -69,6 +69,7 @@
       @delete="handleDelete"
       @deleteMany="handleDeleteMany"
       @share="handleShare"
+      @shareMany="handleShareMany"
     />
     <div class="row justify-center q-mt-md lt-md">
       <q-pagination
@@ -113,7 +114,7 @@ const getInitialViewMode = (): 'tiles' | 'table' => {
 }
 const viewMode = ref<'tiles' | 'table'>(getInitialViewMode())
 const searchQuery = ref('')
-const { collections, error, loading, loadCollections, createCollection, updateCollection, deleteCollection, deleteManyCollections } = useCollections()
+const { collections, error, loading, loadCollections, createCollection, updateCollection, deleteCollection, deleteManyCollections, shareManyCollections } = useCollections()
 const filteredCollections = computed(() => {
   if (!searchQuery.value?.trim()) {
     return collections.value
@@ -181,5 +182,9 @@ const handleDelete = (collection: Collection) => {
 
 const handleDeleteMany = (collectionIds: string[]) => {
   deleteManyCollections(collectionIds)
+}
+
+const handleShareMany = ({ collectionIds, userId }: { collectionIds: string[]; userId: string }) => {
+  shareManyCollections(collectionIds, userId)
 }
 </script>
