@@ -1,5 +1,5 @@
 
-# Collection
+# SearchFilter
 
 
 ## Properties
@@ -8,31 +8,29 @@ Name | Type
 ------------ | -------------
 `id` | string
 `name` | string
-`owner` | string
+`type` | [FilterType](FilterType.md)
 `description` | string
-`createdAt` | Date
-`updatedAt` | Date
-`color` | string
-`sharedWithCount` | number
-`isSharedWithMe` | boolean
+`targetProperty` | string
+`values` | [Array&lt;NominalFilterValue&gt;](NominalFilterValue.md)
+`minValue` | [MinValue](MinValue.md)
+`maxValue` | [MaxValue](MaxValue.md)
 
 ## Example
 
 ```typescript
-import type { Collection } from ''
+import type { SearchFilter } from ''
 
 // TODO: Update the object below with actual values
 const example = {
   "id": null,
   "name": null,
-  "owner": null,
+  "type": null,
   "description": null,
-  "createdAt": null,
-  "updatedAt": null,
-  "color": null,
-  "sharedWithCount": null,
-  "isSharedWithMe": null,
-} satisfies Collection
+  "targetProperty": null,
+  "values": null,
+  "minValue": null,
+  "maxValue": null,
+} satisfies SearchFilter
 
 console.log(example)
 
@@ -41,7 +39,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as Collection
+const exampleParsed = JSON.parse(exampleJSON) as SearchFilter
 console.log(exampleParsed)
 ```
 

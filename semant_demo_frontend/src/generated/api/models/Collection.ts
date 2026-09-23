@@ -61,6 +61,18 @@ export interface Collection {
      * @memberof Collection
      */
     color: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof Collection
+     */
+    sharedWithCount?: number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof Collection
+     */
+    isSharedWithMe?: boolean;
 }
 
 /**
@@ -93,6 +105,8 @@ export function CollectionFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
         'color': json['color'],
+        'sharedWithCount': json['shared_with_count'] == null ? undefined : json['shared_with_count'],
+        'isSharedWithMe': json['is_shared_with_me'] == null ? undefined : json['is_shared_with_me'],
     };
 }
 
@@ -114,6 +128,8 @@ export function CollectionToJSONTyped(value?: Collection | null, ignoreDiscrimin
         'created_at': value['createdAt'].toISOString(),
         'updated_at': value['updatedAt'].toISOString(),
         'color': value['color'],
+        'shared_with_count': value['sharedWithCount'],
+        'is_shared_with_me': value['isSharedWithMe'],
     };
 }
 

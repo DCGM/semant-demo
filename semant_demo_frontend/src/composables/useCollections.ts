@@ -11,6 +11,7 @@ const useCollections = () => {
   const updateCollection = (collectionId: string, collectionData: PatchCollection) => collectionsStore.updateCollection(collectionId, collectionData)
   const deleteCollection = (collectionId: string) => collectionsStore.deleteCollection(collectionId)
   const deleteManyCollections = (collectionIds: string[]) => collectionsStore.deleteManyCollections(collectionIds)
+  const shareManyCollections = (collectionIds: string[], userId: string) => collectionsStore.shareManyCollections(collectionIds, userId)
 
   const collections = computed(() => collectionsStore.collections)
   const activeCollection = computed(() => collectionsStore.activeCollection)
@@ -24,6 +25,7 @@ const useCollections = () => {
     updateCollection,
     deleteCollection,
     deleteManyCollections,
+    shareManyCollections,
 
     collections,
     activeCollection,
