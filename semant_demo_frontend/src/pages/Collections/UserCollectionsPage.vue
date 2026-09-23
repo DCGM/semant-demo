@@ -68,6 +68,7 @@
       @edit="handleEdit"
       @delete="handleDelete"
       @deleteMany="handleDeleteMany"
+      @share="handleShare"
     />
     <div class="row justify-center q-mt-md lt-md">
       <q-pagination
