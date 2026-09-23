@@ -60,10 +60,12 @@
             flat
             dense
             round
-            icon="open_in_new"
+            icon="share"
             color="primary"
-            @click="emit('enter', tableProps.row.id)"
-          />
+            @click="emit('share', tableProps.row)"
+          >
+            <q-tooltip>Share collection</q-tooltip>
+          </q-btn>
           <q-btn
             flat
             dense
@@ -151,6 +153,7 @@ const emit = defineEmits<
   (event: 'edit', collection: Collection): void
   (event: 'delete', collection: Collection): void
   (event: 'deleteMany', collectionIds: string[]): void
+  (event: 'share', collection: Collection): void
 }>()
 
 const $q = useQuasar()
