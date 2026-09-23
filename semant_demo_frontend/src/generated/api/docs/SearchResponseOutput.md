@@ -11,7 +11,6 @@ Name | Type
 `searchRequest` | [SearchRequest](SearchRequest.md)
 `timeSpent` | number
 `searchLog` | Array&lt;string&gt;
-`tagsResult` | [Array&lt;FilteredChunksByTags&gt;](FilteredChunksByTags.md)
 
 ## Example
 
@@ -25,7 +24,6 @@ const example = {
   "searchRequest": null,
   "timeSpent": null,
   "searchLog": null,
-  "tagsResult": null,
 } satisfies SearchResponseOutput
 
 console.log(example)

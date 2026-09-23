@@ -1,30 +1,20 @@
 
-# SearchResponseInput
+# MinValue1
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`results` | [Array&lt;TextChunkWithDocumentInput&gt;](TextChunkWithDocumentInput.md)
-`resultsSummary` | string
-`searchRequest` | [SearchRequest](SearchRequest.md)
-`timeSpent` | number
-`searchLog` | Array&lt;string&gt;
 
 ## Example
 
 ```typescript
-import type { SearchResponseInput } from ''
+import type { MinValue1 } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "results": null,
-  "resultsSummary": null,
-  "searchRequest": null,
-  "timeSpent": null,
-  "searchLog": null,
-} satisfies SearchResponseInput
+} satisfies MinValue1
 
 console.log(example)
 
@@ -33,7 +23,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as SearchResponseInput
+const exampleParsed = JSON.parse(exampleJSON) as MinValue1
 console.log(exampleParsed)
 ```
 
