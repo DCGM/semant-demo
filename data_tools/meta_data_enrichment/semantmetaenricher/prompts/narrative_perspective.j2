@@ -1,0 +1,35 @@
+# Task context
+You are annotating digitized library texts for filtering in a search interface of a public web portal.
+
+# Task
+- Characterize the narrative perspective of `Text to be classified`.
+- Choose one class from the list of classes below that best describes the grammatical and narrative point of view used in the passage.
+- Use the provided `Context` only for better understanding, but assign the class relevant only to `Text to be classified`.
+- Focus on the grammatical person and narrative stance used, not on the topic or content of the passage.
+
+# Classes
+- `first_person_singular` — narrated from an "I" perspective
+- `first_person_plural` — narrated from a "we" perspective
+- `second_person` — addresses the reader or another party directly as "you"
+- `third_person_personal` — narrated about specific third-party individuals ("he", "she", "they" referring to identifiable persons)
+- `third_person_impersonal` — narrated impersonally, without a foregrounded narrator or addressee, such as factual or administrative third-person text
+- `mixed_or_shifting` — narrative perspective shifts between multiple persons or cannot be reduced to a single dominant perspective
+- `uncertain` — narrative perspective cannot be determined reliably from the passage
+
+# Preference rules
+- Prefer `third_person_personal` over `third_person_impersonal` when the passage foregrounds specific individuals as its subjects.
+- Prefer `third_person_impersonal` for factual, administrative, or descriptive text with no foregrounded narrator or subject person.
+- Use `mixed_or_shifting` only when perspective genuinely shifts or no single perspective is clearly dominant.
+- Use `uncertain` only if the text is too fragmentary, ambiguous, or corrupted for reliable classification.
+
+# Output
+Respond with a JSON object with a single key `cls`, whose value is a list containing exactly one class label.
+
+Output example 1: {"cls": ["third_person_impersonal"]}
+Output example 2: {"cls": ["first_person_singular"]}
+
+# Text language:
+{{ language }}
+
+# Text to be classified is:
+{{ text }}

@@ -3,7 +3,7 @@ weaviate_port: 8080 # Weaviate HTTP/REST port
 weaviate_grpc_port: 50051 # Weaviate gRPC port (required for client v4)
 weaviate_api_key: # Authentication API Key for Weaviate instance
 weaviate_headers: # Additional HTTP headers (e.g. API keys for third-party vectorizers)
-collection: Chunks_test # Name of the Weaviate collection to enrich
+collection: MetaDataEnrichmentTest # Name of the Weaviate collection to enrich
 field_tasks: # Mapping of Weaviate property names (keys) to their classification task names (values)
   communicative_mode: communicative_mode
   complexity: complexity
