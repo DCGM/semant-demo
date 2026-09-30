@@ -62,14 +62,20 @@ flowchart LR
         SUM_R[summarizer_routes]
         RAG_R[rag_routes]
         TAG_R[tag_routes]
+        SPAN_R[span_routes]
+        AI_R[ai_assistance_routes]
+        CHAT_R[span_chat_routes]
+        DOC_R[document_routes]
         COL_R[user_collection_routes]
+        USR_R[user_routes]
+        FB_R[feedback_routes]
         AUTH_R["users/<br/>(auth, register, users)"]
     end
 
     subgraph Core
         WS[weaviate_utils/weaviate_abstraction.py]
         CFG[config.py]
-        SCH[schemas.py]
+        SCH["schemas.py + schema/"]
     end
 
     subgraph LLM
@@ -82,19 +88,23 @@ flowchart LR
         RAG_F[rag/]
         SUM[summarization/]
         TAG_F[tagging/]
+        AI_F["ai_assistance/<br/>(topicer_client, span_chat)"]
         USERS[users/]
     end
 
     APP --> DI & RAG_F & USERS
-    SUM_R & RAG_R & TAG_R & COL_R & AUTH_R --> DI
+    SUM_R & RAG_R & TAG_R & SPAN_R & AI_R & CHAT_R & DOC_R & COL_R & USR_R & FB_R & AUTH_R --> DI
     DI --> WS
     RAG_R --> RAG_F
     SUM_R --> SUM
     TAG_R --> TAG_F
+    AI_R --> AI_F
+    CHAT_R --> AI_F
     WS --> GEMMA
     RAG_F --> LLM_API
     SUM --> LLM_API
     TAG_F --> OLLP
+    AI_F --> LLM_API
     AUTH_R --> USERS
 ```
 
@@ -106,8 +116,9 @@ A singleton `Config` class that reads environment variables with sensible defaul
 - **LLM endpoints** — Ollama URLs (comma-separated for load balancing), model names, API keys
 - **Application** — port, CORS origin, static file path
 - **Database** — SQLite URL for task tracking and user accounts
-- **Auth** — `JWT_SECRET` (override in production with a long random string)
+- **Auth** — `JWT_SECRET` (override in production with a long random string), `JWT_LIFETIME_SECONDS`
 - **RAG** — config directory path
+- **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_*` group for the OpenAI-compatible "discuss this span" chat (`SPAN_CHAT_API_KEY`, `SPAN_CHAT_API_URL`, `SPAN_CHAT_MODEL` — all falling back to the corresponding `OPENAI_*` values — plus `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT`)
 
 #### Dependency Injection (`routes/dependencies.py`)
 
@@ -240,43 +251,63 @@ flowchart TD
 
 **RagGenerator** — Simple single-pass RAG: reformulate question with history → search → generate answer with citations.
 
-**AdaptiveRagGenerator** — LangGraph-based stateful workflow with iterative search and answer grading.
+**AdaptiveRagGenerator** — LangGraph-based stateful workflow with iterative retrieval and answer grading.
 
 **AdaptiveRagGeneratorOg** — Original AdaptiveRAG variant; stable base for experimentation.
 
-**IncrementalAdaptiveRagGenerator** — Latest recommended variant that incrementally expands context & retrieval, with best accuracy/tuning in this branch.
+**IncrementalAdaptiveRagGenerator** — Current production-ready variant that incrementally expands retrieval, grades context and outputs, and uses fallback search strategies when the initial retrieval is insufficient.
 
-**xmartiAgentRag** — Agentic workflow with tool orchestration (query expand, decomposition, retrieval quality assessment, evidence synthesis). OpenAI-based models in all RAG implementations (`rag_generator`, `adaptive_rag`, `adaptive_rag_og`, `incremental_rag`, `agentic_rag`) use `OPENAI_API_URL` for endpoint routing.
+**xmartiAgentRag** — Agentic workflow with tool orchestration (query expansion, decomposition, retrieval quality assessment, evidence synthesis).
 
+#### Incremental RAG:
 ```mermaid
 flowchart TD
-    START((Start)) --> TH[Transform History]
-    TH --> CC{Check Context<br/>Sufficient?}
-    CC -->|yes| GEN[Generate Answer]
-    CC -->|no| SRB[Start Retrieval]
+    START((Start)) --> DET[Detect Language]
+    DET --> TH[Transform History]
+    TH --> CC{Check Previous Context<br/>Sufficient?}
 
-    SRB --> MQ[Multi-Query / HyDE]
+    CC -->|yes| GEN[Generate Answer]
+    CC -->|no| SRB[Start Retrieval Branch]
+
+    SRB --> MQ[Build Queries]
     SRB --> EM[Extract Metadata]
     MQ --> RET[Retrieve from Weaviate]
     EM --> RET
-    RET --> GC{Grade Context}
+    RET --> GC[Grade Retrieved Context]
 
-    GC -->|good enough| GEN
+    GC -->|enough| GEN
     GC -->|retry| SRB
     GC -->|web search| WS[Web Search - DDG]
 
     WS --> GEN
-    GEN --> GG{Grade Generation}
+    GEN --> GG[Grade Generation]
+
     GG -->|supported| END((End))
-    GG -->|not supported| GEN
+    GG -->|retry| SRB
     GG -->|web search| WS
 ```
 
-Configurable parameters per RAG config YAML:
+IncrementalAdaptiveRagGenerator is implemented as a `langgraph` state machine. The workflow is:
+- detect the question language first, then choose Czech/English prompt templates
+- rewrite conversational history into a standalone search question only when history exists
+- if the request includes `previous_documents`, optionally reuse them and skip retrieval when a context sufficiency check passes
+- otherwise enter an incremental retrieval branch with explicit iteration state:
+  - retrieval iteration 0 uses the original query and a small chunk limit
+  - retrieval iteration 1 generates multiple query variants for broader coverage
+  - retrieval iteration 2 performs a HyDE-style search with the query treated like a document embedding and a higher hybrid alpha
+- metadata extraction runs only on the second retrieval iteration when `metadata_extraction_allowed` is true, to infer year/language filters from the question text
+- retrieval results are deduplicated and, when enough candidates exist, the returned chunks are graded for relevance before answer generation
+- if no relevant documents remain, the router retries retrieval or falls back to DuckDuckGo web search when enabled
+- answer generation uses history-aware prompts if conversation history exists
+- the generated answer is graded for completeness, and incomplete responses can trigger another retrieval pass or web search fallback
+
+This incremental RAG process is more resilient than a single-pass pipeline: it adapts retrieval strategy based on result quality, tightens search with inferred metadata, and validates both retrieved evidence and the final answer before finishing.
+
+Configurable parameters per RAG config YAML include:
 - `model_type` — OLLAMA / OPENAI / GOOGLE
-- `qt_strategy` — multi_query / hyde / step_back / nothing
-- `max_retries`, `web_search_enabled`, `self_reflection`, `metadata_extraction_allowed`
+- `api_key`, `model_name`, `temperature`
 - `chunk_limit`, `alpha`, `search_type`
+- `max_retries`, `web_search_enabled`, `metadata_extraction_allowed`
 
 #### Summarisation (`summarization/`)
 
@@ -299,6 +330,34 @@ LLM-assisted tag propagation:
 5. Users can approve (→ `positiveTag`) or reject automatic tags.
 6. Task progress tracked in SQLite (`Task` model) with polling endpoint.
 
+#### Tag Spans (`weaviate_utils/span.py`, `routes/span_routes.py`)
+
+Tags can additionally be anchored to specific character ranges inside a chunk via the `Span` collection. Three span types coexist:
+
+- `pos` — manually confirmed positive span (created by a human reviewer).
+- `neg` — manually rejected span (negative example, useful for AI training/filtering).
+- `auto` — AI-proposed span; carries optional `reason` (LLM justification) and `confidence` ∈ `[0, 1]`.
+
+Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `text_chunk` → `Chunks` — rather than as plain UUID properties. The backend lazily ensures `reason`/`confidence` properties exist on legacy collections (`Span._ensure_ai_properties`).
+
+REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/collection), `POST /batch`, `PATCH /{id}`, `DELETE /{id}`, `POST /bulk_update`, `POST /in_document/delete` (delete spans for given tags inside a single document).
+
+#### AI Assistance (`ai_assistance/`, `routes/ai_assistance_routes.py`, `routes/span_chat_routes.py`)
+
+External AI integrations that produce or critique spans. All streaming endpoints use NDJSON (`application/x-ndjson`) so the frontend can render partial results incrementally.
+
+**Topicer span proposal.** `topicer_client.py` is an async `httpx` client for the Topicer service (`TOPICER_URL`, default `http://localhost:8089`). Topicer returns proposed `(start, end, reason, confidence)` triples per `(chunk, tag)` pair. The backend exposes two routes:
+
+| Route | Topicer call | Behaviour |
+|---|---|---|
+| `POST /api/ai/suggest_spans/thorough` | `POST /v1/tags/propose/texts` (per chunk) | Backend iterates over chunks of the target collection, calling Topicer per chunk and emitting one NDJSON line per completed chunk. Slower but resilient to per-chunk failures. |
+| `POST /api/ai/suggest_spans/optimized` | `POST /v1/tags/propose/db/stream` | Backend forwards Topicer's own DB-streaming response straight to the client, line-by-line. Fastest path; Topicer pulls chunks directly from Weaviate. |
+| `POST /api/ai/auto_spans/delete` | — | Cleanup endpoint: deletes all `auto`-typed spans for the given tag(s), optionally scoped to a single document. |
+
+Approved proposals are written to the `Span` collection as `auto` spans; reviewers then promote them to `pos` (or remove them) through the standard span endpoints.
+
+**Span discussion chat.** `span_chat.py` builds a rich system prompt around a single span — tag definition + examples, host document metadata, the span's chunk text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a configurable window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters drawn from the same and neighbouring chunks of the document) — and streams the assistant reply from any OpenAI-compatible Chat Completions endpoint. The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON deltas; configuration lives in the `SPAN_CHAT_*` env-var group.
+
 #### LLM API Abstraction (`llm_api/`)
 
 A `classconfig`-based abstraction supporting:
@@ -313,13 +372,21 @@ Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
 
 | Route | Page | Description |
 |---|---|---|
-| `/search/` | SearchPage | Main search interface with filters, results, summaries |
-| `/rag/` | RagPage | Multi-turn RAG chat with source citations |
-| `/tag_manage/` | TagManagementPage | Create tags, start/monitor tagging tasks |
-| `/collections` | UserCollectionsPage | Manage user document collections |
-| `/about/` | AboutPage | Project information |
+| `/search` | `SearchPage` | Main search interface with filters, results, summaries |
+| `/rag` | `RagPage` | Multi-turn RAG chat with source citations |
+| `/tag_manage` | `TagManagementPage` | Create tags, start/monitor tagging tasks |
+| `/collections` | `Collections/UserCollectionsPage` | List user collections |
+| `/collections/:cid/overview` | `Collections/CollectionOverviewPage` | Collection summary & stats |
+| `/collections/:cid/documents` | `Collections/CollectionDocumentsPage` | Documents inside a collection |
+| `/collections/:cid/tags` | `Collections/CollectionTagsPage` | Tags scoped to the collection |
+| `/collections/:cid/tagging_jobs` | `Collections/CollectionTaggingJobsPage` | Async tagging job monitor |
+| `/collections/:cid/members` | `Collections/CollectionMembersPage` | Collection sharing / role management |
+| `/collections/:cid/documents/:did/v1` | `Collections/xjuric31/DocumentDetailPage` | Document detail — variant V1 |
+| `/collections/:cid/documents/:did/v2` | `Collections/DocumentDetailPageV2` | Document detail — variant V2 |
+| `/feedback` | `FeedbackPage` | In-app feedback form |
+| `/about` | `AboutPage` | Project information |
 
-State management via Pinia stores (`user-store`, `chunk_collection-store`). API communication through a shared Axios instance with configurable `BACKEND_URL`.
+State management via Pinia stores (`user-store`, `collectionsStore`, `collectionStatsStore`, `chunksStore`, `chunk_collection-store`, `documentsStore`, `tagsStore`, `tagSpansStore`). Reusable streaming logic lives in `composables/` (e.g. `useSpanDiscussion` for the NDJSON span chat). API communication goes through repositories that wrap the OpenAPI-generated TypeScript client (`src/generated/`); raw streaming endpoints (span suggestions, span discussion) use the generated `*Raw` variants and read `apiResponse.raw.body` directly.
 
 ### 4. Weaviate + Utilities (`weaviate_utils/`)
 

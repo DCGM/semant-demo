@@ -1,5 +1,6 @@
 import { useApi } from 'src/composables/useApi'
 import { Document, DocumentBrowseParams, DocumentBrowse, Documents } from 'src/models/documents'
+import { DocumentStats } from 'src/generated/api'
 
 export function useDocumentsRepository() {
   const api = useApi().default
@@ -23,6 +24,10 @@ export function useDocumentsRepository() {
 
     removeFromCollection: async (documentId: string, collectionId: string): Promise<void> => {
       return await api.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete({ collectionId, documentId })
+    },
+
+    getStats: async (collectionId: string, documentId: string): Promise<DocumentStats> => {
+      return api.getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet({ collectionId, documentId })
     }
   }
 }

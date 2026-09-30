@@ -25,12 +25,6 @@ export interface ApproveTagResponse {
      * @memberof ApproveTagResponse
      */
     successful: boolean;
-    /**
-     * 
-     * @type {boolean}
-     * @memberof ApproveTagResponse
-     */
-    approved: boolean;
 }
 
 /**
@@ -38,7 +32,6 @@ export interface ApproveTagResponse {
  */
 export function instanceOfApproveTagResponse(value: object): value is ApproveTagResponse {
     if (!('successful' in value) || value['successful'] === undefined) return false;
-    if (!('approved' in value) || value['approved'] === undefined) return false;
     return true;
 }
 
@@ -53,7 +46,6 @@ export function ApproveTagResponseFromJSONTyped(json: any, ignoreDiscriminator: 
     return {
         
         'successful': json['successful'],
-        'approved': json['approved'],
     };
 }
 
@@ -69,7 +61,6 @@ export function ApproveTagResponseToJSONTyped(value?: ApproveTagResponse | null,
     return {
         
         'successful': value['successful'],
-        'approved': value['approved'],
     };
 }
 

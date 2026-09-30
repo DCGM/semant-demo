@@ -28,6 +28,38 @@ class EmbeddingProvider(str, Enum):
     openrouter = "OPENROUTER"
 
 
+class FilterType(str, Enum):
+    nominal = "nominal"
+    interval = "interval"
+
+
+class NominalFilterValue(BaseModel):
+    user_form: str
+    backend_form: str
+
+
+class SearchFilter(BaseModel):
+    id: str
+    name: str
+    type: FilterType
+    description: str
+    target_property: str
+    values: list[NominalFilterValue] | None = None
+    min_value: int | float | None = None
+    max_value: int | float | None = None
+
+
+class SearchFilterInput(BaseModel):
+    id: str
+    values: list[str | int | float] | str | int | float | None = None
+    min_value: int | float | datetime | None = None
+    max_value: int | float | datetime | None = None
+
+
+class SearchFiltersResponse(BaseModel):
+    filters: list[SearchFilter]
+
+
 class SummaryRequestBase(BaseModel):
     search_title_generate: bool = True
     search_title_prompt: str | None = None
@@ -56,6 +88,8 @@ class SearchRequest(SummaryRequestBase):
     hybrid_search_alpha: float = 0.5
     vector_name: str | None = None
     search_llm_filter: bool = False
+
+    filters: list[SearchFilterInput] | None = None
 
     min_year: int | None = None
     max_year: int | None = None
@@ -120,22 +154,13 @@ class TextChunkWithDocument(TextChunk):
     document_object: Document
 
 
-class FilteredChunksByTags(BaseModel):
-    chunk_id: str
-    positive_tags_ids: list[str]
-    automatic_tags_ids: list[str]
+class DocumentDetailTextChunkWithUserCollectionInfo(TextChunk):
+    in_user_collection: bool
 
 
-class FilterChunksByTagsResponse(BaseModel):
-    chunkTags: list[FilteredChunksByTags]
-
-
-class FilterChunksByTagsRequest(BaseModel):
-    chunkIds: list[str]
-    tagIds: list[str]
-    positive: bool
-    automatic: bool
-
+class DocumentDetail(BaseModel):
+    document: Document
+    chunks: list[DocumentDetailTextChunkWithUserCollectionInfo]
 
 class SearchResponse(BaseModel):
     results: list[TextChunkWithDocument]
@@ -144,18 +169,13 @@ class SearchResponse(BaseModel):
     search_request: SearchRequest
     time_spent: float
     search_log: list[str]
-    # TODO: Should it be here or in Chunks? (xtomas36)
-    tags_result: list[FilteredChunksByTags]
-
 
 class SummaryRequest(SummaryRequestBase):
     search_response: SearchResponse
 
-
 class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
-
 
 class RagRouteConfig(BaseModel):
     id: str
@@ -163,7 +183,6 @@ class RagRouteConfig(BaseModel):
     description: str
 
 # rag message format for purpose of history
-
 
 class RagChatMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -289,67 +308,6 @@ class CollectionNames(BaseModel):
     span_collection_name: str
     user_collection_link_name: str
     tag_to_user_collection_link_name: str
-    span_collection_name: str
-
-# Tagging configuration
-
-
-class TaggingConfigParams(BaseModel):
-    model_type: APIType
-    model_name: str
-    temperature: float = 1.0
-
-
-class TaggingConfig(BaseModel):
-    name: str
-    description: str
-    class_name: str
-    prompt_template: str
-    params: TaggingConfigParams
-
-
-class GetConfigsResponse(BaseModel):
-    configs: list[TaggingConfig]
-
-# tagging task
-
-
-class TagStartResponse(BaseModel):
-    job_started: bool
-    task_id: str
-    message: str
-
-
-class TagReqTemplate(BaseModel):
-    tag_name: str  # name of the tag
-    tag_shorthand: str  # shorthand for the name
-    tag_color: str  # color assigned to the tag
-    tag_pictogram: str  # image
-    tag_definition: str  # description of the tag
-    tag_examples: list[str]  # list of examples what should be tagged
-    collection_name: str
-
-
-class TaggingTaskReqTemplate(BaseModel):
-    tag_name: str  # name of the tag
-    tag_shorthand: str  # shorthand for the name
-    tag_color: str  # color assigned to the tag
-    tag_pictogram: str  # image
-    tag_definition: str  # description of the tag
-    tag_examples: list[str]  # list of examples what should be tagged
-    collection_name: str
-    task_config: TaggingConfig
-
-
-class TagResponse(BaseModel):
-    texts: list[str]
-    tags: list[str]
-
-class TagType(str, Enum):
-    positive = "positive"
-    negative = "negative"
-    automatic = "automatic"
-
 class TagData(BaseModel):
     tag_name: str  # name of the tag
     tag_shorthand: str  # shorthand for the name
@@ -360,87 +318,7 @@ class TagData(BaseModel):
     collection_name: str
     tag_uuid: uuid.UUID | None
 
-
-class TagTasksResponse(BaseModel):
-    taskIDs: list[uuid.UUID]
-
-
-class CancelTaskResponse(BaseModel):
-    message: str
-    taskCanceled: bool
-
-
-class GetTagsResponse(BaseModel):
-    tags_lst: list[TagData]
-
-
-class GetTaggedChunksReq(BaseModel):
-    tag_uuids: list[uuid.UUID]
-    tag_type: TagType
-
-
-class RemoveTagReq(BaseModel):
-    tag_uuids: list[uuid.UUID]
-
-
-class TaggedChunks(BaseModel):
-    tag_uuid: uuid.UUID  # uuid of a tag selected in UI and belonging to the text chunk
-    text_chunk: str  # actual text chunk
-    chunk_id: str  # to apply changes later
-    # send collection name of the chunk for faster manipulation later
-    chunk_collection_name: str
-
-
-class GetTaggedChunksResponse(BaseModel):
-    # list of pairs text chunk and id belonging to it
-    chunks_with_tags: list[TaggedChunks]
-
-
-class ApproveTagReq(BaseModel):
-    approved: bool
-    chunkID: str
-    tagID: str
-    chunk_collection_name: str
-
-
-class ApproveTagResponse(BaseModel):
-    successful: bool
-    approved: bool
-
-
-class RemoveTagsResponse(BaseModel):
-    successful: bool
-
-# User collection
-
-
-class UserCollectionReqTemplate(BaseModel):
-    collection_name: str  # name of the collection
-    user_id: str  # user id
-
-
-class Chunk2CollectionReq(BaseModel):
-    collectionId: str  # id of the collection
-    chunkId: str  # chunk id
-
-
-class CollectionChunks(BaseModel):
-    text_chunk: str  # actual text chunk
-    chunk_id: str  # to apply changes later
-
-
-class GetCollectionChunksResponse(BaseModel):
-    # list of pairs text chunk and id belonging to it
-    chunks_of_collection: list[CollectionChunks]
-
 # TagSpans
-
-
-class SpanStoreMode(str, Enum):
-    embedded = "embedded"
-    separate = "separate"
-    both = "both"
-
 
 class SpanType(str, Enum):
     pos = "pos"
@@ -455,76 +333,14 @@ class TagSpan(BaseModel):
     start: int
     end: int
     type: SpanType | None = None
-
-
-class TagSpanUpdate(BaseModel):
-    tagId: str | None = None
-    start: int | None = None
-    end: int | None = None
-    type: SpanType | None = None
-
-
-class TagSpanCreateSeparateRequest(BaseModel):
-    span: TagSpan
-
-
-class TagSpanCreateEmbeddedRequest(BaseModel):
-    chunk_id: str
-    tag_id: str
-    spans: list[TagSpan]
-
-
-class TagSpanWriteResponse(BaseModel):
-    stored_in: list[SpanStoreMode]
-
-
-class TagSpanUpdateSeparateRequest(BaseModel):
-    span_id: str
-    tagSpan: TagSpanUpdate
-
-
-class TagSpanUpdateEmbeddedRequest(BaseModel):
-    chunk_id: str | None = None
-    index: int | None = None
-    tagSpan: TagSpanUpdate
-# /TagSpans
-
+    # Optional metadata produced by AI/automatic taggers. Always None for
+    # manual spans; populated when an LLM proposes a span via the Topicer
+    # service. Stored alongside the span itself in the database.
+    reason: str | None = None
+    confidence: float | None = None
 
 # Task Model
 TasksBase = declarative_base()
-
-
-class Task(TasksBase):
-    __tablename__ = "tasks"
-    # 36 is max number of chars in uuid
-    taskId = Column(String(36), primary_key=True)
-    # PENDING|RUNNING|COMPLETED|FAILED
-    status = Column(String(20), default="PENDING")
-    result = Column(JSON, nullable=True)
-    all_texts_count = Column(Integer, nullable=True)
-    processed_count = Column(Integer, nullable=True)
-    collection_name = Column(String, nullable=True)
-    tag_id = Column(String(36))  # 36 is max number of chars in uuid
-    tag_processing_data = Column(JSON, nullable=True)
-    time_updated = Column(DateTime(timezone=True),
-                          onupdate=funcs.now())  # store updated time for loading tasks sorted by time updated
-    task_name = Column(String, nullable=True)
-
-
-tag_class = {
-    "class": "Tag",
-    "properties": [
-        {"name": "tag_name", "dataType": ["string"]},
-        {"name": "tag_shorthand", "dataType": ["string"]},
-        {"name": "tag_color", "dataType": ["string"]},
-        {"name": "tag_pictogram", "dataType": ["string"]},
-        {"name": "tag_definition", "dataType": ["text"]},
-        {"name": "tag_examples", "dataType": ["text[]"]},
-        {"name": "collection_name", "dataType": ["string"]}
-    ]
-}
-
-
 class RagUserFeedback(TasksBase):
     __tablename__ = "rag_user_feedback"
     id = Column(Integer, primary_key=True, autoincrement=True)

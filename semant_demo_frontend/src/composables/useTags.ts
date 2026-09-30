@@ -11,6 +11,7 @@ const useTags = () => {
   const loadTag = (tagUuid: string) => tagsStore.fetchTag(tagUuid)
   const createTag = (collectionId: string, payload: PostTag) => tagsStore.createTag(collectionId, payload)
   const deleteTag = (tagUuid: string) => tagsStore.deleteTag(tagUuid)
+  const deleteManyTags = (tagUuids: string[]) => tagsStore.deleteManyTags(tagUuids)
   const updateTag = (tagUuid: string, payload: PatchTag) => tagsStore.updateTag(tagUuid, payload)
 
   const tags = computed(() => tagsStore.tags)
@@ -23,6 +24,7 @@ const useTags = () => {
     loadTag,
     createTag,
     deleteTag,
+    deleteManyTags,
     updateTag,
     tags,
     loading,

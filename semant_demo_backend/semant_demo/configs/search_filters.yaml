@@ -1,0 +1,440 @@
+filters:
+- id: year_range
+  name: Year range
+  type: interval
+  description: It is filter for text chunks stored in Chunks collection, which are
+    associated with document having yearIssued property value belonging to the given
+    interval.
+  target_property: yearIssued
+  values: null
+  min_value: 318
+  max_value: 2883
+- id: language
+  name: Language
+  type: nominal
+  description: Allows to select only Chunks, having language property value in given
+    set language codes.
+  target_property: language
+  values:
+  - user_form: German
+    backend_form: deu
+  - user_form: Czech
+    backend_form: ces
+  - user_form: Hungarian
+    backend_form: hun
+  - user_form: Latin
+    backend_form: lat
+  - user_form: No linguistic content
+    backend_form: zxx
+  min_value: null
+  max_value: null
+- id: communicative_mode
+  name: Communicative Mode
+  type: nominal
+  description: Allows to select only Chunks, having communicative_mode property value
+    in given set.
+  target_property: communicative_mode
+  values:
+  - user_form: Narration
+    backend_form: narration
+  - user_form: Description
+    backend_form: description
+  - user_form: Exposition
+    backend_form: exposition
+  - user_form: Argumentation
+    backend_form: argumentation
+  - user_form: Instruction
+    backend_form: instruction
+  - user_form: Record
+    backend_form: record
+  - user_form: Interaction
+    backend_form: interaction
+  - user_form: Expression
+    backend_form: expression
+  - user_form: Rhetorics
+    backend_form: rhetorics
+  min_value: null
+  max_value: null
+- id: complexity
+  name: Complexity
+  type: nominal
+  description: Allows to select only Chunks, having complexity property value in given
+    set.
+  target_property: complexity
+  values:
+  - user_form: Very Easy
+    backend_form: very_easy
+  - user_form: Easy
+    backend_form: easy
+  - user_form: Moderate
+    backend_form: moderate
+  - user_form: Advanced
+    backend_form: advanced
+  - user_form: Expert
+    backend_form: expert
+  min_value: null
+  max_value: null
+- id: documentary_role
+  name: Documentary Role
+  type: nominal
+  description: Allows to select only Chunks, having documentary_role property value
+    in given set.
+  target_property: documentary_role
+  values:
+  - user_form: Journalistic
+    backend_form: journalistic
+  - user_form: Scholarly
+    backend_form: scholarly
+  - user_form: Literary
+    backend_form: literary
+  - user_form: Legal
+    backend_form: legal
+  - user_form: Administrative
+    backend_form: administrative
+  - user_form: Religious
+    backend_form: religious
+  - user_form: Educational
+    backend_form: educational
+  - user_form: Commercial
+    backend_form: commercial
+  - user_form: Personal
+    backend_form: personal
+  - user_form: Official Public Communication
+    backend_form: official_public_communication
+  - user_form: Reference
+    backend_form: reference
+  min_value: null
+  max_value: null
+- id: emotional_tone
+  name: Emotional Tone
+  type: nominal
+  description: Allows to select only Chunks, having emotional_tone property value
+    in given set.
+  target_property: emotional_tone
+  values:
+  - user_form: Neutral Or Detached
+    backend_form: neutral_or_detached
+  - user_form: Solemn Or Grave
+    backend_form: solemn_or_grave
+  - user_form: Celebratory Or Triumphant
+    backend_form: celebratory_or_triumphant
+  - user_form: Anxious Or Alarmed
+    backend_form: anxious_or_alarmed
+  - user_form: Mournful Or Elegiac
+    backend_form: mournful_or_elegiac
+  - user_form: Indignant Or Outraged
+    backend_form: indignant_or_outraged
+  - user_form: Hopeful Or Aspirational
+    backend_form: hopeful_or_aspirational
+  - user_form: Reverent Or Devotional
+    backend_form: reverent_or_devotional
+  - user_form: Ironic Or Sardonic
+    backend_form: ironic_or_sardonic
+  - user_form: Affectionate Or Tender
+    backend_form: affectionate_or_tender
+  min_value: null
+  max_value: null
+- id: geographic_scope
+  name: Geographic Scope
+  type: nominal
+  description: Allows to select only Chunks, having geographic_scope property value
+    in given set.
+  target_property: geographic_scope
+  values:
+  - user_form: Hyper Local
+    backend_form: hyper_local
+  - user_form: Local Or Municipal
+    backend_form: local_or_municipal
+  - user_form: Regional
+    backend_form: regional
+  - user_form: National
+    backend_form: national
+  - user_form: Multi National Or Continental
+    backend_form: multi_national_or_continental
+  - user_form: Global Or Universal
+    backend_form: global_or_universal
+  - user_form: Non Geographic
+    backend_form: non_geographic
+  min_value: null
+  max_value: null
+- id: information_granularity
+  name: Information Granularity
+  type: nominal
+  description: Allows to select only Chunks, having information_granularity property
+    value in given set.
+  target_property: information_granularity
+  values:
+  - user_form: General Overview
+    backend_form: general_overview
+  - user_form: Detailed Account
+    backend_form: detailed_account
+  - user_form: Highly Specific
+    backend_form: highly_specific
+  - user_form: Definitional
+    backend_form: definitional
+  - user_form: Enumerative
+    backend_form: enumerative
+  min_value: null
+  max_value: null
+- id: intertextual_density
+  name: Intertextual Density
+  type: nominal
+  description: Allows to select only Chunks, having intertextual_density property
+    value in given set.
+  target_property: intertextual_density
+  values:
+  - user_form: No References
+    backend_form: no_references
+  - user_form: Sparse
+    backend_form: sparse
+  - user_form: Moderate
+    backend_form: moderate
+  - user_form: Dense
+    backend_form: dense
+  - user_form: Uncertain
+    backend_form: uncertain
+  min_value: null
+  max_value: null
+- id: named_entity_focus
+  name: Named Entity Focus
+  type: nominal
+  description: Allows to select only Chunks, having named_entity_focus property value
+    in given set.
+  target_property: named_entity_focus
+  values:
+  - user_form: Person Centric
+    backend_form: person_centric
+  - user_form: Organization Centric
+    backend_form: organization_centric
+  - user_form: Place Centric
+    backend_form: place_centric
+  - user_form: Event Centric
+    backend_form: event_centric
+  - user_form: Work Centric
+    backend_form: work_centric
+  - user_form: Concept Or Topic Centric
+    backend_form: concept_or_topic_centric
+  - user_form: Mixed
+    backend_form: mixed
+  min_value: null
+  max_value: null
+- id: narrative_perspective
+  name: Narrative Perspective
+  type: nominal
+  description: Allows to select only Chunks, having narrative_perspective property
+    value in given set.
+  target_property: narrative_perspective
+  values:
+  - user_form: First Person Singular
+    backend_form: first_person_singular
+  - user_form: First Person Plural
+    backend_form: first_person_plural
+  - user_form: Second Person
+    backend_form: second_person
+  - user_form: Third Person Personal
+    backend_form: third_person_personal
+  - user_form: Third Person Impersonal
+    backend_form: third_person_impersonal
+  - user_form: Mixed Or Shifting
+    backend_form: mixed_or_shifting
+  min_value: null
+  max_value: null
+- id: quantitative_content_density
+  name: Quantitative Content Density
+  type: nominal
+  description: Allows to select only Chunks, having quantitative_content_density property
+    value in given set.
+  target_property: quantitative_content_density
+  values:
+  - user_form: No Quantitative
+    backend_form: no_quantitative
+  - user_form: Incidental Numbers
+    backend_form: incidental_numbers
+  - user_form: Moderate Quantitative
+    backend_form: moderate_quantitative
+  - user_form: Data Rich
+    backend_form: data_rich
+  min_value: null
+  max_value: null
+- id: reliability_signals
+  name: Reliability Signals
+  type: nominal
+  description: Allows to select only Chunks, having reliability_signals property value
+    in given set.
+  target_property: reliability_signals
+  values:
+  - user_form: Evidence Based
+    backend_form: evidence_based
+  - user_form: Source Attributed
+    backend_form: source_attributed
+  - user_form: First Hand Account
+    backend_form: first_hand_account
+  - user_form: Procedurally Documented
+    backend_form: procedurally_documented
+  - user_form: Analytical Inference
+    backend_form: analytical_inference
+  - user_form: Speculative Or Uncertain
+    backend_form: speculative_or_uncertain
+  - user_form: Asserted Without Support
+    backend_form: asserted_without_support
+  - user_form: Promotional Or Advocacy
+    backend_form: promotional_or_advocacy
+  - user_form: Partisan Or Propagandistic
+    backend_form: partisan_or_propagandistic
+  - user_form: Fictional Or Imaginative Frame
+    backend_form: fictional_or_imaginative_frame
+  min_value: null
+  max_value: null
+- id: structural_form
+  name: Structural Form
+  type: nominal
+  description: Allows to select only Chunks, having structural_form property value
+    in given set.
+  target_property: structural_form
+  values:
+  - user_form: Continuous Prose
+    backend_form: continuous_prose
+  - user_form: Verse Lines
+    backend_form: verse_lines
+  - user_form: List Or Enumeration
+    backend_form: list_or_enumeration
+  - user_form: Tabular
+    backend_form: tabular
+  - user_form: Form Based Record
+    backend_form: form_based_record
+  - user_form: Ledger Or Account Entry
+    backend_form: ledger_or_account_entry
+  - user_form: Header Or Title Block
+    backend_form: header_or_title_block
+  - user_form: Dialogue Turns
+    backend_form: dialogue_turns
+  - user_form: Navigation Or Reference Apparatus
+    backend_form: navigation_or_reference_apparatus
+  - user_form: Quoted Block
+    backend_form: quoted_block
+  - user_form: Entry Like Units
+    backend_form: entry_like_units
+  - user_form: Other Structure
+    backend_form: other_structure
+  - user_form: Garbage
+    backend_form: garbage
+  min_value: null
+  max_value: null
+- id: style
+  name: Style
+  type: nominal
+  description: Allows to select only Chunks, having style property value in given
+    set.
+  target_property: style
+  values:
+  - user_form: Formal
+    backend_form: formal
+  - user_form: Neutral
+    backend_form: neutral
+  - user_form: Informal
+    backend_form: informal
+  - user_form: Bureaucratic
+    backend_form: bureaucratic
+  - user_form: Scholarly
+    backend_form: scholarly
+  - user_form: Journalistic
+    backend_form: journalistic
+  - user_form: Didactic
+    backend_form: didactic
+  - user_form: Devotional
+    backend_form: devotional
+  - user_form: Literary
+    backend_form: literary
+  - user_form: Promotional
+    backend_form: promotional
+  - user_form: Formulaic
+    backend_form: formulaic
+  min_value: null
+  max_value: null
+- id: subject_domain
+  name: Subject Domain
+  type: nominal
+  description: Allows to select only Chunks, having subject_domain property value
+    in given set.
+  target_property: subject_domain
+  values:
+  - user_form: DDC 000 Generalia
+    backend_form: ddc_000_generalia
+  - user_form: DDC 100 Philosophy Psychology
+    backend_form: ddc_100_philosophy_psychology
+  - user_form: DDC 200 Religion
+    backend_form: ddc_200_religion
+  - user_form: DDC 300 Social Sciences
+    backend_form: ddc_300_social_sciences
+  - user_form: DDC 400 Language
+    backend_form: ddc_400_language
+  - user_form: DDC 500 Natural Sciences
+    backend_form: ddc_500_natural_sciences
+  - user_form: DDC 600 Applied Sciences
+    backend_form: ddc_600_applied_sciences
+  - user_form: DDC 700 Arts Recreation
+    backend_form: ddc_700_arts_recreation
+  - user_form: DDC 800 Literature
+    backend_form: ddc_800_literature
+  - user_form: DDC 900 History Geography
+    backend_form: ddc_900_history_geography
+  - user_form: News And Current Affairs
+    backend_form: news_and_current_affairs
+  - user_form: Official And Legal Documents
+    backend_form: official_and_legal_documents
+  - user_form: Personal And Private Documents
+    backend_form: personal_and_private_documents
+  - user_form: Commercial And Trade Documents
+    backend_form: commercial_and_trade_documents
+  min_value: null
+  max_value: null
+- id: temporal_reference_frame
+  name: Temporal Reference Frame
+  type: nominal
+  description: Allows to select only Chunks, having temporal_reference_frame property
+    value in given set.
+  target_property: temporal_reference_frame
+  values:
+  - user_form: Contemporary To Authorship
+    backend_form: contemporary_to_authorship
+  - user_form: Historical Past
+    backend_form: historical_past
+  - user_form: Remote Or Mythological Past
+    backend_form: remote_or_mythological_past
+  - user_form: Future Or Projective
+    backend_form: future_or_projective
+  - user_form: Timeless Or General
+    backend_form: timeless_or_general
+  - user_form: Mixed Temporal
+    backend_form: mixed_temporal
+  - user_form: Uncertain
+    backend_form: uncertain
+  min_value: null
+  max_value: null
+- id: textual_stance
+  name: Textual Stance
+  type: nominal
+  description: Allows to select only Chunks, having textual_stance property value
+    in given set.
+  target_property: textual_stance
+  values:
+  - user_form: Neutral Descriptive
+    backend_form: neutral_descriptive
+  - user_form: Interpretive
+    backend_form: interpretive
+  - user_form: Evaluative
+    backend_form: evaluative
+  - user_form: Persuasive
+    backend_form: persuasive
+  - user_form: Normative
+    backend_form: normative
+  - user_form: Committed Assertive
+    backend_form: committed_assertive
+  - user_form: Hedged Or Cautious
+    backend_form: hedged_or_cautious
+  - user_form: Partisan Or Polemical
+    backend_form: partisan_or_polemical
+  - user_form: Satirical Or Ironic
+    backend_form: satirical_or_ironic
+  min_value: null
+  max_value: null

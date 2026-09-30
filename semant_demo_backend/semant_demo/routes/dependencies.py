@@ -1,5 +1,4 @@
 from semant_demo.config import config
-from semant_demo.weaviate_client import WeaviateClient
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 #from semant_demo.weaviate_tag import WeaviateSearchAndTag
 
@@ -14,7 +13,6 @@ _async_session_maker = None
 _searcher = None
 _tagger = None
 _summarizer = None
-_weaviate_client = None
 
 def get_engine():
     global _engine, _async_session_maker
@@ -47,8 +45,7 @@ async def get_summarizer() -> TemplatedSearchResultsSummarizer:
         _summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
     return _summarizer
 
-async def get_weaviate_client() -> WeaviateClient:
-    global _weaviate_client
-    if _weaviate_client is None:
-        _weaviate_client = await WeaviateClient.create(config)
-    return _weaviate_client
+
+def get_search_filters():
+    from semant_demo.search_filters import load_search_filters_config
+    return load_search_filters_config(config.SEARCH_FILTERS_CONFIG)

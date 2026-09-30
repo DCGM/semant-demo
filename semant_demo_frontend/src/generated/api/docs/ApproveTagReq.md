@@ -6,10 +6,12 @@
 
 Name | Type
 ------------ | -------------
-`approved` | boolean
+`collectionID` | string
 `chunkID` | string
 `tagID` | string
-`chunkCollectionName` | string
+`spanID` | string
+`start` | number
+`end` | number
 
 ## Example
 
@@ -18,10 +20,12 @@ import type { ApproveTagReq } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "approved": null,
+  "collectionID": null,
   "chunkID": null,
   "tagID": null,
-  "chunkCollectionName": null,
+  "spanID": null,
+  "start": null,
+  "end": null,
 } satisfies ApproveTagReq
 
 console.log(example)

@@ -31,6 +31,7 @@ fastapi_users = FastAPIUsers[User, uuid.UUID](
 # Dependency shortcuts
 current_active_user = fastapi_users.current_user(active=True)
 current_active_optional_user = fastapi_users.current_user(active=True, optional=True)
+current_active_admin = fastapi_users.current_user(active=True, superuser=True)
 
 # Routers (mounted in main.py)
 auth_router = fastapi_users.get_auth_router(auth_backend)

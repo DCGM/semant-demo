@@ -113,6 +113,12 @@ export interface SearchRequest {
     limit?: number;
     /**
      * 
+     * @type {string}
+     * @memberof SearchRequest
+     */
+    userCollectionId?: string | null;
+    /**
+     * 
      * @type {SearchType}
      * @memberof SearchRequest
      */
@@ -222,6 +228,7 @@ export function SearchRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
         'searchResultsSummaryBrevity': json['search_results_summary_brevity'] == null ? undefined : json['search_results_summary_brevity'],
         'query': json['query'],
         'limit': json['limit'] == null ? undefined : json['limit'],
+        'userCollectionId': json['user_collection_id'] == null ? undefined : json['user_collection_id'],
         'type': json['type'] == null ? undefined : SearchTypeFromJSON(json['type']),
         'hybridSearchAlpha': json['hybrid_search_alpha'] == null ? undefined : json['hybrid_search_alpha'],
         'searchLlmFilter': json['search_llm_filter'] == null ? undefined : json['search_llm_filter'],
@@ -262,6 +269,7 @@ export function SearchRequestToJSONTyped(value?: SearchRequest | null, ignoreDis
         'search_results_summary_brevity': value['searchResultsSummaryBrevity'],
         'query': value['query'],
         'limit': value['limit'],
+        'user_collection_id': value['userCollectionId'],
         'type': SearchTypeToJSON(value['type']),
         'hybrid_search_alpha': value['hybridSearchAlpha'],
         'search_llm_filter': value['searchLlmFilter'],

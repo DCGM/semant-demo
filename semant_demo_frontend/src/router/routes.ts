@@ -64,10 +64,18 @@ const routes: RouteRecordRaw[] = [
         redirect: { name: 'documentDetailV1' },
         children: [
           {
-            name: 'documentDetailV1',
+            name: 'documentDetailLayoutV1',
             path: 'v1',
-            component: () => import('pages/Collections/DocumentDetailPageV1.vue'),
-            props: true
+            component: () => import('pages/Collections/xjuric31/DocumentDetailLayout.vue'),
+            props: true,
+            children: [
+              {
+                name: 'documentDetailV1',
+                path: '',
+                component: () => import('pages/Collections/xjuric31/DocumentDetailPage.vue'),
+                props: true
+              }
+            ]
           },
           {
             name: 'documentDetailV2',
@@ -76,11 +84,6 @@ const routes: RouteRecordRaw[] = [
             props: true
           }
         ]
-      },
-      {
-        name: 'tagManagement',
-        path: '/tag_manage',
-        component: () => import('pages/TagManagementPage.vue')
       },
       {
         name: 'about',

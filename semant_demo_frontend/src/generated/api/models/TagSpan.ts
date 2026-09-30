@@ -63,6 +63,18 @@ export interface TagSpan {
      * @memberof TagSpan
      */
     type?: SpanType | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TagSpan
+     */
+    reason?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof TagSpan
+     */
+    confidence?: number | null;
 }
 
 
@@ -94,6 +106,8 @@ export function TagSpanFromJSONTyped(json: any, ignoreDiscriminator: boolean): T
         'start': json['start'],
         'end': json['end'],
         'type': json['type'] == null ? undefined : SpanTypeFromJSON(json['type']),
+        'reason': json['reason'] == null ? undefined : json['reason'],
+        'confidence': json['confidence'] == null ? undefined : json['confidence'],
     };
 }
 
@@ -114,6 +128,8 @@ export function TagSpanToJSONTyped(value?: TagSpan | null, ignoreDiscriminator: 
         'start': value['start'],
         'end': value['end'],
         'type': SpanTypeToJSON(value['type']),
+        'reason': value['reason'],
+        'confidence': value['confidence'],
     };
 }
 

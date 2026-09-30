@@ -1,20 +1,6 @@
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
-from weaviate.exceptions import (
-    WeaviateConnectionError,
-    WeaviateTimeoutError,
-    WeaviateQueryError,
-    WeaviateInvalidInputError,
-    UnexpectedStatusCodeError,
-    ResponseCannotBeDecodedError,
-    WeaviateClosedClientError,
-    InsufficientPermissionsError,
-)
 from semant_demo.weaviate_exceptions import (
-    WeaviateConnectError,
-    WeaviateDataValidationError,
-    WeaviateLimitError,
-    WeaviateServerError,
     WeaviateOperationError
 )
 

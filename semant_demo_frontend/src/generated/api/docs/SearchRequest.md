@@ -20,6 +20,7 @@ Name | Type
 `searchResultsSummaryBrevity` | number
 `query` | string
 `limit` | number
+`userCollectionId` | string
 `type` | [SearchType](SearchType.md)
 `hybridSearchAlpha` | number
 `searchLlmFilter` | boolean
@@ -54,6 +55,7 @@ const example = {
   "searchResultsSummaryBrevity": null,
   "query": null,
   "limit": null,
+  "userCollectionId": null,
   "type": null,
   "hybridSearchAlpha": null,
   "searchLlmFilter": null,

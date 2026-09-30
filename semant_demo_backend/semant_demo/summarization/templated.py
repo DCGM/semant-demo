@@ -37,7 +37,7 @@ class ModelOptions(ConfigurableMixin):
 class TemplatedSearchResultsSummarizer(SearchResultsSummarizer):
 
     gen_title_model: str = ConfigurableValue(
-        user_default="gpt-oss:20b",
+        user_default="qwen2.5:32b-instruct",
         desc="Model to use for title generation."
     )
     gen_title_model_options: ModelOptions = ConfigurableFactory(
@@ -49,7 +49,7 @@ class TemplatedSearchResultsSummarizer(SearchResultsSummarizer):
         desc="Title to use when title generation fails."
     )
     gen_title_system_prompt: Template = ConfigurableValue(
-        user_default=LiteralScalarString("""Jsi užitečný asistent, který generuje nadpisy pro texty historických dokumentů. {% if brevity %}Nadpis by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze nadpisem, bez dalších komentářů nebo úvodních frází."""),
+        user_default=LiteralScalarString("""Jsi užitečný asistent, který generuje nadpisy pro texty historických dokumentů.{% if brevity %} Nadpis by neměl být delší než {{ brevity }} slov. {% endif %} Odpověz pouze nadpisem, bez dalších komentářů nebo úvodních frází."""),
         desc="System prompt for title generation.",
         transform=TemplateTransformer()
     )
@@ -63,7 +63,7 @@ Nadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".
     )
 
     gen_results_summary_model: str = ConfigurableValue(
-        user_default="gpt-oss:20b",
+        user_default="qwen2.5:32b-instruct",
         desc="Model to use for search results summary generation."
     )
     gen_results_summary_model_options: ModelOptions = ConfigurableFactory(
@@ -76,10 +76,11 @@ Nadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".
     )
     gen_results_summary_system_prompt: Template = ConfigurableValue(
         user_default=LiteralScalarString("""Jsi asistent pro sumarizaci textů.  
-Dostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc1], [doc2], … [doc15].  
+Dostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc0], [doc1], … [doc15].  
 Tvým úkolem je vytvořit jediný, stručný souhrn, který pokryje všechny klíčové body relevantní k uživatelskému vyhledávacímu dotazu.  
 Po každém faktu, který z úryvku získáš, připoj ID daného úryvku v hranatých závorkách – například: „Gen ABC je nadregulován v nádorových buňkách [doc3].“  
-Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID oddělená čárkami: „Tento přístup zlepšil přesnost o 12 % [doc2, doc7, doc11].“  
+Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID: „Tento přístup zlepšil přesnost o 12 % [doc2][doc7][doc11].“  
+Nikdy neslučuj více id do jednoho, jako [doc2-4] nebo [doc2, doc3, doc4], ale vždy je uváděj jednotlivě.
 Nevymýšlej žádná fakta, která v úryvcích nejsou. Soustřeď se pouze na informace relevantní k uživatelskému dotazu.  
 Piš přehledně a stručně.
 {% if brevity %} Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}
@@ -105,7 +106,7 @@ Tento dotaz mu vrátil následující výsledky:
     )
 
     gen_query_summary_model: str = ConfigurableValue(
-        user_default="gpt-oss:20b",
+        user_default="qwen2.5:32b-instruct",
         desc="Model to use for query summary generation."
     )
     gen_query_summary_model_options: ModelOptions = ConfigurableFactory(
@@ -117,7 +118,7 @@ Tento dotaz mu vrátil následující výsledky:
         desc="Summary to use when query summary generation fails."
     )
     gen_query_summary_system_prompt: Template = ConfigurableValue(
-        user_default=LiteralScalarString("""Jsi užitečný asistent, který generuje sumarizace textů historických dokumentů. {% if brevity %}Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází."""),
+        user_default=LiteralScalarString("""Jsi užitečný asistent, který generuje sumarizace textů historických dokumentů.{% if brevity %} Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází."""),
         desc="System prompt for query summary generation.",
         transform=TemplateTransformer()
     )

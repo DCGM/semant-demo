@@ -3,25 +3,32 @@ from uuid import UUID
 from uuid import UUID
 from datetime import datetime
 
+
 class Collection(BaseModel):
     id: UUID
     name: str
-    user_id: str
+    owner: str
     description: str | None = None
     created_at: datetime
     updated_at: datetime
     color: str
-    
+
+
 class PostCollection(BaseModel):
     name: str
-    user_id: str
     description: str | None = None
     color: str
-    
+
+
 class PatchCollection(BaseModel):
     name: str | None = None
     description: str | None = None
     color: str | None = None
+
+
+class PatchCollectionOwner(BaseModel):
+    user_id: UUID
+
 
 class CollectionStats(BaseModel):
     collection_id: UUID
@@ -29,3 +36,4 @@ class CollectionStats(BaseModel):
     chunks_count: int
     annotations_count: int
     tags_count: int
+

@@ -11,6 +11,32 @@ export interface User {
   is_verified: boolean;
 }
 
+export interface SearchFilterInput {
+  id: string;
+  min_value?: number | null;
+  max_value?: number | null;
+  values?: string[] | null;
+}
+
+export interface NominalValue {
+  user_form: string;
+  backend_form: string;
+}
+
+export interface SearchFilter {
+  id: string;
+  type: 'interval' | 'nominal';
+  description: string;
+  target_property: string;
+  min_value?: number | null;
+  max_value?: number | null;
+  values?: NominalValue[] | null;
+}
+
+export interface SearchFiltersResponse {
+  filters: SearchFilter[];
+}
+
 export interface SearchRequest {
   query: string;
   limit?: number;
@@ -21,6 +47,7 @@ export interface SearchRequest {
   search_results_summary_generate?: boolean;
   type?: 'hybrid' | 'text' | 'vector';
   hybrid_search_alpha?: number;
+  filters?: SearchFilterInput[] | null;
   min_year?: number | null;
   max_year?: number | null;
   min_date?: string | null; // ISO datetime string

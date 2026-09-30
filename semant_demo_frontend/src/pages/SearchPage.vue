@@ -58,11 +58,27 @@
 
           <q-slide-transition>
             <div v-show="showFilters">
-              <q-separator inset />
-              <q-card-section class="bg-grey-1">
-                <div class="row q-col-gutter-xl">
+              <div class="relative-position q-pt-sm">
+                <q-separator inset />
+                <div class="absolute bg-white q-px-sm" style="z-index: 1; bottom: 0; left: 50%; transform: translate(-50%, 50%);" v-if="activeFilterBadges.length">
+                  <q-btn
+                    outline
+                    dense
+                    color="negative"
+                    @click="clearAllFilters"
+                    class="bg-white q-px-sm"
+                  >
+                    <div class="row items-center no-wrap" style="line-height: 1;">
+                      <q-icon name="delete" size="16px" class="q-mr-xs" />
+                      <span>Clear Filters</span>
+                    </div>
+                  </q-btn>
+                </div>
+              </div>
+              <q-card-section class="bg-grey-1" :style="activeFilterBadges.length ? 'padding-top: 24px;' : ''">
+                <div class="row q-col-gutter-md">
 
-                  <div v-if="userStore.isLoggedIn" class="col-12 col-md-4">
+                  <div v-if="userStore.isLoggedIn" class="col-12 col-sm-6 col-md-4">
                     <q-select
                       v-model="searchForm.user_collection_id"
                       :options="collectionOptions"
@@ -80,43 +96,55 @@
                     </q-select>
                   </div>
 
-                  <div class="col-12 col-md-4">
-                    <div class="row items-center text-subtitle2 q-mb-sm text-grey-8">
-                      <q-icon name="language" size="18px" class="q-mr-xs" />
-                      <span>Languages</span>
-                    </div>
-                    <div v-if="loadingFilters" class="text-caption text-grey">Loading languages...</div>
-                    <div class="row q-gutter-x-md" v-else>
-                      <q-checkbox
-                        v-for="lang in availableLanguages"
-                        :key="lang"
-                        v-model="selectedLanguages"
-                        :val="lang"
-                        :label="lang"
-                        dense
-                        color="primary"
-                      />
-                    </div>
+                  <div v-if="loadingFilters" class="col-12 text-caption text-grey flex items-center q-pa-sm">
+                    <q-spinner color="primary" size="1.5em" class="q-mr-sm" />
+                    Loading available search filters...
                   </div>
+                  <template v-else>
+                    <div
+                      v-for="filter in availableSearchFilters"
+                      :key="filter.id"
+                      class="col-12 col-sm-6 col-md-4"
+                    >
+                      <!-- Interval Filter -->
+                      <div v-if="filter.type === 'interval'">
+                        <div class="row items-center text-subtitle2 q-mb-xs text-grey-8">
+                          <q-icon :name="getFilterIcon(filter.id)" size="18px" class="q-mr-xs" />
+                          <span>{{ formatFilterLabel(filter.id) }}: {{ filterValues[filter.id]?.min }} - {{ filterValues[filter.id]?.max }}</span>
+                        </div>
+                        <div class="q-px-sm" v-if="filterValues[filter.id]">
+                          <q-range
+                            v-model="filterValues[filter.id]"
+                            :min="filter.min_value != null ? Math.floor(filter.min_value) : 1800"
+                            :max="filter.max_value != null ? Math.ceil(filter.max_value) : 2026"
+                            :step="1"
+                            label
+                            color="primary"
+                          />
+                        </div>
+                      </div>
 
-                  <div class="col-12 col-md-4">
-                    <div class="row items-center text-subtitle2 q-mb-sm text-grey-8">
-                      <q-icon name="event" size="18px" class="q-mr-xs" />
-                      <span>Year Range: {{ yearRange.min }} - {{ yearRange.max }}</span>
+                      <!-- Nominal Filter -->
+                      <div v-else-if="filter.type === 'nominal' && filter.values">
+                        <q-select
+                          v-model="filterValues[filter.id]"
+                          :options="getNominalOptions(filter)"
+                          :label="formatFilterLabel(filter.id)"
+                          multiple
+                          use-chips
+                          outlined
+                          dense
+                          emit-value
+                          map-options
+                          clearable
+                        >
+                          <template v-slot:prepend>
+                            <q-icon :name="getFilterIcon(filter.id)" />
+                          </template>
+                        </q-select>
+                      </div>
                     </div>
-                    <div v-if="loadingFilters" class="text-caption text-grey">Loading years...</div>
-                    <div class="q-px-md" v-else>
-                      <q-range
-                        v-model="yearRange"
-                        :min="availableYears.min"
-                        :max="availableYears.max"
-                        :step="1"
-                        label
-                        color="primary"
-                        @update:model-value="updateYearFilters"
-                      />
-                    </div>
-                  </div>
+                  </template>
 
                 </div>
               </q-card-section>
@@ -318,7 +346,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QCheckbox, QRange, QPagination, Notify } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument } from 'src/models'
+import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, SearchFiltersResponse, SearchFilter, SearchFilterInput } from 'src/models'
 import type { Chunk2CollectionReq } from 'src/generated/api'
 import { api } from 'src/boot/axios'
 import { useApi } from 'src/composables/useApi'
@@ -337,6 +365,7 @@ const searchForm = ref<SearchRequest>({
   search_title_generate: false,
   search_summary_generate: false,
   search_results_summary_generate: false,
+  filters: null,
   min_year: null,
   max_year: null,
   min_date: null,
@@ -347,19 +376,33 @@ const searchForm = ref<SearchRequest>({
   automatic: true
 })
 
-// Mock Filter Data State
+// Dynamic Filter Data State
 const loadingFilters = ref(false)
-const availableLanguages = ref<string[]>([])
-const selectedLanguages = ref<string[]>([])
-const languageCodeMap: Record<string, string> = {
-  English: 'eng',
-  Czech: 'ces',
-  German: 'deu',
-  Spanish: 'spa',
-  French: 'fra'
+const availableSearchFilters = ref<SearchFilter[]>([])
+const filterValues = ref<Record<string, any>>({})
+
+function formatFilterLabel (id: string): string {
+  return id
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }
-const availableYears = ref({ min: 1800, max: 2026 })
-const yearRange = ref({ min: 1800, max: 2026 })
+
+function getFilterIcon (id: string): string {
+  if (id === 'language') return 'language'
+  if (id.includes('year') || id.includes('date') || id.includes('period')) return 'event'
+  if (id.includes('mode') || id.includes('interactivity')) return 'forum'
+  if (id.includes('type') || id.includes('genre')) return 'category'
+  return 'filter_list'
+}
+
+function getNominalOptions (filter: SearchFilter) {
+  if (!filter.values) return []
+  return filter.values.map(v => ({
+    label: v.user_form,
+    value: v.backend_form
+  }))
+}
 
 // Results State
 const loading = ref(false)
@@ -516,7 +559,8 @@ const collectionOptions = computed(() =>
 
 type ActiveFilterBadge = {
   key: string
-  type: 'collection' | 'language' | 'year'
+  type: 'collection' | 'dynamic'
+  filterId?: string
   icon: string
   label: string
   value?: string
@@ -527,11 +571,6 @@ const selectedCollectionLabel = computed(() => {
   const option = collectionOptions.value.find(option => option.value === searchForm.value.user_collection_id)
   return option?.label ?? `Collection ${searchForm.value.user_collection_id}`
 })
-
-const isYearFilterActive = computed(() => (
-  yearRange.value.min !== availableYears.value.min ||
-  yearRange.value.max !== availableYears.value.max
-))
 
 const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
   const badges: ActiveFilterBadge[] = []
@@ -545,24 +584,37 @@ const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
     })
   }
 
-  selectedLanguages.value.forEach(language => {
-    badges.push({
-      key: `language:${language}`,
-      type: 'language',
-      icon: 'language',
-      label: language,
-      value: language
-    })
-  })
+  availableSearchFilters.value.forEach(filter => {
+    const val = filterValues.value[filter.id]
+    if (!val) return
 
-  if (isYearFilterActive.value) {
-    badges.push({
-      key: 'year',
-      type: 'year',
-      icon: 'event',
-      label: `${yearRange.value.min}-${yearRange.value.max}`
-    })
-  }
+    if (filter.type === 'interval') {
+      const minDefault = filter.min_value != null ? Math.floor(filter.min_value) : 1800
+      const maxDefault = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
+      if (val.min !== minDefault || val.max !== maxDefault) {
+        badges.push({
+          key: `interval:${filter.id}`,
+          type: 'dynamic',
+          filterId: filter.id,
+          icon: getFilterIcon(filter.id),
+          label: `${formatFilterLabel(filter.id)}: ${val.min}-${val.max}`
+        })
+      }
+    } else if (filter.type === 'nominal' && Array.isArray(val) && val.length > 0) {
+      val.forEach((selectedBackendVal: string) => {
+        const nominalObj = filter.values?.find(v => v.backend_form === selectedBackendVal || v.user_form === selectedBackendVal)
+        const displayLabel = nominalObj ? nominalObj.user_form : selectedBackendVal
+        badges.push({
+          key: `nominal:${filter.id}:${selectedBackendVal}`,
+          type: 'dynamic',
+          filterId: filter.id,
+          icon: getFilterIcon(filter.id),
+          label: `${formatFilterLabel(filter.id)}: ${displayLabel}`,
+          value: selectedBackendVal
+        })
+      })
+    }
+  })
 
   return badges
 })
@@ -573,46 +625,59 @@ function removeFilterBadge (badge: ActiveFilterBadge) {
     return
   }
 
-  if (badge.type === 'language' && badge.value) {
-    selectedLanguages.value = selectedLanguages.value.filter(language => language !== badge.value)
-    if (selectedLanguages.value.length === 0) {
-      searchForm.value.language = null
-    }
-    return
-  }
+  if (badge.filterId && filterValues.value[badge.filterId]) {
+    const filter = availableSearchFilters.value.find(f => f.id === badge.filterId)
+    if (!filter) return
 
-  if (badge.type === 'year') {
-    yearRange.value = {
-      min: availableYears.value.min,
-      max: availableYears.value.max
+    if (filter.type === 'interval') {
+      const min = filter.min_value != null ? Math.floor(filter.min_value) : 1800
+      const max = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
+      filterValues.value[badge.filterId] = { min, max }
+    } else if (filter.type === 'nominal' && badge.value) {
+      const current = filterValues.value[badge.filterId] as string[]
+      filterValues.value[badge.filterId] = current.filter(v => v !== badge.value)
     }
-    searchForm.value.min_year = null
-    searchForm.value.max_year = null
   }
+}
+
+function clearAllFilters () {
+  searchForm.value.user_collection_id = null
+  availableSearchFilters.value.forEach(filter => {
+    if (filter.type === 'interval') {
+      const min = filter.min_value != null ? Math.floor(filter.min_value) : 1800
+      const max = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
+      filterValues.value[filter.id] = { min, max }
+    } else if (filter.type === 'nominal') {
+      filterValues.value[filter.id] = []
+    }
+  })
 }
 
 // Methods
 
-async function fetchFilterMocks () {
+async function fetchAvailableFilters () {
   loadingFilters.value = true
   try {
-    // Mock backend calls to get available languages and max/min years
-    await new Promise(resolve => setTimeout(resolve, 600))
-    availableLanguages.value = ['English', 'Czech', 'German', 'Spanish', 'French']
-    availableYears.value = { min: 1800, max: new Date().getFullYear() }
-    yearRange.value = { min: 1800, max: new Date().getFullYear() }
+    const { data } = await api.get<SearchFiltersResponse>('/search/filters')
+    availableSearchFilters.value = data.filters || []
 
-    // Set initial bounds
-    searchForm.value.min_year = yearRange.value.min
-    searchForm.value.max_year = yearRange.value.max
+    const valuesMap: Record<string, any> = {}
+    availableSearchFilters.value.forEach(filter => {
+      if (filter.type === 'interval') {
+        const min = filter.min_value != null ? Math.floor(filter.min_value) : 1800
+        const max = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
+        valuesMap[filter.id] = { min, max }
+      } else if (filter.type === 'nominal') {
+        valuesMap[filter.id] = []
+      }
+    })
+    filterValues.value = valuesMap
+  } catch (e) {
+    console.error('Failed to fetch available search filters:', e)
+    Notify.create({ message: 'Failed to load search filters', position: 'top', color: 'warning' })
   } finally {
     loadingFilters.value = false
   }
-}
-
-function updateYearFilters (val: { min: number; max: number }) {
-  searchForm.value.min_year = val.min
-  searchForm.value.max_year = val.max
 }
 
 async function onSearch () {
@@ -625,28 +690,38 @@ async function onSearch () {
   currentPage.value = 1 // reset pagination
   searchResponse = null
 
-  // Attach selected language codes to search payload
-  const selectedLanguageCodes = selectedLanguages.value
-    .map(lang => languageCodeMap[lang])
-    .filter((code): code is string => Boolean(code))
+  // Build dynamic filters payload
+  const filtersPayload: SearchFilterInput[] = []
 
-  searchForm.value.language = selectedLanguageCodes.length > 0
-    ? selectedLanguageCodes
-    : null
+  availableSearchFilters.value.forEach(filter => {
+    const val = filterValues.value[filter.id]
+    if (!val) return
 
-  // so far only one language is supported
-  if (searchForm.value.language && searchForm.value.language.length > 1) {
-    Notify.create({ message: `Multiple languages filtering is not supported yet, selecting only one`, position: 'top', color: 'warning' })
-    searchForm.value.language = [searchForm.value.language[0]]
-  }
-  if (searchForm.value.language) {
-    searchForm.value.language = searchForm.value.language[0]
-  }
+    if (filter.type === 'interval') {
+      const minDefault = filter.min_value != null ? Math.floor(filter.min_value) : 1800
+      const maxDefault = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
+      if (val.min !== minDefault || val.max !== maxDefault) {
+        filtersPayload.push({
+          id: filter.id,
+          min_value: val.min,
+          max_value: val.max
+        })
+      }
+    } else if (filter.type === 'nominal' && Array.isArray(val) && val.length > 0) {
+      filtersPayload.push({
+        id: filter.id,
+        values: val
+      })
+    }
+  })
 
-  if (searchForm.value.min_year === availableYears.value.min) searchForm.value.min_year = null
-  if (searchForm.value.max_year === availableYears.value.max) searchForm.value.max_year = null
+  // Attach filters array to request, clearing legacy fields
+  searchForm.value.filters = filtersPayload.length > 0 ? filtersPayload : null
+  searchForm.value.min_year = null
+  searchForm.value.max_year = null
+  searchForm.value.language = null
 
-  console.log('Submitting search with payload:', searchForm.value)
+  console.log('Submitting search with dynamic filters payload:', searchForm.value)
   try {
     console.log('Search will start')
     const { data } = await api.post<SearchResponse>('/search', searchForm.value)
@@ -771,7 +846,7 @@ async function addSelectedDocumentsToCollection () {
 }
 
 onMounted(async () => {
-  await fetchFilterMocks()
+  await fetchAvailableFilters()
   await loadCollections()
 })
 

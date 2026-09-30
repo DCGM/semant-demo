@@ -158,7 +158,7 @@
 
             <tr>
               <th class="details-key">Owner</th>
-              <td class="details-value">{{ activeCollection?.userId || '-' }}</td>
+              <td class="details-value">{{ activeCollection?.owner || '-' }}</td>
             </tr>
 
             <tr>

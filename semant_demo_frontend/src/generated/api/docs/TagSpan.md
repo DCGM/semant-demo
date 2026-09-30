@@ -12,6 +12,8 @@ Name | Type
 `start` | number
 `end` | number
 `type` | [SpanType](SpanType.md)
+`reason` | string
+`confidence` | number
 
 ## Example
 
@@ -26,6 +28,8 @@ const example = {
   "start": null,
   "end": null,
   "type": null,
+  "reason": null,
+  "confidence": null,
 } satisfies TagSpan
 
 console.log(example)

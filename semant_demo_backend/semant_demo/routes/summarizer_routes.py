@@ -14,35 +14,14 @@ from semant_demo.routes.dependencies import get_search, get_summarizer #, get_en
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 import logging
+from openai import AsyncOpenAI
 
 
 exp_router = APIRouter()
 
 
-openai_client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
-@exp_router.post("/api/search", response_model=schemas.SearchResponse)
-async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Depends(get_search),
-                 summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
-                 current_user: User | None = Depends(current_active_optional_user)) -> schemas.SearchResponse:
-    start_time = time.time()
-
-    # <authorization>
-    if req.user_collection_id is not None:
-        if current_user is None:
-            raise HTTPException(status_code=401, detail="Unauthorized: user collection specified but no user authenticated")
-        collections = await searcher.userCollection.read_all(str(current_user.id))
-        user_collection_ids = {str(col.id) for col in collections}
-        if req.user_collection_id not in user_collection_ids:
-            raise HTTPException(status_code=403, detail="Forbidden: user does not have access to the specified collection")
-
-    # </authorization>
-
-    response = await searcher.textChunk.search(req)
-    await summarizer(req, response)
-
-    response.time_spent = time.time() - start_time
-    return response
-
+def get_openai_client() -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
 @exp_router.post("/api/summarize/{summary_type}", response_model=schemas.SummaryResponse)
 async def summarize(search_response: schemas.SearchResponse, summary_type: str,
@@ -93,7 +72,7 @@ async def question(search_response: schemas.SearchResponse, question_text: str,
     print(messages)
 
     try:
-        resp = await openai_client.chat.completions.create(
+        resp = await get_openai_client().chat.completions.create(
             model="gpt-4.1-mini",
             messages=messages,
             temperature=0.0,

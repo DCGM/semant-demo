@@ -196,7 +196,7 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 - Test RAG routing with the `TestRag` class (returns a static response)
 
 ### Tagging Debugging
-- Poll `GET /api/tag_status/{taskId}` to see `processed_count` / `all_texts_count` progress
+- Poll `GET /api/tag/task/status/{taskId}` to see `processed_count` / `all_texts_count` progress
 - `tag_processing_data` field contains per-chunk tagging decisions
 - Check SQLite directly: `sqlite3 tasks.db "SELECT * FROM tasks"`
 
@@ -210,4 +210,4 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 4. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
 5. **SQLite limitations** — consider switching to PostgreSQL for concurrent tagging tasks under load
 6. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
-7. **Embedding service scaling** — can run multiple instances behind a load balancer; however `GEMMA_URL` is currently hardcoded to `http://localhost:8001` in `config.py` and must be changed in source to point to the balancer (see TODO.md for making this configurable)
+7. **Embedding service scaling** — can run multiple instances behind a load balancer. The endpoint is built from `EMBEDDING_SERVICE_HOST` (default `embedding-service` in Docker, `localhost` outside) and `EMBEDDING_SERVICE_PORT` (default `8001`); point both at your load balancer to scale.

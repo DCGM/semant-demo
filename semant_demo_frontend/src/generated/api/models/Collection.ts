@@ -36,7 +36,7 @@ export interface Collection {
      * @type {string}
      * @memberof Collection
      */
-    userId: string;
+    owner: string;
     /**
      * 
      * @type {string}
@@ -69,7 +69,7 @@ export interface Collection {
 export function instanceOfCollection(value: object): value is Collection {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
-    if (!('userId' in value) || value['userId'] === undefined) return false;
+    if (!('owner' in value) || value['owner'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     if (!('color' in value) || value['color'] === undefined) return false;
@@ -88,7 +88,7 @@ export function CollectionFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         
         'id': json['id'],
         'name': json['name'],
-        'userId': json['user_id'],
+        'owner': json['owner'],
         'description': json['description'] == null ? undefined : json['description'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
@@ -109,7 +109,7 @@ export function CollectionToJSONTyped(value?: Collection | null, ignoreDiscrimin
         
         'id': value['id'],
         'name': value['name'],
-        'user_id': value['userId'],
+        'owner': value['owner'],
         'description': value['description'],
         'created_at': value['createdAt'].toISOString(),
         'updated_at': value['updatedAt'].toISOString(),

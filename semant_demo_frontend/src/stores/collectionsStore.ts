@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collections'
 import { useCollectionRepository } from 'src/repositories/useCollectionRepository'
@@ -10,35 +10,41 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   const activeCollection = ref<Collection | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
+  const pendingDeleteIds = ref<Set<string>>(new Set())
 
-  const fetchCollections = async (userId: string) => {
-    const notif = ongoingNotification('Loading collections...')
+  // Collections visible in UI — excludes any IDs currently being deleted
+  const visibleCollections = computed(() =>
+    collections.value.filter((c) => !pendingDeleteIds.value.has(c.id))
+  )
+
+  const fetchCollections = async () => {
+    // const notif = ongoingNotification('Loading collections...')
     loading.value = true
     error.value = null
     try {
-      const data = await collectionRepository.getAll(userId)
+      const data = await collectionRepository.getAll()
       collections.value = data
-      notif.success('Collections loaded')
+      // notif.success('Collections loaded')
     } catch (err) {
       error.value = 'Failed to fetch collections'
       console.error('Error fetching collections:', err)
-      notif.error('Failed to load collections')
+      // notif.error('Failed to load collections')
     } finally {
       loading.value = false
     }
   }
   const fetchCollection = async (collectionId: string) => {
-    const notif = ongoingNotification('Loading collection...')
+    // const notif = ongoingNotification('Loading collection...')
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.getById(collectionId)
       activeCollection.value = data
-      notif.success('Collection loaded')
+      // notif.success('Collection loaded')
     } catch (err) {
       error.value = 'Failed to fetch collection'
       console.error('Error fetching collection:', err)
-      notif.error('Failed to load collection')
+      // notif.error('Failed to load collection')
     } finally {
       loading.value = false
     }
@@ -101,8 +107,35 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     }
   }
 
+  const deleteManyCollections = async (collectionIds: string[]) => {
+    if (collectionIds.length === 0) return
+    const notif = ongoingNotification(`Deleting ${collectionIds.length} collections...`)
+    // Track pending deletes so fetchCollections can't bring them back
+    collectionIds.forEach((id) => pendingDeleteIds.value.add(id))
+    collections.value = collections.value.filter((c) => !collectionIds.includes(c.id))
+    error.value = null
+    let hadError = false
+    try {
+      await Promise.all(collectionIds.map((id) => collectionRepository.remove(id)))
+      notif.success(`${collectionIds.length} collection${collectionIds.length === 1 ? '' : 's'} deleted`)
+    } catch (err) {
+      hadError = true
+      error.value = 'Failed to delete some collections'
+      console.error('Error deleting collections:', err)
+      notif.error('Failed to delete some collections')
+      // On error, restore via fresh fetch so non-deleted items reappear
+      await fetchCollections()
+    } finally {
+      if (!hadError) {
+        // Re-filter in case a mid-deletion refresh restored items into collections.value
+        collections.value = collections.value.filter((c) => !collectionIds.includes(c.id))
+      }
+      collectionIds.forEach((id) => pendingDeleteIds.value.delete(id))
+    }
+  }
+
   return {
-    collections,
+    collections: visibleCollections,
     activeCollection,
     error,
     loading,
@@ -110,6 +143,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     fetchCollection,
     createCollection,
     updateCollection,
-    deleteCollection
+    deleteCollection,
+    deleteManyCollections
   }
 })

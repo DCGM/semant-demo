@@ -1,0 +1,35 @@
+# Task context
+You are annotating digitized library texts for filtering in a search interface of a public web portal.
+
+# Task
+- Characterize the information granularity of `Text to be classified`.
+- Choose one class from the list of classes below that best describes the level of detail at which information is presented in the passage.
+- Use the provided `Context` only for better understanding, but assign the class relevant only to `Text to be classified`.
+- Judge granularity based on how detailed or specific the presented information is, not on its topic or genre.
+
+# Classes
+- `general_overview` — presents broad, high-level information with little detail
+- `detailed_account` — presents a thorough, detailed account of events, facts, or processes
+- `highly_specific` — presents narrowly focused, precise information about a specific point, item, or instance
+- `definitional` — presents information mainly as definitions, explanations of terms, or conceptual clarifications
+- `enumerative` — presents information mainly as a list or enumeration of items, examples, or instances
+- `uncertain` — information granularity cannot be determined reliably from the passage
+
+# Preference rules
+- Prefer `highly_specific` over `detailed_account` when the passage narrowly focuses on one specific fact, item, or instance rather than giving a broader detailed narrative.
+- Prefer `definitional` when the passage's main purpose is to define or explain a term or concept.
+- Prefer `enumerative` when the passage's main structure is a list or sequence of items rather than connected narrative or explanation.
+- Prefer `general_overview` when no finer-grained level of detail is clearly dominant.
+- Use `uncertain` only if the text is too fragmentary, ambiguous, or corrupted for reliable classification.
+
+# Output
+Respond with a JSON object with a single key `cls`, whose value is a list containing exactly one class label.
+
+Output example 1: {"cls": ["general_overview"]}
+Output example 2: {"cls": ["highly_specific"]}
+
+# Text language:
+{{ language }}
+
+# Text to be classified is:
+{{ text }}
