@@ -56,6 +56,7 @@
         @enter="handleEnter"
         @edit="handleEdit"
         @delete="handleDelete"
+        @share="handleShare"
       />
     </div>
     <CollectionsTable
@@ -67,6 +68,8 @@
       @edit="handleEdit"
       @delete="handleDelete"
       @deleteMany="handleDeleteMany"
+      @share="handleShare"
+      @shareMany="handleShareMany"
     />
     <div class="row justify-center q-mt-md lt-md">
       <q-pagination
@@ -111,7 +114,7 @@ const getInitialViewMode = (): 'tiles' | 'table' => {
 }
 const viewMode = ref<'tiles' | 'table'>(getInitialViewMode())
 const searchQuery = ref('')
-const { collections, error, loading, loadCollections, createCollection, updateCollection, deleteCollection, deleteManyCollections } = useCollections()
+const { collections, error, loading, loadCollections, createCollection, updateCollection, deleteCollection, deleteManyCollections, shareManyCollections } = useCollections()
 const filteredCollections = computed(() => {
   if (!searchQuery.value?.trim()) {
     return collections.value
@@ -149,6 +152,10 @@ const handleEnter = async (collectionId: string) => {
   await $router.push({ name: 'collectionDetail', params: { collectionId } })
 }
 
+const handleShare = async (collection: Collection) => {
+  await $router.push({ name: 'collectionMembers', params: { collectionId: collection.id } })
+}
+
 const handleEdit = (collection: Collection) => {
   openCollectionDialog({
     dialogType: 'EDIT',
@@ -175,5 +182,9 @@ const handleDelete = (collection: Collection) => {
 
 const handleDeleteMany = (collectionIds: string[]) => {
   deleteManyCollections(collectionIds)
+}
+
+const handleShareMany = ({ collectionIds, userId }: { collectionIds: string[]; userId: string }) => {
+  shareManyCollections(collectionIds, userId)
 }
 </script>

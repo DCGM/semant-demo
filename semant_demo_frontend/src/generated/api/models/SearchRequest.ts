@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { SearchFilterInput } from './SearchFilterInput';
+import {
+    SearchFilterInputFromJSON,
+    SearchFilterInputFromJSONTyped,
+    SearchFilterInputToJSON,
+    SearchFilterInputToJSONTyped,
+} from './SearchFilterInput';
 import type { SearchType } from './SearchType';
 import {
     SearchTypeFromJSON,
@@ -137,6 +144,12 @@ export interface SearchRequest {
     searchLlmFilter?: boolean;
     /**
      * 
+     * @type {Array<SearchFilterInput>}
+     * @memberof SearchRequest
+     */
+    filters?: Array<SearchFilterInput> | null;
+    /**
+     * 
      * @type {number}
      * @memberof SearchRequest
      */
@@ -232,6 +245,7 @@ export function SearchRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
         'type': json['type'] == null ? undefined : SearchTypeFromJSON(json['type']),
         'hybridSearchAlpha': json['hybrid_search_alpha'] == null ? undefined : json['hybrid_search_alpha'],
         'searchLlmFilter': json['search_llm_filter'] == null ? undefined : json['search_llm_filter'],
+        'filters': json['filters'] == null ? undefined : ((json['filters'] as Array<any>).map(SearchFilterInputFromJSON)),
         'minYear': json['min_year'] == null ? undefined : json['min_year'],
         'maxYear': json['max_year'] == null ? undefined : json['max_year'],
         'minDate': json['min_date'] == null ? undefined : (new Date(json['min_date'])),
@@ -273,6 +287,7 @@ export function SearchRequestToJSONTyped(value?: SearchRequest | null, ignoreDis
         'type': SearchTypeToJSON(value['type']),
         'hybrid_search_alpha': value['hybridSearchAlpha'],
         'search_llm_filter': value['searchLlmFilter'],
+        'filters': value['filters'] == null ? undefined : ((value['filters'] as Array<any>).map(SearchFilterInputToJSON)),
         'min_year': value['minYear'],
         'max_year': value['maxYear'],
         'min_date': value['minDate'] == null ? value['minDate'] : value['minDate'].toISOString(),

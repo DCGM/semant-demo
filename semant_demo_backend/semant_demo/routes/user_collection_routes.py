@@ -2,12 +2,14 @@ from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
+from uuid import UUID
 
 from semant_demo import schemas
 from semant_demo.users.auth import current_active_user, current_active_optional_user, current_active_admin
 from semant_demo.users.models import User
+from semant_demo.users.schemas import UserSearchResult
 
-from semant_demo.weaviate_exceptions import WeaviateOperationError
+from semant_demo.weaviate_exceptions import WeaviateOperationError, WeaviateDataValidationError
 
 from semant_demo import schemas
 import logging
@@ -17,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import logging
 
-from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner
+from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest
 from semant_demo.schema.documents import DocumentStats
 from semant_demo.schema.documents import Document
 from semant_demo.schema.tags import Tag
@@ -90,6 +92,55 @@ async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
     try:
         response = await searcher.userCollection.change_owner(collection_id, req.user_id, session)
         return response
+    except WeaviateOperationError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@exp_router.post("/api/collections/{collection_id}/share", response_model=Collection)
+async def share_collection(collection_id: str, req: ShareCollectionRequest,
+                           searcher: WeaviateAbstraction = Depends(get_search),
+                           session: AsyncSession = Depends(get_async_session),
+                           current_user: User = Depends(current_active_user)) -> Collection:
+    """
+    Shares a collection with another user. Only the collection's owner may share it.
+    """
+    try:
+        response = await searcher.userCollection.share(collection_id, req.user_id, current_user, session)
+        return response
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except WeaviateDataValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except WeaviateOperationError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@exp_router.delete("/api/collections/{collection_id}/share/{user_id}", response_model=Collection)
+async def unshare_collection(collection_id: str, user_id: UUID,
+                             searcher: WeaviateAbstraction = Depends(get_search),
+                             current_user: User = Depends(current_active_user)) -> Collection:
+    """
+    Revokes a collection share. Only the collection's owner may unshare it.
+    """
+    try:
+        response = await searcher.userCollection.unshare(collection_id, user_id, current_user)
+        return response
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except WeaviateOperationError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@exp_router.get("/api/collections/{collection_id}/members", response_model=list[UserSearchResult])
+async def get_collection_members(collection_id: str,
+                                 searcher: WeaviateAbstraction = Depends(get_search),
+                                 session: AsyncSession = Depends(get_async_session),
+                                 current_user: User = Depends(current_active_user)) -> list[UserSearchResult]:
+    """
+    Returns the users a collection is currently shared with.
+    """
+    try:
+        return await searcher.userCollection.read_shared_users(collection_id, session)
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 

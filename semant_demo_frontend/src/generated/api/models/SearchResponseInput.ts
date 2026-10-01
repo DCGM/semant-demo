@@ -27,13 +27,6 @@ import {
     TextChunkWithDocumentInputToJSON,
     TextChunkWithDocumentInputToJSONTyped,
 } from './TextChunkWithDocumentInput';
-import type { FilteredChunksByTags } from './FilteredChunksByTags';
-import {
-    FilteredChunksByTagsFromJSON,
-    FilteredChunksByTagsFromJSONTyped,
-    FilteredChunksByTagsToJSON,
-    FilteredChunksByTagsToJSONTyped,
-} from './FilteredChunksByTags';
 
 /**
  * 
@@ -71,12 +64,6 @@ export interface SearchResponseInput {
      * @memberof SearchResponseInput
      */
     searchLog: Array<string>;
-    /**
-     * 
-     * @type {Array<FilteredChunksByTags>}
-     * @memberof SearchResponseInput
-     */
-    tagsResult: Array<FilteredChunksByTags>;
 }
 
 /**
@@ -87,7 +74,6 @@ export function instanceOfSearchResponseInput(value: object): value is SearchRes
     if (!('searchRequest' in value) || value['searchRequest'] === undefined) return false;
     if (!('timeSpent' in value) || value['timeSpent'] === undefined) return false;
     if (!('searchLog' in value) || value['searchLog'] === undefined) return false;
-    if (!('tagsResult' in value) || value['tagsResult'] === undefined) return false;
     return true;
 }
 
@@ -106,7 +92,6 @@ export function SearchResponseInputFromJSONTyped(json: any, ignoreDiscriminator:
         'searchRequest': SearchRequestFromJSON(json['search_request']),
         'timeSpent': json['time_spent'],
         'searchLog': json['search_log'],
-        'tagsResult': ((json['tags_result'] as Array<any>).map(FilteredChunksByTagsFromJSON)),
     };
 }
 
@@ -126,7 +111,6 @@ export function SearchResponseInputToJSONTyped(value?: SearchResponseInput | nul
         'search_request': SearchRequestToJSON(value['searchRequest']),
         'time_spent': value['timeSpent'],
         'search_log': value['searchLog'],
-        'tags_result': ((value['tagsResult'] as Array<any>).map(FilteredChunksByTagsToJSON)),
     };
 }
 

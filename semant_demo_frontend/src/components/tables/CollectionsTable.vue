@@ -60,10 +60,12 @@
             flat
             dense
             round
-            icon="open_in_new"
+            icon="share"
             color="primary"
-            @click="emit('enter', tableProps.row.id)"
-          />
+            @click="emit('share', tableProps.row)"
+          >
+            <q-tooltip>Share collection</q-tooltip>
+          </q-btn>
           <q-btn
             flat
             dense
@@ -111,6 +113,14 @@
         <span class="bulk-count">{{ selected.length }} selected</span>
         <q-btn
           flat dense no-caps
+          icon="share"
+          label="Share selected"
+          color="primary"
+          size="md"
+          @click="handleBulkShare"
+        />
+        <q-btn
+          flat dense no-caps
           icon="delete_sweep"
           label="Delete selected"
           color="negative"
@@ -134,6 +144,8 @@
 import { computed, ref } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
 import { Collection } from 'src/models/collections'
+import useShareCollectionsDialog from 'src/composables/dialogs/useShareCollectionsDialog'
+import { UserSearchResult } from 'src/generated/api'
 
 interface Props {
   collections: Collection[]
@@ -151,10 +163,13 @@ const emit = defineEmits<
   (event: 'edit', collection: Collection): void
   (event: 'delete', collection: Collection): void
   (event: 'deleteMany', collectionIds: string[]): void
+  (event: 'share', collection: Collection): void
+  (event: 'shareMany', payload: { collectionIds: string[]; userId: string }): void
 }>()
 
 const $q = useQuasar()
 const selected = ref<Collection[]>([])
+const { openShareCollectionsDialog } = useShareCollectionsDialog()
 
 const initialPagination = {
   sortBy: 'collectionName',
@@ -218,6 +233,16 @@ const columns: QTableColumn<Collection>[] = [
 
 const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
 const columnOptions = columns.filter((column) => !column.required)
+
+const handleBulkShare = () => {
+  if (selected.value.length === 0) return
+  const collectionIds = selected.value.map((c) => c.id)
+  openShareCollectionsDialog({ collectionCount: collectionIds.length })
+    .onOk((user: UserSearchResult) => {
+      emit('shareMany', { collectionIds, userId: user.id })
+      selected.value = []
+    })
+}
 
 const handleBulkDelete = () => {
   if (selected.value.length === 0) return

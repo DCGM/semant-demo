@@ -105,9 +105,10 @@ class UserCollection():
         Retrieves all collections for given user
         """
         try:
-            # filter collections by user
+            # collections the user owns, or that have been shared with them
             filters = (
                 Filter.by_property("user_id").equal(user.id)
+                | Filter.by_property("shared_with").contains_any([user.id])
             )
             results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
                 filters=filters
@@ -120,6 +121,7 @@ class UserCollection():
                     # map collection data to expected response format
                     for o in collections:
                         props = o.properties
+                        shared_with = [UUID(str(uid)) for uid in (props.get("shared_with") or [])]
                         collections_response.append(Collection(
                             id=o.uuid,
                             name=props.get("name"),
@@ -127,7 +129,9 @@ class UserCollection():
                             description=props.get("description"),
                             created_at=props.get("created_at"),
                             updated_at=props.get("updated_at"),
-                            color=props.get("color")
+                            color=props.get("color"),
+                            shared_with_count=len(shared_with),
+                            is_shared_with_me=user.id in shared_with,
                         ))
 
             return collections_response
@@ -712,14 +716,102 @@ class UserCollection():
             logging.error(f"Failed to remove chunk from collection: {e}")
             return False
 
-    def share():
-        pass
+    async def share(self, collection_id: str, user_id: UUID, current_user: User, session: AsyncSession) -> Collection:
+        """
+        Shares a collection with another user by adding them to its shared_with list.
+        Only the collection's owner may share it. No-op if already shared with that user.
+        """
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+        collection_obj = await usercollection_collection.query.fetch_object_by_id(collection_id)
+        if collection_obj is None:
+            raise WeaviateOperationError(
+                f"Collection with id {collection_id} not found")
 
-    def unshare():
-        pass
+        props = collection_obj.properties
+        if str(props.get("user_id")) != str(current_user.id):
+            raise PermissionError("Only the collection owner can share it")
 
-    def read_shared_users():
-        pass
+        if user_id == current_user.id:
+            raise WeaviateDataValidationError(
+                "Cannot share a collection with its owner")
+
+        result = await session.execute(select(User).where(User.id == user_id))
+        target_user = result.scalar_one_or_none()
+        if target_user is None:
+            raise WeaviateOperationError(f"User with id {user_id} not found")
+
+        current_shared_with = {UUID(str(uid)) for uid in (props.get("shared_with") or [])}
+        current_shared_with.add(user_id)
+
+        now = datetime.now(timezone.utc)
+        await usercollection_collection.data.update(
+            uuid=collection_id,
+            properties={
+                "shared_with": list(current_shared_with),
+                "updated_at": now,
+            }
+        )
+
+        updated_collection = await self.read(collection_id)
+        if updated_collection is None:
+            raise WeaviateOperationError(
+                "Weaviate error: collection not found after update")
+
+        return updated_collection
+
+    async def unshare(self, collection_id: str, user_id: UUID, current_user: User) -> Collection:
+        """
+        Revokes a collection share, removing the user from its shared_with list.
+        Only the collection's owner may unshare it. No-op if not currently shared with that user.
+        """
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+        collection_obj = await usercollection_collection.query.fetch_object_by_id(collection_id)
+        if collection_obj is None:
+            raise WeaviateOperationError(
+                f"Collection with id {collection_id} not found")
+
+        props = collection_obj.properties
+        if str(props.get("user_id")) != str(current_user.id):
+            raise PermissionError("Only the collection owner can unshare it")
+
+        current_shared_with = {UUID(str(uid)) for uid in (props.get("shared_with") or [])}
+        current_shared_with.discard(user_id)
+
+        now = datetime.now(timezone.utc)
+        await usercollection_collection.data.update(
+            uuid=collection_id,
+            properties={
+                "shared_with": list(current_shared_with),
+                "updated_at": now,
+            }
+        )
+
+        updated_collection = await self.read(collection_id)
+        if updated_collection is None:
+            raise WeaviateOperationError(
+                "Weaviate error: collection not found after update")
+
+        return updated_collection
+
+    async def read_shared_users(self, collection_id: str, session: AsyncSession) -> list[User]:
+        """
+        Returns the users a collection is currently shared with.
+        """
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+        collection_obj = await usercollection_collection.query.fetch_object_by_id(collection_id)
+        if collection_obj is None:
+            raise WeaviateOperationError(
+                f"Collection with id {collection_id} not found")
+
+        shared_ids = [UUID(str(uid)) for uid in (collection_obj.properties.get("shared_with") or [])]
+        if not shared_ids:
+            return []
+
+        result = await session.execute(select(User).where(User.id.in_(shared_ids)))
+        return result.scalars().all()
 
     async def add_document(self, document_id: str, collection_id: str) -> None:
         """
