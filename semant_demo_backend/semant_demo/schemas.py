@@ -1,9 +1,11 @@
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal, TypedDict, Any
 from datetime import datetime
 import uuid
-from sqlalchemy.orm import declarative_base
+from uuid import UUID
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, String, JSON, Integer, DateTime, Text
 import sqlalchemy.sql.functions as funcs
 
@@ -19,6 +21,11 @@ class APIType(str, Enum):
     openai = "OPENAI"
     google = "GOOGLE"
     metacentrum = "METACENTRUM"
+
+
+class EmbeddingProvider(str, Enum):
+    ollama = "OLLAMA"
+    openrouter = "OPENROUTER"
 
 
 class FilterType(str, Enum):
@@ -79,6 +86,7 @@ class SearchRequest(SummaryRequestBase):
     user_collection_id: str | None = None
     type: SearchType = SearchType.hybrid
     hybrid_search_alpha: float = 0.5
+    vector_name: str | None = None
     search_llm_filter: bool = False
 
     filters: list[SearchFilterInput] | None = None
@@ -186,6 +194,7 @@ class RagSearch(BaseModel):
     alpha: float = 0.5
     limit: int = 10
     search_query: str | None = None
+    vector_name: str | None = None
     min_year: int | None = None
     max_year: int | None = None
     min_date: datetime | None = None
@@ -235,6 +244,7 @@ class AdaptiveRagState(TypedDict):
     language: str | None  # ces, des, eng, ...
     question: str
     original_question: str
+    vector_name: str
     queries: list[str]
     context_sufficient: bool
     history: list[Any]

@@ -175,11 +175,19 @@ class LangchainLLM:
 
 
 class WeaviateToolWrapper:
-    def __init__(self, searcher: WeaviateAbstraction, rag_search: RagSearch, alpha: float, chunk_limit: int):
+    def __init__(
+        self,
+        searcher: WeaviateAbstraction,
+        rag_search: RagSearch,
+        alpha: float,
+        chunk_limit: int,
+        vector_name: str,
+    ):
         self.searcher = searcher
         self.rag_search = rag_search
         self.alpha = alpha
         self.chunk_limit = chunk_limit
+        self.vector_name = vector_name
         self.last_results = None 
 
     async def _call_weaviate_search(self, rag_search: RagSearch,  type: SearchType) -> SearchResponse:
@@ -189,6 +197,7 @@ class WeaviateToolWrapper:
             type = type,
             hybrid_search_alpha = self.alpha,
             limit = self.chunk_limit,
+            vector_name = rag_search.vector_name or self.vector_name,
             min_year = rag_search.min_year,
             max_year = rag_search.max_year,
             min_date = rag_search.min_date,
@@ -346,7 +355,8 @@ class xmartiAgentRag(BaseRag):
             searcher=searcher,
             rag_search=request.rag_search,
             alpha=self.alpha,
-            chunk_limit=self.chunk_limit
+            chunk_limit=self.chunk_limit,
+            vector_name=request.rag_search.vector_name or self.vector_name
         )
         assess_tool = AssessRetrievalQualityTool(self.model_name, self._client, self.assess_prompt)
         expand_tool = ExpandQueryTool(self.model_name, self._client, self.expand_prompt)

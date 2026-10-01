@@ -8,6 +8,7 @@ class BaseRag:
    def __init__(self, global_config, param_config):
        self.global_config = global_config
        self.param_config = param_config
+       self.vector_name = global_config.resolve_chunk_vector(param_config.get("vector_name"))
        
    async def rag_request(self, request: RagRequest, searcher) -> RagResponse:
         raise NotImplementedError("Method \"rag_request\" is not implemented.")

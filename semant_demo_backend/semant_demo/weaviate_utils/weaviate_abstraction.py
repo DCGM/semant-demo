@@ -7,7 +7,6 @@ from weaviate.classes.query import Filter
 
 from semant_demo import schemas
 from semant_demo.config import Config
-from semant_demo.gemma_embedding import get_query_embedding, get_hyde_document_embedding
 from weaviate.classes.query import QueryReference
 from semant_demo.config import config
 
@@ -35,7 +34,12 @@ from semant_demo.weaviate_utils.text_chunk import TextChunk
 from semant_demo.weaviate_utils.user_collection import UserCollection
 
 class WeaviateAbstraction():
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
+    def __init__(
+        self,
+        client: WeaviateAsyncClient,
+        collectionNames: schemas.CollectionNames,
+        vector_name: str | None = None,
+    ):
         self.client = client
         self.collectionNames = collectionNames
 
@@ -43,7 +47,7 @@ class WeaviateAbstraction():
         self.document = Document(client=client, collectionNames=collectionNames)
         self.span = Span(client=client, collectionNames=collectionNames)
         self.tag = Tag(client=client, collectionNames=collectionNames)
-        self.textChunk = TextChunk(client=client, collectionNames=collectionNames)
+        self.textChunk = TextChunk(client=client, collectionNames=collectionNames, vector_name=vector_name)
         self.userCollection = UserCollection(client=client, collectionNames=collectionNames) 
 
     @classmethod
@@ -59,7 +63,7 @@ class WeaviateAbstraction():
             logging.error("Weaviate is not ready.")
             await async_client.close()
             exit(-1)
-        return cls(async_client, config.collectionNames)
+        return cls(async_client, config.collectionNames, vector_name=config.DEFAULT_CHUNK_VECTOR)
 
     async def close(self):
         await self.client.close()  # :contentReference[oaicite:2]{index=2}
