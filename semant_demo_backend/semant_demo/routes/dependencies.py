@@ -3,6 +3,7 @@ from fastapi import Depends
 from semant_demo.config import config
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 from semant_demo.weaviate_utils.document_repository import DocumentRepository
+from semant_demo.weaviate_utils.tag_repository import TagRepository
 #from semant_demo.weaviate_tag import WeaviateSearchAndTag
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -49,6 +50,11 @@ async def get_document_repository(
     repositories: WeaviateAbstraction = Depends(get_search),
 ) -> DocumentRepository:
     return repositories.document
+
+async def get_tag_repository(
+    repositories: WeaviateAbstraction = Depends(get_search),
+) -> TagRepository:
+    return repositories.tag
 
 async def cleanup_dependencies():
     global _engine, _async_session_maker, _searcher
