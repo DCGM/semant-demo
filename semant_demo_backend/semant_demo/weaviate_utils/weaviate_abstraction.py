@@ -28,23 +28,35 @@ from semant_demo.weaviate_exceptions import WeaviateConnectError, WeaviateDataVa
 
 import uuid
 
-from semant_demo.weaviate_utils.tag import Tag
-from semant_demo.weaviate_utils.document import Document
-from semant_demo.weaviate_utils.span import Span
-from semant_demo.weaviate_utils.text_chunk import TextChunk
-from semant_demo.weaviate_utils.user_collection import UserCollection
+from semant_demo.weaviate_utils.tag_repository import TagRepository
+from semant_demo.weaviate_utils.document_repository import DocumentRepository
+from semant_demo.weaviate_utils.span_repository import SpanRepository
+from semant_demo.weaviate_utils.text_chunk_repository import TextChunkRepository
+from semant_demo.weaviate_utils.user_collection_repository import UserCollectionRepository
 
 class WeaviateAbstraction():
+    """
+    Legacy composition root: owns the shared Weaviate client and bundles all
+    repositories together for code that needs several of them in one call
+    (e.g. semant_demo/rag/, semant_demo/tagging/tagging_utils.py).
+
+    Routes/callers that only need a single repository should get it via that
+    repository's own FastAPI dependency instead (e.g.
+    routes.dependencies.get_document_repository), which reuses this same
+    client under the hood. As each domain gains its own dependency, its
+    direct use of this class should shrink and eventually disappear.
+    """
+
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
 
-        # prepare instances of each weaviate table 
-        self.document = Document(client=client, collectionNames=collectionNames)
-        self.span = Span(client=client, collectionNames=collectionNames)
-        self.tag = Tag(client=client, collectionNames=collectionNames)
-        self.textChunk = TextChunk(client=client, collectionNames=collectionNames)
-        self.userCollection = UserCollection(client=client, collectionNames=collectionNames) 
+        # prepare instances of each weaviate table
+        self.document = DocumentRepository(client=client, collectionNames=collectionNames)
+        self.span = SpanRepository(client=client, collectionNames=collectionNames)
+        self.tag = TagRepository(client=client, collectionNames=collectionNames)
+        self.textChunk = TextChunkRepository(client=client, collectionNames=collectionNames)
+        self.userCollection = UserCollectionRepository(client=client, collectionNames=collectionNames)
 
     @classmethod
     async def create(cls, config:Config) -> "WeaviateAbstraction":

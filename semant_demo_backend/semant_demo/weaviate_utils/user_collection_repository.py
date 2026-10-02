@@ -38,7 +38,7 @@ from semant_demo.weaviate_utils.helpers import WeaviateHelpers
 from semant_demo.users.models import User
 
 
-class UserCollection():
+class UserCollectionRepository():
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
         self.client = client
         self.collectionNames = collectionNames

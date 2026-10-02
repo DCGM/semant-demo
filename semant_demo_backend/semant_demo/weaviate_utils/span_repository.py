@@ -29,7 +29,7 @@ import semant_demo.schemas as schemas
 from semant_demo.schema.spans import PostSpan, PatchSpan
 
 
-class Span():
+class SpanRepository():
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
