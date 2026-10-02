@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { TaggingConfigOutput } from './TaggingConfigOutput';
+import type { TaggingConfig } from './TaggingConfig';
 import {
-    TaggingConfigOutputFromJSON,
-    TaggingConfigOutputFromJSONTyped,
-    TaggingConfigOutputToJSON,
-    TaggingConfigOutputToJSONTyped,
-} from './TaggingConfigOutput';
+    TaggingConfigFromJSON,
+    TaggingConfigFromJSONTyped,
+    TaggingConfigToJSON,
+    TaggingConfigToJSONTyped,
+} from './TaggingConfig';
 
 /**
  * 
@@ -29,10 +29,10 @@ import {
 export interface GetConfigsResponse {
     /**
      * 
-     * @type {Array<TaggingConfigOutput>}
+     * @type {Array<TaggingConfig>}
      * @memberof GetConfigsResponse
      */
-    configs: Array<TaggingConfigOutput>;
+    configs: Array<TaggingConfig>;
 }
 
 /**
@@ -53,7 +53,7 @@ export function GetConfigsResponseFromJSONTyped(json: any, ignoreDiscriminator: 
     }
     return {
         
-        'configs': ((json['configs'] as Array<any>).map(TaggingConfigOutputFromJSON)),
+        'configs': ((json['configs'] as Array<any>).map(TaggingConfigFromJSON)),
     };
 }
 
@@ -68,7 +68,7 @@ export function GetConfigsResponseToJSONTyped(value?: GetConfigsResponse | null,
 
     return {
         
-        'configs': ((value['configs'] as Array<any>).map(TaggingConfigOutputToJSON)),
+        'configs': ((value['configs'] as Array<any>).map(TaggingConfigToJSON)),
     };
 }
 

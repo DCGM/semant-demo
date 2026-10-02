@@ -1,0 +1,19 @@
+# List of Chunk property names in Weaviate that should be surfaced on
+# TextChunk.metadata when returned by the API. Properties not listed here
+# are ignored even if present on the Chunk object in Weaviate.
+- communicative_mode
+- complexity
+- documentary_role
+- emotional_tone
+- geographic_scope
+- information_granularity
+- intertextual_density
+- named_entity_focus
+- narrative_perspective
+- quantitative_content_density
+- reliability_signals
+- structural_form
+- style
+- subject_domain
+- temporal_reference_frame
+- textual_stance

@@ -13,7 +13,7 @@ Name | Type
 `tagDefinition` | string
 `tagExamples` | Array&lt;string&gt;
 `collectionName` | string
-`taskConfig` | [TaggingConfigInput](TaggingConfigInput.md)
+`taskConfig` | [TaggingConfig](TaggingConfig.md)
 
 ## Example
 

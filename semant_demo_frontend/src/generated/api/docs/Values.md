@@ -1,22 +1,20 @@
 
-# GetConfigsResponse
+# Values
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`configs` | [Array&lt;TaggingConfig&gt;](TaggingConfig.md)
 
 ## Example
 
 ```typescript
-import type { GetConfigsResponse } from ''
+import type { Values } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "configs": null,
-} satisfies GetConfigsResponse
+} satisfies Values
 
 console.log(example)
 
@@ -25,7 +23,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as GetConfigsResponse
+const exampleParsed = JSON.parse(exampleJSON) as Values
 console.log(exampleParsed)
 ```
 

@@ -23,6 +23,7 @@ Name | Type
 `nerI` | Array&lt;string&gt;
 `nerM` | Array&lt;string&gt;
 `nerO` | Array&lt;string&gt;
+`metadata` | { [key: string]: any; }
 
 ## Example
 
@@ -48,6 +49,7 @@ const example = {
   "nerI": null,
   "nerM": null,
   "nerO": null,
+  "metadata": null,
 } satisfies TextChunk
 
 console.log(example)

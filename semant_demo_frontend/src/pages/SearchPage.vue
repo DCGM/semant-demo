@@ -322,6 +322,21 @@
                   </q-badge>
                 </div>
               </div>
+
+              <div class="row q-gutter-x-md text-caption text-grey-8 q-mt-sm items-center" v-if="metadataEntries(chunk).length">
+                <div class="text-grey-6"><q-icon name="sell" class="q-mr-xs"/>Classification:</div>
+                <div v-for="[key, value] in visibleMetadataEntries(chunk)" :key="key">
+                  <strong>{{ formatFilterLabel(key) }}:</strong> {{ formatMetadataValue(value) }}
+                </div>
+                <div
+                  v-if="hiddenMetadataCount(chunk) > 0"
+                  class="cursor-pointer text-grey-6"
+                  style="text-decoration: underline;"
+                  @click="toggleMetadataExpanded(chunk.id)"
+                >
+                  {{ expandedMetadataChunkIds.has(chunk.id) ? 'Show less' : `+${hiddenMetadataCount(chunk)} more` }}
+                </div>
+              </div>
             </q-card-section>
           </q-card>
         </div>
@@ -353,6 +368,7 @@ import { useApi } from 'src/composables/useApi'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
 import { useUserStore } from 'src/stores/user-store'
 import useDocuments from 'src/composables/useDocuments'
+import { formatUserForm } from 'src/utils/formatUserForm'
 
 // Search Form State
 const showFilters = ref(false)
@@ -402,6 +418,45 @@ function getNominalOptions (filter: SearchFilter) {
     label: v.user_form,
     value: v.backend_form
   }))
+}
+
+// Chunk metadata (classification) display state
+const METADATA_PREVIEW_COUNT = 3
+const expandedMetadataChunkIds = ref<Set<string>>(new Set())
+
+function toggleMetadataExpanded (chunkId: string) {
+  const next = new Set(expandedMetadataChunkIds.value)
+  if (next.has(chunkId)) {
+    next.delete(chunkId)
+  } else {
+    next.add(chunkId)
+  }
+  expandedMetadataChunkIds.value = next
+}
+
+function metadataEntries (chunk: TextChunkWithDocument): Array<[string, unknown]> {
+  return chunk.metadata ? Object.entries(chunk.metadata) : []
+}
+
+function visibleMetadataEntries (chunk: TextChunkWithDocument): Array<[string, unknown]> {
+  const entries = metadataEntries(chunk)
+  if (expandedMetadataChunkIds.value.has(chunk.id) || entries.length <= METADATA_PREVIEW_COUNT) {
+    return entries
+  }
+  return entries.slice(0, METADATA_PREVIEW_COUNT)
+}
+
+function hiddenMetadataCount (chunk: TextChunkWithDocument): number {
+  return metadataEntries(chunk).length - METADATA_PREVIEW_COUNT
+}
+
+function formatMetadataValue (value: unknown): string {
+  // Multi-value chunk properties (e.g. Weaviate text[] fields) come back as arrays;
+  // some may still arrive as a single comma-joined string, so normalize both shapes.
+  const tokens = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [value]
+  return tokens
+    .map(token => (typeof token === 'string' ? formatUserForm(token.trim()) : String(token)))
+    .join(', ')
 }
 
 // Results State

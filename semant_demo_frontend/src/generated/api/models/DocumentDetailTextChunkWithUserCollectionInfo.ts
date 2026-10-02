@@ -123,6 +123,12 @@ export interface DocumentDetailTextChunkWithUserCollectionInfo {
     nerO?: Array<string> | null;
     /**
      * 
+     * @type {{ [key: string]: any; }}
+     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     */
+    metadata?: { [key: string]: any; } | null;
+    /**
+     * 
      * @type {boolean}
      * @memberof DocumentDetailTextChunkWithUserCollectionInfo
      */
@@ -171,6 +177,7 @@ export function DocumentDetailTextChunkWithUserCollectionInfoFromJSONTyped(json:
         'nerI': json['ner_I'] == null ? undefined : json['ner_I'],
         'nerM': json['ner_M'] == null ? undefined : json['ner_M'],
         'nerO': json['ner_O'] == null ? undefined : json['ner_O'],
+        'metadata': json['metadata'] == null ? undefined : json['metadata'],
         'inUserCollection': json['in_user_collection'],
     };
 }
@@ -203,6 +210,7 @@ export function DocumentDetailTextChunkWithUserCollectionInfoToJSONTyped(value?:
         'ner_I': value['nerI'],
         'ner_M': value['nerM'],
         'ner_O': value['nerO'],
+        'metadata': value['metadata'],
         'in_user_collection': value['inUserCollection'],
     };
 }
