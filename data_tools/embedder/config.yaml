@@ -1,0 +1,30 @@
+weaviate_host: localhost  # Weaviate host address
+weaviate_port: 8080 # Weaviate HTTP/REST port
+weaviate_grpc_port: 50051 # Weaviate gRPC port (required for client v4)
+weaviate_api_key: # Authentication API Key for Weaviate instance
+weaviate_headers: # Additional HTTP headers (e.g. API keys for third-party vectorizers)
+collection: Chunks_test # Name of the Weaviate collection to embed (it must use named vectors)
+vector_name: Qwen3-Embedding-0-6B # Name of the named vector the embeddings are written to
+create_vector: true # Create the named vector in the collection schema if it does not exist
+vector_index_type: hnsw # Vector index type used when the named vector is created (hnsw, flat, dynamic)
+distance_metric: cosine # Distance metric used when the named vector is created (cosine, dot, l2-squared, hamming, manhattan)
+return_properties: # Properties fetched for the embedder input template (None for all non-reference properties)
+max_records: # Maximum total records to embed in this run (None or 0 for unlimited)
+scan_batch_size: 512 # Number of records read from the database per batch
+embed_batch_size: 128 # Number of texts sent to the embedder in a single request
+max_concurrent_requests: 8 # Maximum number of embedding requests running at the same time
+max_concurrent_writes: 32 # Maximum number of database updates running at the same time
+max_retries: 5 # Maximum number of retries for database operations in case of connection errors
+retry_delay: 10.0 # Delay in seconds between retries
+embedder: # Embedder configuration
+  cls: VLLMEmbedder  # name of class that is subclass of Embedder
+  config: # configuration for defined class
+    base_url: http://athena19.fit.vutbr.cz:10430/v1  # Base URL of the OpenAI-compatible API (vLLM server)
+    api_key: # API Key (optional, defaults to OPENAI_API_KEY environment variable)
+    model_name: Qwen/Qwen3-Embedding-0.6B # Name of the served embedding model (as reported by /v1/models)
+    input_template: '{{ text }}' # Jinja2 template for the embedded text. You can use any record fields. Use it also for instruction prefixes (e.g. 'passage: {{ text }}').
+    dimensions: # Requested output dimension (only for models supporting Matryoshka embeddings)
+    truncate_prompt_tokens: # vLLM specific: truncate inputs to this number of tokens instead of failing on too long inputs (-1 = model max length)
+    extra_body: # Additional parameters sent in the request body (vLLM specific options)
+    timeout: 120.0 # Timeout of a single request in seconds
+    max_retries: 5 # Maximum number of retries of a failed request (with exponential backoff)
