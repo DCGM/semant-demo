@@ -9,6 +9,7 @@ from weaviate.classes.query import Filter
 from semant_demo import schemas
 from semant_demo.embedding_router import get_query_embedding, get_hyde_document_embedding
 from weaviate.classes.query import QueryReference
+from semant_demo.config import config
 
 import logging
 from typing import Any
