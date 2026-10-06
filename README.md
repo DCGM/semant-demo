@@ -360,6 +360,7 @@ Tests cover the LLM API abstraction, Jinja2 template rendering and the summarisa
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed architecture, RAG pipelines, data flow |
 | [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema and SQLite task model |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment and configuration guide |
+| [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and how to add page specific tools to it |
 | [docs/TODO.md](docs/TODO.md) | Recommended improvements and known technical debt |
 
 ## Contribution Guidelines

@@ -154,83 +154,6 @@
         </q-form>
       </q-card>
 
-      <div v-if="results.length" class="q-mb-xl">
-        <div class="row q-col-gutter-md">
-          <div class="col-12">
-            <q-card flat bordered class="bg-white">
-              <q-card-section class="row items-center justify-between q-col-gutter-sm">
-                <div class="text-subtitle2 text-grey-8">Summarization</div>
-                <div class="row q-gutter-sm">
-                  <q-btn
-                    color="secondary"
-                    icon="auto_awesome"
-                    label="Summarize Results"
-                    :loading="summarizing"
-                    @click="onSummarize"
-                    class="q-px-md"
-                  />
-                  <q-btn
-                    flat
-                    color="secondary"
-                    icon="tune"
-                    @click="showSummarizeOptions = !showSummarizeOptions"
-                  />
-                </div>
-              </q-card-section>
-
-              <q-slide-transition>
-                <div v-show="showSummarizeOptions">
-                  <q-separator inset />
-                  <q-card-section class="bg-grey-1">
-                    <div class="row q-col-gutter-md items-center">
-                      <div class="col-12 col-md row no-wrap q-gutter-md items-center">
-                        <q-select
-                          v-model="brevityType"
-                          :options="brevityTypes"
-                          label="Brevity"
-                          dense
-                          outlined
-                          class="col"
-                          emit-value
-                          map-options
-                        />
-                        <q-select
-                          v-model="summaryScope"
-                          :options="scopeOptions"
-                          label="Scope"
-                          dense
-                          outlined
-                          class="col"
-                          emit-value
-                          map-options
-                        />
-                      </div>
-                    </div>
-                  </q-card-section>
-                </div>
-              </q-slide-transition>
-
-              <q-separator />
-              <q-card-section class="bg-blue-grey-1" v-if="summary">
-                <div class="text-caption text-grey q-mb-sm">Time spent: {{ summaryTimeSpent.toFixed(2) }}s</div>
-                <div class="text-body2" style="white-space: pre-wrap;">
-                  <template v-for="(token, idx) in parsedSummaryTokens" :key="idx">
-                    <span v-if="token.type === 'text'">{{ token.value }}</span>
-                    <span v-else>
-                      <a
-                          href="#"
-                          class="citation-link"
-                          @click.prevent="jumpToResult(token.docNumber)"
-                        >[{{ token.docNumber }}]</a>
-                    </span>
-                  </template>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </div>
-      </div>
-
       <div v-if="results.length">
         <div class="row items-end justify-between q-mb-md">
           <div>
@@ -340,23 +263,37 @@
 
     </div>
 
+    <RightSidebarPanel v-if="results.length || loading" id="search-summary" label="Summary" icon="auto_awesome">
+      <SearchSummaryPanel
+        :tokens="searchSummary.tokens"
+        :time-spent="searchSummary.timeSpent"
+        v-model:brevity="searchSummary.brevity"
+        v-model:scope="searchSummary.scope"
+        :loading="searchSummary.summarizing"
+        :disable="!results.length"
+        @summarize="searchSummary.summarize"
+        @cite="jumpToResult"
+      />
+    </RightSidebarPanel>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QCheckbox, QRange, QPagination, Notify } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, SearchFiltersResponse, SearchFilter, SearchFilterInput } from 'src/models'
+import type { SearchRequest, SearchResponse, TextChunkWithDocument, SearchFiltersResponse, SearchFilter, SearchFilterInput } from 'src/models'
 import type { Chunk2CollectionReq } from 'src/generated/api'
 import { api } from 'src/boot/axios'
 import { useApi } from 'src/composables/useApi'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
 import { useUserStore } from 'src/stores/user-store'
 import useDocuments from 'src/composables/useDocuments'
+import { useSearchSummary } from 'src/composables/useSearchSummary'
+import RightSidebarPanel from 'src/components/rightSidebar/RightSidebarPanel.vue'
+import SearchSummaryPanel from 'src/components/rightSidebar/panels/SearchSummaryPanel.vue'
 
 // Search Form State
 const showFilters = ref(false)
-const showSummarizeOptions = ref(false)
 const searchForm = ref<SearchRequest>({
   query: '',
   limit: 50, // Increased default to show pagination better
@@ -423,67 +360,12 @@ const paginatedResults = computed(() => {
   return results.value.slice(start, start + itemsPerPage.value)
 })
 
-// Analysis Tools State
-const brevityType = ref('short')
-const brevityTypes = [
-  { label: 'Short', value: 'short' },
-  { label: 'Detailed', value: 'detailed' }
-]
+// Summarization
+const searchSummary = reactive(useSearchSummary(results, selectedResults, () => searchResponse))
 
-const summaryScopeDefault = 'broader'
-const summaryScope = ref(summaryScopeDefault)
-const scopeOptions = [
-  { label: 'Focused', value: 'focused' },
-  { label: 'Broader', value: 'broader' },
-  { label: 'Extensive', value: 'extensive' },
-  { label: 'Selected', value: 'selected' }
-]
-
-const scopeOptionsKMapping: Record<string, number | null> = {
-  focused: 3,
-  broader: 10,
-  extensive: null // all of it
-}
-
-const summarizing = ref(false)
-const summary = ref('')
-const summaryTimeSpent = ref(0)
+// Citations
 const highlightedDocNumber = ref<number | null>(null)
 let clearHighlightTimer: number | null = null
-
-const summarizedResultIndices = ref<number[]>([])
-
-type SummaryToken =
-  | { type: 'text'; value: string }
-  | { type: 'citation'; docNumber: number }
-
-function parseSummaryTokens (text: string, indicesMap: number[]): SummaryToken[] {
-  const tokens: SummaryToken[] = []
-  const citationRegex = /\[(doc([1-9][0-9]*))]/g
-  let lastIndex = 0
-
-  for (const match of text.matchAll(citationRegex)) {
-    const matchText = match[0]
-    const number = parseInt(match[2], 10)
-    const index = match.index ?? 0
-
-    if (index > lastIndex) {
-      tokens.push({ type: 'text', value: text.slice(lastIndex, index) })
-    }
-    const translatedNumber = indicesMap[number - 1] ?? number
-    tokens.push({ type: 'citation', docNumber: translatedNumber })
-
-    lastIndex = index + matchText.length
-  }
-
-  if (lastIndex < text.length) {
-    tokens.push({ type: 'text', value: text.slice(lastIndex) })
-  }
-
-  return tokens
-}
-
-const parsedSummaryTokens = computed(() => parseSummaryTokens(summary.value, summarizedResultIndices.value))
 
 async function jumpToResult (docNumber: number) {
   const resultIndex = docNumber - 1
@@ -530,17 +412,6 @@ async function loadCollections () {
     loading.value = false
   }
 }
-
-watch(
-  selectedResults,
-  () => {
-    if (selectedResults.value.length === 0) {
-      summaryScope.value = summaryScopeDefault
-    } else {
-      summaryScope.value = 'selected'
-    }
-  }
-)
 
 watch(
   () => userStore.getUserId,
@@ -684,9 +555,7 @@ async function onSearch () {
   loading.value = true
   results.value = []
   selectedResults.value = []
-  summary.value = ''
-  summaryTimeSpent.value = 0
-  summarizedResultIndices.value = []
+  searchSummary.reset()
   currentPage.value = 1 // reset pagination
   searchResponse = null
 
@@ -741,52 +610,6 @@ async function onSearch () {
     searchResponse = null
   } finally {
     loading.value = false
-  }
-}
-
-async function onSummarize () {
-  if (!results.value.length || !lastSearchRequest.value || !searchResponse) return
-  summarizing.value = true
-
-  // select the focus
-  const summarizeK = scopeOptionsKMapping[summaryScope.value]
-  const scopedSearchResponse: SearchResponse = {
-    ...searchResponse
-  }
-
-  let currentIndices: number[] = []
-
-  if (summaryScope.value === 'selected') {
-    if (selectedResults.value.length === 0) {
-      Notify.create({ message: 'Please select at least one result for summarization.', position: 'top', color: 'warning' })
-      summarizing.value = false
-      return
-    }
-    scopedSearchResponse.results = []
-    results.value.forEach((r, index) => {
-      if (selectedResults.value.includes(r.id)) {
-        scopedSearchResponse.results.push(r)
-        currentIndices.push(index + 1)
-      }
-    })
-  } else if (summarizeK !== null) {
-    scopedSearchResponse.results = results.value.slice(0, summarizeK)
-    currentIndices = scopedSearchResponse.results.map((_, i) => i + 1)
-  } else {
-    scopedSearchResponse.results = results.value
-    currentIndices = results.value.map((_, i) => i + 1)
-  }
-
-  try {
-    const { data } = await api.post<SummaryResponse>('/summarize/results', scopedSearchResponse)
-    summarizedResultIndices.value = currentIndices
-    summary.value = data.summary
-    summaryTimeSpent.value = data.time_spent
-  } catch (e) {
-    summary.value = 'Failed to summarize.'
-    summaryTimeSpent.value = 0
-  } finally {
-    summarizing.value = false
   }
 }
 
@@ -859,11 +682,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.citation-link {
-  color: var(--q-primary);
-  text-decoration: underline;
-}
-
 .citation-target-highlight {
   outline: 2px solid var(--q-secondary) !important;
   outline-offset: 0;
