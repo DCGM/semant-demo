@@ -380,9 +380,9 @@ class WeaviateHelpers:
                     link_on=property_name
                 )]
             # fetch the source object by id
+            src_collection = self.client.collections.get(src_collection_name)
             try:
-                obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name,
-                                                    return_references=return_references)
+                obj = await src_collection.query.fetch_object_by_id(uuid=src_id, return_references=return_references)
             except WeaviateOperationError:
                 logging.error(
                     f"Source object '{src_id}' not found in collection '{src_collection_name}'")
@@ -404,7 +404,7 @@ class WeaviateHelpers:
                 set(target_collection_ids + [target_collection_id]))
             # update weaviate with the new list
             try:
-                await self.client.collections.get(src_collection_name).data.reference_replace(
+                await src_collection.data.reference_replace(
                     from_uuid=obj.uuid,
                     from_property=property_name,
                     to=updatedCollectionIds,
@@ -417,8 +417,7 @@ class WeaviateHelpers:
 
             # test
             try:
-                updated_obj = await self.fetch_object_by_id(object_id=src_id, collection_name=src_collection_name,
-                                                            return_references=return_references)
+                updated_obj = await src_collection.query.fetch_object_by_id(uuid=src_id, return_references=return_references)
                 updated_refs = updated_obj.references or {}
                 updated_collection_ids = ref_uuids(
                     updated_refs.get(property_name))

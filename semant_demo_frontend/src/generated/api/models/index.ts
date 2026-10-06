@@ -7,6 +7,7 @@ export * from './BulkUpdateSpansResponse';
 export * from './Chunk';
 export * from './Collection';
 export * from './CollectionStats';
+export * from './CreateResponse';
 export * from './DeleteAutoSpansRequest';
 export * from './DeleteAutoSpansResponse';
 export * from './DeleteSpansForTagsRequest';

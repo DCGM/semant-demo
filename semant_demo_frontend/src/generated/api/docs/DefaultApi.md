@@ -4,6 +4,7 @@ All URIs are relative to *http://localhost*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
+| [**addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost**](DefaultApi.md#addchunktocollectionapiusercollectioncollectionidchunkschunkidpost) | **POST** /api/user_collection/{collection_id}/chunks/{chunk_id} | Add Chunk To Collection |
 | [**addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapicollectionscollectioniddocumentsdocumentidpost) | **POST** /api/collections/{collection_id}/documents/{document_id} | Add Document To Collection |
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
@@ -38,6 +39,7 @@ All URIs are relative to *http://localhost*
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
+| [**removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectioncollectionidchunkschunkiddelete) | **DELETE** /api/user_collection/{collection_id}/chunks/{chunk_id} | Remove Chunk From Collection |
 | [**removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapicollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
@@ -54,6 +56,81 @@ All URIs are relative to *http://localhost*
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
 | [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
 
+
+
+## addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost
+
+> CreateResponse addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(collectionId, chunkId)
+
+Add Chunk To Collection
+
+Connects chunk with user collection
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    chunkId: chunkId_example,
+  } satisfies AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest;
+
+  try {
+    const data = await api.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **chunkId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**CreateResponse**](CreateResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost
@@ -2407,6 +2484,81 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete
+
+> CreateResponse removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(collectionId, chunkId)
+
+Remove Chunk From Collection
+
+Removes a chunk from a user collection.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    chunkId: chunkId_example,
+  } satisfies RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest;
+
+  try {
+    const data = await api.removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **chunkId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**CreateResponse**](CreateResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 

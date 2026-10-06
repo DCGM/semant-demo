@@ -347,7 +347,6 @@
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QCheckbox, QRange, QPagination, Notify } from 'quasar'
 import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, SearchFiltersResponse, SearchFilter, SearchFilterInput } from 'src/models'
-import type { Chunk2CollectionReq } from 'src/generated/api'
 import { api } from 'src/boot/axios'
 import { useApi } from 'src/composables/useApi'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
@@ -802,12 +801,8 @@ async function addSelectedChunksToCollection () {
 
   let successCount = 0
   for (const chunkId of selectedResults.value) {
-    const chunk2CollectionReq: Chunk2CollectionReq = {
-      collectionId: targetCollectionId.value as string,
-      chunkId
-    }
     try {
-      const data = await apiClients.default.addChunk2CollectionApiUserCollectionChunksPost({ chunk2CollectionReq })
+      const data = await apiClients.default.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({ collectionId: targetCollectionId.value as string, chunkId })
       if (data.created) successCount++
     } catch (e) {
       console.error(e)

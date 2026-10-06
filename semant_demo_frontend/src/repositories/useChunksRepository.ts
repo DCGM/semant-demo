@@ -13,14 +13,16 @@ export function useChunksRepository() {
     },
 
     addChunkToCollection: async (chunkId: string, collectionId: string) => {
-      return api.addChunk2CollectionApiUserCollectionChunksPost({
-        chunk2CollectionReq: { chunkId, collectionId }
+      return api.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({
+        chunkId,
+        collectionId
       })
     },
 
     removeChunkFromCollection: async (chunkId: string, collectionId: string) => {
-      return api.removeChunkFromCollectionApiUserCollectionChunksDelete({
-        chunk2CollectionReq: { chunkId, collectionId }
+      return api.removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete({
+        chunkId,
+        collectionId
       })
     },
 
@@ -48,12 +50,13 @@ export function useChunksRepository() {
       orderGt?: number | null,
       orderLt?: number | null
     ): Promise<import('src/generated/api').Chunk[]> => {
-      return api.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet({
+      const chunks = (await api.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet({
         collectionId,
         documentId,
         orderGt,
         orderLt
-      })
+      })).filter((chunk) => chunk !== null) // Filter out null values
+      return chunks
     }
   }
 }
