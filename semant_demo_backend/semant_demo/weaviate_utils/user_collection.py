@@ -110,29 +110,38 @@ class UserCollection():
                 Filter.by_property("user_id").equal(user.id)
                 | Filter.by_property("shared_with").contains_any([user.id])
             )
-            results = await self.client.collections.get(self.collectionNames.user_collection_name).query.fetch_objects(
-                filters=filters
-            )
-            logging.info(f"User Id: {user.id}\nRaw results: {results}")
+            usercollection_collection = self.client.collections.get(
+                self.collectionNames.user_collection_name)
+            page_size = 1000
+            offset = 0
             collections_response = []
-            if results.objects is not None:
-                if len(results.objects) > 0:
-                    collections = results.objects
-                    # map collection data to expected response format
-                    for o in collections:
-                        props = o.properties
-                        shared_with = [UUID(str(uid)) for uid in (props.get("shared_with") or [])]
-                        collections_response.append(Collection(
-                            id=o.uuid,
-                            name=props.get("name"),
-                            owner=props.get("owner"),
-                            description=props.get("description"),
-                            created_at=props.get("created_at"),
-                            updated_at=props.get("updated_at"),
-                            color=props.get("color"),
-                            shared_with_count=len(shared_with),
-                            is_shared_with_me=user.id in shared_with,
-                        ))
+            while True:
+                results = await usercollection_collection.query.fetch_objects(
+                    filters=filters,
+                    limit=page_size,
+                    offset=offset,
+                )
+                if not results.objects:
+                    break
+
+                for o in results.objects:
+                    props = o.properties
+                    shared_with = [UUID(str(uid)) for uid in (props.get("shared_with") or [])]
+                    collections_response.append(Collection(
+                        id=o.uuid,
+                        name=props.get("name"),
+                        owner=props.get("owner"),
+                        description=props.get("description"),
+                        created_at=props.get("created_at"),
+                        updated_at=props.get("updated_at"),
+                        color=props.get("color"),
+                        shared_with_count=len(shared_with),
+                        is_shared_with_me=user.id in shared_with,
+                    ))
+
+                if len(results.objects) < page_size:
+                    break
+                offset += len(results.objects)
 
             return collections_response
         except WeaviateConnectionError as e:
