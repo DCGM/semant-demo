@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 import logging
 
@@ -94,6 +96,40 @@ async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
         return response
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@exp_router.post("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=schemas.CreateResponse)
+async def add_chunk_to_collection(
+    collection_id: str,
+    chunk_id: str,
+    searcher: Annotated[WeaviateAbstraction, Depends(get_search)],
+    current_user: Annotated[User, Depends(current_active_user)]
+) -> schemas.CreateResponse:
+    """
+    Connects chunk with user collection
+    """
+    del current_user
+    err = await searcher.userCollection.add_chunk(chunk_id=chunk_id, collection_id=collection_id)
+    if err == False:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error: {e}")
+    return {"created": True, "message": f"Chunk added to collection"}
+
+
+@exp_router.delete("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=schemas.CreateResponse)
+async def remove_chunk_from_collection(
+    collection_id: str,
+    chunk_id: str,
+    searcher: Annotated[WeaviateAbstraction, Depends(get_search)],
+    current_user: Annotated[User, Depends(current_active_user)],
+) -> schemas.CreateResponse:
+    """
+    Removes a chunk from a user collection.
+    """
+    del current_user
+    ok = await searcher.userCollection.remove_chunk(chunk_id=chunk_id, collection_id=collection_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chunk not removed from collection")
+    return {"created": True, "message": "Chunk removed from collection"}
 
 
 @exp_router.post("/api/collections/{collection_id}/share", response_model=Collection)
