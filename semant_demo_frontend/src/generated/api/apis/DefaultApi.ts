@@ -21,6 +21,7 @@ import type {
   Chunk,
   Collection,
   CollectionStats,
+  CreateResponse,
   DeleteAutoSpansRequest,
   DeleteAutoSpansResponse,
   DeleteSpansForTagsRequest,
@@ -69,6 +70,8 @@ import {
     CollectionToJSON,
     CollectionStatsFromJSON,
     CollectionStatsToJSON,
+    CreateResponseFromJSON,
+    CreateResponseToJSON,
     DeleteAutoSpansRequestFromJSON,
     DeleteAutoSpansRequestToJSON,
     DeleteAutoSpansResponseFromJSON,
@@ -138,6 +141,11 @@ import {
     UserSearchResultFromJSON,
     UserSearchResultToJSON,
 } from '../models/index';
+
+export interface AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest {
+    collectionId: string;
+    chunkId: string;
+}
 
 export interface AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest {
     collectionId: string;
@@ -280,6 +288,11 @@ export interface ReadTagSpansBatchApiTagSpansBatchPostRequest {
     tagSpanBatchRequest: TagSpanBatchRequest;
 }
 
+export interface RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest {
+    collectionId: string;
+    chunkId: string;
+}
+
 export interface RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest {
     collectionId: string;
     documentId: string;
@@ -355,6 +368,32 @@ export interface UpdateTagSpanApiTagSpansSpanIdPatchRequest {
  * @interface DefaultApiInterface
  */
 export interface DefaultApiInterface {
+    /**
+     * Creates request options for addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost without sending the request
+     * @param {string} collectionId 
+     * @param {string} chunkId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequestOpts(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Connects chunk with user collection
+     * @summary Add Chunk To Collection
+     * @param {string} collectionId 
+     * @param {string} chunkId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRaw(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+
+    /**
+     * Connects chunk with user collection
+     * Add Chunk To Collection
+     */
+    addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
+
     /**
      * Creates request options for addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost without sending the request
      * @param {string} collectionId 
@@ -1198,6 +1237,32 @@ export interface DefaultApiInterface {
     readTagSpansBatchApiTagSpansBatchPost(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: Array<TagSpan>; }>;
 
     /**
+     * Creates request options for removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete without sending the request
+     * @param {string} collectionId 
+     * @param {string} chunkId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequestOpts(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Removes a chunk from a user collection.
+     * @summary Remove Chunk From Collection
+     * @param {string} collectionId 
+     * @param {string} chunkId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+
+    /**
+     * Removes a chunk from a user collection.
+     * Remove Chunk From Collection
+     */
+    removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
+
+    /**
      * Creates request options for removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete without sending the request
      * @param {string} collectionId 
      * @param {string} documentId 
@@ -1574,6 +1639,66 @@ export interface DefaultApiInterface {
  * 
  */
 export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
+
+    /**
+     * Creates request options for addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost without sending the request
+     */
+    async addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequestOpts(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost().'
+            );
+        }
+
+        if (requestParameters['chunkId'] == null) {
+            throw new runtime.RequiredError(
+                'chunkId',
+                'Required parameter "chunkId" was null or undefined when calling addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collection/{collection_id}/chunks/{chunk_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"chunk_id"}}`, encodeURIComponent(String(requestParameters['chunkId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Connects chunk with user collection
+     * Add Chunk To Collection
+     */
+    async addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRaw(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
+        const requestOptions = await this.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Connects chunk with user collection
+     * Add Chunk To Collection
+     */
+    async addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
+        const response = await this.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Creates request options for addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost without sending the request
@@ -3331,6 +3456,66 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async readTagSpansBatchApiTagSpansBatchPost(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: Array<TagSpan>; }> {
         const response = await this.readTagSpansBatchApiTagSpansBatchPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete without sending the request
+     */
+    async removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequestOpts(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete().'
+            );
+        }
+
+        if (requestParameters['chunkId'] == null) {
+            throw new runtime.RequiredError(
+                'chunkId',
+                'Required parameter "chunkId" was null or undefined when calling removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collection/{collection_id}/chunks/{chunk_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"chunk_id"}}`, encodeURIComponent(String(requestParameters['chunkId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Removes a chunk from a user collection.
+     * Remove Chunk From Collection
+     */
+    async removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
+        const requestOptions = await this.removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Removes a chunk from a user collection.
+     * Remove Chunk From Collection
+     */
+    async removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
+        const response = await this.removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

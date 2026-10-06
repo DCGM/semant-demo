@@ -10,6 +10,7 @@ docs/BulkUpdateSpansResponse.md
 docs/Chunk.md
 docs/Collection.md
 docs/CollectionStats.md
+docs/CreateResponse.md
 docs/DefaultApi.md
 docs/DeleteAutoSpansRequest.md
 docs/DeleteAutoSpansResponse.md
@@ -85,6 +86,7 @@ models/BulkUpdateSpansResponse.ts
 models/Chunk.ts
 models/Collection.ts
 models/CollectionStats.ts
+models/CreateResponse.ts
 models/DeleteAutoSpansRequest.ts
 models/DeleteAutoSpansResponse.ts
 models/DeleteSpansForTagsRequest.ts
