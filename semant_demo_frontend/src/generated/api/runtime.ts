@@ -430,4 +430,3 @@ export class TextApiResponse {
         return await this.raw.text();
     };
 }
-// TEMPORARY drift probe (#199)
