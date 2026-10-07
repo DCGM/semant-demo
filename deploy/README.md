@@ -105,6 +105,18 @@ cp .env.example .env
 | `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
+| `LOG_LEVEL` | `INFO` | Minimum Python/OTLP log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`) |
+| **Observability** | | |
+| `OTEL_ENABLED` | `true` | Enables OTLP export for production, `test-main`, and PR preview deployments. CI also sets it explicitly. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://lgtm:4318` | Base URL of the OTLP/HTTP receiver on the shared `web` network |
+| `OTEL_EXPORTER_OTLP_LOGS_PATH` | `/v1/logs` | OTLP/HTTP path used for log records |
+| `OTEL_EXPORTER_OTLP_TRACES_PATH` | `/v1/traces` | OTLP/HTTP path used for traces |
+| `OTEL_EXPORTER_OTLP_METRICS_PATH` | `/v1/metrics` | OTLP/HTTP path used for metrics |
+| `OTEL_METRIC_EXPORT_INTERVAL_MS` | `10000` | Metric export interval in milliseconds |
+| `OTEL_SERVICE_NAME` | `semant-demo-app` | Service label used to find the application in Grafana |
+| `DEPLOYMENT_ENVIRONMENT` | `production` | Environment resource attribute (`production`, `test-main`, etc.) |
+
+See [Observability](../docs/OBSERVABILITY.md) for the telemetry architecture, signal inventory, dashboard queries, and instructions for adding application signals.
 
 ---
 
@@ -204,9 +216,9 @@ Deployment is fully automated via GitHub Actions on a self-hosted runner (`seman
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `ci-cd.yml` | Push of a `v*.*.*` tag from `main` | Deploy to production |
-| `ci-cd-test.yml` | Push to `main` | Deploy/update `test-main` preview |
-| `ci-cd-test.yml` | PR opened / updated | Deploy ephemeral `test-pr-<N>` preview |
-| `ci-cd-test.yml` | PR closed | Tear down `test-pr-<N>` preview and remove its database |
+| `ci-cd.yml` | Push to `main` | Deploy/update `test-main` preview |
+| `ci-cd.yml` | PR opened or updated | Deploy/update ephemeral `test-pr-<N>` preview with telemetry enabled |
+| `ci-cd.yml` | PR closed | Tear down `test-pr-<N>` preview and remove its database |
 
 ### Required GitHub Variables
 

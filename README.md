@@ -352,6 +352,24 @@ python -m pytest tests/ -v
 
 Tests cover the LLM API abstraction, Jinja2 template rendering and the summarisation pipeline. RAG factory loading is validated via test YAML configs under `rag/rag_configs/tests/`.
 
+## Observability
+
+The backend exports logs, traces, and metrics through OpenTelemetry when `OTEL_ENABLED=true`. Telemetry is initialized once in [`semant_demo_backend/semant_demo/opentelemetry.py`](semant_demo_backend/semant_demo/opentelemetry.py); request-level logging and feature metrics are recorded in [`semant_demo_backend/semant_demo/main.py`](semant_demo_backend/semant_demo/main.py).
+
+Deployments are identified by `service.name=semant-demo-app` and one `DEPLOYMENT_ENVIRONMENT` value:
+
+| Deployment | Environment value |
+|---|---|
+| Production | `production` |
+| Persistent `main` test deployment | `test-main` |
+| Pull-request preview | `test-pr-<number>` |
+
+Telemetry is enabled for production, `test-main`, and pull-request preview deployments.
+
+Grafana dashboards should filter by both `service_name="semant-demo-app"` and the selected `deployment_environment_name`; this prevents similarly named metrics from other projects in a shared metrics backend from being shown accidentally.
+
+See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for the complete signal inventory, environment rules, dashboard queries, Collector troubleshooting, and recipes for adding a metric, trace, or log safely.
+
 ## Further Documentation
 
 | Document | Description |
@@ -360,6 +378,7 @@ Tests cover the LLM API abstraction, Jinja2 template rendering and the summarisa
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed architecture, RAG pipelines, data flow |
 | [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema and SQLite task model |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment and configuration guide |
+| [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Telemetry architecture, dashboards, and guide for adding logs, traces, and metrics |
 | [docs/TODO.md](docs/TODO.md) | Recommended improvements and known technical debt |
 
 ## Contribution Guidelines
