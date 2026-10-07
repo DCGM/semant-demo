@@ -159,6 +159,7 @@ or provider runs. Required CI failures block merge/deploy; no blanket `continue-
 
 PRs state the purpose, behavior/API/schema changes, actual checks/results, unavailable
 checks, and compatibility/migration notes. Add screenshots or a recording for meaningful
-UI changes. A human reviews agent-authored work; access, destructive data changes, and
-deployment changes require explicit human review. Keep CI execution isolated from
-production credentials and deploy the tested artifact.
+UI changes. Agent-authored implementation must be reviewed before merge, preferably by a
+separate reviewer from the implementing agent. Access-control changes, destructive
+data changes, deployment changes, and other high-risk changes require explicit
+human review. Keep CI execution isolated from production credentials and deploy the tested artifact.
