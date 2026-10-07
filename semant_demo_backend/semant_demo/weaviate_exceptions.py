@@ -1,3 +1,10 @@
+"""Legacy Weaviate-named errors, still raised by the span and text chunk adapters.
+
+New code raises the neutral errors in ``semant_demo.core.errors`` and lets SDK errors
+propagate. Remove this module when the span/text chunk adapters have moved (#205/#206).
+"""
+
+
 class WeaviateError(Exception):
     """Base exception for all weaviate errors."""
     pass
@@ -56,23 +63,3 @@ class WeaviateOperationError(WeaviateError):
     - Calling object which does not exist
     """
     pass
-
-class WeaviateErrorContext:
-    """
-    Context manager for unified Weaviate error handling and logging.
-    
-    Usage:
-        with WeaviateErrorContext("fetch_chunks"):
-            # Weaviate SDK exceptions will be caught and re-raised as custom exceptions
-            pass
-    """
-    
-    def __init__(self, operation_name: str):
-        self.operation_name = operation_name
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # Implementation would map Weaviate SDK exceptions to custom exceptions
-        return False

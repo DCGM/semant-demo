@@ -5,11 +5,13 @@ Last updated: 2026-10-08
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #201 — Enforce resource access and explicit partial-failure behavior (in review)
+- Current issue: #202 — Integrate the repository cleanup PR stack and establish adapter
+  conventions (in review)
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
-  real-store and browser test infrastructure, PR #214)
-- Current stage: R1
+  real-store and browser test infrastructure, PR #214), #201 (access checks and partial
+  write outcomes, PR #216)
+- Current stage: R2
 
 ## Development environment
 
@@ -148,6 +150,62 @@ Last updated: 2026-10-08
   message for partial/failed outcomes; the document view and the AI panel update local
   state only for ids the backend reports as done and notify about the rest.
 
+## #202 outcome
+
+- The #182 -> #184 -> #187 stack was superseded, not rebased: its branches predate sharing,
+  the newer chunk routes and the #201 access/outcome work. Kept from the stack: per-
+  repository dependency injection, a shared paging helper, a single chunk mapping, removal
+  of dead code (`Document.read_all`/`search`, `Tag.read_all`/`read_spans`/`search_spans`,
+  `UserCollection.read_all_chunks`/`get_document_chunks_with_context`,
+  `WeaviateErrorContext`, unused `WeaviateHelpers` methods, the `.idea` file), routes no
+  longer catching errors into fake success, and the `PatchTag` "at least one value"
+  validator (#184). Not kept: the `WeaviateBaseRepository` CRUD base class and the methods
+  that only raised `NotImplementedError`; the `NotFoundError`/`ConflictError` in the
+  Weaviate-named exception module.
+- Conventions (`adapters/weaviate/__init__.py`): plain concrete repositories
+  `DocumentRepository`, `TagRepository`, `UserCollectionRepository` in
+  `adapters/weaviate/{documents,tags,collections}.py`; ids are `UUID`; single reads
+  return `None` for a missing object, operations needing one raise
+  `core.errors.NotFoundError`; SDK errors propagate unwrapped (500). `paging.fetch_all`
+  reads every page before returning (offset paging, Weaviate's `QUERY_MAXIMUM_RESULTS`
+  still applies). `writes.py` holds `step_failure`, `guard_progress` (now raising
+  `NoProgressError`) and the tag/collection delete cascades. No Protocols were added: the
+  only fakes needed (access tests) are plain objects.
+- `core/errors.py`: `NotFoundError` (404) and `InvalidRequestError` (400), mapped in
+  `create_app`; `access.ResourceNotFound` is a `NotFoundError`.
+- SQL user lookups moved out of the Weaviate repository into `adapters/sql/users.py`; the
+  sharing/owner-change/member routes look users up there and pass ids/names to the
+  repository. The repository no longer checks ownership itself (the route's access check
+  does).
+- Bootstrap owns the Weaviate client: `AppResources.connect_weaviate` runs in the
+  lifespan after SQL setup and builds the repositories and the transitional facade on one
+  client, closed at shutdown. **Startup now fails if Weaviate is unreachable or not
+  ready** (`WeaviateUnavailable`), instead of the first request connecting (and
+  `exit(-1)` when not ready). The client uses `skip_init_checks=True` plus an explicit
+  readiness check, so it no longer requests pypi.org. `create_app(config,
+  weaviate_connector=...)` injects a stand-in; fast tests use
+  `tests.app_support.offline_weaviate`. `WeaviateAbstraction.create` is kept for
+  standalone scripts (`search_filters.fetch_db_filter_stats`, `rag_runner_demo.py`).
+- Migrated callers: document, tag and collection routes and `features/collections/access.py`
+  use the repositories; access functions take the repository they read (collections,
+  tags, spans), and unmigrated routes pass `searcher.userCollection` etc.
+- Behavior changes (no schema change; generated client only has updated descriptions):
+  - removing a chunk that is not in the collection succeeds (was 400 from a Weaviate
+    error); removing an unknown chunk is 404; storage failures are 500 (were 400);
+  - removing a document that is not in the collection is a no-op `complete` result;
+    an unknown document is 404 (was a `failed` result);
+  - tag PATCH with no non-null field is 422 (was 404); null fields are kept as before;
+  - malformed document ids in `GET /api/document/{id}` and the chunk count are 404;
+  - `read_all_documents` and `get_chunks_in_range` read every page (were capped at 25
+    and 10 000).
+- Tests: `tests/integration/test_repositories.py` (missing ids for every write and read,
+  mapping of documents/tags/collections/chunks, a 205-chunk document across pages, 30
+  collection documents, 105 tags, tag and collection cascades over more than a page,
+  repeated add/remove of chunks, documents and shares) and
+  `tests/integration/test_repository_routes.py` (HTTP error mapping, PATCH validation,
+  SQL user lookups); fast tests for the startup connection, startup failure without
+  Weaviate and the default connector's error.
+
 ## Temporary exceptions
 
 - **Process-wide `config` still read directly** by provider/adapter modules:
@@ -157,8 +215,14 @@ Last updated: 2026-10-08
   these calls. `semant_demo.main:app` passes the same object, so production has one source.
   Remove when the embedding provider is injected (#205) and the AI assistance workflow is
   extracted (#207).
-- **Weaviate is still connected lazily inside the first request** that needs it (now per
-  app, guarded by a lock). Moving connection to bootstrap belongs to #202.
+- **Transitional `WeaviateAbstraction` facade** (`weaviate_utils/weaviate_abstraction.py`)
+  is still used by span routes and AI assistance (#206/#207), span chat, search,
+  summarizer and RAG (#205). It is built on the application's one client. The span and
+  text chunk adapters, `weaviate_utils/helpers.py` (re-exports `step_failure`/
+  `guard_progress`) and `weaviate_exceptions.py` stay until those migrations. Remove the
+  facade when its last caller has moved (#210).
+- **SQL user lookups for sharing/owner change are orchestrated in route handlers**, like
+  the access checks. Move into the Collections service (#203).
 
 - **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 60 errors).
   Several are real defects: `useTagging.ts` calls `DefaultApi` methods that no longer exist,
@@ -180,10 +244,8 @@ Last updated: 2026-10-08
 ## Known problems affecting later steps
 
 - `GET /api/documents/{document_id}/{collection_id}/chunks` returns 500 for documents
-  with authors (`schemas.Document.author` is `str`, the store holds a list): #215.
-- `remove_chunk` is not idempotent: Weaviate answers 500 when deleting a reference that
-  no longer exists, so removing an already removed chunk reports 400. Address with
-  Collections (#203).
+  with authors (`schemas.Document.author` is `str`, the store holds a list): #215. The
+  repository test of this read uses the author-less fixture document for that reason.
 - Search tag filters (`tag_uuids`) are not restricted to tags of readable collections;
   only `user_collection_id` is checked. Belongs to the Search migration (#205).
 - A partial add chunk (chunk linked, document link failed) leaves the chunk in the
@@ -192,8 +254,6 @@ Last updated: 2026-10-08
 - `Tag.create` inserts the tag and then links it to the collection; if the link fails the
   tag exists without a collection and is inaccessible (the error is returned as 500).
 
-- `WeaviateAbstraction.create` calls `exit(-1)` when Weaviate is reachable but not ready,
-  which terminates the server process from inside a request. Unchanged here; address in #202.
 - Required checks are a repository setting, not part of the workflow file. As of
   2026-10-07 the ruleset for `197-refactor---base` requires "Backend tests", "Frontend
   checks", "Generated API client drift" and "Integration tests" (strict, branch up to
@@ -202,12 +262,14 @@ Last updated: 2026-10-08
 - PR preview deploys still run with production `OPENAI_API_KEY`/`JWT_SECRET` secrets on
   the self-hosted runner and still deploy after failed checks. Not changed in #200 (a
   deployment decision); tracked in #213.
-- `WeaviateAbstraction.create` connects without `skip_init_checks`, so the weaviate client
-  requests `https://pypi.org/pypi/weaviate-client/json` on every connection (also from
-  integration/e2e test apps; failures are ignored by the client). The test-store client
-  skips it. Decide when the connection moves to bootstrap (#202).
-- `UserCollection.read_all_documents` calls `fetch_objects` without a limit, so it returns
-  at most `QUERY_DEFAULTS_LIMIT` (25) documents per collection. Not covered by the corpus
-  yet; add a document set exceeding a page with the pagination cases (#203).
-- The corpus has no cross-chunk annotations or a document exceeding a chunk page; add
-  them with the tests that need them (#204/#206 and pagination work).
+- Deployment: the backend container now exits at startup when Weaviate is not ready
+  (it previously started and failed requests). The app compose files use
+  `restart: unless-stopped`, so it retries; there is no `depends_on`/health condition
+  between the separately deployed stacks.
+- Tag creation deduplicates against at most 2000 tags of a collection: #218.
+- `search_filters.fetch_db_filter_stats` (used by `generate_default_filters_async`)
+  opens its own Weaviate connection; only scripts call it. Revisit with Search (#205).
+- `UserCollectionRepository.read_all` pages by 1000; the multi-page path of that listing
+  is not exercised by a test (needs more than 1000 collections for one user).
+- The corpus has no cross-chunk annotations; add them with the tests that need them
+  (#204/#206). Multi-page documents are created by the repository tests themselves.

@@ -122,13 +122,14 @@ A `Config` class that reads settings once, at construction, from the process env
 
 #### Application resources (`bootstrap.py`, `routes/dependencies.py`)
 
-`bootstrap.AppResources` holds the application-scoped resources of one running app. The lifespan creates it, stores it on `app.state.resources`, and closes it at shutdown. The dependency functions in `routes/dependencies.py` read from it:
+`bootstrap.AppResources` holds the application-scoped resources of one running app. The lifespan creates it, stores it on `app.state.resources`, and closes it at shutdown. At startup it opens the one Weaviate client of the app (`adapters/weaviate/client.connect_weaviate`, which also checks readiness); startup fails if Weaviate cannot be reached. `create_app(config, weaviate_connector=...)` replaces the connector in tests. The dependency functions in `routes/dependencies.py` read from it:
 
 | Dependency | Manages | Lifetime |
 |---|---|---|
 | `get_config()` | The app's `Config` | App lifetime |
 | `get_async_session()` | Database sessions for individual requests | Per-request |
-| `get_search()` | Weaviate connection wrapper (`WeaviateAbstraction`) | First access → shutdown |
+| `get_documents()`, `get_tags()`, `get_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
+| `get_search()` | Transitional `WeaviateAbstraction` facade for routes not migrated yet | Startup → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
 | `get_rag_registry()` | Configured RAG instances | Startup → shutdown |
 
@@ -136,12 +137,13 @@ Requests that need these resources while the lifespan is not running get HTTP 50
 
 **Example:**
 ```python
-@exp_router.post("/api/search")
-async def search(req: SearchRequest, 
-                 searcher: WeaviateAbstraction = Depends(get_search),
-                 summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> SearchResponse:
-    # searcher and summarizer are automatically injected
-    ...
+@exp_router.get("/api/collections/{collection_id}/tags", response_model=list[Tag])
+async def get_collection_tags(collection_id: str,
+                              collections: UserCollectionRepository = Depends(get_collections),
+                              tags: TagRepository = Depends(get_tags),
+                              current_user: User = Depends(current_active_user)) -> list[Tag]:
+    grant = await access.require_collection_read(collections, current_user, collection_id)
+    return await tags.read_by_collection(grant.collection_id)
 ```
 
 #### Application Startup & Shutdown

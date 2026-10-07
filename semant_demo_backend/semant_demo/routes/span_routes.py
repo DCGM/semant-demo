@@ -36,9 +36,9 @@ async def create_tag_span(span: PostSpan, tagger: WeaviateAbstraction = Depends(
     """
     Adds new TagSpan
     """
-    collection_id = await access.collection_of_tags(tagger, [span.tagId])
-    await access.require_annotation_edit(tagger, current_user, collection_id)
-    await access.require_chunks_in_collection(tagger, [span.chunkId], collection_id)
+    collection_id = await access.collection_of_tags(tagger.tag, [span.tagId])
+    await access.require_annotation_edit(tagger.userCollection, current_user, collection_id)
+    await access.require_chunks_in_collection(tagger.userCollection, [span.chunkId], collection_id)
     return await tagger.span.create(span=span)
 
 
@@ -53,7 +53,7 @@ async def read_tag_spans(
     """
     Get stored TagSpans of a collection, optionally for one chunk.
     """
-    grant = await access.require_collection_read(tagger, current_user, collection_id)
+    grant = await access.require_collection_read(tagger.userCollection, current_user, collection_id)
     return await tagger.span.read_all(chunk_id=chunk_id, collection_id=str(grant.collection_id))
 
 
@@ -66,7 +66,7 @@ async def read_tag_spans_batch(
     """
     Get stored TagSpans of a collection for multiple chunk IDs in a single request.
     """
-    grant = await access.require_collection_read(tagger, current_user, body.collection_id)
+    grant = await access.require_collection_read(tagger.userCollection, current_user, body.collection_id)
     return await tagger.span.read_batch(chunk_ids=body.chunk_ids, collection_id=str(grant.collection_id))
 
 
@@ -80,10 +80,10 @@ async def update_tag_span(
     """
     Update TagSpan's information (start, end, tagId, ...)
     """
-    collection_id = await access.collection_of_spans(tagger, [span_id])
-    await access.require_annotation_edit(tagger, current_user, collection_id)
+    collection_id = await access.collection_of_spans(tagger.span, tagger.tag, [span_id])
+    await access.require_annotation_edit(tagger.userCollection, current_user, collection_id)
     if body.tagId is not None:
-        await access.require_tags_in_collection(tagger, [body.tagId], collection_id)
+        await access.require_tags_in_collection(tagger.tag, [body.tagId], collection_id)
 
     return await tagger.span.update(
         span_id=span_id,
@@ -112,10 +112,10 @@ async def bulk_update_tag_spans(
     """
     if not body.span_ids:
         return BulkUpdateSpansResponse(outcome=outcome_of(0, 0), spans=[])
-    collection_id = await access.collection_of_spans(tagger, body.span_ids)
-    await access.require_annotation_edit(tagger, current_user, collection_id)
+    collection_id = await access.collection_of_spans(tagger.span, tagger.tag, body.span_ids)
+    await access.require_annotation_edit(tagger.userCollection, current_user, collection_id)
     if body.update.tagId is not None:
-        await access.require_tags_in_collection(tagger, [body.update.tagId], collection_id)
+        await access.require_tags_in_collection(tagger.tag, [body.update.tagId], collection_id)
 
     spans, failed = await tagger.span.bulk_update(
         span_ids=body.span_ids,
@@ -138,8 +138,8 @@ async def delete_tag_span(
     """
     Delete a TagSpan's information
     """
-    collection_id = await access.collection_of_spans(tagger, [span_id])
-    await access.require_annotation_edit(tagger, current_user, collection_id)
+    collection_id = await access.collection_of_spans(tagger.span, tagger.tag, [span_id])
+    await access.require_annotation_edit(tagger.userCollection, current_user, collection_id)
     await tagger.span.delete(span_id=span_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -161,9 +161,9 @@ async def delete_spans_for_tags_in_document(
     Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could
     not be deleted.
     """
-    grant = await access.require_annotation_edit(tagger, current_user, body.collection_id)
-    await access.require_tags_in_collection(tagger, body.tag_ids, grant.collection_id)
-    document = await access.require_document_in_collection(tagger, body.document_id, grant.collection_id)
+    grant = await access.require_annotation_edit(tagger.userCollection, current_user, body.collection_id)
+    await access.require_tags_in_collection(tagger.tag, body.tag_ids, grant.collection_id)
+    document = await access.require_document_in_collection(tagger.userCollection, body.document_id, grant.collection_id)
     result = await tagger.span.delete_all_spans_for_tags_in_document(
         collection_id=str(grant.collection_id),
         document_id=str(document),

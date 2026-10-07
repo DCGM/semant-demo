@@ -29,7 +29,7 @@ async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Dep
 
     # Searching within a collection needs read access to it (direct lookup, not listing).
     if req.user_collection_id is not None:
-        await access.require_collection_read(searcher, current_user, req.user_collection_id)
+        await access.require_collection_read(searcher.userCollection, current_user, req.user_collection_id)
 
     # Parse and validate search filters
     filters = None

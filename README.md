@@ -145,7 +145,7 @@ flowchart LR
 
 ### Weaviate Abstraction Layer
 
-The **WeaviateAbstraction** class provides a unified, object-oriented interface to Weaviate collections. Instead of direct client calls scattered across the codebase, all database operations flow through organized collection handlers:
+Weaviate access is moving to plain repositories in `semant_demo/adapters/weaviate/` (`DocumentRepository`, `TagRepository`, `UserCollectionRepository`; see [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md)). They take `UUID` ids, return application schemas and raise `core.errors.NotFoundError` for missing objects. The **WeaviateAbstraction** class below remains as a transitional bundle for code not migrated yet (span, AI assistance, search, RAG). It groups these collection handlers:
 
 - **Document**: document metadata and retrieval
 - **TextChunk**: text passages with embeddings, metadata and search
