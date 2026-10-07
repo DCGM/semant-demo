@@ -58,6 +58,12 @@ Never manually edit generated API files, commit secrets, weaken assertions, bypa
 or add blanket skips merely to produce a green result. A placeholder `npm test` is not
 a test pass. Proposed `make` targets are unavailable until refactor step R0 implements them.
 
+For ordinary development and refactoring, use only the local database environment documented in `docs/DEVELOPMENT.md`.
+
+Do not connect to or modify shared server Weaviate, shared preview databases, or production databases unless explicitly instructed for the current task.
+
+Before running a destructive Weaviate/schema/data-cleanup command, verify that the configured endpoint is the local development instance. Do not infer that an endpoint is safe merely because it is called "test".
+
 ## Handoff
 
 Report changed behavior and files, commands actually executed, results, unrun checks,

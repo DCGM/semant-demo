@@ -1,5 +1,9 @@
 # Deployment & Configuration
 
+This document describes deployment and server configuration.
+
+For normal local development, including the local Weaviate and SQLite database snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Prerequisites
 
 | Component | Version | Notes |
@@ -33,9 +37,17 @@ The CI/CD pipeline (GitHub Actions, self-hosted runner) handles:
 
 ---
 
-## Step-by-Step Deployment (local / development)
+## Manual Standalone Setup
+
+For the normal local development workflow used during the refactor, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+The steps below describe how to construct a standalone environment from scratch.
 
 ### 1. Weaviate
+
+For normal development, use the local database snapshot under `local_data/` and start Weaviate as described in [DEVELOPMENT.md](DEVELOPMENT.md).
+
+The standalone setup below creates a separate development Weaviate instance from scratch:
 
 ```bash
 cd weaviate_utils
@@ -45,9 +57,12 @@ docker compose up -d
 Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures HNSW indexing. Weaviate version: **1.34.4**.
 
 To verify:
+
 ```bash
 curl http://localhost:8080/v1/.well-known/ready
 ```
+
+Do not use this empty standalone database when the realistic `local_data/weaviate_semant_test/` development snapshot is required.
 
 ### 2. Data Ingestion
 
@@ -64,6 +79,8 @@ python db_insert_jsonl.py \
     --source-dir /path/to/prepared_data \
     --delete-old
 ```
+
+> `--delete-old` is destructive. Verify that the configured Weaviate endpoint is a local development instance before using it.
 
 Options:
 - `--delete-old` â€” drop and recreate all collections
@@ -108,6 +125,7 @@ The server starts with `uvicorn` in reload mode on port 8000. On startup it:
 ### 6. Frontend
 
 #### Development
+
 ```bash
 cd semant_demo_frontend
 npm install
@@ -115,11 +133,13 @@ npx quasar dev
 ```
 
 #### Production Build
+
 ```bash
 npx quasar build
 ```
 
 Output goes to `dist/spa/`. To serve from the backend, copy to the backend's `STATIC_PATH`:
+
 ```bash
 cp -r dist/spa/* ../semant_demo_backend/static/
 ```
@@ -129,11 +149,12 @@ The backend's `main.py` will auto-mount the directory and serve the SPA.
 #### Frontend Environment
 
 Set `BACKEND_URL` environment variable before building to point to your backend:
+
 ```bash
 BACKEND_URL=https://your-server.example.com npx quasar build
 ```
 
-If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` â€” a development-machine-specific URL that should be overridden (see `src/boot/axios.ts`).
+If unset, the Axios client defaults to `http://localhost:8000/api` â€” a development-machine-specific URL that should be overridden (see `src/boot/axios.ts`).
 
 ---
 
@@ -151,7 +172,7 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` â
 | `OPENAI_API_KEY` | _(empty)_ | If using OpenAI RAG | OpenAI API key |
 | `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | No | OpenAI-compatible endpoint for RAG/OpenAI requests (OpenAI or OpenRouter) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | No | Default OpenAI model |
-| `GOOGLE_API_KEY` | _(empty)_ | If using Google RAG | Google Gemini API key |
+| `GOOGLE_API_KEY` | _(empty)_ | If using Google RAG | Google Gemini key |
 | `GOOGLE_MODEL` | `gemini-2.5-pro` | No | Default Google model |
 | `MODEL_TEMPERATURE` | `0.0` | No | Default LLM temperature |
 | `ALLOWED_ORIGIN` | `http://localhost:9000` | No | CORS allowed origin |
@@ -179,6 +200,7 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` â
 ## Debugging
 
 ### Backend
+
 - Run with `uvicorn` reload mode (default in `run.py`): changes auto-reload
 - FastAPI auto-generates interactive docs at `http://localhost:8000/docs` (Swagger) and `http://localhost:8000/redoc`
 - Enable debug logging: `logging.basicConfig(level=logging.DEBUG)` in `main.py`
@@ -186,16 +208,19 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` â
 - Inspect DB state: `python weaviate_utils/inspect_chunks.py` / `inspect_documents.py`
 
 ### Frontend
+
 - Vue DevTools browser extension for component/store inspection
 - Quasar dev mode includes HMR and source maps
 - Network tab to inspect API calls and responses
 
 ### RAG Debugging
+
 - `adaptive_rag.py` includes `DEBUG_PRINT = True` â€” set to see LangGraph node transitions in stdout
 - Each RAG config can be tested independently by sending requests to `POST /api/rag` with the config's `id`
 - Test RAG routing with the `TestRag` class (returns a static response)
 
 ### Tagging Debugging
+
 - Poll `GET /api/tag/task/status/{taskId}` to see `processed_count` / `all_texts_count` progress
 - `tag_processing_data` field contains per-chunk tagging decisions
 - Check SQLite directly: `sqlite3 tasks.db "SELECT * FROM tasks"`

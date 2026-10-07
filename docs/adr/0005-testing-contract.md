@@ -27,10 +27,11 @@ annotations in fixtures, not earlier tests. Prefer function-scoped mutable state
 read-only fixtures are fine. Construct fresh application instances and dependency
 overrides instead of mutating globals and reloading modules.
 
-Each integration run owns its endpoint/data namespace; add worker suffixes when parallel.
-Fixture cleanup must positively verify test ownership before deleting anything. Never
-use production or shared preview databases. Use fixed vectors, not a live embedding
-service. Browser context isolation does not isolate shared backend data.
+Each automated integration run owns its mutable test data namespace; add worker suffixes when parallel. Fixture cleanup must positively verify test ownership before deleting anything. Never use production or shared preview databases for automated tests.
+
+Developers may use the local realistic database snapshot under local_data/, as described in DEVELOPMENT.md, for manual development, exploratory testing, and compatibility checks. This snapshot is not the canonical automated integration-test fixture: automated tests must create or reset the data they depend on and must not assume that particular collections, users, or annotations already exist in the snapshot.
+
+Use fixed vectors rather than a live embedding service where embedding behavior itself is not under test. Browser context isolation does not isolate shared backend data.
 
 Fakes implement only the capabilities needed by the use case, not the entire SDK. Where
 fake and real adapters share an interface, reuse applicable behavioral contract tests.

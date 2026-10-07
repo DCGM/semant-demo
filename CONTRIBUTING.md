@@ -45,7 +45,16 @@ npm run dev
 With isolated services configured, run the backend from `semant_demo_backend` using
 `python -m uvicorn semant_demo.main:app --reload`. At the reviewed baseline, SQL uses a
 hard-coded relative `tasks.db`; an arbitrary SQL environment variable does not override it.
-Do not run against an existing user database.
+
+For normal development, use the local development databases described in
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Mutable development database state
+belongs under `local_data/` and must not be committed.
+
+Fast tests must not depend on this database snapshot. Real-store automated tests
+must use test-owned data as described in the testing contract.
+
+Do not use shared server or production databases unless the task explicitly
+requires it.
 
 These entry points were inspected, not executed in the documentation review. Backend
 resolution is not yet locked. **`npm test` is currently a success-only placeholder, not
