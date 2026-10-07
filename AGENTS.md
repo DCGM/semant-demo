@@ -35,6 +35,19 @@ the base for the next issue.
 Do not create the next issue branch from an unmerged issue branch unless the
 issues are explicitly intended to be stacked.
 
+## Handoff
+
+Report changed behavior and files, commands actually executed, results, unrun checks,
+and remaining risks/decisions. Do not claim a test, browser check, migration, or deployment
+was performed unless it was. Update relevant contracts/docs in the same PR. 
+
+Pushing the assigned issue branch and opening a pull request into
+`197-refactor---base` are part of the normal refactor workflow.
+
+Do not push commits directly to `197-refactor---base` or `main`.
+Do not merge pull requests, deploy, or change production/shared data unless
+explicitly authorized for the current task.
+
 ## Architecture
 
 - Use thin HTTP routes and service functions. Classes and ports are optional, not a template requirement.
@@ -86,12 +99,7 @@ Do not connect to or modify shared server Weaviate, shared preview databases, or
 
 Before running a destructive Weaviate/schema/data-cleanup command, verify that the configured endpoint is the local development instance. Do not infer that an endpoint is safe merely because it is called "test".
 
-## Handoff
 
-Report changed behavior and files, commands actually executed, results, unrun checks,
-and remaining risks/decisions. Do not claim a test, browser check, migration, or deployment
-was performed unless it was. Update relevant contracts/docs in the same PR. Do not push,
-merge, deploy, or change production data without explicit task authorization.
 
 ## Local environment
 
