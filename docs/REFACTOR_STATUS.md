@@ -1,3 +1,14 @@
+# Refactor status
+
+Last updated: 2026-10-07
+
+## Current state
+
+- Integration branch: `197-refactor---base`
+- Current issue: #198 — Make backend bootstrap and configuration testable
+- Completed refactor issues: none
+- Current stage: R0
+
 ## Development environment
 
 - Local realistic database snapshot is available under `local_data/`.

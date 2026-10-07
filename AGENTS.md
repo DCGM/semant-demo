@@ -73,4 +73,4 @@ merge, deploy, or change production data without explicit task authorization.
 
 ## Local environment
 
-The python environment is setup  in `.venv`. Use it. Do not setup a new one unless needed.
+The repository Python environment is `.venv` at the repository root. Use it for backend commands. Do not create another Python environment unless the assigned task specifically requires it.
