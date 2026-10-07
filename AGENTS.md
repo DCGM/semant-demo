@@ -13,6 +13,28 @@ Read [TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md), the assigned step in
 to choose product behavior. Inspect current branch state; preserve unrelated changes.
 Keep the assigned scope small. Identify cross-feature contract changes before editing.
 
+## Refactor branch workflow
+
+`197-refactor---base` is the integration branch for the architecture refactor.
+Do not implement numbered refactor issues directly on this branch.
+
+For each refactor issue:
+
+1. Start from the current `197-refactor---base`.
+2. Create a dedicated branch for that issue, for example
+   `198-bootstrap-config` or `199-fast-checks-ci`.
+3. Make only the changes required for that issue on the issue branch.
+4. Run the required checks and update `docs/REFACTOR_STATUS.md` as appropriate.
+5. Open a pull request from the issue branch into `197-refactor---base`.
+6. Do not merge the pull request or push commits directly to
+   `197-refactor---base` unless explicitly instructed.
+
+After the issue branch is reviewed and merged, the integration branch becomes
+the base for the next issue.
+
+Do not create the next issue branch from an unmerged issue branch unless the
+issues are explicitly intended to be stacked.
+
 ## Architecture
 
 - Use thin HTTP routes and service functions. Classes and ports are optional, not a template requirement.
