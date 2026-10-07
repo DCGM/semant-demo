@@ -21,13 +21,6 @@ local_data/
 
 Both are **mutable development data**. They must not be committed.
 
-Add the following to the repository `.gitignore`:
-
-```gitignore
-# Local development databases
-local_data/
-```
-
 The copied Weaviate data should originate from a consistent snapshot and should initially be opened with the same Weaviate version used by the server test environment.
 
 The current test deployment uses **Weaviate 1.34.4**.

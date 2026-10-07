@@ -70,3 +70,7 @@ Report changed behavior and files, commands actually executed, results, unrun ch
 and remaining risks/decisions. Do not claim a test, browser check, migration, or deployment
 was performed unless it was. Update relevant contracts/docs in the same PR. Do not push,
 merge, deploy, or change production data without explicit task authorization.
+
+## Local environment
+
+The python environment is setup  in `.venv`. Use it. Do not setup a new one unless needed.

@@ -2,9 +2,9 @@
 
 Status: 
 No stages below are claimed complete.
-Baseline: `main` at `375caa5f7f68defba25a56cccbb7dbc7fdf99a13`.
+Baseline: `197-refactor---base` at `31034402d2f9290f27cd84809c21b75523fdb7120`.
 
- Current implementation progress, temporary states, and discovered follow-up work are tracked in REFACTOR_STATUS.md.
+ Current implementation progress, temporary states, and discovered follow-up work are tracked in [REFACTOR_STATUS.md](REFACTOR_STATUS.md).
 
 ## 1. Scope
 
