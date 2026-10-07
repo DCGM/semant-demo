@@ -1,9 +1,9 @@
-"""Current Weaviate adapter behavior on the fixture corpus.
+"""Weaviate repository reads on the fixture corpus.
 
 These pin storage semantics that mocks cannot prove (reference filters, membership,
-counts, Unicode round trips) before the adapters are moved in R2/R3.
+counts, Unicode round trips). Repository writes, missing ids and paging are covered in
+test_repositories.py.
 """
-from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -14,13 +14,16 @@ from semant_demo.schemas import SpanType
 pytestmark = pytest.mark.integration
 
 
-def as_user(corpus, key):
-    user = corpus.users[key]
-    return SimpleNamespace(id=UUID(user["id"]), name=user["name"])
-
-
 def ids(items):
     return {str(item.id) for item in items}
+
+
+def col(corpus, key) -> UUID:
+    return UUID(corpus.collections[key]["id"])
+
+
+def doc(corpus, key) -> UUID:
+    return UUID(corpus.documents[key]["id"])
 
 
 @pytest.mark.parametrize("user, visible, shared_with_me", [
@@ -29,58 +32,55 @@ def ids(items):
     ("outsider", {"outsider_notes"}, set()),
     ("admin", set(), set()),
 ])
-async def test_collection_listing_includes_owned_and_shared(searcher, corpus, user, visible, shared_with_me):
-    collections = await searcher.userCollection.read_all(as_user(corpus, user))
+async def test_collection_listing_includes_owned_and_shared(collections, corpus, user, visible, shared_with_me):
+    listed = await collections.read_all(UUID(corpus.users[user]["id"]))
 
-    by_id = {str(c.id): c for c in collections}
+    by_id = {str(c.id): c for c in listed}
     assert set(by_id) == {corpus.collections[k]["id"] for k in visible}
     assert {k for k in visible if by_id[corpus.collections[k]["id"]].is_shared_with_me} == shared_with_me
 
 
-async def test_collection_stats_count_membership_and_approved_annotations(searcher, corpus):
-    stats = await searcher.userCollection.read_collection_stats(corpus.collections["chronicles"]["id"])
+async def test_collection_stats_count_membership_and_approved_annotations(collections, corpus):
+    stats = await collections.read_collection_stats(col(corpus, "chronicles"))
 
     assert (stats.documents_count, stats.chunks_count, stats.tags_count) == (2, 4, 2)
     # Only `pos` spans whose chunk and tag both belong to the collection.
     assert stats.annotations_count == 2
 
 
-async def test_document_shared_by_two_collections_lists_in_both(searcher, corpus):
+async def test_document_shared_by_two_collections_lists_in_both(collections, corpus):
     chronicle = corpus.documents["chronicle"]["id"]
 
     for key in ("chronicles", "newspapers"):
-        documents = await searcher.userCollection.read_all_documents(corpus.collections[key]["id"])
+        documents = await collections.read_all_documents(col(corpus, key))
         assert chronicle in ids(documents)
 
-    outsider_docs = await searcher.userCollection.read_all_documents(corpus.collections["outsider_notes"]["id"])
+    outsider_docs = await collections.read_all_documents(col(corpus, "outsider_notes"))
     assert ids(outsider_docs) == {corpus.documents["gazette"]["id"]}
 
 
-async def test_document_chunks_are_limited_to_collection_membership(searcher, corpus):
-    chronicle = corpus.documents["chronicle"]["id"]
+async def test_document_chunks_are_limited_to_collection_membership(collections, corpus):
+    chronicle = doc(corpus, "chronicle")
 
-    in_chronicles = await searcher.userCollection.read_all_chunks_by_document(
-        chronicle, corpus.collections["chronicles"]["id"])
-    in_newspapers = await searcher.userCollection.read_all_chunks_by_document(
-        chronicle, corpus.collections["newspapers"]["id"])
+    in_chronicles = await collections.read_all_chunks_by_document(chronicle, col(corpus, "chronicles"))
+    in_newspapers = await collections.read_all_chunks_by_document(chronicle, col(corpus, "newspapers"))
 
     assert [c.order for c in in_chronicles] == [0, 1]
     assert [c.order for c in in_newspapers] == [2]
 
 
-async def test_chunk_range_marks_membership_of_requested_collection(searcher, corpus):
-    chunks = await searcher.userCollection.get_chunks_in_range(
-        document_id=corpus.documents["chronicle"]["id"],
-        collection_id=corpus.collections["chronicles"]["id"],
+async def test_chunk_range_marks_membership_of_requested_collection(collections, corpus):
+    chunks = await collections.get_chunks_in_range(
+        document_id=doc(corpus, "chronicle"),
+        collection_id=col(corpus, "chronicles"),
         order_gt=None, order_lt=None,
     )
 
     assert [(c.order, c.in_collection) for c in chunks] == [(0, True), (1, True), (2, False)]
 
 
-async def test_document_stats_within_collection(searcher, corpus):
-    stats = await searcher.userCollection.read_document_stats(
-        corpus.collections["chronicles"]["id"], corpus.documents["chronicle"]["id"])
+async def test_document_stats_within_collection(collections, corpus):
+    stats = await collections.read_document_stats(col(corpus, "chronicles"), doc(corpus, "chronicle"))
 
     assert (stats.chunks_in_collection, stats.total_chunks) == (2, 3)
     assert (stats.annotations_count, stats.distinct_tags_count) == (2, 2)
@@ -100,10 +100,8 @@ async def test_chunk_spans_keep_type_offsets_and_ai_metadata(searcher, corpus):
     assert (by_id[automatic["id"]].reason, by_id[automatic["id"]].confidence) == ("Název obce.", 0.9)
 
 
-async def test_text_with_combining_marks_and_non_bmp_round_trips(searcher, corpus):
-    letters = corpus.documents["letters"]["id"]
-
-    chunks = await searcher.userCollection.read_all_chunks_by_document(letters, corpus.collections["chronicles"]["id"])
+async def test_text_with_combining_marks_and_non_bmp_round_trips(collections, corpus):
+    chunks = await collections.read_all_chunks_by_document(doc(corpus, "letters"), col(corpus, "chronicles"))
 
     assert [c.text for c in chunks] == [corpus.chunks["letters_1"]["text"], corpus.chunks["letters_2"]["text"]]
 

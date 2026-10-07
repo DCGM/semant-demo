@@ -2,9 +2,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import logging
 
-from semant_demo.bootstrap import AppResources
+from semant_demo.bootstrap import AppResources, WeaviateConnector
+from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
-from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired, ResourceNotFound
+from semant_demo.core.errors import InvalidRequestError, NotFoundError
+from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired
 from semant_demo.rag.rag_factory import rag_factory
 from fastapi.staticfiles import StaticFiles
 import os
@@ -28,6 +30,8 @@ async def lifespan(app: FastAPI):
         async with resources.engine.begin() as conn:
             # create tables
             await conn.run_sync(TasksBase.metadata.create_all)
+        # One Weaviate client for the application's lifetime; startup fails without it.
+        await resources.connect_weaviate(app.state.weaviate_connector)
         #load rags configurations and create instances
         resources.rag = rag_factory(global_config=app_config, configs_path=app_config.RAG_CONFIGS_PATH)
 
@@ -45,14 +49,19 @@ def _detail_handler(status_code: int):
     return handler
 
 
-def create_app(app_config: Config | None = None) -> FastAPI:
-    """Build the application. No external service is contacted until startup or first use."""
+def create_app(app_config: Config | None = None, *, weaviate_connector: WeaviateConnector | None = None) -> FastAPI:
+    """Build the application. No external service is contacted before startup.
+
+    ``weaviate_connector`` opens the Weaviate client at startup (default: the configured
+    instance); tests that do not use Weaviate pass a stand-in.
+    """
     app_config = app_config if app_config is not None else Config()
 
     #app definition
     app = FastAPI(lifespan=lifespan)
     app.state.config = app_config
     app.state.resources = None
+    app.state.weaviate_connector = weaviate_connector or connect_weaviate
     # mount routes
     app.include_router(export_router)
     app.include_router(auth_router, prefix="/api/auth/jwt", tags=["auth"])
@@ -63,8 +72,10 @@ def create_app(app_config: Config | None = None) -> FastAPI:
     async def health():
         return {"status": "ok"}
 
-    # Collection access checks (features/collections/access.py) raise these.
-    for exc_type, status_code in ((AuthenticationRequired, 401), (ResourceNotFound, 404), (AccessDenied, 403)):
+    # Raised by collection access checks (features/collections/access.py, its
+    # ResourceNotFound is a NotFoundError) and by repositories/services (core/errors.py).
+    for exc_type, status_code in ((AuthenticationRequired, 401), (NotFoundError, 404), (AccessDenied, 403),
+                                  (InvalidRequestError, 400)):
         app.add_exception_handler(exc_type, _detail_handler(status_code))
 
     app.add_middleware(

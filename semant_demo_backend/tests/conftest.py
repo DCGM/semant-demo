@@ -11,7 +11,7 @@ from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 from semant_demo.main import create_app
-from tests.app_support import make_test_config
+from tests.app_support import make_test_config, offline_weaviate
 
 NETWORK_MARKERS = ("integration", "live", "benchmark")
 
@@ -45,7 +45,7 @@ def deny_network_in_fast_tests(request, monkeypatch):
 @pytest.fixture
 async def client(tmp_path):
     """HTTP client for a fresh application with its own empty SQLite database."""
-    app = create_app(make_test_config(tmp_path))
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
     async with LifespanManager(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             yield ac

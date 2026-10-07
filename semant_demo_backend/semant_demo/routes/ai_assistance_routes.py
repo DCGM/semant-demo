@@ -479,9 +479,9 @@ async def suggest_spans_thorough(
     if not body.tag_ids:
         raise HTTPException(status_code=400, detail="tag_ids must not be empty")
     # Checked before the stream starts, so a denied request makes no provider call.
-    grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
-    await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
-    document_id = await access.require_document_in_collection(searcher, body.document_id, grant.collection_id)
+    grant = await access.require_annotation_edit(searcher.userCollection, current_user, body.collection_id)
+    await access.require_tags_in_collection(searcher.tag, body.tag_ids, grant.collection_id)
+    document_id = await access.require_document_in_collection(searcher.userCollection, body.document_id, grant.collection_id)
 
     return StreamingResponse(
         _thorough_stream(
@@ -520,9 +520,9 @@ async def suggest_spans_optimized(
     if not body.tag_ids:
         raise HTTPException(status_code=400, detail="tag_ids must not be empty")
     # Checked before the stream starts, so a denied request makes no provider call.
-    grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
-    await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
-    document_id = await access.require_document_in_collection(searcher, body.document_id, grant.collection_id)
+    grant = await access.require_annotation_edit(searcher.userCollection, current_user, body.collection_id)
+    await access.require_tags_in_collection(searcher.tag, body.tag_ids, grant.collection_id)
+    document_id = await access.require_document_in_collection(searcher.userCollection, body.document_id, grant.collection_id)
 
     return StreamingResponse(
         _optimized_stream(
@@ -580,10 +580,10 @@ async def suggest_spans_selection(
             detail="selection_end must be greater than selection_start",
         )
     # Checked before the stream starts, so a denied request makes no provider call.
-    grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
-    await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
-    await access.require_document_in_collection(searcher, body.document_id, grant.collection_id)
-    await access.require_chunks_in_collection(searcher, body.chunk_ids, grant.collection_id, body.document_id)
+    grant = await access.require_annotation_edit(searcher.userCollection, current_user, body.collection_id)
+    await access.require_tags_in_collection(searcher.tag, body.tag_ids, grant.collection_id)
+    await access.require_document_in_collection(searcher.userCollection, body.document_id, grant.collection_id)
+    await access.require_chunks_in_collection(searcher.userCollection, body.chunk_ids, grant.collection_id, body.document_id)
 
     return StreamingResponse(
         _selection_stream(
@@ -614,11 +614,11 @@ async def delete_auto_spans(
     approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and
     ``failed`` those that could not be deleted.
     """
-    grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
-    document = await access.require_document_in_collection(searcher, body.document_id, grant.collection_id)
+    grant = await access.require_annotation_edit(searcher.userCollection, current_user, body.collection_id)
+    document = await access.require_document_in_collection(searcher.userCollection, body.document_id, grant.collection_id)
     if not body.tag_ids:
         return DeleteAutoSpansResponse(outcome=outcome_of(0, 0), deleted=0)
-    await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
+    await access.require_tags_in_collection(searcher.tag, body.tag_ids, grant.collection_id)
 
     result = await searcher.span.delete_auto_spans_in_scope(
         collection_id=str(grant.collection_id),

@@ -1250,7 +1250,7 @@ export interface DefaultApiInterface {
     removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequestOpts(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Removes a chunk from a user collection. Owner only.
+     * Removes a chunk from a user collection. Owner only. Removing a chunk that is not in the collection succeeds without a change; an unknown chunk is 404.
      * @summary Remove Chunk From Collection
      * @param {string} collectionId 
      * @param {string} chunkId 
@@ -1261,7 +1261,7 @@ export interface DefaultApiInterface {
     removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
 
     /**
-     * Removes a chunk from a user collection. Owner only.
+     * Removes a chunk from a user collection. Owner only. Removing a chunk that is not in the collection succeeds without a change; an unknown chunk is 404.
      * Remove Chunk From Collection
      */
     removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
@@ -1276,7 +1276,7 @@ export interface DefaultApiInterface {
     removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequestOpts(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
+     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``). Removing a document that is not in the collection changes nothing; an unknown document is 404.
      * @summary Remove Document From Collection
      * @param {string} collectionId 
      * @param {string} documentId 
@@ -1287,7 +1287,7 @@ export interface DefaultApiInterface {
     removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>>;
 
     /**
-     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
+     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``). Removing a document that is not in the collection changes nothing; an unknown document is 404.
      * Remove Document From Collection
      */
     removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
@@ -1596,7 +1596,7 @@ export interface DefaultApiInterface {
     updateTagApiTagsTagUuidPatchRequestOpts(requestParameters: UpdateTagApiTagsTagUuidPatchRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Updates a tag
+     * Updates a tag. Fields that are omitted or null are kept; at least one field must have a value (422 otherwise).
      * @summary Update Tag
      * @param {string} tagUuid 
      * @param {PatchTag} patchTag 
@@ -1607,7 +1607,7 @@ export interface DefaultApiInterface {
     updateTagApiTagsTagUuidPatchRaw(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>>;
 
     /**
-     * Updates a tag
+     * Updates a tag. Fields that are omitted or null are kept; at least one field must have a value (422 otherwise).
      * Update Tag
      */
     updateTagApiTagsTagUuidPatch(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag>;
@@ -3610,7 +3610,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Removes a chunk from a user collection. Owner only.
+     * Removes a chunk from a user collection. Owner only. Removing a chunk that is not in the collection succeeds without a change; an unknown chunk is 404.
      * Remove Chunk From Collection
      */
     async removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
@@ -3621,7 +3621,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Removes a chunk from a user collection. Owner only.
+     * Removes a chunk from a user collection. Owner only. Removing a chunk that is not in the collection succeeds without a change; an unknown chunk is 404.
      * Remove Chunk From Collection
      */
     async removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
@@ -3670,7 +3670,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
+     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``). Removing a document that is not in the collection changes nothing; an unknown document is 404.
      * Remove Document From Collection
      */
     async removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>> {
@@ -3681,7 +3681,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
+     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``). Removing a document that is not in the collection changes nothing; an unknown document is 404.
      * Remove Document From Collection
      */
     async removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
@@ -4411,7 +4411,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Updates a tag
+     * Updates a tag. Fields that are omitted or null are kept; at least one field must have a value (422 otherwise).
      * Update Tag
      */
     async updateTagApiTagsTagUuidPatchRaw(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>> {
@@ -4422,7 +4422,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Updates a tag
+     * Updates a tag. Fields that are omitted or null are kept; at least one field must have a value (422 otherwise).
      * Update Tag
      */
     async updateTagApiTagsTagUuidPatch(requestParameters: UpdateTagApiTagsTagUuidPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag> {

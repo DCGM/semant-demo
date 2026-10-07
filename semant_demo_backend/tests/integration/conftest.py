@@ -13,6 +13,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from weaviate.classes.query import QueryReference
 from weaviate.collections.data.async_ import _DataCollectionAsync
 
+from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.documents import DocumentRepository
+from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.main import create_app
 from semant_demo.routes import ai_assistance_routes
@@ -69,7 +72,23 @@ async def seeded_store(weaviate_client, collection_names, corpus, store_token):
 
 @pytest.fixture
 def searcher(seeded_store, collection_names) -> WeaviateAbstraction:
+    """Transitional facade, for adapters that have not moved to ``adapters/weaviate`` yet."""
     return WeaviateAbstraction(seeded_store, collection_names)
+
+
+@pytest.fixture
+def collections(seeded_store, collection_names) -> UserCollectionRepository:
+    return UserCollectionRepository(seeded_store, collection_names)
+
+
+@pytest.fixture
+def documents(seeded_store, collection_names) -> DocumentRepository:
+    return DocumentRepository(seeded_store, collection_names)
+
+
+@pytest.fixture
+def tags(seeded_store, collection_names) -> TagRepository:
+    return TagRepository(seeded_store, collection_names)
 
 
 @pytest.fixture

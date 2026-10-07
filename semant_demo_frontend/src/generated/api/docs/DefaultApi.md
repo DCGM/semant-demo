@@ -2584,7 +2584,7 @@ example().catch(console.error);
 
 Remove Chunk From Collection
 
-Removes a chunk from a user collection. Owner only.
+Removes a chunk from a user collection. Owner only. Removing a chunk that is not in the collection succeeds without a change; an unknown chunk is 404.
 
 ### Example
 
@@ -2659,7 +2659,7 @@ example().catch(console.error);
 
 Remove Document From Collection
 
-Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (&#x60;&#x60;outcome&#x60;&#x60; &#x60;&#x60;partial&#x60;&#x60;/&#x60;&#x60;failed&#x60;&#x60;).
+Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (&#x60;&#x60;outcome&#x60;&#x60; &#x60;&#x60;partial&#x60;&#x60;/&#x60;&#x60;failed&#x60;&#x60;). Removing a document that is not in the collection changes nothing; an unknown document is 404.
 
 ### Example
 
@@ -3601,7 +3601,7 @@ example().catch(console.error);
 
 Update Tag
 
-Updates a tag
+Updates a tag. Fields that are omitted or null are kept; at least one field must have a value (422 otherwise).
 
 ### Example
 

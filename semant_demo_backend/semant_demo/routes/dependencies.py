@@ -1,7 +1,10 @@
 from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
-from semant_demo.bootstrap import AppResources
+from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.documents import DocumentRepository
+from semant_demo.adapters.weaviate.tags import TagRepository
+from semant_demo.bootstrap import AppResources, WeaviateRepositories
 from semant_demo.config import Config
 from semant_demo.rag.rag_factory import RagRegistry
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
@@ -27,8 +30,25 @@ async def get_async_session(connection: HTTPConnection) -> AsyncGenerator[AsyncS
     async with get_resources(connection).session_maker() as session:
         yield session
 
+def _weaviate(connection: HTTPConnection) -> WeaviateRepositories:
+    # Connected at startup (bootstrap); never opened from a request.
+    weaviate = get_resources(connection).weaviate
+    if weaviate is None:
+        raise HTTPException(status_code=503, detail="Application is not started.")
+    return weaviate
+
 async def get_search(connection: HTTPConnection) -> WeaviateAbstraction:
-    return await get_resources(connection).get_searcher()
+    """Transitional facade for routes not migrated yet; new code uses the repositories below."""
+    return _weaviate(connection).legacy
+
+async def get_documents(connection: HTTPConnection) -> DocumentRepository:
+    return _weaviate(connection).documents
+
+async def get_tags(connection: HTTPConnection) -> TagRepository:
+    return _weaviate(connection).tags
+
+async def get_collections(connection: HTTPConnection) -> UserCollectionRepository:
+    return _weaviate(connection).collections
 
 async def get_summarizer(connection: HTTPConnection) -> TemplatedSearchResultsSummarizer:
     return get_resources(connection).get_summarizer()

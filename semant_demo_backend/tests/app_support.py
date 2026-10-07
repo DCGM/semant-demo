@@ -36,3 +36,35 @@ def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
     }
     environ.update(overrides)
     return Config(environ=environ)
+
+
+class _UnavailableCollection:
+    def __init__(self, name: str):
+        self._name = name
+
+    def __getattr__(self, attr):
+        raise RuntimeError(f"Weaviate is not available in this test (collection {self._name!r})")
+
+
+class _UnavailableCollections:
+    def get(self, name: str) -> _UnavailableCollection:
+        return _UnavailableCollection(name)
+
+
+class OfflineWeaviate:
+    """Stand-in Weaviate client for fast tests that do not use Weaviate.
+
+    Repositories can be built on it; any query or write fails.
+    """
+
+    def __init__(self):
+        self.collections = _UnavailableCollections()
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+async def offline_weaviate(config: Config) -> OfflineWeaviate:
+    """``create_app(..., weaviate_connector=offline_weaviate)`` for apps without Weaviate."""
+    return OfflineWeaviate()

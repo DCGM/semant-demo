@@ -3,8 +3,7 @@ import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.schema.outcomes import WriteOutcome, outcome_of
-from semant_demo.weaviate_exceptions import WeaviateOperationError
-from semant_demo.weaviate_utils.helpers import guard_progress, step_failure
+from semant_demo.adapters.weaviate.writes import NoProgressError, guard_progress, step_failure
 
 
 @pytest.mark.parametrize("succeeded, failed, unattempted, expected", [
@@ -35,5 +34,5 @@ def test_guard_allows_new_pages_and_stops_on_a_repeated_object():
     guard_progress(seen, ["a", "b"])
     guard_progress(seen, ["c"])
 
-    with pytest.raises(WeaviateOperationError):
+    with pytest.raises(NoProgressError):
         guard_progress(seen, ["c", "d"])

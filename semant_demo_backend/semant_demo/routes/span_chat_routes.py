@@ -83,8 +83,8 @@ async def discuss_span(
             status_code=400, detail="last message must be from the user"
         )
     # Checked before the stream starts, so a denied request makes no provider call.
-    collection_id = await access.collection_of_spans(searcher, [body.span_id])
-    await access.require_collection_read(searcher, current_user, collection_id)
+    collection_id = await access.collection_of_spans(searcher.span, searcher.tag, [body.span_id])
+    await access.require_collection_read(searcher.userCollection, current_user, collection_id)
 
     return StreamingResponse(
         _stream(
