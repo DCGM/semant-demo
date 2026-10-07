@@ -127,13 +127,14 @@ Last updated: 2026-10-07
 
 - `WeaviateAbstraction.create` calls `exit(-1)` when Weaviate is reachable but not ready,
   which terminates the server process from inside a request. Unchanged here; address in #202.
-- Branch protection must list the CI jobs "Backend tests", "Frontend checks" and
-  "Generated API client drift" as required checks for failures to block merging; that is
-  a repository setting, not part of the workflow file.
+- Required checks are a repository setting, not part of the workflow file. As of
+  2026-10-07 the ruleset for `197-refactor---base` requires "Backend tests", "Frontend
+  checks", "Generated API client drift" and "Integration tests" (strict, branch up to
+  date). `main` has no required status checks yet; add the same four before the refactor
+  is merged to `main`.
 - PR preview deploys still run with production `OPENAI_API_KEY`/`JWT_SECRET` secrets on
   the self-hosted runner and still deploy after failed checks. Not changed in #200 (a
   deployment decision); tracked in #213.
-- "Integration tests" must also be added to the required checks in branch protection.
 - `WeaviateAbstraction.create` connects without `skip_init_checks`, so the weaviate client
   requests `https://pypi.org/pypi/weaviate-client/json` on every connection (also from
   integration/e2e test apps; failures are ignored by the client). The test-store client
