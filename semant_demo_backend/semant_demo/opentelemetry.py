@@ -45,6 +45,48 @@ SYSTEM_METRICS = {
 }
 
 
+def feature_for_request(path: str, method: str) -> str | None:
+    """Return the dashboard feature name for a user-initiated action.
+
+    Read-only configuration and polling endpoints are deliberately excluded so
+    the counter represents use of application features rather than browser
+    background traffic.
+    """
+    if method != "POST":
+        return None
+
+    if path in {"/api/rag", "/api/rag/explain"}:
+        return "rag"
+    if path == "/api/search":
+        return "search"
+    if path.startswith("/api/summarize/") or path.startswith("/api/question/"):
+        return "summarize"
+    if path.startswith("/api/ai/") or path in {
+        "/api/propose_tags",
+        "/api/propose_best_tag",
+    }:
+        return "ai_assistance"
+    if path in {"/api/tag/task", "/api/tags", "/api/tags/filter"}:
+        return "tagging"
+    return None
+
+
+def request_outcome(status_code: int) -> str:
+    """Map an HTTP status code to a low-cardinality metric attribute."""
+    if status_code >= 500:
+        return "server_error"
+    if status_code >= 400:
+        return "client_error"
+    return "success"
+
+
+def request_authentication(authorization: str | None) -> str:
+    """Classify the request without recording a user identity or token."""
+    if authorization and authorization.lower().startswith("bearer "):
+        return "bearer_token"
+    return "anonymous"
+
+
 class _SkipExporterInternals(logging.Filter):
     """Prevent collector errors from recursively generating more OTLP logs."""
 
@@ -59,6 +101,7 @@ class OpenTelemetry:
     tracer: object
     meter: object
     logger: object
+    feature_request_counter: object
     trace_provider: TracerProvider
     meter_provider: MeterProvider
     log_provider: LoggerProvider
@@ -67,6 +110,23 @@ class OpenTelemetry:
     system_metric_instrumentator: SystemMetricsInstrumentor
     fastapi_instrumentator: FastAPIInstrumentor
     app: FastAPI | None = None
+
+    def record_feature_request(
+        self,
+        *,
+        feature: str,
+        authentication: str,
+        status_code: int,
+    ) -> None:
+        """Record one use of a dashboard feature with safe attributes only."""
+        self.feature_request_counter.add(
+            1,
+            attributes={
+                "feature": feature,
+                "authentication": authentication,
+                "outcome": request_outcome(status_code),
+            },
+        )
 
     def instrument_app(self, app: FastAPI) -> None:
         self.fastapi_instrumentator.instrument_app(
@@ -130,6 +190,11 @@ def initialize_opentelemetry() -> OpenTelemetry | None:
     )
     metrics.set_meter_provider(meter_provider)
     meter = metrics.get_meter(__name__)
+    feature_request_counter = meter.create_counter(
+        "semant_demo.feature.requests",
+        unit="{request}",
+        description="Completed user-initiated application feature requests.",
+    )
 
     log_exporter = OTLPLogExporter(
         endpoint=urljoin(
@@ -171,6 +236,7 @@ def initialize_opentelemetry() -> OpenTelemetry | None:
         tracer=tracer,
         meter=meter,
         logger=logger,
+        feature_request_counter=feature_request_counter,
         trace_provider=trace_provider,
         meter_provider=meter_provider,
         log_provider=log_provider,

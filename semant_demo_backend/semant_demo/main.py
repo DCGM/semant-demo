@@ -4,7 +4,11 @@ from time import perf_counter, time
 from uuid import uuid4
 
 from semant_demo.config import config
-from semant_demo.opentelemetry import initialize_opentelemetry
+from semant_demo.opentelemetry import (
+    feature_for_request,
+    initialize_opentelemetry,
+    request_authentication,
+)
 from semant_demo.rag.rag_factory import rag_factory
 from semant_demo.routes.dependencies import cleanup_dependencies, get_engine, get_search, get_summarizer
 from fastapi.staticfiles import StaticFiles
@@ -64,6 +68,16 @@ async def log_http_request(request: Request, call_next):
         "http.request.method": request.method,
         "url.path": request.url.path,
     }
+    feature = feature_for_request(request.url.path, request.method)
+    authentication = request_authentication(request.headers.get("Authorization"))
+
+    def record_feature_usage(status_code: int) -> None:
+        if telemetry is not None and feature is not None:
+            telemetry.record_feature_request(
+                feature=feature,
+                authentication=authentication,
+                status_code=status_code,
+            )
 
     try:
         response = await call_next(request)
@@ -76,6 +90,7 @@ async def log_http_request(request: Request, call_next):
             "HTTP request failed",
             extra=attributes,
         )
+        record_feature_usage(500)
         raise
 
     attributes["http.response.status_code"] = response.status_code
@@ -86,6 +101,7 @@ async def log_http_request(request: Request, call_next):
         "HTTP request completed",
         extra=attributes,
     )
+    record_feature_usage(response.status_code)
     response.headers["X-Request-ID"] = request_id
     return response
 
