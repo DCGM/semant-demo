@@ -1,6 +1,6 @@
 {
   "src/components/auth/LoginDialog.vue: TS7006: Parameter 'v' implicitly has an 'any' type.": 2,
-  "src/components/auth/RegisterDialog.vue: TS2339: Property 'modelValue' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $props: { key?: string | number | symbol | undefined; ref?: VNodeRef | undefined; ref_key?: string | undefined; ... 9 more ...; onVnodeUnmounted?: VNodeMountHook | ... 1 more ... | undefined; }; ... 10 more ...; $watch<T extends string | ((...args: any) => any)>(source: T, ...'.": 1,
+  "src/components/auth/RegisterDialog.vue: TS2339: Property 'modelValue' does not exist on type '{…}'": 1,
   "src/components/auth/RegisterDialog.vue: TS7006: Parameter 'v' implicitly has an 'any' type.": 9,
   "src/components/auth/UserInfoDialog.vue: TS7006: Parameter 'v' implicitly has an 'any' type.": 5,
   "src/components/ChunkAnnotator.vue: TS2339: Property 'caretPositionFromPoint' does not exist on type 'Document'.": 2,
