@@ -12,6 +12,7 @@ COLLECTION, OTHER_COLLECTION = uuid4(), uuid4()
 TAG, OTHER_TAG, ORPHAN_TAG, DOUBLE_TAG = uuid4(), uuid4(), uuid4(), uuid4()
 SPAN, OTHER_SPAN = uuid4(), uuid4()
 CHUNK, FOREIGN_CHUNK = uuid4(), uuid4()
+DOCUMENT, FOREIGN_DOCUMENT = uuid4(), uuid4()
 
 
 class FakeStore:
@@ -22,6 +23,7 @@ class FakeStore:
         tags = {TAG: [COLLECTION], OTHER_TAG: [OTHER_COLLECTION], ORPHAN_TAG: [], DOUBLE_TAG: [COLLECTION, OTHER_COLLECTION]}
         spans = {SPAN: ([TAG], [CHUNK]), OTHER_SPAN: ([OTHER_TAG], [FOREIGN_CHUNK])}
         members = {COLLECTION: {CHUNK}}
+        documents = {COLLECTION: {DOCUMENT}, OTHER_COLLECTION: {FOREIGN_DOCUMENT}}
 
         async def read_access_record(cid):
             if fail:
@@ -31,6 +33,9 @@ class FakeStore:
         async def chunk_ids_in_collection(ids, cid, document_id=None):
             return set(ids) & members.get(cid, set())
 
+        async def document_in_collection(document_id, cid):
+            return document_id in documents.get(cid, set())
+
         async def read_collection_ids(ids):
             return {t: tags[t] for t in ids if t in tags}
 
@@ -38,7 +43,8 @@ class FakeStore:
             return {s: spans[s] for s in ids if s in spans}
 
         self.userCollection = SimpleNamespace(read_access_record=read_access_record,
-                                              chunk_ids_in_collection=chunk_ids_in_collection)
+                                              chunk_ids_in_collection=chunk_ids_in_collection,
+                                              document_in_collection=document_in_collection)
         self.tag = SimpleNamespace(read_collection_ids=read_collection_ids)
         self.span = SimpleNamespace(read_refs=read_refs)
 
@@ -124,3 +130,12 @@ def test_parse_id_accepts_uuid_and_string():
 
     assert access.parse_id(value, "X") is value
     assert access.parse_id(str(value), "X") == UUID(str(value))
+
+
+async def test_document_must_be_linked_to_the_collection():
+    store = FakeStore()
+    assert await access.require_document_in_collection(store, str(DOCUMENT), COLLECTION) == DOCUMENT
+
+    for document in (FOREIGN_DOCUMENT, uuid4(), "not-a-uuid"):
+        with pytest.raises(ResourceNotFound):
+            await access.require_document_in_collection(store, document, COLLECTION)

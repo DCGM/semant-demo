@@ -333,3 +333,55 @@ async def test_owner_removes_a_chunk(api_client, login, ids, store):
 
     assert response.status_code == 200, response.text
     assert c not in await store.collections_of_chunk(chunk)
+
+
+
+# ── Collection + document scope ───────────────────────────────────────────
+
+async def test_document_of_another_collection_is_not_found(api_client, login, ids, store, fake_topicer):
+    # The owner can read both collections, but the gazette is not in "chronicles":
+    # collection access must not extend to another collection's document.
+    headers = await login("owner")
+    c, d = ids.col["chronicles"], ids.doc["gazette"]
+    spans_before = await store.span_count()
+    scope = {"collection_id": c, "document_id": d}
+
+    responses = {
+        "chunks": await api_client.get(f"/api/collections/{c}/documents/{d}", headers=headers),
+        "stats": await api_client.get(f"/api/collections/{c}/documents/{d}/stats", headers=headers),
+        "range": await api_client.get(f"/api/collections/{c}/documents/{d}/chunks", headers=headers),
+        "neighbour": await api_client.get(
+            f"/api/collections/{c}/documents/{d}/neighbour?direction=next&boundary_order=0", headers=headers),
+        "document chunks": await api_client.get(f"/api/documents/{d}/{c}/chunks", headers=headers),
+        "delete annotations": await api_client.post(
+            "/api/tag_spans/in_document/delete", headers=headers, json={**scope, "tag_ids": [ids.tag["person"]]}),
+        "delete suggestions": await api_client.post(
+            "/api/ai/auto_spans/delete", headers=headers, json={**scope, "tag_ids": [ids.tag["place"]]}),
+        "thorough": await api_client.post(
+            "/api/ai/suggest_spans/thorough", headers=headers, json={**scope, "tag_ids": [ids.tag["person"]]}),
+        "selection": await api_client.post("/api/ai/suggest_spans/selection", headers=headers, json={
+            **scope, "tag_ids": [ids.tag["person"]], "chunk_ids": [ids.chunk["gazette_1"]],
+            "selection_start": 0, "selection_end": 10}),
+    }
+
+    assert {k: r.status_code for k, r in responses.items()} == {k: 404 for k in responses}
+    assert fake_topicer == []
+    assert await store.span_count() == spans_before
+
+
+async def test_optimized_ai_does_not_call_the_provider_for_another_collections_document(
+        api_client, login, ids, fake_topicer):
+    # Before the document check this request reached Topicer (tags were valid for the collection).
+    response = await api_client.post("/api/ai/suggest_spans/optimized", headers=await login("owner"), json={
+        "collection_id": ids.col["chronicles"], "document_id": ids.doc["gazette"], "tag_ids": [ids.tag["person"]]})
+
+    assert response.status_code == 404
+    assert fake_topicer == []
+
+
+async def test_shared_user_cannot_reach_documents_outside_the_shared_collection(api_client, login, ids):
+    c, d = ids.col["chronicles"], ids.doc["gazette"]
+
+    response = await api_client.get(f"/api/collections/{c}/documents/{d}/chunks", headers=await login("annotator"))
+
+    assert response.status_code == 404

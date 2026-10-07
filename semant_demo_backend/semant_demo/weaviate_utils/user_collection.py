@@ -97,6 +97,20 @@ class UserCollection():
             {UUID(str(uid)) for uid in (obj.properties.get("shared_with") or [])},
         )
 
+    async def document_in_collection(self, document_id: UUID, collection_id: UUID) -> bool:
+        """
+        Whether the document is linked to the collection (the document -> collection
+        reference that the collection's document list uses). One small lookup,
+        independent of the document's size.
+        """
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        response = await document_collection.query.fetch_objects(
+            filters=Filter.by_id().equal(document_id) & Filter.by_ref("collection").by_id().equal(collection_id),
+            limit=1,
+            return_properties=[],
+        )
+        return bool(response.objects)
+
     async def chunk_ids_in_collection(
         self, chunk_ids: list[UUID], collection_id: UUID, document_id: UUID | None = None,
     ) -> set[UUID]:
