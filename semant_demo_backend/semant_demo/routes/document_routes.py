@@ -3,7 +3,10 @@ from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
 from semant_demo import schemas
 from semant_demo.schema.documents import DocumentBrowse, Document
+from semant_demo.features.collections import access
 from semant_demo.routes.dependencies import get_search
+from semant_demo.users.auth import current_active_optional_user, current_active_user
+from semant_demo.users.models import User
 
 
 exp_router = APIRouter()
@@ -28,10 +31,14 @@ async def browse_documents(collection_id: str | None = None,
                            author: str | None = None,
                            publisher: str | None = None,
                            document_type: str | None = None,
-                           searcher: WeaviateAbstraction = Depends(get_search)) -> DocumentBrowse:
+                           searcher: WeaviateAbstraction = Depends(get_search),
+                           current_user: User | None = Depends(current_active_optional_user)) -> DocumentBrowse:
     """
-        Browses documents which belong to collection given by id with pagination, filtering and sorting options
+        Browses the corpus with pagination, filtering and sorting options. With ``collection_id``
+        only that collection's documents are browsed, which needs read access to it.
     """
+    if collection_id is not None:
+        collection_id = str((await access.require_collection_read(searcher, current_user, collection_id)).collection_id)
     return await searcher.document.browse_documents(
         collection_id=collection_id,
         limit=limit,
@@ -48,11 +55,13 @@ async def browse_documents(collection_id: str | None = None,
 @exp_router.get("/api/documents/{document_id}/{collection_id}/chunks", response_model=schemas.DocumentDetail, response_model_exclude_none=True)
 async def fetch_document_chunks(document_id: str,
                                 collection_id: str,
-                                searcher: WeaviateAbstraction = Depends(get_search)) -> schemas.DocumentDetail:
+                                searcher: WeaviateAbstraction = Depends(get_search),
+                                current_user: User = Depends(current_active_user)) -> schemas.DocumentDetail:
     """
     Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
     """
-    response = await searcher.document.read_document_chunks(document_id=document_id, collection_id=collection_id)
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
+    response = await searcher.document.read_document_chunks(document_id=document_id, collection_id=str(grant.collection_id))
     if response is None:
         raise HTTPException(status_code=404, detail=f"Document with id {document_id} not found")
     return response

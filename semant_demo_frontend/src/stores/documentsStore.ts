@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { Documents, Document, DocumentBrowseParams } from 'src/models/documents'
 import { ongoingNotification } from 'src/utils/notification'
 import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
+import { IncompleteWriteError } from 'src/utils/writeOutcome'
 
 export const useDocumentsStore = defineStore('documents', () => {
   const documentsRepository = useDocumentsRepository()
@@ -76,10 +77,13 @@ export const useDocumentsStore = defineStore('documents', () => {
       await documentsRepository.addToCollection(documentId, collectionId)
       await fetchDocumentsByCollection(collectionId)
       notif.success('Document added to collection')
+      return true
     } catch (err) {
       error.value = 'Failed to add document to collection'
       console.error('Error adding document to collection:', err)
-      notif.error('Failed to add document to collection')
+      notif.error(err instanceof IncompleteWriteError ? err.message : 'Failed to add document to collection')
+      // Some links may have been written; show the collection as it is now.
+      if (err instanceof IncompleteWriteError) await fetchDocumentsByCollection(collectionId)
       return false
     } finally {
       loading.value = false
@@ -94,10 +98,12 @@ export const useDocumentsStore = defineStore('documents', () => {
       await documentsRepository.removeFromCollection(documentId, collectionId)
       await fetchDocumentsByCollection(collectionId)
       notif.success('Document removed from collection')
+      return true
     } catch (err) {
       error.value = 'Failed to remove document from collection'
       console.error('Error removing document from collection:', err)
-      notif.error('Failed to remove document from collection')
+      notif.error(err instanceof IncompleteWriteError ? err.message : 'Failed to remove document from collection')
+      if (err instanceof IncompleteWriteError) await fetchDocumentsByCollection(collectionId)
       return false
     } finally {
       loading.value = false
@@ -121,7 +127,7 @@ export const useDocumentsStore = defineStore('documents', () => {
       hadError = true
       error.value = 'Failed to remove selected documents from collection'
       console.error('Error removing selected documents from collection:', err)
-      notif.error('Failed to remove selected documents from collection')
+      notif.error(err instanceof IncompleteWriteError ? err.message : 'Failed to remove selected documents from collection')
       await fetchDocumentsByCollection(collectionId)
     } finally {
       if (!hadError) {

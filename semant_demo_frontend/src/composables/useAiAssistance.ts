@@ -25,6 +25,8 @@ export interface AiAssistanceChunkEvent {
   chunkId: string
   spans: TagSpan[]
   error?: string | null
+  /** Proposals the backend did not save (storage failure or outside the request); see ``error``. */
+  unsaved: number
 }
 
 const BACKEND_BASE_PATH = process.env.BACKEND_URL ? process.env.BACKEND_URL + '/api' : 'http://localhost:8000/api'
@@ -33,6 +35,7 @@ const isRunning = ref(false)
 const lastError = ref<string | null>(null)
 const processedChunkIds = ref<Set<string>>(new Set())
 const totalSpansAdded = ref(0)
+const totalUnsaved = ref(0)
 let activeAbort: AbortController | null = null
 
 // Shared UI state across the document layout (AI panel) and the document page.
@@ -131,6 +134,7 @@ export function useAiAssistance() {
     lastError.value = null
     processedChunkIds.value = new Set()
     totalSpansAdded.value = 0
+    totalUnsaved.value = 0
 
     const path = req.mode === 'thorough'
       ? '/ai/suggest_spans/thorough'
@@ -168,7 +172,7 @@ export function useAiAssistance() {
       const handleLine = (line: string) => {
         const trimmed = line.trim()
         if (!trimmed) return
-        let parsed: { chunk_id?: string; spans?: TagSpan[]; error?: string | null }
+        let parsed: { chunk_id?: string; spans?: TagSpan[]; error?: string | null; unsaved?: number }
         try {
           parsed = JSON.parse(trimmed)
         } catch (e) {
@@ -178,8 +182,10 @@ export function useAiAssistance() {
         const event: AiAssistanceChunkEvent = {
           chunkId: parsed.chunk_id || '',
           spans: parsed.spans || [],
-          error: parsed.error ?? null
+          error: parsed.error ?? null,
+          unsaved: parsed.unsaved ?? 0
         }
+        totalUnsaved.value += event.unsaved
         if (event.chunkId) processedChunkIds.value.add(event.chunkId)
         if (event.spans.length) {
           totalSpansAdded.value += event.spans.length
@@ -312,7 +318,7 @@ export function useAiAssistance() {
       const handleLine = (line: string) => {
         const trimmed = line.trim()
         if (!trimmed) return
-        let parsed: { chunk_id?: string; spans?: TagSpan[]; error?: string | null }
+        let parsed: { chunk_id?: string; spans?: TagSpan[]; error?: string | null; unsaved?: number }
         try {
           parsed = JSON.parse(trimmed)
         } catch (e) {
@@ -322,6 +328,7 @@ export function useAiAssistance() {
         if (parsed.error) {
           lastSelectionError.value = parsed.error
         }
+        totalUnsaved.value += parsed.unsaved ?? 0
         const anchorChunkId = parsed.chunk_id || ''
         const fresh = parsed.spans || []
         if (!anchorChunkId || !fresh.length) return
@@ -397,6 +404,7 @@ export function useAiAssistance() {
     lastSelectionError.value = null
     processedChunkIds.value = new Set()
     totalSpansAdded.value = 0
+    totalUnsaved.value = 0
     highlightedAutoSpanId.value = null
   }
 
@@ -413,6 +421,7 @@ export function useAiAssistance() {
     lastSelectionError: computed(() => lastSelectionError.value),
     processedChunkCount: computed(() => processedChunkIds.value.size),
     totalSpansAdded: computed(() => totalSpansAdded.value),
+    totalUnsaved: computed(() => totalUnsaved.value),
     aiTabActive,
     aiPanelRequestNonce,
     highlightedAutoSpanId,

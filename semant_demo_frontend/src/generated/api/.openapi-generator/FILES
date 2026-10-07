@@ -61,6 +61,7 @@ docs/SemantDemoSchemasDocument.md
 docs/ShareCollectionRequest.md
 docs/SpanChatMessage.md
 docs/SpanType.md
+docs/StepFailure.md
 docs/SuggestSpansRequest.md
 docs/SuggestSpansSelectionRequest.md
 docs/SummaryResponse.md
@@ -78,6 +79,8 @@ docs/UsersApi.md
 docs/ValidationError.md
 docs/Values.md
 docs/ValuesAnyOfInner.md
+docs/WriteOutcome.md
+docs/WriteResult.md
 index.ts
 models/AppFeedbackRequest.ts
 models/BearerResponse.ts
@@ -136,6 +139,7 @@ models/SemantDemoSchemasDocument.ts
 models/ShareCollectionRequest.ts
 models/SpanChatMessage.ts
 models/SpanType.ts
+models/StepFailure.ts
 models/SuggestSpansRequest.ts
 models/SuggestSpansSelectionRequest.ts
 models/SummaryResponse.ts
@@ -152,5 +156,7 @@ models/UserUpdate.ts
 models/ValidationError.ts
 models/Values.ts
 models/ValuesAnyOfInner.ts
+models/WriteOutcome.ts
+models/WriteResult.ts
 models/index.ts
 runtime.ts

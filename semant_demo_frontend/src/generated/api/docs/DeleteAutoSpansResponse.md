@@ -1,12 +1,16 @@
 
 # DeleteAutoSpansResponse
 
-Result of a bulk auto-span deletion.
+Result of a bulk auto-span deletion; ``succeeded`` lists the deleted span ids.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
+`outcome` | [WriteOutcome](WriteOutcome.md)
+`succeeded` | Array&lt;string&gt;
+`failed` | [Array&lt;StepFailure&gt;](StepFailure.md)
+`unattempted` | Array&lt;string&gt;
 `deleted` | number
 
 ## Example
@@ -16,6 +20,10 @@ import type { DeleteAutoSpansResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
+  "outcome": null,
+  "succeeded": null,
+  "failed": null,
+  "unattempted": null,
   "deleted": null,
 } satisfies DeleteAutoSpansResponse
 

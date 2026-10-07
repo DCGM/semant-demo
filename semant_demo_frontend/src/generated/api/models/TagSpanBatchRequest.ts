@@ -30,13 +30,14 @@ export interface TagSpanBatchRequest {
      * @type {string}
      * @memberof TagSpanBatchRequest
      */
-    collectionId?: string | null;
+    collectionId: string;
 }
 
 /**
  * Check if a given object implements the TagSpanBatchRequest interface.
  */
 export function instanceOfTagSpanBatchRequest(value: object): value is TagSpanBatchRequest {
+    if (!('collectionId' in value) || value['collectionId'] === undefined) return false;
     return true;
 }
 
@@ -51,7 +52,7 @@ export function TagSpanBatchRequestFromJSONTyped(json: any, ignoreDiscriminator:
     return {
         
         'chunkIds': json['chunk_ids'] == null ? undefined : json['chunk_ids'],
-        'collectionId': json['collection_id'] == null ? undefined : json['collection_id'],
+        'collectionId': json['collection_id'],
     };
 }
 

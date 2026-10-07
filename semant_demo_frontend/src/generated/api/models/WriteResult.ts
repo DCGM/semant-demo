@@ -29,59 +29,52 @@ import {
 } from './StepFailure';
 
 /**
- * Result of a bulk auto-span deletion; ``succeeded`` lists the deleted span ids.
+ * 
  * @export
- * @interface DeleteAutoSpansResponse
+ * @interface WriteResult
  */
-export interface DeleteAutoSpansResponse {
+export interface WriteResult {
     /**
      * 
      * @type {WriteOutcome}
-     * @memberof DeleteAutoSpansResponse
+     * @memberof WriteResult
      */
     outcome: WriteOutcome;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DeleteAutoSpansResponse
+     * @memberof WriteResult
      */
     succeeded?: Array<string>;
     /**
      * 
      * @type {Array<StepFailure>}
-     * @memberof DeleteAutoSpansResponse
+     * @memberof WriteResult
      */
     failed?: Array<StepFailure>;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DeleteAutoSpansResponse
+     * @memberof WriteResult
      */
     unattempted?: Array<string>;
-    /**
-     * 
-     * @type {number}
-     * @memberof DeleteAutoSpansResponse
-     */
-    deleted: number;
 }
 
 
 
 /**
- * Check if a given object implements the DeleteAutoSpansResponse interface.
+ * Check if a given object implements the WriteResult interface.
  */
-export function instanceOfDeleteAutoSpansResponse(value: object): value is DeleteAutoSpansResponse {
+export function instanceOfWriteResult(value: object): value is WriteResult {
     if (!('outcome' in value) || value['outcome'] === undefined) return false;
-    if (!('deleted' in value) || value['deleted'] === undefined) return false;
     return true;
 }
 
-export function DeleteAutoSpansResponseFromJSON(json: any): DeleteAutoSpansResponse {
-    return DeleteAutoSpansResponseFromJSONTyped(json, false);
+export function WriteResultFromJSON(json: any): WriteResult {
+    return WriteResultFromJSONTyped(json, false);
 }
 
-export function DeleteAutoSpansResponseFromJSONTyped(json: any, ignoreDiscriminator: boolean): DeleteAutoSpansResponse {
+export function WriteResultFromJSONTyped(json: any, ignoreDiscriminator: boolean): WriteResult {
     if (json == null) {
         return json;
     }
@@ -91,15 +84,14 @@ export function DeleteAutoSpansResponseFromJSONTyped(json: any, ignoreDiscrimina
         'succeeded': json['succeeded'] == null ? undefined : json['succeeded'],
         'failed': json['failed'] == null ? undefined : ((json['failed'] as Array<any>).map(StepFailureFromJSON)),
         'unattempted': json['unattempted'] == null ? undefined : json['unattempted'],
-        'deleted': json['deleted'],
     };
 }
 
-export function DeleteAutoSpansResponseToJSON(json: any): DeleteAutoSpansResponse {
-    return DeleteAutoSpansResponseToJSONTyped(json, false);
+export function WriteResultToJSON(json: any): WriteResult {
+    return WriteResultToJSONTyped(json, false);
 }
 
-export function DeleteAutoSpansResponseToJSONTyped(value?: DeleteAutoSpansResponse | null, ignoreDiscriminator: boolean = false): any {
+export function WriteResultToJSONTyped(value?: WriteResult | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -110,7 +102,6 @@ export function DeleteAutoSpansResponseToJSONTyped(value?: DeleteAutoSpansRespon
         'succeeded': value['succeeded'],
         'failed': value['failed'] == null ? undefined : ((value['failed'] as Array<any>).map(StepFailureToJSON)),
         'unattempted': value['unattempted'],
-        'deleted': value['deleted'],
     };
 }
 

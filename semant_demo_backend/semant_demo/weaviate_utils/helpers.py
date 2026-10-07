@@ -18,7 +18,36 @@ from weaviate.exceptions import (
 )
 from semant_demo.weaviate_exceptions import WeaviateConnectError, WeaviateDataValidationError, WeaviateLimitError, WeaviateServerError, WeaviateOperationError
 
+import asyncio
 import uuid
+
+from semant_demo.schema.outcomes import StepFailure
+
+
+def step_failure(step: str, item_id, exc: Exception) -> StepFailure:
+    """Failure record for one write. Details stay in the log, not in the response."""
+    logging.warning("Write step %s failed for %s: %s", step, item_id, exc)
+    return StepFailure(
+        item_id=str(item_id) if item_id is not None else None,
+        step=step,
+        message=f"{type(exc).__name__}: storage write failed",
+        uncertain=isinstance(exc, (WeaviateTimeoutError, asyncio.TimeoutError, TimeoutError)),
+    )
+
+
+def guard_progress(seen: set, page_ids) -> None:
+    """Stop a "process the first page again" loop once a page repeats processed objects.
+
+    Such loops rely on each processed object leaving the filter. If one is returned
+    again, its write did not take effect, and looping would never terminate.
+    """
+    page_ids = [str(i) for i in page_ids]
+    repeated = [i for i in page_ids if i in seen]
+    if repeated:
+        raise WeaviateOperationError(
+            f"{len(repeated)} object(s) still match after being processed; stopping to avoid an endless loop"
+        )
+    seen.update(page_ids)
 
 
 class WeaviateHelpers:
@@ -69,6 +98,7 @@ class WeaviateHelpers:
 
         # delete spans tagged with this tag
         page_size = 100
+        seen: set = set()
         while True:
             span_response = await self.client.collections.get(self.collectionNames.span_collection_name).query.fetch_objects(
                 filters=Filter.by_ref("tag").by_id().equal(tag_id),
@@ -77,6 +107,7 @@ class WeaviateHelpers:
 
             if not span_response.objects:
                 break
+            guard_progress(seen, [o.uuid for o in span_response.objects])
 
             for span_obj in span_response.objects:
                 await self.delete_span_cascade(str(span_obj.uuid))
@@ -116,6 +147,7 @@ class WeaviateHelpers:
 
         # delete tags which belong to that collection and their references
         page_size = 100
+        seen: set = set()
         while True:
             tag_response = await tag_collection.query.fetch_objects(
                 filters=Filter.by_ref(
@@ -125,6 +157,7 @@ class WeaviateHelpers:
 
             if not tag_response.objects:
                 break
+            guard_progress(seen, [o.uuid for o in tag_response.objects])
 
             for tag_obj in tag_response.objects:
                 await self.delete_tag_cascade(str(tag_obj.uuid))
@@ -152,6 +185,7 @@ class WeaviateHelpers:
         try:
             collection = self.client.collections.get(collection_name)
             target_object_id = str(target_object_id)
+            seen: set = set()
 
             while True:
                 response = await collection.query.fetch_objects(
@@ -161,6 +195,7 @@ class WeaviateHelpers:
 
                 if not response.objects:
                     break
+                guard_progress(seen, [o.uuid for o in response.objects])
 
                 for obj in response.objects:
                     await collection.data.reference_delete(
@@ -187,6 +222,8 @@ class WeaviateHelpers:
         except (UnexpectedStatusCodeError, ResponseCannotBeDecodedError) as e:
             logging.error(f"Error: {str(e)}")
             raise WeaviateServerError(str(e))
+        except WeaviateOperationError:
+            raise
         except Exception as e:
             logging.error(f"Unexpected error deleting references: {str(e)}")
             raise WeaviateServerError(str(e))

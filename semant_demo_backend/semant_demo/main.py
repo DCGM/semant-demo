@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 import logging
 
 from semant_demo.bootstrap import AppResources
 from semant_demo.config import Config, config
+from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired, ResourceNotFound
 from semant_demo.rag.rag_factory import rag_factory
 from fastapi.staticfiles import StaticFiles
 import os
@@ -37,6 +39,12 @@ async def lifespan(app: FastAPI):
         logging.info(f"Application cleanup complete.")
 
 
+def _detail_handler(status_code: int):
+    async def handler(request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(status_code=status_code, content={"detail": str(exc)})
+    return handler
+
+
 def create_app(app_config: Config | None = None) -> FastAPI:
     """Build the application. No external service is contacted until startup or first use."""
     app_config = app_config if app_config is not None else Config()
@@ -54,6 +62,10 @@ def create_app(app_config: Config | None = None) -> FastAPI:
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    # Collection access checks (features/collections/access.py) raise these.
+    for exc_type, status_code in ((AuthenticationRequired, 401), (ResourceNotFound, 404), (AccessDenied, 403)):
+        app.add_exception_handler(exc_type, _detail_handler(status_code))
 
     app.add_middleware(
         CORSMiddleware,

@@ -1,6 +1,7 @@
 import { useApi } from 'src/composables/useApi'
 import { Document, DocumentBrowseParams, DocumentBrowse, Documents } from 'src/models/documents'
-import { DocumentStats } from 'src/generated/api'
+import { DocumentStats, WriteResult } from 'src/generated/api'
+import { requireComplete } from 'src/utils/writeOutcome'
 
 export function useDocumentsRepository() {
   const api = useApi().default
@@ -18,12 +19,20 @@ export function useDocumentsRepository() {
       return api.browseDocumentsApiDocumentsBrowseGet(params)
     },
 
-    addToCollection: async (documentId: string, collectionId: string): Promise<void> => {
-      return await api.addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost({ collectionId, documentId })
+    /** Throws IncompleteWriteError when some chunk/document links could not be written. */
+    addToCollection: async (documentId: string, collectionId: string): Promise<WriteResult> => {
+      return requireComplete(
+        await api.addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost({ collectionId, documentId }),
+        'Adding the document'
+      )
     },
 
-    removeFromCollection: async (documentId: string, collectionId: string): Promise<void> => {
-      return await api.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete({ collectionId, documentId })
+    /** Throws IncompleteWriteError when some links could not be removed (the document then stays). */
+    removeFromCollection: async (documentId: string, collectionId: string): Promise<WriteResult> => {
+      return requireComplete(
+        await api.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete({ collectionId, documentId }),
+        'Removing the document'
+      )
     },
 
     getStats: async (collectionId: string, documentId: string): Promise<DocumentStats> => {

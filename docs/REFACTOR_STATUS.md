@@ -1,14 +1,15 @@
 # Refactor status
 
-Last updated: 2026-10-07
+Last updated: 2026-10-08
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #200 — Add isolated real-store and browser test infrastructure (in review)
+- Current issue: #201 — Enforce resource access and explicit partial-failure behavior (in review)
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
-  against local Weaviate), #199 (fast checks and blocking CI, PR #211)
-- Current stage: R0
+  against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
+  real-store and browser test infrastructure, PR #214)
+- Current stage: R1
 
 ## Development environment
 
@@ -99,6 +100,48 @@ Last updated: 2026-10-07
 - CI: new blocking `Integration tests` job with a per-job Weaviate service container;
   production and test-main deploys also need it. The browser suite is not in CI yet (#212).
 
+## #201 outcome
+
+- `features/collections/access.py`: direct-lookup checks `require_collection_read`,
+  `require_annotation_edit`, `require_tag_definition_edit`, `require_membership_edit`,
+  `require_collection_owner`, plus tag/span -> collection resolution and tag/chunk scope
+  checks. Mapped to 401 (anonymous), 404 (no read access, unknown or malformed id) and
+  403 (shared user lacking the right) in `create_app`. Rights table: ADR 0007
+  ("Decided for the implementation"); the maintainer decided that shared users may edit
+  tag definitions and see the member list, and that metadata edits/deletion are owner-only.
+- Every collection, tag, span, AI-assistance, span-chat, sharing/member and
+  document-with-collection route checks access before reading, writing or calling a
+  provider (AI checks run before the stream starts). Previously most of them had no
+  check at all; several did not even require login.
+- Contract changes (generated client regenerated, frontend updated):
+  - span reads (`GET /api/tag_spans`, `POST /api/tag_spans/batch`) require `collection_id`;
+    without it they returned spans of every collection;
+  - add/remove document and add chunk return a `WriteResult` (`outcome` complete/partial/
+    failed, `succeeded`, `failed` with step and `uncertain` for timeouts, `unattempted`)
+    instead of an empty body / `CreateResponse`;
+  - bulk span update and the two scoped span deletes keep their fields and add the
+    `WriteResult` fields; AI suggestion events add `unsaved` and report save failures and
+    out-of-scope proposals in `error` (previously silently dropped);
+  - search with `user_collection_id` uses the direct check: no access is now 404, was 403.
+- Behavior fixes: the undefined-`e` branch in add chunk is gone (a failed document link is
+  now a reported partial outcome, not a logged success); `add_document` no longer
+  re-adds existing links (a string/UUID comparison never matched); `remove_document`
+  unlinks chunks first and keeps the document linked if any chunk unlink fails; AI
+  optimized mode no longer saves proposals on chunks outside the collection returned by
+  the provider; bulk span ops and annotation edits are limited to one collection and
+  cannot attach chunks to a collection.
+- Termination: scoped span deletes and document membership changes list the affected ids
+  before writing; the refetch-first-page cascades (tag/collection delete, reference
+  removal) stop with an error when a page repeats processed objects. Verified with more
+  than a full page of failing deletes.
+- Tests: fast access-rule and outcome tests; integration tests for the read matrix
+  (owner/shared/unrelated/admin/anonymous), denials with unchanged store state, no
+  provider call on denied AI requests, mixed-scope batches, revocation, admin owner
+  change, and partial/total failures injected into real Weaviate writes.
+- Frontend: membership and bulk span calls raise `IncompleteWriteError` with a readable
+  message for partial/failed outcomes; the document view and the AI panel update local
+  state only for ids the backend reports as done and notify about the rest.
+
 ## Temporary exceptions
 
 - **Process-wide `config` still read directly** by provider/adapter modules:
@@ -118,12 +161,27 @@ Last updated: 2026-10-07
 - **Ruff rule set limited** to `E9, F63, F7, F82`. The default rule set reports ~140 legacy
   findings (unused/star imports, comparisons). Python formatting and a Python type checker
   are not enforced yet.
-- **`# noqa: F821`** on the undefined `e` in `add_chunk_to_collection`
-  (`routes/user_collection_routes.py`); remove with the fix in #201.
+- **Access checks are called from route handlers**, not from feature service functions,
+  because the service layer does not exist yet. Each handler calls the check before any
+  other work. Move the calls into services as Collections (#203), Annotations (#206) and
+  AI assistance (#207) are extracted, so non-HTTP callers are covered too.
+- **Tag and collection delete cascades return 500** when a step fails (now including the
+  no-progress stop); completed deletions are kept but not itemized. They have no
+  `WriteResult` yet; revisit with #203/#206.
 - **Vitest 0.23.4** is pinned because it is the last release supporting Vite 2
   (`@quasar/app-vite` 1). Upgrade together with Quasar app-vite 2 / Vite 5.
 
 ## Known problems affecting later steps
+
+- `GET /api/documents/{document_id}/{collection_id}/chunks` returns 500 for documents
+  with authors (`schemas.Document.author` is `str`, the store holds a list): #215.
+- `remove_chunk` is not idempotent: Weaviate answers 500 when deleting a reference that
+  no longer exists, so removing an already removed chunk reports 400. Address with
+  Collections (#203).
+- Search tag filters (`tag_uuids`) are not restricted to tags of readable collections;
+  only `user_collection_id` is checked. Belongs to the Search migration (#205).
+- `Tag.create` inserts the tag and then links it to the collection; if the link fails the
+  tag exists without a collection and is inaccessible (the error is returned as 500).
 
 - `WeaviateAbstraction.create` calls `exit(-1)` when Weaviate is reachable but not ready,
   which terminates the server process from inside a request. Unchanged here; address in #202.

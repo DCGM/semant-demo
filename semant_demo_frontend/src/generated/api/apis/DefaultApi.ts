@@ -56,6 +56,7 @@ import type {
   TagSpan,
   TagSpanBatchRequest,
   UserSearchResult,
+  WriteResult,
 } from '../models/index';
 import {
     AppFeedbackRequestFromJSON,
@@ -140,6 +141,8 @@ import {
     TagSpanBatchRequestToJSON,
     UserSearchResultFromJSON,
     UserSearchResultToJSON,
+    WriteResultFromJSON,
+    WriteResultToJSON,
 } from '../models/index';
 
 export interface AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest {
@@ -280,8 +283,8 @@ export interface RagApiRagPostRequest {
 }
 
 export interface ReadTagSpansApiTagSpansGetRequest {
+    collectionId: string;
     chunkId?: string | null;
-    collectionId?: string | null;
 }
 
 export interface ReadTagSpansBatchApiTagSpansBatchPostRequest {
@@ -378,7 +381,7 @@ export interface DefaultApiInterface {
     addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequestOpts(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Connects chunk with user collection
+     * Connects chunk with user collection, and the chunk\'s document with the collection. Owner only. The result reports each link; ``outcome`` is ``partial`` when the chunk was linked but its document could not be.
      * @summary Add Chunk To Collection
      * @param {string} collectionId 
      * @param {string} chunkId 
@@ -386,13 +389,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRaw(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
+    addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRaw(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>>;
 
     /**
-     * Connects chunk with user collection
+     * Connects chunk with user collection, and the chunk\'s document with the collection. Owner only. The result reports each link; ``outcome`` is ``partial`` when the chunk was linked but its document could not be.
      * Add Chunk To Collection
      */
-    addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
+    addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
 
     /**
      * Creates request options for addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost without sending the request
@@ -404,7 +407,7 @@ export interface DefaultApiInterface {
     addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequestOpts(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Adds document to collection and also links all its chunks to that collection
+     * Adds document to collection and also links all its chunks to that collection. Owner only. The result lists linked chunks/document and failed links; ``outcome`` tells whether the document was added completely, partially or not at all.
      * @summary Add Document To Collection
      * @param {string} collectionId 
      * @param {string} documentId 
@@ -412,13 +415,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+    addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>>;
 
     /**
-     * Adds document to collection and also links all its chunks to that collection
+     * Adds document to collection and also links all its chunks to that collection. Owner only. The result lists linked chunks/document and failed links; ``outcome`` tells whether the document was added completely, partially or not at all.
      * Add Document To Collection
      */
-    addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+    addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
 
     /**
      * Creates request options for browseDocumentsApiDocumentsBrowseGet without sending the request
@@ -437,7 +440,7 @@ export interface DefaultApiInterface {
     browseDocumentsApiDocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Browses documents which belong to collection given by id with pagination, filtering and sorting options
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.
      * @summary Browse Documents
      * @param {string} [collectionId] 
      * @param {number} [limit] 
@@ -455,7 +458,7 @@ export interface DefaultApiInterface {
     browseDocumentsApiDocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>>;
 
     /**
-     * Browses documents which belong to collection given by id with pagination, filtering and sorting options
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.
      * Browse Documents
      */
     browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse>;
@@ -469,7 +472,7 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePostRequestOpts(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated.
      * @summary Bulk Update Tag Spans
      * @param {BulkUpdateSpansRequest} bulkUpdateSpansRequest 
      * @param {*} [options] Override http request option.
@@ -479,7 +482,7 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>>;
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated.
      * Bulk Update Tag Spans
      */
     bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse>;
@@ -493,7 +496,7 @@ export interface DefaultApiInterface {
     countDocumentChunksApiDocumentsDocumentIdChunksCountGetRequestOpts(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns the total number of chunks in the given document.
+     * Returns the total number of chunks in the given document (public corpus data).
      * @summary Count Document Chunks
      * @param {string} documentId 
      * @param {*} [options] Override http request option.
@@ -503,7 +506,7 @@ export interface DefaultApiInterface {
     countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<number>>;
 
     /**
-     * Returns the total number of chunks in the given document.
+     * Returns the total number of chunks in the given document (public corpus data).
      * Count Document Chunks
      */
     countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number>;
@@ -591,7 +594,7 @@ export interface DefaultApiInterface {
     deleteAutoSpansApiAiAutoSpansDeletePostRequestOpts(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted.
      * @summary Delete Auto Spans
      * @param {DeleteAutoSpansRequest} deleteAutoSpansRequest 
      * @param {*} [options] Override http request option.
@@ -601,7 +604,7 @@ export interface DefaultApiInterface {
     deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteAutoSpansResponse>>;
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted.
      * Delete Auto Spans
      */
     deleteAutoSpansApiAiAutoSpansDeletePost(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteAutoSpansResponse>;
@@ -615,7 +618,7 @@ export interface DefaultApiInterface {
     deleteCollectionApiCollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * 
+     * Deletes a collection with its tags and annotations. Owner only.
      * @summary Delete Collection
      * @param {string} collectionId 
      * @param {*} [options] Override http request option.
@@ -625,6 +628,7 @@ export interface DefaultApiInterface {
     deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
+     * Deletes a collection with its tags and annotations. Owner only.
      * Delete Collection
      */
     deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -638,7 +642,7 @@ export interface DefaultApiInterface {
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequestOpts(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted.
      * @summary Delete Spans For Tags In Document
      * @param {DeleteSpansForTagsRequest} deleteSpansForTagsRequest 
      * @param {*} [options] Override http request option.
@@ -648,7 +652,7 @@ export interface DefaultApiInterface {
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteSpansForTagsResponse>>;
 
     /**
-     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted.
      * Delete Spans For Tags In Document
      */
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteSpansForTagsResponse>;
@@ -975,7 +979,7 @@ export interface DefaultApiInterface {
     getCollectionMembersApiCollectionsCollectionIdMembersGetRequestOpts(requestParameters: GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns the users a collection is currently shared with.
+     * Returns the users a collection is currently shared with. Owner and shared users.
      * @summary Get Collection Members
      * @param {string} collectionId 
      * @param {*} [options] Override http request option.
@@ -985,7 +989,7 @@ export interface DefaultApiInterface {
     getCollectionMembersApiCollectionsCollectionIdMembersGetRaw(requestParameters: GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<UserSearchResult>>>;
 
     /**
-     * Returns the users a collection is currently shared with.
+     * Returns the users a collection is currently shared with. Owner and shared users.
      * Get Collection Members
      */
     getCollectionMembersApiCollectionsCollectionIdMembersGet(requestParameters: GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<UserSearchResult>>;
@@ -1188,18 +1192,18 @@ export interface DefaultApiInterface {
 
     /**
      * Creates request options for readTagSpansApiTagSpansGet without sending the request
+     * @param {string} collectionId Collection whose annotations to return
      * @param {string} [chunkId] Filter spans by chunk ID
-     * @param {string} [collectionId] Filter spans by collection ID
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readTagSpansApiTagSpansGetRequestOpts(requestParameters: ReadTagSpansApiTagSpansGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Get stored TagSpans for a given chunk ID and collection ID.
+     * Get stored TagSpans of a collection, optionally for one chunk.
      * @summary Read Tag Spans
+     * @param {string} collectionId Collection whose annotations to return
      * @param {string} [chunkId] Filter spans by chunk ID
-     * @param {string} [collectionId] Filter spans by collection ID
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1207,7 +1211,7 @@ export interface DefaultApiInterface {
     readTagSpansApiTagSpansGetRaw(requestParameters: ReadTagSpansApiTagSpansGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TagSpan>>>;
 
     /**
-     * Get stored TagSpans for a given chunk ID and collection ID.
+     * Get stored TagSpans of a collection, optionally for one chunk.
      * Read Tag Spans
      */
     readTagSpansApiTagSpansGet(requestParameters: ReadTagSpansApiTagSpansGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>>;
@@ -1221,7 +1225,7 @@ export interface DefaultApiInterface {
     readTagSpansBatchApiTagSpansBatchPostRequestOpts(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Get stored TagSpans for multiple chunk IDs in a single request.
+     * Get stored TagSpans of a collection for multiple chunk IDs in a single request.
      * @summary Read Tag Spans Batch
      * @param {TagSpanBatchRequest} tagSpanBatchRequest 
      * @param {*} [options] Override http request option.
@@ -1231,7 +1235,7 @@ export interface DefaultApiInterface {
     readTagSpansBatchApiTagSpansBatchPostRaw(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: Array<TagSpan>; }>>;
 
     /**
-     * Get stored TagSpans for multiple chunk IDs in a single request.
+     * Get stored TagSpans of a collection for multiple chunk IDs in a single request.
      * Read Tag Spans Batch
      */
     readTagSpansBatchApiTagSpansBatchPost(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: Array<TagSpan>; }>;
@@ -1246,7 +1250,7 @@ export interface DefaultApiInterface {
     removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequestOpts(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Removes a chunk from a user collection.
+     * Removes a chunk from a user collection. Owner only.
      * @summary Remove Chunk From Collection
      * @param {string} collectionId 
      * @param {string} chunkId 
@@ -1257,7 +1261,7 @@ export interface DefaultApiInterface {
     removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>>;
 
     /**
-     * Removes a chunk from a user collection.
+     * Removes a chunk from a user collection. Owner only.
      * Remove Chunk From Collection
      */
     removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse>;
@@ -1272,7 +1276,7 @@ export interface DefaultApiInterface {
     removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequestOpts(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * 
+     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
      * @summary Remove Document From Collection
      * @param {string} collectionId 
      * @param {string} documentId 
@@ -1280,12 +1284,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>>;
+    removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>>;
 
     /**
+     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
      * Remove Document From Collection
      */
-    removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+    removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
 
     /**
      * Creates request options for saveAppFeedbackApiV1FeedbackPost without sending the request
@@ -1539,7 +1544,7 @@ export interface DefaultApiInterface {
     updateCollectionApiUserCollectionsCollectionIdPatchRequestOpts(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Updates collection name/description/color
+     * Updates collection name/description/color. Owner only.
      * @summary Update Collection
      * @param {string} collectionId 
      * @param {PatchCollection} patchCollection 
@@ -1550,7 +1555,7 @@ export interface DefaultApiInterface {
     updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>>;
 
     /**
-     * Updates collection name/description/color
+     * Updates collection name/description/color. Owner only.
      * Update Collection
      */
     updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
@@ -1681,21 +1686,21 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Connects chunk with user collection
+     * Connects chunk with user collection, and the chunk\'s document with the collection. Owner only. The result reports each link; ``outcome`` is ``partial`` when the chunk was linked but its document could not be.
      * Add Chunk To Collection
      */
-    async addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRaw(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
+    async addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRaw(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>> {
         const requestOptions = await this.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => CreateResponseFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => WriteResultFromJSON(jsonValue));
     }
 
     /**
-     * Connects chunk with user collection
+     * Connects chunk with user collection, and the chunk\'s document with the collection. Owner only. The result reports each link; ``outcome`` is ``partial`` when the chunk was linked but its document could not be.
      * Add Chunk To Collection
      */
-    async addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
+    async addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(requestParameters: AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
         const response = await this.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -1722,6 +1727,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/collections/{collection_id}/documents/{document_id}`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
@@ -1736,25 +1746,21 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Adds document to collection and also links all its chunks to that collection
+     * Adds document to collection and also links all its chunks to that collection. Owner only. The result lists linked chunks/document and failed links; ``outcome`` tells whether the document was added completely, partially or not at all.
      * Add Document To Collection
      */
-    async addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+    async addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>> {
         const requestOptions = await this.addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<any>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
+        return new runtime.JSONApiResponse(response, (jsonValue) => WriteResultFromJSON(jsonValue));
     }
 
     /**
-     * Adds document to collection and also links all its chunks to that collection
+     * Adds document to collection and also links all its chunks to that collection. Owner only. The result lists linked chunks/document and failed links; ``outcome`` tells whether the document was added completely, partially or not at all.
      * Add Document To Collection
      */
-    async addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+    async addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
         const response = await this.addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -1803,6 +1809,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/documents/browse`;
 
@@ -1815,7 +1826,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Browses documents which belong to collection given by id with pagination, filtering and sorting options
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.
      * Browse Documents
      */
     async browseDocumentsApiDocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>> {
@@ -1826,7 +1837,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Browses documents which belong to collection given by id with pagination, filtering and sorting options
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.
      * Browse Documents
      */
     async browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse> {
@@ -1851,6 +1862,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tag_spans/bulk_update`;
 
@@ -1864,7 +1880,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated.
      * Bulk Update Tag Spans
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>> {
@@ -1875,7 +1891,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated.
      * Bulk Update Tag Spans
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse> {
@@ -1911,7 +1927,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the total number of chunks in the given document.
+     * Returns the total number of chunks in the given document (public corpus data).
      * Count Document Chunks
      */
     async countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<number>> {
@@ -1926,7 +1942,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the total number of chunks in the given document.
+     * Returns the total number of chunks in the given document (public corpus data).
      * Count Document Chunks
      */
     async countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number> {
@@ -2015,6 +2031,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag_spans`;
@@ -2137,7 +2158,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted.
      * Delete Auto Spans
      */
     async deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteAutoSpansResponse>> {
@@ -2148,7 +2169,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted.
      * Delete Auto Spans
      */
     async deleteAutoSpansApiAiAutoSpansDeletePost(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteAutoSpansResponse> {
@@ -2171,6 +2192,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/collections/{collection_id}`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
@@ -2184,6 +2210,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Deletes a collection with its tags and annotations. Owner only.
      * Delete Collection
      */
     async deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -2194,6 +2221,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Deletes a collection with its tags and annotations. Owner only.
      * Delete Collection
      */
     async deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -2217,6 +2245,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tag_spans/in_document/delete`;
 
@@ -2230,7 +2263,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted.
      * Delete Spans For Tags In Document
      */
     async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteSpansForTagsResponse>> {
@@ -2241,7 +2274,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted.
      * Delete Spans For Tags In Document
      */
     async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteSpansForTagsResponse> {
@@ -2263,6 +2296,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tags/{tag_uuid}`;
@@ -2309,6 +2347,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag_spans/{span_id}`;
@@ -2465,6 +2508,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/user_collections/{collection_id}`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
@@ -2610,6 +2658,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/documents/{document_id}/{collection_id}/chunks`;
         urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
@@ -2752,6 +2805,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/collections/{collection_id}/documents/{document_id}/chunks`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
@@ -2807,6 +2865,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/collections/{collection_id}/documents/{document_id}`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
@@ -2854,6 +2917,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/user_collection/{collection_id}/documents`;
@@ -2920,7 +2988,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the users a collection is currently shared with.
+     * Returns the users a collection is currently shared with. Owner and shared users.
      * Get Collection Members
      */
     async getCollectionMembersApiCollectionsCollectionIdMembersGetRaw(requestParameters: GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<UserSearchResult>>> {
@@ -2931,7 +2999,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the users a collection is currently shared with.
+     * Returns the users a collection is currently shared with. Owner and shared users.
      * Get Collection Members
      */
     async getCollectionMembersApiCollectionsCollectionIdMembersGet(requestParameters: GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<UserSearchResult>> {
@@ -2953,6 +3021,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/user_collection/{collection_id}/stats`;
@@ -2998,6 +3071,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/collections/{collection_id}/tags`;
@@ -3052,6 +3130,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/collections/{collection_id}/documents/{document_id}/stats`;
@@ -3130,6 +3213,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/collections/{collection_id}/documents/{document_id}/neighbour`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
@@ -3177,6 +3265,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tags/{tag_uuid}`;
@@ -3367,17 +3460,29 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Creates request options for readTagSpansApiTagSpansGet without sending the request
      */
     async readTagSpansApiTagSpansGetRequestOpts(requestParameters: ReadTagSpansApiTagSpansGetRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['chunkId'] != null) {
-            queryParameters['chunk_id'] = requestParameters['chunkId'];
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling readTagSpansApiTagSpansGet().'
+            );
         }
+
+        const queryParameters: any = {};
 
         if (requestParameters['collectionId'] != null) {
             queryParameters['collection_id'] = requestParameters['collectionId'];
         }
 
+        if (requestParameters['chunkId'] != null) {
+            queryParameters['chunk_id'] = requestParameters['chunkId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag_spans`;
@@ -3391,7 +3496,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Get stored TagSpans for a given chunk ID and collection ID.
+     * Get stored TagSpans of a collection, optionally for one chunk.
      * Read Tag Spans
      */
     async readTagSpansApiTagSpansGetRaw(requestParameters: ReadTagSpansApiTagSpansGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TagSpan>>> {
@@ -3402,10 +3507,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Get stored TagSpans for a given chunk ID and collection ID.
+     * Get stored TagSpans of a collection, optionally for one chunk.
      * Read Tag Spans
      */
-    async readTagSpansApiTagSpansGet(requestParameters: ReadTagSpansApiTagSpansGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>> {
+    async readTagSpansApiTagSpansGet(requestParameters: ReadTagSpansApiTagSpansGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TagSpan>> {
         const response = await this.readTagSpansApiTagSpansGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -3427,6 +3532,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tag_spans/batch`;
 
@@ -3440,7 +3550,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Get stored TagSpans for multiple chunk IDs in a single request.
+     * Get stored TagSpans of a collection for multiple chunk IDs in a single request.
      * Read Tag Spans Batch
      */
     async readTagSpansBatchApiTagSpansBatchPostRaw(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: Array<TagSpan>; }>> {
@@ -3451,7 +3561,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Get stored TagSpans for multiple chunk IDs in a single request.
+     * Get stored TagSpans of a collection for multiple chunk IDs in a single request.
      * Read Tag Spans Batch
      */
     async readTagSpansBatchApiTagSpansBatchPost(requestParameters: ReadTagSpansBatchApiTagSpansBatchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: Array<TagSpan>; }> {
@@ -3500,7 +3610,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Removes a chunk from a user collection.
+     * Removes a chunk from a user collection. Owner only.
      * Remove Chunk From Collection
      */
     async removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRaw(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateResponse>> {
@@ -3511,7 +3621,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Removes a chunk from a user collection.
+     * Removes a chunk from a user collection. Owner only.
      * Remove Chunk From Collection
      */
     async removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(requestParameters: RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateResponse> {
@@ -3541,6 +3651,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/collections/{collection_id}/documents/{document_id}`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
@@ -3555,23 +3670,21 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
      * Remove Document From Collection
      */
-    async removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+    async removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>> {
         const requestOptions = await this.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<any>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
+        return new runtime.JSONApiResponse(response, (jsonValue) => WriteResultFromJSON(jsonValue));
     }
 
     /**
+     * Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
      * Remove Document From Collection
      */
-    async removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+    async removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
         const response = await this.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -4155,6 +4268,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/user_collections/{collection_id}`;
         urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
@@ -4169,7 +4287,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Updates collection name/description/color
+     * Updates collection name/description/color. Owner only.
      * Update Collection
      */
     async updateCollectionApiUserCollectionsCollectionIdPatchRaw(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Collection>> {
@@ -4180,7 +4298,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Updates collection name/description/color
+     * Updates collection name/description/color. Owner only.
      * Update Collection
      */
     async updateCollectionApiUserCollectionsCollectionIdPatch(requestParameters: UpdateCollectionApiUserCollectionsCollectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
@@ -4274,6 +4392,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/tags/{tag_uuid}`;
         urlPath = urlPath.replace(`{${"tag_uuid"}}`, encodeURIComponent(String(requestParameters['tagUuid'])));
@@ -4330,6 +4453,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/tag_spans/{span_id}`;

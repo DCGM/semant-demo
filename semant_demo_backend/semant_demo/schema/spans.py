@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from semant_demo.schema.outcomes import WriteResult
 from semant_demo.schemas import SpanType, TagSpan
 
 class PostSpan(BaseModel):
@@ -33,8 +34,8 @@ class BulkUpdateSpansRequest(BaseModel):
     update: PatchSpan
 
 
-class BulkUpdateSpansResponse(BaseModel):
-    """Updated spans returned by a bulk update."""
+class BulkUpdateSpansResponse(WriteResult):
+    """Result of a bulk update: the updated spans, plus per-span failures (best effort)."""
     spans: list[TagSpan]
 
 
@@ -48,10 +49,10 @@ class DeleteSpansForTagsRequest(BaseModel):
     tag_ids: list[str]
 
 
-class DeleteSpansForTagsResponse(BaseModel):
-    """Result of a bulk per-tag deletion."""
+class DeleteSpansForTagsResponse(WriteResult):
+    """Result of a bulk per-tag deletion; ``succeeded`` lists the deleted span ids."""
     deleted: int
 
 class TagSpanBatchRequest(BaseModel):
     chunk_ids: list[str] | None = None
-    collection_id: str | None = None
+    collection_id: str

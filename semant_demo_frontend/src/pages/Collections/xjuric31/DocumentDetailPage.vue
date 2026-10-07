@@ -533,6 +533,7 @@ import useAiAssistance from 'src/composables/useAiAssistance'
 import useSpanDiscussionDialog from 'src/composables/dialogs/useSpanDiscussionDialog'
 import ChunkAnnotator from 'src/components/ChunkAnnotator.vue'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
+import { IncompleteWriteError } from 'src/utils/writeOutcome'
 
 /**
  * Resolve a DOM node + offset into { chunkId, charOffset } by walking up
@@ -784,13 +785,38 @@ function selectAllNotInCollection() {
   selectedChunkIds.value = displayChunks.value.filter(c => !c.inCollection).map(c => c.id)
 }
 
+type Settled = { status: 'fulfilled' } | { status: 'rejected', reason: unknown }
+
+// A chunk is in the collection once its own link succeeded, even if linking its
+// document failed afterwards (IncompleteWriteError listing the chunk as succeeded).
+function chunkLinked(outcome: Settled, chunkId: string): boolean {
+  if (outcome.status === 'fulfilled') return true
+  const err = outcome.reason
+  return err instanceof IncompleteWriteError && (err.result.succeeded ?? []).includes(chunkId)
+}
+
+function notifyMembershipFailures(outcomes: Settled[], action: string) {
+  const errors = outcomes.flatMap(o => (o.status === 'rejected' ? [o.reason] : []))
+  if (!errors.length) return
+  console.error(`${action} failed`, errors)
+  const first = errors[0]
+  $q.notify({
+    type: 'negative',
+    message: `${action}: ${errors.length} of ${outcomes.length} chunk(s) not fully updated.`,
+    caption: first instanceof Error ? first.message : undefined,
+    timeout: 6000
+  })
+}
+
 async function onBulkAdd() {
   bulkLoading.value = true
   try {
-    const toAdd = selectedChunkIds.value.filter(id =>
+    const candidates = selectedChunkIds.value.filter(id =>
       !displayChunks.value.find(c => c.id === id)?.inCollection
     )
-    await Promise.all(toAdd.map(id => addChunkToCollection(id, props.collectionId)))
+    const outcomes = await Promise.allSettled(candidates.map(id => addChunkToCollection(id, props.collectionId)))
+    const toAdd = candidates.filter((id, i) => chunkLinked(outcomes[i], id))
+    notifyMembershipFailures(outcomes, 'Adding chunks')
     displayChunks.value = displayChunks.value.map(c =>
       toAdd.includes(c.id) ? { ...c, inCollection: true } : c
     )
@@ -807,10 +833,12 @@ async function onBulkAdd() {
 async function onBulkRemove() {
   bulkLoading.value = true
   try {
-    const toRemove = selectedChunkIds.value.filter(id =>
+    const candidates = selectedChunkIds.value.filter(id =>
       displayChunks.value.find(c => c.id === id)?.inCollection
     )
-    await Promise.all(toRemove.map(id => removeChunkFromCollection(id, props.collectionId)))
+    const outcomes = await Promise.allSettled(candidates.map(id => removeChunkFromCollection(id, props.collectionId)))
+    const toRemove = candidates.filter((_, i) => outcomes[i].status === 'fulfilled')
+    notifyMembershipFailures(outcomes, 'Removing chunks')
     displayChunks.value = displayChunks.value.map(c =>
       toRemove.includes(c.id) ? { ...c, inCollection: false } : c
     )
@@ -1618,7 +1646,9 @@ async function loadGapAll(afterOrder: number, beforeOrder: number) {
 async function onAddChunk(chunk: Chunk) {
   chunkLoadingId.value = chunk.id
   try {
-    await addChunkToCollection(chunk.id, props.collectionId)
+    const [outcome] = await Promise.allSettled([addChunkToCollection(chunk.id, props.collectionId)])
+    notifyMembershipFailures([outcome], 'Adding the chunk')
+    if (!chunkLinked(outcome, chunk.id)) return
     const idx = displayChunks.value.findIndex(c => c.id === chunk.id)
     if (idx !== -1) {
       displayChunks.value = [
@@ -1638,7 +1668,9 @@ async function onAddChunk(chunk: Chunk) {
 async function onRemoveChunk(chunk: Chunk) {
   chunkLoadingId.value = chunk.id
   try {
-    await removeChunkFromCollection(chunk.id, props.collectionId)
+    const [outcome] = await Promise.allSettled([removeChunkFromCollection(chunk.id, props.collectionId)])
+    notifyMembershipFailures([outcome], 'Removing the chunk')
+    if (outcome.status !== 'fulfilled') return
     // Keep chunk visible as a preview (inCollection = false), only hide on explicit hide action
     const idx = displayChunks.value.findIndex(c => c.id === chunk.id)
     if (idx !== -1) {

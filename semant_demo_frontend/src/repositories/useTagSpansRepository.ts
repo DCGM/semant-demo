@@ -1,5 +1,6 @@
 import { useApi } from 'src/composables/useApi'
 import type { TagSpan, TagSpans, PostSpan, PatchSpan } from 'src/models/tagSpans'
+import type { BulkUpdateSpansResponse } from 'src/generated/api'
 
 export function useTagSpansRepository() {
   const api = useApi().default
@@ -31,14 +32,14 @@ export function useTagSpansRepository() {
       })
     },
 
-    bulkUpdate: async (spanIds: string[], patch: PatchSpan): Promise<TagSpans> => {
-      const res = await api.bulkUpdateTagSpansApiTagSpansBulkUpdatePost({
+    /** Best effort: ``spans`` holds the updated spans, ``failed`` the rest. */
+    bulkUpdate: async (spanIds: string[], patch: PatchSpan): Promise<BulkUpdateSpansResponse> => {
+      return api.bulkUpdateTagSpansApiTagSpansBulkUpdatePost({
         bulkUpdateSpansRequest: {
           spanIds,
           update: patch
         }
       })
-      return res.spans
     },
 
     delete: async (spanId: string): Promise<void> => {

@@ -60,11 +60,11 @@ All URIs are relative to *http://localhost*
 
 ## addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost
 
-> CreateResponse addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(collectionId, chunkId)
+> WriteResult addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(collectionId, chunkId)
 
 Add Chunk To Collection
 
-Connects chunk with user collection
+Connects chunk with user collection, and the chunk\&#39;s document with the collection. Owner only. The result reports each link; &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the chunk was linked but its document could not be.
 
 ### Example
 
@@ -112,7 +112,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**CreateResponse**](CreateResponse.md)
+[**WriteResult**](WriteResult.md)
 
 ### Authorization
 
@@ -135,11 +135,11 @@ example().catch(console.error);
 
 ## addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost
 
-> any addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost(collectionId, documentId)
+> WriteResult addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost(collectionId, documentId)
 
 Add Document To Collection
 
-Adds document to collection and also links all its chunks to that collection
+Adds document to collection and also links all its chunks to that collection. Owner only. The result lists linked chunks/document and failed links; &#x60;&#x60;outcome&#x60;&#x60; tells whether the document was added completely, partially or not at all.
 
 ### Example
 
@@ -152,7 +152,11 @@ import type { AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocument
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -183,11 +187,11 @@ example().catch(console.error);
 
 ### Return type
 
-**any**
+[**WriteResult**](WriteResult.md)
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -210,7 +214,7 @@ No authorization required
 
 Browse Documents
 
-Browses documents which belong to collection given by id with pagination, filtering and sorting options
+Browses the corpus with pagination, filtering and sorting options. With &#x60;&#x60;collection_id&#x60;&#x60; only that collection\&#39;s documents are browsed, which needs read access to it.
 
 ### Example
 
@@ -223,7 +227,11 @@ import type { BrowseDocumentsApiDocumentsBrowseGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string (optional)
@@ -279,7 +287,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -302,7 +310,7 @@ No authorization required
 
 Bulk Update Tag Spans
 
-Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.
+Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated.
 
 ### Example
 
@@ -315,7 +323,11 @@ import type { BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // BulkUpdateSpansRequest
@@ -347,7 +359,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -370,7 +382,7 @@ No authorization required
 
 Count Document Chunks
 
-Returns the total number of chunks in the given document.
+Returns the total number of chunks in the given document (public corpus data).
 
 ### Example
 
@@ -526,7 +538,11 @@ import type { CreateTagSpanApiTagSpansPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // PostSpan
@@ -558,7 +574,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -653,7 +669,7 @@ example().catch(console.error);
 
 Delete Auto Spans
 
-Bulk-delete unresolved AI proposals (&#x60;&#x60;type &#x3D;&#x3D; \&#39;auto\&#39;&#x60;&#x60;) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting.
+Bulk-delete unresolved AI proposals (&#x60;&#x60;type &#x3D;&#x3D; \&#39;auto\&#39;&#x60;&#x60;) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted.
 
 ### Example
 
@@ -725,6 +741,8 @@ example().catch(console.error);
 
 Delete Collection
 
+Deletes a collection with its tags and annotations. Owner only.
+
 ### Example
 
 ```ts
@@ -736,7 +754,11 @@ import type { DeleteCollectionApiCollectionsCollectionIdDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -768,7 +790,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -791,7 +813,7 @@ No authorization required
 
 Delete Spans For Tags In Document
 
-Bulk-delete approved (&#x60;&#x60;type &#x3D;&#x3D; \&#39;pos\&#39;&#x60;&#x60;) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.
+Bulk-delete approved (&#x60;&#x60;type &#x3D;&#x3D; \&#39;pos\&#39;&#x60;&#x60;) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted.
 
 ### Example
 
@@ -804,7 +826,11 @@ import type { DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // DeleteSpansForTagsRequest
@@ -836,7 +862,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -872,7 +898,11 @@ import type { DeleteTagApiTagsTagUuidDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -904,7 +934,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -940,7 +970,11 @@ import type { DeleteTagSpanApiTagSpansSpanIdDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -972,7 +1006,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1150,7 +1184,11 @@ import type { FetchCollectionApiUserCollectionsCollectionIdGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1182,7 +1220,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1349,7 +1387,11 @@ import type { FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequ
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1384,7 +1426,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1538,7 +1580,11 @@ import type { GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunk
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1579,7 +1625,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1615,7 +1661,11 @@ import type { GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocu
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1650,7 +1700,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1686,7 +1736,11 @@ import type { GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetReq
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1718,7 +1772,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1741,7 +1795,7 @@ No authorization required
 
 Get Collection Members
 
-Returns the users a collection is currently shared with.
+Returns the users a collection is currently shared with. Owner and shared users.
 
 ### Example
 
@@ -1824,7 +1878,11 @@ import type { GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest } f
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1856,7 +1914,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1892,7 +1950,11 @@ import type { GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest } from '
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1924,7 +1986,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1960,7 +2022,11 @@ import type { GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStats
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -1995,7 +2061,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2031,7 +2097,11 @@ import type { GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeig
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -2072,7 +2142,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2108,7 +2178,11 @@ import type { GetTagApiTagsTagUuidGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -2140,7 +2214,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2359,11 +2433,11 @@ example().catch(console.error);
 
 ## readTagSpansApiTagSpansGet
 
-> Array&lt;TagSpan&gt; readTagSpansApiTagSpansGet(chunkId, collectionId)
+> Array&lt;TagSpan&gt; readTagSpansApiTagSpansGet(collectionId, chunkId)
 
 Read Tag Spans
 
-Get stored TagSpans for a given chunk ID and collection ID.
+Get stored TagSpans of a collection, optionally for one chunk.
 
 ### Example
 
@@ -2376,13 +2450,17 @@ import type { ReadTagSpansApiTagSpansGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
+    // string | Collection whose annotations to return
+    collectionId: collectionId_example,
     // string | Filter spans by chunk ID (optional)
     chunkId: chunkId_example,
-    // string | Filter spans by collection ID (optional)
-    collectionId: collectionId_example,
   } satisfies ReadTagSpansApiTagSpansGetRequest;
 
   try {
@@ -2402,8 +2480,8 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` | Collection whose annotations to return | [Defaults to `undefined`] |
 | **chunkId** | `string` | Filter spans by chunk ID | [Optional] [Defaults to `undefined`] |
-| **collectionId** | `string` | Filter spans by collection ID | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -2411,7 +2489,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2434,7 +2512,7 @@ No authorization required
 
 Read Tag Spans Batch
 
-Get stored TagSpans for multiple chunk IDs in a single request.
+Get stored TagSpans of a collection for multiple chunk IDs in a single request.
 
 ### Example
 
@@ -2447,7 +2525,11 @@ import type { ReadTagSpansBatchApiTagSpansBatchPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // TagSpanBatchRequest
@@ -2479,7 +2561,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2502,7 +2584,7 @@ No authorization required
 
 Remove Chunk From Collection
 
-Removes a chunk from a user collection.
+Removes a chunk from a user collection. Owner only.
 
 ### Example
 
@@ -2573,9 +2655,11 @@ example().catch(console.error);
 
 ## removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete
 
-> any removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(collectionId, documentId)
+> WriteResult removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(collectionId, documentId)
 
 Remove Document From Collection
+
+Removes a document and its chunks from a collection. Owner only. If some chunks cannot be unlinked the document stays in the collection (&#x60;&#x60;outcome&#x60;&#x60; &#x60;&#x60;partial&#x60;&#x60;/&#x60;&#x60;failed&#x60;&#x60;).
 
 ### Example
 
@@ -2588,7 +2672,11 @@ import type { RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDoc
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -2619,11 +2707,11 @@ example().catch(console.error);
 
 ### Return type
 
-**any**
+[**WriteResult**](WriteResult.md)
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -3363,7 +3451,7 @@ example().catch(console.error);
 
 Update Collection
 
-Updates collection name/description/color
+Updates collection name/description/color. Owner only.
 
 ### Example
 
@@ -3376,7 +3464,11 @@ import type { UpdateCollectionApiUserCollectionsCollectionIdPatchRequest } from 
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -3411,7 +3503,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -3522,7 +3614,11 @@ import type { UpdateTagApiTagsTagUuidPatchRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -3557,7 +3653,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -3593,7 +3689,11 @@ import type { UpdateTagSpanApiTagSpansSpanIdPatchRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -3628,7 +3728,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
