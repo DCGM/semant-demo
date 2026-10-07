@@ -5,7 +5,7 @@ on:
     branches: [ main ]
     tags: ["v*.*.*"]   
   pull_request:
-    types: [opened, synchronize, reopened, closed, labeled, unlabeled] 
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
 concurrency:
@@ -460,9 +460,6 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BRANCH: ${{ github.head_ref }}
-          TELEMETRY_ENABLED: ${{ contains(github.event.pull_request.labels.*.name, 'telemetry-enabled') && 'true' || 'false' }}
         run: |
           BASE_DOMAIN="${{ vars.BASE_DOMAIN }}"
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
@@ -481,8 +478,7 @@ jobs:
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "$OPENAI_API_KEY")|"  "$DEPLOY_PATH/.env"
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "$JWT_SECRET")|"  "$DEPLOY_PATH/.env"
-          sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=${TELEMETRY_ENABLED}|" "$DEPLOY_PATH/.env"
-          echo "Telemetry for PR #${PR_NUMBER}: ${TELEMETRY_ENABLED}"
+          sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=true|" "$DEPLOY_PATH/.env"
           sed -i "s|^DEPLOYMENT_ENVIRONMENT=.*|DEPLOYMENT_ENVIRONMENT=test-pr-${PR_NUMBER}|" "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"

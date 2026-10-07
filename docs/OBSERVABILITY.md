@@ -52,7 +52,7 @@ CI writes `DEPLOYMENT_ENVIRONMENT` for each deploy:
 |---|---|---|
 | production release | `production` | Real public deployment |
 | branch `main` test deploy | `test-main` | Persistent integration/testing deployment |
-| pull request number `123` | `test-pr-123` | Temporary preview deployment for that pull request; telemetry is controlled by its `telemetry-enabled` GitHub label |
+| pull request number `123` | `test-pr-123` | Temporary preview deployment for that pull request |
 
 Do not use a raw branch name, commit SHA, user name, URL, or random identifier as an environment value. Use `service_name="semant-demo-app"` and `deployment_environment_name` to identify the source deployment in shared dashboard queries.
 
@@ -83,7 +83,7 @@ semant_demo_feature_request_duration_seconds_count
 
 | Variable | Purpose |
 |---|---|
-| `OTEL_ENABLED` | Enables all three signals. CI enables it for production and `test-main`; a PR preview enables it only when its pull request has the `telemetry-enabled` label. |
+| `OTEL_ENABLED` | Enables all three signals. CI sets it to `true` for production, `test-main`, and PR previews. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL; deployed containers use `http://lgtm:4318`. |
 | `OTEL_EXPORTER_OTLP_LOGS_PATH`, `OTEL_EXPORTER_OTLP_TRACES_PATH`, `OTEL_EXPORTER_OTLP_METRICS_PATH` | OTLP/HTTP paths, normally `/v1/logs`, `/v1/traces`, `/v1/metrics`. |
 | `OTEL_METRIC_EXPORT_INTERVAL_MS` | Metric export period; production template uses `10000` ms. |
@@ -92,22 +92,17 @@ semant_demo_feature_request_duration_seconds_count
 
 The deployment templates set these values and the CI workflow rewrites `OTEL_ENABLED` and `DEPLOYMENT_ENVIRONMENT` for each deployment. Do not hard-code a deployment environment in Python.
 
-For the exact steps to enable telemetry for one PR preview with the `telemetry-enabled` label, see [Enable telemetry for a PR preview](../deploy/README.md#enable-telemetry-for-a-pr-preview).
-
 ## Application logs in Grafana
 
 The backend sends standard Python `logging` records to the OpenTelemetry Collector over OTLP/HTTP. The collector is expected to route them to Loki.
 
-The production `.env` template enables telemetry. The test template defaults to telemetry disabled. CI explicitly enables telemetry for production and `test-main`; for a pull-request preview, it sets the value from the pull request's `telemetry-enabled` label:
+Both committed `.env` templates enable telemetry. CI also sets it explicitly for every deployment type:
 
 | Deployment | `OTEL_ENABLED` | `deployment.environment.name` |
 |---|---:|---|
 | production release | `true` | `production` |
 | `main` test deployment | `true` | `test-main` |
-| pull request without `telemetry-enabled` label | `false` | `test-pr-<number>` |
-| pull request with `telemetry-enabled` label | `true` | `test-pr-<number>` |
-
-Adding or removing the `telemetry-enabled` label triggers the PR workflow again and redeploys that preview with the new setting. This applies only to the preview; it does not change production or `test-main` telemetry.
+| pull request | `true` | `test-pr-<number>` |
 
 The resulting production configuration is:
 

@@ -107,7 +107,7 @@ cp .env.example .env
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
 | `LOG_LEVEL` | `INFO` | Minimum Python/OTLP log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`) |
 | **Observability** | | |
-| `OTEL_ENABLED` | `true` (production) / `false` (test template) | Enables OTLP export. CI enables it for production and `test-main`; a PR preview enables it only when its pull request has the `telemetry-enabled` label. |
+| `OTEL_ENABLED` | `true` | Enables OTLP export for production, `test-main`, and PR preview deployments. CI also sets it explicitly. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://lgtm:4318` | Base URL of the OTLP/HTTP receiver on the shared `web` network |
 | `OTEL_EXPORTER_OTLP_LOGS_PATH` | `/v1/logs` | OTLP/HTTP path used for log records |
 | `OTEL_EXPORTER_OTLP_TRACES_PATH` | `/v1/traces` | OTLP/HTTP path used for traces |
@@ -217,22 +217,8 @@ Deployment is fully automated via GitHub Actions on a self-hosted runner (`seman
 |---|---|---|
 | `ci-cd.yml` | Push of a `v*.*.*` tag from `main` | Deploy to production |
 | `ci-cd.yml` | Push to `main` | Deploy/update `test-main` preview |
-| `ci-cd.yml` | PR opened, updated, or label changed | Deploy/update ephemeral `test-pr-<N>` preview; telemetry is enabled only with the `telemetry-enabled` label |
+| `ci-cd.yml` | PR opened or updated | Deploy/update ephemeral `test-pr-<N>` preview with telemetry enabled |
 | `ci-cd.yml` | PR closed | Tear down `test-pr-<N>` preview and remove its database |
-
-### Enable telemetry for a PR preview
-
-PR preview deployments start with `OTEL_ENABLED=false`. To collect logs, traces, and metrics for one preview:
-
-1. Open the pull request and wait for its preview deployment to exist.
-2. In the pull request's **Labels** menu, add the `telemetry-enabled` label. A repository maintainer creates this label once; collaborators who can manage PR labels can then apply it.
-3. GitHub emits the `labeled` pull-request event. The `ci-cd.yml` workflow runs again and redeploys the same `test-pr-<N>` preview with `OTEL_ENABLED=true`.
-4. Open the workflow run and the **Deploy test PR** job. Its **Create .env** step prints `Telemetry for PR #<N>: true` when the label was recognized.
-5. In Grafana, filter using `service_name="semant-demo-app"` and `deployment_environment_name="test-pr-<N>"`. Generate application traffic after the redeploy before expecting a new log, trace, or metric.
-
-To stop exporting telemetry for the preview, remove the `telemetry-enabled` label. The `unlabeled` event triggers the same deployment job and writes `OTEL_ENABLED=false`. Existing data already stored in Loki, Tempo, or Prometheus is not deleted; the application simply stops exporting new telemetry.
-
-This applies only to pull-request previews from this repository. Production and `test-main` keep telemetry enabled independently of the label.
 
 ### Required GitHub Variables
 
