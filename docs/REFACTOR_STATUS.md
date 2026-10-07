@@ -65,11 +65,12 @@ Last updated: 2026-10-07
 ## #200 outcome
 
 - `make test-integration`: `scripts/with-test-weaviate.sh` starts a uniquely named Weaviate
-  1.34.4 container with no volume on random loopback ports and removes it afterwards;
-  pytest runs `-m integration` against it. Tests read only `SEMANT_TEST_WEAVIATE_*`, never
-  the application's `WEAVIATE_*`.
-- Ownership (`tests/weaviate_store.py`): an empty instance is claimed with a marker
-  collection, a marked one is accepted, anything else is refused before any write.
+  1.34.4 container with no volume on random loopback ports and a random per-run
+  `SEMANT_TEST_STORE_TOKEN`, and removes it afterwards; pytest runs `-m integration`
+  against it. Tests read only `SEMANT_TEST_*`, never the application's `WEAVIATE_*`.
+- Ownership (`tests/weaviate_store.py`) is specific to the run: an empty instance is
+  claimed with a marker holding the token, a marker with the same token is accepted, and
+  anything else (unmarked data, or a marker from another run) is refused before any write.
   Verified by pointing the variables at the local development Weaviate: refused, its
   collections unchanged. Non-loopback hosts need `SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL=1`.
   Collection names cannot be prefixed per run (some are also used as reference names in

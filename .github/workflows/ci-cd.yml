@@ -118,6 +118,8 @@ jobs:
       SEMANT_TEST_WEAVIATE_GRPC_PORT: 50051
       # The service is reached by its job-network name, not loopback.
       SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL: "1"
+      # Ownership token unique to this run attempt and job (see tests/weaviate_store.py).
+      SEMANT_TEST_STORE_TOKEN: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
     permissions:
       contents: read
     steps:

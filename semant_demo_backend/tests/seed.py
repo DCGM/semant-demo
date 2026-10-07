@@ -24,9 +24,9 @@ async def _insert(client: WeaviateAsyncClient, collection: str, objects: list[Da
         raise RuntimeError(f"Seeding {collection} failed: {result.errors}")
 
 
-async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
+async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus, token: str) -> None:
     """Insert the corpus into the (already created, empty) application collections."""
-    await claim_store(client)
+    await claim_store(client, token)
     users, collections, tags, chunks = corpus.users, corpus.collections, corpus.tags, corpus.chunks
 
     await _insert(client, names.user_collection_name, [

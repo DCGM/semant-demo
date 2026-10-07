@@ -34,6 +34,11 @@ def store_endpoint() -> StoreEndpoint:
 
 
 @pytest.fixture
+def store_token(store_endpoint) -> str:
+    return store_endpoint.token
+
+
+@pytest.fixture
 async def weaviate_client(store_endpoint):
     client = await connect(store_endpoint)
     try:
@@ -43,16 +48,16 @@ async def weaviate_client(store_endpoint):
 
 
 @pytest.fixture
-async def seeded_store(weaviate_client, collection_names, corpus):
+async def seeded_store(weaviate_client, collection_names, corpus, store_token):
     """Fresh application collections holding the fixture corpus; dropped afterwards."""
     # Also removes leftovers of an interrupted earlier test in this owned instance.
-    await drop_app_collections(weaviate_client, collection_names)
+    await drop_app_collections(weaviate_client, collection_names, store_token)
     await create_app_schema(weaviate_client, collection_names)
-    await seed_weaviate(weaviate_client, collection_names, corpus)
+    await seed_weaviate(weaviate_client, collection_names, corpus, store_token)
     try:
         yield weaviate_client
     finally:
-        await drop_app_collections(weaviate_client, collection_names)
+        await drop_app_collections(weaviate_client, collection_names, store_token)
 
 
 @pytest.fixture

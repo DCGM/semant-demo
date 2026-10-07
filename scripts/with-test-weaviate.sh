@@ -4,12 +4,14 @@
 #   scripts/with-test-weaviate.sh <command> [args...]
 #
 # Starts a uniquely named container with no volume (data lives only in the container)
-# on random loopback ports, exports SEMANT_TEST_WEAVIATE_HOST/_REST_PORT/_GRPC_PORT for the
-# command, and removes the container afterwards, also on failure or Ctrl-C. It never
-# touches the development container (semant-weaviate-dev) or local_data/.
+# on random loopback ports, exports SEMANT_TEST_WEAVIATE_HOST/_REST_PORT/_GRPC_PORT and a
+# fresh per-run ownership token SEMANT_TEST_STORE_TOKEN for the command, and removes the
+# container afterwards, also on failure or Ctrl-C. It never touches the development
+# container (semant-weaviate-dev) or local_data/.
 #
 # If SEMANT_TEST_WEAVIATE_HOST is already set (e.g. a CI service container), no container
-# is started; the tests still refuse an instance they do not own.
+# is started and the caller must also set SEMANT_TEST_STORE_TOKEN; the tests refuse an
+# instance whose ownership marker does not hold that token.
 set -euo pipefail
 
 if [[ $# -eq 0 ]]; then
@@ -63,6 +65,9 @@ echo "Test Weaviate $NAME: REST 127.0.0.1:${REST_PORT}, gRPC 127.0.0.1:${GRPC_PO
 export SEMANT_TEST_WEAVIATE_HOST=127.0.0.1
 export SEMANT_TEST_WEAVIATE_REST_PORT="$REST_PORT"
 export SEMANT_TEST_WEAVIATE_GRPC_PORT="$GRPC_PORT"
+# Unique per run: the tests only use a store whose marker holds this exact token.
+SEMANT_TEST_STORE_TOKEN="${NAME}-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+export SEMANT_TEST_STORE_TOKEN
 
 # Not exec: the EXIT trap must remove the container after the command finishes.
 "$@"
