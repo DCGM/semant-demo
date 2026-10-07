@@ -7,7 +7,7 @@ PYTHON ?= $(VENV)/bin/python
 PY := $(if $(findstring /,$(PYTHON)),$(abspath $(PYTHON)),$(PYTHON))
 FAST_TESTS := not integration and not live and not benchmark
 
-.PHONY: setup check check-backend check-frontend api-generate api-check
+.PHONY: setup check check-backend check-frontend api-generate api-check test-integration test-e2e
 
 ## Install pinned development dependencies (backend venv and frontend node_modules).
 setup:
@@ -27,6 +27,16 @@ check-frontend:
 	cd semant_demo_frontend && npm run lint
 	cd semant_demo_frontend && npm run typecheck
 	cd semant_demo_frontend && npm test
+
+## Real-Weaviate tests in a throwaway, test-owned Weaviate container (needs Docker).
+test-integration:
+	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && "$(PY)" -m pytest -m integration'
+
+## Browser smoke tests: build the frontend and run it against the deterministic backend
+## profile (test-owned Weaviate, fixture corpus, fake AI providers). Needs Docker.
+test-e2e:
+	cd semant_demo_frontend && npx playwright install --only-shell chromium
+	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && PYTHON="$(PY)" npm run test:e2e'
 
 ## Regenerate the TypeScript client from the backend schema (needs Java 11+).
 api-generate:

@@ -318,13 +318,48 @@ Automated integration tests must create or reset the specific data they require.
 
 Tests must not rely on arbitrary existing documents, users, collections, tags, or annotations in `local_data/`.
 
-The integration-test infrastructure introduced during refactor R0 should eventually provide documented commands such as:
+Two commands run automated tests against real stores (both need Docker):
 
 ```bash
-make test-integration
+make test-integration   # pytest -m integration against a throwaway Weaviate
+make test-e2e           # Playwright smoke suite against the deterministic app profile
 ```
 
-Until those commands exist, report the actual manual or pytest commands that were run.
+They never use the development container or `local_data/`:
+
+- `scripts/with-test-weaviate.sh` starts a uniquely named Weaviate container with no volume
+  on random loopback ports, passes them to the tests as `SEMANT_TEST_WEAVIATE_HOST`,
+  `SEMANT_TEST_WEAVIATE_REST_PORT` and `SEMANT_TEST_WEAVIATE_GRPC_PORT`, and removes the
+  container afterwards. The application's own `WEAVIATE_*` settings are not used.
+- Before creating or deleting anything, the tests verify ownership
+  (`semant_demo_backend/tests/weaviate_store.py`): an empty instance is claimed with a
+  marker collection, a marked instance is accepted, and any other instance is refused,
+  so pointing the variables at the development snapshot fails without changing it. Hosts
+  other than loopback are refused unless `SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL=1` (CI
+  service container).
+- Every integration test drops and recreates the application collections and seeds the
+  synthetic corpus in `semant_demo_backend/tests/fixtures/corpus.json` (users, three
+  collections incl. a shared one, documents in several collections, partial chunk
+  membership, manual/automatic/rejected annotations and chunk tag references, Czech
+  diacritics, a combining mark and a non-BMP character). A missing or unowned store is an
+  error, never a skip.
+- `make test-e2e` builds the frontend into `semant_demo_frontend/dist/e2e` and starts
+  `python -m tests.e2e_server` (from `semant_demo_backend`): the same seeded corpus, a
+  temporary SQLite database with the corpus users, the built frontend on the same origin,
+  and fake embedding/Topicer providers on the next port. All AI provider URLs point at the
+  fakes and no API keys are set; unfaked provider routes answer 501.
+
+To iterate on browser tests, run the profile yourself and let Playwright reuse it:
+
+```bash
+(cd semant_demo_frontend && QUASAR_DIST_DIR=dist/e2e BACKEND_URL=http://127.0.0.1:8765 npx quasar build)
+scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/python -m tests.e2e_server --static ../semant_demo_frontend/dist/e2e'
+# in another terminal:
+cd semant_demo_frontend && E2E_REUSE_SERVER=1 npx playwright test
+```
+
+The profile serves at `http://127.0.0.1:8765`; log in with a corpus user, e.g. `owner` /
+`owner-password-1`.
 
 ## 12. Normal local startup sequence
 

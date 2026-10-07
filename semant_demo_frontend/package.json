@@ -9,6 +9,7 @@
     "dev": "quasar dev",
     "lint": "eslint --ext .js,.ts,.vue ./",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "typecheck": "node scripts/typecheck.mjs",
     "sync-client": "openapi-generator-cli generate -i ../semant_demo_backend/openapi.json -g typescript-fetch -o src/generated/api --additional-properties=supportsES6=true,typescriptThreePlus=true,modelPropertyNaming=camelCase,enumPropertyNaming=camelCase,withoutPrefixEnums=true,withInterfaces=true,useSingleRequestParameter=true",
     "sync-client-dev": "python ../semant_demo_backend/export_openapi.py --output ../semant_demo_backend/openapi.json && npm run sync-client",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@openapitools/openapi-generator-cli": "^2.24.0",
+    "@playwright/test": "1.63.0",
     "@quasar/app-vite": "^1.0.0",
     "@types/marked": "^5.0.2",
     "@types/node": "^12.20.21",

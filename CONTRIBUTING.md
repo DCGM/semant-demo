@@ -27,6 +27,8 @@ only for regenerating the API client. From the repository root:
 | `make setup` | Create `.venv` if missing, install `semant_demo_backend/requirements-dev.lock` and the backend package, run `npm ci`. |
 | `make check` | Fast offline checks: backend Ruff and fast pytest suite, frontend ESLint, Vue type check and Vitest, generated-client drift. No keys, GPU, Weaviate or AI services. |
 | `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. |
+| `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. |
+| `make test-e2e` | Build the frontend and run the Playwright smoke suite against the deterministic backend profile (throwaway Weaviate, fixture corpus, fake AI providers). Needs Docker; installs Playwright's Chromium on first use. |
 
 Set `PYTHON=...` to use another interpreter. Without Make, run the same commands:
 
@@ -44,6 +46,13 @@ python3.12 -m venv .venv
 
 # make api-generate
 (cd semant_demo_frontend && PYTHON=../.venv/bin/python npm run api-generate)
+
+# make test-integration
+scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/python -m pytest -m integration'
+
+# make test-e2e
+(cd semant_demo_frontend && npx playwright install --only-shell chromium)
+scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && PYTHON=../.venv/bin/python npm run test:e2e'
 ```
 
 Dependencies: `requirements.txt` holds runtime dependencies (used by the production image);
@@ -78,8 +87,8 @@ must use test-owned data as described in the testing contract.
 Do not use shared server or production databases unless the task explicitly
 requires it.
 
-`make test-integration`, `make test-e2e` and `make dev` from
-[R0](docs/REFACTOR_PLAN.md#r0---reproducible-baseline-and-test-infrastructure) are
+`make dev` from
+[R0](docs/REFACTOR_PLAN.md#r0---reproducible-baseline-and-test-infrastructure) is
 not implemented yet. Report actual commands, not assumed passes.
 
 ## 3. Code and API rules
@@ -118,10 +127,15 @@ A pure move may reuse existing coverage. Do not add a test at every layer by def
 Use pytest and retain existing unittest tests. Tests without an `integration`, `live` or
 `benchmark` marker are fast tests; `tests/conftest.py` refuses their network connections,
 including loopback. Use `tests/fakes.py` for AI providers. Frontend unit/component tests
-use Vitest and Vue Test Utils under `semant_demo_frontend/test/unit`; a small Playwright
-suite is planned with the browser test infrastructure (#200). Detailed fixtures,
-regression cases, async guidance, and evaluation rules live in
-[ADR 0005](docs/adr/0005-testing-contract.md).
+use Vitest and Vue Test Utils under `semant_demo_frontend/test/unit`.
+
+Real-store tests live in `semant_demo_backend/tests/integration` (marked `integration`)
+and use a test-owned Weaviate seeded with the synthetic corpus in
+`tests/fixtures/corpus.json`, reset for every test. The Playwright smoke suite in
+`semant_demo_frontend/test/e2e` reads the same corpus. See
+[DEVELOPMENT.md](docs/DEVELOPMENT.md#11-testing-versus-development-data) for the store
+ownership rules. Detailed fixtures, regression cases, async guidance, and evaluation rules
+live in [ADR 0005](docs/adr/0005-testing-contract.md).
 
 Every test must run alone and in any order. Fixtures own mutable state and clean up their
 resources. Fast checks must be offline: no keys, live providers, GPUs, or model downloads.

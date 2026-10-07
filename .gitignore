@@ -6,6 +6,10 @@ __pycache__/
 # Local development database snapshot
 local_data/
 
+# Playwright output
+test-results/
+playwright-report/
+
 
 # C extensions
 *.so

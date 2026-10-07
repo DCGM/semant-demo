@@ -90,6 +90,57 @@ jobs:
         working-directory: semant_demo_frontend
         run: npm test
 
+  # Real-Weaviate tests (see `make test-integration`). The Weaviate service container is
+  # created for this job only and has no volume; the tests additionally refuse any
+  # instance that holds data they did not create. No secrets, API keys or live services.
+  test-integration:
+    name: Integration tests
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-server]
+    container:
+      image: python:3.12
+      options: --user 1025:1027
+    services:
+      weaviate:
+        # Same version as the deployed and local development Weaviate.
+        image: cr.weaviate.io/semitechnologies/weaviate:1.34.4
+        env:
+          QUERY_DEFAULTS_LIMIT: 25
+          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+          PERSISTENCE_DATA_PATH: /var/lib/weaviate
+          DEFAULT_VECTORIZER_MODULE: none
+          CLUSTER_HOSTNAME: node1
+          DISABLE_TELEMETRY: "true"
+    env:
+      HOME: /tmp
+      SEMANT_TEST_WEAVIATE_HOST: weaviate
+      SEMANT_TEST_WEAVIATE_REST_PORT: 8080
+      SEMANT_TEST_WEAVIATE_GRPC_PORT: 50051
+      # The service is reached by its job-network name, not loopback.
+      SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL: "1"
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up virtual environment
+        run: python -m venv /tmp/venv
+      - name: Install pinned dependencies
+        working-directory: semant_demo_backend
+        run: |
+          /tmp/venv/bin/pip install --no-cache-dir -r requirements-dev.lock
+          /tmp/venv/bin/pip install --no-cache-dir --no-deps -e .
+      - name: Wait for Weaviate
+        run: |
+          for _ in $(seq 1 60); do
+            curl -fsS http://weaviate:8080/v1/.well-known/ready && exit 0
+            sleep 2
+          done
+          echo "Weaviate service did not become ready" >&2
+          exit 1
+      - name: Run integration tests
+        working-directory: semant_demo_backend
+        run: /tmp/venv/bin/pytest -m integration -v
+
   api-client-drift:
     name: Generated API client drift
     needs: [test-backend]
@@ -118,7 +169,7 @@ jobs:
 
   deploy-production:
     name: Deploy Production ${{ github.ref_name }}
-    needs: [test-backend, test-frontend, api-client-drift]
+    needs: [test-backend, test-frontend, test-integration, api-client-drift]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: [self-hosted, semant-server]
     environment: production
@@ -288,7 +339,7 @@ jobs:
 
   deploy-test-main:
     name: Deploy test-main
-    needs: [test-backend, test-frontend, api-client-drift]
+    needs: [test-backend, test-frontend, test-integration, api-client-drift]
     if: github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
