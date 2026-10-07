@@ -110,28 +110,29 @@ flowchart LR
 
 #### Configuration (`config.py`)
 
-A singleton `Config` class that reads environment variables with sensible defaults. Key groups:
+A `Config` class that reads settings once, at construction, from the process environment or from an explicit mapping (`Config(environ={...})`, used by tests). `create_app(config)` stores it on `app.state.config`; routes and bootstrap read it through the `get_config` dependency. A process-wide `config` instance still exists for `semant_demo.main:app` and for provider modules that have not been migrated yet (see [REFACTOR_STATUS.md](REFACTOR_STATUS.md)). Key groups:
 
 - **Weaviate connection** — host, REST port, gRPC port
 - **LLM endpoints** — Ollama URLs (comma-separated for load balancing), model names, API keys
 - **Application** — port, CORS origin, static file path
-- **Database** — SQLite URL for task tracking and user accounts
+- **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for task tracking and user accounts
 - **Auth** — `JWT_SECRET` (override in production with a long random string), `JWT_LIFETIME_SECONDS`
 - **RAG** — config directory path
 - **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_*` group for the OpenAI-compatible "discuss this span" chat (`SPAN_CHAT_API_KEY`, `SPAN_CHAT_API_URL`, `SPAN_CHAT_MODEL` — all falling back to the corresponding `OPENAI_*` values — plus `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT`)
 
-#### Dependency Injection (`routes/dependencies.py`)
+#### Application resources (`bootstrap.py`, `routes/dependencies.py`)
 
-FastAPI application uses a centralized dependency-injection container to manage singleton instances:
+`bootstrap.AppResources` holds the application-scoped resources of one running app. The lifespan creates it, stores it on `app.state.resources`, and closes it at shutdown. The dependency functions in `routes/dependencies.py` read from it:
 
 | Dependency | Manages | Lifetime |
 |---|---|---|
-| `get_engine()` | SQLAlchemy engine + async session factory | App startup → shutdown |
+| `get_config()` | The app's `Config` | App lifetime |
 | `get_async_session()` | Database sessions for individual requests | Per-request |
 | `get_search()` | Weaviate connection wrapper (`WeaviateAbstraction`) | First access → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
+| `get_rag_registry()` | Configured RAG instances | Startup → shutdown |
 
-All route handlers inject dependencies via FastAPI's `Depends()` pattern, avoiding scattered global state. The `cleanup_dependencies()` function is called during app shutdown to properly close connections.
+Requests that need these resources while the lifespan is not running get HTTP 503.
 
 **Example:**
 ```python
@@ -148,16 +149,16 @@ async def search(req: SearchRequest,
 The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
 
 1. **Startup** (`main.py` lifespan):
-   - Initialize SQLAlchemy engine and database connection pool via `get_engine()`
+   - Create `AppResources` (SQLAlchemy engine and session factory; nothing external is contacted)
    - Create all required database tables (`Task`, `User`, etc.)
    - Load RAG configurations from YAML and instantiate RAG engines via `rag_factory()`
 
 2. **Request handling** — dependency injection provides fresh database sessions and reuses long-lived connections (Weaviate, summarizer)
 
-3. **Shutdown**:
-   - Call `cleanup_dependencies()` to close Weaviate client, dispose of the database engine, and clean up resources
+3. **Shutdown** (also after a failed startup):
+   - `AppResources.close()` closes the Weaviate client if one was opened, disposes of the database engine, and drops cached resources, so the same app can be started again.
 
-This ensures no resource leaks and proper initialization order.
+`create_app()` and `app.openapi()` do not connect to Weaviate, SQL, or AI providers; `export_openapi.py` relies on this.
 
 #### Authentication (`users/`)
 
@@ -235,7 +236,7 @@ RAG implementations are loaded dynamically from YAML config files via a factory 
 flowchart TD
     FACTORY[rag_factory.py] -->|loads YAML| CONFIGS[rag_configs/configs/*.yaml]
     FACTORY -->|registers| REGISTRY["RAG_IMPLEMENTATIONS dict"]
-    FACTORY -->|instantiates| INSTANCES["RAG_INSTANCES dict"]
+    FACTORY -->|instantiates| INSTANCES["RagRegistry (per app)"]
 
     subgraph Implementations
         RG[RagGenerator] -->|extends| BASE[BaseRag]
@@ -346,7 +347,7 @@ REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/co
 
 External AI integrations that produce or critique spans. All streaming endpoints use NDJSON (`application/x-ndjson`) so the frontend can render partial results incrementally.
 
-**Topicer span proposal.** `topicer_client.py` is an async `httpx` client for the Topicer service (`TOPICER_URL`, default `http://localhost:8089`). Topicer returns proposed `(start, end, reason, confidence)` triples per `(chunk, tag)` pair. The backend exposes two routes:
+**Topicer span proposal.** `topicer_client.py` is an async `httpx` client for the Topicer service (`TOPICER_URL`, default `http://topicer:8089`). Topicer returns proposed `(start, end, reason, confidence)` triples per `(chunk, tag)` pair. The backend exposes two routes:
 
 | Route | Topicer call | Behaviour |
 |---|---|---|

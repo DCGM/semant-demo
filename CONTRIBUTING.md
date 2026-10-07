@@ -43,8 +43,8 @@ npm run dev
 ```
 
 With isolated services configured, run the backend from `semant_demo_backend` using
-`python -m uvicorn semant_demo.main:app --reload`. At the reviewed baseline, SQL uses a
-hard-coded relative `tasks.db`; an arbitrary SQL environment variable does not override it.
+`python -m uvicorn semant_demo.main:app --reload`. SQL defaults to a relative `tasks.db`;
+set `SQL_DB_URL` to use another database. Tests build apps with `create_app(Config(environ=...))`.
 
 For normal development, use the local development databases described in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Mutable development database state

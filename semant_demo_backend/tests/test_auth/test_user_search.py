@@ -1,15 +1,14 @@
 """
 Tests for GET /api/users/search (user search by username substring).
-Uses an in-memory SQLite database so no external services are needed.
+Uses a temporary SQLite database so no external services are needed.
 """
-import os
-
-os.environ.setdefault("JWT_SECRET", "test-secret-key-long-enough-for-hmac-sha256-32bytes")
-
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from asgi_lifespan import LifespanManager
+
+from semant_demo.main import create_app
+from tests.app_support import make_test_config
 
 
 REGISTER_URL = "/api/auth/register"
@@ -26,28 +25,9 @@ USERS = [
 ]
 
 
-@pytest.fixture(scope="module", autouse=True)
-def set_test_db(tmp_path_factory):
-    """Point SQL_DB_URL to a fresh temporary file, isolated from other test modules."""
-    tmp = tmp_path_factory.mktemp("db_search")
-    db_path = str(tmp / "test_user_search.db")
-    os.environ["SQL_DB_URL_OVERRIDE_SEARCH"] = f"sqlite+aiosqlite:///{db_path}"
-    yield
-    if os.path.exists(db_path):
-        os.remove(db_path)
-
-
 @pytest_asyncio.fixture(scope="module")
-async def client():
-    from semant_demo import config as cfg_module
-    cfg_module.config.SQL_DB_URL = os.environ.get(
-        "SQL_DB_URL_OVERRIDE_SEARCH", "sqlite+aiosqlite:///test_search_fallback.db"
-    )
-    import importlib
-    import semant_demo.routes.dependencies as dep
-    importlib.reload(dep)
-
-    from semant_demo.main import app
+async def client(tmp_path_factory):
+    app = create_app(make_test_config(tmp_path_factory.mktemp("user_search")))
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

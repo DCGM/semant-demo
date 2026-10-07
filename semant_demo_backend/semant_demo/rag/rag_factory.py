@@ -1,6 +1,7 @@
 import os
 import yaml
 import logging
+from dataclasses import dataclass, field
 from typing import Dict, Type
 from semant_demo.schemas import RagRouteConfig, RagRequest, RagResponse, ExplainRequest
 
@@ -23,11 +24,17 @@ def register_rag_class(rag_class: Type[BaseRag]):
     RAG_IMPLEMENTATIONS[rag_class.__name__] = rag_class
     return rag_class
 
-#rag dict of particular configurations
-#for backend
-RAG_INSTANCES: Dict[str, BaseRag] = {}
-#for frontend
-RAG_INSTANCES_CONFIGS: Dict[str, RagRouteConfig] = {}
+#configured rag instances of one application
+@dataclass
+class RagRegistry:
+    #for backend
+    instances: Dict[str, BaseRag] = field(default_factory=dict)
+    #for frontend
+    configs: Dict[str, RagRouteConfig] = field(default_factory=dict)
+
+    #return all avalaible rag configurations registered in app
+    def get_all_configurations(self) -> list[RagRouteConfig]:
+        return list(self.configs.values())
 
 #load single rag configuration and return  id and frontend_config, instance of the class
 def rag_load_single_config(global_config, filepath: str):
@@ -64,13 +71,12 @@ def rag_load_single_config(global_config, filepath: str):
     except Exception as e:
         logging.error(f"Failed to load RAG configuration: {filepath}: {e}")
 
-def rag_factory(global_config, configs_path: str):
-    RAG_INSTANCES.clear()
-    RAG_INSTANCES_CONFIGS.clear()
-    
+def rag_factory(global_config, configs_path: str) -> RagRegistry:
+    registry = RagRegistry()
+
     if not os.path.exists(configs_path):
         logging.error(f"RAG configs directory was not found: {configs_path}.")
-        return
+        return registry
     
     for filename in os.listdir(configs_path):
         if filename.endswith(".yaml"):
@@ -85,16 +91,14 @@ def rag_factory(global_config, configs_path: str):
             id, frontend_config, instance = results
 
             #duplicity check
-            if (id in RAG_INSTANCES_CONFIGS):
+            if (id in registry.configs):
                 logging.error(f"Same configuration id: {id}, skipping configuration: {filepath}.")
                 continue
                 
             #create an instance
-            RAG_INSTANCES[id] = instance
+            registry.instances[id] = instance
             
             #create frontend config
-            RAG_INSTANCES_CONFIGS[id] = frontend_config
+            registry.configs[id] = frontend_config
 
-#return all avalaible rag configurations registered in app
-def get_all_rag_configurations() -> list[RagRouteConfig]:
-    return list(RAG_INSTANCES_CONFIGS.values())
+    return registry

@@ -1,10 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI
 import logging
 
-from semant_demo.config import config
+from semant_demo.bootstrap import AppResources
+from semant_demo.config import Config, config
 from semant_demo.rag.rag_factory import rag_factory
-from semant_demo.routes.dependencies import cleanup_dependencies, get_engine, get_search, get_summarizer
-from time import time
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -20,43 +19,61 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global_engine, _ = get_engine()
-    async with global_engine.begin() as conn:
-        # create tables
-        await conn.run_sync(TasksBase.metadata.create_all)
-    #load rags configurations and create instances
-    rag_factory(global_config=config, configs_path=config.RAG_CONFIGS_PATH)
+    app_config: Config = app.state.config
+    resources = AppResources.create(app_config)
+    app.state.resources = resources
+    try:
+        async with resources.engine.begin() as conn:
+            # create tables
+            await conn.run_sync(TasksBase.metadata.create_all)
+        #load rags configurations and create instances
+        resources.rag = rag_factory(global_config=app_config, configs_path=app_config.RAG_CONFIGS_PATH)
 
-    yield
+        yield
+    finally:
+        #shutdown all dependencies, also after a failed startup
+        app.state.resources = None
+        await resources.close()
+        logging.info(f"Application cleanup complete.")
 
-    #shutdown all dependencies
-    await cleanup_dependencies()
-    logging.info(f"Application cleanup complete.")
 
-#app definition
-app = FastAPI(lifespan=lifespan)
-# mount routes
-app.include_router(export_router)
-app.include_router(auth_router, prefix="/api/auth/jwt", tags=["auth"])
-app.include_router(register_router, prefix="/api/auth", tags=["auth"])
-app.include_router(users_router, prefix="/api/users", tags=["users"])
+def create_app(app_config: Config | None = None) -> FastAPI:
+    """Build the application. No external service is contacted until startup or first use."""
+    app_config = app_config if app_config is not None else Config()
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+    #app definition
+    app = FastAPI(lifespan=lifespan)
+    app.state.config = app_config
+    app.state.resources = None
+    # mount routes
+    app.include_router(export_router)
+    app.include_router(auth_router, prefix="/api/auth/jwt", tags=["auth"])
+    app.include_router(register_router, prefix="/api/auth", tags=["auth"])
+    app.include_router(users_router, prefix="/api/users", tags=["users"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[config.ALLOWED_ORIGIN],  # http://localhost:9000
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
 
-if os.path.isdir(config.STATIC_PATH):
-    logging.info(f"Serving static files from '{config.STATIC_PATH}' directory")
-    app.mount("/", StaticFiles(directory=config.STATIC_PATH,
-              html=True), name="static")
-else:
-    logging.warning(
-        f"'{config.STATIC_PATH}' directory not found. Static files will not be served.")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[app_config.ALLOWED_ORIGIN],  # http://localhost:9000
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    if os.path.isdir(app_config.STATIC_PATH):
+        logging.info(f"Serving static files from '{app_config.STATIC_PATH}' directory")
+        app.mount("/", StaticFiles(directory=app_config.STATIC_PATH,
+                  html=True), name="static")
+    else:
+        logging.warning(
+            f"'{app_config.STATIC_PATH}' directory not found. Static files will not be served.")
+
+    return app
+
+
+# Production entry point (`uvicorn semant_demo.main:app`). It shares the process-wide
+# `config` with modules that still read it directly (see docs/REFACTOR_STATUS.md).
+app = create_app(config)

@@ -1,41 +1,19 @@
 """
 Tests for user authentication routes (register, login, current user, logout).
-Uses an in-memory SQLite database so no external services are needed.
+Uses a temporary SQLite database so no external services are needed.
 """
-import os
-# Use in-memory SQLite for tests
-os.environ.setdefault("JWT_SECRET", "test-secret-key-long-enough-for-hmac-sha256-32bytes")
-
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from asgi_lifespan import LifespanManager
 
-
-@pytest.fixture(scope="module", autouse=True)
-def set_test_db(tmp_path_factory):
-    """Point SQL_DB_URL to a temporary file so tests are isolated."""
-    tmp = tmp_path_factory.mktemp("db")
-    db_path = str(tmp / "test_auth.db")
-    os.environ["SQL_DB_URL_OVERRIDE"] = f"sqlite+aiosqlite:///{db_path}"
-    yield
-    if os.path.exists(db_path):
-        os.remove(db_path)
+from semant_demo.main import create_app
+from tests.app_support import make_test_config
 
 
 @pytest_asyncio.fixture(scope="module")
-async def client():
-    # Patch DB URL before importing app
-    from semant_demo import config as cfg_module
-    cfg_module.config.SQL_DB_URL = os.environ.get(
-        "SQL_DB_URL_OVERRIDE", "sqlite+aiosqlite:///test_auth_fallback.db"
-    )
-    # Re-import routes/dependencies with the patched config
-    import importlib
-    import semant_demo.routes.dependencies as dep
-    importlib.reload(dep)
-
-    from semant_demo.main import app
+async def client(tmp_path_factory):
+    app = create_app(make_test_config(tmp_path_factory.mktemp("auth")))
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

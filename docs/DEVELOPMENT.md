@@ -99,15 +99,19 @@ docker stop semant-weaviate-dev
 
 ## 4. Local SQLite database
 
-The current backend configuration uses:
+The backend reads the SQL database URL from `SQL_DB_URL`. The default is:
 
 ```text
 sqlite+aiosqlite:///tasks.db
 ```
 
-relative to the backend working directory. Until refactor R0 makes the SQL database location configurable, use a symlink from the backend directory to the local development database.
+relative to the backend working directory. To use the local development database, either point `SQL_DB_URL` at it (four slashes: absolute path), for example from `semant_demo_backend/`:
 
-From the repository root:
+```bash
+export SQL_DB_URL="sqlite+aiosqlite:///$(realpath ../local_data/tasks.db)"
+```
+
+or keep the default and use a symlink from the backend directory. From the repository root:
 
 ```bash
 ln -s ../local_data/tasks.db semant_demo_backend/tasks.db
@@ -139,7 +143,7 @@ A healthy database should return:
 ok
 ```
 
-The `tasks.db` symlink is temporary development infrastructure. Refactor R0 should make the SQL database URL/path explicitly configurable.
+Check which database a running backend uses before relying on its contents: an unset `SQL_DB_URL` without the symlink silently creates a new empty `tasks.db`.
 
 ## 5. Backend setup
 
@@ -329,7 +333,7 @@ A typical development session is:
 ```text
 1. Start local Weaviate from local_data/weaviate_semant_test
 2. Verify /v1/.well-known/ready
-3. Ensure semant_demo_backend/tasks.db points to local_data/tasks.db
+3. Set SQL_DB_URL to local_data/tasks.db, or ensure semant_demo_backend/tasks.db points to it
 4. Activate the Python environment
 5. Start the backend from semant_demo_backend/
 6. Start the frontend

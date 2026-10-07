@@ -1,51 +1,42 @@
-from semant_demo.config import config
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
-#from semant_demo.weaviate_tag import WeaviateSearchAndTag
+from fastapi import HTTPException
+from starlette.requests import HTTPConnection
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from semant_demo.bootstrap import AppResources
+from semant_demo.config import Config
+from semant_demo.rag.rag_factory import RagRegistry
+from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import AsyncGenerator
 
 #summarizer
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
-_engine = None
-_async_session_maker = None
-_searcher = None
-_tagger = None
-_summarizer = None
 
-def get_engine():
-    global _engine, _async_session_maker
-    if _engine is None:
-        _engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
-        _async_session_maker = async_sessionmaker(_engine, autocommit=False, autoflush=True, expire_on_commit=False)
-    return _engine, _async_session_maker
+def get_resources(connection: HTTPConnection) -> AppResources:
+    # Resources exist only while the application lifespan is running.
+    resources = getattr(connection.app.state, "resources", None)
+    if resources is None:
+        raise HTTPException(status_code=503, detail="Application is not started.")
+    return resources
 
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    _, _async_session_maker = get_engine()
-    async with _async_session_maker() as session:
+def get_config(connection: HTTPConnection) -> Config:
+    return connection.app.state.config
+
+async def get_async_session(connection: HTTPConnection) -> AsyncGenerator[AsyncSession, None]:
+    async with get_resources(connection).session_maker() as session:
         yield session
 
-async def get_search() -> WeaviateAbstraction:
-    global _searcher
-    if _searcher is None:
-        _searcher = await WeaviateAbstraction.create(config)
-    return _searcher
+async def get_search(connection: HTTPConnection) -> WeaviateAbstraction:
+    return await get_resources(connection).get_searcher()
 
-async def cleanup_dependencies():
-    global _engine, _async_session_maker, _searcher
-    if _searcher:
-        await _searcher.close()
-    if _engine:
-        await _engine.dispose()
+async def get_summarizer(connection: HTTPConnection) -> TemplatedSearchResultsSummarizer:
+    return get_resources(connection).get_summarizer()
 
-async def get_summarizer() -> TemplatedSearchResultsSummarizer:
-    global _summarizer
-    if _summarizer is None:
-        _summarizer = TemplatedSearchResultsSummarizer.create(config.SEARCH_SUMMARIZER_CONFIG)
-    return _summarizer
+def get_rag_registry(connection: HTTPConnection) -> RagRegistry:
+    return get_resources(connection).rag
 
 
-def get_search_filters():
+def get_search_filters(connection: HTTPConnection):
     from semant_demo.search_filters import load_search_filters_config
-    return load_search_filters_config(config.SEARCH_FILTERS_CONFIG)
+    return load_search_filters_config(get_config(connection).SEARCH_FILTERS_CONFIG)

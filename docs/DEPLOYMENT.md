@@ -184,7 +184,8 @@ If unset, the Axios client defaults to `http://localhost:8000/api` — a develop
 | `LANGCHAIN_API_KEY` | _(empty)_ | No | LangChain/LangSmith tracing key |
 | `EMBEDDING_SERVICE_HOST` | `embedding-service` | No | Embedding service hostname (used to build the internal URL) |
 | `EMBEDDING_SERVICE_PORT` | `8001` | No | Embedding service port |
-| `SQL_DB_PATH` | _(none)_ | No | Used by Docker Compose for the `tasks.db` bind mount, not read by the backend itself. The backend always uses `tasks.db` in its working directory; for Docker deployments, set `SQL_DB_PATH` and ensure the target `tasks.db` file already exists |
+| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | No | SQLAlchemy URL of the users/tasks database; the default is `tasks.db` in the backend working directory |
+| `SQL_DB_PATH` | _(none)_ | No | Used by Docker Compose for the `tasks.db` bind mount, not read by the backend itself. With the default `SQL_DB_URL`, set `SQL_DB_PATH` and ensure the target `tasks.db` file already exists |
 | `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION_…` | **Yes (prod)** | JWT signing secret — must be overridden in production with a long random string |
 | `FEEDBACK_WEBHOOK_URL` | _(empty)_ | No | Webhook URL for RAG feedback delivery |
 | `FEEDBACK_LOG_PATH` | `feedback.log.jsonl` | No | Path for writing feedback logs |

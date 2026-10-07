@@ -4,22 +4,23 @@ import logging
 from pathlib import Path
 from urllib import request as urllib_request
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from semant_demo import schemas
-from semant_demo.config import config
+from semant_demo.config import Config
+from semant_demo.routes.dependencies import get_config
 
 exp_router = APIRouter()
 
 
-def _append_feedback_to_log(payload: dict) -> None:
+def _append_feedback_to_log(config: Config, payload: dict) -> None:
     log_path = Path(config.FEEDBACK_LOG_PATH)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open('a', encoding='utf-8') as log_file:
         log_file.write(json.dumps(payload, ensure_ascii=False) + '\n')
 
 
-def _send_feedback_webhook(payload: dict) -> None:
+def _send_feedback_webhook(config: Config, payload: dict) -> None:
     if not config.FEEDBACK_WEBHOOK_URL:
         return
 
@@ -35,7 +36,8 @@ def _send_feedback_webhook(payload: dict) -> None:
 
 
 @exp_router.post('/api/v1/feedback')
-async def save_app_feedback(payload: schemas.AppFeedbackRequest, req: Request):
+async def save_app_feedback(payload: schemas.AppFeedbackRequest, req: Request,
+                            config: Config = Depends(get_config)):
     if not payload.message or not payload.message.strip():
         raise HTTPException(status_code=400, detail='Message cannot be empty.')
 
@@ -50,8 +52,8 @@ async def save_app_feedback(payload: schemas.AppFeedbackRequest, req: Request):
     }
 
     try:
-        _append_feedback_to_log(feedback_payload)
-        _send_feedback_webhook(feedback_payload)
+        _append_feedback_to_log(config, feedback_payload)
+        _send_feedback_webhook(config, feedback_payload)
         return {'status': 'success'}
     except Exception as err:
         logging.error(f'App feedback delivery error: {err}')
