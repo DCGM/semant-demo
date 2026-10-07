@@ -5,7 +5,7 @@ Last updated: 2026-10-07
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #199 — Establish reliable fast checks and make CI blocking
+- Current issue: #199 — Establish reliable fast checks and make CI blocking (in review)
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate)
 - Current stage: R0
@@ -36,6 +36,31 @@ Last updated: 2026-10-07
 - Tests: `tests/test_config.py`, `tests/test_app/test_bootstrap.py`; auth tests build their
   own app with `tests/app_support.make_test_config` instead of patching globals and reloading.
 
+## #199 outcome
+
+- Root `Makefile` with `make setup`, `make check`, `make api-generate` (plus `check-backend`,
+  `check-frontend`, `api-check`). CONTRIBUTING documents the underlying commands.
+- Backend: test tools moved from `requirements.txt` to `requirements-dev.txt`; the full
+  development set is pinned in `requirements-dev.lock` (versions taken from the existing
+  `.venv`, no upgrades). Ruff 0.14.0 added. pytest registers `integration`/`live`/`benchmark`
+  markers with `--strict-markers`; `tests/conftest.py` refuses network connections
+  (including loopback) in unmarked tests. `tests/fakes.py` provides `FakeChatAPI`.
+- Auth tests use a function-scoped `client` fixture (fresh app and SQLite per test) and
+  create their own users; each test passes alone.
+- Frontend: `npm test` runs Vitest (real composable and Quasar component tests in
+  `test/unit`), `npm run typecheck` runs vue-tsc, Node pinned to 22 (`.nvmrc`, engines).
+  TypeScript raised from 4.9 to 5.5 because zod 4 typings cannot be parsed by 4.9 (a
+  deliberate compatibility upgrade; production build verified). `skipLibCheck` enabled.
+  The duplicate `User`/`TagData` interfaces in `src/models.ts` (ESLint errors) were merged
+  without changing the effective `TagData` type; the unused stale `User` variant was removed.
+- Generated client: `scripts/api-client.sh` generates into an empty directory and diffs
+  for drift. 92 stale files the generator no longer produces were removed; all other
+  generated files were already identical to the current schema.
+- CI: backend job is blocking (no `continue-on-error`), installs the lock, runs Ruff and
+  fast tests; new frontend job (lint, type check, tests) and drift job (pinned generator
+  image). Production and test-main deploys now require all three to succeed (previously
+  `always()`, i.e. they deployed even after failed tests). PR preview deploys are unchanged.
+
 ## Temporary exceptions
 
 - **Process-wide `config` still read directly** by provider/adapter modules:
@@ -48,9 +73,24 @@ Last updated: 2026-10-07
 - **Weaviate is still connected lazily inside the first request** that needs it (now per
   app, guarded by a lock). Moving connection to bootstrap belongs to #202.
 
+- **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 60 errors).
+  Several are real defects: `useTagging.ts` calls `DefaultApi` methods that no longer exist,
+  `chunk_collection-store.ts` passes `userId` as fetch options, services import missing
+  model exports. Remove entries as the owning features are migrated (#203–#209).
+- **Ruff rule set limited** to `E9, F63, F7, F82`. The default rule set reports ~140 legacy
+  findings (unused/star imports, comparisons). Python formatting and a Python type checker
+  are not enforced yet.
+- **`# noqa: F821`** on the undefined `e` in `add_chunk_to_collection`
+  (`routes/user_collection_routes.py`); remove with the fix in #201.
+- **Vitest 0.23.4** is pinned because it is the last release supporting Vite 2
+  (`@quasar/app-vite` 1). Upgrade together with Quasar app-vite 2 / Vite 5.
+
 ## Known problems affecting later steps
 
 - `WeaviateAbstraction.create` calls `exit(-1)` when Weaviate is reachable but not ready,
   which terminates the server process from inside a request. Unchanged here; address in #202.
-- Auth test modules still use module-scoped clients with order-dependent tests
-  (register, then login). Independent per-test fixtures belong to #199.
+- Branch protection must list the CI jobs "Backend tests", "Frontend checks" and
+  "Generated API client drift" as required checks for failures to block merging; that is
+  a repository setting, not part of the workflow file.
+- PR preview deploys still run with production `OPENAI_API_KEY`/`JWT_SECRET` secrets on
+  the self-hosted runner and still deploy after failed checks. Revisit with #200.

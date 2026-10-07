@@ -1,16 +1,18 @@
 import unittest
 from unittest.mock import AsyncMock
 
-import ollama
-from ollama import ChatResponse
-
-from semant_demo.llm_api import APIOutput, APIModelResponseOllama, APIRequest
+from semant_demo.llm_api import APIRequest
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer, ModelOptions
 from semant_demo.utils.template import Template
+from tests.fakes import FakeChatAPI
 
 class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.api = AsyncMock()
+        self.api = FakeChatAPI(replies={
+            "gen_title": "Generated Title",
+            "gen_results_summary": "Summary of results",
+            "gen_query_summary": "Query-specific summary",
+        })
         self.summarizer = TemplatedSearchResultsSummarizer(
             api=self.api,
             gen_title_model="gpt-oss:20b",
@@ -28,20 +30,8 @@ class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_gen_title(self):
-        self.api.process_single_request = AsyncMock(return_value=APIOutput(
-            custom_id="test1",
-            response=APIModelResponseOllama(
-                body=ChatResponse(
-                    message=ollama.Message(
-                        role="assistant",
-                        content="Generated Title"
-                    )
-                ),
-                structured=False
-            )
-        ))
         title = await self.summarizer.gen_title("What is AI?", AsyncMock(text="AI is..."))
-        self.api.process_single_request.assert_called_once_with(
+        self.assertEqual(self.api.requests, [
             APIRequest(
                 custom_id="gen_title",
                 model="gpt-oss:20b",
@@ -50,24 +40,12 @@ class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
                     {"role": "user", "content": "Vygeneruj nadpis pro následující text historického dokumentu.\n\"AI is...\"\nNadpis by měl být relevantní k dotazu uživatele: \"What is AI?\"."}
                 ],
             )
-        )
+        ])
         self.assertEqual(title, "Generated Title")
 
     async def test_gen_results_summary(self):
-        self.api.process_single_request = AsyncMock(return_value=APIOutput(
-            custom_id="test2",
-            response=APIModelResponseOllama(
-                body=ChatResponse(
-                    message=ollama.Message(
-                        role="assistant",
-                        content="Summary of results"
-                    )
-                ),
-                structured=False
-            )
-        ))
         summary = await self.summarizer.gen_results_summary("What is AI?", [AsyncMock(text="AI is...")])
-        self.api.process_single_request.assert_called_once_with(
+        self.assertEqual(self.api.requests, [
             APIRequest(
                 custom_id="gen_results_summary",
                 model="gpt-oss:20b",
@@ -76,24 +54,12 @@ class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
                     {"role": "user", "content": "Vytvoř souhrn následujících výsledků vyhledávání.\n\nUživatel zadal do vyhledávače historických dokumentů dotaz:\n\n\"What is AI?\"\n\nTento dotaz mu vrátil následující výsledky:\n\n[doc1] AI is...\n"}
                 ],
             )
-        )
+        ])
         self.assertEqual(summary, "Summary of results")
 
     async def test_gen_query_summary_for_text_chunk(self):
-        self.api.process_single_request = AsyncMock(return_value=APIOutput(
-            custom_id="test3",
-            response=APIModelResponseOllama(
-                body=ChatResponse(
-                    message=ollama.Message(
-                        role="assistant",
-                        content="Query-specific summary"
-                    )
-                ),
-                structured=False
-            )
-        ))
         query_summary = await self.summarizer.gen_query_summary_for_text_chunk("What is AI?", AsyncMock(text="AI is..."))
-        self.api.process_single_request.assert_called_once_with(
+        self.assertEqual(self.api.requests, [
             APIRequest(
                 custom_id="gen_query_summary",
                 model="gpt-oss:20b",
@@ -102,5 +68,5 @@ class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
                     {"role": "user", "content": "Prosím vytvoř krátký souhrn následujícího textu, který je relevantní k vyhledávacímu dotazu. Souhrn by měl být výstižný a obsahovat klíčové informace z textu.\nText historického dokumentu:\n\"AI is...\"\nUživatel zadal do vyhledávače historických dokumentů dotaz:\n\"What is AI?\""}
                 ],
             )
-        )
+        ])
         self.assertEqual(query_summary, "Query-specific summary")

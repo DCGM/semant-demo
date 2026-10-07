@@ -92,7 +92,8 @@ Do not execute destructive schema/bootstrap scripts against an unverified endpoi
 
 Never manually edit generated API files, commit secrets, weaken assertions, bypass CI,
 or add blanket skips merely to produce a green result. A placeholder `npm test` is not
-a test pass. Proposed `make` targets are unavailable until refactor step R0 implements them.
+a test pass. `make setup`, `make check` and `make api-generate` exist; other proposed
+`make` targets are unavailable until the refactor step that implements them.
 
 For ordinary development and refactoring, use only the local database environment documented in `docs/DEVELOPMENT.md`.
 
