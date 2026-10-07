@@ -1,7 +1,6 @@
 
-# DeleteSpansForTagsResponse
+# WriteResult
 
-Result of a bulk per-tag deletion; ``succeeded`` lists the deleted span ids.
 
 ## Properties
 
@@ -11,12 +10,11 @@ Name | Type
 `succeeded` | Array&lt;string&gt;
 `failed` | [Array&lt;StepFailure&gt;](StepFailure.md)
 `unattempted` | Array&lt;string&gt;
-`deleted` | number
 
 ## Example
 
 ```typescript
-import type { DeleteSpansForTagsResponse } from ''
+import type { WriteResult } from ''
 
 // TODO: Update the object below with actual values
 const example = {
@@ -24,8 +22,7 @@ const example = {
   "succeeded": null,
   "failed": null,
   "unattempted": null,
-  "deleted": null,
-} satisfies DeleteSpansForTagsResponse
+} satisfies WriteResult
 
 console.log(example)
 
@@ -34,7 +31,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as DeleteSpansForTagsResponse
+const exampleParsed = JSON.parse(exampleJSON) as WriteResult
 console.log(exampleParsed)
 ```
 

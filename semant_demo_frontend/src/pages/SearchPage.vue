@@ -352,6 +352,7 @@ import { useApi } from 'src/composables/useApi'
 import { useCollectionStore } from 'src/stores/chunk_collection-store'
 import { useUserStore } from 'src/stores/user-store'
 import useDocuments from 'src/composables/useDocuments'
+import { WriteOutcome } from 'src/generated/api'
 
 // Search Form State
 const showFilters = ref(false)
@@ -800,15 +801,22 @@ async function addSelectedChunksToCollection () {
   }
 
   let successCount = 0
+  let failedCount = 0
   for (const chunkId of selectedResults.value) {
     try {
       const data = await apiClients.default.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({ collectionId: targetCollectionId.value as string, chunkId })
-      if (data.created) successCount++
+      // Partial: the chunk may be linked while its document link failed.
+      if (data.outcome === WriteOutcome.complete) successCount++
+      else failedCount++
     } catch (e) {
+      failedCount++
       console.error(e)
     }
   }
   Notify.create({ message: `Added ${successCount} chunk(s) to collection`, position: 'top', color: 'positive' })
+  if (failedCount) {
+    Notify.create({ message: `${failedCount} chunk(s) could not be fully added; completed links were kept.`, position: 'top', color: 'negative' })
+  }
 }
 
 async function addSelectedDocumentsToCollection () {
@@ -830,12 +838,8 @@ async function addSelectedDocumentsToCollection () {
   )
 
   for (const documentId of docIds) {
-    try {
-      await apiDocumentClient.addDocToCollection(documentId, targetCollectionId.value)
-      successCount++
-    } catch (e) {
-      console.error(e)
-    }
+    // The store reports failures itself and returns true only for a complete add.
+    if (await apiDocumentClient.addDocToCollection(documentId, targetCollectionId.value)) successCount++
   }
   Notify.create({ message: `Added ${successCount} document(s) to collection`, position: 'top', color: 'positive' })
 }

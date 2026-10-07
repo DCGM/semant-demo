@@ -5,6 +5,7 @@ from semant_demo import schemas
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
+from semant_demo.features.collections import access
 from semant_demo.routes.dependencies import get_search, get_summarizer, get_search_filters
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
@@ -26,18 +27,9 @@ async def search(req: schemas.SearchRequest, searcher: WeaviateAbstraction = Dep
                  available_filters: schemas.SearchFiltersResponse = Depends(get_search_filters)) -> schemas.SearchResponse:
     start_time = time.time()
 
-    # <authorization>
+    # Searching within a collection needs read access to it (direct lookup, not listing).
     if req.user_collection_id is not None:
-        if current_user is None:
-            raise HTTPException(status_code=401,
-                                detail="Unauthorized: user collection specified but no user authenticated")
-        collections = await searcher.userCollection.read_all(current_user)
-        user_collection_ids = {str(col.id) for col in collections}
-        if req.user_collection_id not in user_collection_ids:
-            raise HTTPException(status_code=403,
-                                detail="Forbidden: user does not have access to the specified collection")
-
-    # </authorization>
+        await access.require_collection_read(searcher, current_user, req.user_collection_id)
 
     # Parse and validate search filters
     filters = None

@@ -1,5 +1,5 @@
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, QueryReference
 from semant_demo.weaviate_exceptions import (
     WeaviateOperationError
 )
@@ -132,6 +132,26 @@ class Tag():
             definition=props["tag_definition"],
             examples=props["tag_examples"]
         )
+
+    async def read_collection_ids(self, tag_ids: list[UUID]) -> dict[UUID, list[UUID]]:
+        """
+        The collections each existing tag references. Tags that do not exist are absent
+        from the result. Used for authorization.
+        """
+        if not tag_ids:
+            return {}
+        tag_collection = self.client.collections.get(self.collectionNames.tag_collection_name)
+        response = await tag_collection.query.fetch_objects(
+            filters=Filter.by_id().contains_any(list(tag_ids)),
+            limit=len(tag_ids),
+            return_properties=[],
+            return_references=[QueryReference(link_on="userCollection")],
+        )
+        result: dict[UUID, list[UUID]] = {}
+        for obj in response.objects:
+            refs = obj.references.get("userCollection") if obj.references else None
+            result[UUID(str(obj.uuid))] = [UUID(str(r.uuid)) for r in (refs.objects if refs else [])]
+        return result
 
     async def update(self, tag_uuid: UUID, updated_tag: PatchTag) -> TagSchema:
         """

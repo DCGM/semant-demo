@@ -1,7 +1,9 @@
 """Shared helpers for tests that build the FastAPI application."""
 from pathlib import Path
 
-from semant_demo.config import Config
+import yaml
+
+from semant_demo.config import SCRIPT_PATH, Config
 
 TEST_JWT_SECRET = "test-secret-key-long-enough-for-hmac-sha256-32bytes"
 
@@ -14,6 +16,11 @@ def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
     """
     rag_dir = tmp_dir / "rag_configs"
     rag_dir.mkdir(exist_ok=True)
+    # The default summarizer config names an external Ollama host; use an unreachable one.
+    summarizer = yaml.safe_load((SCRIPT_PATH / "configs" / "search_summarizer.yaml").read_text())
+    summarizer["api"]["config"]["base_url"] = "http://ollama.invalid"
+    summarizer_path = tmp_dir / "search_summarizer.yaml"
+    summarizer_path.write_text(yaml.safe_dump(summarizer, allow_unicode=True))
     environ = {
         "SQL_DB_URL": f"sqlite+aiosqlite:///{tmp_dir / 'test.db'}",
         "JWT_SECRET": TEST_JWT_SECRET,
@@ -23,6 +30,7 @@ def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
         "OPENAI_API_URL": "http://openai.invalid",
         "OLLAMA_URLS": "http://ollama.invalid",
         "RAG_CONFIGS_PATH": str(rag_dir),
+        "SEARCH_SUMMARIZER_CONFIG": str(summarizer_path),
         "STATIC_PATH": str(tmp_dir / "no_static"),
         "FEEDBACK_LOG_PATH": str(tmp_dir / "feedback.log.jsonl"),
     }

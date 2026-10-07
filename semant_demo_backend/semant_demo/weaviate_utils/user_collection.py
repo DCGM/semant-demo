@@ -34,7 +34,8 @@ from semant_demo.schema.tags import Tag
 from semant_demo.schema.chunks import Chunk
 from semant_demo.schema.spans import SpanType
 
-from semant_demo.weaviate_utils.helpers import WeaviateHelpers
+from semant_demo.weaviate_utils.helpers import WeaviateHelpers, step_failure
+from semant_demo.schema.outcomes import StepFailure, WriteResult, outcome_of
 from semant_demo.users.models import User
 
 
@@ -78,6 +79,44 @@ class UserCollection():
             updated_at=now,
             color=collection.color
         )
+
+    async def read_access_record(self, collection_id: UUID) -> tuple[UUID | None, set[UUID]] | None:
+        """
+        Owner id and shared-with user ids of a collection, or None if it does not exist.
+        Read directly by id; used for authorization.
+        """
+        usercollection_collection = self.client.collections.get(
+            self.collectionNames.user_collection_name)
+        obj = await usercollection_collection.query.fetch_object_by_id(
+            collection_id, return_properties=["user_id", "shared_with"])
+        if obj is None:
+            return None
+        owner = obj.properties.get("user_id")
+        return (
+            UUID(str(owner)) if owner else None,
+            {UUID(str(uid)) for uid in (obj.properties.get("shared_with") or [])},
+        )
+
+    async def chunk_ids_in_collection(
+        self, chunk_ids: list[UUID], collection_id: UUID, document_id: UUID | None = None,
+    ) -> set[UUID]:
+        """
+        The subset of ``chunk_ids`` that belong to the collection (and to the document,
+        when given).
+        """
+        if not chunk_ids:
+            return set()
+        chunks_collection = self.client.collections.get(
+            self.collectionNames.chunks_collection_name)
+        filters = (
+            Filter.by_id().contains_any(list(chunk_ids))
+            & Filter.by_ref(self.collectionNames.user_collection_link_name).by_id().equal(collection_id)
+        )
+        if document_id is not None:
+            filters = filters & Filter.by_ref("document").by_id().equal(document_id)
+        response = await chunks_collection.query.fetch_objects(
+            filters=filters, limit=len(chunk_ids), return_properties=[])
+        return {UUID(str(o.uuid)) for o in response.objects}
 
     async def read(self, collection_id: UUID) -> Collection | None:
         """
@@ -676,37 +715,58 @@ class UserCollection():
             ))
         return documents
 
-    async def add_chunk(self, chunk_id: str, collection_id: str):
-        # 1. Add reference from the chunk to the target collection
-        result = await self.helpers.create_reference(chunk_id,
-                                                     self.collectionNames.chunks_collection_name,
-                                                     self.collectionNames.user_collection_link_name,
-                                                     collection_id)
+    async def add_chunk(self, chunk_id: UUID, collection_id: UUID) -> WriteResult:
+        """
+        Links a chunk to a collection, then links the chunk's document to it.
 
-        # 2. Find the document the chunk belongs to and link it to the collection
+        Best effort: completed links are kept; a failed document link is reported as a
+        partial outcome. Links that already exist count as done. Raises
+        ``WeaviateOperationError`` if the chunk does not exist.
+        """
+        link = self.collectionNames.user_collection_link_name
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        chunk_obj = await chunks_collection.query.fetch_object_by_id(
+            chunk_id,
+            return_properties=[],
+            return_references=[QueryReference(link_on="document"), QueryReference(link_on=link)],
+        )
+        if chunk_obj is None:
+            raise WeaviateOperationError("Chunk not found")
+        refs = chunk_obj.references or {}
+        document_ids = [UUID(str(d.uuid)) for d in (refs["document"].objects if "document" in refs else [])]
+        linked = {UUID(str(c.uuid)) for c in (refs[link].objects if link in refs else [])}
+
+        succeeded: list[str] = []
+        failed: list[StepFailure] = []
         try:
-            chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
-            chunk_obj = await chunks_collection.query.fetch_object_by_id(
-                chunk_id,
-                return_references=[QueryReference(link_on="document")]
-            )
-
-            if chunk_obj and chunk_obj.references and "document" in chunk_obj.references:
-                doc_refs = chunk_obj.references["document"].objects
-                for doc_ref in doc_refs:
-                    document_id = doc_ref.uuid
-                    
-                    document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
-                    # Add reference from the document (property "collection") to the given user collection
-                    await document_collection.data.reference_add(
-                        from_uuid=document_id,
-                        from_property="collection",
-                        to=collection_id,
-                    )
+            if collection_id not in linked:
+                await chunks_collection.data.reference_add(from_uuid=chunk_id, from_property=link, to=collection_id)
+            succeeded.append(str(chunk_id))
         except Exception as e:
-            logging.error(f"Failed to link chunk's document to collection: {e}")
+            failed.append(step_failure("link_chunk", chunk_id, e))
+            # The document link would claim a membership that the chunk link did not establish.
+            return WriteResult(outcome=outcome_of(0, 1, len(document_ids)), failed=failed,
+                               unattempted=[str(d) for d in document_ids])
 
-        return result
+        for document_id in document_ids:
+            try:
+                await self._link_document(document_id, collection_id)
+                succeeded.append(str(document_id))
+            except Exception as e:
+                failed.append(step_failure("link_document", document_id, e))
+        return WriteResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded, failed=failed)
+
+    async def _link_document(self, document_id: UUID, collection_id: UUID) -> None:
+        """Adds the document -> collection reference unless it already exists."""
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        doc = await document_collection.query.fetch_object_by_id(
+            document_id, return_properties=[], return_references=[QueryReference(link_on="collection")])
+        if doc is None:
+            raise WeaviateOperationError("Document not found")
+        refs = doc.references or {}
+        if collection_id in {UUID(str(c.uuid)) for c in (refs["collection"].objects if "collection" in refs else [])}:
+            return
+        await document_collection.data.reference_add(from_uuid=document_id, from_property="collection", to=collection_id)
 
     async def remove_chunk(self, chunk_id: str, collection_id: str) -> bool:
         """
@@ -822,99 +882,95 @@ class UserCollection():
         result = await session.execute(select(User).where(User.id.in_(shared_ids)))
         return result.scalars().all()
 
-    async def add_document(self, document_id: str, collection_id: str) -> None:
+    async def _document_chunks(self, document_id: UUID, collection_id: UUID | None = None) -> list:
+        """All chunks of a document (optionally only those in the collection), with their collection refs.
+
+        Listed completely before any write, so writes cannot change the pages being read.
+        """
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        link = self.collectionNames.user_collection_link_name
+        chunk_filter = Filter.by_ref("document").by_id().equal(document_id)
+        if collection_id is not None:
+            chunk_filter = chunk_filter & Filter.by_ref(link).by_id().equal(collection_id)
+        page_size = 100
+        chunks: list = []
+        while True:
+            response = await chunks_collection.query.fetch_objects(
+                filters=chunk_filter,
+                return_properties=[],
+                return_references=[QueryReference(link_on=link)],
+                limit=page_size,
+                offset=len(chunks),
+            )
+            chunks.extend(response.objects)
+            if len(response.objects) < page_size:
+                return chunks
+
+    async def add_document(self, document_id: UUID, collection_id: UUID) -> WriteResult:
         """
         Adds a document to a collection and also links all its chunks to that collection.
+
+        Best effort: each chunk link is attempted and failures are reported; links that
+        already exist count as done. The document itself is linked unless every chunk
+        link failed. Raises ``WeaviateOperationError`` if the document does not exist.
         """
-        document_collection = self.client.collections.get(
-            self.collectionNames.document_collection_name)
-        chunks_collection = self.client.collections.get(
-            self.collectionNames.chunks_collection_name)
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        if await document_collection.query.fetch_object_by_id(document_id, return_properties=[]) is None:
+            raise WeaviateOperationError("Document not found")
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        link = self.collectionNames.user_collection_link_name
 
-        # Add collection reference to every chunk that belongs to the document.
-        chunk_filter = Filter.by_ref("document").by_id().equal(document_id)
-        offset = 0
-        page_size = 100
+        chunks = await self._document_chunks(document_id)
+        succeeded: list[str] = []
+        failed: list[StepFailure] = []
+        for chunk in chunks:
+            refs = chunk.references.get(link) if chunk.references else None
+            try:
+                if collection_id not in {UUID(str(r.uuid)) for r in (refs.objects if refs else [])}:
+                    await chunks_collection.data.reference_add(from_uuid=chunk.uuid, from_property=link, to=collection_id)
+                succeeded.append(str(chunk.uuid))
+            except Exception as e:
+                failed.append(step_failure("link_chunk", chunk.uuid, e))
 
-        while True:
-            chunks_response = await chunks_collection.query.fetch_objects(
-                filters=chunk_filter,
-                return_references=[QueryReference(
-                    link_on="userCollection")],
-                limit=page_size,
-                offset=offset,
-            )
+        if chunks and not succeeded:
+            return WriteResult(outcome=outcome_of(0, len(failed), 1), failed=failed, unattempted=[str(document_id)])
+        try:
+            await self._link_document(document_id, collection_id)
+            succeeded.append(str(document_id))
+        except Exception as e:
+            failed.append(step_failure("link_document", document_id, e))
+        return WriteResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded, failed=failed)
 
-            if not chunks_response.objects:
-                break
-
-            for chunk in chunks_response.objects:
-                current_refs = chunk.references.get(
-                    "userCollection") if chunk.references else None
-                current_collection_ids = [ref.uuid for ref in (
-                    current_refs.objects if current_refs else [])]
-
-                if collection_id in current_collection_ids:
-                    continue
-
-                await chunks_collection.data.reference_add(
-                    from_uuid=chunk.uuid,
-                    from_property="userCollection",
-                    to=collection_id,
-                )
-
-            if len(chunks_response.objects) < page_size:
-                break
-
-            offset += page_size
-
-        await document_collection.data.reference_add(
-            from_uuid=document_id,
-            from_property="collection",
-            to=collection_id,
-        )
-
-    async def remove_document(self, document_id: UUID, collection_id: UUID) -> None:
+    async def remove_document(self, document_id: UUID, collection_id: UUID) -> WriteResult:
         """
-        Removes a document from a collection by deleting the reference between them.
+        Removes a document's chunks from a collection, then the document itself.
+
+        Best effort: each chunk unlink is attempted and failures are reported. The
+        document stays linked while any of its chunks could not be unlinked, so the
+        collection keeps showing it and the removal can be retried.
         """
-        document_collection = self.client.collections.get(
-            self.collectionNames.document_collection_name)
-        chunks_collection = self.client.collections.get(
-            self.collectionNames.chunks_collection_name)
+        document_collection = self.client.collections.get(self.collectionNames.document_collection_name)
+        chunks_collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        link = self.collectionNames.user_collection_link_name
 
-        await document_collection.data.reference_delete(
-            from_uuid=document_id,
-            from_property="collection",
-            to=collection_id,
-        )
+        succeeded: list[str] = []
+        failed: list[StepFailure] = []
+        for chunk in await self._document_chunks(document_id, collection_id):
+            try:
+                await chunks_collection.data.reference_delete(from_uuid=chunk.uuid, from_property=link, to=collection_id)
+                succeeded.append(str(chunk.uuid))
+            except Exception as e:
+                failed.append(step_failure("unlink_chunk", chunk.uuid, e))
 
-        # Remove collection reference only from chunks that belong to the document
-        # and currently reference the target collection.
-        chunk_filter = (
-            Filter.by_ref("document").by_id().equal(document_id)
-            & Filter.by_ref("userCollection").by_id().equal(collection_id)
-        )
-        page_size = 100
-
-        while True:
-            chunks_response = await chunks_collection.query.fetch_objects(
-                filters=chunk_filter,
-                limit=page_size,
-            )
-
-            if not chunks_response.objects:
-                break
-
-            for chunk in chunks_response.objects:
-                await chunks_collection.data.reference_delete(
-                    from_uuid=chunk.uuid,
-                    from_property="userCollection",
-                    to=collection_id,
-                )
-
-            if len(chunks_response.objects) < page_size:
-                break
+        if failed:
+            return WriteResult(outcome=outcome_of(len(succeeded), len(failed), 1), succeeded=succeeded,
+                               failed=failed, unattempted=[str(document_id)])
+        try:
+            await document_collection.data.reference_delete(from_uuid=document_id, from_property="collection", to=collection_id)
+            succeeded.append(str(document_id))
+        except Exception as e:
+            failed.append(step_failure("unlink_document", document_id, e))
+        return WriteResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded, failed=failed)
 
     ###########
     # Helpers #

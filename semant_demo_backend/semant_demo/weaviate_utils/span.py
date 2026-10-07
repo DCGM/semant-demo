@@ -23,7 +23,8 @@ from semant_demo.weaviate_exceptions import (
 )
 from weaviate.classes.query import QueryReference
 
-from semant_demo.weaviate_utils.helpers import WeaviateHelpers
+from semant_demo.weaviate_utils.helpers import WeaviateHelpers, step_failure
+from semant_demo.schema.outcomes import StepFailure, WriteResult, outcome_of
 import semant_demo.schemas as schemas
 
 from semant_demo.schema.spans import PostSpan, PatchSpan
@@ -169,6 +170,30 @@ class Span():
             reason=response.properties.get("reason"),
             confidence=float(confidence_raw) if confidence_raw is not None else None,
         )
+
+    async def read_refs(self, span_ids: list[UUID]) -> dict[UUID, tuple[list[UUID], list[UUID]]]:
+        """
+        ``(tag ids, chunk ids)`` referenced by each existing span. Spans that do not exist
+        are absent from the result. Used for authorization.
+        """
+        if not span_ids:
+            return {}
+        response = await self.span_collection.query.fetch_objects(
+            filters=Filter.by_id().contains_any(list(span_ids)),
+            limit=len(span_ids),
+            return_properties=[],
+            return_references=[QueryReference(link_on="tag"), QueryReference(link_on="text_chunk")],
+        )
+        result: dict[UUID, tuple[list[UUID], list[UUID]]] = {}
+        for obj in response.objects:
+            refs = obj.references or {}
+            tags = refs.get("tag")
+            chunks = refs.get("text_chunk")
+            result[UUID(str(obj.uuid))] = (
+                [UUID(str(r.uuid)) for r in (tags.objects if tags else [])],
+                [UUID(str(r.uuid)) for r in (chunks.objects if chunks else [])],
+            )
+        return result
 
     async def read_all(self, chunk_id: str = None, collection_id: str = None) -> list[schemas.TagSpan]:
         """
@@ -379,7 +404,7 @@ class Span():
         self,
         span_ids: list[str],
         update_fields: PatchSpan,
-    ) -> list[schemas.TagSpan]:
+    ) -> tuple[list[schemas.TagSpan], list[StepFailure]]:
         """
         Apply the same patch to many spans concurrently.
 
@@ -388,26 +413,25 @@ class Span():
         :meth:`update` call per span on the server side, so we avoid the
         per-span HTTP round-trip and the browser's 6-conn-per-origin cap.
 
-        Spans that fail to update are skipped (the failure is logged) so a
-        single bad id doesn't poison the whole batch.
+        Best effort: returns the updated spans and a failure record for each span
+        that could not be updated. Completed updates are kept.
         """
         if not span_ids:
-            return []
+            return [], []
 
         results = await asyncio.gather(
             *(self.update(span_id=sid, update_fields=update_fields) for sid in span_ids),
             return_exceptions=True,
         )
 
-        out: list[schemas.TagSpan] = []
+        updated: list[schemas.TagSpan] = []
+        failed: list[StepFailure] = []
         for sid, res in zip(span_ids, results):
             if isinstance(res, Exception):
-                logging.getLogger(__name__).warning(
-                    "bulk_update failed for span %s: %s", sid, res
-                )
-                continue
-            out.append(res)
-        return out
+                failed.append(step_failure("update_span", sid, res))
+            else:
+                updated.append(res)
+        return updated, failed
 
     async def delete_auto_spans_in_scope(
         self,
@@ -415,15 +439,14 @@ class Span():
         collection_id: str,
         document_id: str,
         tag_ids: list[str],
-    ) -> int:
+    ) -> WriteResult:
         """
         Bulk-delete unresolved AI proposals (spans with ``type == 'auto'``)
         within a single (collection, document) scope, restricted to the given
         tag UUIDs.
 
-        Returns the number of spans deleted. Cascades through the standard
-        ``delete_span_cascade`` helper (one-by-one) so any cleanup logic
-        (cross-references, indexes, …) is preserved.
+        Cascades through the standard ``delete_span_cascade`` helper
+        (one-by-one) so any cleanup logic (cross-references, indexes, …) is preserved.
         """
         return await self._delete_spans_in_scope(
             collection_id=collection_id,
@@ -438,7 +461,7 @@ class Span():
         collection_id: str,
         document_id: str,
         tag_ids: list[str],
-    ) -> int:
+    ) -> WriteResult:
         """
         Bulk-delete approved (``type == 'pos'``) spans for the given tag UUIDs
         within a single (collection, document) scope. Used by the "delete all
@@ -460,20 +483,20 @@ class Span():
         document_id: str,
         tag_ids: list[str],
         type_filter: str | None,
-    ) -> int:
+    ) -> WriteResult:
         """
         Internal helper: delete spans within a single (collection, document)
         scope, restricted to the given tag UUIDs and (optionally) a single
         ``type`` value.
 
-        Returns the number of spans deleted. Cascades through the standard
-        ``delete_span_cascade`` helper (one-by-one) so any cleanup logic
-        (cross-references, indexes, …) is preserved.
+        The matching span ids are listed first and then deleted one by one, so spans
+        that fail to delete are reported instead of being fetched again forever.
+        Completed deletions are kept.
         """
         if not self.span_collection:
             raise RuntimeError("Span_test collection not available")
         if not tag_ids:
-            return 0
+            return WriteResult(outcome=outcome_of(0, 0))
 
         try:
             collection_uuid = UUID(collection_id)
@@ -491,24 +514,25 @@ class Span():
             filters = filters & Filter.by_property("type").equal(type_filter)
 
         PAGE_SIZE = 500
-        deleted = 0
+        span_ids: list[str] = []
         while True:
             response = await self.span_collection.query.fetch_objects(
                 filters=filters,
-                return_properties=["type"],
+                return_properties=[],
                 limit=PAGE_SIZE,
+                offset=len(span_ids),
             )
             objs = response.objects or []
-            if not objs:
-                break
-            for obj in objs:
-                try:
-                    await self.helpers.delete_span_cascade(span_id=str(obj.uuid))
-                    deleted += 1
-                except Exception as e:
-                    logging.getLogger(__name__).warning(
-                        "Failed to delete span %s: %s", obj.uuid, e
-                    )
+            span_ids.extend(str(o.uuid) for o in objs)
             if len(objs) < PAGE_SIZE:
                 break
-        return deleted
+
+        deleted: list[str] = []
+        failed: list[StepFailure] = []
+        for span_id in span_ids:
+            try:
+                await self.helpers.delete_span_cascade(span_id=span_id)
+                deleted.append(span_id)
+            except Exception as e:
+                failed.append(step_failure("delete_span", span_id, e))
+        return WriteResult(outcome=outcome_of(len(deleted), len(failed)), succeeded=deleted, failed=failed)

@@ -341,9 +341,11 @@ export function useTaggingPageState() {
   }
 
   const refreshChunkSpans = async (chunkId: string) => {
+    // Annotations are only readable within a collection.
+    if (!currentCollectionId.value) return
     const refreshedSpans = await fetchTagSpansForChunk({
       chunkId,
-      collectionId: currentCollectionId.value || undefined
+      collectionId: currentCollectionId.value
     })
     tagSpansByChunkId.value = {
       ...tagSpansByChunkId.value,

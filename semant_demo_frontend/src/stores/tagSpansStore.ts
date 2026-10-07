@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { PostSpan, TagSpans, PatchSpan } from 'src/models/tagSpans'
 import { useTagSpansRepository } from 'src/repositories/useTagSpansRepository'
+import { requireComplete } from 'src/utils/writeOutcome'
 
 export const useTagSpansStore = defineStore('tagSpans', () => {
   const repo = useTagSpansRepository()
@@ -81,8 +82,9 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   const bulkUpdateSpans = async (spanIds: string[], update: PatchSpan) => {
     if (spanIds.length === 0) return
     try {
-      const updated = await repo.bulkUpdate(spanIds, update)
-      const byId = new Map(updated.map((s) => [s.id, s] as const))
+      const result = await repo.bulkUpdate(spanIds, update)
+      // Apply the spans that were updated, then report any that were not.
+      const byId = new Map(result.spans.map((s) => [s.id, s] as const))
 
       const next: Record<string, TagSpans> = { ...spansByChunkId.value }
       for (const chunkId of Object.keys(next)) {
@@ -102,6 +104,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
 
       spansByChunkId.value = next
       spansVersion.value++
+      requireComplete(result, 'Updating the selected suggestions')
     } catch (err) {
       console.error('Failed to bulk-update spans', err)
       error.value = 'Failed to bulk-update spans'

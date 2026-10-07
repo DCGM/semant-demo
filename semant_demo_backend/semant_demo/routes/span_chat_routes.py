@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from semant_demo.ai_assistance.span_chat import stream_span_discussion
+from semant_demo.features.collections import access
 from semant_demo.routes.dependencies import get_search
 from semant_demo.schema.ai_assistance import (
     DiscussSpanRequest,
@@ -81,6 +82,9 @@ async def discuss_span(
         raise HTTPException(
             status_code=400, detail="last message must be from the user"
         )
+    # Checked before the stream starts, so a denied request makes no provider call.
+    collection_id = await access.collection_of_spans(searcher, [body.span_id])
+    await access.require_collection_read(searcher, current_user, collection_id)
 
     return StreamingResponse(
         _stream(

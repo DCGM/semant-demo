@@ -1,39 +1,30 @@
-from typing import Annotated
-
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 import logging
-
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 from uuid import UUID
 
-from semant_demo import schemas
-from semant_demo.users.auth import current_active_user, current_active_optional_user, current_active_admin
-from semant_demo.users.models import User
-from semant_demo.users.schemas import UserSearchResult
-
-from semant_demo.weaviate_exceptions import WeaviateOperationError, WeaviateDataValidationError
-
-from semant_demo import schemas
-import logging
-
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-import logging
-
-from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest
-from semant_demo.schema.documents import DocumentStats
-from semant_demo.schema.documents import Document
-from semant_demo.schema.tags import Tag
-
-# import dependencies
+from semant_demo import schemas
+from semant_demo.features.collections import access
 from semant_demo.routes.dependencies import get_async_session, get_search
 from semant_demo.schema.chunks import Chunk
+from semant_demo.schema.collections import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest
+from semant_demo.schema.documents import Document, DocumentStats
+from semant_demo.schema.outcomes import WriteResult
+from semant_demo.schema.tags import Tag
+from semant_demo.users.auth import current_active_user, current_active_admin
+from semant_demo.users.models import User
+from semant_demo.users.schemas import UserSearchResult
+from semant_demo.weaviate_exceptions import WeaviateOperationError, WeaviateDataValidationError
+from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
 logging.basicConfig(level=logging.INFO)
 
 
 exp_router = APIRouter()
+
+# Every collection-scoped route checks access first (features/collections/access.py):
+# reads need owner/shared access, membership/metadata/sharing changes need the owner.
 
 
 @exp_router.post("/api/user_collections", response_model=Collection, status_code=status.HTTP_201_CREATED)
@@ -53,32 +44,37 @@ async def fetch_collections(searcher: WeaviateAbstraction = Depends(get_search),
     """
     Retrieves all collections for given user
     """
-    
+
     response = await searcher.userCollection.read_all(current_user)
     return response
 
 
 @exp_router.get("/api/user_collections/{collection_id}", response_model=Collection)
 async def fetch_collection(collection_id: str,
-                           searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
+                           searcher: WeaviateAbstraction = Depends(get_search),
+                           current_user: User = Depends(current_active_user)) -> Collection:
     """
     Retrieves collection by its id
     """
-    response = await searcher.userCollection.read(collection_id)
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
+    response = await searcher.userCollection.read(grant.collection_id)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"Collection with id {collection_id} not found")
+    response.is_shared_with_me = not grant.is_owner
     return response
 
 
 @exp_router.patch("/api/user_collections/{collection_id}", response_model=Collection)
 async def update_collection(collection_id: str, collectionReq: PatchCollection,
-                            searcher: WeaviateAbstraction = Depends(get_search)) -> Collection:
+                            searcher: WeaviateAbstraction = Depends(get_search),
+                            current_user: User = Depends(current_active_user)) -> Collection:
     """
-    Updates collection name/description/color
+    Updates collection name/description/color. Owner only.
     """
+    grant = await access.require_collection_owner(searcher, current_user, collection_id)
     try:
-        response = await searcher.userCollection.update(collection_id, collectionReq)
+        response = await searcher.userCollection.update(grant.collection_id, collectionReq)
         return response
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -92,42 +88,45 @@ async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
     Reassigns ownership of a collection to a different user. Admin only.
     """
     try:
-        response = await searcher.userCollection.change_owner(collection_id, req.user_id, session)
+        response = await searcher.userCollection.change_owner(
+            access.parse_id(collection_id, "Collection"), req.user_id, session)
         return response
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@exp_router.post("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=schemas.CreateResponse)
+@exp_router.post("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=WriteResult)
 async def add_chunk_to_collection(
     collection_id: str,
     chunk_id: str,
-    searcher: Annotated[WeaviateAbstraction, Depends(get_search)],
-    current_user: Annotated[User, Depends(current_active_user)]
-) -> schemas.CreateResponse:
+    searcher: WeaviateAbstraction = Depends(get_search),
+    current_user: User = Depends(current_active_user),
+) -> WriteResult:
     """
-    Connects chunk with user collection
+    Connects chunk with user collection, and the chunk's document with the collection.
+    Owner only. The result reports each link; ``outcome`` is ``partial`` when the chunk
+    was linked but its document could not be.
     """
-    del current_user
-    err = await searcher.userCollection.add_chunk(chunk_id=chunk_id, collection_id=collection_id)
-    if err == False:
-        # Known defect: `e` is undefined, so this branch raises NameError. Fixed by #201 (R1).
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error: {e}")  # noqa: F821
-    return {"created": True, "message": f"Chunk added to collection"}
+    grant = await access.require_membership_edit(searcher, current_user, collection_id)
+    try:
+        return await searcher.userCollection.add_chunk(access.parse_id(chunk_id, "Chunk"), grant.collection_id)
+    except WeaviateOperationError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @exp_router.delete("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=schemas.CreateResponse)
 async def remove_chunk_from_collection(
     collection_id: str,
     chunk_id: str,
-    searcher: Annotated[WeaviateAbstraction, Depends(get_search)],
-    current_user: Annotated[User, Depends(current_active_user)],
+    searcher: WeaviateAbstraction = Depends(get_search),
+    current_user: User = Depends(current_active_user),
 ) -> schemas.CreateResponse:
     """
-    Removes a chunk from a user collection.
+    Removes a chunk from a user collection. Owner only.
     """
-    del current_user
-    ok = await searcher.userCollection.remove_chunk(chunk_id=chunk_id, collection_id=collection_id)
+    grant = await access.require_membership_edit(searcher, current_user, collection_id)
+    ok = await searcher.userCollection.remove_chunk(chunk_id=access.parse_id(chunk_id, "Chunk"),
+                                                    collection_id=grant.collection_id)
     if not ok:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chunk not removed from collection")
     return {"created": True, "message": "Chunk removed from collection"}
@@ -141,8 +140,9 @@ async def share_collection(collection_id: str, req: ShareCollectionRequest,
     """
     Shares a collection with another user. Only the collection's owner may share it.
     """
+    grant = await access.require_collection_owner(searcher, current_user, collection_id)
     try:
-        response = await searcher.userCollection.share(collection_id, req.user_id, current_user, session)
+        response = await searcher.userCollection.share(grant.collection_id, req.user_id, current_user, session)
         return response
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -159,8 +159,9 @@ async def unshare_collection(collection_id: str, user_id: UUID,
     """
     Revokes a collection share. Only the collection's owner may unshare it.
     """
+    grant = await access.require_collection_owner(searcher, current_user, collection_id)
     try:
-        response = await searcher.userCollection.unshare(collection_id, user_id, current_user)
+        response = await searcher.userCollection.unshare(grant.collection_id, user_id, current_user)
         return response
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -174,17 +175,20 @@ async def get_collection_members(collection_id: str,
                                  session: AsyncSession = Depends(get_async_session),
                                  current_user: User = Depends(current_active_user)) -> list[UserSearchResult]:
     """
-    Returns the users a collection is currently shared with.
+    Returns the users a collection is currently shared with. Owner and shared users.
     """
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
     try:
-        return await searcher.userCollection.read_shared_users(collection_id, session)
+        return await searcher.userCollection.read_shared_users(grant.collection_id, session)
     except WeaviateOperationError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @exp_router.get("/api/user_collection/{collection_id}/stats", response_model=CollectionStats)
-async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> CollectionStats:
-    response = await searcher.userCollection.read_collection_stats(collection_id)
+async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search),
+                               current_user: User = Depends(current_active_user)) -> CollectionStats:
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
+    response = await searcher.userCollection.read_collection_stats(grant.collection_id)
     if response is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
@@ -192,58 +196,87 @@ async def get_collection_stats(collection_id: str, searcher: WeaviateAbstraction
 
 
 @exp_router.delete("/api/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_collection(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
-    await searcher.userCollection.delete(collection_id)
+async def delete_collection(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search),
+                            current_user: User = Depends(current_active_user)) -> Response:
+    """
+    Deletes a collection with its tags and annotations. Owner only.
+    """
+    grant = await access.require_collection_owner(searcher, current_user, collection_id)
+    await searcher.userCollection.delete(grant.collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @exp_router.get("/api/user_collection/{collection_id}/documents", response_model=list[Document], response_model_exclude_none=True)
-async def get_collection_documents(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Document]:
+async def get_collection_documents(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search),
+                                   current_user: User = Depends(current_active_user)) -> list[Document]:
     """
     Returns documents which belong to collection given by id
     """
-    response = await searcher.userCollection.read_all_documents(collection_id)
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
+    response = await searcher.userCollection.read_all_documents(grant.collection_id)
     return response
 
-@exp_router.post("/api/collections/{collection_id}/documents/{document_id}")
-async def add_document_to_collection(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> Response:
+@exp_router.post("/api/collections/{collection_id}/documents/{document_id}", response_model=WriteResult)
+async def add_document_to_collection(collection_id: str, document_id: str,
+                                     searcher: WeaviateAbstraction = Depends(get_search),
+                                     current_user: User = Depends(current_active_user)) -> WriteResult:
     """
-    Adds document to collection and also links all its chunks to that collection
+    Adds document to collection and also links all its chunks to that collection. Owner only.
+    The result lists linked chunks/document and failed links; ``outcome`` tells whether
+    the document was added completely, partially or not at all.
     """
-    await searcher.userCollection.add_document(document_id=document_id, collection_id=collection_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    grant = await access.require_membership_edit(searcher, current_user, collection_id)
+    try:
+        return await searcher.userCollection.add_document(
+            document_id=access.parse_id(document_id, "Document"), collection_id=grant.collection_id)
+    except WeaviateOperationError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
-@exp_router.delete("/api/collections/{collection_id}/documents/{document_id}")
+@exp_router.delete("/api/collections/{collection_id}/documents/{document_id}", response_model=WriteResult)
 async def remove_document_from_collection(
     collection_id: str,
     document_id: str,
-    searcher: WeaviateAbstraction = Depends(get_search)
-) -> Response:
-    await searcher.userCollection.remove_document(document_id=document_id, collection_id=collection_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    searcher: WeaviateAbstraction = Depends(get_search),
+    current_user: User = Depends(current_active_user),
+) -> WriteResult:
+    """
+    Removes a document and its chunks from a collection. Owner only. If some chunks cannot
+    be unlinked the document stays in the collection (``outcome`` ``partial``/``failed``).
+    """
+    grant = await access.require_membership_edit(searcher, current_user, collection_id)
+    return await searcher.userCollection.remove_document(
+        document_id=access.parse_id(document_id, "Document"), collection_id=grant.collection_id)
 
 @exp_router.get("/api/collections/{collection_id}/tags", response_model=list[Tag])
-async def get_collection_tags(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Tag]:
+async def get_collection_tags(collection_id: str, searcher: WeaviateAbstraction = Depends(get_search),
+                              current_user: User = Depends(current_active_user)) -> list[Tag]:
     """
     Returns tags which belong to collection given by id
     """
-    response = await searcher.userCollection.read_all_tags(collection_id)
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
+    response = await searcher.userCollection.read_all_tags(grant.collection_id)
     return response
 
 @exp_router.get("/api/collections/{collection_id}/documents/{document_id}/stats", response_model=DocumentStats)
-async def get_document_stats(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> DocumentStats:
+async def get_document_stats(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search),
+                             current_user: User = Depends(current_active_user)) -> DocumentStats:
     """
     Returns per-document statistics within the given collection:
     chunks in collection / total, annotation count, distinct tag count.
     """
-    return await searcher.userCollection.read_document_stats(collection_id, document_id)
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
+    return await searcher.userCollection.read_document_stats(
+        str(grant.collection_id), str(access.parse_id(document_id, "Document")))
 
 
 @exp_router.get("/api/collections/{collection_id}/documents/{document_id}", response_model=list[Chunk], response_model_exclude_none=True)
-async def get_collection_document_chunks(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search)) -> list[Chunk]:
+async def get_collection_document_chunks(collection_id: str, document_id: str, searcher: WeaviateAbstraction = Depends(get_search),
+                                         current_user: User = Depends(current_active_user)) -> list[Chunk]:
     """
     Returns chunks which belong to document and collection given by id
     """
-    response = await searcher.userCollection.read_all_chunks_by_document(document_id, collection_id)
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
+    response = await searcher.userCollection.read_all_chunks_by_document(
+        str(access.parse_id(document_id, "Document")), str(grant.collection_id))
     return response
 
 
@@ -258,14 +291,16 @@ async def get_neighbour_chunk(
     direction: str = Query(..., pattern="^(prev|next)$"),
     boundary_order: int = Query(...),
     searcher: WeaviateAbstraction = Depends(get_search),
+    current_user: User = Depends(current_active_user),
 ) -> Chunk | None:
     """
     Returns the chunk immediately before (direction=prev) or after (direction=next)
     the given boundary_order within the document. Marks in_collection accordingly.
     """
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
     chunk = await searcher.userCollection.get_neighbour_chunk(
-        document_id=document_id,
-        collection_id=collection_id,
+        document_id=str(access.parse_id(document_id, "Document")),
+        collection_id=str(grant.collection_id),
         direction=direction,
         boundary_order=boundary_order,
     )
@@ -282,14 +317,16 @@ async def get_chunks_in_range(
     order_gt: int | None = Query(default=None),
     order_lt: int | None = Query(default=None),
     searcher: WeaviateAbstraction = Depends(get_search),
+    current_user: User = Depends(current_active_user),
 ) -> list[Chunk]:
     """
     Returns all chunks of a document with order strictly greater than order_gt
     and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
     """
+    grant = await access.require_collection_read(searcher, current_user, collection_id)
     return await searcher.userCollection.get_chunks_in_range(
-        document_id=document_id,
-        collection_id=collection_id,
+        document_id=str(access.parse_id(document_id, "Document")),
+        collection_id=str(grant.collection_id),
         order_gt=order_gt,
         order_lt=order_lt,
     )
@@ -303,5 +340,5 @@ async def count_document_chunks(
     document_id: str,
     searcher: WeaviateAbstraction = Depends(get_search),
 ) -> int:
-    """Returns the total number of chunks in the given document."""
+    """Returns the total number of chunks in the given document (public corpus data)."""
     return await searcher.userCollection.count_document_chunks(document_id=document_id)

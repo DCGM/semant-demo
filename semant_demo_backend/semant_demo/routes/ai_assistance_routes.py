@@ -34,6 +34,7 @@ from semant_demo.ai_assistance.topicer_client import (
     propose_for_text_chunk,
     topicer_client,
 )
+from semant_demo.features.collections import access
 from semant_demo.routes.dependencies import get_search
 from semant_demo.schema.ai_assistance import (
     DeleteAutoSpansRequest,
@@ -43,6 +44,7 @@ from semant_demo.schema.ai_assistance import (
     SuggestSpansSelectionRequest,
     SuggestSpansSelectionResponse,
 )
+from semant_demo.schema.outcomes import outcome_of
 from semant_demo.schema.spans import PostSpan
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
@@ -92,22 +94,26 @@ async def _persist_proposal(
     chunk_id: str,
     chunk_length: int,
     tag_id: str,
+    allowed_tag_ids: set[str],
     span_start: int,
     span_end: int,
     reason: str | None = None,
     confidence: float | None = None,
-) -> schemas.TagSpan | None:
+) -> tuple[schemas.TagSpan | None, str | None]:
     """
-    Validate offsets and persist a single proposal as an auto-typed span.
+    Validate a provider proposal and persist it as an auto-typed span.
 
-    Returns the created TagSpan, or None on validation failure.
+    Returns ``(span, None)`` when saved, or ``(None, reason)`` when it was not:
+    a tag outside the request, invalid offsets, or a storage failure.
     """
+    if tag_id not in allowed_tag_ids:
+        return None, "tag outside the request"
     if span_start is None or span_end is None:
-        return None
+        return None, "invalid offsets"
     start = max(0, int(span_start))
     end = min(int(span_end), chunk_length)
     if end <= start:
-        return None
+        return None, "invalid offsets"
     try:
         return await searcher.span.create(PostSpan(
             chunkId=str(chunk_id),
@@ -117,13 +123,38 @@ async def _persist_proposal(
             type=schemas.SpanType.auto,
             reason=reason,
             confidence=confidence,
-        ))
+        )), None
     except Exception as e:
         logger.warning(
             "Failed to persist auto span (chunk=%s, tag=%s, start=%s, end=%s): %s",
             chunk_id, tag_id, start, end, e,
         )
-        return None
+        return None, "storage failure"
+
+
+class _SaveTally:
+    """Saved spans and unsaved proposals of one event, so failures are reported."""
+
+    def __init__(self) -> None:
+        self.spans: list[schemas.TagSpan] = []
+        self.unsaved = 0
+        self.reasons: set[str] = set()
+
+    def add(self, saved: tuple[schemas.TagSpan | None, str | None]) -> None:
+        span, reason = saved
+        if span is not None:
+            self.spans.append(span)
+        else:
+            self.unsaved += 1
+            self.reasons.add(reason or "not saved")
+
+    def event(self, chunk_id: str, error: str | None = None) -> SuggestSpansChunkResult:
+        errors = [error] if error else []
+        if self.unsaved:
+            errors.append(f"{self.unsaved} proposal(s) not saved ({', '.join(sorted(self.reasons))})")
+        return SuggestSpansChunkResult(
+            chunk_id=chunk_id, spans=self.spans, error="; ".join(errors) or None, unsaved=self.unsaved,
+        )
 
 
 # ── Thorough mode ──────────────────────────────────────────────────────────
@@ -149,6 +180,7 @@ async def _thorough_stream(
     tags = await _load_tag_dicts(searcher, tag_ids)
     if not tags:
         return
+    allowed_tag_ids = {t["id"] for t in tags}
 
     chunks = await searcher.userCollection.read_all_chunks_by_document(
         document_id, collection_id,
@@ -162,7 +194,7 @@ async def _thorough_stream(
         client, chunk,
     ) -> SuggestSpansChunkResult:
         async with sem:
-            new_spans: list[schemas.TagSpan] = []
+            tally = _SaveTally()
             err: str | None = None
             try:
                 proposals = await propose_for_text_chunk(
@@ -180,24 +212,19 @@ async def _thorough_stream(
                 tag_id = tag_obj.get("id")
                 if not tag_id:
                     continue
-                span = await _persist_proposal(
+                tally.add(await _persist_proposal(
                     searcher,
                     chunk_id=str(chunk.id),
                     chunk_length=len(chunk.text or ""),
                     tag_id=str(tag_id),
+                    allowed_tag_ids=allowed_tag_ids,
                     span_start=proposal.get("span_start"),
                     span_end=proposal.get("span_end"),
                     reason=proposal.get("reason"),
                     confidence=proposal.get("confidence"),
-                )
-                if span is not None:
-                    new_spans.append(span)
+                ))
 
-            return SuggestSpansChunkResult(
-                chunk_id=str(chunk.id),
-                spans=new_spans,
-                error=err,
-            )
+            return tally.event(str(chunk.id), err)
 
     async with topicer_client() as client:
         tasks = [
@@ -230,14 +257,14 @@ async def _optimized_stream(
     tags = await _load_tag_dicts(searcher, tag_ids)
     if not tags:
         return
+    allowed_tag_ids = {t["id"] for t in tags}
 
-    # We need chunk lengths to validate proposal offsets. Load all document
-    # chunks (including those outside the current collection) once, since
-    # Topicer returns chunk ids that we need to look up.
-    all_chunks = await searcher.userCollection.read_all_chunks_by_document(
+    # The document's chunks in this collection: the only chunks proposals may be
+    # saved on (Topicer returns chunk ids itself), and their lengths for validation.
+    collection_chunks = await searcher.userCollection.read_all_chunks_by_document(
         document_id, collection_id,
     )
-    chunk_text_by_id: dict[str, str] = {str(c.id): (c.text or "") for c in all_chunks}
+    chunk_text_by_id: dict[str, str] = {str(c.id): (c.text or "") for c in collection_chunks}
 
     async with topicer_client() as client:
         for tag in tags:
@@ -251,31 +278,29 @@ async def _optimized_stream(
                     chunk_id = str(event.get("id") or "")
                     if not chunk_id:
                         continue
-                    chunk_length = len(
-                        chunk_text_by_id.get(chunk_id) or event.get("text") or ""
-                    )
-
-                    new_spans: list[schemas.TagSpan] = []
-                    for proposal in event.get("tag_span_proposals") or []:
+                    proposals = event.get("tag_span_proposals") or []
+                    tally = _SaveTally()
+                    if chunk_id not in chunk_text_by_id:
+                        # Not a chunk of this document in this collection: save nothing.
+                        tally.unsaved = len(proposals)
+                        tally.reasons.add("chunk outside the collection")
+                        proposals = []
+                    for proposal in proposals:
                         tag_obj = proposal.get("tag") or {}
                         proposal_tag_id = str(tag_obj.get("id") or tag["id"])
-                        span = await _persist_proposal(
+                        tally.add(await _persist_proposal(
                             searcher,
                             chunk_id=chunk_id,
-                            chunk_length=chunk_length,
+                            chunk_length=len(chunk_text_by_id[chunk_id]),
                             tag_id=proposal_tag_id,
+                            allowed_tag_ids=allowed_tag_ids,
                             span_start=proposal.get("span_start"),
                             span_end=proposal.get("span_end"),
                             reason=proposal.get("reason"),
                             confidence=proposal.get("confidence"),
-                        )
-                        if span is not None:
-                            new_spans.append(span)
+                        ))
 
-                    yield _ndjson_line(SuggestSpansChunkResult(
-                        chunk_id=chunk_id,
-                        spans=new_spans,
-                    ))
+                    yield _ndjson_line(tally.event(chunk_id))
                     await asyncio.sleep(0)
             except TopicerError as e:
                 yield _ndjson_line(SuggestSpansChunkResult(
@@ -307,6 +332,7 @@ async def _selection_stream(
     tags = await _load_tag_dicts(searcher, tag_ids)
     if not tags:
         return
+    allowed_tag_ids = {t["id"] for t in tags}
 
     # Fetch text of every chunk in the selection so we can concatenate
     # them and compute the slice the LLM should see, plus the cumulative
@@ -400,22 +426,20 @@ async def _selection_stream(
                 # accidentally truncate a cross-chunk span.
                 remaining = total_length - cum_offsets[anchor_idx]
 
-                span = await _persist_proposal(
+                tally = _SaveTally()
+                tally.add(await _persist_proposal(
                     searcher,
                     chunk_id=anchor_chunk_id,
                     chunk_length=remaining,
                     tag_id=str(tag_id),
+                    allowed_tag_ids=allowed_tag_ids,
                     span_start=local_start,
                     span_end=local_end,
                     reason=proposal.get("reason"),
                     confidence=proposal.get("confidence"),
-                )
-                if span is not None:
-                    yield _ndjson_line(SuggestSpansChunkResult(
-                        chunk_id=anchor_chunk_id,
-                        spans=[span],
-                        error=None,
-                    ))
+                ))
+                # One event per proposal: the saved span, or an unsaved count with the reason.
+                yield _ndjson_line(tally.event(anchor_chunk_id))
         finally:
             if not topicer_task.done():
                 topicer_task.cancel()
@@ -454,12 +478,16 @@ async def suggest_spans_thorough(
     """
     if not body.tag_ids:
         raise HTTPException(status_code=400, detail="tag_ids must not be empty")
+    # Checked before the stream starts, so a denied request makes no provider call.
+    grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
+    await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
+    document_id = access.parse_id(body.document_id, "Document")
 
     return StreamingResponse(
         _thorough_stream(
             searcher,
-            collection_id=body.collection_id,
-            document_id=body.document_id,
+            collection_id=str(grant.collection_id),
+            document_id=str(document_id),
             tag_ids=body.tag_ids,
         ),
         media_type=_NDJSON_MEDIA_TYPE,
@@ -491,12 +519,16 @@ async def suggest_spans_optimized(
     """
     if not body.tag_ids:
         raise HTTPException(status_code=400, detail="tag_ids must not be empty")
+    # Checked before the stream starts, so a denied request makes no provider call.
+    grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
+    await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
+    document_id = access.parse_id(body.document_id, "Document")
 
     return StreamingResponse(
         _optimized_stream(
             searcher,
-            collection_id=body.collection_id,
-            document_id=body.document_id,
+            collection_id=str(grant.collection_id),
+            document_id=str(document_id),
             tag_ids=body.tag_ids,
         ),
         media_type=_NDJSON_MEDIA_TYPE,
@@ -547,6 +579,10 @@ async def suggest_spans_selection(
             status_code=400,
             detail="selection_end must be greater than selection_start",
         )
+    # Checked before the stream starts, so a denied request makes no provider call.
+    grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
+    await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
+    await access.require_chunks_in_collection(searcher, body.chunk_ids, grant.collection_id, body.document_id)
 
     return StreamingResponse(
         _selection_stream(
@@ -574,14 +610,17 @@ async def delete_auto_spans(
     (collection, document) for the given tag UUIDs.
 
     Useful for cleaning up suggestions the user did not get around to
-    approving or rejecting.
+    approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and
+    ``failed`` those that could not be deleted.
     """
+    grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
     if not body.tag_ids:
-        return DeleteAutoSpansResponse(deleted=0)
+        return DeleteAutoSpansResponse(outcome=outcome_of(0, 0), deleted=0)
+    await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
 
-    deleted = await searcher.span.delete_auto_spans_in_scope(
-        collection_id=body.collection_id,
-        document_id=body.document_id,
+    result = await searcher.span.delete_auto_spans_in_scope(
+        collection_id=str(grant.collection_id),
+        document_id=str(access.parse_id(body.document_id, "Document")),
         tag_ids=body.tag_ids,
     )
-    return DeleteAutoSpansResponse(deleted=deleted)
+    return DeleteAutoSpansResponse(**result.model_dump(), deleted=len(result.succeeded))

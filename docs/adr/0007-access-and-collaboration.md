@@ -38,6 +38,28 @@ calls, and query filters. Public corpus access is separate from private collecti
 Validate an entire small batch before mutation; authorization failure is not a successful
 best-effort item. Do not fail open on permission-store errors.
 
+## Decided for the implementation (#201, 2026-10-07)
+
+The rights left open above were decided by the maintainer and are implemented in
+`semant_demo/features/collections/access.py`:
+
+| Operation | Owner | Shared user | Others / admin |
+| --- | --- | --- | --- |
+| Read collection content, annotations, member list | yes | yes | not found |
+| Create/edit/delete annotations, run AI suggestions/review | yes | yes | not found |
+| Create/edit/delete tag definitions | yes | yes | not found |
+| Add/remove documents or chunks | yes | forbidden | not found |
+| Edit metadata (name, description, color), delete collection | yes | forbidden | not found |
+| Share/unshare | yes | forbidden | not found |
+| Change owner | no | no | admin only (existing explicit action) |
+
+Users without read access get "not found" so other users' collection ids are not
+confirmed; anonymous users get 401. A tag or span resolves to its single owning
+collection; one referencing no collection or several is treated as inaccessible.
+Corpus reads without a collection (document metadata, corpus browse, chunk counts,
+search without a collection) remain public. Restricting search tag filters to
+authorized tags belongs to the Search migration (#205).
+
 ## Local real-time Document view
 
 'Real time' means responsive tag annotation in Document view, especially AI-generated

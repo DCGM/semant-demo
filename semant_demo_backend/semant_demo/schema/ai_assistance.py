@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Literal
+from semant_demo.schema.outcomes import WriteResult
 from semant_demo.schemas import TagSpan
 
 
@@ -63,7 +64,12 @@ class SuggestSpansChunkResult(BaseModel):
     """Auto-typed spans newly persisted in the database for this chunk."""
 
     error: str | None = None
-    """Set if processing this chunk failed; ``spans`` will be empty."""
+    """Set if processing this chunk failed, or if some proposals could not be saved
+    (then ``spans`` holds the ones that were saved and ``unsaved`` counts the rest)."""
+
+    unsaved: int = 0
+    """Proposals returned by the provider that were not saved: storage failures or
+    proposals outside the requested collection, document or tags."""
 
 
 class DeleteAutoSpansRequest(BaseModel):
@@ -76,8 +82,8 @@ class DeleteAutoSpansRequest(BaseModel):
     tag_ids: list[str]
 
 
-class DeleteAutoSpansResponse(BaseModel):
-    """Result of a bulk auto-span deletion."""
+class DeleteAutoSpansResponse(WriteResult):
+    """Result of a bulk auto-span deletion; ``succeeded`` lists the deleted span ids."""
     deleted: int
 
 
