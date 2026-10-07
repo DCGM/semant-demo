@@ -73,8 +73,17 @@ export interface CollectionRequest {
   user_id: string;
 }
 
+// Previously declared twice; TypeScript merged both declarations into this type.
 export interface TagData {
   tag_uuids: string[];
+  tag_name: string
+  tag_shorthand: string
+  tag_color: string
+  tag_pictogram: string
+  tag_definition: string
+  tag_examples: string[]
+  collection_name: string
+  tag_uuid: string
 }
 
 export interface Document {
@@ -204,17 +213,6 @@ export interface ProcessedTagData {
   tag: string;
 }
 
-export interface TagData {
-    tag_name: string
-    tag_shorthand: string
-    tag_color: string
-    tag_pictogram: string
-    tag_definition: string
-    tag_examples: string[]
-    collection_name: string
-    tag_uuid: string
-}
-
 export interface GetTagsResponse {
     tags_lst: TagData[]
 }
@@ -246,13 +244,6 @@ export interface ExtendedAnnotationClass {
   colorString: string
   textColor: string
   approved: ApprovedState
-}
-
-export interface User {
-  id: string
-  username: string
-  full_name: string
-  user_type: string
 }
 
 export interface Collection {

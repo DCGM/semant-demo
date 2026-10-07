@@ -19,32 +19,54 @@ client changes with the API change that needs them.
 ## 2. Setup and commands
 
 Use an isolated checkout and development services, never production credentials or data.
-The inspected backend requires Python 3.12+. Use the frontend toolchain agreed by the team;
-R0 must align and pin its runtime/tool versions rather than upgrading them in feature PRs.
+Toolchain: Python 3.12 (backend), Node 22 (`semant_demo_frontend/.nvmrc`), and Java 11+
+only for regenerating the API client. From the repository root:
 
-From the repository root:
+| Command | What it does |
+| --- | --- |
+| `make setup` | Create `.venv` if missing, install `semant_demo_backend/requirements-dev.lock` and the backend package, run `npm ci`. |
+| `make check` | Fast offline checks: backend Ruff and fast pytest suite, frontend ESLint, Vue type check and Vitest, generated-client drift. No keys, GPU, Weaviate or AI services. |
+| `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. |
+
+Set `PYTHON=...` to use another interpreter. Without Make, run the same commands:
 
 ```sh
 python3.12 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r semant_demo_backend/requirements.txt
-python -m pip install -e semant_demo_backend
-cd semant_demo_backend
-python -m pytest tests/ -q
+.venv/bin/python -m pip install -r semant_demo_backend/requirements-dev.lock
+.venv/bin/python -m pip install --no-deps -e semant_demo_backend
+(cd semant_demo_frontend && npm ci)
+
+# make check
+(cd semant_demo_backend && ../.venv/bin/python -m ruff check .)
+(cd semant_demo_backend && ../.venv/bin/python -m pytest -m "not integration and not live and not benchmark")
+(cd semant_demo_frontend && npm run lint && npm run typecheck && npm test)
+(cd semant_demo_frontend && PYTHON=../.venv/bin/python npm run api-check)
+
+# make api-generate
+(cd semant_demo_frontend && PYTHON=../.venv/bin/python npm run api-generate)
 ```
 
-In a separate terminal, from the repository root:
+Dependencies: `requirements.txt` holds runtime dependencies (used by the production image);
+`requirements-dev.txt` adds test/lint tools; `requirements-dev.lock` pins the full set.
+After changing either file, regenerate the lock with pip-tools
+(`pip-compile --allow-unsafe --no-emit-index-url --strip-extras -o requirements-dev.lock
+requirements-dev.txt` in `semant_demo_backend`) and review the diff. Frontend versions are
+pinned by `package-lock.json`; Vitest 0.23 is the last line supporting the Vite 2 used by
+`@quasar/app-vite` 1.
 
-```sh
-cd semant_demo_frontend
-npm ci
-npm run lint
-npm run dev
-```
+Known legacy findings are recorded, not hidden:
 
-With isolated services configured, run the backend from `semant_demo_backend` using
-`python -m uvicorn semant_demo.main:app --reload`. SQL defaults to a relative `tasks.db`;
-set `SQL_DB_URL` to use another database. Tests build apps with `create_app(Config(environ=...))`.
+- `npm run typecheck` runs vue-tsc against `typecheck-baseline.json`. New errors fail;
+  fixed errors must be removed with `npm run typecheck -- --update`. Never add entries
+  to make the check pass.
+- Ruff currently enforces only syntax errors and undefined names (`pyproject.toml`).
+  Widen the rule set as code is cleaned up rather than adding blanket ignores.
+- ESLint warnings are reported but do not fail the check; errors do.
+
+Run the backend from `semant_demo_backend` using
+`python -m uvicorn semant_demo.main:app --reload` and the frontend with `npm run dev`.
+SQL defaults to a relative `tasks.db`; set `SQL_DB_URL` to use another database. Tests
+build apps with `create_app(Config(environ=...))`.
 
 For normal development, use the local development databases described in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Mutable development database state
@@ -56,11 +78,9 @@ must use test-owned data as described in the testing contract.
 Do not use shared server or production databases unless the task explicitly
 requires it.
 
-These entry points were inspected, not executed in the documentation review. Backend
-resolution is not yet locked. **`npm test` is currently a success-only placeholder, not
-test evidence.** Proposed root `make` targets are listed in
-[R0](docs/REFACTOR_PLAN.md#r0---reproducible-baseline-and-test-infrastructure);
-use them only after implementation. Report actual commands, not assumed passes.
+`make test-integration`, `make test-e2e` and `make dev` from
+[R0](docs/REFACTOR_PLAN.md#r0---reproducible-baseline-and-test-infrastructure) are
+not implemented yet. Report actual commands, not assumed passes.
 
 ## 3. Code and API rules
 
@@ -74,10 +94,10 @@ use them only after implementation. Report actual commands, not assumed passes.
   Preserve wire fields, nullability, operation IDs, canonical text, and stored offsets
   during moves. See the target architecture for feature ownership and roadmap contracts.
 
-Never hand-edit `src/generated/api/`. The existing generation command is
-`npm run sync-client-dev` in the frontend directory with the backend environment and
-generator runtime available. Preserve the existing generator pin and frontend lockfile
-unless explicitly upgrading. Review generated diffs; API changes include caller updates
+Never hand-edit `src/generated/api/`. Regenerate it with `make api-generate`, which
+generates into an empty directory so stale files are removed; `make check` fails when the
+committed client differs from the backend schema. Preserve the existing generator pin
+(`openapitools.json`) and frontend lockfile unless explicitly upgrading. Review generated diffs; API changes include caller updates
 and contract tests. Stream events also need tests: generation alone does not validate them.
 
 ## 4. Testing contract
@@ -95,8 +115,11 @@ A pure move may reuse existing coverage. Do not add a test at every layer by def
 | Selection, streaming, navigation | Targeted browser test when browser behavior is essential. |
 | Prompt/model/retrieval quality | Deterministic contract checks; a recorded small quality evaluation for intentional quality changes. |
 
-Use pytest and retain existing unittest tests. Proposed frontend tools are Vitest/Vue Test
-Utils and a small Playwright suite; R0 must verify compatible versions. Detailed fixtures,
+Use pytest and retain existing unittest tests. Tests without an `integration`, `live` or
+`benchmark` marker are fast tests; `tests/conftest.py` refuses their network connections,
+including loopback. Use `tests/fakes.py` for AI providers. Frontend unit/component tests
+use Vitest and Vue Test Utils under `semant_demo_frontend/test/unit`; a small Playwright
+suite is planned with the browser test infrastructure (#200). Detailed fixtures,
 regression cases, async guidance, and evaluation rules live in
 [ADR 0005](docs/adr/0005-testing-contract.md).
 

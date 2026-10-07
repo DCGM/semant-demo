@@ -8,9 +8,12 @@
   "scripts": {
     "dev": "quasar dev",
     "lint": "eslint --ext .js,.ts,.vue ./",
-    "test": "echo \"No test specified\" && exit 0",
+    "test": "vitest run",
+    "typecheck": "node scripts/typecheck.mjs",
     "sync-client": "openapi-generator-cli generate -i ../semant_demo_backend/openapi.json -g typescript-fetch -o src/generated/api --additional-properties=supportsES6=true,typescriptThreePlus=true,modelPropertyNaming=camelCase,enumPropertyNaming=camelCase,withoutPrefixEnums=true,withInterfaces=true,useSingleRequestParameter=true",
-    "sync-client-dev": "python ../semant_demo_backend/export_openapi.py --output ../semant_demo_backend/openapi.json && npm run sync-client"
+    "sync-client-dev": "python ../semant_demo_backend/export_openapi.py --output ../semant_demo_backend/openapi.json && npm run sync-client",
+    "api-generate": "bash scripts/api-client.sh generate",
+    "api-check": "bash scripts/api-client.sh check"
   },
   "dependencies": {
     "@quasar/extras": "^1.0.0",
@@ -23,11 +26,14 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.24.0",
     "@quasar/app-vite": "^1.0.0",
     "@types/marked": "^5.0.2",
     "@types/node": "^12.20.21",
     "@typescript-eslint/eslint-plugin": "^5.10.0",
     "@typescript-eslint/parser": "^5.10.0",
+    "@vitejs/plugin-vue": "2.3.4",
+    "@vue/test-utils": "2.4.6",
     "autoprefixer": "^10.4.2",
     "eslint": "^8.10.0",
     "eslint-config-standard": "^17.0.0",
@@ -35,11 +41,13 @@
     "eslint-plugin-n": "^15.0.0",
     "eslint-plugin-promise": "^6.0.0",
     "eslint-plugin-vue": "^9.0.0",
-    "typescript": "^4.5.4",
-    "@openapitools/openapi-generator-cli": "^2.24.0"
+    "jsdom": "24.1.3",
+    "typescript": "~5.5.4",
+    "vitest": "0.23.4",
+    "vue-tsc": "2.1.10"
   },
   "engines": {
-    "node": "^18 || ^16 || ^14.19",
+    "node": "^22",
     "npm": ">= 6.13.4",
     "yarn": ">= 1.21.1"
   }

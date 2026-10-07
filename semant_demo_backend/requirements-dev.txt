@@ -1,0 +1,7 @@
+# Development and test tools. Runtime dependencies stay in requirements.txt (used by the
+# production image). Install the resolved, pinned set with requirements-dev.lock.
+-r requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0
+asgi-lifespan==2.1.0
+ruff==0.14.0

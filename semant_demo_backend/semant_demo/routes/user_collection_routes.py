@@ -111,7 +111,8 @@ async def add_chunk_to_collection(
     del current_user
     err = await searcher.userCollection.add_chunk(chunk_id=chunk_id, collection_id=collection_id)
     if err == False:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error: {e}")
+        # Known defect: `e` is undefined, so this branch raises NameError. Fixed by #201 (R1).
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error: {e}")  # noqa: F821
     return {"created": True, "message": f"Chunk added to collection"}
 
 
