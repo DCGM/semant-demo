@@ -3,6 +3,9 @@
 Fakes implement only what the code under test uses. They never open connections, so
 fast tests stay offline and produce the same result on every run.
 """
+import hashlib
+import math
+
 from ollama import ChatResponse, Message
 
 from semant_demo.llm_api import APIModelResponseOllama, APIOutput, APIRequest
@@ -34,3 +37,18 @@ class FakeChatAPI:
     async def process_requests(self, requests):
         for request in requests:
             yield await self.process_single_request(request)
+
+
+FAKE_EMBEDDING_DIM = 16
+
+
+def fake_embedding(text: str, dim: int = FAKE_EMBEDDING_DIM) -> list[float]:
+    """Deterministic unit vector for ``text``; stands in for the embedding service.
+
+    Identical texts get identical vectors, so a query equal to a chunk's text is its
+    nearest neighbour. It carries no semantic meaning beyond that.
+    """
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    values = [digest[i % len(digest)] / 255.0 - 0.5 for i in range(dim)]
+    norm = math.sqrt(sum(v * v for v in values)) or 1.0
+    return [v / norm for v in values]

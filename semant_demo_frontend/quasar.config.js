@@ -64,6 +64,8 @@ module.exports = configure(function (/* ctx */) {
       },
 
       vueRouterMode: 'hash', // available values: 'hash', 'history'
+      // Browser tests build into a separate directory (see playwright.config.ts).
+      ...(process.env.QUASAR_DIST_DIR ? { distDir: process.env.QUASAR_DIST_DIR } : {}),
       // vueRouterBase,
       // vueDevtools,
       // vueOptionsAPI: false,

@@ -1,0 +1,67 @@
+{
+  "description": "Synthetic test-owned fixture corpus (no real user text). Loaded by tests/support/corpus.py and the Playwright suite. Span offsets are Python str indices (code points); every span's text precedes any non-BMP character in its chunk, so they equal JavaScript UTF-16 offsets as well.",
+  "users": [
+    {"key": "owner", "id": "5e3a0000-0000-4000-8000-00000000a001", "email": "owner@example.com", "username": "owner", "name": "Olga Owner", "password": "owner-password-1", "is_superuser": false},
+    {"key": "annotator", "id": "5e3a0000-0000-4000-8000-00000000a002", "email": "annotator@example.com", "username": "annotator", "name": "Adam Annotator", "password": "annotator-password-1", "is_superuser": false},
+    {"key": "outsider", "id": "5e3a0000-0000-4000-8000-00000000a003", "email": "outsider@example.com", "username": "outsider", "name": "Otto Outsider", "password": "outsider-password-1", "is_superuser": false},
+    {"key": "admin", "id": "5e3a0000-0000-4000-8000-00000000a004", "email": "admin@example.com", "username": "admin", "name": "Ada Admin", "password": "admin-password-1", "is_superuser": true}
+  ],
+  "collections": [
+    {"key": "chronicles", "id": "5e3a0000-0000-4000-8000-0000000c0001", "name": "Kroniky a dopisy", "description": "Owned by owner, shared with annotator.", "color": "blue", "owner": "owner", "shared_with": ["annotator"]},
+    {"key": "newspapers", "id": "5e3a0000-0000-4000-8000-0000000c0002", "name": "Noviny", "description": "Owned by owner, not shared.", "color": "green", "owner": "owner", "shared_with": []},
+    {"key": "outsider_notes", "id": "5e3a0000-0000-4000-8000-0000000c0003", "name": "Outsider notes", "description": "Owned by outsider.", "color": "red", "owner": "outsider", "shared_with": []}
+  ],
+  "documents": [
+    {
+      "key": "chronicle",
+      "id": "5e3a0000-0000-4000-8000-00000000d001",
+      "properties": {"title": "Kronika obce Lhota", "author": ["Václav Kronikář"], "yearIssued": 1851, "language": "ces", "documentType": "BOOK", "public": true},
+      "collections": ["chronicles", "newspapers"],
+      "chunks": [
+        {"key": "chronicle_1", "id": "5e3a0000-0000-4000-8000-0000000d1c01", "order": 0, "from_page": 1, "to_page": 1, "start_page_id": "5e3a0000-0000-4000-8000-0000000d1f01", "title": "Příjezd hejtmana", "text": "Roku 1848 přijel do Lhoty hejtman Jan Novák a ubytoval se v hostinci U Zlatého jelena.", "collections": ["chronicles"]},
+        {"key": "chronicle_2", "id": "5e3a0000-0000-4000-8000-0000000d1c02", "order": 1, "from_page": 1, "to_page": 2, "start_page_id": "5e3a0000-0000-4000-8000-0000000d1f01", "title": "Slavnost v Brně", "text": "Kronikář zaznamenal, že se v Brně konala slavnost; Jan Novák odjel ráno.", "collections": ["chronicles"]},
+        {"key": "chronicle_3", "id": "5e3a0000-0000-4000-8000-0000000d1c03", "order": 2, "from_page": 2, "to_page": 2, "start_page_id": "5e3a0000-0000-4000-8000-0000000d1f02", "title": "Požár", "text": "Požár v roce 1850 zničil polovinu obce Lhota.", "collections": ["newspapers"]}
+      ]
+    },
+    {
+      "key": "letters",
+      "id": "5e3a0000-0000-4000-8000-00000000d002",
+      "properties": {"title": "Dopisy z Prahy", "author": ["Karel Pisatel"], "yearIssued": 1902, "language": "ces", "documentType": "LETTER", "public": false},
+      "collections": ["chronicles"],
+      "chunks": [
+        {"key": "letters_1", "id": "5e3a0000-0000-4000-8000-0000000d2c01", "order": 0, "from_page": 1, "to_page": 1, "start_page_id": "5e3a0000-0000-4000-8000-0000000d2f01", "title": "První dopis", "text": "Milá Marie, píši Ti z Prahy. Počasí je ošklivé.", "collections": ["chronicles"]},
+        {"key": "letters_2", "id": "5e3a0000-0000-4000-8000-0000000d2c02", "order": 1, "from_page": 2, "to_page": 2, "start_page_id": "5e3a0000-0000-4000-8000-0000000d2f02", "title": null, "text": "Pozdravuj Zdeňku a celou rodinu. Tvůj Karel 😀", "collections": ["chronicles"]}
+      ]
+    },
+    {
+      "key": "gazette",
+      "id": "5e3a0000-0000-4000-8000-00000000d003",
+      "properties": {"title": "Pražský věstník", "language": "ces", "documentType": "PERIODICAL"},
+      "collections": ["newspapers", "outsider_notes"],
+      "chunks": [
+        {"key": "gazette_1", "id": "5e3a0000-0000-4000-8000-0000000d3c01", "order": 0, "from_page": 1, "to_page": 1, "start_page_id": "5e3a0000-0000-4000-8000-0000000d3f01", "title": "Kavárna", "text": "Café Slavia hostila setkání spisovatelů.", "collections": ["newspapers", "outsider_notes"]},
+        {"key": "gazette_2", "id": "5e3a0000-0000-4000-8000-0000000d3c02", "order": 1, "from_page": 1, "to_page": 1, "start_page_id": "5e3a0000-0000-4000-8000-0000000d3f01", "title": "Trh", "text": "Na Staroměstském náměstí se konal výroční trh.", "collections": ["newspapers"]}
+      ]
+    }
+  ],
+  "tags": [
+    {"key": "person", "id": "5e3a0000-0000-4000-8000-0000000ea001", "collection": "chronicles", "name": "Osoba", "shorthand": "OS", "color": "#1f77b4", "pictogram": "person", "definition": "Jméno konkrétní osoby.", "examples": ["Jan Novák"]},
+    {"key": "place", "id": "5e3a0000-0000-4000-8000-0000000ea002", "collection": "chronicles", "name": "Místo", "shorthand": "MI", "color": "#2ca02c", "pictogram": "place", "definition": "Název obce, města nebo místa.", "examples": ["Brno"]},
+    {"key": "event", "id": "5e3a0000-0000-4000-8000-0000000ea003", "collection": "newspapers", "name": "Událost", "shorthand": "UD", "color": "#d62728", "pictogram": "event", "definition": "Významná událost.", "examples": ["Požár"]},
+    {"key": "outsider_tag", "id": "5e3a0000-0000-4000-8000-0000000ea004", "collection": "outsider_notes", "name": "Poznámka", "shorthand": "PO", "color": "#9467bd", "pictogram": "note", "definition": "Poznámka jiného uživatele.", "examples": []}
+  ],
+  "spans": [
+    {"key": "novak_manual", "id": "5e3a0000-0000-4000-8000-0000000ab001", "chunk": "chronicle_1", "tag": "person", "type": "pos", "start": 34, "end": 43, "quote": "Jan Novák"},
+    {"key": "lhota_automatic", "id": "5e3a0000-0000-4000-8000-0000000ab002", "chunk": "chronicle_1", "tag": "place", "type": "auto", "start": 20, "end": 25, "quote": "Lhoty", "reason": "Název obce.", "confidence": 0.9},
+    {"key": "brno_manual", "id": "5e3a0000-0000-4000-8000-0000000ab003", "chunk": "chronicle_2", "tag": "place", "type": "pos", "start": 29, "end": 33, "quote": "Brně"},
+    {"key": "kronikar_rejected", "id": "5e3a0000-0000-4000-8000-0000000ab004", "chunk": "chronicle_2", "tag": "person", "type": "neg", "start": 0, "end": 8, "quote": "Kronikář"},
+    {"key": "pozar_manual", "id": "5e3a0000-0000-4000-8000-0000000ab005", "chunk": "chronicle_3", "tag": "event", "type": "pos", "start": 0, "end": 5, "quote": "Požár"},
+    {"key": "praha_automatic", "id": "5e3a0000-0000-4000-8000-0000000ab006", "chunk": "letters_1", "tag": "place", "type": "auto", "start": 22, "end": 27, "quote": "Prahy", "reason": "Název města.", "confidence": 0.75}
+  ],
+  "chunk_tags": [
+    {"chunk": "chronicle_1", "positiveTag": ["person"], "automaticTag": ["place"], "negativeTag": []},
+    {"chunk": "chronicle_2", "positiveTag": ["place"], "automaticTag": [], "negativeTag": ["person"]},
+    {"chunk": "chronicle_3", "positiveTag": ["event"], "automaticTag": [], "negativeTag": []},
+    {"chunk": "letters_1", "positiveTag": [], "automaticTag": ["place"], "negativeTag": []}
+  ]
+}

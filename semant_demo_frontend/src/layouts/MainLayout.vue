@@ -12,7 +12,7 @@
         <q-space />
 
         <!-- User avatar with auth menu -->
-        <q-btn flat round dense>
+        <q-btn flat round dense aria-label="User menu">
           <q-avatar size="36px" :color="userStore.isLoggedIn ? undefined : 'grey-5'" text-color="primary">
             <img v-if="userStore.isLoggedIn" src="/boy-avatar2.png" style="border-radius:50%;width:100%;height:100%;object-fit:cover;" />
             <q-icon v-else name="person_outline" />

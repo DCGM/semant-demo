@@ -5,9 +5,9 @@ Last updated: 2026-10-07
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #199 — Establish reliable fast checks and make CI blocking (in review)
+- Current issue: #200 — Add isolated real-store and browser test infrastructure (in review)
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
-  against local Weaviate)
+  against local Weaviate), #199 (fast checks and blocking CI, PR #211)
 - Current stage: R0
 
 ## Development environment
@@ -18,7 +18,8 @@ Last updated: 2026-10-07
 - Shared server databases are not used for normal refactor development.
 - The SQL database is configurable through `SQL_DB_URL` (#198). The
   `semant_demo_backend/tasks.db` symlink still works with the default URL.
-- #200 will establish deterministic test-owned integration fixtures.
+- Automated real-store and browser tests use throwaway test-owned Weaviate instances,
+  never `local_data/` (#200, see DEVELOPMENT.md section 11).
 
 ## #198 outcome
 
@@ -61,6 +62,42 @@ Last updated: 2026-10-07
   image). Production and test-main deploys now require all three to succeed (previously
   `always()`, i.e. they deployed even after failed tests). PR preview deploys are unchanged.
 
+## #200 outcome
+
+- `make test-integration`: `scripts/with-test-weaviate.sh` starts a uniquely named Weaviate
+  1.34.4 container with no volume on random loopback ports and removes it afterwards;
+  pytest runs `-m integration` against it. Tests read only `SEMANT_TEST_WEAVIATE_*`, never
+  the application's `WEAVIATE_*`.
+- Ownership (`tests/weaviate_store.py`): an empty instance is claimed with a marker
+  collection, a marked one is accepted, anything else is refused before any write.
+  Verified by pointing the variables at the local development Weaviate: refused, its
+  collections unchanged. Non-loopback hosts need `SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL=1`.
+  Collection names cannot be prefixed per run (some are also used as reference names in
+  filters), so the run's namespace is the whole throwaway instance.
+- Fixture corpus `tests/fixtures/corpus.json` (single source for pytest and Playwright,
+  validated on load): owner/annotator/outsider/admin, three collections (one shared, one
+  of another user), a document in two collections with partial chunk membership,
+  manual/automatic/rejected spans and positive/automatic/negative chunk tag references,
+  Czech diacritics, a combining mark, a non-BMP character, missing metadata. The test
+  schema (`create_app_schema`) mirrors the properties/references the backend uses in the
+  deployed schema; unused metadata-enrichment properties are omitted.
+- Integration tests (22): store isolation/cleanup, collection listing for owner/shared/
+  unrelated/admin, stats, partial membership, document stats, span metadata, Unicode
+  round trip, BM25 search scoped by collection and chunk tag, HTTP login for corpus users
+  and document-view endpoints. They pin current behavior; no access checks exist yet (#201).
+- `make test-e2e`: Playwright 1.63.0 (Chromium headless shell). The web server builds the
+  frontend into `dist/e2e` (new `QUASAR_DIST_DIR` override in `quasar.config.js`) and starts
+  `tests/e2e_server.py`: seeded store, temporary SQLite with corpus users, built SPA on the
+  same origin, fake embedding/Topicer providers (`tests/fake_providers.py`; other provider
+  routes answer 501, no API keys). Smoke tests: login persists across reload, shared user
+  opens a shared document, approved annotations render at their offsets, switching
+  collection shows no stale chunks/annotations. `aria-label="User menu"` was added to the
+  account button so it has an accessible name.
+- Fast tests added for the ownership rules and for the fakes speaking the real Topicer
+  client protocol.
+- CI: new blocking `Integration tests` job with a per-job Weaviate service container;
+  production and test-main deploys also need it. The browser suite is not in CI yet (#212).
+
 ## Temporary exceptions
 
 - **Process-wide `config` still read directly** by provider/adapter modules:
@@ -93,4 +130,15 @@ Last updated: 2026-10-07
   "Generated API client drift" as required checks for failures to block merging; that is
   a repository setting, not part of the workflow file.
 - PR preview deploys still run with production `OPENAI_API_KEY`/`JWT_SECRET` secrets on
-  the self-hosted runner and still deploy after failed checks. Revisit with #200.
+  the self-hosted runner and still deploy after failed checks. Not changed in #200 (a
+  deployment decision); tracked in #213.
+- "Integration tests" must also be added to the required checks in branch protection.
+- `WeaviateAbstraction.create` connects without `skip_init_checks`, so the weaviate client
+  requests `https://pypi.org/pypi/weaviate-client/json` on every connection (also from
+  integration/e2e test apps; failures are ignored by the client). The test-store client
+  skips it. Decide when the connection moves to bootstrap (#202).
+- `UserCollection.read_all_documents` calls `fetch_objects` without a limit, so it returns
+  at most `QUERY_DEFAULTS_LIMIT` (25) documents per collection. Not covered by the corpus
+  yet; add a document set exceeding a page with the pagination cases (#203).
+- The corpus has no cross-chunk annotations or a document exceeding a chunk page; add
+  them with the tests that need them (#204/#206 and pagination work).
