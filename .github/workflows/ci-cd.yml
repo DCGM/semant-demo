@@ -462,7 +462,7 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BRANCH: ${{ github.head_ref }}
-          TELEMETRY_ENABLED: ${{ contains(github.event.pull_request.labels.*.name, 'telemetry') && 'true' || 'false' }}
+          TELEMETRY_ENABLED: ${{ contains(github.event.pull_request.labels.*.name, 'telemetry-enabled') && 'true' || 'false' }}
         run: |
           BASE_DOMAIN="${{ vars.BASE_DOMAIN }}"
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"

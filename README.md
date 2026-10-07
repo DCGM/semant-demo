@@ -364,7 +364,7 @@ Deployments are identified by `service.name=semant-demo-app` and one `DEPLOYMENT
 | Persistent `main` test deployment | `test-main` |
 | Pull-request preview | `test-pr-<number>` |
 
-Telemetry for a pull-request preview is disabled unless the pull request has the GitHub label `telemetry`. Adding or removing that label triggers a redeploy of the preview with the corresponding setting.
+Telemetry for a pull-request preview is disabled unless the pull request has the GitHub label `telemetry-enabled`. Adding or removing that label triggers a redeploy of the preview with the corresponding setting.
 
 Grafana dashboards should filter by both `service_name="semant-demo-app"` and the selected `deployment_environment_name`; this prevents similarly named metrics from other projects in a shared metrics backend from being shown accidentally.
 
