@@ -20,7 +20,8 @@ Do not implement numbered refactor issues directly on this branch.
 
 For each refactor issue:
 
-1. Start from the current `197-refactor---base`.
+1. Fetch the latest repository state and start from the current
+   `origin/197-refactor---base`, not from a stale local copy.
 2. Create a dedicated branch for that issue, for example
    `198-bootstrap-config` or `199-fast-checks-ci`.
 3. Make only the changes required for that issue on the issue branch.
