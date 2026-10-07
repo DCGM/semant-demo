@@ -15,7 +15,8 @@ Users who cannot read a collection get "not found", so ids of other users' colle
 are not confirmed. There is no admin bypass: admins have the explicit admin-only routes
 (changing a collection's owner) and otherwise the same rights as anyone else. Tags and
 spans resolve to their single owning collection; a tag referencing no collection or
-several collections is treated as inaccessible rather than guessed.
+several collections is treated as inaccessible rather than guessed. Collection+document
+requests also need the document to be linked to that collection.
 """
 from __future__ import annotations
 
@@ -122,6 +123,19 @@ async def require_tags_in_collection(store: WeaviateAbstraction, tag_ids: Iterab
     if ids and await collection_of_tags(store, ids) != collection_id:
         raise ResourceNotFound("Tag not found")
     return ids
+
+
+async def require_document_in_collection(store: WeaviateAbstraction, document_id: str | UUID,
+                                         collection_id: UUID) -> UUID:
+    """The document must be linked to the collection; otherwise not found.
+
+    Collection access alone does not make another collection's document part of a
+    collection-scoped request.
+    """
+    doc = parse_id(document_id, "Document")
+    if not await store.userCollection.document_in_collection(doc, collection_id):
+        raise ResourceNotFound("Document not found in this collection")
+    return doc
 
 
 async def require_chunks_in_collection(store: WeaviateAbstraction, chunk_ids: Iterable[str | UUID],

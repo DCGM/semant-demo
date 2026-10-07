@@ -481,7 +481,7 @@ async def suggest_spans_thorough(
     # Checked before the stream starts, so a denied request makes no provider call.
     grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
     await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
-    document_id = access.parse_id(body.document_id, "Document")
+    document_id = await access.require_document_in_collection(searcher, body.document_id, grant.collection_id)
 
     return StreamingResponse(
         _thorough_stream(
@@ -522,7 +522,7 @@ async def suggest_spans_optimized(
     # Checked before the stream starts, so a denied request makes no provider call.
     grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
     await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
-    document_id = access.parse_id(body.document_id, "Document")
+    document_id = await access.require_document_in_collection(searcher, body.document_id, grant.collection_id)
 
     return StreamingResponse(
         _optimized_stream(
@@ -582,6 +582,7 @@ async def suggest_spans_selection(
     # Checked before the stream starts, so a denied request makes no provider call.
     grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
     await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
+    await access.require_document_in_collection(searcher, body.document_id, grant.collection_id)
     await access.require_chunks_in_collection(searcher, body.chunk_ids, grant.collection_id, body.document_id)
 
     return StreamingResponse(
@@ -614,13 +615,14 @@ async def delete_auto_spans(
     ``failed`` those that could not be deleted.
     """
     grant = await access.require_annotation_edit(searcher, current_user, body.collection_id)
+    document = await access.require_document_in_collection(searcher, body.document_id, grant.collection_id)
     if not body.tag_ids:
         return DeleteAutoSpansResponse(outcome=outcome_of(0, 0), deleted=0)
     await access.require_tags_in_collection(searcher, body.tag_ids, grant.collection_id)
 
     result = await searcher.span.delete_auto_spans_in_scope(
         collection_id=str(grant.collection_id),
-        document_id=str(access.parse_id(body.document_id, "Document")),
+        document_id=str(document),
         tag_ids=body.tag_ids,
     )
     return DeleteAutoSpansResponse(**result.model_dump(), deleted=len(result.succeeded))

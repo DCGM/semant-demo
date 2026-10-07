@@ -61,7 +61,8 @@ async def fetch_document_chunks(document_id: str,
     Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
     """
     grant = await access.require_collection_read(searcher, current_user, collection_id)
-    response = await searcher.document.read_document_chunks(document_id=document_id, collection_id=str(grant.collection_id))
+    document = await access.require_document_in_collection(searcher, document_id, grant.collection_id)
+    response = await searcher.document.read_document_chunks(document_id=str(document), collection_id=str(grant.collection_id))
     if response is None:
         raise HTTPException(status_code=404, detail=f"Document with id {document_id} not found")
     return response

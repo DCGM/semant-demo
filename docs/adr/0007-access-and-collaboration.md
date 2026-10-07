@@ -56,6 +56,9 @@ The rights left open above were decided by the maintainer and are implemented in
 Users without read access get "not found" so other users' collection ids are not
 confirmed; anonymous users get 401. A tag or span resolves to its single owning
 collection; one referencing no collection or several is treated as inaccessible.
+Collection+document requests also require the document to be linked to that collection
+(the document's collection reference, not chunk membership, since the Document view
+shows non-member chunks of member documents).
 Corpus reads without a collection (document metadata, corpus browse, chunk counts,
 search without a collection) remain public. Restricting search tag filters to
 authorized tags belongs to the Search migration (#205).

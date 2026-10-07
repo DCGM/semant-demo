@@ -111,7 +111,13 @@ Last updated: 2026-10-08
   tag definitions and see the member list, and that metadata edits/deletion are owner-only.
 - Every collection, tag, span, AI-assistance, span-chat, sharing/member and
   document-with-collection route checks access before reading, writing or calling a
-  provider (AI checks run before the stream starts). Previously most of them had no
+  provider (AI checks run before the stream starts). Collection+document requests
+  (document chunks/range/neighbour/stats, scoped annotation deletes, AI suggestions)
+  also require the document to be linked to the collection
+  (`require_document_in_collection`, one lookup independent of document size); before,
+  optimized AI mode called the provider for another collection's document. Add/remove
+  document are membership operations and do not require it. In the local snapshot every
+  collection/document pair implied by chunk membership has this link. Previously most of them had no
   check at all; several did not even require login.
 - Contract changes (generated client regenerated, frontend updated):
   - span reads (`GET /api/tag_spans`, `POST /api/tag_spans/batch`) require `collection_id`;
@@ -180,6 +186,9 @@ Last updated: 2026-10-08
   Collections (#203).
 - Search tag filters (`tag_uuids`) are not restricted to tags of readable collections;
   only `user_collection_id` is checked. Belongs to the Search migration (#205).
+- A partial add chunk (chunk linked, document link failed) leaves the chunk in the
+  collection while its document is not, so collection+document requests for that document
+  return 404 until the add is retried (the partial outcome is reported to the user).
 - `Tag.create` inserts the tag and then links it to the collection; if the link fails the
   tag exists without a collection and is inaccessible (the error is returned as 500).
 

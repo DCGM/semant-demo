@@ -264,8 +264,8 @@ async def get_document_stats(collection_id: str, document_id: str, searcher: Wea
     chunks in collection / total, annotation count, distinct tag count.
     """
     grant = await access.require_collection_read(searcher, current_user, collection_id)
-    return await searcher.userCollection.read_document_stats(
-        str(grant.collection_id), str(access.parse_id(document_id, "Document")))
+    document = await access.require_document_in_collection(searcher, document_id, grant.collection_id)
+    return await searcher.userCollection.read_document_stats(str(grant.collection_id), str(document))
 
 
 @exp_router.get("/api/collections/{collection_id}/documents/{document_id}", response_model=list[Chunk], response_model_exclude_none=True)
@@ -275,8 +275,8 @@ async def get_collection_document_chunks(collection_id: str, document_id: str, s
     Returns chunks which belong to document and collection given by id
     """
     grant = await access.require_collection_read(searcher, current_user, collection_id)
-    response = await searcher.userCollection.read_all_chunks_by_document(
-        str(access.parse_id(document_id, "Document")), str(grant.collection_id))
+    document = await access.require_document_in_collection(searcher, document_id, grant.collection_id)
+    response = await searcher.userCollection.read_all_chunks_by_document(str(document), str(grant.collection_id))
     return response
 
 
@@ -298,8 +298,9 @@ async def get_neighbour_chunk(
     the given boundary_order within the document. Marks in_collection accordingly.
     """
     grant = await access.require_collection_read(searcher, current_user, collection_id)
+    document = await access.require_document_in_collection(searcher, document_id, grant.collection_id)
     chunk = await searcher.userCollection.get_neighbour_chunk(
-        document_id=str(access.parse_id(document_id, "Document")),
+        document_id=str(document),
         collection_id=str(grant.collection_id),
         direction=direction,
         boundary_order=boundary_order,
@@ -324,8 +325,9 @@ async def get_chunks_in_range(
     and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
     """
     grant = await access.require_collection_read(searcher, current_user, collection_id)
+    document = await access.require_document_in_collection(searcher, document_id, grant.collection_id)
     return await searcher.userCollection.get_chunks_in_range(
-        document_id=str(access.parse_id(document_id, "Document")),
+        document_id=str(document),
         collection_id=str(grant.collection_id),
         order_gt=order_gt,
         order_lt=order_lt,

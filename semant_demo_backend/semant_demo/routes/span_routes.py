@@ -163,9 +163,10 @@ async def delete_spans_for_tags_in_document(
     """
     grant = await access.require_annotation_edit(tagger, current_user, body.collection_id)
     await access.require_tags_in_collection(tagger, body.tag_ids, grant.collection_id)
+    document = await access.require_document_in_collection(tagger, body.document_id, grant.collection_id)
     result = await tagger.span.delete_all_spans_for_tags_in_document(
         collection_id=str(grant.collection_id),
-        document_id=str(access.parse_id(body.document_id, "Document")),
+        document_id=str(document),
         tag_ids=body.tag_ids,
     )
     return DeleteSpansForTagsResponse(**result.model_dump(), deleted=len(result.succeeded))
