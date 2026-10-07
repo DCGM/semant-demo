@@ -42,8 +42,10 @@ Report changed behavior and files, commands actually executed, results, unrun ch
 and remaining risks/decisions. Do not claim a test, browser check, migration, or deployment
 was performed unless it was. Update relevant contracts/docs in the same PR. 
 
-Pushing the assigned issue branch and opening a pull request into
-`197-refactor---base` are part of the normal refactor workflow.
+Agents are authorized to push the assigned issue branch and open its pull request
+into `197-refactor---base` without separate confirmation. This authorization does
+not include merging the pull request, pushing directly to integration/main branches,
+deploying, or changing shared/production data.
 
 Do not push commits directly to `197-refactor---base` or `main`.
 Do not merge pull requests, deploy, or change production/shared data unless
