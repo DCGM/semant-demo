@@ -24,11 +24,18 @@ const result = spawnSync(
 const output = `${result.stdout}${result.stderr}`
 const errorLine = /^(.+?)\(\d+,\d+\): error (TS\d+): (.*)$/
 
+// TypeScript truncates long inline object types differently between runs; keep the message
+// up to the first inline object type so the key is stable.
+function normalize (message) {
+  const inlineType = message.indexOf("'{")
+  return inlineType === -1 ? message : `${message.slice(0, inlineType)}'{…}'`
+}
+
 const current = {}
 for (const line of output.split('\n')) {
   const match = errorLine.exec(line)
   if (match) {
-    const key = `${match[1]}: ${match[2]}: ${match[3]}`
+    const key = `${match[1]}: ${match[2]}: ${normalize(match[3])}`
     current[key] = (current[key] ?? 0) + 1
   }
 }
