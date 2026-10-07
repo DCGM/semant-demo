@@ -329,14 +329,16 @@ They never use the development container or `local_data/`:
 
 - `scripts/with-test-weaviate.sh` starts a uniquely named Weaviate container with no volume
   on random loopback ports, passes them to the tests as `SEMANT_TEST_WEAVIATE_HOST`,
-  `SEMANT_TEST_WEAVIATE_REST_PORT` and `SEMANT_TEST_WEAVIATE_GRPC_PORT`, and removes the
-  container afterwards. The application's own `WEAVIATE_*` settings are not used.
-- Before creating or deleting anything, the tests verify ownership
-  (`semant_demo_backend/tests/weaviate_store.py`): an empty instance is claimed with a
-  marker collection, a marked instance is accepted, and any other instance is refused,
-  so pointing the variables at the development snapshot fails without changing it. Hosts
-  other than loopback are refused unless `SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL=1` (CI
-  service container).
+  `SEMANT_TEST_WEAVIATE_REST_PORT` and `SEMANT_TEST_WEAVIATE_GRPC_PORT` together with a
+  fresh random `SEMANT_TEST_STORE_TOKEN`, and removes the container afterwards. The
+  application's own `WEAVIATE_*` settings are not used. The CI job sets its own token.
+- Before creating or deleting anything, the tests verify that the instance belongs to the
+  current run (`semant_demo_backend/tests/weaviate_store.py`): an empty instance is claimed
+  with a marker collection holding the token, an instance whose marker holds the same
+  token is accepted, and everything else is refused, including a marker left by another
+  run. Pointing the variables at the development snapshot therefore fails without changing
+  it. Hosts other than loopback are refused unless `SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL=1`
+  (CI service container).
 - Every integration test drops and recreates the application collections and seeds the
   synthetic corpus in `semant_demo_backend/tests/fixtures/corpus.json` (users, three
   collections incl. a shared one, documents in several collections, partial chunk

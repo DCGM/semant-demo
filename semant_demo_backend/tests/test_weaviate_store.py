@@ -14,7 +14,10 @@ ENDPOINT_ENV = {
     "SEMANT_TEST_WEAVIATE_HOST": "127.0.0.1",
     "SEMANT_TEST_WEAVIATE_REST_PORT": "18080",
     "SEMANT_TEST_WEAVIATE_GRPC_PORT": "15051",
+    "SEMANT_TEST_STORE_TOKEN": "run-a",
 }
+RUN_TOKEN = "run-a"
+OTHER_RUN_TOKEN = "run-b"
 
 
 class FakeCollection:
@@ -64,6 +67,13 @@ def test_endpoint_requires_explicit_test_settings():
         StoreEndpoint.from_env({})
 
 
+def test_endpoint_requires_ownership_token():
+    env = {k: v for k, v in ENDPOINT_ENV.items() if k != "SEMANT_TEST_STORE_TOKEN"}
+
+    with pytest.raises(StoreUnavailable):
+        StoreEndpoint.from_env(env)
+
+
 def test_endpoint_ignores_application_weaviate_settings():
     with pytest.raises(StoreUnavailable):
         StoreEndpoint.from_env({"WEAVIATE_HOST": "localhost", "WEAVIATE_REST_PORT": "8080"})
@@ -82,35 +92,58 @@ def test_endpoint_allows_explicitly_dedicated_non_loopback_host():
 
     endpoint = StoreEndpoint.from_env(env)
 
+    assert endpoint.token == RUN_TOKEN
     assert endpoint.app_environ() == {
         "WEAVIATE_HOST": "192.0.2.10", "WEAVIATE_REST_PORT": "18080", "WEAVIATE_GRPC_PORT": "15051",
     }
+
+
+async def test_empty_instance_is_claimed_with_current_token():
+    collections = FakeCollections()
+
+    await claim_store(FakeClient(collections), RUN_TOKEN)
+
+    assert collections.created == [MARKER_COLLECTION]
+    assert collections.objects[MARKER_COLLECTION] == [{"purpose": MARKER_PURPOSE, "token": RUN_TOKEN}]
+
+
+async def test_marker_with_matching_token_is_accepted():
+    collections = FakeCollections(
+        names={MARKER_COLLECTION, "Chunks"},
+        objects={MARKER_COLLECTION: [{"purpose": MARKER_PURPOSE, "token": RUN_TOKEN}]},
+    )
+
+    await claim_store(FakeClient(collections), RUN_TOKEN)
+
+    assert collections.created == []
+
+
+@pytest.mark.parametrize("marker", [
+    {"purpose": MARKER_PURPOSE, "token": OTHER_RUN_TOKEN},  # left by another run
+    {"purpose": MARKER_PURPOSE},  # marker without a token
+], ids=["other-run-token", "no-token"])
+async def test_marker_from_another_run_is_refused(marker):
+    collections = FakeCollections(names={MARKER_COLLECTION, "Chunks"}, objects={MARKER_COLLECTION: [marker]})
+
+    with pytest.raises(StoreNotOwned):
+        await claim_store(FakeClient(collections), RUN_TOKEN)
+
+    assert collections.created == []
 
 
 async def test_unmarked_instance_with_data_is_refused():
     collections = FakeCollections(names={"Chunks", "Documents"})
 
     with pytest.raises(StoreNotOwned):
-        await claim_store(FakeClient(collections))
+        await claim_store(FakeClient(collections), RUN_TOKEN)
 
     assert collections.created == []
 
 
-async def test_empty_instance_is_claimed_with_marker():
+async def test_empty_token_never_claims():
     collections = FakeCollections()
 
-    await claim_store(FakeClient(collections))
-
-    assert collections.created == [MARKER_COLLECTION]
-    assert collections.objects[MARKER_COLLECTION] == [{"purpose": MARKER_PURPOSE}]
-
-
-async def test_marked_instance_is_accepted():
-    collections = FakeCollections(
-        names={MARKER_COLLECTION, "Chunks"},
-        objects={MARKER_COLLECTION: [{"purpose": MARKER_PURPOSE}]},
-    )
-
-    await claim_store(FakeClient(collections))
+    with pytest.raises(StoreNotOwned):
+        await claim_store(FakeClient(collections), "")
 
     assert collections.created == []

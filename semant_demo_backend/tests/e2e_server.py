@@ -77,9 +77,9 @@ async def prepare_stores(config, endpoint: StoreEndpoint) -> None:
     corpus = load_corpus()
     client = await connect(endpoint)
     try:
-        await drop_app_collections(client, config.collectionNames)
+        await drop_app_collections(client, config.collectionNames, endpoint.token)
         await create_app_schema(client, config.collectionNames)
-        await seed_weaviate(client, config.collectionNames, corpus)
+        await seed_weaviate(client, config.collectionNames, corpus, endpoint.token)
     finally:
         await client.close()
     engine = create_async_engine(config.SQL_DB_URL)
