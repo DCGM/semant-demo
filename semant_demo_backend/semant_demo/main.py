@@ -71,37 +71,40 @@ async def log_http_request(request: Request, call_next):
     feature = feature_for_request(request.url.path, request.method)
     authentication = request_authentication(request.headers.get("Authorization"))
 
-    def record_feature_usage(status_code: int) -> None:
+    def record_feature_usage(status_code: int, duration_seconds: float) -> None:
         if telemetry is not None and feature is not None:
             telemetry.record_feature_request(
                 feature=feature,
                 authentication=authentication,
                 status_code=status_code,
+                duration_seconds=duration_seconds,
             )
 
     try:
         response = await call_next(request)
     except Exception:
+        duration_seconds = perf_counter() - started_at
         attributes["http.response.status_code"] = 500
         attributes["http.server.request.duration_ms"] = round(
-            (perf_counter() - started_at) * 1000, 2
+            duration_seconds * 1000, 2
         )
         logging.getLogger(__name__).exception(
             "HTTP request failed",
             extra=attributes,
         )
-        record_feature_usage(500)
+        record_feature_usage(500, duration_seconds)
         raise
 
+    duration_seconds = perf_counter() - started_at
     attributes["http.response.status_code"] = response.status_code
     attributes["http.server.request.duration_ms"] = round(
-        (perf_counter() - started_at) * 1000, 2
+        duration_seconds * 1000, 2
     )
     logging.getLogger(__name__).debug(
         "HTTP request completed",
         extra=attributes,
     )
-    record_feature_usage(response.status_code)
+    record_feature_usage(response.status_code, duration_seconds)
     response.headers["X-Request-ID"] = request_id
     return response
 

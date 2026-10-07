@@ -102,6 +102,7 @@ class OpenTelemetry:
     meter: object
     logger: object
     feature_request_counter: object
+    feature_request_duration_histogram: object
     trace_provider: TracerProvider
     meter_provider: MeterProvider
     log_provider: LoggerProvider
@@ -117,15 +118,21 @@ class OpenTelemetry:
         feature: str,
         authentication: str,
         status_code: int,
+        duration_seconds: float,
     ) -> None:
-        """Record one use of a dashboard feature with safe attributes only."""
+        """Record one completed dashboard feature action and its duration."""
+        attributes = {
+            "feature": feature,
+            "authentication": authentication,
+            "outcome": request_outcome(status_code),
+        }
         self.feature_request_counter.add(
             1,
-            attributes={
-                "feature": feature,
-                "authentication": authentication,
-                "outcome": request_outcome(status_code),
-            },
+            attributes=attributes,
+        )
+        self.feature_request_duration_histogram.record(
+            duration_seconds,
+            attributes=attributes,
         )
 
     def instrument_app(self, app: FastAPI) -> None:
@@ -195,6 +202,11 @@ def initialize_opentelemetry() -> OpenTelemetry | None:
         unit="{request}",
         description="Completed user-initiated application feature requests.",
     )
+    feature_request_duration_histogram = meter.create_histogram(
+        "semant_demo.feature.request.duration",
+        unit="s",
+        description="Duration of completed user-initiated application feature requests.",
+    )
 
     log_exporter = OTLPLogExporter(
         endpoint=urljoin(
@@ -237,6 +249,7 @@ def initialize_opentelemetry() -> OpenTelemetry | None:
         meter=meter,
         logger=logger,
         feature_request_counter=feature_request_counter,
+        feature_request_duration_histogram=feature_request_duration_histogram,
         trace_provider=trace_provider,
         meter_provider=meter_provider,
         log_provider=log_provider,
