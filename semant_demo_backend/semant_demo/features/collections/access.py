@@ -10,6 +10,7 @@ read, write or provider call. Rights:
 | ``require_tag_definition_edit`` (create/edit/delete tags) | yes | yes | not found |
 | ``require_membership_edit`` (add/remove documents/chunks) | yes | forbidden | not found |
 | ``require_collection_owner`` (metadata, delete, sharing) | yes | forbidden | not found |
+| ``require_admin`` (change a collection's owner) | no | no | admins only |
 
 Users who cannot read a collection get "not found", so ids of other users' collections
 are not confirmed. There is no admin bypass: admins have the explicit admin-only routes
@@ -109,6 +110,14 @@ async def require_collection_owner(collections: UserCollectionRepository, user: 
     if not grant.is_owner:
         raise AccessDenied("Only the collection owner can do this")
     return grant
+
+
+def require_admin(user: Principal | None) -> None:
+    """Explicit admin-only actions (changing a collection's owner); not a bypass of the checks above."""
+    if user is None:
+        raise AuthenticationRequired("Log in to access collections")
+    if not getattr(user, "is_superuser", False):
+        raise AccessDenied("Only administrators can do this")
 
 
 async def collection_of_tags(tags: TagRepository, tag_ids: Iterable[str | UUID]) -> UUID:

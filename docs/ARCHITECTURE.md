@@ -66,7 +66,6 @@ flowchart LR
         AI_R[ai_assistance_routes]
         CHAT_R[span_chat_routes]
         DOC_R[document_routes]
-        COL_R[user_collection_routes]
         USR_R[user_routes]
         FB_R[feedback_routes]
         AUTH_R["users/<br/>(auth, register, users)"]
@@ -90,10 +89,11 @@ flowchart LR
         TAG_F[tagging/]
         AI_F["ai_assistance/<br/>(topicer_client, span_chat)"]
         USERS[users/]
+        COL_F["features/collections/<br/>(routes, service, access, schemas)"]
     end
 
     APP --> DI & RAG_F & USERS
-    SUM_R & RAG_R & TAG_R & SPAN_R & AI_R & CHAT_R & DOC_R & COL_R & USR_R & FB_R & AUTH_R --> DI
+    SUM_R & RAG_R & TAG_R & SPAN_R & AI_R & CHAT_R & DOC_R & COL_F & USR_R & FB_R & AUTH_R --> DI
     DI --> WS
     RAG_R --> RAG_F
     SUM_R --> SUM

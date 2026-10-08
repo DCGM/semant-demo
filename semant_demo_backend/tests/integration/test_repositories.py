@@ -10,7 +10,7 @@ from weaviate.classes.data import DataObject
 from weaviate.classes.query import QueryReference
 
 from semant_demo.core.errors import NotFoundError
-from semant_demo.schema.collections import PatchCollection
+from semant_demo.features.collections.schemas import PatchCollection
 from semant_demo.schema.tags import PatchTag, PostTag
 from semant_demo.schemas import SpanType
 from tests.fakes import fake_embedding
