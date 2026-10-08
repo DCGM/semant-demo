@@ -1,18 +1,16 @@
-import { api } from 'boot/axios'
 import { defineStore } from 'pinia'
-import type { User } from 'src/models'
-
-const TOKEN_KEY = 'auth_token'
+import type { UserRead } from 'src/generated/api'
+import { clearAuthToken, getAuthToken, setAuthToken, useApi } from 'src/shared/api'
 
 interface UserStoreState {
-  user: User | null
+  user: UserRead | null
   token: string | null
 }
 
 export const useUserStore = defineStore('user', {
   state: (): UserStoreState => ({
     user: null,
-    token: localStorage.getItem(TOKEN_KEY)
+    token: getAuthToken()
   }),
 
   getters: {
@@ -24,59 +22,45 @@ export const useUserStore = defineStore('user', {
 
   actions: {
     async register (email: string, password: string, username: string, name: string, institution?: string): Promise<void> {
-      await api.post('/auth/register', { email, password, username, name, institution })
+      await useApi().auth.registerRegisterApiAuthRegisterPost({
+        userCreate: { email, password, username, name, institution }
+      })
     },
 
     async login (email: string, password: string): Promise<void> {
-      const params = new URLSearchParams()
-      params.append('username', email)
-      params.append('password', password)
-      const response = await api.post('/auth/jwt/login', params, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      })
-      const token: string = response.data.access_token
-      this.token = token
-      localStorage.setItem(TOKEN_KEY, token)
+      const { accessToken } = await useApi().auth.authJwtLoginApiAuthJwtLoginPost({ username: email, password })
+      this.token = accessToken
+      setAuthToken(accessToken)
       await this.fetchCurrentUser()
     },
 
     async logout (): Promise<void> {
       try {
-        if (this.token) {
-          await api.post(
-            '/auth/jwt/logout',
-            {},
-            { headers: { Authorization: `Bearer ${this.token}` } }
-          )
-        }
+        if (this.token) await useApi().auth.authJwtLogoutApiAuthJwtLogoutPost()
       } finally {
-        this.token = null
-        this.user = null
-        localStorage.removeItem(TOKEN_KEY)
+        this.forgetSession()
       }
     },
 
     async fetchCurrentUser (): Promise<void> {
       if (!this.token) return
       try {
-        const response = await api.get('/users/me', {
-          headers: { Authorization: `Bearer ${this.token}` }
-        })
-        this.user = response.data as User
+        this.user = await useApi().users.usersCurrentUserApiUsersMeGet()
       } catch {
         // Token invalid or expired
-        this.token = null
-        this.user = null
-        localStorage.removeItem(TOKEN_KEY)
+        this.forgetSession()
       }
     },
 
     async updateUser (data: { email?: string; password?: string; name?: string; institution?: string | null }): Promise<void> {
       if (!this.token) throw new Error('Not authenticated')
-      const response = await api.patch('/users/me', data, {
-        headers: { Authorization: `Bearer ${this.token}` }
-      })
-      this.user = response.data as User
+      this.user = await useApi().users.usersPatchCurrentUserApiUsersMePatch({ userUpdate: data })
+    },
+
+    forgetSession (): void {
+      this.token = null
+      this.user = null
+      clearAuthToken()
     }
   }
 })

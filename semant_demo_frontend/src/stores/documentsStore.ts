@@ -4,6 +4,7 @@ import { Documents, Document, DocumentBrowseParams } from 'src/models/documents'
 import { ongoingNotification } from 'src/utils/notification'
 import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
 import { IncompleteWriteError } from 'src/utils/writeOutcome'
+import { createContextGuard } from 'src/shared/api'
 
 export const useDocumentsStore = defineStore('documents', () => {
   const documentsRepository = useDocumentsRepository()
@@ -12,61 +13,83 @@ export const useDocumentsStore = defineStore('documents', () => {
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
   const pendingRemoveIds = ref<Set<string>>(new Set())
+  // Only the latest load sets the list / the open document (another collection or
+  // document may be open by now).
+  const listRequests = createContextGuard()
+  const activeRequests = createContextGuard()
 
   const visibleDocuments = computed(() =>
     documents.value.filter((doc) => !pendingRemoveIds.value.has(doc.id))
   )
 
+  let listCollectionId: string | null = null
+
   const fetchDocumentsByCollection = async (collectionId: string) => {
-    // const notif = ongoingNotification('Loading documents...')
+    listRequests.enter()
+    const isCurrent = listRequests.capture()
+    if (listCollectionId !== collectionId) documents.value = []
+    listCollectionId = collectionId
     loading.value = true
     error.value = null
     try {
       const data = await documentsRepository.getAllByCollection(collectionId)
-      documents.value = data
-      // notif.success('Documents loaded')
+      if (isCurrent()) documents.value = data
     } catch (err) {
+      if (!isCurrent()) return
       error.value = 'Failed to fetch documents'
       console.error('Error fetching documents:', err)
-      // notif.error('Failed to load documents')
     } finally {
-      loading.value = false
+      if (isCurrent()) loading.value = false
     }
   }
 
   const fetchDocument = async (documentId: string) => {
-    // const notif = ongoingNotification('Loading document...')
+    activeRequests.enter()
+    const isCurrent = activeRequests.capture()
+    if (activeDocument.value?.id !== documentId) activeDocument.value = null
     loading.value = true
     error.value = null
     try {
       const data = await documentsRepository.getById(documentId)
-      activeDocument.value = data
-      // notif.success('Document loaded')
+      if (isCurrent()) activeDocument.value = data
     } catch (err) {
+      if (!isCurrent()) return
       error.value = 'Failed to fetch document'
       console.error('Error fetching document:', err)
-      // notif.error('Failed to load document')
     } finally {
-      loading.value = false
+      if (isCurrent()) loading.value = false
     }
   }
   const browseDocuments = async (params: DocumentBrowseParams) => {
-    // const notif = ongoingNotification('Browsing documents...')
+    listRequests.enter()
+    const isCurrent = listRequests.capture()
+    listCollectionId = null
     loading.value = true
     error.value = null
     try {
       const data = await documentsRepository.browse(params)
-      documents.value = data.items
-      // notif.success('Documents loaded')
+      if (isCurrent()) documents.value = data.items
       return data
     } catch (err) {
-      error.value = 'Failed to browse documents'
-      console.error('Error browsing documents:', err)
-      // notif.error('Failed to load documents')
+      if (isCurrent()) {
+        error.value = 'Failed to browse documents'
+        console.error('Error browsing documents:', err)
+      }
       throw err
     } finally {
-      loading.value = false
+      if (isCurrent()) loading.value = false
     }
+  }
+
+  /** Drops the documents (logout). */
+  const clear = () => {
+    listRequests.enter()
+    activeRequests.enter()
+    listCollectionId = null
+    documents.value = []
+    activeDocument.value = null
+    error.value = null
+    loading.value = false
   }
 
   const addToCollection = async (documentId: string, collectionId: string) => {
@@ -114,25 +137,31 @@ export const useDocumentsStore = defineStore('documents', () => {
     if (documentIds.length === 0) return
 
     const notif = ongoingNotification('Removing selected documents from collection...')
+    // Hidden while pending; afterwards only the removals the backend acknowledged as
+    // complete stay applied (a partly removed document stays in the collection).
     documentIds.forEach((id) => pendingRemoveIds.value.add(id))
-    documents.value = documents.value.filter((doc) => !documentIds.includes(doc.id))
     error.value = null
-    let hadError = false
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         documentIds.map((documentId) => documentsRepository.removeFromCollection(documentId, collectionId))
       )
-      notif.success('Selected documents removed from collection')
-    } catch (err) {
-      hadError = true
-      error.value = 'Failed to remove selected documents from collection'
-      console.error('Error removing selected documents from collection:', err)
-      notif.error(err instanceof IncompleteWriteError ? err.message : 'Failed to remove selected documents from collection')
-      await fetchDocumentsByCollection(collectionId)
-    } finally {
-      if (!hadError) {
-        documents.value = documents.value.filter((doc) => !documentIds.includes(doc.id))
+      const removed = documentIds.filter((_, i) => results[i].status === 'fulfilled')
+      if (listCollectionId === collectionId) {
+        documents.value = documents.value.filter((doc) => !removed.includes(doc.id))
       }
+      const failures = results.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []))
+      if (!failures.length) {
+        notif.success('Selected documents removed from collection')
+        return
+      }
+      error.value = 'Failed to remove selected documents from collection'
+      console.error('Error removing selected documents from collection:', failures)
+      const first = failures[0]
+      notif.error(
+        `Removed ${removed.length} of ${documentIds.length} documents. ` +
+        (first instanceof IncompleteWriteError ? first.message : 'The others could not be removed.')
+      )
+    } finally {
       documentIds.forEach((id) => pendingRemoveIds.value.delete(id))
     }
   }
@@ -146,6 +175,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     fetchDocument,
     fetchDocumentsByCollection,
     browseDocuments,
+    clear,
     addToCollection,
     removeFromCollection,
     removeManyFromCollection

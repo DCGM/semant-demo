@@ -1,4 +1,4 @@
-import { useApi } from 'src/composables/useApi'
+import { useApi } from 'src/shared/api'
 import { Tag, PostTag, Tags, PatchTag } from 'src/models/tags'
 
 export function useTagsRepository() {

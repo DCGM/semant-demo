@@ -4,6 +4,7 @@ import { Collection, Collections, PostCollection, PatchCollection } from 'src/mo
 import { useCollectionRepository } from 'src/repositories/useCollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 import { incompleteWriteMessage } from 'src/utils/writeOutcome'
+import { createContextGuard } from 'src/shared/api'
 
 export const useCollectionsStore = defineStore('userCollections', () => {
   const collectionRepository = useCollectionRepository()
@@ -12,6 +13,10 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
   const pendingDeleteIds = ref<Set<string>>(new Set())
+  // Only the latest load sets the list / the open collection (another one may be open by
+  // now, or another user signed in).
+  const listRequests = createContextGuard()
+  const activeRequests = createContextGuard()
 
   // Collections visible in UI — excludes any IDs currently being deleted
   const visibleCollections = computed(() =>
@@ -19,36 +24,48 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   )
 
   const fetchCollections = async () => {
-    // const notif = ongoingNotification('Loading collections...')
+    listRequests.enter()
+    const isCurrent = listRequests.capture()
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.getAll()
-      collections.value = data
-      // notif.success('Collections loaded')
+      if (isCurrent()) collections.value = data
     } catch (err) {
+      if (!isCurrent()) return
       error.value = 'Failed to fetch collections'
       console.error('Error fetching collections:', err)
-      // notif.error('Failed to load collections')
     } finally {
-      loading.value = false
+      if (isCurrent()) loading.value = false
     }
   }
   const fetchCollection = async (collectionId: string) => {
-    // const notif = ongoingNotification('Loading collection...')
+    activeRequests.enter()
+    const isCurrent = activeRequests.capture()
+    // Never show another collection's metadata (or rights) while this one loads.
+    if (activeCollection.value?.id !== collectionId) activeCollection.value = null
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.getById(collectionId)
-      activeCollection.value = data
-      // notif.success('Collection loaded')
+      if (isCurrent()) activeCollection.value = data
     } catch (err) {
+      if (!isCurrent()) return
       error.value = 'Failed to fetch collection'
       console.error('Error fetching collection:', err)
-      // notif.error('Failed to load collection')
     } finally {
-      loading.value = false
+      if (isCurrent()) loading.value = false
     }
+  }
+
+  /** Drops the user's collections (logout, another user). */
+  const clear = () => {
+    listRequests.enter()
+    activeRequests.enter()
+    collections.value = []
+    activeCollection.value = null
+    error.value = null
+    loading.value = false
   }
   const createCollection = async (collectionData: PostCollection) => {
     const notif = ongoingNotification('Creating collection...')
@@ -111,26 +128,25 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   const deleteManyCollections = async (collectionIds: string[]) => {
     if (collectionIds.length === 0) return
     const notif = ongoingNotification(`Deleting ${collectionIds.length} collections...`)
-    // Track pending deletes so fetchCollections can't bring them back
+    // Hidden while pending so fetchCollections can't bring them back meanwhile; afterwards
+    // only the deletions the backend acknowledged stay applied.
     collectionIds.forEach((id) => pendingDeleteIds.value.add(id))
-    collections.value = collections.value.filter((c) => !collectionIds.includes(c.id))
     error.value = null
-    let hadError = false
     try {
-      await Promise.all(collectionIds.map((id) => collectionRepository.remove(id)))
-      notif.success(`${collectionIds.length} collection${collectionIds.length === 1 ? '' : 's'} deleted`)
-    } catch (err) {
-      hadError = true
-      error.value = 'Failed to delete some collections'
-      console.error('Error deleting collections:', err)
-      notif.error(await incompleteWriteMessage(err, 'Failed to delete some collections'))
-      // On error, restore via fresh fetch so non-deleted items reappear
-      await fetchCollections()
-    } finally {
-      if (!hadError) {
-        // Re-filter in case a mid-deletion refresh restored items into collections.value
-        collections.value = collections.value.filter((c) => !collectionIds.includes(c.id))
+      const results = await Promise.allSettled(collectionIds.map((id) => collectionRepository.remove(id)))
+      const deleted = collectionIds.filter((_, i) => results[i].status === 'fulfilled')
+      collections.value = collections.value.filter((c) => !deleted.includes(c.id))
+      if (activeCollection.value && deleted.includes(activeCollection.value.id)) activeCollection.value = null
+      const failures = results.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []))
+      if (!failures.length) {
+        notif.success(`${collectionIds.length} collection${collectionIds.length === 1 ? '' : 's'} deleted`)
+      } else {
+        error.value = 'Failed to delete some collections'
+        console.error('Error deleting collections:', failures)
+        const detail = await incompleteWriteMessage(failures[0], 'Failed to delete some collections')
+        notif.error(`Deleted ${deleted.length} of ${collectionIds.length} collections. ${detail}`)
       }
+    } finally {
       collectionIds.forEach((id) => pendingDeleteIds.value.delete(id))
     }
   }
@@ -174,6 +190,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     loading,
     fetchCollections,
     fetchCollection,
+    clear,
     createCollection,
     updateCollection,
     deleteCollection,

@@ -23,7 +23,10 @@ vi.mock('src/composables/useTags', () => ({
   })
 }))
 vi.mock('src/composables/dialogs/useTagsDialog', () => ({ default: () => ({ openTagsDialog: vi.fn() }) }))
-vi.mock('src/composables/useApi', () => ({ useApi: () => ({ default: {} }) }))
+vi.mock('src/shared/api', async () => ({
+  ...(await vi.importActual<typeof import('src/shared/api')>('src/shared/api')),
+  useApi: () => ({ default: {} })
+}))
 
 const encoder = new TextEncoder()
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))

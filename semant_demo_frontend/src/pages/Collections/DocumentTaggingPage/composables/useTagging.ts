@@ -1,4 +1,4 @@
-import { useApi } from 'src/composables/useApi'
+import { useApi } from 'src/shared/api'
 import { TagSpan } from 'src/generated/api/models/TagSpan'
 import { ref } from 'vue'
 import { AvailableTag } from '../components/ChunkTagAnnotator.vue'

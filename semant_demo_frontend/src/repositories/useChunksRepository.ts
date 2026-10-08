@@ -1,4 +1,4 @@
-import { useApi } from 'src/composables/useApi'
+import { useApi } from 'src/shared/api'
 import { Chunk, Chunks } from 'src/models/chunks'
 import { requireComplete } from 'src/utils/writeOutcome'
 

@@ -19,6 +19,7 @@
             type="button"
             class="collection-color-button"
             aria-label="Edit collection color"
+            :disabled="!rights.editMetadata"
             @click="openCollectionColorPicker"
           >
             <span
@@ -26,7 +27,7 @@
               :style="{ backgroundColor: activeCollectionColor }"
               aria-label="Collection color"
             />
-            <q-tooltip>Click to edit color</q-tooltip>
+            <q-tooltip v-if="rights.editMetadata">Click to edit color</q-tooltip>
           </button>
           <q-dialog v-model="showColorPicker">
             <q-card>
@@ -89,11 +90,11 @@
             v-else
             type="button"
             class="collection-title-button"
-            :disabled="!activeCollectionLabel"
+            :disabled="!activeCollectionLabel || !rights.editMetadata"
             @click="startNameEdit"
           >
             <h1 class="collection-page-title">{{ activeCollectionLabel }}</h1>
-            <q-tooltip v-if="activeCollectionLabel">Click to edit</q-tooltip>
+            <q-tooltip v-if="activeCollectionLabel && rights.editMetadata">Click to edit</q-tooltip>
           </button>
         </div>
       </div>
@@ -153,6 +154,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import useCollections from 'src/composables/useCollections'
 import useColorPicker from 'src/composables/useColorPicker'
+import { collectionRights } from 'src/features/collections/permissions'
 
 const $route = useRoute()
 const { activeCollection, loadCollection, updateCollection } = useCollections()
@@ -188,6 +190,11 @@ const activeCollectionColor = computed(() =>
     : null
 )
 
+// Name and color are owner-only metadata (ADR 0007).
+const rights = computed(() =>
+  collectionRights(activeCollection.value?.id === collectionId.value ? activeCollection.value : null)
+)
+
 const normalizedEditedName = computed(() => editableCollectionName.value.trim())
 
 const isNameSaveDisabled = computed(() =>
@@ -197,7 +204,7 @@ const isNameSaveDisabled = computed(() =>
 )
 
 const startNameEdit = () => {
-  if (!activeCollectionLabel.value) return
+  if (!activeCollectionLabel.value || !rights.value.editMetadata) return
   editableCollectionName.value = activeCollectionLabel.value
   isEditingName.value = true
 }
@@ -220,7 +227,7 @@ const submitNameEdit = async () => {
 }
 
 const openCollectionColorPicker = () => {
-  if (!activeCollectionColor.value) return
+  if (!activeCollectionColor.value || !rights.value.editMetadata) return
   currentColor.value = activeCollectionColor.value
   openColorPicker()
 }

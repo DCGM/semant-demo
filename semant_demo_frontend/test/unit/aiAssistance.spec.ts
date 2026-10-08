@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-import { readNdjson } from 'src/utils/ndjson'
+import { readNdjson } from 'src/shared/api'
 import useAiAssistance, { describeRunEnd } from 'src/composables/useAiAssistance'
 import { useTagSpansStore } from 'src/stores/tagSpansStore'
 
