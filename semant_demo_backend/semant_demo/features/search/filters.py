@@ -1,10 +1,16 @@
+"""Search filter definitions (YAML config) and validation of requested filters.
+
+Requested filters are checked against the configured definitions and turned into neutral
+``FieldCondition``s; the search adapter decides where each field is stored.
+"""
 import logging
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 import yaml
-from weaviate.classes.aggregate import Metrics
 
+from semant_demo.core.errors import InvalidRequestError
+from semant_demo.features.search.schemas import FieldCondition, Op
 from semant_demo.schemas import (
     FilterType,
     NominalFilterValue,
@@ -12,7 +18,9 @@ from semant_demo.schemas import (
     SearchFiltersResponse,
     SearchFilterInput,
 )
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+
+if TYPE_CHECKING:
+    from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 
 LANGUAGE_MAP = {
     "cs": "Czech", "ces": "Czech", "cze": "Czech",
@@ -122,48 +130,10 @@ def _format_user_form(backend_val: str) -> str:
     return " ".join(word.capitalize() for word in backend_val.split("_"))
 
 
-async def fetch_db_filter_stats(config_obj=None) -> tuple[int | None, int | None, list[str] | None]:
-    """
-    Connects to Weaviate and queries minimum and maximum yearIssued and unique languages.
-    Returns (min_year, max_year, languages_list).
-    """
-    if config_obj is None:
-        from semant_demo.config import config as default_config
-        config_obj = default_config
-
+async def fetch_db_filter_stats(chunks: "ChunkSearchRepository") -> tuple[int | None, int | None, list[str] | None]:
+    """(min_year, max_year, languages) of the stored documents; all None if the store cannot be read."""
     try:
-        w = await WeaviateAbstraction.create(config_obj)
-        min_year = None
-        max_year = None
-        languages = []
-
-        try:
-            doc_col = w.client.collections.get(config_obj.collectionNames.document_collection_name)
-            
-            # Query year range
-            res_year = await doc_col.aggregate.over_all(
-                return_metrics=[Metrics("yearIssued").integer(minimum=True, maximum=True)]
-            )
-            if "yearIssued" in res_year.properties:
-                m_min = res_year.properties["yearIssued"].minimum
-                m_max = res_year.properties["yearIssued"].maximum
-                if m_min is not None:
-                    min_year = int(m_min)
-                if m_max is not None:
-                    max_year = int(m_max)
-
-            # Query languages
-            res_lang = await doc_col.aggregate.over_all(
-                return_metrics=[Metrics("language").text(top_occurrences_value=True, limit=1000)]
-            )
-            if "language" in res_lang.properties and res_lang.properties["language"].top_occurrences:
-                languages = [
-                    top.value for top in res_lang.properties["language"].top_occurrences if top.value
-                ]
-        finally:
-            await w.close()
-
-        return min_year, max_year, languages if languages else None
+        return await chunks.document_filter_stats()
     except Exception as e:
         logging.warning(f"Could not fetch filter stats from DB: {e}")
         return None, None, None
@@ -251,8 +221,8 @@ def generate_default_filters(
     return SearchFiltersResponse(filters=filters)
 
 
-async def generate_default_filters_async(config_obj=None) -> SearchFiltersResponse:
-    min_year, max_year, languages = await fetch_db_filter_stats(config_obj)
+async def generate_default_filters_async(chunks: "ChunkSearchRepository") -> SearchFiltersResponse:
+    min_year, max_year, languages = await fetch_db_filter_stats(chunks)
     return generate_default_filters(min_year=min_year, max_year=max_year, languages=languages)
 
 
@@ -283,7 +253,7 @@ def load_search_filters_config(config_path: Union[str, Path]) -> SearchFiltersRe
     return SearchFiltersResponse.model_validate(data)
 
 
-class InvalidSearchFilterError(ValueError):
+class InvalidSearchFilterError(InvalidRequestError, ValueError):
     """Base exception for invalid search filter validation."""
     pass
 
@@ -322,34 +292,17 @@ class InvalidFilterRangeError(InvalidSearchFilterError):
         super().__init__(f"Invalid filter range for '{filter_id}': {reason}.")
 
 
-DOC_PROPERTIES = {
-    "yearIssued", "dateIssued", "documentType", "publisher", "placeTerm",
-    "genre", "public", "url", "library", "title", "subTitle", "partNumber",
-    "partName", "authors", "description", "keywords", "section", "region", "id_code"
-}
-
-
-def _get_prop_filter(target_property: str):
-    from weaviate.classes.query import Filter
-    if target_property in DOC_PROPERTIES:
-        return Filter.by_ref(link_on="document").by_property(target_property)
-    return Filter.by_property(target_property)
-
-
-from typing import Any
-
-
 def parse_and_validate_search_filters(
     requested_filters: list[SearchFilterInput] | None,
     available_filters: SearchFiltersResponse
-) -> list[Any] | None:
+) -> list[FieldCondition] | None:
     """
     Parses and validates a list of SearchFilterInput against defined available search filters.
     Raises InvalidSearchFilterError subclass with API-suitable detail message if invalid.
 
-    :return:Returns a list of Weaviate Filter objects or None for indicating legacy call.
+    :return: the conditions, or None when no filter was requested (legacy request fields apply).
     """
-    weaviate_filters = []
+    conditions: list[FieldCondition] = []
     defined_filters_map = {f.id: f for f in available_filters.filters}
 
     if not requested_filters:
@@ -382,9 +335,9 @@ def parse_and_validate_search_filters(
                 )
 
             if min_val is not None:
-                weaviate_filters.append(_get_prop_filter(target_prop).greater_or_equal(min_val))
+                conditions.append(FieldCondition(target_prop, Op.greater_or_equal, min_val))
             if max_val is not None:
-                weaviate_filters.append(_get_prop_filter(target_prop).less_or_equal(max_val))
+                conditions.append(FieldCondition(target_prop, Op.less_or_equal, max_val))
 
         elif f_type == "nominal":
             raw_values = input_filter.values
@@ -415,6 +368,6 @@ def parse_and_validate_search_filters(
             else:
                 mapped_values = [str(v) for v in values_list]
 
-            weaviate_filters.append(_get_prop_filter(target_prop).contains_any(mapped_values))
+            conditions.append(FieldCondition(target_prop, Op.contains_any, mapped_values))
 
-    return weaviate_filters
+    return conditions

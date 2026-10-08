@@ -16,7 +16,7 @@ import logging
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSearch, RagRouteConfig, RagRequest, RagResponse
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.features.search.service import Retriever
 
 # prompt
 answer_question_prompt_template = [
@@ -54,7 +54,7 @@ refrase_question_from_history_prompt_template = [
 class RagGenerator(BaseRag):
     def __init__(self, global_config: Config, param_config):
         super().__init__(global_config, param_config)
-        self.searcher = None
+        self.retrieve = None
         #this can be part of config in future
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
         self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
@@ -141,7 +141,7 @@ class RagGenerator(BaseRag):
         #TODO DEBUG
         print(f"search_request: {search_request}")
         #call db search
-        search_response = await self.searcher.textChunk.search(search_request)
+        search_response = await self.retrieve(search_request)
         return search_response
     
     #rephrase question to search desired data in database
@@ -202,9 +202,9 @@ class RagGenerator(BaseRag):
         }
     
     #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
-    async def rag_request(self, request: RagRequest, searcher: WeaviateAbstraction) -> RagResponse:
-        if (self.searcher == None):
-            self.searcher = searcher
+    async def rag_request(self, request: RagRequest, retrieve: Retriever) -> RagResponse:
+        if (self.retrieve == None):
+            self.retrieve = retrieve
         if request.history:
             history_preprocessed = [msg.model_dump() for msg in request.history]
         else:

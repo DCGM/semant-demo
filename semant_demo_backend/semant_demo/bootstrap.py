@@ -11,9 +11,11 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from weaviate import WeaviateAsyncClient
 
+from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
+from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.rag.rag_factory import RagRegistry
@@ -32,6 +34,7 @@ class WeaviateRepositories:
     documents: DocumentRepository
     tags: TagRepository
     collections: UserCollectionRepository
+    search: ChunkSearchRepository
     legacy: WeaviateAbstraction
     """Transitional facade for callers not migrated yet (see its module docstring)."""
 
@@ -43,6 +46,7 @@ class WeaviateRepositories:
             documents=DocumentRepository(client, names),
             tags=TagRepository(client, names),
             collections=UserCollectionRepository(client, names),
+            search=ChunkSearchRepository(client, names),
             legacy=WeaviateAbstraction(client, names),
         )
 
@@ -52,6 +56,7 @@ class AppResources:
     config: Config
     engine: AsyncEngine
     session_maker: async_sessionmaker
+    embeddings: GemmaEmbeddings
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
@@ -61,7 +66,8 @@ class AppResources:
         """Construct resources without connecting to any external service."""
         engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
         session_maker = async_sessionmaker(engine, autocommit=False, autoflush=True, expire_on_commit=False)
-        return cls(config=config, engine=engine, session_maker=session_maker)
+        return cls(config=config, engine=engine, session_maker=session_maker,
+                   embeddings=GemmaEmbeddings(config.GEMMA_URL))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
         """Open the application's Weaviate client; raises if it cannot be connected."""

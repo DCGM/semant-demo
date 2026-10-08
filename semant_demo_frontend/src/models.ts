@@ -136,18 +136,13 @@ export interface TextChunkWithDocument extends TextChunk {
   positiveTags: TagData[];
 }
 
-export interface ChunkTagData {
-  chunk_id: string;
-  positive_tags_ids: string[];
-  automatic_tags_ids: string[];
-}
-
 export interface SearchResponse {
   results: TextChunkWithDocument[];
   search_request: SearchRequest;
   time_spent: number;
   search_log: string[];
-  tags_result: ChunkTagData[];
+  // Problems that did not prevent the results, e.g. failed optional summaries.
+  warnings?: string[];
 }
 
 export interface SummaryResponse {

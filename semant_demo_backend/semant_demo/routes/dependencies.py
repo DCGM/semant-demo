@@ -7,6 +7,7 @@ from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.bootstrap import AppResources, WeaviateRepositories
 from semant_demo.config import Config
+from semant_demo.features.search.service import SearchBackends
 from semant_demo.rag.rag_factory import RagRegistry
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
@@ -55,6 +56,11 @@ async def get_tags(connection: HTTPConnection) -> TagRepository:
 async def get_collections(connection: HTTPConnection) -> UserCollectionRepository:
     return _weaviate(connection).collections
 
+async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
+    weaviate = _weaviate(connection)
+    return SearchBackends(chunks=weaviate.search, collections=weaviate.collections, tags=weaviate.tags,
+                          embeddings=get_resources(connection).embeddings)
+
 async def get_summarizer(connection: HTTPConnection) -> TemplatedSearchResultsSummarizer:
     return get_resources(connection).get_summarizer()
 
@@ -63,5 +69,5 @@ def get_rag_registry(connection: HTTPConnection) -> RagRegistry:
 
 
 def get_search_filters(connection: HTTPConnection):
-    from semant_demo.search_filters import load_search_filters_config
+    from semant_demo.features.search.filters import load_search_filters_config
     return load_search_filters_config(get_config(connection).SEARCH_FILTERS_CONFIG)

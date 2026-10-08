@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 load_dotenv() #have to be called before config import
 
 from semant_demo.config import config
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
+from semant_demo.adapters.weaviate.client import connect_weaviate
+from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.search import ChunkSearchRepository
+from semant_demo.adapters.weaviate.tags import TagRepository
+from semant_demo.features.search.service import SearchBackends, public_retriever
 from semant_demo.rag.rag_factory import rag_load_single_config
 from semant_demo.schemas import RagRequest, RagSearch
 
@@ -16,7 +21,14 @@ warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<
 warnings.filterwarnings("ignore",category=ResourceWarning, message="unclosed transport.*")
 
 async def main():
-    searcher = await WeaviateAbstraction.create(config=config)
+    client = await connect_weaviate(config)
+    names = config.collectionNames
+    retrieve = public_retriever(SearchBackends(
+        chunks=ChunkSearchRepository(client, names),
+        collections=UserCollectionRepository(client, names),
+        tags=TagRepository(client, names),
+        embeddings=GemmaEmbeddings(config.GEMMA_URL),
+    ))
     # question/query
     question = "Vyskytly se v Praze neštovice po roce 1800?"
     print(f"Question: {question}\n")
@@ -43,7 +55,7 @@ async def main():
         )
 
         #call rag
-        generated_result = await rag_generator.rag_request(rag_request, searcher=searcher)
+        generated_result = await rag_generator.rag_request(rag_request, retrieve=retrieve)
 
         print(f"Answer: {generated_result.rag_answer}\n")
         if (False):
@@ -52,7 +64,7 @@ async def main():
     except Exception as e:
         print(f"RAG error: while generating response: {e}")
     finally:
-        await searcher.close()
+        await client.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -161,6 +161,8 @@ class SearchResponse(BaseModel):
     search_request: SearchRequest
     time_spent: float
     search_log: list[str]
+    # Problems that did not prevent the results, e.g. failed optional summaries.
+    warnings: list[str] = []
 
 class SummaryRequest(SummaryRequestBase):
     search_response: SearchResponse

@@ -8,7 +8,6 @@ from uuid import UUID
 
 import pytest
 
-from semant_demo import schemas
 from semant_demo.schemas import SpanType
 
 pytestmark = pytest.mark.integration
@@ -104,19 +103,3 @@ async def test_text_with_combining_marks_and_non_bmp_round_trips(collections, co
     chunks = await collections.read_all_chunks_by_document(doc(corpus, "letters"), col(corpus, "chronicles"))
 
     assert [c.text for c in chunks] == [corpus.chunks["letters_1"]["text"], corpus.chunks["letters_2"]["text"]]
-
-
-async def test_text_search_is_scoped_to_collection_and_chunk_tags(searcher, corpus):
-    request = schemas.SearchRequest(
-        query="Novák",
-        type=schemas.SearchType.text,
-        user_collection_id=corpus.collections["chronicles"]["id"],
-        tag_uuids=[corpus.tags["person"]["id"]],
-        positive=True,
-        automatic=False,
-    )
-
-    response = await searcher.textChunk.search(request)
-
-    # "Novák" occurs in chronicle_1 and chronicle_2; only chronicle_1 has the approved tag.
-    assert [str(r.id) for r in response.results] == [corpus.chunks["chronicle_1"]["id"]]

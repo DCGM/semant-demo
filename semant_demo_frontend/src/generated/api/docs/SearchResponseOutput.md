@@ -11,6 +11,7 @@ Name | Type
 `searchRequest` | [SearchRequest](SearchRequest.md)
 `timeSpent` | number
 `searchLog` | Array&lt;string&gt;
+`warnings` | Array&lt;string&gt;
 
 ## Example
 
@@ -24,6 +25,7 @@ const example = {
   "searchRequest": null,
   "timeSpent": null,
   "searchLog": null,
+  "warnings": null,
 } satisfies SearchResponseOutput
 
 console.log(example)

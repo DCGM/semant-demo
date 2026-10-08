@@ -9,7 +9,7 @@ from .user_routes import exp_router as user_router
 from .span_routes import exp_router as span_router
 from .ai_assistance_routes import exp_router as ai_assistance_router
 from .span_chat_routes import exp_router as span_chat_router
-from .search_routes import exp_router as search_router
+from semant_demo.features.search.routes import exp_router as search_router
 
 export_router = APIRouter()
 export_router.include_router(user_router)

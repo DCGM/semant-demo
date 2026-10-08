@@ -79,7 +79,7 @@ flowchart LR
 
     subgraph LLM
         OLLP[ollama_proxy.py]
-        GEMMA[gemma_embedding.py]
+        GEMMA[adapters/embeddings/gemma.py]
         LLM_API[llm_api/]
     end
 
@@ -90,17 +90,21 @@ flowchart LR
         AI_F["ai_assistance/<br/>(topicer_client, span_chat)"]
         USERS[users/]
         COL_F["features/collections/<br/>(routes, service, access, schemas)"]
+        SEARCH_F["features/search/<br/>(routes, service, filters, schemas)"]
     end
 
     APP --> DI & RAG_F & USERS
-    SUM_R & RAG_R & TAG_R & SPAN_R & AI_R & CHAT_R & DOC_R & COL_F & USR_R & FB_R & AUTH_R --> DI
+    SUM_R & RAG_R & TAG_R & SPAN_R & AI_R & CHAT_R & DOC_R & COL_F & SEARCH_F & USR_R & FB_R & AUTH_R --> DI
     DI --> WS
     RAG_R --> RAG_F
+    RAG_R --> SEARCH_F
+    SEARCH_F --> COL_F
+    SEARCH_F --> GEMMA
+    SEARCH_F --> SUM
     SUM_R --> SUM
     TAG_R --> TAG_F
     AI_R --> AI_F
     CHAT_R --> AI_F
-    WS --> GEMMA
     RAG_F --> LLM_API
     SUM --> LLM_API
     TAG_F --> OLLP
@@ -129,6 +133,7 @@ A `Config` class that reads settings once, at construction, from the process env
 | `get_config()` | The app's `Config` | App lifetime |
 | `get_async_session()` | Database sessions for individual requests | Per-request |
 | `get_documents()`, `get_tags()`, `get_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
+| `get_search_backends()` | Search adapter, collection/tag repositories and the embedding client for the search service and RAG retrieval | Startup → shutdown |
 | `get_search()` | Transitional `WeaviateAbstraction` facade for routes not migrated yet | Startup → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
 | `get_rag_registry()` | Configured RAG instances | Startup → shutdown |
@@ -205,20 +210,19 @@ sequenceDiagram
     participant LLM as LLM
 
     FE->>BE: POST /api/search {query, type, filters...}
+    Note over BE: check collection and tag access, validate filters
     alt hybrid or vector search
         BE->>EMB: POST /embed_query
         EMB-->>BE: embedding vector
     end
     BE->>WV: hybrid/bm25/near_vector query
-    WV-->>BE: ranked chunks + document refs + tag refs
-    par title generation
+    WV-->>BE: ranked chunks + document refs
+    opt summaries requested (failure: results kept, warning added)
         BE->>LLM: generate title per chunk
-    and summary generation
         BE->>LLM: generate per-chunk summary
-    and results summary
         BE->>LLM: generate overall results summary
     end
-    BE-->>FE: SearchResponse {results, summaries, tags}
+    BE-->>FE: SearchResponse {results, summaries, warnings}
 ```
 
 Search supports three modes:
@@ -228,7 +232,7 @@ Search supports three modes:
 
 Optional HyDE (Hypothetical Document Embedding): when `is_hyde=true`, the query is embedded as a document rather than a query, which can improve recall for some use cases.
 
-Filters: `min_year`, `max_year`, `min_date`, `max_date`, `language`, tag UUIDs (positive/automatic).
+Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
 
 #### RAG System
 

@@ -734,6 +734,9 @@ async function onSearch () {
     if (results.value.length === 0) {
       Notify.create({ message: 'No results found', position: 'top', color: 'info' })
     }
+    for (const warning of data.warnings ?? []) {
+      Notify.create({ message: warning, position: 'top', color: 'warning' })
+    }
   } catch (e) {
     console.error(e)
     Notify.create({ message: 'Search failed', position: 'top', color: 'negative' })

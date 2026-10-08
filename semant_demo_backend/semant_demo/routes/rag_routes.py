@@ -5,10 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from semant_demo import schemas
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.features.search import service as search_service
+from semant_demo.features.search.service import SearchBackends
 
 #import dependencies
-from semant_demo.routes.dependencies import get_async_session, get_search, get_rag_registry
+from semant_demo.routes.dependencies import get_async_session, get_search_backends, get_rag_registry
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 
@@ -27,7 +28,7 @@ async def get_avalaible_rag_configurations(current_user: User | None = Depends(c
     return rag_registry.get_all_configurations()
 
 @exp_router.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagRequestMain, searcher: WeaviateAbstraction = Depends(get_search),
+async def rag(request: schemas.RagRequestMain, search_backends: SearchBackends = Depends(get_search_backends),
               current_user: User | None = Depends(current_active_optional_user),
               rag_registry: RagRegistry = Depends(get_rag_registry)) -> schemas.RagResponse:
     #find and check rag
@@ -39,7 +40,9 @@ async def rag(request: schemas.RagRequestMain, searcher: WeaviateAbstraction = D
     
     #load class and call instance
     rag_instance = rag_registry.instances[id]
-    return await rag_instance.rag_request(request=request.rag_request, searcher=searcher)
+    # RAG requests carry no collection or tags: retrieval covers the public corpus.
+    retrieve = search_service.public_retriever(search_backends)
+    return await rag_instance.rag_request(request=request.rag_request, retrieve=retrieve)
 
 @exp_router.post("/api/rag/explain")
 async def explain_selection(request: schemas.ExplainRequest,
