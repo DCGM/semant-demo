@@ -1,6 +1,7 @@
 
-# TextChunkWithDocumentOutput
+# TextChunkWithDocument
 
+A search hit: the chunk, its document and optional generated summaries. ``text`` is display text (``service.display_text``: hyphenated line breaks joined), not the canonical stored text; span offsets do not apply to it. The document view reads canonical text (``DocumentDetail``).
 
 ## Properties
 
@@ -26,12 +27,12 @@ Name | Type
 `queryTitle` | string
 `querySummary` | string
 `summary` | string
-`documentObject` | [SemantDemoSchemasDocument](SemantDemoSchemasDocument.md)
+`documentObject` | [Document](Document.md)
 
 ## Example
 
 ```typescript
-import type { TextChunkWithDocumentOutput } from ''
+import type { TextChunkWithDocument } from ''
 
 // TODO: Update the object below with actual values
 const example = {
@@ -56,7 +57,7 @@ const example = {
   "querySummary": null,
   "summary": null,
   "documentObject": null,
-} satisfies TextChunkWithDocumentOutput
+} satisfies TextChunkWithDocument
 
 console.log(example)
 
@@ -65,7 +66,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as TextChunkWithDocumentOutput
+const exampleParsed = JSON.parse(exampleJSON) as TextChunkWithDocument
 console.log(exampleParsed)
 ```
 

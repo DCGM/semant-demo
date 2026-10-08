@@ -1,12 +1,12 @@
 
-# SearchResponseOutput
+# SearchResponse
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`results` | [Array&lt;TextChunkWithDocumentOutput&gt;](TextChunkWithDocumentOutput.md)
+`results` | [Array&lt;TextChunkWithDocument&gt;](TextChunkWithDocument.md)
 `resultsSummary` | string
 `searchRequest` | [SearchRequest](SearchRequest.md)
 `timeSpent` | number
@@ -16,7 +16,7 @@ Name | Type
 ## Example
 
 ```typescript
-import type { SearchResponseOutput } from ''
+import type { SearchResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
@@ -26,7 +26,7 @@ const example = {
   "timeSpent": null,
   "searchLog": null,
   "warnings": null,
-} satisfies SearchResponseOutput
+} satisfies SearchResponse
 
 console.log(example)
 
@@ -35,7 +35,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as SearchResponseOutput
+const exampleParsed = JSON.parse(exampleJSON) as SearchResponse
 console.log(exampleParsed)
 ```
 

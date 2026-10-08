@@ -16,7 +16,7 @@ from uuid import UUID
 from openai import AsyncOpenAI
 from weaviate.classes.query import Filter, QueryReference, Sort
 
-from semant_demo import schemas
+from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.config import config
 from semant_demo.schema.ai_assistance import SpanChatMessage
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
@@ -224,7 +224,7 @@ def _trim_context(text: str, span_start: int, span_end: int, window: int) -> tup
 async def build_context_message(
     searcher: WeaviateAbstraction,
     *,
-    span: schemas.TagSpan,
+    span: TagSpan,
 ) -> str:
     """
     Assemble the per-conversation context block (document metadata + tag info

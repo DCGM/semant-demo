@@ -12,10 +12,12 @@ from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.collections.access import AuthenticationRequired
 from semant_demo.features.search import service
 from semant_demo.features.search.filters import InvalidSearchFilterError, generate_default_filters
-from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, TagFilter
+from semant_demo.features.search.schemas import (
+    ChunkQuery, FieldCondition, Op, SearchFilterInput, SearchRequest, SearchType, TagFilter, TextChunkWithDocument,
+)
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.llm_api import APIOutput
-from semant_demo.schemas import Document, SearchFilterInput, SearchRequest, SearchType, TextChunkWithDocument
+from semant_demo.schema.documents import Document
 from semant_demo.summarization.templated import ModelOptions, TemplatedSearchResultsSummarizer
 from tests.fakes import FakeChatAPI
 

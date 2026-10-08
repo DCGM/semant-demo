@@ -15,7 +15,7 @@ from weaviate.classes.query import Filter, QueryReference
 import semant_demo.schemas as schemas
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.adapters.weaviate.paging import fetch_all
-from semant_demo.features.annotations.schemas import PatchSpan, PostSpan
+from semant_demo.features.annotations.schemas import PatchSpan, PostSpan, SpanType, TagSpan
 
 _PROPERTIES = ["start", "end", "type", "reason", "confidence"]
 _REFERENCES = [QueryReference(link_on="tag", return_properties=[]),
@@ -27,17 +27,17 @@ def _ref_ids(obj, prop: str) -> list[UUID]:
     return [UUID(str(r.uuid)) for r in (block.objects if block else [])]
 
 
-def to_span(obj) -> schemas.TagSpan:
+def to_span(obj) -> TagSpan:
     props = obj.properties
     tags, chunks = _ref_ids(obj, "tag"), _ref_ids(obj, "text_chunk")
     span_type, confidence = props.get("type"), props.get("confidence")
-    return schemas.TagSpan(
+    return TagSpan(
         id=str(obj.uuid),
         chunkId=str(chunks[0]) if chunks else None,
         tagId=str(tags[0]) if tags else "",
         start=props.get("start"),
         end=props.get("end"),
-        type=schemas.SpanType(span_type) if isinstance(span_type, str) else None,
+        type=SpanType(span_type) if isinstance(span_type, str) else None,
         reason=props.get("reason"),
         confidence=float(confidence) if confidence is not None else None,
     )
@@ -94,7 +94,7 @@ class SpanRepository:
         return await self._spans().data.insert(
             properties=properties, references={"tag": span.tagId, "text_chunk": span.chunkId})
 
-    async def read(self, span_id: UUID) -> schemas.TagSpan | None:
+    async def read(self, span_id: UUID) -> TagSpan | None:
         """The span with this id, or None if it does not exist."""
         obj = await self._spans().query.fetch_object_by_id(
             span_id, return_properties=_PROPERTIES, return_references=_REFERENCES)
@@ -116,7 +116,7 @@ class SpanRepository:
         )
         return {UUID(str(o.uuid)): (_ref_ids(o, "tag"), _ref_ids(o, "text_chunk")) for o in response.objects}
 
-    async def read_by_collection(self, collection_id: UUID, chunk_id: UUID | None = None) -> list[schemas.TagSpan]:
+    async def read_by_collection(self, collection_id: UUID, chunk_id: UUID | None = None) -> list[TagSpan]:
         """All spans of the collection's tags, optionally only those starting on one chunk."""
         filters = Filter.by_ref("tag").by_ref("userCollection").by_id().equal(collection_id)
         if chunk_id is not None:
@@ -125,9 +125,9 @@ class SpanRepository:
                                   return_properties=_PROPERTIES, return_references=_REFERENCES)
         return [to_span(o) for o in objects]
 
-    async def read_by_chunks(self, collection_id: UUID, chunk_ids: list[UUID]) -> dict[str, list[schemas.TagSpan]]:
+    async def read_by_chunks(self, collection_id: UUID, chunk_ids: list[UUID]) -> dict[str, list[TagSpan]]:
         """The collection's spans starting on each of the chunks, keyed by chunk id (all chunks present)."""
-        result: dict[str, list[schemas.TagSpan]] = {str(c): [] for c in chunk_ids}
+        result: dict[str, list[TagSpan]] = {str(c): [] for c in chunk_ids}
         if not chunk_ids:
             return result
         filters = (Filter.by_ref("text_chunk").by_id().contains_any(list(chunk_ids))
@@ -158,7 +158,7 @@ class SpanRepository:
         await self._spans().data.delete_by_id(span_id)
 
     async def list_in_document(self, collection_id: UUID, document_id: UUID, tag_ids: list[UUID],
-                               span_type: schemas.SpanType) -> dict[UUID, set[ChunkTag]]:
+                               span_type: SpanType) -> dict[UUID, set[ChunkTag]]:
         """
         Ids of the spans of one type and the given tags of the collection that start on a
         chunk of the document, with their (chunk, tag) pairs. Listed completely before

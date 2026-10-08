@@ -23,7 +23,9 @@ import asyncio
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
-from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState, TextChunkWithDocument, Document, ExplainRequest
+from semant_demo.features.search.schemas import SearchResponse, SearchRequest, TextChunkWithDocument
+from semant_demo.schema.documents import Document
+from semant_demo.schemas import RagRequest, RagResponse, AdaptiveRagState, ExplainRequest
 from semant_demo.features.search.service import Retriever
 #import prompts from prompt file
 from semant_demo.rag.incremental_rag_prompts import *

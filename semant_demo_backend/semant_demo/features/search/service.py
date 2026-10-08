@@ -24,8 +24,9 @@ from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.collections import access
 from semant_demo.features.collections.access import Principal
 from semant_demo.features.search.filters import InvalidSearchFilterError, parse_and_validate_search_filters
-from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, TagFilter
-from semant_demo.schemas import SearchFiltersResponse, SearchRequest, SearchResponse, SearchType
+from semant_demo.features.search.schemas import (
+    ChunkQuery, FieldCondition, Op, SearchFiltersResponse, SearchRequest, SearchResponse, SearchType, TagFilter,
+)
 from semant_demo.summarization.base import SearchResultsSummarizer
 
 logger = logging.getLogger(__name__)

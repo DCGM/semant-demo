@@ -7,7 +7,7 @@ from weaviate.classes.query import Filter, QueryReference, Sort
 import semant_demo.schemas as schemas
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.schema.chunks import ChunkText
-from semant_demo.schema.documents import Document, DocumentBrowse
+from semant_demo.schema.documents import Document, DocumentBrowse, DocumentDetail, DocumentDetailTextChunkWithUserCollectionInfo
 
 
 def _to_chunk_text(obj) -> ChunkText:
@@ -32,7 +32,7 @@ class DocumentRepository:
             return None
         return Document(id=response.uuid, **response.properties)
 
-    async def read_chunks(self, document_id: UUID, collection_id: UUID) -> schemas.DocumentDetail | None:
+    async def read_chunks(self, document_id: UUID, collection_id: UUID) -> DocumentDetail | None:
         """
         The document and all its chunks, each marked with membership in the collection.
         None if the document does not exist.
@@ -45,7 +45,7 @@ class DocumentRepository:
         doc_props = document_response.properties
         if "library" not in doc_props or not doc_props["library"]:
             doc_props["library"] = "mzk"
-        document = schemas.Document(id=document_response.uuid, **doc_props)
+        document = Document(id=document_response.uuid, **doc_props)
 
         link = self.collectionNames.user_collection_link_name
         chunk_objects = await fetch_all(
@@ -56,13 +56,13 @@ class DocumentRepository:
         chunks = []
         for chunk_obj in chunk_objects:
             refs = chunk_obj.references.get(link) if chunk_obj.references else None
-            chunks.append(schemas.DocumentDetailTextChunkWithUserCollectionInfo(
+            chunks.append(DocumentDetailTextChunkWithUserCollectionInfo(
                 id=chunk_obj.uuid,
                 **chunk_obj.properties,
                 document=document_response.uuid,
                 in_user_collection=collection_id in {ref.uuid for ref in (refs.objects if refs else [])},
             ))
-        return schemas.DocumentDetail(document=document, chunks=chunks)
+        return DocumentDetail(document=document, chunks=chunks)
 
     async def read_chunk_text(self, chunk_id: UUID) -> ChunkText | None:
         """The chunk's document, order and text, or None if it does not exist."""

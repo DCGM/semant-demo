@@ -5,7 +5,8 @@ from classconfig import ConfigurableSubclassFactory, ConfigurableMixin
 from classconfig.configurable import CreatableMixin
 
 from semant_demo.llm_api import APIAsync, OllamaAsyncAPI
-from semant_demo.schemas import SearchResponse, TextChunk, SummaryRequestBase
+from semant_demo.features.search.schemas import SearchResponse, SummaryRequestBase
+from semant_demo.schema.chunks import TextChunk
 
 
 class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):

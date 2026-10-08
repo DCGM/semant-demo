@@ -35,12 +35,6 @@ READS = [
 ]
 
 
-# Known defect, not an access result: schemas.Document.author is a string but the store
-# holds a list, so this endpoint fails with 500 for documents with authors (see
-# docs/REFACTOR_STATUS.md). Allowed users must still not be denied.
-KNOWN_BROKEN_READS = {"/api/documents/{d}/{c}/chunks"}  # #215
-
-
 @pytest.mark.parametrize("user, expected", [
     ("owner", 200), ("annotator", 200), ("outsider", 404), ("admin", 404), (None, 401),
 ])
@@ -52,9 +46,6 @@ async def test_collection_reads(api_client, login, ids, user, expected):
         response = await api_client.request(method, url, headers=headers, json=body(ids) if body else None)
         results[path] = response.status_code
 
-    if expected == 200:
-        assert all(results[p] not in (401, 403, 404) for p in KNOWN_BROKEN_READS), results
-        results = {p: code for p, code in results.items() if p not in KNOWN_BROKEN_READS}
     assert results == {p: expected for p in results}
 
 

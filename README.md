@@ -50,14 +50,12 @@ semant-demo/
 │   ├── semant_demo/
 │   │   ├── main.py                # FastAPI app, startup, core endpoints
 │   │   ├── config.py              # env-based configuration (Config singleton)
-│   │   ├── schemas.py             # legacy Pydantic models + SQLAlchemy Task model
-│   │   ├── schema/                # focused per-domain Pydantic schemas
+│   │   ├── schemas.py             # RAG/feedback models, CollectionNames, SQLAlchemy base
+│   │   ├── schema/                # models shared by several features
 │   │   │   ├── ai_assistance.py   # span discussion chat schemas
-│   │   │   ├── spans.py           # PostSpan, PatchSpan, BulkUpdateSpansRequest, …
-│   │   │   ├── tags.py            # Tag CRUD + bulk schemas
-│   │   │   ├── chunks.py          # Chunk-related request/response schemas
-│   │   │   ├── documents.py       # Document schemas
-│   │   │   └── collections.py     # User-collection schemas
+│   │   │   ├── chunks.py          # chunk projections (TextChunk, Chunk, ChunkText)
+│   │   │   ├── documents.py       # Document (one model for every read), DocumentDetail, …
+│   │   │   └── outcomes.py        # WriteResult and partial-write outcomes
 │   │   ├── gemma_embedding.py     # HTTP client to embedding_service
 │   │   ├── ollama_proxy.py        # round-robin Ollama client
 │   │   ├── ai_assistance/         # external AI integrations

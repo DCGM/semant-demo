@@ -41,10 +41,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SemantDemoSchemasDocument } from 'src/generated/api/models/SemantDemoSchemasDocument'
+import type { Document } from 'src/generated/api'
 
 const props = defineProps<{
-  document: SemantDemoSchemasDocument | null
+  document: Document | null
 }>()
 
 const emit = defineEmits<{
@@ -54,6 +54,10 @@ const emit = defineEmits<{
 const formatValue = (value: unknown) => {
   if (value === null || value === undefined || value === '') {
     return '—'
+  }
+
+  if (Array.isArray(value)) {
+    return value.length ? value.join(', ') : '—'
   }
 
   if (value instanceof Date) {

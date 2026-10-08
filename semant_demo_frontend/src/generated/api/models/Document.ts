@@ -13,13 +13,6 @@
  */
 
 import { mapValues } from '../runtime';
-import type { Keywords } from './Keywords';
-import {
-    KeywordsFromJSON,
-    KeywordsFromJSONTyped,
-    KeywordsToJSON,
-    KeywordsToJSONTyped,
-} from './Keywords';
 import type { Url } from './Url';
 import {
     UrlFromJSON,
@@ -36,142 +29,193 @@ import {
 } from './Partnumber';
 
 /**
+ * Bibliographic metadata of a corpus document, as stored on the ``Documents`` object.
  * 
+ * The one document model of every read (document, browse, collection documents,
+ * document view, search hits). Properties that a store does not hold are absent
+ * (``None``); the type unions accept the variants found in existing stores.
  * @export
- * @interface SemantDemoSchemasDocument
+ * @interface Document
  */
-export interface SemantDemoSchemasDocument {
+export interface Document {
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     id: string;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
-    library: string;
+    library?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     title?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     subtitle?: string | null;
     /**
      * 
      * @type {Partnumber}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     partNumber?: Partnumber | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     partName?: string | null;
     /**
      * 
      * @type {number}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     yearIssued?: number | null;
     /**
      * 
      * @type {Date}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     dateIssued?: Date | null;
     /**
      * 
-     * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @type {Array<string>}
+     * @memberof Document
      */
-    author?: string | null;
+    author?: Array<string> | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     publisher?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     language?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     description?: string | null;
     /**
      * 
      * @type {Url}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     url?: Url | null;
     /**
      * 
      * @type {boolean}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     _public?: boolean | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     documentType?: string | null;
     /**
      * 
-     * @type {Keywords}
-     * @memberof SemantDemoSchemasDocument
+     * @type {Array<string>}
+     * @memberof Document
      */
-    keywords?: Keywords | null;
+    keywords?: Array<string> | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     genre?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof SemantDemoSchemasDocument
+     * @memberof Document
      */
     placeTerm?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof Document
+     */
+    placeOfPublication?: string | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof Document
+     */
+    editors?: Array<string> | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof Document
+     */
+    seriesName?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof Document
+     */
+    edition?: string | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof Document
+     */
+    illustrators?: Array<string> | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof Document
+     */
+    translators?: Array<string> | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof Document
+     */
+    redaktors?: Array<string> | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof Document
+     */
+    seriesNumber?: string | null;
 }
 
 /**
- * Check if a given object implements the SemantDemoSchemasDocument interface.
+ * Check if a given object implements the Document interface.
  */
-export function instanceOfSemantDemoSchemasDocument(value: object): value is SemantDemoSchemasDocument {
+export function instanceOfDocument(value: object): value is Document {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if (!('library' in value) || value['library'] === undefined) return false;
     return true;
 }
 
-export function SemantDemoSchemasDocumentFromJSON(json: any): SemantDemoSchemasDocument {
-    return SemantDemoSchemasDocumentFromJSONTyped(json, false);
+export function DocumentFromJSON(json: any): Document {
+    return DocumentFromJSONTyped(json, false);
 }
 
-export function SemantDemoSchemasDocumentFromJSONTyped(json: any, ignoreDiscriminator: boolean): SemantDemoSchemasDocument {
+export function DocumentFromJSONTyped(json: any, ignoreDiscriminator: boolean): Document {
     if (json == null) {
         return json;
     }
     return {
         
         'id': json['id'],
-        'library': json['library'],
+        'library': json['library'] == null ? undefined : json['library'],
         'title': json['title'] == null ? undefined : json['title'],
         'subtitle': json['subtitle'] == null ? undefined : json['subtitle'],
         'partNumber': json['partNumber'] == null ? undefined : PartnumberFromJSON(json['partNumber']),
@@ -185,17 +229,25 @@ export function SemantDemoSchemasDocumentFromJSONTyped(json: any, ignoreDiscrimi
         'url': json['url'] == null ? undefined : UrlFromJSON(json['url']),
         '_public': json['public'] == null ? undefined : json['public'],
         'documentType': json['documentType'] == null ? undefined : json['documentType'],
-        'keywords': json['keywords'] == null ? undefined : KeywordsFromJSON(json['keywords']),
+        'keywords': json['keywords'] == null ? undefined : json['keywords'],
         'genre': json['genre'] == null ? undefined : json['genre'],
         'placeTerm': json['placeTerm'] == null ? undefined : json['placeTerm'],
+        'placeOfPublication': json['placeOfPublication'] == null ? undefined : json['placeOfPublication'],
+        'editors': json['editors'] == null ? undefined : json['editors'],
+        'seriesName': json['seriesName'] == null ? undefined : json['seriesName'],
+        'edition': json['edition'] == null ? undefined : json['edition'],
+        'illustrators': json['illustrators'] == null ? undefined : json['illustrators'],
+        'translators': json['translators'] == null ? undefined : json['translators'],
+        'redaktors': json['redaktors'] == null ? undefined : json['redaktors'],
+        'seriesNumber': json['seriesNumber'] == null ? undefined : json['seriesNumber'],
     };
 }
 
-export function SemantDemoSchemasDocumentToJSON(json: any): SemantDemoSchemasDocument {
-    return SemantDemoSchemasDocumentToJSONTyped(json, false);
+export function DocumentToJSON(json: any): Document {
+    return DocumentToJSONTyped(json, false);
 }
 
-export function SemantDemoSchemasDocumentToJSONTyped(value?: SemantDemoSchemasDocument | null, ignoreDiscriminator: boolean = false): any {
+export function DocumentToJSONTyped(value?: Document | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -217,9 +269,17 @@ export function SemantDemoSchemasDocumentToJSONTyped(value?: SemantDemoSchemasDo
         'url': UrlToJSON(value['url']),
         'public': value['_public'],
         'documentType': value['documentType'],
-        'keywords': KeywordsToJSON(value['keywords']),
+        'keywords': value['keywords'],
         'genre': value['genre'],
         'placeTerm': value['placeTerm'],
+        'placeOfPublication': value['placeOfPublication'],
+        'editors': value['editors'],
+        'seriesName': value['seriesName'],
+        'edition': value['edition'],
+        'illustrators': value['illustrators'],
+        'translators': value['translators'],
+        'redaktors': value['redaktors'],
+        'seriesNumber': value['seriesNumber'],
     };
 }
 

@@ -1,7 +1,7 @@
 """HTTP routes of the Annotations feature (tags and spans); the rules live in ``service.py``."""
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from semant_demo import schemas
+from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.schemas import (
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
@@ -87,26 +87,26 @@ async def create_tag_span(span: PostSpan,
     return await service.create_span(store, current_user, span)
 
 
-@span_router.get("/api/tag_spans", response_model=list[schemas.TagSpan])
+@span_router.get("/api/tag_spans", response_model=list[TagSpan])
 async def read_tag_spans(
     collection_id: str = Query(description="Collection whose annotations to return"),
     chunk_id: str | None = Query(
         default=None, description="Filter spans by chunk ID"),
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
-) -> list[schemas.TagSpan]:
+) -> list[TagSpan]:
     """
     Get stored TagSpans of a collection, optionally for one chunk.
     """
     return await service.list_spans(store, current_user, collection_id, chunk_id)
 
 
-@span_router.post("/api/tag_spans/batch", response_model=dict[str, list[schemas.TagSpan]])
+@span_router.post("/api/tag_spans/batch", response_model=dict[str, list[TagSpan]])
 async def read_tag_spans_batch(
     body: TagSpanBatchRequest,
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
-) -> dict[str, list[schemas.TagSpan]]:
+) -> dict[str, list[TagSpan]]:
     """
     Get stored TagSpans of a collection for multiple chunk IDs in a single request.
     """

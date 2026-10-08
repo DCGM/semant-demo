@@ -1302,7 +1302,7 @@ This endpoint does not need any parameter.
 
 ## fetchDocumentApiDocumentDocumentIdGet
 
-> SemantDemoSchemaDocumentsDocument fetchDocumentApiDocumentDocumentIdGet(documentId)
+> Document fetchDocumentApiDocumentDocumentIdGet(documentId)
 
 Fetch Document
 
@@ -1347,7 +1347,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**SemantDemoSchemaDocumentsDocument**](SemantDemoSchemaDocumentsDocument.md)
+[**Document**](Document.md)
 
 ### Authorization
 
@@ -1719,7 +1719,7 @@ example().catch(console.error);
 
 ## getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet
 
-> Array&lt;SemantDemoSchemaDocumentsDocument&gt; getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(collectionId)
+> Array&lt;Document&gt; getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(collectionId)
 
 Get Collection Documents
 
@@ -1768,7 +1768,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**Array&lt;SemantDemoSchemaDocumentsDocument&gt;**](SemantDemoSchemaDocumentsDocument.md)
+[**Array&lt;Document&gt;**](Document.md)
 
 ### Authorization
 
@@ -2290,7 +2290,7 @@ No authorization required
 
 ## questionApiQuestionQuestionTextPost
 
-> SummaryResponse questionApiQuestionQuestionTextPost(questionText, searchResponseInput)
+> SummaryResponse questionApiQuestionQuestionTextPost(questionText, searchResponse)
 
 Question
 
@@ -2314,8 +2314,8 @@ async function example() {
   const body = {
     // string
     questionText: questionText_example,
-    // SearchResponseInput
-    searchResponseInput: ...,
+    // SearchResponse
+    searchResponse: ...,
   } satisfies QuestionApiQuestionQuestionTextPostRequest;
 
   try {
@@ -2336,7 +2336,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **questionText** | `string` |  | [Defaults to `undefined`] |
-| **searchResponseInput** | [SearchResponseInput](SearchResponseInput.md) |  | |
+| **searchResponse** | [SearchResponse](SearchResponse.md) |  | |
 
 ### Return type
 
@@ -2866,7 +2866,7 @@ example().catch(console.error);
 
 ## searchApiSearchPost
 
-> SearchResponseOutput searchApiSearchPost(searchRequest)
+> SearchResponse searchApiSearchPost(searchRequest)
 
 Search
 
@@ -2913,7 +2913,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**SearchResponseOutput**](SearchResponseOutput.md)
+[**SearchResponse**](SearchResponse.md)
 
 ### Authorization
 
@@ -3299,7 +3299,7 @@ example().catch(console.error);
 
 ## summarizeApiSummarizeSummaryTypePost
 
-> SummaryResponse summarizeApiSummarizeSummaryTypePost(summaryType, searchResponseInput)
+> SummaryResponse summarizeApiSummarizeSummaryTypePost(summaryType, searchResponse)
 
 Summarize
 
@@ -3323,8 +3323,8 @@ async function example() {
   const body = {
     // string
     summaryType: summaryType_example,
-    // SearchResponseInput
-    searchResponseInput: ...,
+    // SearchResponse
+    searchResponse: ...,
   } satisfies SummarizeApiSummarizeSummaryTypePostRequest;
 
   try {
@@ -3345,7 +3345,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **summaryType** | `string` |  | [Defaults to `undefined`] |
-| **searchResponseInput** | [SearchResponseInput](SearchResponseInput.md) |  | |
+| **searchResponse** | [SearchResponse](SearchResponse.md) |  | |
 
 ### Return type
 

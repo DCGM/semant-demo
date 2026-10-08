@@ -8,7 +8,7 @@ from uuid import UUID
 
 import pytest
 
-from semant_demo.schemas import SpanType
+from semant_demo.features.annotations.schemas import SpanType
 
 pytestmark = pytest.mark.integration
 

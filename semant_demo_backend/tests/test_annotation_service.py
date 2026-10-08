@@ -10,12 +10,11 @@ from uuid import UUID, uuid4
 import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
-from semant_demo import schemas
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.offsets import InvalidSpanRange
-from semant_demo.features.annotations.schemas import PatchSpan, PatchTag, PostSpan, PostTag
+from semant_demo.features.annotations.schemas import PatchSpan, PatchTag, PostSpan, PostTag, SpanType, TagSpan
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.collections.access import AuthenticationRequired
 from semant_demo.schema.chunks import ChunkText
@@ -83,11 +82,11 @@ class FakeSpans(Recorder):
     def __init__(self, writes):
         super().__init__(writes)
         self.stored = {
-            SPAN_A: schemas.TagSpan(id=str(SPAN_A), chunkId=str(CHUNK_1), tagId=str(TAG), start=0, end=3,
-                                    type=schemas.SpanType.auto),
+            SPAN_A: TagSpan(id=str(SPAN_A), chunkId=str(CHUNK_1), tagId=str(TAG), start=0, end=3,
+                            type=SpanType.auto),
             # Stored with offsets that are no longer valid (before validation existed).
-            SPAN_B: schemas.TagSpan(id=str(SPAN_B), chunkId=str(CHUNK_2), tagId=str(TAG), start=5, end=99,
-                                    type=schemas.SpanType.auto),
+            SPAN_B: TagSpan(id=str(SPAN_B), chunkId=str(CHUNK_2), tagId=str(TAG), start=5, end=99,
+                            type=SpanType.auto),
         }
 
     async def read_refs(self, ids):
@@ -148,7 +147,7 @@ def store(writes):
 
 
 def post_span(start=0, end=3, chunk=CHUNK_1, **kw):
-    return PostSpan(start=start, end=end, type=schemas.SpanType.pos, chunkId=str(chunk), tagId=str(TAG), **kw)
+    return PostSpan(start=start, end=end, type=SpanType.pos, chunkId=str(chunk), tagId=str(TAG), **kw)
 
 
 NEW_TAG = PostTag(name="Osoba", shorthand="OS", color="#000", pictogram="p", definition="d")
@@ -158,8 +157,8 @@ WRITES = [
     lambda s, u: service.update_tag(s, u, TAG, PatchTag(name="x")),
     lambda s, u: service.delete_tag(s, u, TAG),
     lambda s, u: service.create_span(s, u, post_span()),
-    lambda s, u: service.update_span(s, u, SPAN_A, PatchSpan(type=schemas.SpanType.pos)),
-    lambda s, u: service.bulk_update_spans(s, u, [SPAN_A, SPAN_B], PatchSpan(type=schemas.SpanType.neg)),
+    lambda s, u: service.update_span(s, u, SPAN_A, PatchSpan(type=SpanType.pos)),
+    lambda s, u: service.bulk_update_spans(s, u, [SPAN_A, SPAN_B], PatchSpan(type=SpanType.neg)),
     lambda s, u: service.delete_span(s, u, SPAN_A),
     lambda s, u: service.delete_approved_spans_in_document(s, u, COLLECTION, DOCUMENT, [TAG]),
     lambda s, u: service.delete_suggestions_in_document(s, u, COLLECTION, DOCUMENT, [TAG]),
@@ -306,9 +305,9 @@ async def test_empty_patch_is_rejected(store, writes):
 
 async def test_approving_a_span_with_old_invalid_offsets_works(store):
     # Offsets are validated only when they change.
-    result = await service.update_span(store, OWNER, SPAN_B, PatchSpan(type=schemas.SpanType.pos))
+    result = await service.update_span(store, OWNER, SPAN_B, PatchSpan(type=SpanType.pos))
 
-    assert result.type == schemas.SpanType.pos and result.end == 99
+    assert result.type == SpanType.pos and result.end == 99
 
 
 async def test_invalid_offset_patch_writes_nothing(store, writes):
@@ -326,7 +325,7 @@ async def test_tag_change_syncs_the_old_and_the_new_pair(store, writes):
 async def test_bulk_update_keeps_completed_updates_and_reports_failed_ones(store, writes):
     store.spans.fail[f"update_span:{SPAN_B}"] = RuntimeError("boom")
 
-    result = await service.bulk_update_spans(store, OWNER, [SPAN_A, SPAN_B], PatchSpan(type=schemas.SpanType.pos))
+    result = await service.bulk_update_spans(store, OWNER, [SPAN_A, SPAN_B], PatchSpan(type=SpanType.pos))
 
     assert result.outcome == "partial"
     assert result.succeeded == [str(SPAN_A)] == [s.id for s in result.spans]

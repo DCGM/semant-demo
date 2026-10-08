@@ -15,7 +15,8 @@ import logging
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
-from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSearch, RagRouteConfig, RagRequest, RagResponse
+from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchType
+from semant_demo.schemas import RagSearch, RagRouteConfig, RagRequest, RagResponse
 from semant_demo.features.search.service import Retriever
 
 # prompt

@@ -18,8 +18,7 @@ import pytest
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.features.search import service
-from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, TagFilter
-from semant_demo.schemas import SearchType
+from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, TagFilter
 from tests.fakes import fake_embedding
 
 pytestmark = pytest.mark.integration
@@ -134,6 +133,14 @@ async def test_results_map_chunk_and_document(chunks, corpus):
     assert str(hit.document) == gazette["id"] == str(hit.document_object.id)
     assert hit.document_object.title == gazette["properties"]["title"]
     assert hit.document_object.library == "mzk"  # missing library defaults as before
+
+
+async def test_results_map_document_authors(chunks, corpus):
+    [hit] = await chunks.search(query(text="Prahy"))
+
+    assert str(hit.document) == corpus.documents["letters"]["id"]
+    assert hit.document_object.author == ["Karel Pisatel", "Marie Pisatelová"]
+    assert hit.document_object.yearIssued == 1902
 
 
 async def test_document_filter_stats(chunks):

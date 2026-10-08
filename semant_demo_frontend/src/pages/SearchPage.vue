@@ -281,7 +281,7 @@
                   {{ (currentPage - 1) * itemsPerPage + index + 1 }}. {{ chunk.query_title || chunk.title || "N/A" }}
                 </div>
                 <div class="row q-gutter-x-md text-caption text-grey-8 q-mt-xs">
-                  <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.document_object.author || 'Unknown Author' }}</div>
+                  <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.document_object.author?.join(', ') || 'Unknown Author' }}</div>
                   <div><q-icon name="event" class="q-mr-xs"/>{{ chunk.document_object.yearIssued || 'Year N/A' }}</div>
                   <div><q-icon name="language" class="q-mr-xs"/>{{ chunk.language || 'N/A' }}</div>
                   <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.from_page }}–{{ chunk.to_page }}</div>

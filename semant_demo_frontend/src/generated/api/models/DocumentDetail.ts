@@ -13,13 +13,6 @@
  */
 
 import { mapValues } from '../runtime';
-import type { SemantDemoSchemasDocument } from './SemantDemoSchemasDocument';
-import {
-    SemantDemoSchemasDocumentFromJSON,
-    SemantDemoSchemasDocumentFromJSONTyped,
-    SemantDemoSchemasDocumentToJSON,
-    SemantDemoSchemasDocumentToJSONTyped,
-} from './SemantDemoSchemasDocument';
 import type { DocumentDetailTextChunkWithUserCollectionInfo } from './DocumentDetailTextChunkWithUserCollectionInfo';
 import {
     DocumentDetailTextChunkWithUserCollectionInfoFromJSON,
@@ -27,19 +20,26 @@ import {
     DocumentDetailTextChunkWithUserCollectionInfoToJSON,
     DocumentDetailTextChunkWithUserCollectionInfoToJSONTyped,
 } from './DocumentDetailTextChunkWithUserCollectionInfo';
+import type { Document } from './Document';
+import {
+    DocumentFromJSON,
+    DocumentFromJSONTyped,
+    DocumentToJSON,
+    DocumentToJSONTyped,
+} from './Document';
 
 /**
- * 
+ * A document with all its chunks, each marked with membership in one collection.
  * @export
  * @interface DocumentDetail
  */
 export interface DocumentDetail {
     /**
      * 
-     * @type {SemantDemoSchemasDocument}
+     * @type {Document}
      * @memberof DocumentDetail
      */
-    document: SemantDemoSchemasDocument;
+    document: Document;
     /**
      * 
      * @type {Array<DocumentDetailTextChunkWithUserCollectionInfo>}
@@ -67,7 +67,7 @@ export function DocumentDetailFromJSONTyped(json: any, ignoreDiscriminator: bool
     }
     return {
         
-        'document': SemantDemoSchemasDocumentFromJSON(json['document']),
+        'document': DocumentFromJSON(json['document']),
         'chunks': ((json['chunks'] as Array<any>).map(DocumentDetailTextChunkWithUserCollectionInfoFromJSON)),
     };
 }
@@ -83,7 +83,7 @@ export function DocumentDetailToJSONTyped(value?: DocumentDetail | null, ignoreD
 
     return {
         
-        'document': SemantDemoSchemasDocumentToJSON(value['document']),
+        'document': DocumentToJSON(value['document']),
         'chunks': ((value['chunks'] as Array<any>).map(DocumentDetailTextChunkWithUserCollectionInfoToJSON)),
     };
 }

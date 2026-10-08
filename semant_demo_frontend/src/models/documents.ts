@@ -1,6 +1,5 @@
-import type { SemantDemoSchemaDocumentsDocument, DocumentBrowse } from 'src/generated/api'
+import type { Document, DocumentBrowse } from 'src/generated/api'
 
-type Document = SemantDemoSchemaDocumentsDocument
 type Documents = Document[]
 type DocumentBrowseParams = {
   collectionId?: string
