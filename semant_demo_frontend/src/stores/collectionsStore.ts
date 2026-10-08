@@ -4,7 +4,7 @@ import { Collection, Collections, PostCollection, PatchCollection } from 'src/mo
 import { useCollectionRepository } from 'src/repositories/useCollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
 import { incompleteWriteMessage } from 'src/utils/writeOutcome'
-import { createContextGuard } from 'src/shared/api'
+import { captureSession, createContextGuard } from 'src/shared/api'
 
 export const useCollectionsStore = defineStore('userCollections', () => {
   const collectionRepository = useCollectionRepository()
@@ -17,6 +17,15 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   // now, or another user signed in).
   const listRequests = createContextGuard()
   const activeRequests = createContextGuard()
+  // Deletions the backend acknowledged. Collection ids are never reused, so a list answer
+  // that predates a deletion cannot bring the collection back.
+  const deletedIds = new Set<string>()
+
+  const forgetDeleted = (ids: string[]) => {
+    ids.forEach((id) => deletedIds.add(id))
+    collections.value = collections.value.filter((c) => !deletedIds.has(c.id))
+    if (activeCollection.value && deletedIds.has(activeCollection.value.id)) activeCollection.value = null
+  }
 
   // Collections visible in UI — excludes any IDs currently being deleted
   const visibleCollections = computed(() =>
@@ -30,7 +39,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     error.value = null
     try {
       const data = await collectionRepository.getAll()
-      if (isCurrent()) collections.value = data
+      if (isCurrent()) collections.value = data.filter((c) => !deletedIds.has(c.id))
     } catch (err) {
       if (!isCurrent()) return
       error.value = 'Failed to fetch collections'
@@ -62,6 +71,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   const clear = () => {
     listRequests.enter()
     activeRequests.enter()
+    deletedIds.clear()
     collections.value = []
     activeCollection.value = null
     error.value = null
@@ -69,26 +79,31 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   }
   const createCollection = async (collectionData: PostCollection) => {
     const notif = ongoingNotification('Creating collection...')
+    const inSession = captureSession()
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.create(collectionData)
+      if (!inSession()) return notif.dismiss()
       collections.value.push(data)
       notif.success('Collection created')
     } catch (err) {
+      if (!inSession()) return notif.dismiss()
       error.value = 'Failed to create collection'
       console.error('Error creating collection:', err)
       notif.error('Failed to create collection')
     } finally {
-      loading.value = false
+      if (inSession()) loading.value = false
     }
   }
   const updateCollection = async (collectionId: string, collectionData: PatchCollection) => {
     const notif = ongoingNotification('Updating collection...')
+    const inSession = captureSession()
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.update(collectionId, collectionData)
+      if (!inSession()) return notif.dismiss()
       const index = collections.value.findIndex((c) => c.id === collectionId)
       if (index !== -1) {
         collections.value[index] = data
@@ -98,45 +113,47 @@ export const useCollectionsStore = defineStore('userCollections', () => {
       }
       notif.success('Collection updated')
     } catch (err) {
+      if (!inSession()) return notif.dismiss()
       error.value = 'Failed to update collection'
       console.error('Error updating collection:', err)
       notif.error('Failed to update collection')
     } finally {
-      loading.value = false
+      if (inSession()) loading.value = false
     }
   }
   const deleteCollection = async (collectionId: string) => {
     const notif = ongoingNotification('Deleting collection...')
+    const inSession = captureSession()
     loading.value = true
     error.value = null
     try {
       await collectionRepository.remove(collectionId)
-      collections.value = collections.value.filter((c) => c.id !== collectionId)
-      if (activeCollection.value?.id === collectionId) {
-        activeCollection.value = null
-      }
+      if (!inSession()) return notif.dismiss()
+      forgetDeleted([collectionId])
       notif.success('Collection deleted')
     } catch (err) {
+      if (!inSession()) return notif.dismiss()
       error.value = 'Failed to delete collection'
       console.error('Error deleting collection:', err)
       notif.error(await incompleteWriteMessage(err, 'Failed to delete collection'))
     } finally {
-      loading.value = false
+      if (inSession()) loading.value = false
     }
   }
 
   const deleteManyCollections = async (collectionIds: string[]) => {
     if (collectionIds.length === 0) return
     const notif = ongoingNotification(`Deleting ${collectionIds.length} collections...`)
+    const inSession = captureSession()
     // Hidden while pending so fetchCollections can't bring them back meanwhile; afterwards
     // only the deletions the backend acknowledged stay applied.
     collectionIds.forEach((id) => pendingDeleteIds.value.add(id))
     error.value = null
     try {
       const results = await Promise.allSettled(collectionIds.map((id) => collectionRepository.remove(id)))
+      if (!inSession()) return notif.dismiss()
       const deleted = collectionIds.filter((_, i) => results[i].status === 'fulfilled')
-      collections.value = collections.value.filter((c) => !deleted.includes(c.id))
-      if (activeCollection.value && deleted.includes(activeCollection.value.id)) activeCollection.value = null
+      forgetDeleted(deleted)
       const failures = results.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []))
       if (!failures.length) {
         notif.success(`${collectionIds.length} collection${collectionIds.length === 1 ? '' : 's'} deleted`)
@@ -154,10 +171,12 @@ export const useCollectionsStore = defineStore('userCollections', () => {
   const shareManyCollections = async (collectionIds: string[], userId: string) => {
     if (collectionIds.length === 0) return
     const notif = ongoingNotification(`Sharing ${collectionIds.length} collection${collectionIds.length === 1 ? '' : 's'}...`)
+    const inSession = captureSession()
     error.value = null
     const results = await Promise.allSettled(
       collectionIds.map((id) => collectionRepository.share(id, userId))
     )
+    if (!inSession()) return notif.dismiss()
     const failedCount = results.filter((r) => r.status === 'rejected').length
     const succeededCount = results.length - failedCount
 

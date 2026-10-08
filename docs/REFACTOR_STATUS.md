@@ -607,14 +607,22 @@ Last updated: 2026-10-08 (#209)
   switching span; an old reply's end no longer ends the new one's streaming state or removes
   its placeholder), member list and user search on the members page, search and search
   summary (below). `app/session.ts` clears user-scoped stores and aborts AI runs when a
-  signed-in user signs out or another user signs in (not on session restore at startup).
+  signed-in user signs out or another user signs in (not on session restore at startup),
+  and ends the session guard (`captureSession()`/`endSession()` in `shared/api`): reads and
+  writes started before (collection create/update/delete/share, tag read/create/update/
+  delete, document add/remove) then leave data, errors and loading state alone; their
+  ongoing notification is dismissed; completed backend writes stay (review of PR #231).
   The duplicate collection store `chunk_collection-store.ts` (search page only, with a
   wrong fetch call) is removed; the search page uses `collectionsStore`, and loading its
   collections no longer toggles the search loading state.
-- **Acknowledged-only partial writes:** bulk document removal and bulk collection deletion
-  hid every selected item and, after any failure, relied on a reload (a failed reload left
-  unacknowledged removals hidden). They now use `allSettled`, keep only the acknowledged
-  removals, and report "Removed N of M ..." with the first failure's detail.
+- **Acknowledged-only partial writes:** bulk document removal, bulk collection deletion and
+  bulk tag deletion hid (tags: removed) every selected item and, after any failure, relied
+  on a reload (a failed reload left unacknowledged removals hidden; for tags the reload ran
+  as soon as the first deletion failed, while others were still running). They now wait for
+  every result (`allSettled`), keep only the acknowledged removals, and report "Removed/
+  Deleted N of M ..."; the tags table reloads only after all deletions finished. Deleted
+  tag and collection ids are remembered for the scope, so a list answer read before the
+  deletion landed cannot bring them back.
 - **Sidebar** (from PR #194, ported, not merged): `src/app/sidebar/` (shell, panel wrapper,
   store with shell state only). `register()` returns a removal handle, so a refused
   duplicate id cannot remove the original panel (in #194 `unregister(id)` could).
@@ -626,8 +634,9 @@ Last updated: 2026-10-08 (#209)
   reported. This is the explicit input for the summary now and search-result chat later.
   Hits keep chunk/document/page ids; their text is display text. `useSearchRequest` aborts
   the previous search; a late answer cannot replace newer results or end their loading.
-  `useSearchSummary` (from #194) uses the context and the generated client; a new search or
-  a new summary request makes the old one stale. The summary panel moved to the sidebar.
+  `useSearchSummary` (from #194) uses the context and the generated client; a new search, a
+  change of the summarized subset (scope or selection) or a new summary request makes the
+  old one stale, and a shown summary of another subset is cleared. The summary panel moved to the sidebar.
   **Behavior change:** an empty *Selected* scope and a failed summary are shown as an error
   in the panel (before: a notification, resp. "Failed to summarize." as the summary text).
 - **Permissions in the UI** (`features/collections/permissions.ts`, `collectionRights()`
@@ -649,13 +658,20 @@ Last updated: 2026-10-08 (#209)
   token change, signed out, operations without declared security, backend detail, abort),
   `contextScopedStores.spec.ts` (late span/tag/collection/document answers after a context
   change, spans of a shared chunk, write result after a document change, acknowledged-only
-  bulk removal, logout clearing with late answers, session restore keeps data),
+  bulk removal, logout clearing with late answers, session restore keeps data; after the
+  PR review also: create/update/delete/read of collections and tags finishing after
+  sign-out, an old-session write not ending the new session's load, a tag created for the
+  previous collection, bulk tag deletion with one immediate failure and one later success,
+  a reload answered with pre-deletion data),
   `spanDiscussion.spec.ts`, `searchResults.spec.ts` (subset selection, citation mapping,
-  empty selection, stale summary and search answers), `rightSidebar.spec.ts` (registration,
+  empty selection, stale summary and search answers, selection/scope change during and
+  after a summary), `rightSidebar.spec.ts` (registration,
   duplicates, page switching, explicit context and events, hidden inactive panel),
   `collectionPermissions.spec.ts` (rights table; card, members page and documents table for
   owner and shared user; documents table partial removal through the UI). Disabling each
-  guard/check (19 mutations) fails a test. Browser (Playwright, `make test-e2e`):
+  guard/check (19 mutations, plus 10 for the review fixes) fails a test, except the success
+  path of collection update after sign-out, which has nothing left to change (the list and
+  open collection are already cleared; the check is defensive). Browser (Playwright, `make test-e2e`):
   `sidebar.spec.ts` (summary of the selected result with its citation, new search clears
   it, panel leaves with the page), `permissions.spec.ts` (shared user: no owner controls,
   member list and tag editing available, no chunk membership controls; owner keeps them),

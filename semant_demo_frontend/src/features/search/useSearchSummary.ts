@@ -64,9 +64,10 @@ export function parseSummaryTokens (text: string, indicesMap: number[]): Summary
 
 /**
  * Summary of search results. Works only on the given context's retrieved results (or the
- * selected ones), never on a re-run query. A new search context or a new summary request
- * makes an unfinished request stale: its answer is dropped and it no longer controls
- * `summarizing`.
+ * selected ones), never on a re-run query. A new search context, a change of the summarized
+ * subset (scope or selection) or a new summary request makes an unfinished request stale:
+ * its answer is dropped and it no longer controls `summarizing`; a shown summary of another
+ * subset is cleared.
  *
  * @param context the current search results (null while there are none)
  * @param selectedIds ids of the results the user selected
@@ -103,8 +104,17 @@ export function useSearchSummary (
     summarizedResultNumbers.value = []
   }
 
-  // Results of another search: the old summary and any running request no longer apply.
-  watch(() => context.value?.id, reset)
+  // The results a summary is about: the search and, for the "selected" scope, the
+  // selection. When they change (another search, another scope, another selection), a
+  // running request and the shown summary no longer match what the panel says and are
+  // dropped.
+  const subsetKey = computed(() => {
+    const id = context.value?.id ?? null
+    if (scope.value !== 'selected') return `${id}:${scope.value}`
+    return `${id}:selected:${[...selectedIds.value].sort().join(',')}`
+  })
+  // Synchronous, so the invalidation happens before anything done after the change.
+  watch(subsetKey, reset, { flush: 'sync' })
 
   async function summarize () {
     const current = context.value

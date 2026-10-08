@@ -7,6 +7,7 @@ import { useTagSpansStore } from 'src/stores/tagSpansStore'
 import { useChunksStore } from 'src/stores/chunksStore'
 import { useCollectionStatsStore } from 'src/stores/collectionStatsStore'
 import useAiAssistance from 'src/composables/useAiAssistance'
+import { endSession } from 'src/shared/api'
 
 /**
  * Forgets everything loaded for the signed-in user: collections, documents, tags,
@@ -14,6 +15,7 @@ import useAiAssistance from 'src/composables/useAiAssistance'
  * for that user are ignored when they answer.
  */
 export function clearUserScopedState (): void {
+  endSession()
   useAiAssistance().reset()
   useTagSpansStore().clearAll()
   useTagsStore().clear()
