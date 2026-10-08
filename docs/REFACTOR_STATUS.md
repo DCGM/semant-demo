@@ -416,7 +416,9 @@ Last updated: 2026-10-08 (#205)
   orchestration moves into the Annotations service, decide whether lightweight per-pair
   serialization or another bounded mechanism is warranted, add a deterministic
   concurrent-update test with any fix, and keep the audit as the manual recovery.
-- TODO after the refactor (not a refactor gate, no issue yet): a cross-chunk span sets the
+- TODO after the refactor (post-refactor work, not a blocker for #205 or any refactor gate;
+  [#224](https://github.com/DCGM/semant-demo/issues/224) — Define tag-filtered search
+  behavior for cross-chunk spans): a cross-chunk span sets the
   chunk tag only on its anchor (first) chunk, so tag-filtered search does not find the
   following chunks it covers. Decide whether covered chunks should carry the tag too
   (needs the covered-chunk computation from canonical offsets).

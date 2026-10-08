@@ -154,11 +154,13 @@ async def require_readable_tags(collections: UserCollectionRepository, tags: Tag
     all raise the same "Tag not found", so the answer does not reveal whether a private
     tag exists. Anonymous users cannot use tags. No tags: nothing to check.
     """
-    ids = list(dict.fromkeys(parse_id(t, "Tag") for t in tag_ids))
-    if not ids:
+    raw_ids = list(tag_ids)
+    if not raw_ids:
         return []
+    # Before parsing: anonymous requests get 401 even for malformed ids.
     if user is None:
         raise AuthenticationRequired("Log in to filter by tags")
+    ids = list(dict.fromkeys(parse_id(t, "Tag") for t in raw_ids))
     owners = await tags.read_collection_ids(ids)
     tag_collections = set()
     for tid in ids:
