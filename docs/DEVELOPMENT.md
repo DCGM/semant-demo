@@ -359,12 +359,15 @@ They never use the development container or `local_data/`:
   run. Pointing the variables at the development snapshot therefore fails without changing
   it. Hosts other than loopback are refused unless `SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL=1`
   (CI service container).
-- Every integration test drops and recreates the application collections and seeds the
-  synthetic corpus in `semant_demo_backend/tests/fixtures/corpus.json` (users, three
+- Before every integration test the application collections are emptied and seeded with
+  the synthetic corpus in `semant_demo_backend/tests/fixtures/corpus.json` (users, three
   collections incl. a shared one, documents in several collections, partial chunk
   membership, manual/automatic/rejected annotations and chunk tag references, Czech
-  diacritics, a combining mark and a non-BMP character). A missing or unowned store is an
-  error, never a skip.
+  diacritics, a combining mark and a non-BMP character). The collections are created once
+  per run and are dropped and recreated only when their configuration no longer matches
+  (e.g. a test dropped one or auto-schema added a property); dropping and recreating them
+  for every test was the main cost of the suite and could stall ~20 s in Weaviate. A
+  missing or unowned store is an error, never a skip.
 - `make test-e2e` builds the frontend into `semant_demo_frontend/dist/e2e` and starts
   `python -m tests.e2e_server` (from `semant_demo_backend`): the same seeded corpus, a
   temporary SQLite database with the corpus users, the built frontend on the same origin,

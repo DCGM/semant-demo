@@ -28,11 +28,13 @@ from typing import Mapping
 import weaviate
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty
+from weaviate.classes.query import Filter
 
 from semant_demo.schemas import CollectionNames
 
 MARKER_COLLECTION = "SemantTestStoreMarker"
 MARKER_PURPOSE = "semant-automated-tests"
+_NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
 ENV_HOST = "SEMANT_TEST_WEAVIATE_HOST"
 ENV_REST_PORT = "SEMANT_TEST_WEAVIATE_REST_PORT"
@@ -157,6 +159,39 @@ async def drop_app_collections(client: WeaviateAsyncClient, names: CollectionNam
     for name in _app_collections_in_drop_order(names):
         if await client.collections.exists(name):
             await client.collections.delete(name)
+
+
+async def _app_schema(client: WeaviateAsyncClient, names: CollectionNames) -> dict:
+    configs = await client.collections.list_all(simple=False)
+    return {name: configs.get(name) for name in _app_collections_in_drop_order(names)}
+
+
+async def reset_app_collections(
+        client: WeaviateAsyncClient, names: CollectionNames, token: str, created: dict) -> None:
+    """Leave the application collections empty, after re-verifying ownership.
+
+    Deletes the objects and keeps the collections if their configuration still equals
+    the one this run created (cached in ``created``; pass the same dict on every call).
+    Otherwise (first call, a test dropped a collection, auto-schema added a property, ...)
+    drops and recreates them. Recreating per test dominated the suite's runtime, and
+    dropping a just-created collection can stall for ~20 s in Weaviate 1.34 (HNSW
+    commit-log unregistration timeout).
+    """
+    await claim_store(client, token)
+    if not created or await _app_schema(client, names) != created:
+        await drop_app_collections(client, names, token)
+        await create_app_schema(client, names)
+        created.clear()
+        created.update(await _app_schema(client, names))
+        return
+    for name in _app_collections_in_drop_order(names):
+        collection = client.collections.get(name)
+        # delete_many removes at most QUERY_MAXIMUM_RESULTS objects per call.
+        while (await collection.data.delete_many(where=Filter.by_id().not_equal(_NIL_UUID))).matches:
+            pass
+        remaining = (await collection.aggregate.over_all(total_count=True)).total_count
+        if remaining:
+            raise RuntimeError(f"Resetting {name} left {remaining} objects.")
 
 
 async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames) -> None:

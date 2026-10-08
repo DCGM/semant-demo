@@ -141,7 +141,7 @@ jobs:
           exit 1
       - name: Run integration tests
         working-directory: semant_demo_backend
-        run: /tmp/venv/bin/pytest -m integration -v
+        run: /tmp/venv/bin/pytest -m integration -v --durations=25
 
   api-client-drift:
     name: Generated API client drift

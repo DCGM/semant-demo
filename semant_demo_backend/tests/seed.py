@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from functools import cache
 from uuid import UUID
 
 from fastapi_users.password import PasswordHelper
@@ -111,10 +112,15 @@ async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, cor
     ])
 
 
+@cache
+def _password_hash(password: str) -> str:
+    # Hashing is deliberately slow; integration tests seed the same users for every test.
+    return PasswordHelper().hash(password)
+
+
 async def seed_users(engine: AsyncEngine, corpus: Corpus) -> None:
     """Create the SQL tables and the corpus users (fixed ids and passwords)."""
     await create_tables(engine)
-    password_helper = PasswordHelper()
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with session_maker() as session:
         session.add_all([
@@ -123,7 +129,7 @@ async def seed_users(engine: AsyncEngine, corpus: Corpus) -> None:
                 email=user["email"],
                 username=user["username"],
                 name=user["name"],
-                hashed_password=password_helper.hash(user["password"]),
+                hashed_password=_password_hash(user["password"]),
                 is_active=True,
                 is_superuser=user["is_superuser"],
                 is_verified=True,
