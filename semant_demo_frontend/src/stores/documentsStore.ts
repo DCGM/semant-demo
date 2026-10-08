@@ -4,7 +4,7 @@ import { Documents, Document, DocumentBrowseParams } from 'src/models/documents'
 import { ongoingNotification } from 'src/utils/notification'
 import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
 import { IncompleteWriteError } from 'src/utils/writeOutcome'
-import { createContextGuard } from 'src/shared/api'
+import { captureSession, createContextGuard } from 'src/shared/api'
 
 export const useDocumentsStore = defineStore('documents', () => {
   const documentsRepository = useDocumentsRepository()
@@ -94,14 +94,23 @@ export const useDocumentsStore = defineStore('documents', () => {
 
   const addToCollection = async (documentId: string, collectionId: string) => {
     const notif = ongoingNotification('Adding document to collection...')
+    const inSession = captureSession()
     error.value = null
     loading.value = true
     try {
       await documentsRepository.addToCollection(documentId, collectionId)
+      if (!inSession()) {
+        notif.dismiss()
+        return true
+      }
       await fetchDocumentsByCollection(collectionId)
       notif.success('Document added to collection')
       return true
     } catch (err) {
+      if (!inSession()) {
+        notif.dismiss()
+        return false
+      }
       error.value = 'Failed to add document to collection'
       console.error('Error adding document to collection:', err)
       notif.error(err instanceof IncompleteWriteError ? err.message : 'Failed to add document to collection')
@@ -109,27 +118,36 @@ export const useDocumentsStore = defineStore('documents', () => {
       if (err instanceof IncompleteWriteError) await fetchDocumentsByCollection(collectionId)
       return false
     } finally {
-      loading.value = false
+      if (inSession()) loading.value = false
     }
   }
 
   const removeFromCollection = async (documentId: string, collectionId: string) => {
     const notif = ongoingNotification('Removing document from collection...')
+    const inSession = captureSession()
     error.value = null
     loading.value = true
     try {
       await documentsRepository.removeFromCollection(documentId, collectionId)
+      if (!inSession()) {
+        notif.dismiss()
+        return true
+      }
       await fetchDocumentsByCollection(collectionId)
       notif.success('Document removed from collection')
       return true
     } catch (err) {
+      if (!inSession()) {
+        notif.dismiss()
+        return false
+      }
       error.value = 'Failed to remove document from collection'
       console.error('Error removing document from collection:', err)
       notif.error(err instanceof IncompleteWriteError ? err.message : 'Failed to remove document from collection')
       if (err instanceof IncompleteWriteError) await fetchDocumentsByCollection(collectionId)
       return false
     } finally {
-      loading.value = false
+      if (inSession()) loading.value = false
     }
   }
 
@@ -137,6 +155,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     if (documentIds.length === 0) return
 
     const notif = ongoingNotification('Removing selected documents from collection...')
+    const inSession = captureSession()
     // Hidden while pending; afterwards only the removals the backend acknowledged as
     // complete stay applied (a partly removed document stays in the collection).
     documentIds.forEach((id) => pendingRemoveIds.value.add(id))
@@ -145,6 +164,10 @@ export const useDocumentsStore = defineStore('documents', () => {
       const results = await Promise.allSettled(
         documentIds.map((documentId) => documentsRepository.removeFromCollection(documentId, collectionId))
       )
+      if (!inSession()) {
+        notif.dismiss()
+        return
+      }
       const removed = documentIds.filter((_, i) => results[i].status === 'fulfilled')
       if (listCollectionId === collectionId) {
         documents.value = documents.value.filter((doc) => !removed.includes(doc.id))

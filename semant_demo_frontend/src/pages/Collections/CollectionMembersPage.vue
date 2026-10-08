@@ -235,6 +235,18 @@ watch(collectionId, () => {
   void loadMembers()
 })
 
+// Signed out or another user: the member list and user search belong to the old session.
+watch(() => userStore.getUserId, (userId, previousUserId) => {
+  if (!previousUserId || userId === previousUserId) return
+  membersGuard.enter()
+  searchGuard.enter()
+  sharedUsers.value = []
+  searchResults.value = []
+  membersLoading.value = false
+  searchLoading.value = false
+  if (userId) void loadMembers()
+})
+
 onMounted(() => {
   loadMembers()
 })

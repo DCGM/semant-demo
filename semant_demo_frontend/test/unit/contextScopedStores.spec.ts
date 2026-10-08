@@ -9,6 +9,9 @@ import { useDocumentsStore } from 'src/stores/documentsStore'
 import { useUserStore } from 'src/stores/user-store'
 import { useSessionScope } from 'src/app/session'
 import { WriteOutcome } from 'src/generated/api'
+import * as notificationModule from 'src/utils/notification'
+
+const { notif } = notificationModule as unknown as { notif: { error: ReturnType<typeof vi.fn> } }
 
 // Requests the test resolves by hand, in any order.
 type Deferred<T> = { promise: Promise<T>, resolve: (value: T) => void, reject: (e: unknown) => void }
@@ -51,12 +54,21 @@ vi.mock('src/repositories/useTagSpansRepository', () => ({
   })
 }))
 vi.mock('src/repositories/useTagsRepository', () => ({
-  useTagsRepository: () => ({ getAllByCollection: (collectionId: string) => request(`tags:${collectionId}`) })
+  useTagsRepository: () => ({
+    getAllByCollection: (collectionId: string) => request(`tags:${collectionId}`),
+    getById: (tagId: string) => request(`tag:${tagId}`),
+    create: () => request('createTag'),
+    update: (tagId: string) => request(`updateTag:${tagId}`),
+    delete: (tagId: string) => request(`deleteTag:${tagId}`)
+  })
 }))
 vi.mock('src/repositories/useCollectionRepository', () => ({
   useCollectionRepository: () => ({
     getAll: () => request('collections'),
-    getById: (collectionId: string) => request(`collection:${collectionId}`)
+    getById: (collectionId: string) => request(`collection:${collectionId}`),
+    create: () => request('createCollection'),
+    update: (collectionId: string) => request(`updateCollection:${collectionId}`),
+    remove: (collectionId: string) => request(`removeCollection:${collectionId}`)
   })
 }))
 vi.mock('src/repositories/useDocumentsRepository', () => ({
@@ -70,6 +82,10 @@ vi.mock('src/utils/notification', () => {
   const notif = { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() }
   return { ongoingNotification: () => notif, warningNotification: vi.fn(), notif }
 })
+vi.mock('src/utils/writeOutcome', async () => ({
+  ...(await vi.importActual<typeof import('src/utils/writeOutcome')>('src/utils/writeOutcome')),
+  incompleteWriteMessage: async (_err: unknown, fallback: string) => fallback
+}))
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const span = (id: string, chunkId: string) => ({ id, chunkId, tagId: 't', start: 0, end: 1, type: 'pos' })
@@ -78,6 +94,7 @@ const complete = { outcome: WriteOutcome.complete, succeeded: [], failed: [], un
 beforeEach(() => {
   setActivePinia(createPinia())
   pending.clear()
+  vi.clearAllMocks()
 })
 
 describe('span store scope', () => {
@@ -146,6 +163,24 @@ describe('tag store scope', () => {
 
     expect(store.tags.map((t) => t.id)).toEqual(['b-tag'])
     expect(store.loading).toBe(false)
+  })
+})
+
+describe('tag created in another collection', () => {
+  it('is not added to the collection opened meanwhile', async () => {
+    const tags = useTagsStore()
+    const loadA = tags.fetchTagsByCollection('A')
+    answer('tags:A', [])
+    await loadA
+    const creating = tags.createTag('A', { name: 'New', color: '#000000' } as never)
+    const loadB = tags.fetchTagsByCollection('B')
+    answer('tags:B', [{ id: 'b-tag' }])
+    await loadB
+
+    answer('createTag', { id: 'a-tag', name: 'New' })
+    await creating
+
+    expect(tags.tags.map((t) => t.id)).toEqual(['b-tag'])
   })
 })
 
@@ -237,5 +272,144 @@ describe('session scope', () => {
 
     expect(collections.collections.map((c) => c.id)).toEqual(['A'])
     scope.stop()
+  })
+})
+
+describe('session scope of single reads and writes', () => {
+  // Signs in as u1 with session clearing active; returns the sign-out.
+  async function signedIn () {
+    const scope = effectScope()
+    scope.run(useSessionScope)
+    const user = useUserStore()
+    user.user = { id: 'u1', email: 'u1@example.com' }
+    await flush()
+    return {
+      signOut: async () => {
+        user.user = null
+        await flush()
+      },
+      stop: () => scope.stop()
+    }
+  }
+
+  it('does not put a collection created by the previous user into the cleared list', async () => {
+    const session = await signedIn()
+    const collections = useCollectionsStore()
+    const creating = collections.createCollection({ name: 'Private of u1', color: '#000000' })
+
+    await session.signOut()
+    answer('createCollection', { id: 'private', name: 'Private of u1' })
+    await creating
+
+    expect([collections.collections, collections.loading, collections.error]).toEqual([[], false, null])
+    session.stop()
+  })
+
+  it('does not put the previous user\'s updated or failed collection back', async () => {
+    const session = await signedIn()
+    const collections = useCollectionsStore()
+    const loadingOne = collections.fetchCollection('A')
+    answer('collection:A', { id: 'A', name: 'Old name' })
+    await loadingOne
+    const updating = collections.updateCollection('A', { name: 'New name' })
+    const deleting = collections.deleteManyCollections(['B'])
+
+    await session.signOut()
+    answer('updateCollection:A', { id: 'A', name: 'New name' })
+    fail('removeCollection:B', new Error('500'))
+    await Promise.all([updating, deleting])
+
+    expect([collections.activeCollection, collections.collections, collections.error]).toEqual([null, [], null])
+    session.stop()
+  })
+
+  it('does not show the previous user\'s tag read after sign-out', async () => {
+    const session = await signedIn()
+    const tags = useTagsStore()
+    const reading = tags.fetchTag('t1')
+
+    await session.signOut()
+    answer('tag:t1', { id: 't1', name: 'Private tag' })
+    await reading
+
+    expect([tags.activeTag, tags.loading]).toEqual([null, false])
+    session.stop()
+  })
+
+  it('does not put the previous user\'s created or updated tag back', async () => {
+    const session = await signedIn()
+    const tags = useTagsStore()
+    const loading = tags.fetchTagsByCollection('A')
+    answer('tags:A', [{ id: 't1', name: 'Old' }])
+    await loading
+    const creating = tags.createTag('A', { name: 'New', color: '#000000' } as never)
+    const updating = tags.updateTag('t1', { name: 'Renamed' })
+
+    await session.signOut()
+    answer('createTag', { id: 't2', name: 'New' })
+    fail('updateTag:t1', new Error('500'))
+    await creating
+    await updating.catch(() => undefined)
+
+    expect([tags.tags, tags.error, tags.loading]).toEqual([[], null, false])
+    session.stop()
+  })
+
+  it('lets a new sign-in load while a request of the old session is still running', async () => {
+    const session = await signedIn()
+    const collections = useCollectionsStore()
+    const creating = collections.createCollection({ name: 'Private of u1', color: '#000000' })
+    await session.signOut()
+
+    useUserStore().user = { id: 'u2', email: 'u2@example.com' }
+    const listing = collections.fetchCollections()
+    answer('createCollection', { id: 'private', name: 'Private of u1' }) // old write finishes
+    await creating
+    expect(collections.loading).toBe(true) // u2's load is still running
+
+    answer('collections', [{ id: 'u2-collection' }])
+    await listing
+    expect(collections.collections.map((c) => c.id)).toEqual(['u2-collection'])
+    session.stop()
+  })
+})
+
+describe('bulk tag deletion', () => {
+  async function loadTags () {
+    const tags = useTagsStore()
+    const loading = tags.fetchTagsByCollection('A')
+    answer('tags:A', [{ id: 't1' }, { id: 't2' }, { id: 't3' }])
+    await loading
+    return tags
+  }
+
+  it('waits for every deletion and removes only the acknowledged ones', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const tags = await loadTags()
+    let finished = false
+    const deleting = tags.deleteManyTags(['t1', 't2']).then((result) => { finished = true; return result })
+
+    fail('deleteTag:t1', new Error('storage failed')) // fails at once
+    await flush()
+    expect(finished).toBe(false) // t2 still running
+    expect(tags.tags.map((t) => t.id)).toEqual(['t3']) // both hidden while pending
+
+    answer('deleteTag:t2', undefined) // succeeds later
+    expect(await deleting).toEqual({ deleted: ['t2'], failed: ['t1'] })
+    expect(tags.tags.map((t) => t.id)).toEqual(['t1', 't3'])
+    expect(notif.error).toHaveBeenCalledWith('Deleted 1 of 2 tags. The others could not be deleted.')
+  })
+
+  it('does not bring back a deleted tag from a reload answered with older data', async () => {
+    const tags = await loadTags()
+    const deleting = tags.deleteManyTags(['t2'])
+    const reloading = tags.fetchTagsByCollection('A') // e.g. the Refresh button
+
+    answer('deleteTag:t2', undefined)
+    await deleting
+    answer('tags:A', [{ id: 't1' }, { id: 't2' }, { id: 't3' }]) // read before the delete landed
+    await reloading
+
+    expect(tags.tags.map((t) => t.id)).toEqual(['t1', 't3'])
   })
 })

@@ -86,6 +86,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
       spansByChunkId.value[span.chunkId] = [...(spansByChunkId.value[span.chunkId] || []), spanOf(result)]
       spansVersion.value++
     } catch (err) {
+      if (!isCurrent()) throw err
       console.error('Failed to create span', err)
       error.value = 'Failed to create span'
       throw err
@@ -102,6 +103,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
       spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).map((s) => (s.id === spanId ? updatedSpan : s))
       spansVersion.value++
     } catch (err) {
+      if (!isCurrent()) throw err
       console.error('Failed to update span', err)
       error.value = 'Failed to update span'
       throw err
@@ -149,6 +151,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
       spansVersion.value++
       requireComplete(result, 'Updating the selected suggestions')
     } catch (err) {
+      if (!isCurrent()) throw err
       console.error('Failed to bulk-update spans', err)
       error.value = 'Failed to bulk-update spans'
       throw err
@@ -164,6 +167,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
       spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).filter((s) => s.id !== spanId)
       spansVersion.value++
     } catch (err) {
+      if (!isCurrent()) throw err
       console.error('Failed to delete span', err)
       error.value = 'Failed to delete span'
       throw err

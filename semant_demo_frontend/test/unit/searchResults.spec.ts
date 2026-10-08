@@ -139,6 +139,43 @@ describe('useSearchSummary', () => {
     expect([summary.summary.value, summary.summarizing.value, summary.error.value]).toEqual(['', false, null])
   })
 
+  it('drops a pending summary when the selection changes and clears a shown one', async () => {
+    const selected = ref<string[]>(['a'])
+    const summary = useSearchSummary(ref(contextOf(1, ['a', 'b'])), selected)
+    await nextTick()
+    const running = summary.summarize()
+    await flush()
+
+    selected.value = ['b'] // the user picks another result before the answer arrives
+    await nextTick()
+    expect(calls[0].signal?.aborted).toBe(true)
+    await running
+    expect([summary.summary.value, summary.summarizing.value]).toEqual(['', false])
+
+    const second = summary.summarize()
+    await flush()
+    expect((calls[1].body as { results: { id: string }[] }).results.map((r) => r.id)).toEqual(['b'])
+    calls[1].answer({ summary: 'About [doc1].', time_spent: 0.1 })
+    await second
+    expect(summary.summary.value).toBe('About [doc1].')
+
+    selected.value = ['a', 'b'] // the shown summary no longer matches the selection
+    await nextTick()
+    expect(summary.summary.value).toBe('')
+  })
+
+  it('clears the summary when the scope changes', async () => {
+    const summary = useSearchSummary(ref(contextOf(1, ['a', 'b', 'c', 'd'])), ref<string[]>([]))
+    const running = summary.summarize()
+    await flush()
+    calls[0].answer({ summary: 'Top ten [doc1].', time_spent: 0.1 })
+    await running
+
+    summary.scope.value = 'focused'
+    await nextTick()
+    expect(summary.summary.value).toBe('')
+  })
+
   it('keeps the newer request loading when an older one answers late', async () => {
     const context = ref<SearchResultsContext | null>(contextOf(1, ['a', 'b']))
     const summary = useSearchSummary(context, ref<string[]>([]))
