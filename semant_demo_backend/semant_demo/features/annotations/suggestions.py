@@ -37,7 +37,7 @@ from uuid import UUID
 
 import anyio
 
-import semant_demo.schemas as schemas
+from semant_demo.features.annotations.schemas import SpanType, TagSpan
 from semant_demo.adapters.topicer.client import TopicerClient, TopicerError, TopicerTag
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
@@ -99,7 +99,7 @@ class _ChunkEvent:
     tally: _Tally
     chunk_id: str
     error: str | None = None
-    spans: list[schemas.TagSpan] = field(default_factory=list)
+    spans: list[TagSpan] = field(default_factory=list)
     unsaved: int = 0
     reasons: set[str] = field(default_factory=set)
     untagged: int = 0
@@ -260,7 +260,7 @@ def _validated(raw: Any, allowed_tag_ids: set[str], text_len: int,
 async def _save(store: AnnotationStore, event: _ChunkEvent, chunk_id: str, proposal: _Proposal,
                 start: int, end: int) -> None:
     """Store one validated proposal (``start``/``end`` in UTF-16 units of ``chunk_id``)."""
-    span = PostSpan(chunkId=chunk_id, tagId=proposal.tag_id, start=start, end=end, type=schemas.SpanType.auto,
+    span = PostSpan(chunkId=chunk_id, tagId=proposal.tag_id, start=start, end=end, type=SpanType.auto,
                     reason=proposal.reason, confidence=proposal.confidence)
     try:
         result = await _uninterrupted(service.save_span(store, span))
@@ -271,7 +271,7 @@ async def _save(store: AnnotationStore, event: _ChunkEvent, chunk_id: str, propo
         event.save_failed = True
         event.tally.save_failures += 1
         return
-    event.spans.append(schemas.TagSpan(**result.model_dump(include=set(schemas.TagSpan.model_fields))))
+    event.spans.append(TagSpan(**result.model_dump(include=set(TagSpan.model_fields))))
     event.tally.saved += 1
     if result.failed:
         event.untagged += 1

@@ -20,62 +20,62 @@ import {
     SearchRequestToJSON,
     SearchRequestToJSONTyped,
 } from './SearchRequest';
-import type { TextChunkWithDocumentOutput } from './TextChunkWithDocumentOutput';
+import type { TextChunkWithDocument } from './TextChunkWithDocument';
 import {
-    TextChunkWithDocumentOutputFromJSON,
-    TextChunkWithDocumentOutputFromJSONTyped,
-    TextChunkWithDocumentOutputToJSON,
-    TextChunkWithDocumentOutputToJSONTyped,
-} from './TextChunkWithDocumentOutput';
+    TextChunkWithDocumentFromJSON,
+    TextChunkWithDocumentFromJSONTyped,
+    TextChunkWithDocumentToJSON,
+    TextChunkWithDocumentToJSONTyped,
+} from './TextChunkWithDocument';
 
 /**
  * 
  * @export
- * @interface SearchResponseOutput
+ * @interface SearchResponse
  */
-export interface SearchResponseOutput {
+export interface SearchResponse {
     /**
      * 
-     * @type {Array<TextChunkWithDocumentOutput>}
-     * @memberof SearchResponseOutput
+     * @type {Array<TextChunkWithDocument>}
+     * @memberof SearchResponse
      */
-    results: Array<TextChunkWithDocumentOutput>;
+    results: Array<TextChunkWithDocument>;
     /**
      * 
      * @type {string}
-     * @memberof SearchResponseOutput
+     * @memberof SearchResponse
      */
     resultsSummary?: string | null;
     /**
      * 
      * @type {SearchRequest}
-     * @memberof SearchResponseOutput
+     * @memberof SearchResponse
      */
     searchRequest: SearchRequest;
     /**
      * 
      * @type {number}
-     * @memberof SearchResponseOutput
+     * @memberof SearchResponse
      */
     timeSpent: number;
     /**
      * 
      * @type {Array<string>}
-     * @memberof SearchResponseOutput
+     * @memberof SearchResponse
      */
     searchLog: Array<string>;
     /**
      * 
      * @type {Array<string>}
-     * @memberof SearchResponseOutput
+     * @memberof SearchResponse
      */
     warnings?: Array<string>;
 }
 
 /**
- * Check if a given object implements the SearchResponseOutput interface.
+ * Check if a given object implements the SearchResponse interface.
  */
-export function instanceOfSearchResponseOutput(value: object): value is SearchResponseOutput {
+export function instanceOfSearchResponse(value: object): value is SearchResponse {
     if (!('results' in value) || value['results'] === undefined) return false;
     if (!('searchRequest' in value) || value['searchRequest'] === undefined) return false;
     if (!('timeSpent' in value) || value['timeSpent'] === undefined) return false;
@@ -83,17 +83,17 @@ export function instanceOfSearchResponseOutput(value: object): value is SearchRe
     return true;
 }
 
-export function SearchResponseOutputFromJSON(json: any): SearchResponseOutput {
-    return SearchResponseOutputFromJSONTyped(json, false);
+export function SearchResponseFromJSON(json: any): SearchResponse {
+    return SearchResponseFromJSONTyped(json, false);
 }
 
-export function SearchResponseOutputFromJSONTyped(json: any, ignoreDiscriminator: boolean): SearchResponseOutput {
+export function SearchResponseFromJSONTyped(json: any, ignoreDiscriminator: boolean): SearchResponse {
     if (json == null) {
         return json;
     }
     return {
         
-        'results': ((json['results'] as Array<any>).map(TextChunkWithDocumentOutputFromJSON)),
+        'results': ((json['results'] as Array<any>).map(TextChunkWithDocumentFromJSON)),
         'resultsSummary': json['results_summary'] == null ? undefined : json['results_summary'],
         'searchRequest': SearchRequestFromJSON(json['search_request']),
         'timeSpent': json['time_spent'],
@@ -102,18 +102,18 @@ export function SearchResponseOutputFromJSONTyped(json: any, ignoreDiscriminator
     };
 }
 
-export function SearchResponseOutputToJSON(json: any): SearchResponseOutput {
-    return SearchResponseOutputToJSONTyped(json, false);
+export function SearchResponseToJSON(json: any): SearchResponse {
+    return SearchResponseToJSONTyped(json, false);
 }
 
-export function SearchResponseOutputToJSONTyped(value?: SearchResponseOutput | null, ignoreDiscriminator: boolean = false): any {
+export function SearchResponseToJSONTyped(value?: SearchResponse | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
-        'results': ((value['results'] as Array<any>).map(TextChunkWithDocumentOutputToJSON)),
+        'results': ((value['results'] as Array<any>).map(TextChunkWithDocumentToJSON)),
         'results_summary': value['resultsSummary'],
         'search_request': SearchRequestToJSON(value['searchRequest']),
         'time_spent': value['timeSpent'],

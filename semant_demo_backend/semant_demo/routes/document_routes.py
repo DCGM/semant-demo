@@ -1,9 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 
-from semant_demo import schemas
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.schema.documents import DocumentBrowse, Document
+from semant_demo.schema.documents import DocumentBrowse, Document, DocumentDetail
 from semant_demo.features.collections import access
 from semant_demo.routes.dependencies import get_collections, get_documents
 from semant_demo.users.auth import current_active_optional_user, current_active_user
@@ -55,12 +54,12 @@ async def browse_documents(collection_id: str | None = None,
     )
 
 
-@exp_router.get("/api/documents/{document_id}/{collection_id}/chunks", response_model=schemas.DocumentDetail, response_model_exclude_none=True)
+@exp_router.get("/api/documents/{document_id}/{collection_id}/chunks", response_model=DocumentDetail, response_model_exclude_none=True)
 async def fetch_document_chunks(document_id: str,
                                 collection_id: str,
                                 documents: DocumentRepository = Depends(get_documents),
                                 collections: UserCollectionRepository = Depends(get_collections),
-                                current_user: User = Depends(current_active_user)) -> schemas.DocumentDetail:
+                                current_user: User = Depends(current_active_user)) -> DocumentDetail:
     """
     Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
     """

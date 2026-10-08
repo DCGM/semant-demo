@@ -120,7 +120,7 @@ Backend is full of typing errors.
 
 | Location | Issue |
 |---|---|
-| `schemas.py` — `ExtractedMeradata` | Typo in class name (should be `ExtractedMetadata`); `min_date` field declared twice |
+| `schemas.py` — `ExtractedMeradata` | Typo in class name (should be `ExtractedMetadata`) |
 | `tag_routes.py` | `global_engine` created in both `main.py` startup and `tag_routes.py` dependency |
 | `routes.ts` | `/tag/` route references `TaggingPage.vue` which does not exist in the repository |
 | `package.json` | Package name is `image-search-frontend`, description says "Semantic image search" — both outdated |

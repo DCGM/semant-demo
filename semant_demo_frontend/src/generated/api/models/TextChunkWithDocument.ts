@@ -13,152 +13,155 @@
  */
 
 import { mapValues } from '../runtime';
-import type { DocumentInput } from './DocumentInput';
+import type { Document } from './Document';
 import {
-    DocumentInputFromJSON,
-    DocumentInputFromJSONTyped,
-    DocumentInputToJSON,
-    DocumentInputToJSONTyped,
-} from './DocumentInput';
+    DocumentFromJSON,
+    DocumentFromJSONTyped,
+    DocumentToJSON,
+    DocumentToJSONTyped,
+} from './Document';
 
 /**
- * 
+ * A search hit: the chunk, its document and optional generated summaries. ``text`` is
+ * display text (``service.display_text``: hyphenated line breaks joined), not the
+ * canonical stored text; span offsets do not apply to it. The document view reads
+ * canonical text (``DocumentDetail``).
  * @export
- * @interface TextChunkWithDocumentInput
+ * @interface TextChunkWithDocument
  */
-export interface TextChunkWithDocumentInput {
+export interface TextChunkWithDocument {
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     id: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     text: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     startPageId: string;
     /**
      * 
      * @type {number}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     fromPage: number;
     /**
      * 
      * @type {number}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     toPage: number;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     document: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     title?: string | null;
     /**
      * 
      * @type {boolean}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     endParagraph?: boolean;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     language?: string | null;
     /**
      * 
      * @type {number}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     order: number | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     nerP?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     nerT?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     nerA?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     nerG?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     nerI?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     nerM?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     nerO?: Array<string> | null;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     queryTitle?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     querySummary?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocumentInput
+     * @memberof TextChunkWithDocument
      */
     summary?: string | null;
     /**
      * 
-     * @type {DocumentInput}
-     * @memberof TextChunkWithDocumentInput
+     * @type {Document}
+     * @memberof TextChunkWithDocument
      */
-    documentObject: DocumentInput;
+    documentObject: Document;
 }
 
 /**
- * Check if a given object implements the TextChunkWithDocumentInput interface.
+ * Check if a given object implements the TextChunkWithDocument interface.
  */
-export function instanceOfTextChunkWithDocumentInput(value: object): value is TextChunkWithDocumentInput {
+export function instanceOfTextChunkWithDocument(value: object): value is TextChunkWithDocument {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('text' in value) || value['text'] === undefined) return false;
     if (!('startPageId' in value) || value['startPageId'] === undefined) return false;
@@ -170,11 +173,11 @@ export function instanceOfTextChunkWithDocumentInput(value: object): value is Te
     return true;
 }
 
-export function TextChunkWithDocumentInputFromJSON(json: any): TextChunkWithDocumentInput {
-    return TextChunkWithDocumentInputFromJSONTyped(json, false);
+export function TextChunkWithDocumentFromJSON(json: any): TextChunkWithDocument {
+    return TextChunkWithDocumentFromJSONTyped(json, false);
 }
 
-export function TextChunkWithDocumentInputFromJSONTyped(json: any, ignoreDiscriminator: boolean): TextChunkWithDocumentInput {
+export function TextChunkWithDocumentFromJSONTyped(json: any, ignoreDiscriminator: boolean): TextChunkWithDocument {
     if (json == null) {
         return json;
     }
@@ -200,15 +203,15 @@ export function TextChunkWithDocumentInputFromJSONTyped(json: any, ignoreDiscrim
         'queryTitle': json['query_title'] == null ? undefined : json['query_title'],
         'querySummary': json['query_summary'] == null ? undefined : json['query_summary'],
         'summary': json['summary'] == null ? undefined : json['summary'],
-        'documentObject': DocumentInputFromJSON(json['document_object']),
+        'documentObject': DocumentFromJSON(json['document_object']),
     };
 }
 
-export function TextChunkWithDocumentInputToJSON(json: any): TextChunkWithDocumentInput {
-    return TextChunkWithDocumentInputToJSONTyped(json, false);
+export function TextChunkWithDocumentToJSON(json: any): TextChunkWithDocument {
+    return TextChunkWithDocumentToJSONTyped(json, false);
 }
 
-export function TextChunkWithDocumentInputToJSONTyped(value?: TextChunkWithDocumentInput | null, ignoreDiscriminator: boolean = false): any {
+export function TextChunkWithDocumentToJSONTyped(value?: TextChunkWithDocument | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -235,7 +238,7 @@ export function TextChunkWithDocumentInputToJSONTyped(value?: TextChunkWithDocum
         'query_title': value['queryTitle'],
         'query_summary': value['querySummary'],
         'summary': value['summary'],
-        'document_object': DocumentInputToJSON(value['documentObject']),
+        'document_object': DocumentToJSON(value['documentObject']),
     };
 }
 

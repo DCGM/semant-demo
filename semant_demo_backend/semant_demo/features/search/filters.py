@@ -10,13 +10,14 @@ from typing import TYPE_CHECKING, Union
 import yaml
 
 from semant_demo.core.errors import InvalidRequestError
-from semant_demo.features.search.schemas import FieldCondition, Op
-from semant_demo.schemas import (
+from semant_demo.features.search.schemas import (
+    FieldCondition,
     FilterType,
     NominalFilterValue,
     SearchFilter,
     SearchFiltersResponse,
     SearchFilterInput,
+    Op,
 )
 
 if TYPE_CHECKING:

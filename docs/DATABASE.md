@@ -106,6 +106,17 @@ erDiagram
 
 Stores bibliographic metadata for each digitised document (book, periodical issue, etc.). No vector index — documents are not directly searchable by similarity.
 
+The property list in the diagram above is older than the local development snapshot
+(`local_data/`, checked 2026-10-08), which stores `author` (`text[]`), `subtitle`,
+`partNumber` (`text`), `url` (`uuid`), `placeOfPublication`, `editors`, `seriesName`,
+`seriesNumber` (`text`), `edition`, `illustrators`, `translators`, `redaktors` and has no
+`library`, `authors`, `subTitle`, `description`, `keywords`, `genre`, `placeTerm`,
+`section`, `region` or `id_code`. Deployed databases were not checked. The API reads every
+store through one model, `schema/documents.Document`: the snapshot's properties plus the
+older `library`, `description`, `keywords` (`text[]`), `genre` and `placeTerm`. Properties
+a store lacks are absent from the answer; stored properties the model does not name (e.g.
+`authors`, `subTitle`, `manufacturePublisher`) are not returned, as before #208.
+
 Key fields:
 - `library` — source digital library identifier (e.g. `"mzk"`)
 - `yearIssued` / `dateIssued` — used for temporal filtering

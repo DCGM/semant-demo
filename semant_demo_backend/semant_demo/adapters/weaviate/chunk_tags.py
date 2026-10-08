@@ -35,14 +35,15 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference
 
 import semant_demo.schemas as schemas
+from semant_demo.features.annotations.schemas import SpanType
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.schema.outcomes import StepFailure
 
 REF_BY_TYPE: dict[str, str] = {
-    schemas.SpanType.auto.value: "automaticTag",
-    schemas.SpanType.pos.value: "positiveTag",
-    schemas.SpanType.neg.value: "negativeTag",
+    SpanType.auto.value: "automaticTag",
+    SpanType.pos.value: "positiveTag",
+    SpanType.neg.value: "negativeTag",
 }
 CHUNK_TAG_REFS: tuple[str, ...] = tuple(REF_BY_TYPE.values())
 

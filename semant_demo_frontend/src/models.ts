@@ -1,4 +1,8 @@
-// TypeScript interfaces generated from Python Pydantic models
+// Raw (snake_case) wire types for code that calls the backend through axios instead of the
+// generated client (src/generated/api, camelCase): the search page and the user store. They
+// mirror the backend models of the same name (features/search/schemas.py,
+// schema/documents.py, users/schemas.py). Use the generated types when a caller moves to the
+// generated client; do not add types here for endpoints it already serves.
 
 export interface User {
   id: string; // UUID as string
@@ -40,7 +44,6 @@ export interface SearchFiltersResponse {
 export interface SearchRequest {
   query: string;
   limit?: number;
-  page?: number;
   user_collection_id: string | null;
   search_title_generate?: boolean;
   search_summary_generate?: boolean;
@@ -52,58 +55,39 @@ export interface SearchRequest {
   max_year?: number | null;
   min_date?: string | null; // ISO datetime string
   max_date?: string | null; // ISO datetime string
-  language?: string[] | null;
+  language?: string | null;
   tag_uuids: string[] | null;
   positive: boolean;
   automatic: boolean;
 }
 
-export interface TagRequest {
-  tag_name: string;
-  tag_shorthand: string;
-  tag_color: string;
-  tag_pictogram: string;
-  tag_definition: string;
-  tag_examples: string[];
-  collection_name: string;
-}
-
-export interface CollectionRequest {
-  collection_name: string;
-  user_id: string;
-}
-
-// Previously declared twice; TypeScript merged both declarations into this type.
-export interface TagData {
-  tag_uuids: string[];
-  tag_name: string
-  tag_shorthand: string
-  tag_color: string
-  tag_pictogram: string
-  tag_definition: string
-  tag_examples: string[]
-  collection_name: string
-  tag_uuid: string
-}
-
 export interface Document {
   id: string; // UUID as string
-  library: string;
-  title: string;
+  library?: string | null; // filled in ("mzk") for search hits
+  title?: string | null;
   subtitle?: string | null;
-  partNumber?: number | null;
+  partNumber?: number | string | null;
   partName?: string | null;
   yearIssued?: number | null;
   dateIssued?: string | null; // ISO datetime string
-  author?: string | null;
+  author?: string[] | null;
   publisher?: string | null;
   language?: string | null;
   description?: string | null;
   url?: string | null;
-  public?: string | null;
+  public?: boolean | null;
   documentType?: string | null;
+  keywords?: string[] | null;
   genre?: string | null;
   placeTerm?: string | null;
+  placeOfPublication?: string | null;
+  editors?: string[] | null;
+  seriesName?: string | null;
+  edition?: string | null;
+  illustrators?: string[] | null;
+  translators?: string[] | null;
+  redaktors?: string[] | null;
+  seriesNumber?: string | null;
 }
 
 export interface TextChunk {
@@ -117,7 +101,7 @@ export interface TextChunk {
   language?: string | null;
   document: string; // UUID as string
 
-   ner_P?: string[] | null; // Person entities
+  ner_P?: string[] | null; // Person entities
   ner_T?: string[] | null; // Temporal entities
   ner_A?: string[] | null; // Address entities
   ner_G?: string[] | null; // Geographical entities
@@ -127,13 +111,12 @@ export interface TextChunk {
 
 }
 
+// Search hit; text is display text (hyphenated line breaks joined), not canonical text.
 export interface TextChunkWithDocument extends TextChunk {
   summary?: string | null;
   document_object: Document;
   query_title: string | null;
   query_summary: string | null;
-  automaticTags: TagData[];
-  positiveTags: TagData[];
 }
 
 export interface SearchResponse {
@@ -148,78 +131,6 @@ export interface SearchResponse {
 export interface SummaryResponse {
   summary: string;
   time_spent: number;
-}
-
-export interface TaggingResponse {
-  texts: string[];
-  tagged: string[]; // the llm response if the tag belongs to the chunk
-}
-
-export interface TagStartResponse {
-  job_started: boolean;
-  task_id: string;
-  message: string;
-}
-
-export interface CreateResponse {
-  created: boolean;
-  message: string;
-}
-
-export enum TagType {
-  positive = "positive",
-  negative = "negative",
-  automatic = "automatic",
-}
-
-export interface TaggedChunks {
-    tag_uuid : string;
-    text_chunk: string;
-    chunk_id: string;
-    chunk_collection_name: string;
-}
-
-export interface GetTaggedChunksResponse {
-    chunks_with_tags : TaggedChunks[]
-}
-
-export interface TagResult {
-  texts: string[];
-  tags: string[];
-}
-
-export interface CancelTaskResponse {
-    message: string;
-    taskCanceled: boolean;
-}
-
-export interface ApproveTagResponse {
-  successful: boolean;
-  approved: boolean;
-}
-
-export interface RemoveTagsResponse {
-  successful: boolean;
-}
-
-export interface ProcessedTagData {
-  chunk_id: string;
-  text: string;
-  tag: string;
-}
-
-export interface GetTagsResponse {
-    tags_lst: TagData[]
-}
-
-export interface StatusResponse {
-  taskId: string;
-  status: string;
-  result: TagResult;
-  all_texts_count: number;
-  processed_count: number;
-  tag_id: string;
-  tag_processing_data: ProcessedTagData[];
 }
 
 export enum ApprovedState {
@@ -239,24 +150,4 @@ export interface ExtendedAnnotationClass {
   colorString: string
   textColor: string
   approved: ApprovedState
-}
-
-export interface Collection {
-  id: string
-  name: string
-  user_id: string
-}
-
-export interface GetUserCollectionsResponse {
-  collections: Collection[]
-  user_id: string
-}
-
-export interface CollectionChunks {
-    text_chunk: string;
-    chunk_id: string;
-}
-
-export interface GetCollectionChunksResponse {
-    chunks_of_collection : CollectionChunks[]
 }

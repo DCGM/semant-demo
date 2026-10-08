@@ -10,7 +10,9 @@ from weaviate.classes.query import Filter, QueryReference
 
 import semant_demo.schemas as schemas
 from semant_demo.adapters.weaviate.chunk_tags import REF_BY_TYPE
-from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, TagFilter
+from semant_demo.features.annotations.schemas import SpanType
+from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, TagFilter, TextChunkWithDocument
+from semant_demo.schema.documents import Document
 
 # Fields stored on the chunk's document, not on the chunk; filtered through the reference.
 DOCUMENT_FIELDS = {
@@ -19,16 +21,13 @@ DOCUMENT_FIELDS = {
     "partName", "authors", "description", "keywords", "section", "region", "id_code"
 }
 
-DOCUMENT_PROPERTIES = [
-    "library", "title", "subTitle", "partNumber", "partName",
-    "yearIssued", "dateIssued", "authors", "publisher", "description",
-    "url", "public", "documentType", "keywords", "genre", "placeTerm",
-    "section", "region", "id_code"
-]
+# Document properties returned with each hit: every field of the document model. A store
+# without some of them returns the others.
+DOCUMENT_PROPERTIES = [name for name in Document.model_fields if name != "id"]
 
 # Chunk tag references: the projection of the spans (ADR 0004, chunk_tags.py).
-AUTOMATIC_TAG_REF = REF_BY_TYPE[schemas.SpanType.auto.value]
-POSITIVE_TAG_REF = REF_BY_TYPE[schemas.SpanType.pos.value]
+AUTOMATIC_TAG_REF = REF_BY_TYPE[SpanType.auto.value]
+POSITIVE_TAG_REF = REF_BY_TYPE[SpanType.pos.value]
 
 
 class ChunkSearchRepository:
@@ -36,7 +35,7 @@ class ChunkSearchRepository:
         self.client = client
         self.collectionNames = collectionNames
 
-    async def search(self, query: ChunkQuery) -> list[schemas.TextChunkWithDocument]:
+    async def search(self, query: ChunkQuery) -> list[TextChunkWithDocument]:
         """Top ``query.limit`` chunks matching every condition, best first.
 
         Chunks without a document reference are left out.
@@ -47,16 +46,16 @@ class ChunkSearchRepository:
             filters=self._filter(query),
             return_references=[QueryReference(link_on="document", return_properties=DOCUMENT_PROPERTIES)],
         )
-        if query.mode == schemas.SearchType.text:
+        if query.mode == SearchType.text:
             result = await chunks.query.bm25(query=query.text, **common)
-        elif query.mode == schemas.SearchType.vector:
+        elif query.mode == SearchType.vector:
             result = await chunks.query.near_vector(near_vector=_vector(query), **common)
-        elif query.mode == schemas.SearchType.hybrid:
+        elif query.mode == SearchType.hybrid:
             result = await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=_vector(query), **common)
         else:
             raise ValueError(f"Unknown search type: {query.mode}")
 
-        results: list[schemas.TextChunkWithDocument] = []
+        results: list[TextChunkWithDocument] = []
         for obj in result.objects:
             doc_objs = obj.references.get("document").objects if obj.references and obj.references.get("document") else []
             if not doc_objs:
@@ -65,10 +64,10 @@ class ChunkSearchRepository:
             doc_props = dict(first_doc.properties)
             if not doc_props.get("library"):
                 doc_props["library"] = "mzk"
-            results.append(schemas.TextChunkWithDocument(
+            results.append(TextChunkWithDocument(
                 id=obj.uuid,
                 **obj.properties,
-                document_object=schemas.Document(id=first_doc.uuid, **doc_props),
+                document_object=Document(id=first_doc.uuid, **doc_props),
                 document=first_doc.uuid,
             ))
         return results

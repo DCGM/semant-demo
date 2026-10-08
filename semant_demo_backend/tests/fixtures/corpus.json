@@ -26,7 +26,7 @@
     {
       "key": "letters",
       "id": "5e3a0000-0000-4000-8000-00000000d002",
-      "properties": {"title": "Dopisy z Prahy", "author": ["Karel Pisatel"], "yearIssued": 1902, "language": "ces", "documentType": "LETTER", "public": false},
+      "properties": {"title": "Dopisy z Prahy", "author": ["Karel Pisatel", "Marie Pisatelová"], "yearIssued": 1902, "language": "ces", "documentType": "LETTER", "public": false},
       "collections": ["chronicles"],
       "chunks": [
         {"key": "letters_1", "id": "5e3a0000-0000-4000-8000-0000000d2c01", "order": 0, "from_page": 1, "to_page": 1, "start_page_id": "5e3a0000-0000-4000-8000-0000000d2f01", "title": "První dopis", "text": "Milá Marie, píši Ti z Prahy. Počasí je ošklivé.", "collections": ["chronicles"]},

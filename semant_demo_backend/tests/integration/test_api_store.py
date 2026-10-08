@@ -49,3 +49,19 @@ async def test_document_view_data_for_collection(api_client, corpus):
     assert spans.status_code == 200, spans.text
     assert {s["id"] for s in spans.json()[chunk["id"]]} == {
         corpus.spans["novak_manual"]["id"], corpus.spans["lhota_automatic"]["id"]}
+
+
+async def test_document_detail_with_several_authors(api_client, corpus):
+    # #215: GET /api/documents/{d}/{c}/chunks answered 500 for documents with authors.
+    headers = await login_as(api_client, corpus, "annotator")
+    letters = corpus.documents["letters"]
+
+    response = await api_client.get(
+        f"/api/documents/{letters['id']}/{corpus.collections['chronicles']['id']}/chunks", headers=headers)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["document"]["author"] == ["Karel Pisatel", "Marie Pisatelová"]
+    assert body["document"]["title"] == letters["properties"]["title"]
+    assert {(c["id"], c["text"], c["in_user_collection"]) for c in body["chunks"]} == {
+        (c["id"], c["text"], True) for c in letters["chunks"]}

@@ -11,8 +11,7 @@ from weaviate.classes.query import QueryReference
 
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.collections.schemas import PatchCollection
-from semant_demo.features.annotations.schemas import PatchTag, PostTag
-from semant_demo.schemas import SpanType
+from semant_demo.features.annotations.schemas import PatchTag, PostTag, SpanType
 from tests.fakes import fake_embedding
 from tests.seed import FIXTURE_TIMESTAMP
 
@@ -137,7 +136,6 @@ async def test_document_maps_stored_properties(documents, corpus):
 
 @pytest.mark.parametrize("collection", ["newspapers", "outsider_notes", "chronicles"])
 async def test_document_chunks_mark_membership_of_the_requested_collection(documents, corpus, collection):
-    # The gazette has no authors; documents with authors fail here (#215).
     detail = await documents.read_chunks(doc(corpus, "gazette"), col(corpus, collection))
 
     assert detail.document.title == corpus.documents["gazette"]["properties"]["title"]
@@ -145,6 +143,18 @@ async def test_document_chunks_mark_membership_of_the_requested_collection(docum
         corpus.chunks[key]["id"]: collection in corpus.chunks[key]["collections"]
         for key in ("gazette_1", "gazette_2")
     }
+
+
+@pytest.mark.parametrize("key", ["gazette", "chronicle", "letters"])  # no, one and two authors
+async def test_document_chunks_map_stored_document_metadata(documents, corpus, key):
+    # #215: documents with authors (stored as text[]) failed to map.
+    stored = corpus.documents[key]
+
+    detail = await documents.read_chunks(doc(corpus, key), col(corpus, "chronicles"))
+
+    assert detail.document.model_dump(exclude_none=True, exclude={"id", "library"}) == stored["properties"]
+    assert detail.document.library == "mzk"  # missing library defaults as before
+    assert {(str(c.id), c.text) for c in detail.chunks} == {(c["id"], c["text"]) for c in stored["chunks"]}
 
 
 async def test_tag_maps_stored_properties(tags, corpus):

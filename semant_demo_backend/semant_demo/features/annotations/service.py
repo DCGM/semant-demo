@@ -22,7 +22,7 @@ import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
-import semant_demo.schemas as schemas
+from semant_demo.features.annotations.schemas import SpanType, TagSpan
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, ChunkTagRepository
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
@@ -126,7 +126,7 @@ async def delete_tag(store: AnnotationStore, user: Principal | None, tag_id: Id)
 #########
 
 async def list_spans(store: AnnotationStore, user: Principal | None, collection_id: Id,
-                     chunk_id: Id | None = None) -> list[schemas.TagSpan]:
+                     chunk_id: Id | None = None) -> list[TagSpan]:
     """The collection's spans, optionally only those starting on one chunk."""
     grant = await access.require_collection_read(store.collections, user, collection_id)
     chunk = access.parse_id(chunk_id, "Chunk") if chunk_id is not None else None
@@ -134,7 +134,7 @@ async def list_spans(store: AnnotationStore, user: Principal | None, collection_
 
 
 async def list_spans_by_chunks(store: AnnotationStore, user: Principal | None, collection_id: Id,
-                               chunk_ids: list[Id] | None) -> dict[str, list[schemas.TagSpan]]:
+                               chunk_ids: list[Id] | None) -> dict[str, list[TagSpan]]:
     """The collection's spans starting on each chunk, keyed by the chunk ids as given."""
     grant = await access.require_collection_read(store.collections, user, collection_id)
     if not chunk_ids:
@@ -164,7 +164,7 @@ async def _check_range(store: AnnotationStore, chunk_id: UUID, start: int, end: 
             chunks += more
 
 
-def _write_result(span: schemas.TagSpan, failed: list[StepFailure]) -> TagSpanWriteResult:
+def _write_result(span: TagSpan, failed: list[StepFailure]) -> TagSpanWriteResult:
     return TagSpanWriteResult(**span.model_dump(), outcome=outcome_of(1, len(failed)),
                               succeeded=[str(span.id)], failed=failed)
 
@@ -187,7 +187,7 @@ async def save_span(store: AnnotationStore, span: PostSpan) -> TagSpanWriteResul
         await store.chunk_tags.sync(pairs)
         raise
     failed = await store.chunk_tags.sync(pairs)
-    return _write_result(schemas.TagSpan(id=str(span_id), **span.model_dump()), failed)
+    return _write_result(TagSpan(id=str(span_id), **span.model_dump()), failed)
 
 
 async def create_span(store: AnnotationStore, user: Principal | None, span: PostSpan) -> TagSpanWriteResult:
@@ -235,7 +235,7 @@ async def _pairs_touched_by(store: AnnotationStore, span_ids: list[UUID], patch:
     return pairs
 
 
-async def _update_and_read(store: AnnotationStore, span_id: UUID, patch: PatchSpan) -> schemas.TagSpan:
+async def _update_and_read(store: AnnotationStore, span_id: UUID, patch: PatchSpan) -> TagSpan:
     await store.spans.update(span_id, patch)
     span = await store.spans.read(span_id)
     if span is None:
@@ -284,7 +284,7 @@ async def bulk_update_spans(store: AnnotationStore, user: Principal | None, span
     await _check_patched_ranges(store, ids, patch)
     pairs = await _pairs_touched_by(store, ids, patch)
 
-    updated: list[schemas.TagSpan] = []
+    updated: list[TagSpan] = []
     failed: list[StepFailure] = []
     for sid, res in zip(ids, await _gather(*(_update_and_read(store, sid, patch) for sid in ids))):
         if isinstance(res, Exception):
@@ -325,7 +325,7 @@ async def delete_span(store: AnnotationStore, user: Principal | None, span_id: I
 
 
 async def _delete_in_document(store: AnnotationStore, user: Principal | None, collection_id: Id,
-                              document_id: Id, tag_ids: list[Id], span_type: schemas.SpanType) -> WriteResult:
+                              document_id: Id, tag_ids: list[Id], span_type: SpanType) -> WriteResult:
     grant = await access.require_annotation_edit(store.collections, user, collection_id)
     document = await access.require_document_in_collection(store.collections, document_id, grant.collection_id)
     if not tag_ids:
@@ -356,10 +356,10 @@ async def delete_approved_spans_in_document(store: AnnotationStore, user: Princi
     not be deleted (``delete_span``) and failed chunk tag updates (``update_chunk_tags``).
     The spans are listed before deleting, so failing deletions cannot loop.
     """
-    return await _delete_in_document(store, user, collection_id, document_id, tag_ids, schemas.SpanType.pos)
+    return await _delete_in_document(store, user, collection_id, document_id, tag_ids, SpanType.pos)
 
 
 async def delete_suggestions_in_document(store: AnnotationStore, user: Principal | None, collection_id: Id,
                                          document_id: Id, tag_ids: list[Id]) -> WriteResult:
     """Like ``delete_approved_spans_in_document`` for unresolved AI suggestions (``auto``)."""
-    return await _delete_in_document(store, user, collection_id, document_id, tag_ids, schemas.SpanType.auto)
+    return await _delete_in_document(store, user, collection_id, document_id, tag_ids, SpanType.auto)

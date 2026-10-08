@@ -1,175 +1,16 @@
-from enum import Enum
+"""Models shared outside the features: RAG and feedback HTTP models, configured Weaviate
+collection names and the SQL declarative base. Feature models live in each feature's
+``schemas.py``; shared corpus models in ``schema/``.
+"""
 from pydantic import BaseModel
 from typing import Literal, TypedDict, Any
 from datetime import datetime
-import uuid
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, String, JSON, Integer, DateTime, Text
 import sqlalchemy.sql.functions as funcs
 
+from semant_demo.features.search.schemas import SearchType, TextChunkWithDocument
 
-class SearchType(str, Enum):
-    text = "text"
-    vector = "vector"
-    hybrid = "hybrid"
-
-
-class APIType(str, Enum):
-    ollama = "OLLAMA"
-    openai = "OPENAI"
-    google = "GOOGLE"
-    metacentrum = "METACENTRUM"
-
-
-class FilterType(str, Enum):
-    nominal = "nominal"
-    interval = "interval"
-
-
-class NominalFilterValue(BaseModel):
-    user_form: str
-    backend_form: str
-
-
-class SearchFilter(BaseModel):
-    id: str
-    name: str
-    type: FilterType
-    description: str
-    target_property: str
-    values: list[NominalFilterValue] | None = None
-    min_value: int | float | None = None
-    max_value: int | float | None = None
-
-
-class SearchFilterInput(BaseModel):
-    id: str
-    values: list[str | int | float] | str | int | float | None = None
-    min_value: int | float | datetime | None = None
-    max_value: int | float | datetime | None = None
-
-
-class SearchFiltersResponse(BaseModel):
-    filters: list[SearchFilter]
-
-
-class SummaryRequestBase(BaseModel):
-    search_title_generate: bool = True
-    search_title_prompt: str | None = None
-    search_title_model: str | None = None
-    # upper bound on number of words in the title
-    search_title_brevity: int | None = None
-
-    search_summary_generate: bool = True
-    search_summary_prompt: str | None = None
-    search_summary_model: str | None = None
-    # upper bound on number of words in the summary
-    search_summary_brevity: int | None = None
-
-    search_results_summary_generate: bool = True
-    search_results_summary_prompt: str | None = None
-    search_results_summary_model: str | None = None
-    # upper bound on number of words in the summary
-    search_results_summary_brevity: int | None = None
-
-
-class SearchRequest(SummaryRequestBase):
-    query: str
-    limit: int = 10
-    user_collection_id: str | None = None
-    type: SearchType = SearchType.hybrid
-    hybrid_search_alpha: float = 0.5
-    search_llm_filter: bool = False
-
-    filters: list[SearchFilterInput] | None = None
-
-    min_year: int | None = None
-    max_year: int | None = None
-    min_date: datetime | None = None
-    max_date: datetime | None = None
-    language: str | None = None
-
-    tag_uuids: list[str]
-    positive: bool
-    automatic: bool
-
-    is_hyde: bool = False  # variable which indicates if query is document
-
-
-class Document(BaseModel):
-    id: uuid.UUID
-    library: str
-    title: str | None = None
-    subtitle: str | None = None
-    # string is here because partNumber is sometimes string in testing DB
-    partNumber: int | str | None = None
-    partName: str | None = None
-    yearIssued: int | None = None
-    dateIssued: datetime | None = None
-    author: str | None = None
-    publisher: str | None = None
-    language: str | None = None
-    description: str | None = None
-    url: str | uuid.UUID | None = None
-    public: bool | None = None
-    documentType: str | None = None
-    keywords: str | list[str] | None = None
-    genre: str | None = None
-    placeTerm: str | None = None
-
-
-class TextChunk(BaseModel):
-    id: uuid.UUID
-    text: str
-    start_page_id: uuid.UUID
-    from_page: int
-    to_page: int
-    document: uuid.UUID
-    title: str | None = None
-    end_paragraph: bool = True
-    language: str | None = None
-    order: int | None
-
-    ner_P: list[str] | None = None  # Person entities
-    ner_T: list[str] | None = None  # Temporal entities
-    ner_A: list[str] | None = None  # Address entities
-    ner_G: list[str] | None = None  # Geographical entities
-    ner_I: list[str] | None = None  # Institution entities
-    ner_M: list[str] | None = None  # Media entities
-    ner_O: list[str] | None = None  # Cultural artifacts
-
-
-class TextChunkWithDocument(TextChunk):
-    query_title: str | None = None
-    query_summary: str | None = None
-    summary: str | None = None
-    document_object: Document
-
-
-class DocumentDetailTextChunkWithUserCollectionInfo(TextChunk):
-    in_user_collection: bool
-
-
-class DocumentDetail(BaseModel):
-    document: Document
-    chunks: list[DocumentDetailTextChunkWithUserCollectionInfo]
-
-class SearchResponse(BaseModel):
-    results: list[TextChunkWithDocument]
-    # Optional overall query-based summary of the results
-    results_summary: str | None = None
-    search_request: SearchRequest
-    time_spent: float
-    search_log: list[str]
-    # Problems that did not prevent the results, e.g. failed optional summaries.
-    warnings: list[str] = []
-
-class SummaryRequest(SummaryRequestBase):
-    search_response: SearchResponse
-
-class SummaryResponse(BaseModel):
-    summary: str
-    time_spent: float
 
 class RagRouteConfig(BaseModel):
     id: str
@@ -227,8 +68,8 @@ class ExtractedMeradata(BaseModel):
     min_year: int | None = None
     max_year: int | None = None
     min_date: datetime | None = None
-    min_date: datetime | None = None
-    language: int | None = None
+    max_date: datetime | None = None
+    language: str | None = None
 
 # class defining state of the adaptive rag
 
@@ -300,36 +141,6 @@ class CollectionNames(BaseModel):
     span_collection_name: str
     user_collection_link_name: str
     tag_to_user_collection_link_name: str
-class TagData(BaseModel):
-    tag_name: str  # name of the tag
-    tag_shorthand: str  # shorthand for the name
-    tag_color: str  # color assigned to the tag
-    tag_pictogram: str  # image
-    tag_definition: str  # description of the tag
-    tag_examples: list[str]  # list of examples what should be tagged
-    collection_name: str
-    tag_uuid: uuid.UUID | None
-
-# TagSpans
-
-class SpanType(str, Enum):
-    pos = "pos"
-    neg = "neg"
-    auto = "auto"
-
-
-class TagSpan(BaseModel):
-    id: str | None = None
-    chunkId: str
-    tagId: str
-    start: int
-    end: int
-    type: SpanType | None = None
-    # Optional metadata produced by AI/automatic taggers. Always None for
-    # manual spans; populated when an LLM proposes a span via the Topicer
-    # service. Stored alongside the span itself in the database.
-    reason: str | None = None
-    confidence: float | None = None
 
 # Task Model
 TasksBase = declarative_base()

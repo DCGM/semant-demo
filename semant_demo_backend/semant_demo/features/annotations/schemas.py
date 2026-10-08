@@ -6,7 +6,6 @@ from uuid import UUID
 from pydantic import BaseModel, model_validator
 
 from semant_demo.schema.outcomes import WriteResult
-from semant_demo.schemas import SpanType, TagSpan
 
 class Tag(BaseModel):
     id: UUID
@@ -39,6 +38,26 @@ class PatchTag(BaseModel):
         if not self.model_dump(exclude_unset=True, exclude_none=True):
             raise ValueError("At least one field must be provided for update")
         return self
+
+
+class SpanType(str, Enum):
+    pos = "pos"
+    neg = "neg"
+    auto = "auto"
+
+
+class TagSpan(BaseModel):
+    id: str | None = None
+    chunkId: str
+    tagId: str
+    start: int
+    end: int
+    type: SpanType | None = None
+    # Optional metadata produced by AI/automatic taggers. Always None for
+    # manual spans; populated when an LLM proposes a span via the Topicer
+    # service. Stored alongside the span itself in the database.
+    reason: str | None = None
+    confidence: float | None = None
 
 
 class PostSpan(BaseModel):

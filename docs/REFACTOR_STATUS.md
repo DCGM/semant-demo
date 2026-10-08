@@ -1,20 +1,20 @@
 # Refactor status
 
-Last updated: 2026-10-08 (#207)
+Last updated: 2026-10-08 (#208)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #207 — Extract AI annotation assistance into a request-scoped workflow
-  (in review, PR #228); next: #208.
+- Current issue: #208 — Consolidate backend schemas and generated API contracts
+  (in review); next: #209.
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
   write outcomes, PR #216), #202 (adapter foundation, PR #219),
   #203 (Collections feature migration, PR #221), #204 (annotation/chunk tag consistency,
   PR #223), #205 (Search feature service and adapter, PR #225), #206 (Annotations
-  feature, PR #226)
-- Current stage: R4
+  feature, PR #226), #207 (request-scoped AI suggestions, PR #228)
+- Current stage: R3/R6 contract cleanup (#208)
 
 ## Development environment
 
@@ -515,6 +515,64 @@ Last updated: 2026-10-08 (#207)
 - Not covered: no browser test runs AI suggestions (progressive display and navigation
   during a run); add with the context-scoped state work in #209.
 
+## #208 outcome
+
+- Audit result: two document models (`schemas.Document` for search hits and the document
+  view, `schema/documents.Document` for document/browse/collection reads) described the
+  same stored object with different fields and a conflicting `author` (`str` vs
+  `list[str]`). Their name clash also made OpenAPI emit module-path names
+  (`semant_demo__schemas__Document`, `semant_demo__schema__documents__Document`) and
+  needless `-Input`/`-Output` copies of `Document`, `TextChunkWithDocument` and
+  `SearchResponse`. Every other model has one definition; the chunk models are three
+  intentional projections (search/document-view `TextChunk`, collection `Chunk` with
+  `in_collection`, internal `ChunkText`), now documented in `schema/chunks.py`.
+- One `Document` (`schema/documents.py`) for every read: the fields of both, `author:
+  list[str]` (stored `text[]`), `library` optional (still filled in with `"mzk"` for search
+  hits and the document view, absent elsewhere as before), `partNumber: int | str`,
+  `keywords: list[str]` (was `str | list[str]` on search hits, which the generator renders
+  as an unusable empty type; no store we can see holds a string). OpenAPI now has single
+  `Document`, `TextChunkWithDocument` and `SearchResponse` components; paths are unchanged
+  apart from those references (checked by diffing the export with references and
+  descriptions normalized).
+- **Fix #215:** `GET /api/documents/{document_id}/{collection_id}/chunks` answered 500 for
+  every document with authors; it returns them as a list. The `KNOWN_BROKEN_READS`
+  exception in `test_access.py` is removed.
+- **Contract change — search hit documents:** the search adapter requested `authors` and
+  `subTitle`, which the local snapshot does not store (it stores `author`, `subtitle`), so
+  hits never carried authors; requesting `author` would have failed like #215. It now
+  requests every field of `Document`, so hits include `author` (list), `subtitle` and the
+  other stored metadata. The search page shows the authors joined (it showed
+  "Unknown Author"). `DocumentMetadataCard` joins list values (before, its document view
+  data failed to load for such documents).
+- Moves (no wire change): search HTTP models (`SearchRequest`, `SearchResponse`,
+  `TextChunkWithDocument`, filters, summaries) to `features/search/schemas.py`; `SpanType`,
+  `TagSpan` to `features/annotations/schemas.py`; `TextChunk` to `schema/chunks.py`;
+  `DocumentDetail*` to `schema/documents.py`. Removed unused `TagData` and `APIType`;
+  `ExtractedMeradata` (a type annotation only) declared `min_date` twice and `language: int`,
+  now `max_date` and `str`. `schemas.py` keeps the RAG/feedback models, `CreateResponse`,
+  `CollectionNames` and the SQL base/feedback table (moving the SQL base is #210).
+- Canonical vs display text: search hits carry display text (`service.display_text`), the
+  document view canonical stored text that span offsets refer to; stated on
+  `TextChunkWithDocument` and `DocumentDetailTextChunkWithUserCollectionInfo` (OpenAPI
+  descriptions). No field was added.
+- Frontend: client regenerated (pinned generator); `SemantDemoSchemaDocumentsDocument`/
+  `SemantDemoSchemasDocument` users now use `Document`. `src/models.ts` keeps only the raw
+  snake_case types still used by the axios callers (search page, user store; they move to
+  the generated client with the transport work in #209), aligned with the backend
+  (`author` list, optional `library`/`title`, `public` boolean, `language` string, no
+  `page`, no never-sent `automaticTags`/`positiveTags`); 20 unused legacy types (task-era
+  responses, `TagData`, ...) are removed. Unused zod duplicates `src/schemas/{collection,
+  documents,tags}.ts` (stale shapes) are removed. Type-check baseline unchanged (60).
+- DATABASE.md: the documented `Documents` properties differ from the local snapshot;
+  recorded there. Deployed databases were not inspected.
+- Tests: `tests/test_api_contracts.py` (offline: no module-path or `-Input`/`-Output`
+  components, every document read references `Document`, document and browse responses
+  serialize stored list/uuid/datetime properties through the real routes, a search
+  response validates back as summary input); integration: document view chunk detail with
+  zero, one and two authors (repository and HTTP), search hit authors (fixture `letters`
+  now has two authors). With `author: str` restored, the new integration tests and the
+  owner/annotator access-matrix cases fail.
+
 ## Temporary exceptions
 
 - **Process-wide `config` still read directly** by `ai_assistance/span_chat.py`. An app
@@ -574,10 +632,6 @@ Last updated: 2026-10-08 (#207)
   tag references (consistent with each other, unchanged by #204); search scoped to the
   collection excludes the chunk through membership.
 
-- `GET /api/documents/{document_id}/{collection_id}/chunks` returns 500 for documents
-  with authors (`schemas.Document.author` is `str`, the store holds a list): #215. The
-  repository test of this read uses the author-less fixture document for that reason.
-  Fix with a multi-author read test and remove the known-broken exception in #208.
 - A partial add chunk (chunk linked, document link failed) leaves the chunk in the
   collection while its document is not, so collection+document requests for that document
   return 404 until the add is retried (the partial outcome is reported to the user).

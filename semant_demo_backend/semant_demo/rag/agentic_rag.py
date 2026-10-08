@@ -15,7 +15,8 @@ from typing import Dict, List, Any
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.features.search.service import Retriever
-from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSearch, RagRequest, RagResponse
+from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchType
+from semant_demo.schemas import RagSearch, RagRequest, RagResponse
 
 
 def create_async_openai_client(model_type: str, global_config: Config) -> AsyncOpenAI:

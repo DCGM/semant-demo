@@ -1,62 +1,73 @@
 
-# SemantDemoSchemaDocumentsDocument
+# Document
 
+Bibliographic metadata of a corpus document, as stored on the ``Documents`` object.  The one document model of every read (document, browse, collection documents, document view, search hits). Properties that a store does not hold are absent (``None``); the type unions accept the variants found in existing stores.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
 `id` | string
+`library` | string
 `title` | string
+`subtitle` | string
+`partNumber` | [Partnumber](Partnumber.md)
+`partName` | string
+`yearIssued` | number
+`dateIssued` | Date
+`author` | Array&lt;string&gt;
+`publisher` | string
+`language` | string
+`description` | string
+`url` | [Url](Url.md)
 `_public` | boolean
 `documentType` | string
-`partNumber` | string
-`dateIssued` | Date
-`yearIssued` | number
-`language` | string
-`publisher` | string
+`keywords` | Array&lt;string&gt;
+`genre` | string
+`placeTerm` | string
 `placeOfPublication` | string
-`subtitle` | string
 `editors` | Array&lt;string&gt;
-`partName` | string
 `seriesName` | string
 `edition` | string
-`author` | Array&lt;string&gt;
 `illustrators` | Array&lt;string&gt;
 `translators` | Array&lt;string&gt;
 `redaktors` | Array&lt;string&gt;
 `seriesNumber` | string
-`keywords` | Array&lt;string&gt;
 
 ## Example
 
 ```typescript
-import type { SemantDemoSchemaDocumentsDocument } from ''
+import type { Document } from ''
 
 // TODO: Update the object below with actual values
 const example = {
   "id": null,
+  "library": null,
   "title": null,
+  "subtitle": null,
+  "partNumber": null,
+  "partName": null,
+  "yearIssued": null,
+  "dateIssued": null,
+  "author": null,
+  "publisher": null,
+  "language": null,
+  "description": null,
+  "url": null,
   "_public": null,
   "documentType": null,
-  "partNumber": null,
-  "dateIssued": null,
-  "yearIssued": null,
-  "language": null,
-  "publisher": null,
+  "keywords": null,
+  "genre": null,
+  "placeTerm": null,
   "placeOfPublication": null,
-  "subtitle": null,
   "editors": null,
-  "partName": null,
   "seriesName": null,
   "edition": null,
-  "author": null,
   "illustrators": null,
   "translators": null,
   "redaktors": null,
   "seriesNumber": null,
-  "keywords": null,
-} satisfies SemantDemoSchemaDocumentsDocument
+} satisfies Document
 
 console.log(example)
 
@@ -65,7 +76,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as SemantDemoSchemaDocumentsDocument
+const exampleParsed = JSON.parse(exampleJSON) as Document
 console.log(exampleParsed)
 ```
 

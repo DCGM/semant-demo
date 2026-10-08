@@ -27,6 +27,7 @@ import type {
   DeleteSpansForTagsRequest,
   DeleteSpansForTagsResponse,
   DiscussSpanRequest,
+  Document,
   DocumentBrowse,
   DocumentDetail,
   DocumentStats,
@@ -45,9 +46,7 @@ import type {
   RagRouteConfig,
   SearchFiltersResponse,
   SearchRequest,
-  SearchResponseInput,
-  SearchResponseOutput,
-  SemantDemoSchemaDocumentsDocument,
+  SearchResponse,
   ShareCollectionRequest,
   SuggestSpansRequest,
   SuggestSpansSelectionRequest,
@@ -84,6 +83,8 @@ import {
     DeleteSpansForTagsResponseToJSON,
     DiscussSpanRequestFromJSON,
     DiscussSpanRequestToJSON,
+    DocumentFromJSON,
+    DocumentToJSON,
     DocumentBrowseFromJSON,
     DocumentBrowseToJSON,
     DocumentDetailFromJSON,
@@ -120,12 +121,8 @@ import {
     SearchFiltersResponseToJSON,
     SearchRequestFromJSON,
     SearchRequestToJSON,
-    SearchResponseInputFromJSON,
-    SearchResponseInputToJSON,
-    SearchResponseOutputFromJSON,
-    SearchResponseOutputToJSON,
-    SemantDemoSchemaDocumentsDocumentFromJSON,
-    SemantDemoSchemaDocumentsDocumentToJSON,
+    SearchResponseFromJSON,
+    SearchResponseToJSON,
     ShareCollectionRequestFromJSON,
     ShareCollectionRequestToJSON,
     SuggestSpansRequestFromJSON,
@@ -278,7 +275,7 @@ export interface GetTagApiTagsTagUuidGetRequest {
 
 export interface QuestionApiQuestionQuestionTextPostRequest {
     questionText: string;
-    searchResponseInput: SearchResponseInput;
+    searchResponse: SearchResponse;
 }
 
 export interface RagApiRagPostRequest {
@@ -339,7 +336,7 @@ export interface SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest {
 
 export interface SummarizeApiSummarizeSummaryTypePostRequest {
     summaryType: string;
-    searchResponseInput: SearchResponseInput;
+    searchResponse: SearchResponse;
 }
 
 export interface UnshareCollectionApiCollectionsCollectionIdShareUserIdDeleteRequest {
@@ -817,13 +814,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SemantDemoSchemaDocumentsDocument>>;
+    fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Document>>;
 
     /**
      * Retrieves document by its id
      * Fetch Document
      */
-    fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SemantDemoSchemaDocumentsDocument>;
+    fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Document>;
 
     /**
      * Creates request options for fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet without sending the request
@@ -965,13 +962,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRaw(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SemantDemoSchemaDocumentsDocument>>>;
+    getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRaw(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Document>>>;
 
     /**
      * Returns documents which belong to collection given by id
      * Get Collection Documents
      */
-    getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SemantDemoSchemaDocumentsDocument>>;
+    getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Document>>;
 
     /**
      * Creates request options for getCollectionMembersApiCollectionsCollectionIdMembersGet without sending the request
@@ -1148,7 +1145,7 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for questionApiQuestionQuestionTextPost without sending the request
      * @param {string} questionText 
-     * @param {SearchResponseInput} searchResponseInput 
+     * @param {SearchResponse} searchResponse 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1158,7 +1155,7 @@ export interface DefaultApiInterface {
      * 
      * @summary Question
      * @param {string} questionText 
-     * @param {SearchResponseInput} searchResponseInput 
+     * @param {SearchResponse} searchResponse 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1357,12 +1354,12 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    searchApiSearchPostRaw(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchResponseOutput>>;
+    searchApiSearchPostRaw(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchResponse>>;
 
     /**
      * Search
      */
-    searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponseOutput>;
+    searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse>;
 
     /**
      * Creates request options for searchUsersApiUsersSearchGet without sending the request
@@ -1489,7 +1486,7 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for summarizeApiSummarizeSummaryTypePost without sending the request
      * @param {string} summaryType 
-     * @param {SearchResponseInput} searchResponseInput 
+     * @param {SearchResponse} searchResponse 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1499,7 +1496,7 @@ export interface DefaultApiInterface {
      * 
      * @summary Summarize
      * @param {string} summaryType 
-     * @param {SearchResponseInput} searchResponseInput 
+     * @param {SearchResponse} searchResponse 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2624,18 +2621,18 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Retrieves document by its id
      * Fetch Document
      */
-    async fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SemantDemoSchemaDocumentsDocument>> {
+    async fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Document>> {
         const requestOptions = await this.fetchDocumentApiDocumentDocumentIdGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => SemantDemoSchemaDocumentsDocumentFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentFromJSON(jsonValue));
     }
 
     /**
      * Retrieves document by its id
      * Fetch Document
      */
-    async fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SemantDemoSchemaDocumentsDocument> {
+    async fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Document> {
         const response = await this.fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -2943,18 +2940,18 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Returns documents which belong to collection given by id
      * Get Collection Documents
      */
-    async getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRaw(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SemantDemoSchemaDocumentsDocument>>> {
+    async getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRaw(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Document>>> {
         const requestOptions = await this.getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(SemantDemoSchemaDocumentsDocumentFromJSON));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(DocumentFromJSON));
     }
 
     /**
      * Returns documents which belong to collection given by id
      * Get Collection Documents
      */
-    async getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SemantDemoSchemaDocumentsDocument>> {
+    async getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(requestParameters: GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Document>> {
         const response = await this.getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -3359,10 +3356,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             );
         }
 
-        if (requestParameters['searchResponseInput'] == null) {
+        if (requestParameters['searchResponse'] == null) {
             throw new runtime.RequiredError(
-                'searchResponseInput',
-                'Required parameter "searchResponseInput" was null or undefined when calling questionApiQuestionQuestionTextPost().'
+                'searchResponse',
+                'Required parameter "searchResponse" was null or undefined when calling questionApiQuestionQuestionTextPost().'
             );
         }
 
@@ -3386,7 +3383,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: SearchResponseInputToJSON(requestParameters['searchResponseInput']),
+            body: SearchResponseToJSON(requestParameters['searchResponse']),
         };
     }
 
@@ -3837,17 +3834,17 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     /**
      * Search
      */
-    async searchApiSearchPostRaw(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchResponseOutput>> {
+    async searchApiSearchPostRaw(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchResponse>> {
         const requestOptions = await this.searchApiSearchPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => SearchResponseOutputFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => SearchResponseFromJSON(jsonValue));
     }
 
     /**
      * Search
      */
-    async searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponseOutput> {
+    async searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse> {
         const response = await this.searchApiSearchPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -4139,10 +4136,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             );
         }
 
-        if (requestParameters['searchResponseInput'] == null) {
+        if (requestParameters['searchResponse'] == null) {
             throw new runtime.RequiredError(
-                'searchResponseInput',
-                'Required parameter "searchResponseInput" was null or undefined when calling summarizeApiSummarizeSummaryTypePost().'
+                'searchResponse',
+                'Required parameter "searchResponse" was null or undefined when calling summarizeApiSummarizeSummaryTypePost().'
             );
         }
 
@@ -4166,7 +4163,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: SearchResponseInputToJSON(requestParameters['searchResponseInput']),
+            body: SearchResponseToJSON(requestParameters['searchResponse']),
         };
     }
 

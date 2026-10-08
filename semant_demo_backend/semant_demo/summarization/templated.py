@@ -11,7 +11,7 @@ from classconfig import ConfigurableValue, ConfigurableFactory, ConfigurableMixi
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from semant_demo.llm_api import APIRequest
-from semant_demo.schemas import TextChunk
+from semant_demo.schema.chunks import TextChunk
 from semant_demo.summarization.base import SearchResultsSummarizer
 from semant_demo.utils.template import Template, TemplateTransformer
 
