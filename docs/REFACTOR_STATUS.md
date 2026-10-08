@@ -6,7 +6,7 @@ Last updated: 2026-10-08 (#207)
 
 - Integration branch: `197-refactor---base`
 - Current issue: #207 — Extract AI annotation assistance into a request-scoped workflow
-  (in review); next: #208.
+  (in review, PR #228); next: #208.
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
