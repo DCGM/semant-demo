@@ -11,6 +11,7 @@ read, write or provider call. Rights:
 | ``require_membership_edit`` (add/remove documents/chunks) | yes | forbidden | not found |
 | ``require_collection_owner`` (metadata, delete, sharing) | yes | forbidden | not found |
 | ``require_admin`` (change a collection's owner) | no | no | admins only |
+| ``require_readable_tags`` (search tag filters) | yes | yes | not found |
 
 Users who cannot read a collection get "not found", so ids of other users' collections
 are not confirmed. There is no admin bypass: admins have the explicit admin-only routes
@@ -142,6 +143,34 @@ async def require_tags_in_collection(tags: TagRepository, tag_ids: Iterable[str 
     ids = list(dict.fromkeys(parse_id(t, "Tag") for t in tag_ids))
     if ids and await collection_of_tags(tags, ids) != collection_id:
         raise ResourceNotFound("Tag not found")
+    return ids
+
+
+async def require_readable_tags(collections: UserCollectionRepository, tags: TagRepository, user: Principal | None,
+                                tag_ids: Iterable[str | UUID], collection_id: UUID | None = None) -> list[UUID]:
+    """Every tag must belong to one collection the user can read (to ``collection_id``, if given).
+
+    Unknown, malformed, other users' and (with ``collection_id``) other collections' tags
+    all raise the same "Tag not found", so the answer does not reveal whether a private
+    tag exists. Anonymous users cannot use tags. No tags: nothing to check.
+    """
+    ids = list(dict.fromkeys(parse_id(t, "Tag") for t in tag_ids))
+    if not ids:
+        return []
+    if user is None:
+        raise AuthenticationRequired("Log in to filter by tags")
+    owners = await tags.read_collection_ids(ids)
+    tag_collections = set()
+    for tid in ids:
+        refs = owners.get(tid)
+        if refs is None or len(refs) != 1 or (collection_id is not None and refs[0] != collection_id):
+            raise ResourceNotFound("Tag not found")
+        tag_collections.add(refs[0])
+    for cid in tag_collections:
+        try:
+            await _grant(collections, user, cid)
+        except ResourceNotFound:
+            raise ResourceNotFound("Tag not found") from None
     return ids
 
 

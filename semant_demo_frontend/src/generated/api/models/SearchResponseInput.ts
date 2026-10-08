@@ -64,6 +64,12 @@ export interface SearchResponseInput {
      * @memberof SearchResponseInput
      */
     searchLog: Array<string>;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof SearchResponseInput
+     */
+    warnings?: Array<string>;
 }
 
 /**
@@ -92,6 +98,7 @@ export function SearchResponseInputFromJSONTyped(json: any, ignoreDiscriminator:
         'searchRequest': SearchRequestFromJSON(json['search_request']),
         'timeSpent': json['time_spent'],
         'searchLog': json['search_log'],
+        'warnings': json['warnings'] == null ? undefined : json['warnings'],
     };
 }
 
@@ -111,6 +118,7 @@ export function SearchResponseInputToJSONTyped(value?: SearchResponseInput | nul
         'search_request': SearchRequestToJSON(value['searchRequest']),
         'time_spent': value['timeSpent'],
         'search_log': value['searchLog'],
+        'warnings': value['warnings'],
     };
 }
 

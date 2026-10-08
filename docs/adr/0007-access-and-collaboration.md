@@ -60,8 +60,11 @@ Collection+document requests also require the document to be linked to that coll
 (the document's collection reference, not chunk membership, since the Document view
 shows non-member chunks of member documents).
 Corpus reads without a collection (document metadata, corpus browse, chunk counts,
-search without a collection) remain public. Restricting search tag filters to
-authorized tags belongs to the Search migration (#205).
+search without a collection or tags) remain public. Search tag filters (#205): every
+requested tag must belong to a collection the user can read, and to the searched
+collection when one is given; unknown, malformed and inaccessible tags all get the same
+"Tag not found" (anonymous users: 401). This is checked before any embedding or
+retrieval, also for tags sent without a selected tag kind.
 
 ## Local real-time Document view
 

@@ -1,17 +1,18 @@
 # Refactor status
 
-Last updated: 2026-10-08 (#204, after deferral tracking)
+Last updated: 2026-10-08 (#205)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #204 — Make annotation state and searchable chunk tags consistent
-  (in review, PR #223); next: #205 (Search service/adapter migration).
+- Current issue: #205 — Migrate Search to application service and Weaviate adapter
+  boundaries (in review); next: #206 (Annotations feature).
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
   write outcomes, PR #216), #202 (adapter foundation, PR #219),
-  #203 (Collections feature migration, PR #221)
+  #203 (Collections feature migration, PR #221), #204 (annotation/chunk tag consistency,
+  PR #223)
 - Current stage: R3
 
 ## Development environment
@@ -302,21 +303,81 @@ Last updated: 2026-10-08 (#204, after deferral tracking)
   fixture corpus is validated to satisfy the contract. Fast tests: cleanup refuses without
   a matching confirmed endpoint, before connecting; frontend unit tests for the warning.
 
+## #205 outcome
+
+- Search is a feature package: `features/search/routes.py` (moved from
+  `routes/search_routes.py`), `service.py`, `filters.py` (moved from `search_filters.py`)
+  and `schemas.py` (neutral `ChunkQuery`, `FieldCondition`/`Op`, `TagFilter`). The
+  Weaviate side is `adapters/weaviate/search.py` (`ChunkSearchRepository`): filter
+  translation (document fields through the `document` reference), BM25/near-vector/hybrid
+  call, returned references and result mapping. `weaviate_utils/text_chunk.py`
+  (`TextChunk.search`) is removed. No Protocols were added; fakes are plain objects.
+- `service.retrieve(backends, user, request, filter_definitions)` checks access, turns
+  configured filters (or, without them, the legacy `min_year`/`max_year`/`language`
+  fields) into conditions, embeds the query for vector/hybrid modes and calls the
+  adapter. `service.search` adds the optional summaries. Display text normalization
+  (joined hyphenated line breaks) moved from the adapter into the service; stored text is
+  unchanged.
+- Embeddings: `adapters/embeddings/gemma.GemmaEmbeddings(config.GEMMA_URL)` is built by
+  `AppResources.create` and injected (`SearchBackends`, dependency
+  `get_search_backends`); `gemma_embedding.py` and its process-wide `config` read are
+  removed. Timeouts unchanged (36 s query, 6 s documents).
+- Tag authorization (deferred from #201): every `tag_uuids` value must belong to exactly
+  one collection the user can read, and to `user_collection_id` when given
+  (`access.require_readable_tags`). Unknown, malformed, other users' and other
+  collections' tags all get 404 `{"detail": "Tag not found"}`; anonymous requests with tags
+  get 401. Checked before embedding or retrieval, also when neither `positive` nor
+  `automatic` is set (those tags still do not filter). Previously any tag id was accepted
+  (unknown ids returned no hits). Public search without collection and tags is unchanged,
+  also anonymously. The search page never sends tag ids, so the UI is not affected.
+- Summaries are optional: `SearchResultsSummarizer.__call__` now returns the parts that
+  failed (`title`, `query_summary`, `results_summary`) through a new `on_error` callback;
+  the parts keep the configured fallback text ("N/A") as before. If any part failed or the
+  summarizer raised, the response keeps the hits (and finished summaries) and gets
+  `warnings: ["Some titles or summaries could not be generated."]`. Before, provider
+  errors silently became "N/A" and an unexpected summarizer exception made the search
+  500. `/api/summarize/results` is unchanged.
+- RAG: `rag_request(request, retrieve)` receives `service.public_retriever(backends)`
+  instead of the facade, i.e. authorized public-corpus retrieval without summaries (RAG
+  requests carry no collection or tags; such a request would be refused like an
+  anonymous one). `rag_runner_demo.py` builds the same from its own connection.
+- `create_default_configurations.py` connects to Weaviate itself and reads the year/
+  language statistics through `ChunkSearchRepository.document_filter_stats()`;
+  `fetch_db_filter_stats` no longer opens a connection or reads the process-wide config.
+  `WeaviateAbstraction.create`/`close` (only used by these scripts) are removed.
+- Contract changes (generated client regenerated): `SearchResponse.warnings: list[str]`
+  (default empty); the search page shows each warning. The never-populated
+  `tags_result` (built by `TextChunk.search` but dropped by the response model, so never
+  on the wire) is gone from the backend and from the hand-written `models.ts` type; the
+  adapter no longer fetches the `automaticTag`/`positiveTag` references for it.
+- Tests: `tests/test_search_service.py` (fakes: embedding choice for each mode and HyDE,
+  embedding failure, legacy/configured filter normalization, invalid filters before any
+  provider call, tag kinds, collection/tag authorization matrix with no retrieval or
+  embedding on denial, public retriever, display text, reported/raised summary failures
+  including the templated summarizer's provider-error path);
+  `tests/integration/test_search.py` (real Weaviate: every filter alone and combined,
+  vector/hybrid with the same restrictions, mapping, filter stats; HTTP: permitted tag
+  filters with and without collection scope, another user's tag, permitted mixed with
+  inaccessible, unknown/malformed tags with identical answers, recorded adapter calls
+  prove denial precedes retrieval, configured and legacy filters, invalid filter,
+  injected embeddings, summary failure warning). The old facade-based search test in
+  `test_collections_store.py` moved there.
+
 ## Temporary exceptions
 
-- **Process-wide `config` still read directly** by provider/adapter modules:
-  `ai_assistance/span_chat.py`, `ai_assistance/topicer_client.py`, `gemma_embedding.py`,
-  `search_filters.fetch_db_filter_stats` (default argument), and `rag/rag_runner_demo.py`.
-  An app built with `create_app(other_config)` still uses the process-wide settings for
-  these calls. `semant_demo.main:app` passes the same object, so production has one source.
-  Remove when the embedding provider is injected (#205) and the AI assistance workflow is
-  extracted (#207); audit remaining provider/span-chat globals in #210.
+- **Process-wide `config` still read directly** by provider modules:
+  `ai_assistance/span_chat.py` and `ai_assistance/topicer_client.py`. An app built with
+  `create_app(other_config)` still uses the process-wide settings for these calls.
+  `semant_demo.main:app` passes the same object, so production has one source. Remove when
+  the AI assistance workflow is extracted (#207); audit remaining provider/span-chat
+  globals in #210. (The standalone scripts `rag/rag_runner_demo.py` and
+  `create_default_configurations.py` read it as their entry-point configuration.)
 - **Transitional `WeaviateAbstraction` facade** (`weaviate_utils/weaviate_abstraction.py`)
-  is still used by span routes and AI assistance (#206/#207), span chat, search,
-  summarizer and RAG (#205). It is built on the application's one client. The span and
-  text chunk adapters, `weaviate_utils/helpers.py` (re-exports `step_failure`/
-  `guard_progress`) and `weaviate_exceptions.py` stay until those migrations. Remove the
-  facade when its last caller has moved (#210).
+  is still used by span routes and AI assistance (#206/#207) and span chat. It is built
+  on the application's one client. The span adapter, `weaviate_utils/helpers.py`
+  (re-exports `step_failure`/`guard_progress`) and `weaviate_exceptions.py` stay until
+  those migrations. Search, summarizer and RAG no longer use it (#205). Remove the facade
+  when its last caller has moved (#210).
 - **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 60 errors).
   Several are real defects: `useTagging.ts` calls `DefaultApi` methods that no longer exist,
   `chunk_collection-store.ts` passes `userId` as fetch options, services import missing
@@ -325,12 +386,12 @@ Last updated: 2026-10-08 (#204, after deferral tracking)
 - **Ruff rule set limited** to `E9, F63, F7, F82`. The default rule set reports ~140 legacy
   findings (unused/star imports, comparisons). Python formatting and a Python type checker
   are not enforced yet.
-- **Access checks are called from route handlers** outside Collections (tag, span, AI
-  assistance, span chat, search, document routes), because those features have no service
-  layer yet. Each handler calls the check before any other work. Move Search, Annotations
-  and AI checks into services with #205–#207; audit remaining Document, tag and span-chat
+- **Access checks are called from route handlers** outside Collections and Search (tag,
+  span, AI assistance, span chat, document routes), because those features have no service
+  layer yet. Each handler calls the check before any other work. Move Annotations and AI
+  checks into services with #206–#207; audit remaining Document, tag and span-chat
   boundaries under #210 while preserving intentionally public corpus reads. Collections
-  has enforced access in its service since #203.
+  (#203) and Search (#205) enforce access in their services.
 - **Span write orchestration in the legacy span adapter** (#204): span write followed by
   the chunk tag sync and the outcome reporting live in `weaviate_utils/span.py`, which
   calls `adapters/weaviate/chunk_tags.sync_chunk_tags`. Move the orchestration into the
@@ -367,9 +428,6 @@ Last updated: 2026-10-08 (#204, after deferral tracking)
   with authors (`schemas.Document.author` is `str`, the store holds a list): #215. The
   repository test of this read uses the author-less fixture document for that reason.
   Fix with a multi-author read test and remove the known-broken exception in #208.
-- Search tag filters (`tag_uuids`) are not restricted to tags of readable collections;
-  only `user_collection_id` is checked. Explicitly authorize supplied tag IDs before
-  retrieval in #205, including searches without a collection filter.
 - A partial add chunk (chunk linked, document link failed) leaves the chunk in the
   collection while its document is not, so collection+document requests for that document
   return 404 until the add is retried (the partial outcome is reported to the user).
@@ -395,8 +453,6 @@ Last updated: 2026-10-08 (#204, after deferral tracking)
   `restart: unless-stopped`, so it retries; there is no `depends_on`/health condition
   between the separately deployed stacks.
 - Tag creation deduplicates against at most 2000 tags of a collection: #218.
-- `search_filters.fetch_db_filter_stats` (used by `generate_default_filters_async`)
-  opens its own Weaviate connection; only scripts call it. Revisit with Search (#205).
 - `UserCollectionRepository.read_all` pages by 1000; the multi-page path of that listing
   is not exercised by a test (needs more than 1000 collections for one user); cover it
   with a real-store regression test in #210.

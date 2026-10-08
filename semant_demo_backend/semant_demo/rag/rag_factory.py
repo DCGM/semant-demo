@@ -10,7 +10,7 @@ class BaseRag:
        self.global_config = global_config
        self.param_config = param_config
        
-   async def rag_request(self, request: RagRequest, searcher) -> RagResponse:
+   async def rag_request(self, request: RagRequest, retrieve) -> RagResponse:
         raise NotImplementedError("Method \"rag_request\" is not implemented.")
    
    async def explain_selection(self, request : ExplainRequest):

@@ -5,12 +5,11 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from semant_demo import schemas
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 from semant_demo.config import Config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
 #import dependencies
-from semant_demo.routes.dependencies import get_config, get_search, get_summarizer
+from semant_demo.routes.dependencies import get_config, get_summarizer
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 import logging

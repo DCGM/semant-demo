@@ -24,7 +24,7 @@ import asyncio
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.schemas import SearchResponse, SearchRequest, RagRequest, RagResponse, AdaptiveRagState, TextChunkWithDocument, Document, ExplainRequest
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.features.search.service import Retriever
 #import prompts from prompt file
 from semant_demo.rag.incremental_rag_prompts import *
 
@@ -34,7 +34,7 @@ DEBUG_PRINT = False
 class IncrementalAdaptiveRagGenerator(BaseRag):
     def __init__(self, global_config: Config, param_config):
         super().__init__(global_config, param_config)
-        self.searcher = None
+        self.retrieve = None
 
         #multilanguage prompt
         self.identify_language_prompt = ChatPromptTemplate.from_messages(identify_language_prompt_template)
@@ -290,7 +290,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 if (DEBUG_PRINT):
                     print(f"search_request: {search_request}")
                 #call db search
-                return await self.searcher.textChunk.search(search_request)
+                return await self.retrieve(search_request)
 
             #call in parallel
             search_tasks = [single_search(query) for query in queries]
@@ -666,9 +666,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
     #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
-    async def rag_request(self, request: RagRequest, searcher: WeaviateAbstraction) -> RagResponse:
-        if (self.searcher == None):
-            self.searcher = searcher
+    async def rag_request(self, request: RagRequest, retrieve: Retriever) -> RagResponse:
+        if (self.retrieve == None):
+            self.retrieve = retrieve
         # get history and previous documents from request
         previous_documents = []
         if request.history:

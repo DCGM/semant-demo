@@ -5,7 +5,7 @@ Created on 22.09.25
 :author:     Martin Dočekal
 """
 import logging
-from typing import Sequence, Optional
+from typing import Callable, Sequence, Optional
 
 from classconfig import ConfigurableValue, ConfigurableFactory, ConfigurableMixin
 from ruamel.yaml.scalarstring import LiteralScalarString
@@ -165,7 +165,8 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
 
         return prompt, model
 
-    async def gen_title(self, query: str, text: TextChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None) -> str:
+    async def gen_title(self, query: str, text: TextChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+                        on_error: Optional[Callable[[str], None]] = None) -> str:
         prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_title_model, self.gen_title_prompt)
 
         request = APIRequest(
@@ -180,10 +181,13 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
         
         if output.error is not None:
             logging.error(output.error)
+            if on_error is not None:
+                on_error("title")
             return self.gen_title_error_title
         return output.response.get_raw_content().strip()
 
-    async def gen_results_summary(self, query: str, results: Sequence[TextChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None) -> str:
+    async def gen_results_summary(self, query: str, results: Sequence[TextChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+                                  on_error: Optional[Callable[[str], None]] = None) -> str:
         prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_results_summary_model, self.gen_results_summary_prompt)
         request = APIRequest(
             custom_id="gen_results_summary",
@@ -197,10 +201,13 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
         
         if output.error is not None:
             logging.error(output.error)
+            if on_error is not None:
+                on_error("results_summary")
             return self.gen_results_summary_error_summary
         return output.response.get_raw_content().strip()
 
-    async def gen_query_summary_for_text_chunk(self, query: str, text: TextChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None) -> str:
+    async def gen_query_summary_for_text_chunk(self, query: str, text: TextChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+                                               on_error: Optional[Callable[[str], None]] = None) -> str:
         prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_query_summary_model, self.gen_query_summary_prompt)
         request = APIRequest(
             custom_id="gen_query_summary",
@@ -214,5 +221,7 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
 
         if output.error is not None:
             logging.error(output.error)
+            if on_error is not None:
+                on_error("query_summary")
             return self.gen_query_summary_error_summary
         return output.response.get_raw_content().strip()
