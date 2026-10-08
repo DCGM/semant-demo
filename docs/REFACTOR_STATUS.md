@@ -489,9 +489,10 @@ Last updated: 2026-10-08 (#207)
   progress finishes with its chunk tag first. Saved spans remain.
 - Duplicates (documented, not changed): ADR 0003 "Duplicate proposals".
 - Frontend: `src/utils/ndjson.ts` reads NDJSON (lines split across chunks and UTF-8
-  characters); `useAiAssistance` gives each run a token. `reset()` (document change, and
-  now also collection change) aborts the run and its late events, errors and finally block
-  no longer touch the store or loading state; `runOnSelection` returns `null` for a
+  characters); `useAiAssistance` gives each run a token. `reset()` (document change,
+  collection change, and leaving the document view) aborts document-wide and selection
+  runs; their late events, errors and finally blocks no longer touch the store or loading
+  state; `runOnSelection` returns `null` for a
   cancelled or superseded run. The end event sets `lastStatus` and a message for partial,
   failed and interrupted runs; the panel says when a run was cancelled.
 - Tests: `tests/test_suggestions.py` (fakes: span stored before its event, provider
