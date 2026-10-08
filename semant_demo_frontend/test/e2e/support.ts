@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test'
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 // Same synthetic corpus the backend profile seeds (single source, shared with pytest).
 import corpus from '../../../semant_demo_backend/tests/fixtures/corpus.json'
 
@@ -15,7 +15,8 @@ export const fixture = {
   collection: (key: string) => byKey(corpus.collections, key),
   document: (key: string) => byKey(corpus.documents, key),
   chunk: (key: string) => byKey(corpus.documents.flatMap((d) => d.chunks), key),
-  span: (key: string) => byKey(corpus.spans, key)
+  span: (key: string) => byKey(corpus.spans, key),
+  tag: (key: string) => byKey(corpus.tags, key)
 }
 
 export async function logIn (page: Page, userKey: string): Promise<void> {
@@ -50,4 +51,28 @@ export function annotation (page: Page, spanKey: string): Locator {
     `.chunk-annotator[data-chunk-id="${chunkId}"] .text-segment.is-tagged` +
     `[data-start="${span.start}"][data-end="${span.end}"]`
   )
+}
+
+/** A bearer token for API calls a test makes itself (setup and cleanup). */
+export async function apiToken (request: APIRequestContext, userKey: string): Promise<string> {
+  const user = fixture.user(userKey)
+  const response = await request.post('/api/auth/jwt/login', { form: { username: user.username, password: user.password } })
+  expect(response.ok()).toBe(true)
+  return (await response.json()).access_token
+}
+
+/** Deletes the unresolved AI suggestions a test created (fixture spans of other tags stay). */
+export async function deleteSuggestions (
+  request: APIRequestContext, userKey: string, collectionKey: string, documentKey: string, tagKey: string
+): Promise<void> {
+  const tag = fixture.tag(tagKey)
+  const response = await request.post('/api/ai/auto_spans/delete', {
+    headers: { Authorization: `Bearer ${await apiToken(request, userKey)}` },
+    data: {
+      collection_id: fixture.collection(collectionKey).id,
+      document_id: fixture.document(documentKey).id,
+      tag_ids: [tag.id]
+    }
+  })
+  expect(response.ok()).toBe(true)
 }
