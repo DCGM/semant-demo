@@ -6,11 +6,10 @@ from fastapi import APIRouter, Depends, status, Response, Query
 from semant_demo import schemas
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
-from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
-from semant_demo.features.collections import access, service
+from semant_demo.features.collections import service
 from semant_demo.features.collections.schemas import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest
-from semant_demo.routes.dependencies import get_collections, get_documents, get_tags, get_user_lookup
+from semant_demo.routes.dependencies import get_collections, get_tags, get_user_lookup
 from semant_demo.schema.chunks import Chunk
 from semant_demo.schema.documents import Document, DocumentStats
 from semant_demo.schema.outcomes import WriteResult
@@ -255,15 +254,3 @@ async def get_chunks_in_range(
     """
     return await service.get_chunks_in_range(collections, current_user, collection_id, document_id,
                                              order_gt, order_lt)
-
-
-@exp_router.get(
-    "/api/documents/{document_id}/chunks/count",
-    response_model=int,
-)
-async def count_document_chunks(
-    document_id: str,
-    documents: DocumentRepository = Depends(get_documents),
-) -> int:
-    """Returns the total number of chunks in the given document (public corpus data)."""
-    return await documents.count_chunks(access.parse_id(document_id, "Document"))

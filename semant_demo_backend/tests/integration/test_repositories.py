@@ -289,6 +289,33 @@ async def test_collection_tags_beyond_one_page(tags, corpus, seeded_store, colle
     assert listed == set(extra) | {UUID(corpus.tags["person"]["id"]), UUID(corpus.tags["place"]["id"])}
 
 
+async def test_collection_listing_beyond_one_page(collections, corpus, seeded_store, collection_names):
+    # read_all pages by 1000: one user with more than a page of own and shared collections.
+    owner, annotator = (UUID(corpus.users[u]["id"]) for u in ("owner", "annotator"))
+    before = {c.id for c in await collections.read_all(owner)}
+    owned = [uuid4() for _ in range(1001)]
+    shared = [uuid4() for _ in range(5)]
+    await insert(seeded_store, collection_names.user_collection_name, [
+        DataObject(uuid=c, properties={"name": f"Sbírka {i}", "owner": "Owner", "color": "red", "description": "",
+                                       "user_id": str(owner), "shared_with": [],
+                                       "created_at": FIXTURE_TIMESTAMP, "updated_at": FIXTURE_TIMESTAMP})
+        for i, c in enumerate(owned)
+    ] + [
+        DataObject(uuid=c, properties={"name": f"Sdílená {i}", "owner": "Annotator", "color": "red",
+                                       "description": "", "user_id": str(annotator),
+                                       "shared_with": [str(owner)],
+                                       "created_at": FIXTURE_TIMESTAMP, "updated_at": FIXTURE_TIMESTAMP})
+        for i, c in enumerate(shared)
+    ])
+
+    listed = await collections.read_all(owner)
+
+    assert len(listed) == len({c.id for c in listed}) == len(before) + 1006
+    assert {c.id for c in listed} == before | set(owned) | set(shared)
+    assert {c.id for c in listed if c.is_shared_with_me} >= set(shared)
+    assert not any(c.is_shared_with_me for c in listed if c.id in set(owned))
+
+
 async def test_tag_delete_removes_more_than_a_page_of_references_and_spans(
         tags, big_document, corpus, seeded_store, collection_names):
     names = collection_names

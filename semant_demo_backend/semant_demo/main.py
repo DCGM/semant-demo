@@ -13,11 +13,9 @@ import os
 
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from semant_demo.schemas import TasksBase
+from semant_demo.adapters.sql.tables import create_tables
 from semant_demo.routes import export_router
 from semant_demo.users.auth import auth_router, register_router, users_router
-# Import User model so its table is included in TasksBase.metadata
-import semant_demo.users.models  # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
 
@@ -27,9 +25,7 @@ async def lifespan(app: FastAPI):
     resources = AppResources.create(app_config)
     app.state.resources = resources
     try:
-        async with resources.engine.begin() as conn:
-            # create tables
-            await conn.run_sync(TasksBase.metadata.create_all)
+        await create_tables(resources.engine)
         # One Weaviate client for the application's lifetime; startup fails without it.
         await resources.connect_weaviate(app.state.weaviate_connector)
         #load rags configurations and create instances

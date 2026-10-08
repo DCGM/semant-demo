@@ -140,8 +140,12 @@ const renderedSegments = computed((): TextSegment[] => {
 // ── Drag handles ──
 
 const getCaretPoint = (clientX: number, clientY: number): { node: Node; offset: number } | null => {
-  if (typeof document.caretPositionFromPoint === 'function') {
-    const pos = document.caretPositionFromPoint(clientX, clientY)
+  // Standard, but not yet in the TypeScript 5.5 DOM types.
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node, offset: number } | null
+  }
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const pos = doc.caretPositionFromPoint(clientX, clientY)
     if (pos?.offsetNode) {
       return { node: pos.offsetNode, offset: pos.offset }
     }

@@ -1,7 +1,6 @@
 
 import openai
 import time
-import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from semant_demo.features.search.schemas import SearchResponse, SummaryResponse

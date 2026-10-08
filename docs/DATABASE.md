@@ -202,28 +202,15 @@ References:
 
 ## SQLite Schema
 
-SQLite holds two tables, both created automatically at startup via `TasksBase.metadata.create_all`.
+The SQL database (`SQL_DB_URL`, SQLite file `tasks.db` by default — the name is historical)
+holds two application tables, declared on `adapters/sql/base.Base` and created at startup by
+`adapters/sql/tables.create_tables` when missing: `user` (below) and `rag_user_feedback` (likes /
+dislikes of RAG answers, `adapters/sql/feedback.py`). Startup never drops or alters existing
+tables or rows.
 
-### `tasks` — Asynchronous tagging jobs
-
-```sql
-CREATE TABLE tasks (
-    taskId          VARCHAR(36)  PRIMARY KEY,   -- UUID
-    status          VARCHAR(20)  DEFAULT 'PENDING',  -- PENDING | RUNNING | COMPLETED | FAILED
-    result          JSON,                        -- final result or error
-    all_texts_count INTEGER,                     -- total chunks to process
-    processed_count INTEGER,                     -- chunks processed so far
-    collection_name VARCHAR,                     -- target chunk collection
-    tag_id          VARCHAR(36),                 -- UUID of the tag being applied
-    tag_processing_data JSON,                    -- per-chunk tagging details
-    time_updated    DATETIME,                    -- auto-updated timestamp
-    task_name       VARCHAR                      -- asyncio task name (for cancellation)
-);
-```
-
-Task lifecycle: `PENDING` → `RUNNING` → `COMPLETED` / `FAILED`
-
-The backend polls this table via `GET /api/tag/task/status/{taskId}` and the frontend uses periodic polling to display progress.
+Databases created before the refactor may also contain a `tasks` table from the removed
+background tagging jobs. Nothing reads or writes it any more; it is left in place (dropping it
+would be a separate, reviewed data change).
 
 ### `user` — User accounts (FastAPI Users)
 

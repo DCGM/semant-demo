@@ -15,7 +15,6 @@ from semant_demo.features.search.service import SearchBackends, public_retriever
 from semant_demo.rag.rag_factory import rag_load_single_config
 from semant_demo.schemas import RagRequest, RagSearch
 
-import semant_demo.rag.rag_generator
 
 warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<socket.socket.*>")
 warnings.filterwarnings("ignore",category=ResourceWarning, message="unclosed transport.*")

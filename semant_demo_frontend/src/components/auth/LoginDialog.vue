@@ -15,7 +15,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Email or username is required']"
+            :rules="[(v: string) => !!v || 'Email or username is required']"
           />
           <q-input
             v-model="password"
@@ -24,7 +24,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Password is required']"
+            :rules="[(v: string) => !!v || 'Password is required']"
           >
             <template #append>
               <q-icon

@@ -8,7 +8,6 @@ serialization of chunk tag re-derivation. Faults are injected into real Weaviate
 import asyncio
 
 import pytest
-from weaviate.classes.data import DataObject
 from weaviate.classes.query import QueryReference
 from weaviate.exceptions import WeaviateTimeoutError
 

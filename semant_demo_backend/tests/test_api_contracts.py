@@ -58,6 +58,9 @@ class _Documents:
     async def browse(self, **kwargs):
         return DocumentBrowse(items=[Document(id=DOC, **STORED)], has_more=False, total_count=1)
 
+    async def count_chunks(self, document_id):
+        return 3 if document_id == DOC else 0
+
 
 async def test_document_responses_serialize_stored_properties(tmp_path):
     app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
@@ -75,6 +78,30 @@ async def test_document_responses_serialize_stored_properties(tmp_path):
     assert document.status_code == 200, document.text
     assert document.json() == expected  # absent properties stay absent
     assert browse.json()["items"] == [expected]
+
+
+def test_chunk_count_keeps_its_public_contract(tmp_path):
+    # Moved from the Collections router to the Documents feature in #210.
+    operation = create_app(make_test_config(tmp_path)).openapi()["paths"]["/api/documents/{document_id}/chunks/count"]
+
+    assert list(operation) == ["get"]
+    assert operation["get"]["operationId"] == "count_document_chunks_api_documents__document_id__chunks_count_get"
+    assert "security" not in operation["get"]
+    assert [p["name"] for p in operation["get"]["parameters"]] == ["document_id"]
+    assert operation["get"]["responses"]["200"]["content"]["application/json"]["schema"] == \
+        {"type": "integer", "title": "Response Count Document Chunks Api Documents  Document Id  Chunks Count Get"}
+
+
+async def test_chunk_count_is_answered_anonymously(tmp_path):
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_documents] = _Documents
+
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        count = await client.get(f"/api/documents/{DOC}/chunks/count")
+        malformed = await client.get("/api/documents/not-a-uuid/chunks/count")
+
+    assert (count.status_code, count.json()) == (200, 3)
+    assert malformed.status_code == 404
 
 
 def test_search_response_is_accepted_back_as_summary_input():
