@@ -39,7 +39,7 @@ The CI/CD pipeline (GitHub Actions, self-hosted runner) handles:
 
 ## Manual Standalone Setup
 
-For the normal local development workflow used during the refactor, see [DEVELOPMENT.md](DEVELOPMENT.md).
+For local development and test-owned database rules, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 The steps below describe how to construct a standalone environment from scratch.
 
@@ -234,6 +234,6 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 2. **Set `PRODUCTION=true`** — currently only checked in config but can be used for conditional logging
 3. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
 4. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
-5. **SQLite limitations** — the database holds only user accounts and RAG feedback; consider PostgreSQL (untested) for many concurrent writers. Run one backend process: chunk tag updates are serialized per process only (REFACTOR_STATUS.md)
+5. **SQLite limitations** — the database holds only user accounts and RAG feedback; consider PostgreSQL (untested) for many concurrent writers. Run one backend process for now: chunk-tag synchronization is serialized only within one process (see [TODO.md](TODO.md#known-correctness-and-behavior-limitations) and #206)
 6. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
 7. **Embedding service scaling** — can run multiple instances behind a load balancer. The endpoint is built from `EMBEDDING_SERVICE_HOST` (default `embedding-service` in Docker, `localhost` outside) and `EMBEDDING_SERVICE_PORT` (default `8001`); point both at your load balancer to scale.

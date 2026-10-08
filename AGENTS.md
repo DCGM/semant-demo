@@ -1,55 +1,41 @@
 # Agent instructions
 
-Status: draft for adoption, updated 2026-10-08. These rules supplement, not replace,
-[CONTRIBUTING.md](CONTRIBUTING.md).
-
-During the architecture refactor, read docs/REFACTOR_STATUS.md before making changes. Update it when a refactor issue is completed, when a temporary architectural exception is introduced or removed, or when a newly discovered problem affects later refactor steps. Create/link a GitHub issue for substantive deferred work rather than describing it only in the status file.
+These instructions supplement [CONTRIBUTING.md](CONTRIBUTING.md). They describe
+routine work **after the architecture refactor is merged into `main`**. The only
+exception is final integration [#236](https://github.com/DCGM/semant-demo/issues/236),
+whose steps are tracked in that issue. Do not use the archived #197 issue-branch
+workflow for new work.
 
 ## Before editing
 
-Read [TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md), the assigned step in
-[REFACTOR_PLAN.md](docs/REFACTOR_PLAN.md), affected callers/tests, and relevant
-[ADRs](docs/adr/README.md). Treat proposed decisions as unresolved, not permission
-to choose product behavior. Inspect current branch state; preserve unrelated changes.
-Keep the assigned scope small. Identify cross-feature contract changes before editing.
+Read [ARCHITECTURE.md](docs/ARCHITECTURE.md), the relevant
+[ADRs](docs/adr/README.md) and [TODO / issue index](docs/TODO.md), plus affected
+callers and tests. The [refactor archive](docs/archive/refactor-2026/README.md)
+contains historical rationale, not active implementation requirements. Preserve
+unrelated changes and identify cross-feature/API contracts before editing.
 
-## Refactor branch workflow
+## Branch and PR workflow
 
-`197-refactor---base` is the integration branch for the architecture refactor.
-Do not implement numbered refactor issues directly on this branch.
-
-For each refactor issue:
-
-1. Fetch the latest repository state and start from the current
-   `origin/197-refactor---base`, not from a stale local copy.
-2. Create a dedicated branch for that issue, for example
-   `198-bootstrap-config` or `199-fast-checks-ci`.
-3. Make only the changes required for that issue on the issue branch.
-4. Run the required checks and update `docs/REFACTOR_STATUS.md` as appropriate.
-5. Open a pull request from the issue branch into `197-refactor---base`.
-6. Do not merge the pull request or push commits directly to
-   `197-refactor---base` unless explicitly instructed.
-
-After the issue branch is reviewed and merged, the integration branch becomes
-the base for the next issue.
-
-Do not create the next issue branch from an unmerged issue branch unless the
-issues are explicitly intended to be stacked.
+1. Fetch and inspect `origin/main`; create a dedicated short-lived topic branch
+   **from `origin/main`** for each assigned change. Do not start from a previous
+   unmerged topic branch unless stacking is explicitly requested.
+2. Limit the branch to its issue/scope. Run appropriate checks described in
+   [CONTRIBUTING.md](CONTRIBUTING.md), update relevant active docs and any
+   generated API client, and report results accurately.
+3. Merge recent `origin/main` into the topic branch when needed and resolve
+   conflicts locally. Open the PR **against `main`**, request review, and wait
+   for required checks. Do not treat a review or one green unit test as a full
+   release verification.
+4. Do not push directly to `main`, force-update protected branches, merge PRs,
+   deploy, or change shared/production data without explicit authorization.
+   Agents may push their own assigned topic branch and open its PR for review.
+5. Do not reopen `197-refactor---base` as a routine PR target once #236 is done.
 
 ## Handoff
 
-Report changed behavior and files, commands actually executed, results, unrun checks,
-and remaining risks/decisions. Do not claim a test, browser check, migration, or deployment
-was performed unless it was. Update relevant contracts/docs in the same PR. 
-
-Agents are authorized to push the assigned issue branch and open its pull request
-into `197-refactor---base` without separate confirmation. This authorization does
-not include merging the pull request, pushing directly to integration/main branches,
-deploying, or changing shared/production data.
-
-Do not push commits directly to `197-refactor---base` or `main`.
-Do not merge pull requests, deploy, or change production/shared data unless
-explicitly authorized for the current task.
+Report scope, changed behavior/files, tests actually run, unrun checks, and
+remaining risks/decisions. Link newly discovered actionable gaps to a GitHub
+issue rather than appending to archived `REFACTOR_STATUS.md`.
 
 ## Architecture
 
@@ -97,7 +83,7 @@ or add blanket skips merely to produce a green result. A placeholder `npm test` 
 a test pass. `make setup`, `make check`, `make api-generate`, `make test-integration` and
 `make test-e2e` exist (the last two need Docker); `make dev` does not.
 
-For ordinary development and refactoring, use only the local database environment documented in `docs/DEVELOPMENT.md`.
+For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
 
 Do not connect to or modify shared server Weaviate, shared preview databases, or production databases unless explicitly instructed for the current task.
 

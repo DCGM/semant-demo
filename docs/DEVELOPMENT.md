@@ -2,7 +2,7 @@
 
 This document describes the standard local development environment for SemANT.
 
-Normal development and architecture-refactor work should use local database state under `local_data/`. Shared server test databases and production databases are not normal development targets.
+Normal development should use local database state under `local_data/`. Shared server test databases and production databases are not normal development targets.
 
 For deployment and server configuration, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
@@ -242,9 +242,9 @@ A live embedding service is not required for ordinary fast tests. Tests should u
 
 AI-assisted tagging, summarization, RAG, and chat may require Topicer, Ollama, OpenAI-compatible APIs, Gemini, or other configured providers.
 
-These services are optional for normal structural refactoring unless the assigned issue specifically requires them.
+These services are optional for routine code changes unless the assigned issue specifically requires them.
 
-Required automated tests should use deterministic fake providers wherever practical. Do not use paid or production AI services merely to make ordinary refactor tests pass.
+Required automated tests should use deterministic fake providers wherever practical. Do not use paid or production AI services merely to make routine tests pass.
 
 ## 9. Resetting local database state
 
@@ -330,7 +330,7 @@ Use this for:
 - manual development;
 - exploratory testing;
 - reproducing behavior against realistic data;
-- compatibility checks during refactoring.
+- explicit data-compatibility checks when changing schemas or storage adapters.
 
 ### Automated integration-test data
 
@@ -397,4 +397,4 @@ A typical development session is:
 7. Start/tunnel optional embedding or AI services only when needed
 ```
 
-No SSH access to the database server is required for ordinary refactor development.
+No SSH access to the database server is required for ordinary local development.
