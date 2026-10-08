@@ -22,9 +22,10 @@ jobs:
     runs-on: [self-hosted, semant-server]
     container:
       image: python:3.12
-      options: --user 1025:1027
+      options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
     env:
       HOME: /tmp
+      PIP_CACHE_DIR: /pip-cache
     permissions:
       contents: read
       checks: write
@@ -32,11 +33,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up virtual environment
         run: python -m venv /tmp/venv
+      # Every wheel is checked against the hashes in the lock, so the pip cache shared by
+      # the runners on this host (see docs/DEVELOPMENT.md) cannot substitute a package.
+      # If the cache directory is missing or not writable, pip warns and downloads instead.
+      # --no-compile: this venv is used once; skipping .pyc precompilation saves ~20 s.
       - name: Install pinned dependencies
         working-directory: semant_demo_backend
         run: |
-          /tmp/venv/bin/pip install --no-cache-dir -r requirements-dev.lock
-          /tmp/venv/bin/pip install --no-cache-dir --no-deps -e .
+          /tmp/venv/bin/pip install --require-hashes --no-compile -r requirements-dev.lock
+          /tmp/venv/bin/pip install --no-compile --no-deps -e .
       - name: Lint
         working-directory: semant_demo_backend
         run: /tmp/venv/bin/ruff check .
@@ -99,7 +104,7 @@ jobs:
     runs-on: [self-hosted, semant-server]
     container:
       image: python:3.12
-      options: --user 1025:1027
+      options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
     services:
       weaviate:
         # Same version as the deployed and local development Weaviate.
@@ -113,6 +118,7 @@ jobs:
           DISABLE_TELEMETRY: "true"
     env:
       HOME: /tmp
+      PIP_CACHE_DIR: /pip-cache
       SEMANT_TEST_WEAVIATE_HOST: weaviate
       SEMANT_TEST_WEAVIATE_REST_PORT: 8080
       SEMANT_TEST_WEAVIATE_GRPC_PORT: 50051
@@ -126,11 +132,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up virtual environment
         run: python -m venv /tmp/venv
+      # Every wheel is checked against the hashes in the lock, so the pip cache shared by
+      # the runners on this host (see docs/DEVELOPMENT.md) cannot substitute a package.
+      # If the cache directory is missing or not writable, pip warns and downloads instead.
+      # --no-compile: this venv is used once; skipping .pyc precompilation saves ~20 s.
       - name: Install pinned dependencies
         working-directory: semant_demo_backend
         run: |
-          /tmp/venv/bin/pip install --no-cache-dir -r requirements-dev.lock
-          /tmp/venv/bin/pip install --no-cache-dir --no-deps -e .
+          /tmp/venv/bin/pip install --require-hashes --no-compile -r requirements-dev.lock
+          /tmp/venv/bin/pip install --no-compile --no-deps -e .
       - name: Wait for Weaviate
         run: |
           for _ in $(seq 1 60); do

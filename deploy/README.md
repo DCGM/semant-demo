@@ -231,6 +231,7 @@ Set these in **Settings → Secrets and variables → Actions → Variables**:
 | `DEPLOY_SUBDIR` | `semant-demo` | Subdirectory under `RUNNER_WORKDIR` for the production deploy |
 | `SQL_DB_DIR` | `/mnt/ssd2/semant_demo_app_data` | Production SQLite database directory (must exist, owned by `runner`) |
 | `SQL_DB_DIR_TEST` | `/mnt/ssd2/semant_demo_app_test_data` | Test SQLite database root (subdirectories are created per instance) |
+| `CI_PIP_CACHE_DIR` (optional) | `/var/cache/semant-ci/pip` (default) | Host directory for the pip cache shared by the Python CI jobs (see below) |
 
 ### Required GitHub Secrets
 
@@ -247,6 +248,32 @@ sudo mkdir -p /mnt/ssd2/semant_demo_app_data
 sudo mkdir -p /mnt/ssd2/semant_demo_app_test_data
 sudo chown runner:runner /mnt/ssd2/semant_demo_app_data
 sudo chown runner:runner /mnt/ssd2/semant_demo_app_test_data
+```
+
+### Shared pip cache for CI jobs
+
+The backend and integration test jobs mount `CI_PIP_CACHE_DIR` (default
+`/var/cache/semant-ci/pip`) into their containers as pip's cache, so pinned wheels are not
+downloaded on every run. All runners on the host can share it: pip writes cache entries
+atomically, and every installed wheel is verified against the hashes in
+`semant_demo_backend/requirements-dev.lock` (`--require-hashes`), so a corrupted or
+substituted cache entry fails the install instead of being used. Runners on another host
+need their own directory.
+
+The job containers run as uid 1025, gid 1027, which must own the directory:
+
+```bash
+sudo mkdir -p /var/cache/semant-ci/pip
+sudo chown 1025:1027 /var/cache/semant-ci/pip
+```
+
+If the directory is missing or not writable, pip prints a warning, disables the cache and
+downloads as before; the jobs do not fail. pip never prunes the cache, so it grows with
+dependency updates (about 160 MB for one lock). Clear it when disk space is needed; the
+next run refills it:
+
+```bash
+sudo find /var/cache/semant-ci/pip -mindepth 1 -delete
 ```
 
 ### Production Deployment
