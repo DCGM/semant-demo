@@ -67,6 +67,7 @@ semant_demo_backend/semant_demo/
   main.py                 create_app, router registration, lifespan, error mapping
   bootstrap.py            AppResources: SQL engine, Weaviate repositories, providers (per app)
   config.py               Config (read once from the environment or an explicit mapping)
+  opentelemetry.py        OTLP logs/traces/metrics (off unless OTEL_ENABLED), request logging middleware
   core/errors.py          NotFoundError (404), InvalidRequestError (400), IncompleteWriteError (500)
   features/
     collections/          routes, service, access (rights checks, ADR 0007), schemas
@@ -112,7 +113,8 @@ A `Config` class that reads settings once, at construction, from the process env
 
 - **Weaviate connection** — host, REST port, gRPC port
 - **LLM endpoints** — Ollama URLs (comma-separated for load balancing), model names, API keys
-- **Application** — port, CORS origin, static file path
+- **Application** — port, CORS origin, static file path, `LOG_LEVEL`
+- **Observability** — `OTEL_ENABLED` (default off) and the `OTEL_*` / `DEPLOYMENT_ENVIRONMENT` export settings; see [OBSERVABILITY.md](OBSERVABILITY.md)
 - **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments mount it, so it is kept)
 - **Auth** — `JWT_SECRET` (override in production with a long random string), `JWT_LIFETIME_SECONDS`
 - **RAG** — config directory path
@@ -160,8 +162,9 @@ The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
 
 3. **Shutdown** (also after a failed startup):
    - `AppResources.close()` closes the Weaviate client if one was opened, disposes of the database engine, and drops cached resources, so the same app can be started again.
+   - When telemetry is enabled, the providers are flushed and the instrumentation removed.
 
-`create_app()` and `app.openapi()` do not connect to Weaviate, SQL, or AI providers; `export_openapi.py` relies on this.
+`create_app()` and `app.openapi()` do not connect to Weaviate, SQL, or AI providers; `export_openapi.py` relies on this. With `OTEL_ENABLED=true`, `create_app()` also sets up the process-wide OpenTelemetry providers and exporters (export runs in the background; an unreachable collector does not fail requests), so a process should create one such app.
 
 #### Authentication (`users/`)
 

@@ -48,6 +48,8 @@ argon2-cffi-bindings==26.1.0
     # via argon2-cffi
 asgi-lifespan==2.1.0
     # via -r requirements-dev.txt
+asgiref==3.12.1
+    # via opentelemetry-instrumentation-asgi
 attrs==26.1.0
     # via
     #   aiohttp
@@ -372,26 +374,45 @@ opentelemetry-api==1.44.0
     #   mistralai
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-httpx
+    #   opentelemetry-instrumentation-logging
+    #   opentelemetry-instrumentation-system-metrics
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
     #   pydantic-ai-slim
 opentelemetry-exporter-otlp-proto-common==1.44.0
     # via opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-http==1.44.0
-    # via logfire
+    # via
+    #   -r requirements.txt
+    #   logfire
 opentelemetry-instrumentation==0.65b0
     # via
     #   logfire
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-httpx
+    #   opentelemetry-instrumentation-logging
+    #   opentelemetry-instrumentation-system-metrics
+opentelemetry-instrumentation-asgi==0.65b0
+    # via opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-fastapi==0.65b0
+    # via -r requirements.txt
 opentelemetry-instrumentation-httpx==0.65b0
     # via logfire
+opentelemetry-instrumentation-logging==0.65b0
+    # via -r requirements.txt
+opentelemetry-instrumentation-system-metrics==0.65b0
+    # via -r requirements.txt
 opentelemetry-proto==1.44.0
     # via
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-sdk==1.44.0
     # via
+    #   -r requirements.txt
     #   logfire
     #   opentelemetry-exporter-otlp-proto-http
     #   xai-sdk
@@ -399,10 +420,17 @@ opentelemetry-semantic-conventions==0.65b0
     # via
     #   mistralai
     #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-httpx
+    #   opentelemetry-instrumentation-logging
+    #   opentelemetry-instrumentation-system-metrics
     #   opentelemetry-sdk
 opentelemetry-util-http==0.65b0
-    # via opentelemetry-instrumentation-httpx
+    # via
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
 orjson==3.13.0
     # via
     #   langgraph-sdk
@@ -441,6 +469,8 @@ protobuf==6.33.6
     #   temporalio
     #   weaviate-client
     #   xai-sdk
+psutil==7.2.2
+    # via opentelemetry-instrumentation-system-metrics
 pwdlib==0.3.0
     # via fastapi-users
 py-key-value-aio==0.4.6

@@ -5,7 +5,7 @@ on:
     branches: [ main ]
     tags: ["v*.*.*"]   
   pull_request:
-    types: [opened, synchronize, reopened, closed] 
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
 concurrency:
@@ -273,6 +273,8 @@ jobs:
           sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "$OPENAI_API_KEY")|" "$DEPLOY_PATH/.env"
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "$JWT_SECRET")|" "$DEPLOY_PATH/.env"
+          sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=true|" "$DEPLOY_PATH/.env"
+          sed -i "s|^DEPLOYMENT_ENVIRONMENT=.*|DEPLOYMENT_ENVIRONMENT=production|" "$DEPLOY_PATH/.env"
 
       - name: Initialize SQLite database (first run only)
         run: |
@@ -427,6 +429,8 @@ jobs:
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "$OPENAI_API_KEY")|"  "$DEPLOY_PATH/.env"
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "$JWT_SECRET")|"  "$DEPLOY_PATH/.env"
+          sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=true|" "$DEPLOY_PATH/.env"
+          sed -i "s|^DEPLOYMENT_ENVIRONMENT=.*|DEPLOYMENT_ENVIRONMENT=test-main|" "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 
@@ -569,6 +573,8 @@ jobs:
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "$OPENAI_API_KEY")|"  "$DEPLOY_PATH/.env"
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "$JWT_SECRET")|"  "$DEPLOY_PATH/.env"
+          sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=true|" "$DEPLOY_PATH/.env"
+          sed -i "s|^DEPLOYMENT_ENVIRONMENT=.*|DEPLOYMENT_ENVIRONMENT=test-pr-${PR_NUMBER}|" "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 

@@ -313,6 +313,24 @@ make test-integration  # real-Weaviate tests in a throwaway container (Docker)
 make test-e2e          # Playwright smoke suite with fake AI providers (Docker)
 ```
 
+## Observability
+
+The backend exports logs, traces, and metrics through OpenTelemetry when `OTEL_ENABLED=true`. Telemetry is initialized once in [`semant_demo_backend/semant_demo/opentelemetry.py`](semant_demo_backend/semant_demo/opentelemetry.py); `create_app()` in [`semant_demo_backend/semant_demo/main.py`](semant_demo_backend/semant_demo/main.py) installs it together with the request-logging and feature-metrics middleware.
+
+Deployments are identified by `service.name=semant-demo-app` and one `DEPLOYMENT_ENVIRONMENT` value:
+
+| Deployment | Environment value |
+|---|---|
+| Production | `production` |
+| Persistent `main` test deployment | `test-main` |
+| Pull-request preview | `test-pr-<number>` |
+
+Telemetry is enabled for production, `test-main`, and pull-request preview deployments.
+
+Grafana dashboards should filter by both `service_name="semant-demo-app"` and the selected `deployment_environment_name`; this prevents similarly named metrics from other projects in a shared metrics backend from being shown accidentally.
+
+See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for the complete signal inventory, environment rules, dashboard queries, Collector troubleshooting, and recipes for adding a metric, trace, or log safely.
+
 ## Further Documentation
 
 | Document | Description |
@@ -322,6 +340,7 @@ make test-e2e          # Playwright smoke suite with fake AI providers (Docker)
 | [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema and the SQL tables (users, RAG feedback) |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment and configuration guide |
 | [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and how to add page specific tools to it |
+| [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Telemetry architecture, dashboards, and guide for adding logs, traces, and metrics |
 | [docs/TODO.md](docs/TODO.md) | Recommended improvements and known technical debt |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development databases and test store rules |
 | [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md), [docs/adr/](docs/adr/README.md) | Ongoing architecture principles and adopted decisions |
