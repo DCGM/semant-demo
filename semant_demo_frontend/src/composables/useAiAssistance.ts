@@ -2,14 +2,19 @@ import { computed, ref } from 'vue'
 import type { TagSpan } from 'src/models/tagSpans'
 import { SpanType } from 'src/generated/api'
 import { useTagSpansStore } from 'src/stores/tagSpansStore'
+import { readNdjson } from 'src/utils/ndjson'
 
 /**
  * Streamed AI span suggestion (NDJSON) helper.
  *
- * Calls the backend's `/api/ai/suggest_spans/{thorough|optimized}` endpoint,
+ * Calls the backend's `/api/ai/suggest_spans/{thorough|optimized|selection}` endpoints,
  * parses the NDJSON response line-by-line and pushes newly-created auto spans
  * into the shared {@link useTagSpansStore} so they appear in the document
  * immediately as each chunk completes.
+ *
+ * Each run belongs to the document/collection it was started for. `reset()` (called
+ * when the document or collection changes) aborts it and makes its late events, errors
+ * and loading-state changes no-ops, so they cannot alter the new context.
  */
 
 export type AiAssistanceMode = 'thorough' | 'optimized'
@@ -25,18 +30,66 @@ export interface AiAssistanceChunkEvent {
   chunkId: string
   spans: TagSpan[]
   error?: string | null
-  /** Proposals the backend did not save (storage failure or outside the request); see ``error``. */
+  /** Proposals the backend did not save (storage failure or invalid proposal); see ``error``. */
   unsaved: number
+}
+
+/** The final `SuggestSpansRunEnd` line of a suggestion stream. */
+export interface AiRunEnd {
+  event: 'end'
+  outcome: 'complete' | 'partial' | 'failed'
+  saved: number
+  rejected: number
+  save_failures: number
+  search_tag_failures: number
+  provider_failures: number
+  error?: string | null
+}
+
+/** How the last run ended; `interrupted`: the stream ended without its final line. */
+export type AiRunStatus = AiRunEnd['outcome'] | 'cancelled' | 'interrupted'
+
+interface ResultLine {
+  event?: 'result'
+  chunk_id?: string
+  spans?: TagSpan[]
+  error?: string | null
+  unsaved?: number
+}
+
+/** A readable message for a run that did not complete, or null. */
+export function describeRunEnd (end: AiRunEnd | null): string | null {
+  if (!end) {
+    return 'AI suggestions stopped before completion. Suggestions saved so far are kept.'
+  }
+  if (end.outcome === 'complete') return null
+  const problems: string[] = []
+  if (end.provider_failures) problems.push(`${end.provider_failures} AI request(s) failed`)
+  if (end.save_failures) problems.push(`${end.save_failures} suggestion(s) could not be saved`)
+  if (end.search_tag_failures) problems.push(`${end.search_tag_failures} saved suggestion(s) not yet findable by tag search`)
+  if (end.error) problems.push(end.error)
+  const head = end.outcome === 'failed' ? 'AI suggestions failed' : 'AI suggestions were only partly completed'
+  return `${head} (${end.saved} saved): ${problems.join('; ')}.`
+}
+
+function isRunEnd (value: unknown): value is AiRunEnd {
+  return typeof value === 'object' && value !== null && (value as { event?: unknown }).event === 'end'
 }
 
 const BACKEND_BASE_PATH = process.env.BACKEND_URL ? process.env.BACKEND_URL + '/api' : 'http://localhost:8000/api'
 
 const isRunning = ref(false)
 const lastError = ref<string | null>(null)
+const lastStatus = ref<AiRunStatus | null>(null)
 const processedChunkIds = ref<Set<string>>(new Set())
 const totalSpansAdded = ref(0)
 const totalUnsaved = ref(0)
 let activeAbort: AbortController | null = null
+
+// Bumped by every run and by reset(); a run whose token is no longer current is stale.
+let runToken = 0
+let activeRunToken = 0
+let activeSelectionToken = 0
 
 // Shared UI state across the document layout (AI panel) and the document page.
 // Auto (AI-suggested) spans should only be rendered while the user is on the
@@ -54,6 +107,48 @@ const aiPanelRequestNonce = ref(0)
 const isSelectionRunning = ref(false)
 const lastSelectionError = ref<string | null>(null)
 let activeSelectionAbort: AbortController | null = null
+
+/**
+ * POST a suggestion request and feed its NDJSON lines to `onResult` while `isCurrent()`.
+ * Returns the final line, or null when the stream ended without it.
+ */
+async function streamSuggestions (
+  path: string,
+  body: unknown,
+  signal: AbortSignal,
+  isCurrent: () => boolean,
+  onResult: (line: ResultLine) => void
+): Promise<AiRunEnd | null> {
+  const token = localStorage.getItem('auth_token')
+  const resp = await fetch(`${BACKEND_BASE_PATH}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/x-ndjson',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(body),
+    signal
+  })
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    throw new Error(`AI assistance backend error (${resp.status}): ${text || resp.statusText}`)
+  }
+  if (!resp.body) {
+    throw new Error('AI assistance backend did not return a streaming body.')
+  }
+  let end: AiRunEnd | null = null
+  await readNdjson(
+    resp.body,
+    (value) => {
+      if (!isCurrent()) return
+      if (isRunEnd(value)) end = value
+      else onResult(value as ResultLine)
+    },
+    (line, e) => console.warn('AI assistance: failed to parse NDJSON line', line, e)
+  )
+  return end
+}
 
 export function useAiAssistance() {
   const spansStore = useTagSpansStore()
@@ -113,6 +208,21 @@ export function useAiAssistance() {
     }
   }
 
+  /** Add saved spans to the store (once per id); returns the ones that were new. */
+  const addSpans = (chunkId: string, spans: TagSpan[]): TagSpan[] => {
+    if (!chunkId || !spans.length) return []
+    const existing = spansStore.spansByChunkId[chunkId] || []
+    const known = new Set(existing.map((s) => s.id).filter(Boolean) as string[])
+    const fresh = spans.filter((s) => !s.id || !known.has(s.id))
+    if (fresh.length) {
+      spansStore.spansByChunkId = {
+        ...spansStore.spansByChunkId,
+        [chunkId]: [...existing, ...fresh]
+      }
+    }
+    return fresh
+  }
+
   /**
    * Run a streaming AI suggestion request. Auto spans are persisted in the
    * backend; we push them into the local store so they render immediately.
@@ -129,9 +239,13 @@ export function useAiAssistance() {
 
     cancel() // make sure no stale controller
     const abort = new AbortController()
+    const myToken = ++runToken
+    const isCurrent = () => activeRunToken === myToken
     activeAbort = abort
+    activeRunToken = myToken
     isRunning.value = true
     lastError.value = null
+    lastStatus.value = null
     processedChunkIds.value = new Set()
     totalSpansAdded.value = 0
     totalUnsaved.value = 0
@@ -139,46 +253,13 @@ export function useAiAssistance() {
     const path = req.mode === 'thorough'
       ? '/ai/suggest_spans/thorough'
       : '/ai/suggest_spans/optimized'
-    const token = localStorage.getItem('auth_token')
 
     try {
-      const resp = await fetch(`${BACKEND_BASE_PATH}${path}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/x-ndjson',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          collection_id: req.collectionId,
-          document_id: req.documentId,
-          tag_ids: req.tagIds
-        }),
-        signal: abort.signal
-      })
-
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        throw new Error(`AI assistance backend error (${resp.status}): ${text || resp.statusText}`)
-      }
-      if (!resp.body) {
-        throw new Error('AI assistance backend did not return a streaming body.')
-      }
-
-      const reader = resp.body.getReader()
-      const decoder = new TextDecoder('utf-8')
-      let buffer = ''
-
-      const handleLine = (line: string) => {
-        const trimmed = line.trim()
-        if (!trimmed) return
-        let parsed: { chunk_id?: string; spans?: TagSpan[]; error?: string | null; unsaved?: number }
-        try {
-          parsed = JSON.parse(trimmed)
-        } catch (e) {
-          console.warn('AI assistance: failed to parse NDJSON line', trimmed, e)
-          return
-        }
+      const end = await streamSuggestions(path, {
+        collection_id: req.collectionId,
+        document_id: req.documentId,
+        tag_ids: req.tagIds
+      }, abort.signal, isCurrent, (parsed) => {
         const event: AiAssistanceChunkEvent = {
           chunkId: parsed.chunk_id || '',
           spans: parsed.spans || [],
@@ -187,50 +268,33 @@ export function useAiAssistance() {
         }
         totalUnsaved.value += event.unsaved
         if (event.chunkId) processedChunkIds.value.add(event.chunkId)
-        if (event.spans.length) {
-          totalSpansAdded.value += event.spans.length
-          // Merge new auto spans into the store so they render immediately.
-          const existing = spansStore.spansByChunkId[event.chunkId] || []
-          // Avoid duplicates if the same span id was already in the store.
-          const known = new Set(existing.map((s) => s.id).filter(Boolean) as string[])
-          const fresh = event.spans.filter((s) => !s.id || !known.has(s.id))
-          spansStore.spansByChunkId = {
-            ...spansStore.spansByChunkId,
-            [event.chunkId]: [...existing, ...fresh]
-          }
-        }
+        // Merge new auto spans into the store so they render immediately.
+        totalSpansAdded.value += addSpans(event.chunkId, event.spans).length
         if (event.error) {
           lastError.value = event.error
         }
         onEvent?.(event)
-      }
-
-      // Read & split the stream on newlines.
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        let newlineIdx = buffer.indexOf('\n')
-        while (newlineIdx !== -1) {
-          handleLine(buffer.slice(0, newlineIdx))
-          buffer = buffer.slice(newlineIdx + 1)
-          newlineIdx = buffer.indexOf('\n')
-        }
-      }
-      buffer += decoder.decode()
-      if (buffer.trim()) handleLine(buffer)
+      })
+      if (!isCurrent()) return
+      lastStatus.value = end ? end.outcome : 'interrupted'
+      const summary = describeRunEnd(end)
+      if (summary) lastError.value = summary
     } catch (e: unknown) {
+      if (!isCurrent()) return
       const err = e as { name?: string; message?: string }
       if (err?.name === 'AbortError') {
         // Cancelled by user — not an error.
+        lastStatus.value = 'cancelled'
       } else {
         console.error('AI assistance failed', e)
+        lastStatus.value = 'interrupted'
         lastError.value = err?.message || 'AI assistance request failed'
       }
     } finally {
-      if (activeAbort === abort) activeAbort = null
-      isRunning.value = false
+      if (isCurrent()) {
+        activeAbort = null
+        isRunning.value = false
+      }
     }
   }
 
@@ -254,7 +318,8 @@ export function useAiAssistance() {
    * span up automatically.
    *
    * Aborting the request via :func:`cancelSelection` cancels the upstream
-   * Topicer call too.
+   * Topicer call too. Resolves to the new spans, or null when the run was
+   * cancelled or the document/collection changed meanwhile (nothing to report).
    */
   const runOnSelection = async (req: {
     collectionId: string
@@ -263,7 +328,7 @@ export function useAiAssistance() {
     selectionStart: number
     selectionEnd: number
     tagIds: string[]
-  }): Promise<TagSpan[]> => {
+  }): Promise<TagSpan[] | null> => {
     if (!req.tagIds.length) {
       lastSelectionError.value = 'No tags selected for AI suggestion.'
       return []
@@ -279,99 +344,50 @@ export function useAiAssistance() {
 
     cancelSelection() // make sure no stale controller
     const abort = new AbortController()
+    const myToken = ++runToken
+    const isCurrent = () => activeSelectionToken === myToken
     activeSelectionAbort = abort
+    activeSelectionToken = myToken
     isSelectionRunning.value = true
     lastSelectionError.value = null
-    const token = localStorage.getItem('auth_token')
     const collected: TagSpan[] = []
 
     try {
-      const resp = await fetch(`${BACKEND_BASE_PATH}/ai/suggest_spans/selection`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/x-ndjson',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          collection_id: req.collectionId,
-          document_id: req.documentId,
-          chunk_ids: req.chunkIds,
-          selection_start: req.selectionStart,
-          selection_end: req.selectionEnd,
-          tag_ids: req.tagIds
-        }),
-        signal: abort.signal
-      })
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        throw new Error(`AI selection backend error (${resp.status}): ${text || resp.statusText}`)
-      }
-      if (!resp.body) {
-        throw new Error('AI selection backend did not return a streaming body.')
-      }
-
-      const reader = resp.body.getReader()
-      const decoder = new TextDecoder('utf-8')
-      let buffer = ''
-
-      const handleLine = (line: string) => {
-        const trimmed = line.trim()
-        if (!trimmed) return
-        let parsed: { chunk_id?: string; spans?: TagSpan[]; error?: string | null; unsaved?: number }
-        try {
-          parsed = JSON.parse(trimmed)
-        } catch (e) {
-          console.warn('AI selection: failed to parse NDJSON line', trimmed, e)
-          return
-        }
+      const end = await streamSuggestions('/ai/suggest_spans/selection', {
+        collection_id: req.collectionId,
+        document_id: req.documentId,
+        chunk_ids: req.chunkIds,
+        selection_start: req.selectionStart,
+        selection_end: req.selectionEnd,
+        tag_ids: req.tagIds
+      }, abort.signal, isCurrent, (parsed) => {
         if (parsed.error) {
           lastSelectionError.value = parsed.error
         }
         totalUnsaved.value += parsed.unsaved ?? 0
-        const anchorChunkId = parsed.chunk_id || ''
-        const fresh = parsed.spans || []
-        if (!anchorChunkId || !fresh.length) return
-
-        const existing = spansStore.spansByChunkId[anchorChunkId] || []
-        const known = new Set(existing.map((s) => s.id).filter(Boolean) as string[])
-        const newOnes = fresh.filter((s) => !s.id || !known.has(s.id))
-        if (!newOnes.length) return
-        spansStore.spansByChunkId = {
-          ...spansStore.spansByChunkId,
-          [anchorChunkId]: [...existing, ...newOnes]
-        }
+        const newOnes = addSpans(parsed.chunk_id || '', parsed.spans || [])
         totalSpansAdded.value += newOnes.length
         collected.push(...newOnes)
-      }
-
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        let newlineIdx = buffer.indexOf('\n')
-        while (newlineIdx !== -1) {
-          handleLine(buffer.slice(0, newlineIdx))
-          buffer = buffer.slice(newlineIdx + 1)
-          newlineIdx = buffer.indexOf('\n')
-        }
-      }
-      buffer += decoder.decode()
-      if (buffer.trim()) handleLine(buffer)
+      })
+      if (!isCurrent()) return null
+      const summary = describeRunEnd(end)
+      if (summary) lastSelectionError.value = summary
       return collected
     } catch (e: unknown) {
+      if (!isCurrent()) return null
       const err = e as { name?: string; message?: string }
       if (err?.name === 'AbortError') {
         // Cancelled by user — not an error.
-        return collected
+        return null
       }
       console.error('AI selection assistance failed', e)
       lastSelectionError.value = err?.message || 'AI selection request failed'
       return collected
     } finally {
-      if (activeSelectionAbort === abort) activeSelectionAbort = null
-      isSelectionRunning.value = false
+      if (isCurrent()) {
+        activeSelectionAbort = null
+        isSelectionRunning.value = false
+      }
     }
   }
 
@@ -393,14 +409,19 @@ export function useAiAssistance() {
 
   /**
    * Reset all run-state (counters, errors, highlight). Called when the user
-   * navigates between documents so stale "Processed X chunks" / pending
-   * suggestions don't leak across documents.
+   * navigates between documents or collections so stale "Processed X chunks" /
+   * pending suggestions don't leak across them. Running requests are aborted and
+   * their late events ignored.
    */
   const reset = () => {
     cancel()
     cancelSelection()
+    activeRunToken = 0
+    activeSelectionToken = 0
     isRunning.value = false
+    isSelectionRunning.value = false
     lastError.value = null
+    lastStatus.value = null
     lastSelectionError.value = null
     processedChunkIds.value = new Set()
     totalSpansAdded.value = 0
@@ -418,6 +439,7 @@ export function useAiAssistance() {
     isRunning: computed(() => isRunning.value),
     isSelectionRunning: computed(() => isSelectionRunning.value),
     lastError: computed(() => lastError.value),
+    lastStatus: computed(() => lastStatus.value),
     lastSelectionError: computed(() => lastSelectionError.value),
     processedChunkCount: computed(() => processedChunkIds.value.size),
     totalSpansAdded: computed(() => totalSpansAdded.value),

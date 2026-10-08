@@ -89,3 +89,22 @@ def check_span_range(chunks: Sequence, start: int, end: int) -> None:
     if last + 1 < len(chunks):
         raise InvalidSpanRange("gap", "Span crosses a gap between the document's chunks")
     raise InvalidSpanRange("past_end", "Span ends after the end of the document's text")
+
+
+def utf16_offset(text: str, index: int) -> int:
+    """The UTF-16 offset of the Python string index ``index`` (a code point offset) in ``text``."""
+    return text_length(text[:index])
+
+
+def code_point_offset(text: str, units: int) -> int:
+    """The Python string index of the UTF-16 offset ``units`` in ``text``.
+
+    An offset inside a surrogate pair (between the two units of one character) rounds
+    down to the start of that character; offsets past the end give ``len(text)``.
+    """
+    covered = 0
+    for index, char in enumerate(text):
+        covered += 2 if ord(char) > 0xFFFF else 1
+        if covered > units:
+            return index
+    return len(text)

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
+from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
@@ -64,6 +65,7 @@ class AppResources:
     engine: AsyncEngine
     session_maker: async_sessionmaker
     embeddings: GemmaEmbeddings
+    topicer: TopicerClient
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
@@ -74,7 +76,8 @@ class AppResources:
         engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
         session_maker = async_sessionmaker(engine, autocommit=False, autoflush=True, expire_on_commit=False)
         return cls(config=config, engine=engine, session_maker=session_maker,
-                   embeddings=GemmaEmbeddings(config.GEMMA_URL))
+                   embeddings=GemmaEmbeddings(config.GEMMA_URL),
+                   topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
         """Open the application's Weaviate client; raises if it cannot be connected."""

@@ -1,18 +1,19 @@
 # Refactor status
 
-Last updated: 2026-10-08 (#206)
+Last updated: 2026-10-08 (#207)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #206 — Extract annotation workflows into an Annotations feature
-  (in review, PR #226); next: #207 (AI annotation assistance workflow).
+- Current issue: #207 — Extract AI annotation assistance into a request-scoped workflow
+  (in review); next: #208.
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
   write outcomes, PR #216), #202 (adapter foundation, PR #219),
   #203 (Collections feature migration, PR #221), #204 (annotation/chunk tag consistency,
-  PR #223), #205 (Search feature service and adapter, PR #225)
+  PR #223), #205 (Search feature service and adapter, PR #225), #206 (Annotations
+  feature, PR #226)
 - Current stage: R4
 
 ## Development environment
@@ -439,20 +440,91 @@ Last updated: 2026-10-08 (#206)
   `test_partial_writes.py` now also checks the no-progress body. Frontend unit test for the
   delete/create message.
 
+## #207 outcome
+
+- AI suggestions are an Annotations workflow: `features/annotations/suggestions.py`
+  (orchestration) and `features/annotations/suggestion_routes.py` (moved from
+  `routes/ai_assistance_routes.py`; HTTP, NDJSON encoding, disconnect handling). Topicer is
+  `adapters/topicer/client.py` (`TopicerClient`, moved from `ai_assistance/topicer_client.py`),
+  built by bootstrap from the app's config (`AppResources.topicer`, dependency
+  `get_topicer`): it no longer reads the process-wide `config`. Suggestion models moved from
+  `schema/ai_assistance.py` to `features/annotations/schemas.py` (span chat models stay);
+  the unused `SuggestSpansSelectionResponse` is removed. AI routes no longer use the
+  facade. `anyio` (already installed via Starlette) is now a declared dependency.
+- `prepare_document_run` / `prepare_selection_run` check access and scope (moved from the
+  routes, same order and status codes) and load tags and chunks before the stream starts;
+  `SuggestionRun.events()` calls Topicer, validates, saves through `service.save_span` and
+  yields typed events. Routes only encode them. Unchanged: request-scoped execution,
+  per-proposal persistence before its event, at most 10 Topicer calls per run (thorough
+  now starts further chunks as calls finish instead of creating every task up front), no
+  rollback, `unsaved`/`error` per event.
+- **Contract change — terminal event:** every stream now ends with
+  `{"event": "end", "outcome": "complete"|"partial"|"failed", "saved", "rejected",
+  "save_failures", "search_tag_failures", "provider_failures", "error"}`; result lines get
+  `"event": "result"`. No end line means interrupted. An unexpected error during a run (e.g.
+  a failed read) ends it with this event instead of a broken stream. The NDJSON models are
+  not in OpenAPI; the generated client changed in descriptions only. Details and the
+  outcome rules: ADR 0003 "Implemented in #207".
+- **Behavior change — provider validation:** a proposal is rejected (counted in `unsaved`
+  and `rejected`, reason in `error`) when its tag is not a requested tag, its chunk is not
+  a chunk of the document in the collection, or its offsets are not integers with
+  `0 <= start < end <= len(text sent)`. Before, out-of-range offsets were clamped and
+  saved, and proposals without a tag or offsets were dropped silently.
+- **Behavior change — offset units (resolves the #206 known problem):** Topicer offsets
+  are read as Python string offsets (code points) into the text it was sent (assumed, see
+  known problems) and stored in UTF-16 units (`offsets.utf16_offset`); selection offsets
+  from the browser are UTF-16 and converted for slicing (`offsets.code_point_offset`). Both
+  differ from before only after characters outside the BMP.
+- **Fix — selection across chunks outside the collection:** the browser sends only the
+  collection's chunks of a selection. A proposal continuing from one selected chunk into a
+  later one now gets an end that counts the document's chunks in between (as user spans
+  are stored, ADR 0006); before, the end was measured over the selected chunks only and
+  pointed into the skipped chunk. A proposal across a gap in chunk order is rejected.
+  Selection requests are refused with 400 when the chunks are not distinct and in document
+  order, or the selection contains no text of them (was an empty stream).
+- Cancellation: `_RunResponse` closes the run however the response ends (Starlette
+  cancels a disconnected stream but does not close its iterator, so before, a run suspended
+  at a send kept its tasks until garbage collection). Closing cancels running Topicer
+  calls and waits for them (shielded from anyio's repeated cancellation); a span write in
+  progress finishes with its chunk tag first. Saved spans remain.
+- Duplicates (documented, not changed): ADR 0003 "Duplicate proposals".
+- Frontend: `src/utils/ndjson.ts` reads NDJSON (lines split across chunks and UTF-8
+  characters); `useAiAssistance` gives each run a token. `reset()` (document change, and
+  now also collection change) aborts the run and its late events, errors and finally block
+  no longer touch the store or loading state; `runOnSelection` returns `null` for a
+  cancelled or superseded run. The end event sets `lastStatus` and a message for partial,
+  failed and interrupted runs; the panel says when a run was cancelled.
+- Tests: `tests/test_suggestions.py` (fakes: span stored before its event, provider
+  failure after partial success, all calls failing, no proposals, storage failure with an
+  uncertain timeout, chunk tag failure, every invalid proposal kind with no write, UTF-16
+  conversion, cancellation by closing and by task cancel, anyio-style cancellation waiting
+  for slow-to-cancel calls, cancellation during a write, concurrency limit, unexpected
+  error, route closing the run on disconnect, duplicate characterization, access/request
+  denials before any provider call, optimized-mode chunk validation, selection anchoring,
+  selection across a hidden chunk, gap, invalid selections); disabling the route close, the
+  write shield or the cleanup shield each fails a test. `tests/integration/test_suggestions.py`
+  (real Weaviate: saved suggestions reload and are found by tag-filtered search, partial
+  run keeps saved spans, UTF-16 storage with an emoji, cross-chunk selection accepted by
+  the user-span validation, client disconnect on a real uvicorn server cancels the
+  remaining provider call and keeps the saved span). Existing AI integration tests now
+  inject the fake through `use_topicer`/`fake_topicer` (dependency override) and check the
+  end event. `test/unit/aiAssistance.spec.ts` (NDJSON splitting, progressive store update,
+  interrupted/partial/cancelled runs, late events after a document change; removing the
+  token checks fails two tests).
+- Not covered: no browser test runs AI suggestions (progressive display and navigation
+  during a run); add with the context-scoped state work in #209.
+
 ## Temporary exceptions
 
-- **Process-wide `config` still read directly** by provider modules:
-  `ai_assistance/span_chat.py` and `ai_assistance/topicer_client.py`. An app built with
-  `create_app(other_config)` still uses the process-wide settings for these calls.
-  `semant_demo.main:app` passes the same object, so production has one source. Remove when
-  the AI assistance workflow is extracted (#207); audit remaining provider/span-chat
-  globals in #210. (The standalone scripts `rag/rag_runner_demo.py` and
+- **Process-wide `config` still read directly** by `ai_assistance/span_chat.py`. An app
+  built with `create_app(other_config)` still uses the process-wide settings for span chat.
+  `semant_demo.main:app` passes the same object, so production has one source. Topicer
+  takes the app's config since #207. Remove with the span-chat audit in #210. (The standalone scripts `rag/rag_runner_demo.py` and
   `create_default_configurations.py` read it as their entry-point configuration.)
 - **Transitional `WeaviateAbstraction` facade** (`weaviate_utils/weaviate_abstraction.py`)
-  is still used by AI assistance (#207) for tag/chunk reads and access checks, and by span
-  chat. It is built on the application's one client. Search, summarizer, RAG (#205) and
-  tags/spans (#206) no longer use it; AI span writes go through the Annotations service.
-  Remove the facade when its last caller has moved (#210).
+  is still used by span chat only. It is built on the application's one client. Search,
+  summarizer, RAG (#205), tags/spans (#206) and AI suggestions (#207) no longer use it.
+  Remove the facade when span chat has moved (#210).
 - **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 60 errors).
   Several are real defects: `useTagging.ts` calls `DefaultApi` methods that no longer exist,
   `chunk_collection-store.ts` passes `userId` as fetch options, services import missing
@@ -462,12 +534,12 @@ Last updated: 2026-10-08 (#206)
   findings (unused/star imports, comparisons). Python formatting and a Python type checker
   are not enforced yet.
 - **Access checks are called from route handlers** outside Collections, Search and
-  Annotations (AI assistance, span chat, document routes), because those features have no
-  service layer yet. Each handler calls the check before any other work. Move AI checks
-  into the workflow with #207; audit remaining Document and span-chat boundaries under
-  #210 while preserving intentionally public corpus reads. Collections (#203), Search
-  (#205) and Annotations (#206) enforce access in their services; `service.save_span`
-  is the documented exception (its AI caller checks before the stream).
+  Annotations (span chat, document routes), because those features have no service layer
+  yet. Each handler calls the check before any other work. Audit the remaining Document and
+  span-chat boundaries under #210 while preserving intentionally public corpus reads.
+  Collections (#203), Search (#205), Annotations (#206) and AI suggestions (#207, in the
+  `prepare_*` functions) enforce access in their services; `service.save_span` is the
+  documented exception (its callers `create_span` and the suggestion workflow check first).
 - **Vitest 0.23.4** is pinned because it is the last release supporting Vite 2
   (`@quasar/app-vite` 1). Upgrade together with Quasar app-vite 2 / Vite 5.
 
@@ -482,12 +554,15 @@ Last updated: 2026-10-08 (#206)
   recovery). Maintainer direction (2026-10-08): when scaling out, prefer eventual
   consistency (e.g. re-deriving pairs later or a periodic audit) over distributed locking,
   to keep the system simple and fast.
-- AI proposal offsets are measured in Python code points (the AI route clamps them with
-  `len(chunk.text)`, the selection mode concatenates chunk texts the same way), while the
-  document view reads stored offsets as UTF-16 units. They differ after a character
-  outside the BMP in the chunk. Provider offset units are not verified. Validate and,
-  if needed, convert provider offsets with `features/annotations/offsets.py` in #207; do
-  not migrate stored offsets without a plan (ADR 0006).
+- Topicer offset units are assumed to be Python string offsets (code points) of the text
+  it was sent (#207 converts them to UTF-16); this matches the fake provider and the
+  previous clamping but was not verified against the real Topicer (no live calls in this
+  refactor). If Topicer reports UTF-16 or byte offsets, adjust `_validated`/`_save` in
+  `suggestions.py`. AI spans stored before #207 next to non-BMP characters may be off by
+  one unit per such character; not migrated (ADR 0006). In optimized mode offsets are
+  checked against the stored chunk text, not the text Topicer echoes back.
+- AI suggestion concurrency is bounded per run (10 Topicer calls), not across concurrent
+  runs: [#227](https://github.com/DCGM/semant-demo/issues/227).
 - TODO after the refactor (post-refactor work, not a blocker for #205 or any refactor gate;
   [#224](https://github.com/DCGM/semant-demo/issues/224) — Define tag-filtered search
   behavior for cross-chunk spans): a cross-chunk span sets the

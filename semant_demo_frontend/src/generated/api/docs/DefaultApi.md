@@ -3087,7 +3087,7 @@ example().catch(console.error);
 
 Suggest Spans Optimized
 
-Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:&#x60;SuggestSpansRunEnd&#x60;.
 
 ### Example
 
@@ -3147,7 +3147,7 @@ example().catch(console.error);
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | Stream of SuggestSpansChunkResult, one JSON object per line. |  -  |
+| **200** | Stream of SuggestSpansChunkResult, one JSON object per line, ended by one SuggestSpansRunEnd line (&#x60;&#x60;event &#x3D;&#x3D; \&#39;end\&#39;&#x60;&#x60;). |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -3159,7 +3159,7 @@ example().catch(console.error);
 
 Suggest Spans Selection
 
-Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (&#x60;&#x60;application/x-ndjson&#x60;&#x60;) — one :class:&#x60;SuggestSpansChunkResult&#x60; per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+Run AI span suggestion on a single user-selected passage that may span multiple chunks of the collection. The frontend sends the chunk IDs in document order; offsets are measured in UTF-16 code units against the concatenation of their text.  The endpoint streams NDJSON (&#x60;&#x60;application/x-ndjson&#x60;&#x60;) — one :class:&#x60;SuggestSpansChunkResult&#x60; per proposal, then a :class:&#x60;SuggestSpansRunEnd&#x60; — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
 
 ### Example
 
@@ -3219,7 +3219,7 @@ example().catch(console.error);
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | Stream of SuggestSpansChunkResult, one JSON object per line. One event per persisted auto span; a final event with empty &#x60;&#x60;spans&#x60;&#x60; and a populated &#x60;&#x60;error&#x60;&#x60; is emitted on Topicer failure. |  -  |
+| **200** | Stream of SuggestSpansChunkResult, one JSON object per line. One event per proposal (the persisted auto span, or &#x60;&#x60;unsaved&#x60;&#x60; with the reason); an event with empty &#x60;&#x60;spans&#x60;&#x60; and a populated &#x60;&#x60;error&#x60;&#x60; on Topicer failure; ended by one SuggestSpansRunEnd line (&#x60;&#x60;event &#x3D;&#x3D; \&#39;end\&#39;&#x60;&#x60;). |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -3231,7 +3231,7 @@ example().catch(console.error);
 
 Suggest Spans Thorough
 
-Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type &#x60;&#x60;auto&#x60;&#x60;. The endpoint streams NDJSON lines (&#x60;&#x60;application/x-ndjson&#x60;&#x60;); each line is a :class:&#x60;SuggestSpansChunkResult&#x60;.
+Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type &#x60;&#x60;auto&#x60;&#x60;. The endpoint streams NDJSON lines (&#x60;&#x60;application/x-ndjson&#x60;&#x60;): one :class:&#x60;SuggestSpansChunkResult&#x60; per chunk, then a :class:&#x60;SuggestSpansRunEnd&#x60;.
 
 ### Example
 
@@ -3291,7 +3291,7 @@ example().catch(console.error);
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | Stream of SuggestSpansChunkResult, one JSON object per line. |  -  |
+| **200** | Stream of SuggestSpansChunkResult, one JSON object per line, ended by one SuggestSpansRunEnd line (&#x60;&#x60;event &#x3D;&#x3D; \&#39;end\&#39;&#x60;&#x60;). |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

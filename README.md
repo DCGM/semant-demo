@@ -52,7 +52,7 @@ semant-demo/
 │   │   ├── config.py              # env-based configuration (Config singleton)
 │   │   ├── schemas.py             # legacy Pydantic models + SQLAlchemy Task model
 │   │   ├── schema/                # focused per-domain Pydantic schemas
-│   │   │   ├── ai_assistance.py   # span suggestion + span discussion chat schemas
+│   │   │   ├── ai_assistance.py   # span discussion chat schemas
 │   │   │   ├── spans.py           # PostSpan, PatchSpan, BulkUpdateSpansRequest, …
 │   │   │   ├── tags.py            # Tag CRUD + bulk schemas
 │   │   │   ├── chunks.py          # Chunk-related request/response schemas
@@ -61,8 +61,9 @@ semant-demo/
 │   │   ├── gemma_embedding.py     # HTTP client to embedding_service
 │   │   ├── ollama_proxy.py        # round-robin Ollama client
 │   │   ├── ai_assistance/         # external AI integrations
-│   │   │   ├── topicer_client.py  # async HTTP client for the Topicer span-proposal service
 │   │   │   └── span_chat.py       # streaming "discuss this span" chat
+│   │   ├── adapters/topicer/      # async HTTP client for the Topicer span-proposal service
+│   │   ├── features/annotations/  # tags, spans, AI suggestions (suggestions.py)
 │   │   ├── configs/               # YAML configs (summariser prompts)
 │   │   ├── llm_api/               # async LLM abstraction (OpenAI, Ollama, Gemini)
 │   │   ├── rag/                   # RAG implementations + YAML configs
