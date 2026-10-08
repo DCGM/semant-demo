@@ -156,12 +156,38 @@ class OpenTelemetry:
         self.trace_provider.shutdown()
 
 
-class RequestTelemetryMiddleware:
-    """Create one structured log record for every completed HTTP request.
+UNMATCHED_ROUTE = "<unmatched>"
 
-    Also records the feature metrics when ``telemetry`` is enabled. It is a plain ASGI
-    middleware so a streamed response is timed until its end and a client disconnect
-    still reaches the endpoint, which cancels its remaining work.
+# Server-span attributes that FastAPIInstrumentor fills from the raw request URL.
+_RAW_URL_SPAN_ATTRIBUTES = ("http.target", "http.url", "url.path", "url.full", "url.query")
+
+
+def route_template(scope: Scope) -> str:
+    """The matched route's path template, e.g. ``/api/question/{question_text}``.
+
+    Never the raw path: path parameters can carry user text (a question, a search).
+    """
+    return getattr(scope.get("route"), "path_format", None) or UNMATCHED_ROUTE
+
+
+def _redact_server_span(route: str) -> None:
+    """Replace the raw URL on the current server span with the route template."""
+    span = trace.get_current_span()
+    if not span.is_recording():
+        return
+    recorded = getattr(span, "attributes", None) or {}
+    for key in _RAW_URL_SPAN_ATTRIBUTES:
+        if key in recorded:
+            span.set_attribute(key, "" if key == "url.query" else route)
+
+
+class RequestTelemetryMiddleware:
+    """Create one structured ``INFO`` log record for every completed HTTP request.
+
+    Also records the feature metrics when ``telemetry`` is enabled. Logs and the server
+    span carry the route template, not the raw URL. It is a plain ASGI middleware so a
+    streamed response is timed until its end and a client disconnect still reaches the
+    endpoint, which cancels its remaining work.
     """
 
     def __init__(self, app: ASGIApp, telemetry: OpenTelemetry | None = None):
@@ -179,7 +205,6 @@ class RequestTelemetryMiddleware:
         attributes = {
             "request.id": request_id,
             "http.request.method": scope["method"],
-            "url.path": scope["path"],
         }
         feature = feature_for_request(scope["path"], scope["method"])
         authentication = request_authentication(headers.get("authorization"))
@@ -190,9 +215,14 @@ class RequestTelemetryMiddleware:
             if message["type"] == "http.response.start":
                 status_code = message["status"]
                 MutableHeaders(scope=message)["X-Request-ID"] = request_id
+                # The server span ends with the response body, so redact it now.
+                _redact_server_span(route_template(scope))
             await send(message)
 
         def record(status: int, duration_seconds: float) -> None:
+            # Known only after routing; also set when the endpoint raised.
+            attributes["http.route"] = route_template(scope)
+            _redact_server_span(attributes["http.route"])  # a span still open after an error
             attributes["http.response.status_code"] = status
             attributes["http.server.request.duration_ms"] = round(duration_seconds * 1000, 2)
             if self.telemetry is not None and feature is not None:
@@ -211,7 +241,7 @@ class RequestTelemetryMiddleware:
             raise
 
         record(status_code, perf_counter() - started_at)
-        logging.getLogger(__name__).debug("HTTP request completed", extra=attributes)
+        logging.getLogger(__name__).info("HTTP request completed", extra=attributes)
 
 
 def initialize_opentelemetry(config: Config) -> OpenTelemetry | None:
