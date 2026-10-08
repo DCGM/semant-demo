@@ -277,11 +277,12 @@ async def test_inaccessible_tags_are_refused_before_retrieval(user, scope, tag_i
     assert chunks.queries == [] and embeddings.calls == []
 
 
-async def test_anonymous_tag_filter_needs_login():
+@pytest.mark.parametrize("tag", [str(TAG), "not-a-uuid", str(uuid4())])
+async def test_anonymous_tag_filter_needs_login(tag):
     chunks = FakeChunks()
 
     with pytest.raises(AuthenticationRequired):
-        await service.retrieve(backends(chunks), None, request(tag_uuids=[str(TAG)], positive=True))
+        await service.retrieve(backends(chunks), None, request(tag_uuids=[tag], positive=True))
     assert chunks.queries == []
 
 

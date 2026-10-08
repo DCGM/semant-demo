@@ -224,8 +224,9 @@ async def test_tags_are_authorized_even_when_no_tag_kind_is_selected(post_search
     assert retrievals == []
 
 
-async def test_anonymous_tag_filter_needs_login(post_search, retrievals):
-    response = await post_search(None, tags=["person"])
+@pytest.mark.parametrize("tags", [["person"], ["not-a-uuid"], [UNKNOWN_TAG]])
+async def test_anonymous_tag_filter_needs_login(post_search, retrievals, tags):
+    response = await post_search(None, tags=tags)
 
     assert response.status_code == 401
     assert retrievals == []
