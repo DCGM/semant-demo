@@ -7,6 +7,7 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired
+from semant_demo.opentelemetry import RequestTelemetryMiddleware, initialize_opentelemetry
 from semant_demo.rag.rag_factory import rag_factory
 from fastapi.staticfiles import StaticFiles
 import os
@@ -17,7 +18,7 @@ from semant_demo.adapters.sql.tables import create_tables
 from semant_demo.routes import export_router
 from semant_demo.users.auth import auth_router, register_router, users_router
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=config.LOG_LEVEL)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -35,8 +36,12 @@ async def lifespan(app: FastAPI):
     finally:
         #shutdown all dependencies, also after a failed startup
         app.state.resources = None
-        await resources.close()
-        logging.info(f"Application cleanup complete.")
+        try:
+            await resources.close()
+            logging.info("Application cleanup complete.")
+        finally:
+            if app.state.telemetry is not None:
+                app.state.telemetry.shutdown()
 
 
 def _detail_handler(status_code: int):
@@ -52,11 +57,14 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     instance); tests that do not use Weaviate pass a stand-in.
     """
     app_config = app_config if app_config is not None else Config()
+    # Disabled by default (OTEL_ENABLED), so tests and local runs export nothing.
+    telemetry = initialize_opentelemetry(app_config)
 
     #app definition
     app = FastAPI(lifespan=lifespan)
     app.state.config = app_config
     app.state.resources = None
+    app.state.telemetry = telemetry
     app.state.weaviate_connector = weaviate_connector or connect_weaviate
     # mount routes
     app.include_router(export_router)
@@ -79,6 +87,7 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
         return JSONResponse(status_code=500, content=exc.body())
     app.add_exception_handler(IncompleteWriteError, incomplete_write)
 
+    app.add_middleware(RequestTelemetryMiddleware, telemetry=telemetry)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[app_config.ALLOWED_ORIGIN],  # http://localhost:9000
@@ -94,6 +103,9 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     else:
         logging.warning(
             f"'{app_config.STATIC_PATH}' directory not found. Static files will not be served.")
+
+    if telemetry is not None:
+        telemetry.instrument_app(app)
 
     return app
 
