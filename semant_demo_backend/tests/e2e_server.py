@@ -8,8 +8,10 @@ test-owned Weaviate. It
 * resets the test store and seeds the fixture corpus (ownership verified first);
 * creates a temporary SQLite database with the corpus users;
 * serves the built frontend from the same origin as the API;
-* runs fake embedding/Topicer providers on ``port + 1`` and points every AI provider
-  setting at them, with no API keys, so no live or paid provider can be reached.
+* runs fake embedding/Topicer/Ollama providers on ``port + 1`` and points every AI
+  provider setting at them, with no API keys, so no live or paid provider can be reached.
+  The Topicer stream pauses ``FAKE_TOPICER_STREAM_DELAY`` seconds between chunks, so
+  browser tests can cancel or navigate while a suggestion run is under way.
 
 Nothing here is used by the production application.
 """
@@ -35,6 +37,7 @@ from tests.weaviate_store import StoreEndpoint
 logger = logging.getLogger("e2e_server")
 
 E2E_JWT_SECRET = "e2e-only-secret-long-enough-for-hmac-sha256-32bytes"
+FAKE_TOPICER_STREAM_DELAY = 3.0
 DEFAULT_SUMMARIZER_CONFIG = Path(__file__).parents[1] / "semant_demo" / "configs" / "search_summarizer.yaml"
 
 
@@ -109,8 +112,8 @@ async def serve(port: int, static_dir: Path) -> None:
         await prepare_stores(config, endpoint)
         servers = [
             uvicorn.Server(uvicorn.Config(create_app(config), host="127.0.0.1", port=port, log_level="warning")),
-            uvicorn.Server(uvicorn.Config(create_fake_provider_app(load_corpus()), host="127.0.0.1",
-                                          port=fake_port, log_level="warning")),
+            uvicorn.Server(uvicorn.Config(create_fake_provider_app(load_corpus(), FAKE_TOPICER_STREAM_DELAY),
+                                          host="127.0.0.1", port=fake_port, log_level="warning")),
         ]
         logger.info("E2E app on http://127.0.0.1:%d, fake providers on %s", port, fake_url)
         # Each uvicorn server handles SIGINT/SIGTERM, then restores the previous handler and
