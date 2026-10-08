@@ -49,7 +49,9 @@ async def _drain(collection, filters, process) -> None:
     """Apply ``process`` to every object matching ``filters`` until none match.
 
     ``process`` must make the object stop matching (delete it or its reference), so the
-    first page is read again after each round. Stops with ``NoProgressError`` otherwise.
+    first page is read again after each round, also after a short page, and only an
+    empty result ends the loop. Stops with ``NoProgressError`` when a processed object
+    still matches (a write that reported success without taking effect).
     """
     seen: set = set()
     while True:
@@ -59,8 +61,6 @@ async def _drain(collection, filters, process) -> None:
         guard_progress(seen, [o.uuid for o in response.objects])
         for obj in response.objects:
             await process(obj.uuid)
-        if len(response.objects) < PAGE_SIZE:
-            return
 
 
 async def delete_references_to(collection, from_property: str, target_id: UUID) -> None:

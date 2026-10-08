@@ -169,7 +169,10 @@ Last updated: 2026-10-08
   `core.errors.NotFoundError`; SDK errors propagate unwrapped (500). `paging.fetch_all`
   reads every page before returning (offset paging, Weaviate's `QUERY_MAXIMUM_RESULTS`
   still applies). `writes.py` holds `step_failure`, `guard_progress` (now raising
-  `NoProgressError`) and the tag/collection delete cascades. No Protocols were added: the
+  `NoProgressError`) and the tag/collection delete cascades. Their "process the first page
+  again" loop now re-queries after every non-empty page, also a short one, and ends only on
+  an empty result; before, a short last page whose deletes reported success without taking
+  effect ended the loop (a tag was then deleted while its spans remained). No Protocols were added: the
   only fakes needed (access tests) are plain objects.
 - `core/errors.py`: `NotFoundError` (404) and `InvalidRequestError` (400), mapped in
   `create_app`; `access.ResourceNotFound` is a `NotFoundError`.
