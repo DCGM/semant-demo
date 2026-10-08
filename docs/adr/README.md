@@ -1,10 +1,10 @@
 # Architecture decisions
 
 These records capture agreed behavior and constraints for the current application.
-The #197 refactor implemented the core decisions; future proposals are clearly identified
-as such. Current code is described in [ARCHITECTURE.md](../ARCHITECTURE.md), and
-ongoing work in [TODO.md](../TODO.md). Historical refactor review evidence is retained
-for context, not treated as a live defect list.
+The core decisions are implemented; future proposals are clearly identified.
+Current code is described in [ARCHITECTURE.md](../ARCHITECTURE.md), ongoing
+work in [TODO.md](../TODO.md), and historical design evidence in the
+[archive](../archive/refactor-2026/README.md).
 
 | Record | Status |
 | --- | --- |

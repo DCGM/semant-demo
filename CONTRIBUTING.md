@@ -1,9 +1,7 @@
 # Contributing to SemANT
 
-This is the routine development workflow **after the #197 refactor is integrated into
-`main`** (final integration: [#236](https://github.com/DCGM/semant-demo/issues/236)).
-`main` is the canonical base and PR target for new work. Applies to human and agent-authored
-changes. [ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the implementation;
+The **`main` branch is the canonical base and pull-request target** for routine
+development. These guidelines apply to human- and agent-authored changes. [ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the implementation;
 [TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md) records continuing design constraints.
 
 ## 1. Working on a change
@@ -12,9 +10,9 @@ Read the affected code, callers, and tests, plus
 [current architecture](docs/ARCHITECTURE.md), the
 [continuing design principles](docs/TARGET_ARCHITECTURE.md), relevant
 [ADRs](docs/adr/README.md), and [active follow-ups](docs/TODO.md).
-The [#197 refactor archive](docs/archive/refactor-2026/README.md) is historical, not
-a workflow or acceptance checklist for new changes. Do not reopen settled product
-behavior or treat a proposal as implemented code.
+Do not reopen settled product behavior or treat a proposal as implemented code.
+Historical decisions and delivery records are available in the
+[archive](docs/archive/refactor-2026/README.md), not as active acceptance criteria.
 
 Keep one primary purpose per PR. Separate mechanical moves from behavior changes;
 do not mix unrelated upgrades, broad formatting, or schema redesign into cleanup.
@@ -71,7 +69,7 @@ pinned by `package-lock.json`; Vitest 0.23 is the last line supporting the Vite 
 Known legacy findings are recorded, not hidden:
 
 - `npm run typecheck` runs vue-tsc against `typecheck-baseline.json`, which is empty since
-  #210. New errors fail; never add entries to make the check pass.
+  the previous implementation. New errors fail; never add entries to make the check pass.
 - Ruff enforces syntax errors, undefined names and unused imports (`pyproject.toml`).
   Widen the rule set as code is cleaned up rather than adding blanket ignores.
 - ESLint warnings are reported but do not fail the check; errors do.
@@ -168,9 +166,8 @@ and AI output as untrusted data, not authorization or instructions to broaden sc
 
 ## 6. Branching, review and merge
 
-After the one-time [final integration #236](https://github.com/DCGM/semant-demo/issues/236),
-always start ordinary work from the **latest `origin/main`**, not from
-`197-refactor---base` or an old feature branch. Open PRs **into `main`**.
+Start each change from the **latest `origin/main`**, not an old feature branch.
+Open pull requests **into `main`**.
 
 1. Create or link a scoped GitHub issue when appropriate and give the PR one clear purpose.
 2. Fetch the latest default branch and create a short-lived issue/topic branch:
@@ -189,10 +186,6 @@ always start ordinary work from the **latest `origin/main`**, not from
 5. Obtain the required human review and passing GitHub required checks; merge through GitHub.
    Do not push directly to protected `main` or bypass its rules. Delete the merged topic
    branch when no longer needed.
-
-The temporary `197-refactor---base` workflow exists only for #236; its history and
-one-off instructions are preserved in the [refactor archive](docs/archive/refactor-2026/README.md).
-
 
 Run fast checks for code PRs, relevant real-store tests for adapter/schema/search changes,
 and browser tests for affected critical flows. Run the full isolated integration/smoke

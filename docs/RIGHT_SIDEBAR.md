@@ -2,7 +2,7 @@
 
 This document describes the application-level right sidebar of the frontend, how it works
 and how to add a tool (panel) to it. It was introduced by PR #194 and integrated into the
-refactored frontend in #209.
+current frontend.
 
 ## Overview
 

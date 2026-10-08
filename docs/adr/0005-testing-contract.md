@@ -89,7 +89,7 @@ Saved-result events follow acknowledged writes. Disconnect retains completed wri
 an interrupted response may leave a write outcome uncertain. Tests must not assume an
 upstream call or in-flight write is magically undone by cancellation.
 
-## Refactor regression inventory (historical baseline)
+## Regression inventory (historical baseline)
 
 These cases informed #197 and remain useful regression guidance when related behavior
 changes. Do not require all layers for every PR or demand features that do not exist yet.

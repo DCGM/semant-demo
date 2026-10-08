@@ -1,6 +1,6 @@
 # Architecture principles and future directions
 
-This page holds **ongoing design constraints**, not a second implementation plan. The detailed original pre-refactor target is [archived](archive/refactor-2026/TARGET_ARCHITECTURE.md).
+This page holds **ongoing design constraints**, not a second implementation plan. The original design proposal is [archived](archive/refactor-2026/TARGET_ARCHITECTURE.md).
 
 The authoritative description of what the application **does today** is [ARCHITECTURE.md](ARCHITECTURE.md). Adopted contracts and decisions are in the [ADRs](adr/README.md), and future product objectives are in [VISION.md](VISION.md). Track new implementation work with a scoped GitHub issue, linked from [TODO.md](TODO.md) when appropriate.
 
@@ -16,4 +16,4 @@ The authoritative description of what the application **does today** is [ARCHITE
 
 ## Open boundaries
 
-See [TODO.md](TODO.md) for relevant issues, including cross-chunk tag-search behavior (#224), multi-request AI concurrency (#227), future document-view panels (#230), provider access (#234), and data/index repair as explicitly reviewed maintenance. These are not reasons to reintroduce the pre-refactor architecture.
+See [TODO.md](TODO.md) for relevant issues, including cross-chunk tag-search behavior (#224), multi-request AI concurrency (#227), future document-view panels (#230), provider access (#234), and data/index repair as explicitly reviewed maintenance. These do not require reintroducing obsolete architectural layers.

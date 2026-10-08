@@ -62,7 +62,7 @@ require moving the alignment algorithm to the backend or adding stored geometry 
 
 Keep mapping in a small document-viewer module so it can be tested and later replaced.
 Make source-page/ALTO access an explicit viewer input or adapter, respecting source access
-rules. No new proxy, alignment service, or universal OCR pipeline is a refactor deliverable.
+rules. Add a proxy, alignment service, or OCR pipeline only when a concrete viewer need justifies it.
 Matching may normalize strings internally, but must map back to canonical text offsets.
 Uncertain, ambiguous, or unavailable matches must be visible rather than presented as exact.
 
@@ -82,8 +82,9 @@ source-location conventions rather than inventing a separate coordinate model.
 Choose frontend-only versus persisted alignment, polygon field details, and the mapping
 algorithm with real ALTO examples during viewer work. They are not blockers for cleanup.
 
-Q6, chat-history persistence/sharing, remains deferred; preserve current behavior for the
-refactor. Persistent history is separate from durable jobs and never permanently grants
+Q6, chat-history persistence/sharing, remains deferred; preserve existing
+request-scoped behavior until a separate feature is approved. Persistent history
+is distinct from durable jobs and never permanently grants
 access to sources. Recheck access when loading history or citations after sharing changes.
 
 ## Verification
