@@ -1,10 +1,6 @@
 # Active follow-ups and technical debt
 
-This document is a short index of **current** known limitations and post-refactor work, not a second issue tracker or a priority commitment. Keep actionable requirements, decisions and acceptance criteria on GitHub issues. The old, partly resolved TODO list is [archived](archive/refactor-2026/LEGACY_TODO.md); the complete #197 progress log is [also archived](archive/refactor-2026/REFACTOR_STATUS.md).
-
-## Final integration
-
-- [#236 — reconcile `main` and merge the refactor](https://github.com/DCGM/semant-demo/issues/236): one-time protected-branch integration, carry forward `main`-only changes (notably observability #180), re-run tests and merge via PR. Once completed, **new work branches from and targets `main`** ([CONTRIBUTING](../CONTRIBUTING.md)).
+This document indexes **current** known limitations and future work, not a second issue tracker or priority commitment. Keep actionable requirements, decisions and acceptance criteria on GitHub issues. Earlier technical-debt notes and implementation history are preserved in the [archive](archive/refactor-2026/README.md).
 
 ## Known correctness and behavior limitations
 
@@ -27,8 +23,8 @@ This document is a short index of **current** known limitations and post-refacto
 
 - [#230 — document sidebar integration](https://github.com/DCGM/semant-demo/issues/230): move document tools into the app-level sidebar when the UX is decided.
 - [#43 — optional durable bulk tagging jobs](https://github.com/DCGM/semant-demo/issues/43): evaluate the requirement and worker/deployment budget first; the current `Tagging Jobs` tab is a placeholder, not an active queue.
-- From the earlier backlog: consider runtime dependency pinning and repeatable image builds; SQL backend scalability beyond the current SQLite use; unified RAG model/prompt creation; search pagination; startup/provider readiness checks; package metadata and broader formatting/type-checking. Create a focused issue and tests before implementation—do not treat these as refactor exit gates.
+- From the earlier backlog: consider runtime dependency pinning and repeatable image builds; SQL backend scalability beyond the current SQLite use; unified RAG model/prompt creation; search pagination; startup/provider readiness checks; package metadata and broader formatting/type-checking. Create a focused issue and tests before implementation—prioritize them only when an issue is scoped and approved.
 
 ## Documentation policy
 
-Update [ARCHITECTURE.md](ARCHITECTURE.md) when implementation changes, [CONTRIBUTING.md](../CONTRIBUTING.md) for workflow/test-policy changes, [DEPLOYMENT.md](DEPLOYMENT.md) for deployment changes, and the [ADRs](adr/README.md) when an agreed decision changes. Link new actionable follow-ups to GitHub rather than extending the historical refactor log.
+Update [ARCHITECTURE.md](ARCHITECTURE.md) when implementation changes, [CONTRIBUTING.md](../CONTRIBUTING.md) for workflow/test-policy changes, [DEPLOYMENT.md](DEPLOYMENT.md) for deployment changes, and the [ADRs](adr/README.md) when an agreed decision changes. Link new actionable follow-ups to GitHub rather than modifying archived history.

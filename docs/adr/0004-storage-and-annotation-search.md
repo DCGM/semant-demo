@@ -13,7 +13,7 @@ bridge, or a new annotation-search representation as part of cleanup.
 
 Search uses tags stored in chunk attributes/references. Preserve that contract and the
 existing search options. Do not replace it with span traversal or redesign retrieval
-merely because the adapter is being refactored.
+without a separately reviewed product and compatibility decision.
 
 There is no supported category of historical whole-chunk tags without backing annotations.
 Such entries are **database inconsistencies**, not a feature to preserve. They should be
@@ -24,7 +24,7 @@ automatic annotations, or both**. This is not an approved-only default imposed o
 Use the existing application meaning of these categories. Do not silently equate an
 approval state with origin, reinterpret stored values, or introduce a provenance schema
 merely to move code. Define any necessary selector-to-storage mapping in the feature PR;
-it does not block unrelated refactoring.
+it does not block unrelated development.
 
 ## Correctness work, not a search redesign
 
@@ -59,7 +59,7 @@ Real-Weaviate tests should prove filtered-search compatibility and mutation-to-s
 consistency for the changed paths, including multiple backing annotations and final
 removal. Cleanup tests prove invalid entries are removed and valid ones retained.
 Add manual/automatic/both selector tests in document-view/export/concordance work as
-those features are implemented. Do not turn that future UI work into a refactor gate.
+those features are implemented. That future UI work should be scoped and tested when implemented.
 
 Sources from the pinned review: [search](https://github.com/DCGM/semant-demo/blob/375caa5f7f68defba25a56cccbb7dbc7fdf99a13/semant_demo_backend/semant_demo/weaviate_utils/text_chunk.py),
 [span writes](https://github.com/DCGM/semant-demo/blob/375caa5f7f68defba25a56cccbb7dbc7fdf99a13/semant_demo_backend/semant_demo/weaviate_utils/span.py).

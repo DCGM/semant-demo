@@ -1,18 +1,15 @@
 # Agent instructions
 
-These instructions supplement [CONTRIBUTING.md](CONTRIBUTING.md). They describe
-routine work **after the architecture refactor is merged into `main`**. The only
-exception is final integration [#236](https://github.com/DCGM/semant-demo/issues/236),
-whose steps are tracked in that issue. Do not use the archived #197 issue-branch
-workflow for new work.
+These instructions supplement [CONTRIBUTING.md](CONTRIBUTING.md) for ordinary
+development. Base new work on the latest `origin/main` and open pull requests
+against protected `main`.
 
 ## Before editing
 
 Read [ARCHITECTURE.md](docs/ARCHITECTURE.md), the relevant
 [ADRs](docs/adr/README.md) and [TODO / issue index](docs/TODO.md), plus affected
-callers and tests. The [refactor archive](docs/archive/refactor-2026/README.md)
-contains historical rationale, not active implementation requirements. Preserve
-unrelated changes and identify cross-feature/API contracts before editing.
+callers and tests. Preserve unrelated changes and identify cross-feature/API
+contracts before editing.
 
 ## Branch and PR workflow
 
@@ -29,13 +26,12 @@ unrelated changes and identify cross-feature/API contracts before editing.
 4. Do not push directly to `main`, force-update protected branches, merge PRs,
    deploy, or change shared/production data without explicit authorization.
    Agents may push their own assigned topic branch and open its PR for review.
-5. Do not reopen `197-refactor---base` as a routine PR target once #236 is done.
 
 ## Handoff
 
 Report scope, changed behavior/files, tests actually run, unrun checks, and
 remaining risks/decisions. Link newly discovered actionable gaps to a GitHub
-issue rather than appending to archived `REFACTOR_STATUS.md`.
+issue and update the relevant active documentation.
 
 ## Architecture
 
@@ -59,7 +55,7 @@ durable job. Do not delete SQL user infrastructure with legacy task code.
 Keep search on chunk tag attributes in Weaviate; no SQL split, large ID-list bridge, or
 new span-based query design during cleanup. Entries without backing annotations are data
 inconsistencies, not supported legacy features. Review data cleanup separately; never
-execute it as an incidental refactor.
+execute it as incidental cleanup.
 
 Preserve canonical text and cross-chunk offsets. Document view/export/concordances support
 manual/automatic/both annotation selection when those feature changes land; do not impose
@@ -69,7 +65,7 @@ Search chat uses retrieved results or their explicitly selected subset, never an
 query rerun or wider context. Local real-time UI means streamed AI annotations appear in
 Document view, not live multi-user synchronization. Line-level ALTO mapping may be frontend-
 only; polygon storage is optional future work. These roadmap features are not prerequisites
-for unrelated refactoring. Respect context and late-response guards.
+for unrelated changes. Respect context and late-response guards.
 
 ## Tests and safety
 
