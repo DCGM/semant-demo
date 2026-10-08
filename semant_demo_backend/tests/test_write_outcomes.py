@@ -5,7 +5,7 @@ import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.schema.outcomes import WriteOutcome, outcome_of
-from semant_demo.adapters.weaviate.writes import PAGE_SIZE, NoProgressError, _drain, guard_progress, step_failure
+from semant_demo.adapters.weaviate.writes import PAGE_SIZE, NoProgressError, _Progress, _drain, guard_progress, step_failure
 
 
 @pytest.mark.parametrize("succeeded, failed, unattempted, expected", [
@@ -61,7 +61,7 @@ async def test_drain_stops_on_a_short_page_whose_writes_do_not_take_effect():
         processed.append(uuid)
 
     with pytest.raises(NoProgressError):
-        await _drain(collection, None, no_op)
+        await _drain(collection, None, no_op, _Progress(), "delete_span")
 
     assert processed == ["a", "b", "c"]
     assert collection.queries == 2
@@ -73,7 +73,7 @@ async def test_drain_requeries_until_nothing_matches():
     async def remove(uuid):
         collection.matching.remove(uuid)
 
-    await _drain(collection, None, remove)
+    await _drain(collection, None, remove, _Progress(), "delete_span")
 
     assert collection.matching == []
     assert collection.queries == 3  # full page, short page, empty result

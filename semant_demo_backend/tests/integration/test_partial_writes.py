@@ -156,6 +156,8 @@ async def test_cascade_stops_when_deletes_do_not_take_effect(
         api_client.delete(f"/api/tags/{ids.tag['place']}", headers=await login("owner")), timeout=60)
 
     assert response.status_code == 500
+    assert response.json()["step"] == "delete_span"
+    assert "without taking effect" in response.json()["detail"]
     assert await store.tag(ids.tag["place"]) is not None
 
 
@@ -169,6 +171,7 @@ async def test_cascade_stops_when_deletes_on_a_short_page_do_not_take_effect(
         api_client.delete(f"/api/tags/{ids.tag['place']}", headers=await login("owner")), timeout=60)
 
     assert response.status_code == 500
+    assert response.json()["step"] == "delete_span"
     assert await store.tag(ids.tag["place"]) is not None
     assert await store.span(ids.span["brno_manual"]) is not None
 

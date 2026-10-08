@@ -61,8 +61,6 @@ flowchart LR
         DI["dependencies.py<br/>(DI Container)"]
         SUM_R[summarizer_routes]
         RAG_R[rag_routes]
-        TAG_R[tag_routes]
-        SPAN_R[span_routes]
         AI_R[ai_assistance_routes]
         CHAT_R[span_chat_routes]
         DOC_R[document_routes]
@@ -91,10 +89,11 @@ flowchart LR
         USERS[users/]
         COL_F["features/collections/<br/>(routes, service, access, schemas)"]
         SEARCH_F["features/search/<br/>(routes, service, filters, schemas)"]
+        ANN_F["features/annotations/<br/>(routes, service, offsets, schemas)"]
     end
 
     APP --> DI & RAG_F & USERS
-    SUM_R & RAG_R & TAG_R & SPAN_R & AI_R & CHAT_R & DOC_R & COL_F & SEARCH_F & USR_R & FB_R & AUTH_R --> DI
+    SUM_R & RAG_R & AI_R & CHAT_R & DOC_R & COL_F & SEARCH_F & ANN_F & USR_R & FB_R & AUTH_R --> DI
     DI --> WS
     RAG_R --> RAG_F
     RAG_R --> SEARCH_F
@@ -102,7 +101,8 @@ flowchart LR
     SEARCH_F --> GEMMA
     SEARCH_F --> SUM
     SUM_R --> SUM
-    TAG_R --> TAG_F
+    ANN_F --> COL_F
+    AI_R --> ANN_F
     AI_R --> AI_F
     CHAT_R --> AI_F
     RAG_F --> LLM_API
@@ -337,7 +337,7 @@ LLM-assisted tag propagation:
 5. Users can approve (→ `positiveTag`) or reject automatic tags.
 6. Task progress tracked in SQLite (`Task` model) with polling endpoint.
 
-#### Tag Spans (`weaviate_utils/span.py`, `routes/span_routes.py`)
+#### Tags and Tag Spans (`features/annotations/`, `adapters/weaviate/spans.py`, `adapters/weaviate/tags.py`)
 
 Tags can additionally be anchored to specific character ranges inside a chunk via the `Span` collection. Three span types coexist:
 
@@ -345,11 +345,17 @@ Tags can additionally be anchored to specific character ranges inside a chunk vi
 - `neg` — manually rejected span (negative example, useful for AI training/filtering).
 - `auto` — AI-proposed span; carries optional `reason` (LLM justification) and `confidence` ∈ `[0, 1]`.
 
-Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `text_chunk` → `Chunks` — rather than as plain UUID properties. The backend lazily ensures `reason`/`confidence` properties exist on legacy collections (`Span._ensure_ai_properties`).
+Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `text_chunk` → `Chunks` — rather than as plain UUID properties. The backend lazily ensures `reason`/`confidence` properties exist on legacy collections (`SpanRepository._ensure_ai_properties`).
+
+The Annotations feature (`features/annotations/service.py`, #206) owns tag and span use cases: access checks (read: collection read; spans: annotation edit; tags: tag-definition edit — owner and shared users), offset validation, the span write followed by the chunk tag re-derivation, and partial outcomes. Routes only parse HTTP; `adapters/weaviate/spans.py` and `tags.py` only read and write. The AI suggestion routes save validated proposals and delete suggestions through the same service.
+
+Coordinates (`features/annotations/offsets.py`, frontend twin `src/utils/spanOffsets.ts`, shared cases in `semant_demo_backend/tests/fixtures/text_offsets.json`): a span is stored on the chunk where it starts; `start`/`end` are half-open UTF-16 code-unit offsets (the browser's `String.length`) from the start of that chunk's text. `end` may exceed the chunk: the span continues into the following chunks of the document while their `order` is consecutive, whether or not they are in the collection. Span creation and offset changes are rejected with 400 when `start` is negative or not inside the anchor chunk, the span is empty, it crosses a gap in chunk order, or it ends after the document's text. Changes that do not touch offsets (approve, reject, retag) do not re-check stored offsets.
+
+Tag creation inserts the tag and then links it to its collection; when the link fails the new tag is deleted again and the request fails with 500 (`step: link_collection`; the detail says if an unreachable tag may remain). Tag and collection deletion keep 204 on success; when a step fails they answer 500 with `detail`, `step`, `completed` (counts of completed steps) and `uncertain`, keep the completed deletions, and deleting again continues.
 
 REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/collection), `POST /batch`, `PATCH /{id}`, `DELETE /{id}`, `POST /bulk_update`, `POST /in_document/delete` (delete spans for given tags inside a single document).
 
-Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans (#204): a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk; covering the following chunks is a post-refactor TODO). The lists follow the spans' current type: `automaticTag` holds tags with unresolved AI suggestions, so approving a suggestion moves the tag from the chunk's `automaticTag` list to its `positiveTag` list unless another `auto` span of that tag remains. Every span create, update (also offset-only, so saving again retries) and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). Concurrent writes on the same pair are not serialized and can leave it stale (see REFACTOR_STATUS, #206). That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see DEVELOPMENT.md).
+Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans (#204): a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk; covering the following chunks is a post-refactor TODO). The lists follow the spans' current type: `automaticTag` holds tags with unresolved AI suggestions, so approving a suggestion moves the tag from the chunk's `automaticTag` list to its `positiveTag` list unless another `auto` span of that tag remains. Every span create, update (also offset-only, so saving again retries) and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). Within one process the re-derivation of a pair runs one at a time (`ChunkTagRepository`), so concurrent writes on the same pair end consistent; with several worker processes they can still leave it stale. That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see DEVELOPMENT.md).
 
 #### AI Assistance (`ai_assistance/`, `routes/ai_assistance_routes.py`, `routes/span_chat_routes.py`)
 

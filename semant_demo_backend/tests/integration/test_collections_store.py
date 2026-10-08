@@ -85,12 +85,12 @@ async def test_document_stats_within_collection(collections, corpus):
     assert (stats.annotations_count, stats.distinct_tags_count) == (2, 2)
 
 
-async def test_chunk_spans_keep_type_offsets_and_ai_metadata(searcher, corpus):
+async def test_chunk_spans_keep_type_offsets_and_ai_metadata(spans, corpus):
     chunk = corpus.chunks["chronicle_1"]
 
-    spans = await searcher.span.read_all(chunk_id=chunk["id"], collection_id=corpus.collections["chronicles"]["id"])
+    found = await spans.read_by_collection(UUID(corpus.collections["chronicles"]["id"]), UUID(chunk["id"]))
 
-    by_id = {s.id: s for s in spans}
+    by_id = {s.id: s for s in found}
     manual, automatic = corpus.spans["novak_manual"], corpus.spans["lhota_automatic"]
     assert set(by_id) == {manual["id"], automatic["id"]}
     assert (by_id[manual["id"]].type, by_id[manual["id"]].start, by_id[manual["id"]].end) == (SpanType.pos, 34, 43)

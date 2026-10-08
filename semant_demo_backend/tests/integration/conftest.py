@@ -15,6 +15,7 @@ from weaviate.collections.data.async_ import _DataCollectionAsync
 
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
+from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.main import create_app
@@ -89,6 +90,11 @@ def documents(seeded_store, collection_names) -> DocumentRepository:
 @pytest.fixture
 def tags(seeded_store, collection_names) -> TagRepository:
     return TagRepository(seeded_store, collection_names)
+
+
+@pytest.fixture
+def spans(seeded_store, collection_names) -> SpanRepository:
+    return SpanRepository(seeded_store, collection_names)
 
 
 @pytest.fixture

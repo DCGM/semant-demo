@@ -19,7 +19,7 @@ from semant_demo.schema.chunks import Chunk
 from semant_demo.features.collections.schemas import Collection, CollectionStats, PatchCollection, PostCollection
 from semant_demo.schema.documents import Document, DocumentStats
 from semant_demo.schema.outcomes import StepFailure, WriteResult, outcome_of
-from semant_demo.schema.spans import SpanType
+from semant_demo.features.annotations.schemas import SpanType
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,8 @@ class UserCollectionRepository:
     async def delete(self, collection_id: UUID) -> None:
         """
         Deletes the collection with its tags and their annotations, after removing all
-        chunk and document links. Raises ``NotFoundError`` for an unknown collection.
+        chunk and document links. Raises ``NotFoundError`` for an unknown collection and
+        ``IncompleteWriteError`` if a step fails.
         """
         await self._require(collection_id, [])
         await delete_collection_cascade(self.client, self.collectionNames, collection_id)

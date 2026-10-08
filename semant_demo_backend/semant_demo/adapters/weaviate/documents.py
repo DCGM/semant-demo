@@ -6,13 +6,23 @@ from weaviate.classes.query import Filter, QueryReference, Sort
 
 import semant_demo.schemas as schemas
 from semant_demo.adapters.weaviate.paging import fetch_all
+from semant_demo.schema.chunks import ChunkText
 from semant_demo.schema.documents import Document, DocumentBrowse
+
+
+def _to_chunk_text(obj) -> ChunkText:
+    docs = (obj.references or {}).get("document")
+    return ChunkText(id=obj.uuid, document_id=docs.objects[0].uuid if docs and docs.objects else None,
+                     order=obj.properties["order"], text=obj.properties.get("text") or "")
 
 
 class DocumentRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
+
+    def _chunks(self):
+        return self.client.collections.get(self.collectionNames.chunks_collection_name)
 
     async def read(self, document_id: UUID) -> Document | None:
         """The document with this id, or None if it does not exist."""
@@ -53,6 +63,25 @@ class DocumentRepository:
                 in_user_collection=collection_id in {ref.uuid for ref in (refs.objects if refs else [])},
             ))
         return schemas.DocumentDetail(document=document, chunks=chunks)
+
+    async def read_chunk_text(self, chunk_id: UUID) -> ChunkText | None:
+        """The chunk's document, order and text, or None if it does not exist."""
+        obj = await self._chunks().query.fetch_object_by_id(
+            chunk_id, return_properties=["order", "text"],
+            return_references=[QueryReference(link_on="document", return_properties=[])])
+        return _to_chunk_text(obj) if obj is not None else None
+
+    async def read_following_chunk_texts(self, document_id: UUID, after_order: int, limit: int) -> list[ChunkText]:
+        """Up to ``limit`` chunks of the document with order greater than ``after_order``, in order."""
+        response = await self._chunks().query.fetch_objects(
+            filters=(Filter.by_ref("document").by_id().equal(document_id)
+                     & Filter.by_property("order").greater_than(after_order)),
+            sort=Sort.by_property("order", ascending=True),
+            limit=limit,
+            return_properties=["order", "text"],
+            return_references=[QueryReference(link_on="document", return_properties=[])],
+        )
+        return [_to_chunk_text(o) for o in response.objects]
 
     async def count_chunks(self, document_id: UUID) -> int:
         """The number of chunks of the document (0 for an unknown document)."""

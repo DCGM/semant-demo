@@ -5,7 +5,7 @@ import logging
 from semant_demo.bootstrap import AppResources, WeaviateConnector
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
-from semant_demo.core.errors import InvalidRequestError, NotFoundError
+from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired
 from semant_demo.rag.rag_factory import rag_factory
 from fastapi.staticfiles import StaticFiles
@@ -77,6 +77,11 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     for exc_type, status_code in ((AuthenticationRequired, 401), (NotFoundError, 404), (AccessDenied, 403),
                                   (InvalidRequestError, 400)):
         app.add_exception_handler(exc_type, _detail_handler(status_code))
+
+    # A multi-step write that stopped part way: completed steps are kept (ADR 0002).
+    async def incomplete_write(request: Request, exc: IncompleteWriteError) -> JSONResponse:
+        return JSONResponse(status_code=500, content=exc.body())
+    app.add_exception_handler(IncompleteWriteError, incomplete_write)
 
     app.add_middleware(
         CORSMiddleware,

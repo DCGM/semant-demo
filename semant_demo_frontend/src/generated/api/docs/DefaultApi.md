@@ -450,7 +450,7 @@ No authorization required
 
 Create Tag
 
-Creates a tag in weaviate db, or not if the same tag already exists
+Creates a tag in the collection, or returns the existing tag with the same fields. If the tag cannot be added to its collection it is removed again and the request fails (500); creating it again is safe.
 
 ### Example
 
@@ -525,7 +525,7 @@ example().catch(console.error);
 
 Create Tag Span
 
-Adds new TagSpan and the matching chunk tag reference. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was saved but the chunk tag could not be updated.
+Adds new TagSpan and the matching chunk tag reference. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\&#39;s document are rejected (400).
 
 ### Example
 
@@ -741,7 +741,7 @@ example().catch(console.error);
 
 Delete Collection
 
-Deletes a collection with its tags and annotations. Owner only.
+Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
 
 ### Example
 
@@ -885,7 +885,7 @@ example().catch(console.error);
 
 Delete Tag
 
-Deletes tag
+Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
 
 ### Example
 

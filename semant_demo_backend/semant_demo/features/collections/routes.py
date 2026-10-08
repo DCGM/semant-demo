@@ -14,7 +14,7 @@ from semant_demo.routes.dependencies import get_collections, get_documents, get_
 from semant_demo.schema.chunks import Chunk
 from semant_demo.schema.documents import Document, DocumentStats
 from semant_demo.schema.outcomes import WriteResult
-from semant_demo.schema.tags import Tag
+from semant_demo.features.annotations.schemas import Tag
 from semant_demo.users.auth import current_active_user, current_active_admin
 from semant_demo.users.models import User
 from semant_demo.users.schemas import UserSearchResult
@@ -148,7 +148,9 @@ async def get_collection_stats(collection_id: str, collections: UserCollectionRe
 async def delete_collection(collection_id: str, collections: UserCollectionRepository = Depends(get_collections),
                             current_user: User = Depends(current_active_user)) -> Response:
     """
-    Deletes a collection with its tags and annotations. Owner only.
+    Deletes a collection with its tags and annotations. Owner only. If a step fails, the
+    request fails (500) with the completed steps in the body; completed deletions are kept
+    and deleting again continues.
     """
     await service.delete_collection(collections, current_user, collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

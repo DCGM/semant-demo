@@ -11,7 +11,7 @@ from weaviate.classes.query import QueryReference
 
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.collections.schemas import PatchCollection
-from semant_demo.schema.tags import PatchTag, PostTag
+from semant_demo.features.annotations.schemas import PatchTag, PostTag
 from semant_demo.schemas import SpanType
 from tests.fakes import fake_embedding
 from tests.seed import FIXTURE_TIMESTAMP
@@ -94,7 +94,7 @@ OWNER_ID = UUID("5e3a0000-0000-4000-8000-00000000a001")
 NEW_TAG = PostTag(name="Nový", shorthand="N", color="red", pictogram="x", definition="d")
 
 MISSING_ID_OPERATIONS = {
-    "create tag in unknown collection": lambda t, c, k: t.create(UNKNOWN, NEW_TAG),
+    "create tag in unknown collection": lambda t, c, k: t.find_same(UNKNOWN, NEW_TAG),
     "update unknown tag": lambda t, c, k: t.update(UNKNOWN, PatchTag(name="x")),
     "delete unknown tag": lambda t, c, k: t.delete(UNKNOWN),
     "update unknown collection": lambda t, c, k: c.update(UNKNOWN, PatchCollection(name="x")),

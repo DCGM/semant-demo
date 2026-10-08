@@ -1,19 +1,19 @@
 # Refactor status
 
-Last updated: 2026-10-08 (#205)
+Last updated: 2026-10-08 (#206)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #205 — Migrate Search to application service and Weaviate adapter
-  boundaries (in review, PR #225); next: #206 (Annotations feature).
+- Current issue: #206 — Extract annotation workflows into an Annotations feature
+  (in review); next: #207 (AI annotation assistance workflow).
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
   write outcomes, PR #216), #202 (adapter foundation, PR #219),
   #203 (Collections feature migration, PR #221), #204 (annotation/chunk tag consistency,
-  PR #223)
-- Current stage: R3
+  PR #223), #205 (Search feature service and adapter, PR #225)
+- Current stage: R4
 
 ## Development environment
 
@@ -363,6 +363,80 @@ Last updated: 2026-10-08 (#205)
   injected embeddings, summary failure warning). The old facade-based search test in
   `test_collections_store.py` moved there.
 
+## #206 outcome
+
+- Annotations is a feature package: `features/annotations/routes.py` (tag and span routes,
+  moved from `routes/tag_routes.py` and `routes/span_routes.py`; registered as two routers
+  so the OpenAPI path order is unchanged), `service.py`, `schemas.py` (moved from
+  `schema/tags.py` and `schema/spans.py`) and `offsets.py`. Persistence is
+  `adapters/weaviate/spans.py` (`SpanRepository`, replacing `weaviate_utils/span.py`) and
+  the existing `tags.py`; `weaviate_utils/helpers.py` and `weaviate_exceptions.py` are
+  removed (no other users). No Protocols; fakes are plain objects.
+- `service.py` takes an `AnnotationStore` (collections, tags, spans, chunk tags, documents
+  repositories; dependency `get_annotation_store`) and the user, and checks access before
+  any other read or write: list/read need collection read, span writes annotation edit,
+  tag writes tag-definition edit (unchanged rights). It owns the span write followed by
+  the chunk tag re-derivation and the partial outcomes that `weaviate_utils/span.py` held
+  (#204). The AI suggestion routes save validated proposals through `service.save_span`
+  (no access check: the route has checked it before the stream) and delete suggestions
+  through `service.delete_suggestions_in_document`; the rest of AI orchestration is #207.
+  Span chat reads spans through the facade's `SpanRepository`.
+- Coordinates (characterized, not changed; ADR 0006): spans are stored on the chunk where
+  they start, `start`/`end` half-open, in UTF-16 code units (what the document view sends:
+  JavaScript `String.length`); a span may continue into the following chunks of its
+  document while `order` is consecutive, also through chunks outside the collection.
+  `offsets.py` and `src/utils/spanOffsets.ts` (now used by `useAnnotations.ts` for the
+  offset/projection math, behavior unchanged) are tested against the shared cases in
+  `semant_demo_backend/tests/fixtures/text_offsets.json` (diacritics, combining mark,
+  non-BMP character, chunk boundaries, three chunks, later anchor, gap, past end).
+- **Behavior change — offset validation:** span creation and PATCH/bulk updates that send
+  `start`/`end` are rejected with 400 (before any write; a bulk request as a whole) when
+  start is negative or not inside the anchor chunk, the span is empty, crosses a gap in
+  chunk order or ends after the document's text. Before, any integers were stored.
+  Updates without offsets (approve/reject/retag) do not re-check stored offsets. Reads
+  only the anchor chunk unless the span continues past it. AI proposals are not checked
+  here (they are clamped by the AI route; see known problems).
+- **Behavior change — empty span PATCH** (no non-null field) is 400 (was 500).
+- Tag creation (recorded after #202): the service inserts the tag and then links it.
+  If the link fails, it deletes the new tag again (best effort) and fails with 500 and
+  `{"detail", "step": "link_collection", "completed": {}, "uncertain"}`; nothing remains,
+  creating again is safe. If the deletion fails too, `completed` is `{"insert_tag": 1}` and
+  the detail names the tag id that may remain (unreachable: it belongs to no collection).
+  Before: 500 and an orphaned tag every time.
+- Deletion cascades (follow-up from PR #221), decision: **keep the 204-on-success
+  contract** (no `WriteResult` for these deletes): a delete either finishes or is
+  retried, there are no independent items a client could act on separately, and retrying
+  is idempotent. Instead a failure is no longer an unstructured 500: `IncompleteWriteError`
+  (core/errors.py) answers 500 with `detail` (failed step, cause, completed steps, "deleting
+  again continues"), `step` (`unlink_chunk_tag`, `delete_span`, `delete_tag`; collections
+  also `unlink_chunk`, `unlink_document`, `delete_collection`), `completed` (counts) and
+  `uncertain` (timeout). The no-progress stop reports the step and "a deletion reported
+  success without taking effect". The frontend shows the detail in the tag/collection
+  delete and tag create notifications. Collection deletion authorization stays in the
+  Collections service. Generated client: descriptions only.
+- Chunk tag concurrency (tracked from #204), decision: per-pair serialization within the
+  process. `ChunkTagRepository` (one per application, in bootstrap) runs the re-derivation
+  of a (chunk, tag) pair one at a time (`asyncio.Lock` per pair, kept only while used).
+  Every span write is followed by its own re-derivation, so the last one of a pair reads
+  all earlier span writes and the pair ends consistent. The deployed backend runs one
+  process (`run.py`); with several workers the race would remain and the audit stays the
+  manual recovery. The maintenance cleanup does not take the lock.
+- Tests: `tests/test_annotation_service.py` (fakes: access matrix for every tag/span use
+  case with no write on denial, shared-user writes, tag link failure with cleanup, timed-out
+  link, failed cleanup, write-then-sync order, sync after a raising write, partial sync,
+  cross-chunk reads only when needed, every invalid-offset kind before any write, UTF-16
+  units, chunk outside the collection, empty patch, approval of a span with old invalid
+  offsets, retag syncs both pairs, bulk partial failure and whole-batch offset validation,
+  scoped delete partial failure); `tests/test_span_offsets.py` and
+  `test/unit/spanOffsets.spec.ts` (shared fixture); `tests/integration/test_annotations.py`
+  (real Weaviate: cross-chunk create and reload, continuation through a chunk outside the
+  collection, UTF-16 end with a non-BMP character, gap, invalid offsets, invalid offset
+  PATCH, approval/rejection reload, tag link failure with and without cleanup and the safe
+  retry, tag and collection cascades failing part way and finishing on retry, concurrent
+  delete/create on one pair — fails without the lock, verified by disabling it);
+  `test_partial_writes.py` now also checks the no-progress body. Frontend unit test for the
+  delete/create message.
+
 ## Temporary exceptions
 
 - **Process-wide `config` still read directly** by provider modules:
@@ -373,11 +447,10 @@ Last updated: 2026-10-08 (#205)
   globals in #210. (The standalone scripts `rag/rag_runner_demo.py` and
   `create_default_configurations.py` read it as their entry-point configuration.)
 - **Transitional `WeaviateAbstraction` facade** (`weaviate_utils/weaviate_abstraction.py`)
-  is still used by span routes and AI assistance (#206/#207) and span chat. It is built
-  on the application's one client. The span adapter, `weaviate_utils/helpers.py`
-  (re-exports `step_failure`/`guard_progress`) and `weaviate_exceptions.py` stay until
-  those migrations. Search, summarizer and RAG no longer use it (#205). Remove the facade
-  when its last caller has moved (#210).
+  is still used by AI assistance (#207) for tag/chunk reads and access checks, and by span
+  chat. It is built on the application's one client. Search, summarizer, RAG (#205) and
+  tags/spans (#206) no longer use it; AI span writes go through the Annotations service.
+  Remove the facade when its last caller has moved (#210).
 - **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 60 errors).
   Several are real defects: `useTagging.ts` calls `DefaultApi` methods that no longer exist,
   `chunk_collection-store.ts` passes `userId` as fetch options, services import missing
@@ -386,20 +459,13 @@ Last updated: 2026-10-08 (#205)
 - **Ruff rule set limited** to `E9, F63, F7, F82`. The default rule set reports ~140 legacy
   findings (unused/star imports, comparisons). Python formatting and a Python type checker
   are not enforced yet.
-- **Access checks are called from route handlers** outside Collections and Search (tag,
-  span, AI assistance, span chat, document routes), because those features have no service
-  layer yet. Each handler calls the check before any other work. Move Annotations and AI
-  checks into services with #206–#207; audit remaining Document, tag and span-chat
-  boundaries under #210 while preserving intentionally public corpus reads. Collections
-  (#203) and Search (#205) enforce access in their services.
-- **Span write orchestration in the legacy span adapter** (#204): span write followed by
-  the chunk tag sync and the outcome reporting live in `weaviate_utils/span.py`, which
-  calls `adapters/weaviate/chunk_tags.sync_chunk_tags`. Move the orchestration into the
-  Annotations service and the span adapter to `adapters/weaviate/` in #206.
-- **Tag and collection delete cascades return 500** when a step fails (now including the
-  no-progress stop); completed deletions are kept but not itemized. They have no
-  `WriteResult` yet; not changed in #203 (it would change the delete contract); revisit
-  together with tag deletion in #206.
+- **Access checks are called from route handlers** outside Collections, Search and
+  Annotations (AI assistance, span chat, document routes), because those features have no
+  service layer yet. Each handler calls the check before any other work. Move AI checks
+  into the workflow with #207; audit remaining Document and span-chat boundaries under
+  #210 while preserving intentionally public corpus reads. Collections (#203), Search
+  (#205) and Annotations (#206) enforce access in their services; `service.save_span`
+  is the documented exception (its AI caller checks before the stream).
 - **Vitest 0.23.4** is pinned because it is the last release supporting Vite 2
   (`@quasar/app-vite` 1). Upgrade together with Quasar app-vite 2 / Vite 5.
 
@@ -408,14 +474,16 @@ Last updated: 2026-10-08 (#205)
 - Existing data needs the reviewed #204 cleanup before tag-filtered search reflects
   annotations created before #204 (in the local snapshot: 250 missing references). Not
   run; deployed databases were not audited.
-- Chunk tag sync is not atomic with the span write and not serialized: two concurrent
-  writes on the same (chunk, tag) pair can interleave (one reads the spans and computes
-  the references, the other changes them, the first applies a stale result) and leave
-  the pair stale although both requests succeed, until a span of that pair is saved
-  again or the audit corrects it. Accepted for #204; tracked in #206: review it when the
-  orchestration moves into the Annotations service, decide whether lightweight per-pair
-  serialization or another bounded mechanism is warranted, add a deterministic
-  concurrent-update test with any fix, and keep the audit as the manual recovery.
+- Chunk tag sync is not atomic with the span write (ADR 0002, reported as
+  `update_chunk_tags`). Concurrent writes on one pair are serialized only within a
+  process (#206); running several backend workers would reopen that race (audit is the
+  recovery).
+- AI proposal offsets are measured in Python code points (the AI route clamps them with
+  `len(chunk.text)`, the selection mode concatenates chunk texts the same way), while the
+  document view reads stored offsets as UTF-16 units. They differ after a character
+  outside the BMP in the chunk. Provider offset units are not verified. Validate and,
+  if needed, convert provider offsets with `features/annotations/offsets.py` in #207; do
+  not migrate stored offsets without a plan (ADR 0006).
 - TODO after the refactor (post-refactor work, not a blocker for #205 or any refactor gate;
   [#224](https://github.com/DCGM/semant-demo/issues/224) — Define tag-filtered search
   behavior for cross-chunk spans): a cross-chunk span sets the
@@ -438,9 +506,6 @@ Last updated: 2026-10-08 (#205)
   listing (#209).
 - Partial-write failure notifications from #201 lack focused browser/component regression
   coverage; add it in #209.
-- `Tag.create` inserts the tag and then links it to the collection; if the link fails the
-  tag exists without a collection and is inaccessible (the error is returned as 500).
-  Decide and test an explicit recovery/reporting policy in #206.
 
 - Required checks are a repository setting, not part of the workflow file. As of
   2026-10-07 the ruleset for `197-refactor---base` requires "Backend tests", "Frontend
@@ -458,5 +523,5 @@ Last updated: 2026-10-08 (#205)
 - `UserCollectionRepository.read_all` pages by 1000; the multi-page path of that listing
   is not exercised by a test (needs more than 1000 collections for one user); cover it
   with a real-store regression test in #210.
-- The corpus has no cross-chunk annotations; add them with the tests that need them
-  (#204/#206). Multi-page documents are created by the repository tests themselves.
+- The corpus has no stored cross-chunk annotations; `test_annotations.py` creates them
+  through the API. Multi-page documents are created by the repository tests themselves.

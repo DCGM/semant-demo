@@ -183,9 +183,9 @@ References:
 | `tag` | Tag | 1 | The tag this span instantiates |
 | `text_chunk` | Chunks | 1 | The chunk inside which the span lives |
 
-> **Lazy schema migration.** Older deployments created the `Span` collection without `reason` / `confidence`. The backend (`Span._ensure_ai_properties` in `weaviate_utils/span.py`) idempotently adds these properties on first AI-write, so no manual migration is required.
+> **Lazy schema migration.** Older deployments created the `Span` collection without `reason` / `confidence`. The backend (`SpanRepository._ensure_ai_properties` in `adapters/weaviate/spans.py`) idempotently adds these properties on first AI-write, so no manual migration is required.
 
-> **Cascade on tag/chunk delete.** Deleting a Tag or a Chunk also removes all Spans referencing them; this is enforced by the backend (`weaviate_utils/helpers.py`, `delete_span_cascade`) rather than by Weaviate itself.
+> **Cascade on tag delete.** Deleting a Tag (also as part of deleting its collection) first removes the chunk tag references to it, then its Spans, then the Tag; this is done by the backend (`adapters/weaviate/writes.py`) rather than by Weaviate itself. It is not atomic: a failed step keeps the completed deletions and is reported, and deleting again continues.
 
 ---
 

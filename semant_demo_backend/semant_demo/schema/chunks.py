@@ -12,3 +12,11 @@ class Chunk(BaseModel):
     language: str | None = None
     order: int
     in_collection: bool = False
+
+
+class ChunkText(BaseModel):
+    """A chunk's position in its document and its canonical text (for offset checks)."""
+    id: UUID
+    document_id: UUID | None
+    order: int
+    text: str
