@@ -1,7 +1,7 @@
 # ADR 0007 - Annotation editing without membership editing
 
-Status: service-level enforcement, shared annotation rights, and local real-time scope
-agreed in discussion; documentation adoption pending.
+Status: adopted and implemented across #201, #206, #207 and #209. Future collaborative
+real-time synchronization is outside the current contract.
 Date: 2026-10-07. Q1/Q4 clarification supersedes the earlier read-only-share proposal.
 
 ## Permission boundary

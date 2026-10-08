@@ -46,7 +46,7 @@ document context is limited to the included document content, not the entire doc
 ## Canonical text and coordinates
 
 Keep source text separate from display transformations, translations, TTS normalization,
-and alignment-normalized strings. Preserve current cross-chunk ranges during refactoring.
+and alignment-normalized strings. Preserve existing cross-chunk semantics until deliberately changed.
 Use shared Python/TypeScript fixtures for Unicode, chunk boundaries, and gaps.
 
 An explicit half-open coordinate convention is the proposed target. Unicode code points
@@ -71,7 +71,7 @@ Geometry is derived location information, not a replacement for stable IDs and t
 A future contract should identify the page and coordinate system for each polygon, support
 multiple pages/regions, and record enough source/alignment revision information to avoid
 using stale locations. Text-only records and clients must continue working when geometry
-is absent. Do not add mandatory geometry fields or a database migration in this refactor.
+is absent. Do not add mandatory geometry fields or a database migration just for alignment planning.
 
 NER string lists do not uniquely identify repeated occurrences. Frontend matching or later
 located NER data may provide that correspondence; keep ambiguity explicit and share the
@@ -88,7 +88,7 @@ access to sources. Recheck access when loading history or citations after sharin
 
 ## Verification
 
-During refactoring, preserve text/offset behavior and test navigation races and
+When changing text/context features, preserve stored offset behavior and test navigation races and
 collection-subset isolation. When search chat is added, test full retrieved set, selected
 subset, empty selection, missing/revoked sources, and no fallback to broader retrieval.
 

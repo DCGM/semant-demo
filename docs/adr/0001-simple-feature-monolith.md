@@ -1,6 +1,6 @@
 # ADR 0001 - Feature-oriented monolith with optional interfaces
 
-Status: direction agreed in discussion; documentation adoption pending.
+Status: adopted as the feature-oriented application structure in #197 (#201–#210).
 Date: 2026-10-07.
 
 ## Context

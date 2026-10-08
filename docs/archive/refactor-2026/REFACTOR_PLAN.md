@@ -21,8 +21,8 @@ Do not include a SQL migration of collaboration data, a durable queue, automatic
 new microservices, a universal repository hierarchy, a new tag-search representation,
 mandatory geometry/provenance fields, or the entire feature backlog.
 
-[Review notes ](../../adr/REVIEW_NOTES.md) contain pinned evidence and confidence limits.
-[Confirmed decisions ](../../adr/README.md#confirmed-decisions) settle Q1-Q5: shared annotation
+[Review notes](../../adr/REVIEW_NOTES.md) contain pinned evidence and confidence limits.
+[Confirmed decisions](../../adr/README.md#confirmed-decisions) settle Q1-Q5: shared annotation
 editing without membership editing; chunk-attribute tag search; retrieved-result search
 chat; local progressive annotation UI; and line-level mapping as future viewer work.
 These are constraints to preserve, not unresolved prerequisites. Remaining implementation
@@ -55,7 +55,7 @@ resource creation for schema export. Replace auth-test ordering/global reload de
 with independent fixtures. Add offline provider fakes and isolated database configuration.
 
 Implement the testing matrix in CONTRIBUTING, with detailed cases in
-[ADR 0005 ](../../adr/0005-testing-contract.md): fast, real-store integration, browser smoke,
+[ADR 0005](../../adr/0005-testing-contract.md): fast, real-store integration, browser smoke,
 and opt-in live evaluation. Add the critical fixture corpus. Make required failures
 block merge/release; exclude generated code where appropriate. Keep PR execution away
 from production credentials, including on self-hosted infrastructure.
@@ -144,7 +144,7 @@ Treat chunk tag entries without backing annotations as inconsistencies, not hist
 features. Prepare a separate audit/dry-run cleanup, recheck invalid entries, and obtain
 review before deleting data. Keep this separate from startup and normal requests;
 do not add repair infrastructure. A production-wide audit does not block module moves.
-See [ADR 0004 ](../../adr/0004-storage-and-annotation-search.md).
+See [ADR 0004](../../adr/0004-storage-and-annotation-search.md).
 
 **Exit:** current collection/tag/category/metadata filters compose; excluded chunks cannot
 appear; affected annotation mutations maintain searchable chunk tags or report partial

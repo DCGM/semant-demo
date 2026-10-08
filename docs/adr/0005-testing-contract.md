@@ -1,6 +1,6 @@
 # ADR 0005 - Behavior-based, offline-first testing
 
-Status: proposed development standard; adopt with CONTRIBUTING and refactor R0.
+Status: adopted and implemented in #199–#200 and CONTRIBUTING; adding browser smoke to CI is tracked in #212.
 Updated: 2026-10-07. Detailed guidance moved here from CONTRIBUTING to keep the everyday
 guide short. Confirmed product rules are reflected in the cases below.
 
@@ -17,7 +17,7 @@ regression inventory; AGENTS links to it rather than creating a separate test po
 Keep pytest/pytest-asyncio/HTTPX and existing unittest cases. Use deterministic injected
 providers for fast service/API tests and real isolated Weaviate for storage semantics.
 Add Vitest + Vue Test Utils for frontend logic/components and a small Playwright suite.
-Pin compatible versions with the actual Quasar/Vite/runtime combination in R0. No mass
+Use the toolchain and pinned dependency versions documented in CONTRIBUTING. No mass
 conversion of existing unittest tests and no GPU/paid-provider requirement for ordinary PRs.
 
 ## Isolation and test data
@@ -51,7 +51,7 @@ with the defect and the intended replacement behavior.
 
 ## Suite selection and offline execution
 
-Register markers in the existing backend pytest configuration. Proposed configuration:
+Backend pytest markers are configured in `semant_demo_backend/pyproject.toml`:
 
 ```toml
 [tool.pytest.ini_options]
@@ -64,7 +64,7 @@ markers = [
 ]
 ```
 
-This is guidance, not configuration already applied. Fast checks exclude all three
+This configuration is in use. Fast checks exclude all three
 categories and deny outbound network. A marker alone is not network isolation. Avoid
 provider/resource initialization during import and test collection; unmarked tests must
 be offline, with no real API keys or model downloads.
@@ -89,10 +89,10 @@ Saved-result events follow acknowledged writes. Disconnect retains completed wri
 an interrupted response may leave a write outcome uncertain. Tests must not assume an
 upstream call or in-flight write is magically undone by cancellation.
 
-## Refactor regression inventory
+## Refactor regression inventory (historical baseline)
 
-Implement these cases for affected paths as stages R0-R6 migrate them. Do not require
-all layers for every PR or demand features that do not exist yet.
+These cases informed #197 and remain useful regression guidance when related behavior
+changes. Do not require all layers for every PR or demand features that do not exist yet.
 
 | Area | Cases to prove |
 | --- | --- |
@@ -119,7 +119,7 @@ Keep it small; use the lower-level suites for combinatorial coverage.
 
 ## Tests added with later roadmap features
 
-These do not block structural refactoring before their features exist:
+These require focused tests when the corresponding feature is implemented:
 
 | Feature | Targeted coverage |
 | --- | --- |

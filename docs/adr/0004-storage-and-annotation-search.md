@@ -1,7 +1,7 @@
 # ADR 0004 - Preserve chunk-based tag search in Weaviate
 
-Status: storage and search direction agreed; implementation/migration details are not
-new product requirements for the refactor.
+Status: chunk-based storage and search adopted; consistency implemented in #204–#206.
+Broader search redesign and existing-data repair remain separate reviewed work.
 Date: 2026-10-07. Updated after the Q2 clarification; supersedes the initial proposal
 for approved-only defaults and historical whole-chunk compatibility.
 

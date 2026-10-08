@@ -1,6 +1,6 @@
 # ADR 0002 - Best-effort writes with visible partial outcomes
 
-Status: direction agreed in discussion; result-envelope details proposed.
+Status: decision adopted; best-effort and partial-outcome behavior implemented across #201–#209. Some suggested envelope details remain future refinements.
 Date: 2026-10-07.
 
 ## Decision
@@ -15,7 +15,7 @@ than turning it into a false success. Catch expected item failures where work is
 stop dependent steps or systemic outages when proceeding would be misleading or wasteful.
 Never loop indefinitely over a page whose failed items cannot be removed.
 
-## Proposed contract
+## Contract principles and further refinements
 
 A bulk result carries `outcome` (`complete`, `partial`, or `failed`), successful item IDs,
 item/step errors, unattempted work, and uncertain outcomes where a timed-out write may
