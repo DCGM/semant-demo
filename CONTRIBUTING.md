@@ -61,8 +61,10 @@ scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && PYTHON=../.venv/
 Dependencies: `requirements.txt` holds runtime dependencies (used by the production image);
 `requirements-dev.txt` adds test/lint tools; `requirements-dev.lock` pins the full set.
 After changing either file, regenerate the lock with pip-tools
-(`pip-compile --allow-unsafe --no-emit-index-url --strip-extras -o requirements-dev.lock
-requirements-dev.txt` in `semant_demo_backend`) and review the diff. Frontend versions are
+(`pip-compile --allow-unsafe --generate-hashes --no-emit-index-url --strip-extras -o
+requirements-dev.lock requirements-dev.txt` in `semant_demo_backend`) and review the diff.
+The lock must keep its hashes: CI installs it with `--require-hashes` from a cache shared
+between runs (see `deploy/README.md`). Frontend versions are
 pinned by `package-lock.json`; Vitest 0.23 is the last line supporting the Vite 2 used by
 `@quasar/app-vite` 1.
 
