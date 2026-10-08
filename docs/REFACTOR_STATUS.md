@@ -244,6 +244,14 @@ Last updated: 2026-10-08 (#204, after deferral tracking)
   span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is
   anchored on it (`text_chunk`; a cross-chunk span counts on its first chunk only, as it
   is stored). Search is unchanged and still filters on these references.
+- Meaning (decided in review of PR #223): the lists reflect the spans' *current* type.
+  `automaticTag` holds tags with at least one unresolved AI suggestion (`auto` span) on
+  the chunk, not "the AI ever proposed this tag". Approving a suggestion changes its span
+  to `pos`, so the tag moves from the chunk's `automaticTag` list to its `positiveTag`
+  list unless another `auto` span of that tag remains; rejecting moves it to
+  `negativeTag`. Search with `automatic=true` alone therefore finds chunks with pending
+  suggestions. Keeping AI provenance after approval would need an origin field on spans
+  (not stored today) and is not planned.
 - Before: no backend path wrote these references at all (span create/update/delete,
   bulk and scoped deletes, AI proposals). The local snapshot has 0 chunk tag references
   and 602 spans: 250 references the spans require are missing (187 automatic, 37
@@ -255,16 +263,18 @@ Last updated: 2026-10-08 (#204, after deferral tracking)
   backing span neither duplicates the reference nor is the reference removed while
   another span needs it. A failed read is a failure, never "no spans".
 - Every span mutation calls it after the span write for the pairs it touched: create;
-  PATCH with a type change (approve/reject) or tag reassignment (old and new tag; offset-
-  only patches touch nothing); bulk update (once per pair after all span updates);
+  every PATCH, also offset-only (the span's pair; on tag reassignment the old and the new
+  pair), so saving a span again retries a failed chunk tag update; bulk update (once per
+  pair after all span updates);
   single, scoped (`in_document/delete`) and AI (`auto_spans/delete`) deletes; AI proposal
   persistence. It also runs when the span write raised (a timed-out write may have
   landed), then the error propagates. Tag and collection deletes already removed the
   references (#202).
 - Best effort (ADR 0002): a failed reference write keeps the span write and is reported
-  as step `update_chunk_tags` with item `chunk_id:tag_id`. Saving the span again (e.g.
-  PATCH with its type) re-derives the pair; a failed sync after a delete is left for the
-  audit. No background repair.
+  as step `update_chunk_tags` with item `chunk_id:tag_id`, and the outcome is never
+  `complete` when the attempted sync failed. Saving the span again (any PATCH, including
+  offset-only) re-derives the pair; a failed sync after a delete is left for the audit.
+  No background repair.
 - Contract changes (generated client regenerated, frontend updated):
   - `POST /api/tag_spans` and `PATCH /api/tag_spans/{id}` return `TagSpanWriteResult`
     (the `TagSpan` fields plus `outcome`, `succeeded`, `failed`, `unattempted`);
@@ -283,9 +293,12 @@ Last updated: 2026-10-08 (#204, after deferral tracking)
   BM25 search): create, suggestion create, approve, reject, delete, second backing span
   then final removal, approving one of two suggestions, tag reassignment, offset-only
   change, bulk approve, scoped and AI deletes, injected reference write failures on
-  create (then re-save fixes) and delete, a timed-out-but-applied update, failed read not
-  taken as absence, audit/cleanup removing only unbacked (also duplicated) references and
-  keeping one backed since the audit. With the sync disabled, 14 of these 19 fail. The
+  create (then a type re-save fixes it) and delete, an offset-only re-save that reports
+  `partial` while the reference write still fails and repairs it afterwards, a timed-out-
+  but-applied update, failed read not taken as absence, audit/cleanup removing only
+  unbacked (also duplicated) references and keeping one backed since the audit. With the
+  sync disabled, 14 of the first 19 fail; the offset-only test fails with the earlier
+  "offset-only patches skip the sync" behavior. The
   fixture corpus is validated to satisfy the contract. Fast tests: cleanup refuses without
   a matching confirmed endpoint, before connecting; frontend unit tests for the warning.
 
@@ -335,8 +348,17 @@ Last updated: 2026-10-08 (#204, after deferral tracking)
   annotations created before #204 (in the local snapshot: 250 missing references). Not
   run; deployed databases were not audited.
 - Chunk tag sync is not atomic with the span write and not serialized: two concurrent
-  writes on the same (chunk, tag) pair can interleave and leave the pair stale until a
-  span of that pair is saved again or the audit corrects it.
+  writes on the same (chunk, tag) pair can interleave (one reads the spans and computes
+  the references, the other changes them, the first applies a stale result) and leave
+  the pair stale although both requests succeed, until a span of that pair is saved
+  again or the audit corrects it. Accepted for #204; tracked in #206: review it when the
+  orchestration moves into the Annotations service, decide whether lightweight per-pair
+  serialization or another bounded mechanism is warranted, add a deterministic
+  concurrent-update test with any fix, and keep the audit as the manual recovery.
+- TODO after the refactor (not a refactor gate, no issue yet): a cross-chunk span sets the
+  chunk tag only on its anchor (first) chunk, so tag-filtered search does not find the
+  following chunks it covers. Decide whether covered chunks should carry the tag too
+  (needs the covered-chunk computation from canonical offsets).
 - Removing a chunk or document from a collection leaves its spans and therefore its chunk
   tag references (consistent with each other, unchanged by #204); search scoped to the
   collection excludes the chunk through membership.

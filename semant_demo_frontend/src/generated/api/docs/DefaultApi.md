@@ -3676,7 +3676,7 @@ example().catch(console.error);
 
 Update Tag Span
 
-Update TagSpan\&#39;s information (start, end, tagId, ...). A type or tag change also updates the chunk tag references; &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was updated but they could not be.
+Update TagSpan\&#39;s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was updated but the chunk tags could not be.
 
 ### Example
 

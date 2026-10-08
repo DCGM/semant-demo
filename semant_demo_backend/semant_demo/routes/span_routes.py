@@ -91,9 +91,10 @@ async def update_tag_span(
     current_user: User = Depends(current_active_user),
 ):
     """
-    Update TagSpan's information (start, end, tagId, ...). A type or tag change also updates
-    the chunk tag references; ``outcome`` is ``partial`` when the span was updated but they
-    could not be.
+    Update TagSpan's information (start, end, tagId, ...), then re-derive the chunk tag
+    references of its (chunk, tag) pair (and the new pair on a tag change), so saving again
+    retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated
+    but the chunk tags could not be.
     """
     collection_id = await access.collection_of_spans(tagger.span, tagger.tag, [span_id])
     await access.require_annotation_edit(tagger.userCollection, current_user, collection_id)

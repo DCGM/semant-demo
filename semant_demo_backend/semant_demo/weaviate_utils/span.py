@@ -388,11 +388,13 @@ class Span():
 
     async def update(self, span_id: str, update_fields: PatchSpan) -> tuple[schemas.TagSpan, list[StepFailure]]:
         """
-        Update start or end position, type or tag reference. A type or tag change also
-        updates the chunk tag references of the old and new (chunk, tag) pairs. Returns
-        the span and the chunk tag failures (the span update is kept).
+        Update start or end position, type or tag reference, then re-derive the chunk tag
+        references of the span's (chunk, tag) pair, and of the new pair on a tag change.
+        This runs for every patch, also offset-only, so saving a span again retries a
+        chunk tag update that failed before. Returns the span and the chunk tag failures
+        (the span update is kept).
         """
-        pairs = await self._pairs_changed_by(span_ids=[span_id], update_fields=update_fields)
+        pairs = await self._pairs_touched_by(span_ids=[span_id], update_fields=update_fields)
         try:
             span = await self._update(span_id, update_fields)
         except Exception:
@@ -401,11 +403,9 @@ class Span():
             raise
         return span, await self._sync_chunk_tags(pairs)
 
-    async def _pairs_changed_by(self, *, span_ids: list[str], update_fields: PatchSpan) -> set[ChunkTag]:
-        """(chunk, tag) pairs whose chunk tags the patch may change: none for offset-only
-        patches; for a type or tag change, the spans' current pairs and the new tag's."""
-        if update_fields.type is None and update_fields.tagId is None:
-            return set()
+    async def _pairs_touched_by(self, *, span_ids: list[str], update_fields: PatchSpan) -> set[ChunkTag]:
+        """(chunk, tag) pairs to re-derive after patching the spans: their current pairs
+        and, on a tag change, the new tag's."""
         pairs = self._pairs(await self.read_refs([UUID(str(s)) for s in span_ids]))
         if update_fields.tagId is not None:
             pairs |= {ChunkTag.of(p.chunk_id, update_fields.tagId) for p in pairs}
@@ -471,7 +471,7 @@ class Span():
         if not span_ids:
             return [], []
 
-        pairs = await self._pairs_changed_by(span_ids=span_ids, update_fields=update_fields)
+        pairs = await self._pairs_touched_by(span_ids=span_ids, update_fields=update_fields)
         results = await asyncio.gather(
             *(self._update(span_id=sid, update_fields=update_fields) for sid in span_ids),
             return_exceptions=True,

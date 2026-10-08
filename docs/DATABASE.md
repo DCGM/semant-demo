@@ -129,14 +129,17 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 | Reference | Target | Cardinality | Description |
 |---|---|---|---|
 | `document` | Documents | 1 | Parent document |
-| `automaticTag` | Tag | many | Tags of `auto` spans anchored on this chunk (AI proposals) |
+| `automaticTag` | Tag | many | Tags of `auto` spans anchored on this chunk (unresolved AI suggestions) |
 | `positiveTag` | Tag | many | Tags of `pos` spans anchored on this chunk (approved) |
 | `negativeTag` | Tag | many | Tags of `neg` spans anchored on this chunk (rejected) |
 | `userCollection` | UserCollection | many | User collections containing this chunk |
 
 The three tag references are what tag-filtered search uses. They are derived from the
 `Span` collection: a chunk holds a tag reference exactly when at least one span of the
-matching type with that tag is anchored on the chunk (its `text_chunk` reference). Span
+matching type with that tag is anchored on the chunk (its `text_chunk` reference). The
+lists follow the spans' current type: approving a suggestion (`auto` → `pos`) moves its
+tag from `automaticTag` to `positiveTag` unless another `auto` span of that tag remains;
+`automaticTag` does not record that the AI once proposed an approved tag. Span
 writes maintain this; a reference without such a span is a data inconsistency, not a
 supported legacy state (ADR 0004). `python -m semant_demo.maintenance.chunk_tag_audit`
 reports inconsistencies.

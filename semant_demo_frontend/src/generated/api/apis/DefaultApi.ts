@@ -1625,7 +1625,7 @@ export interface DefaultApiInterface {
     updateTagSpanApiTagSpansSpanIdPatchRequestOpts(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...). A type or tag change also updates the chunk tag references; ``outcome`` is ``partial`` when the span was updated but they could not be.
+     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
      * @summary Update Tag Span
      * @param {string} spanId 
      * @param {PatchSpan} patchSpan 
@@ -1636,7 +1636,7 @@ export interface DefaultApiInterface {
     updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>>;
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...). A type or tag change also updates the chunk tag references; ``outcome`` is ``partial`` when the span was updated but they could not be.
+     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
      * Update Tag Span
      */
     updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult>;
@@ -4477,7 +4477,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...). A type or tag change also updates the chunk tag references; ``outcome`` is ``partial`` when the span was updated but they could not be.
+     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
      * Update Tag Span
      */
     async updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>> {
@@ -4488,7 +4488,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...). A type or tag change also updates the chunk tag references; ``outcome`` is ``partial`` when the span was updated but they could not be.
+     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
      * Update Tag Span
      */
     async updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult> {

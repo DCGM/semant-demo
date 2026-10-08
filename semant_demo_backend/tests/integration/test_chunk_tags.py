@@ -227,6 +227,32 @@ async def test_failed_chunk_tag_write_on_create_is_partial_and_a_resave_fixes_it
     assert await search("Marie", "person", positive=True) == {marie}
 
 
+async def test_offset_only_resave_repairs_a_failed_chunk_tag_write(
+        api_client, owner, ids, search, store, chunk_refs, fail_writes, monkeypatch):
+    marie, person = ids.chunk["letters_1"], ids.tag["person"]
+    fail_writes("reference_add", [marie], collection="Chunks")
+
+    created = await create_span(api_client, await owner(), marie, person, 5, 10)
+    assert created["outcome"] == "partial"
+    assert await store.span(created["id"]) is not None
+    assert await search("Marie", "person", positive=True) == set()
+
+    # While the reference write still fails, an offset-only save reports it, not "complete".
+    still_failing = (await api_client.patch(f"/api/tag_spans/{created['id']}", headers=await owner(),
+                                            json={"end": 9})).json()
+    assert still_failing["outcome"] == "partial"
+    assert [f["step"] for f in still_failing["failed"]] == ["update_chunk_tags"]
+
+    monkeypatch.undo()
+    repaired = (await api_client.patch(f"/api/tag_spans/{created['id']}", headers=await owner(),
+                                       json={"start": 4, "end": 10})).json()
+
+    assert repaired["outcome"] == "complete" and repaired["failed"] == []
+    assert (repaired["start"], repaired["end"], repaired["type"]) == (4, 10, "pos")
+    assert (await chunk_refs(marie))["positiveTag"] == [person]
+    assert await search("Marie", "person", positive=True) == {marie}
+
+
 async def test_failed_chunk_tag_write_on_delete_is_partial(api_client, owner, ids, store, chunk_refs, fail_writes):
     chunk, novak = ids.chunk["chronicle_1"], ids.span["novak_manual"]
     fail_writes("reference_delete", [chunk], collection="Chunks")
