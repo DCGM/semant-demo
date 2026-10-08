@@ -477,7 +477,9 @@ Last updated: 2026-10-08 (#206)
 - Chunk tag sync is not atomic with the span write (ADR 0002, reported as
   `update_chunk_tags`). Concurrent writes on one pair are serialized only within a
   process (#206); running several backend workers would reopen that race (audit is the
-  recovery).
+  recovery). Maintainer direction (2026-10-08): when scaling out, prefer eventual
+  consistency (e.g. re-deriving pairs later or a periodic audit) over distributed locking,
+  to keep the system simple and fast.
 - AI proposal offsets are measured in Python code points (the AI route clamps them with
   `len(chunk.text)`, the selection mode concatenates chunk texts the same way), while the
   document view reads stored offsets as UTF-16 units. They differ after a character
