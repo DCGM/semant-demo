@@ -90,15 +90,17 @@ semant-demo/
 │       │                          #   CollectionTagsPage, CollectionTaggingJobsPage,
 │       │                          #   CollectionMembersPage, DocumentDetailPageV2,
 │       │                          #   DocumentTaggingPage/)
+│       ├── app/                   # app shell: right sidebar, session scope
+│       ├── features/              # feature code moved so far (search, collections)
+│       ├── shared/api/            # API transport: backend URL, auth token, generated
+│       │                          # client, NDJSON streams, errors, context guards
 │       ├── stores/                # Pinia stores (user-store, collectionsStore,
 │       │                          # collectionStatsStore, chunksStore,
-│       │                          # chunk_collection-store, documentsStore,
-│       │                          # tagsStore, tagSpansStore)
+│       │                          # documentsStore, tagsStore, tagSpansStore)
 │       ├── composables/           # reusable hooks (useSpanDiscussion, useTags, …)
 │       ├── repositories/          # thin wrappers over the generated API client
 │       ├── generated/             # OpenAPI-generated TS client (do not edit by hand)
-│       ├── models.ts              # TypeScript interfaces mirroring backend schemas
-│       └── boot/axios.ts          # Axios instance & base URL config
+│       └── models.ts              # display types for annotation badges
 └── weaviate_utils/                # DB bootstrap & inspection scripts
     ├── docker-compose.yml         # Weaviate container definition
     ├── build_db/                  # standalone schema + data bootstrap helpers
@@ -359,6 +361,7 @@ Tests cover the LLM API abstraction, Jinja2 template rendering and the summarisa
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed architecture, RAG pipelines, data flow |
 | [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema and SQLite task model |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment and configuration guide |
+| [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and how to add page specific tools to it |
 | [docs/TODO.md](docs/TODO.md) | Recommended improvements and known technical debt |
 
 ## Contribution Guidelines

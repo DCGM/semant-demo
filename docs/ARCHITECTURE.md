@@ -371,7 +371,7 @@ External AI integrations that produce or critique spans. All streaming endpoints
 
 Reviewers then approve (`pos`) or reject (`neg`) suggestions through the standard span endpoints.
 
-The frontend (`src/composables/useAiAssistance.ts`) reads the stream with `src/utils/ndjson.ts`, shows saved suggestions as they arrive and reports partial, failed and interrupted runs. Each run carries a token; changing document or collection aborts it and its late events no longer change the store, errors or loading state.
+The frontend (`src/composables/useAiAssistance.ts`) reads the stream with `postNdjson` (`src/shared/api/ndjson.ts`), shows saved suggestions as they arrive and reports partial, failed and interrupted runs. Each run carries a token; changing document or collection aborts it and its late events no longer change the store, errors or loading state.
 
 **Span discussion chat.** `span_chat.py` builds a rich system prompt around a single span — tag definition + examples, host document metadata, the span's chunk text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a configurable window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters drawn from the same and neighbouring chunks of the document) — and streams the assistant reply from any OpenAI-compatible Chat Completions endpoint. The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON deltas; configuration lives in the `SPAN_CHAT_*` env-var group.
 
@@ -403,7 +403,9 @@ Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
 | `/feedback` | `FeedbackPage` | In-app feedback form |
 | `/about` | `AboutPage` | Project information |
 
-State management via Pinia stores (`user-store`, `collectionsStore`, `collectionStatsStore`, `chunksStore`, `chunk_collection-store`, `documentsStore`, `tagsStore`, `tagSpansStore`). Reusable streaming logic lives in `composables/` (e.g. `useSpanDiscussion` for the NDJSON span chat). API communication goes through repositories that wrap the OpenAPI-generated TypeScript client (`src/generated/`); raw streaming endpoints (span suggestions, span discussion) use the generated `*Raw` variants and read `apiResponse.raw.body` directly.
+State management via Pinia stores (`user-store`, `collectionsStore`, `collectionStatsStore`, `chunksStore`, `documentsStore`, `tagsStore`, `tagSpansStore`). Reusable streaming logic lives in `composables/` (e.g. `useSpanDiscussion` for the NDJSON span chat).
+
+All network calls go through `src/shared/api`: one backend origin (`BACKEND_URL`), one bearer-token source, the OpenAPI-generated TypeScript client (`src/generated/`, via `useApi()`, used directly or through `repositories/`) and `postNdjson()` for the NDJSON streams (span suggestions, span discussion), which sends the same token and turns a refused request into an `ApiError` with the backend's `detail`. There is no other HTTP client. State that belongs to a context (collection, document, search, conversation) drops answers that arrive after the context changed (`createContextGuard`/`createScope`); signing out clears user-scoped stores (`app/session.ts`). The app-level right sidebar (`app/sidebar/`) hosts page tools such as the search summary; see [RIGHT_SIDEBAR.md](RIGHT_SIDEBAR.md). Owner-only collection controls are hidden for shared users (`features/collections/permissions.ts`, mirroring the backend rules).
 
 ### 4. Weaviate + Utilities (`weaviate_utils/`)
 

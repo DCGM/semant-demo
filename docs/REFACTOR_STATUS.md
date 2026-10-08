@@ -1,20 +1,21 @@
 # Refactor status
 
-Last updated: 2026-10-08 (#208)
+Last updated: 2026-10-08 (#209)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #208 — Consolidate backend schemas and generated API contracts
-  (in review, PR #229); next: #209.
+- Current issue: #209 — Consolidate frontend transport and context-scoped state
+  (in review); next: #210.
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
   write outcomes, PR #216), #202 (adapter foundation, PR #219),
   #203 (Collections feature migration, PR #221), #204 (annotation/chunk tag consistency,
   PR #223), #205 (Search feature service and adapter, PR #225), #206 (Annotations
-  feature, PR #226), #207 (request-scoped AI suggestions, PR #228)
-- Current stage: R3/R6 contract cleanup (#208)
+  feature, PR #226), #207 (request-scoped AI suggestions, PR #228), #208 (schema
+  consolidation, PR #229)
+- Current stage: R5 frontend structure and roadmap seams (#209)
 
 ## Development environment
 
@@ -512,8 +513,8 @@ Last updated: 2026-10-08 (#208)
   end event. `test/unit/aiAssistance.spec.ts` (NDJSON splitting, progressive store update,
   interrupted/partial/cancelled runs, late events after a document change; removing the
   token checks fails two tests).
-- Not covered: no browser test runs AI suggestions (progressive display and navigation
-  during a run); add with the context-scoped state work in #209.
+- Browser tests for AI suggestions (progressive display, cancel, navigation during a run)
+  were added in #209.
 
 ## #208 outcome
 
@@ -573,6 +574,96 @@ Last updated: 2026-10-08 (#208)
   now has two authors). With `author: str` restored, the new integration tests and the
   owner/annotator access-matrix cases fail.
 
+## #209 outcome
+
+- **Transport** (`src/shared/api/`): one backend origin (`config.ts`, `BACKEND_URL`), one
+  bearer-token source (`auth.ts`, the `auth_token` localStorage key), the generated client
+  (`client.ts`, `useApi()`: `default`, `auth`, `users`) and `postNdjson()` for NDJSON
+  streams (`ndjson.ts`, moved from `utils/ndjson.ts`). The generated client adds the token
+  in a middleware to every request, also to operations whose schema declares no security
+  (before: an empty `Authorization` header when signed out). A refused stream throws
+  `ApiError` with the backend's `detail` before any line is read; `apiErrorMessage()` reads
+  `detail` (also FastAPI validation lists) from either client; `isAbortError()` recognizes
+  cancellation from both. Removed: `boot/axios.ts`, `boot/api-client.ts`,
+  `providers/ApiProvider.vue`, `composables/useApi.ts`, the unused `services/*` and
+  `constants/endpoints.ts`, unused `components/ImageTightCard.vue` (axios, nonexistent
+  `/image` endpoint), and the `axios` dependency. Before there were three base URLs
+  (`BACKEND_URL + /api`, a hard-coded `pcvaskom` fallback, relative `/api` on the RAG page)
+  and three token readers.
+- Callers moved to the generated client: user store (login/logout/me/register/update),
+  search page (search, filters, summary), RAG page (configurations, ask, explain,
+  feedback), feedback page. `src/models.ts` keeps only display types; its raw snake_case
+  wire types are gone. AI suggestions and span chat use `postNdjson`.
+  **Behavior change:** the RAG page now calls `BACKEND_URL` (was relative `/api`, i.e. the
+  page's origin) and sends the token.
+- **Context-scoped state:** `createContextGuard()` / `createScope()` (`shared/api`) drop
+  answers that arrive after their context changed. Applied to: span store (scoped to a
+  collection; a chunk can be in several collections with different annotations; loads,
+  creates, updates and deletes of the old scope no longer change the new one; `clearAll()`
+  starts a new scope and the document layout now also clears on collection change), tags,
+  chunks, collection statistics, the open collection/document and the collection/document
+  lists (latest load wins; another collection's metadata is cleared while the next one
+  loads, so its rights cannot be shown either), span chat (late deltas after cancel or after
+  switching span; an old reply's end no longer ends the new one's streaming state or removes
+  its placeholder), member list and user search on the members page, search and search
+  summary (below). `app/session.ts` clears user-scoped stores and aborts AI runs when a
+  signed-in user signs out or another user signs in (not on session restore at startup).
+  The duplicate collection store `chunk_collection-store.ts` (search page only, with a
+  wrong fetch call) is removed; the search page uses `collectionsStore`, and loading its
+  collections no longer toggles the search loading state.
+- **Acknowledged-only partial writes:** bulk document removal and bulk collection deletion
+  hid every selected item and, after any failure, relied on a reload (a failed reload left
+  unacknowledged removals hidden). They now use `allSettled`, keep only the acknowledged
+  removals, and report "Removed N of M ..." with the first failure's detail.
+- **Sidebar** (from PR #194, ported, not merged): `src/app/sidebar/` (shell, panel wrapper,
+  store with shell state only). `register()` returns a removal handle, so a refused
+  duplicate id cannot remove the original panel (in #194 `unregister(id)` could).
+  `MainLayout` uses `view="hHh LpR fff"` and shows a *Toggle sidebar* button while panels
+  exist. `MiniStateButton` got the `side` prop. Documented in `docs/RIGHT_SIDEBAR.md`.
+- **Search seams** (`src/features/search/`): `SearchResultsContext` (one search response
+  with an id per search) and `selectResults(context, scope)`: the first N, all, or exactly
+  the selected results; never a re-run or widened set; an empty selection is `null` and is
+  reported. This is the explicit input for the summary now and search-result chat later.
+  Hits keep chunk/document/page ids; their text is display text. `useSearchRequest` aborts
+  the previous search; a late answer cannot replace newer results or end their loading.
+  `useSearchSummary` (from #194) uses the context and the generated client; a new search or
+  a new summary request makes the old one stale. The summary panel moved to the sidebar.
+  **Behavior change:** an empty *Selected* scope and a failed summary are shown as an error
+  in the panel (before: a notification, resp. "Failed to summarize." as the summary text).
+- **Permissions in the UI** (`features/collections/permissions.ts`, `collectionRights()`
+  mirroring ADR 0007 from `isSharedWithMe`; an unloaded collection grants nothing): shared
+  users no longer see share/edit/delete on collection cards and table rows (bulk share/
+  delete disabled when the selection contains a shared collection), name/color/description
+  editing (header and overview), *Share with a user* and *Cancel share* (the member list
+  stays), *Add Document*, document removal and row selection, chunk add/remove in the
+  document view, and shared collections as targets of *Add chunks/documents* on the search
+  page. Tag editing is unchanged.
+- Type-check baseline 60 -> 48 (removed services and duplicate store; typed callbacks and
+  `NodeList` iteration in touched files). The V2 document page was not touched (see
+  temporary exceptions).
+- Browser-test profile: the fake providers answer Ollama chat (`/ollama/api/chat`, used by
+  the search summarizer) with "Fake summary of N passage(s); last [docN]." for the passages
+  in the last user message, and the fake Topicer stream waits
+  `FAKE_TOPICER_STREAM_DELAY` (3 s) between chunks so a test can act during a run.
+- Tests: unit (Vitest) `transport.spec.ts` (token on generated-client and NDJSON requests,
+  token change, signed out, operations without declared security, backend detail, abort),
+  `contextScopedStores.spec.ts` (late span/tag/collection/document answers after a context
+  change, spans of a shared chunk, write result after a document change, acknowledged-only
+  bulk removal, logout clearing with late answers, session restore keeps data),
+  `spanDiscussion.spec.ts`, `searchResults.spec.ts` (subset selection, citation mapping,
+  empty selection, stale summary and search answers), `rightSidebar.spec.ts` (registration,
+  duplicates, page switching, explicit context and events, hidden inactive panel),
+  `collectionPermissions.spec.ts` (rights table; card, members page and documents table for
+  owner and shared user; documents table partial removal through the UI). Disabling each
+  guard/check (19 mutations) fails a test. Browser (Playwright, `make test-e2e`):
+  `sidebar.spec.ts` (summary of the selected result with its citation, new search clears
+  it, panel leaves with the page), `permissions.spec.ts` (shared user: no owner controls,
+  member list and tag editing available, no chunk membership controls; owner keeps them),
+  `aiSuggestions.spec.ts` (suggestion shown while the run is under way, cancel keeps it
+  across a reload, leaving the document mid-run shows nothing of the run in the next view
+  and the run ended with the request). Fast backend test for the fake Ollama route with the
+  real summarizer client.
+
 ## Temporary exceptions
 
 - **Process-wide `config` still read directly** by `ai_assistance/span_chat.py`. An app
@@ -584,11 +675,14 @@ Last updated: 2026-10-08 (#208)
   is still used by span chat only. It is built on the application's one client. Search,
   summarizer, RAG (#205), tags/spans (#206) and AI suggestions (#207) no longer use it.
   Remove the facade when span chat has moved (#210).
-- **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 60 errors).
-  Several are real defects: `useTagging.ts` calls `DefaultApi` methods that no longer exist,
-  `chunk_collection-store.ts` passes `userId` as fetch options, services import missing
-  model exports. Shrink the baseline as frontend code is migrated (#209), then reconcile
-  any remaining entries with explicit owners during #210.
+- **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 48 errors;
+  60 before #209). Remaining real defects: the V2 document view
+  (`pages/Collections/DocumentTaggingPage/`, route `documentDetailV2`) calls `DefaultApi`
+  methods of the removed task-era endpoints (`useTagging.ts`: propose/approve tags, old
+  chunk add/remove) and has untyped span handling (`useTaggingPageState.ts`); the rest are
+  implicit-`any` callbacks in the auth dialogs and `FeedbackPage`, and the non-standard
+  `caretPositionFromPoint`. Hand these to #210 (fix or retire the V2 page; it was not
+  touched by #209).
 - **Ruff rule set limited** to `E9, F63, F7, F82`. The default rule set reports ~140 legacy
   findings (unused/star imports, comparisons). Python formatting and a Python type checker
   are not enforced yet.
@@ -635,11 +729,10 @@ Last updated: 2026-10-08 (#208)
 - A partial add chunk (chunk linked, document link failed) leaves the chunk in the
   collection while its document is not, so collection+document requests for that document
   return 404 until the add is retried (the partial outcome is reported to the user).
-- Shared users still see owner-only membership, metadata and sharing controls despite
-  backend denial; hide or disable these controls without restricting tag editing/member
-  listing (#209).
-- Partial-write failure notifications from #201 lack focused browser/component regression
-  coverage; add it in #209.
+- The document view keeps its own right drawer (tags, AI assist, document); moving it into
+  the app-level sidebar is [#230](https://github.com/DCGM/semant-demo/issues/230).
+- The search summary's *Brevity* option is sent nowhere: `/api/summarize/results` has no
+  brevity parameter (unchanged from before #209 and PR #194).
 
 - Required checks are a repository setting, not part of the workflow file. As of
   2026-10-07 the ruleset for `197-refactor---base` requires "Backend tests", "Frontend
