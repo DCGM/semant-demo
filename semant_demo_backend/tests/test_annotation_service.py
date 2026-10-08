@@ -217,8 +217,21 @@ async def test_failed_cleanup_reports_the_possibly_remaining_tag(store):
     with pytest.raises(IncompleteWriteError) as raised:
         await service.create_tag(store, OWNER, COLLECTION, NEW_TAG)
 
-    assert raised.value.completed == {"insert_tag": 1}
+    assert (raised.value.step, raised.value.completed, raised.value.uncertain) == (
+        "delete_unlinked_tag", {"insert_tag": 1}, False)
+    assert "link_collection failed" in raised.value.detail
     assert str(UUID(int=1)) in raised.value.detail and "may remain" in raised.value.detail
+
+
+async def test_timed_out_cleanup_makes_the_failure_uncertain(store):
+    # The link failed outright; the deletion timed out and may or may not have happened.
+    store.tags.fail["link_collection"] = RuntimeError("link failed")
+    store.tags.fail["delete_unlinked"] = WeaviateTimeoutError("slow")
+
+    with pytest.raises(IncompleteWriteError) as raised:
+        await service.create_tag(store, OWNER, COLLECTION, NEW_TAG)
+
+    assert (raised.value.step, raised.value.uncertain) == ("delete_unlinked_tag", True)
 
 
 # ── Span creation ─────────────────────────────────────────────────────────

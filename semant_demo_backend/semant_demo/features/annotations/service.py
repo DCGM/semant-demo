@@ -67,7 +67,9 @@ async def create_tag(store: AnnotationStore, user: Principal | None, collection_
     link belongs to no collection and nobody can reach it, so when linking fails the new
     tag is deleted again (best effort) and ``IncompleteWriteError`` (step
     ``link_collection``) is raised: nothing was created and retrying is safe. If that
-    deletion fails too, the message says an unreachable tag may remain.
+    deletion fails too, the step is ``delete_unlinked_tag``, the message says the link
+    failed and an unreachable tag may remain, and ``uncertain`` is set when either
+    write timed out.
     """
     grant = await access.require_tag_definition_edit(store.collections, user, collection_id)
     same = await store.tags.find_same(grant.collection_id, tag)
@@ -81,11 +83,13 @@ async def create_tag(store: AnnotationStore, user: Principal | None, collection_
         try:
             await store.tags.delete_unlinked(tag_id)
         except Exception as cleanup_exc:
-            step_failure("delete_unlinked_tag", tag_id, cleanup_exc)
+            cleanup = step_failure("delete_unlinked_tag", tag_id, cleanup_exc)
             raise IncompleteWriteError(
-                f"The tag could not be added to the collection, and removing it again failed: an "
-                f"unreachable tag {tag_id} may remain in storage. Creating the tag again is safe.",
-                step="link_collection", completed={"insert_tag": 1}, uncertain=link.uncertain) from exc
+                f"The tag could not be added to the collection (step link_collection failed), and "
+                f"removing it again failed: an unreachable tag {tag_id} may remain in storage. "
+                f"Creating the tag again is safe.",
+                step="delete_unlinked_tag", completed={"insert_tag": 1},
+                uncertain=link.uncertain or cleanup.uncertain) from cleanup_exc
         raise IncompleteWriteError(
             "The tag could not be added to the collection; nothing was saved. Creating it again is safe.",
             step="link_collection", completed={}, uncertain=link.uncertain) from exc
