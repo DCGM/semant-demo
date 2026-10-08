@@ -40,18 +40,23 @@ See [Configuring quasar.config.js](https://v2.quasar.dev/quasar-cli-vite/quasar-
 
 ### Call API functions
 
+All requests go through `src/shared/api` (one backend URL, the signed-in user's token,
+common error handling); do not create another HTTP client.
+
 ```ts
-import { useApi } from 'src/composables/useApi'
+import { apiErrorMessage, useApi } from 'src/shared/api'
 import type { Collection } from 'src/generated/api'
 
 const api = useApi().default
 const collections = ref<Collection[]>([])
 
-const fetchCollections = async (uId: string) => {
-    try {
-      	const response = await api.fetchCollectionsApiCollectionsGet({ userId: uId })
-      	console.log('Collections fetched:', response)
-		collections.value = response.collections
-    } catch (error) {...}
+const fetchCollections = async () => {
+  try {
+    collections.value = await api.fetchCollectionsApiUserCollectionsGet()
+  } catch (error) {
+    console.error(await apiErrorMessage(error, 'Failed to load collections'))
+  }
 }
 ```
+
+NDJSON streams use `postNdjson(path, body, { onValue, signal })` from the same module.

@@ -154,7 +154,7 @@ Set `BACKEND_URL` environment variable before building to point to your backend:
 BACKEND_URL=https://your-server.example.com npx quasar build
 ```
 
-If unset, the Axios client defaults to `http://localhost:8000/api` — a development-machine-specific URL that should be overridden (see `src/boot/axios.ts`).
+If unset, `quasar.config.js` sets `http://localhost:8000` — a development-machine-specific URL that should be overridden. Every API request (generated client and NDJSON streams) uses this one origin (`src/shared/api/config.ts`).
 
 ---
 
