@@ -1,4 +1,4 @@
-import { useApi } from 'src/composables/useApi'
+import { useApi } from 'src/shared/api'
 import { UserSearchResult } from 'src/generated/api'
 
 export function useUserRepository() {

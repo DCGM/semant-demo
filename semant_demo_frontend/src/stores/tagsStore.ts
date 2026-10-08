@@ -5,9 +5,16 @@ import { Tags, PostTag, PatchTag, Tag } from 'src/models/tags'
 import { useTagsRepository } from 'src/repositories/useTagsRepository'
 import { ongoingNotification } from 'src/utils/notification'
 import { incompleteWriteMessage } from 'src/utils/writeOutcome'
+import { createContextGuard, createScope } from 'src/shared/api'
 
+/**
+ * Tag definitions of one collection. Loading another collection's tags first drops the
+ * current ones, and an answer for an earlier collection (or an earlier reload) is ignored.
+ */
 export const useTagsStore = defineStore('tags', () => {
   const tagsRepository = useTagsRepository()
+  const scope = createScope()
+  const listRequests = createContextGuard()
   const tags = ref<Tags>([])
   const activeTag = ref<Tag | null>(null)
   const error = ref<string | null>(null)
@@ -19,20 +26,34 @@ export const useTagsStore = defineStore('tags', () => {
   )
 
   const fetchTagsByCollection = async (collectionId: string) => {
-    // const notif = ongoingNotification('Loading tags...')
+    if (scope.enter(collectionId)) {
+      tags.value = []
+      activeTag.value = null
+    }
+    listRequests.enter()
+    const isCurrent = listRequests.capture()
     loading.value = true
     error.value = null
     try {
       const data = await tagsRepository.getAllByCollection(collectionId)
-      tags.value = data
-      // notif.success('Tags loaded')
+      if (isCurrent()) tags.value = data
     } catch (err) {
+      if (!isCurrent()) return
       error.value = 'Failed to fetch tags'
       console.error('Error fetching tags:', err)
-      // notif.error('Failed to load tags')
     } finally {
-      loading.value = false
+      if (isCurrent()) loading.value = false
     }
+  }
+
+  /** Drops all tags (logout). */
+  const clear = () => {
+    scope.reset()
+    listRequests.enter()
+    tags.value = []
+    activeTag.value = null
+    error.value = null
+    loading.value = false
   }
 
   const fetchTag = async (tagUuid: string) => {
@@ -56,9 +77,10 @@ export const useTagsStore = defineStore('tags', () => {
     const notif = ongoingNotification('Creating tag...')
     loading.value = true
     error.value = null
+    const isCurrent = scope.capture()
     try {
       const createdTag = await tagsRepository.create(collectionId, payload)
-      tags.value.push(createdTag)
+      if (isCurrent() && scope.key === collectionId) tags.value.push(createdTag)
       notif.success('Tag created')
       return createdTag
     } catch (err) {
@@ -138,6 +160,7 @@ export const useTagsStore = defineStore('tags', () => {
     deleteManyTags,
     updateTag,
     fetchTagsByCollection,
+    clear,
     createTag,
     fetchTag
   }

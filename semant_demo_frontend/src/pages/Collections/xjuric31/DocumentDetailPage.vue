@@ -108,6 +108,7 @@
             <div class="chunk-btn-group">
               <template v-if="item.inCollection">
                 <q-btn
+                  v-if="rights.editMembership"
                   flat dense round
                   icon="remove_circle_outline"
                   color="negative"
@@ -120,6 +121,7 @@
               </template>
               <template v-else>
                 <q-btn
+                  v-if="rights.editMembership"
                   flat dense round
                   icon="add_circle_outline"
                   color="positive"
@@ -483,7 +485,7 @@
           />
           <div class="bulk-spacer" />
           <q-btn
-            v-if="hasSelectedNotInCollection"
+            v-if="hasSelectedNotInCollection && rights.editMembership"
             flat dense no-caps
             icon="add_circle_outline"
             label="Add"
@@ -493,7 +495,7 @@
             @click="onBulkAdd"
           />
           <q-btn
-            v-if="hasSelectedInCollection"
+            v-if="hasSelectedInCollection && rights.editMembership"
             flat dense no-caps
             icon="remove_circle_outline"
             label="Remove"
@@ -534,6 +536,8 @@ import useSpanDiscussionDialog from 'src/composables/dialogs/useSpanDiscussionDi
 import ChunkAnnotator from 'src/components/ChunkAnnotator.vue'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
 import { IncompleteWriteError } from 'src/utils/writeOutcome'
+import useCollections from 'src/composables/useCollections'
+import { collectionRights } from 'src/features/collections/permissions'
 
 /**
  * Resolve a DOM node + offset into { chunkId, charOffset } by walking up
@@ -573,6 +577,13 @@ const props = defineProps<{
   collectionId: string
   documentId: string
 }>()
+
+// Shared users annotate but do not add or remove chunks (ADR 0007). The collection is
+// loaded by the enclosing document layout.
+const { activeCollection } = useCollections()
+const rights = computed(() =>
+  collectionRights(activeCollection.value?.id === props.collectionId ? activeCollection.value : null)
+)
 
 const { chunks, loading, error, loadChunksInCollectionDocument, addChunkToCollection, removeChunkFromCollection, getNeighbourChunk, countDocumentChunks, getChunksInRange } = useChunks()
 const { tags, loadTagsByCollection, createTag, updateTag } = useTags()
@@ -1018,7 +1029,7 @@ function recalculateGutter() {
         if (cEl) {
           // Chunk is in the DOM — measure its text segments
           const segEls = cEl.querySelectorAll<HTMLElement>('.text-segment')
-          for (const segEl of segEls) {
+          for (const segEl of Array.from(segEls)) {
             const segStart = parseInt(segEl.dataset.start || '0')
             const segEnd = parseInt(segEl.dataset.end || '0')
             if (segStart < localEnd && segEnd > localStart) {
@@ -1126,10 +1137,10 @@ watch(gutterItems, (items, oldItems) => {
 tagNav.onScroll((item) => {
   if (!documentTextRef.value) return
   const chunkEls = documentTextRef.value.querySelectorAll<HTMLElement>('[data-chunk-id]')
-  for (const el of chunkEls) {
+  for (const el of Array.from(chunkEls)) {
     if (el.dataset.chunkId !== item.chunkId) continue
     const segs = el.querySelectorAll<HTMLElement>('.text-segment')
-    for (const seg of segs) {
+    for (const seg of Array.from(segs)) {
       const s = parseInt(seg.dataset.start || '0')
       if (s >= item.start && s < item.end) {
         seg.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1158,7 +1169,7 @@ watch(highlightedAutoSpanId, (spanId) => {
     ) as HTMLElement | null
     if (!chunkEl) return
     const segs = chunkEl.querySelectorAll<HTMLElement>('.text-segment')
-    for (const seg of segs) {
+    for (const seg of Array.from(segs)) {
       const s = parseInt(seg.dataset.start || '0')
       if (s >= span.start && s < span.end) {
         seg.scrollIntoView({ behavior: 'smooth', block: 'center' })

@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import type { TagSpan } from 'src/models/tagSpans'
 import { SpanType } from 'src/generated/api'
 import { useTagSpansStore } from 'src/stores/tagSpansStore'
-import { readNdjson } from 'src/utils/ndjson'
+import { isAbortError, postNdjson } from 'src/shared/api'
 
 /**
  * Streamed AI span suggestion (NDJSON) helper.
@@ -76,8 +76,6 @@ function isRunEnd (value: unknown): value is AiRunEnd {
   return typeof value === 'object' && value !== null && (value as { event?: unknown }).event === 'end'
 }
 
-const BACKEND_BASE_PATH = process.env.BACKEND_URL ? process.env.BACKEND_URL + '/api' : 'http://localhost:8000/api'
-
 const isRunning = ref(false)
 const lastError = ref<string | null>(null)
 const lastStatus = ref<AiRunStatus | null>(null)
@@ -119,34 +117,16 @@ async function streamSuggestions (
   isCurrent: () => boolean,
   onResult: (line: ResultLine) => void
 ): Promise<AiRunEnd | null> {
-  const token = localStorage.getItem('auth_token')
-  const resp = await fetch(`${BACKEND_BASE_PATH}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/x-ndjson',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(body),
-    signal
-  })
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '')
-    throw new Error(`AI assistance backend error (${resp.status}): ${text || resp.statusText}`)
-  }
-  if (!resp.body) {
-    throw new Error('AI assistance backend did not return a streaming body.')
-  }
   let end: AiRunEnd | null = null
-  await readNdjson(
-    resp.body,
-    (value) => {
+  await postNdjson(path, body, {
+    signal,
+    onValue: (value) => {
       if (!isCurrent()) return
       if (isRunEnd(value)) end = value
       else onResult(value as ResultLine)
     },
-    (line, e) => console.warn('AI assistance: failed to parse NDJSON line', line, e)
-  )
+    onInvalid: (line, e) => console.warn('AI assistance: failed to parse NDJSON line', line, e)
+  })
   return end
 }
 
@@ -281,8 +261,8 @@ export function useAiAssistance() {
       if (summary) lastError.value = summary
     } catch (e: unknown) {
       if (!isCurrent()) return
-      const err = e as { name?: string; message?: string }
-      if (err?.name === 'AbortError') {
+      const err = e as { message?: string }
+      if (isAbortError(e)) {
         // Cancelled by user — not an error.
         lastStatus.value = 'cancelled'
       } else {
@@ -375,8 +355,8 @@ export function useAiAssistance() {
       return collected
     } catch (e: unknown) {
       if (!isCurrent()) return null
-      const err = e as { name?: string; message?: string }
-      if (err?.name === 'AbortError') {
+      const err = e as { message?: string }
+      if (isAbortError(e)) {
         // Cancelled by user — not an error.
         return null
       }

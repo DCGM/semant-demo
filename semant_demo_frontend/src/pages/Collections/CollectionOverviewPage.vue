@@ -47,6 +47,7 @@
                     dense
                     icon="edit"
                     label="Edit"
+                    v-if="rights.editMetadata"
                     :disable="!activeCollection"
                     @click="startNameEdit"
                   />
@@ -95,6 +96,7 @@
                     dense
                     icon="edit"
                     label="Edit"
+                    v-if="rights.editMetadata"
                     :disable="!activeCollection"
                     @click="startDescriptionEdit"
                   />
@@ -124,6 +126,7 @@
                     dense
                     icon="edit"
                     label="Edit"
+                    v-if="rights.editMetadata"
                     :disable="!activeCollectionColor || isSavingColor"
                     @click="openCollectionColorPicker"
                   />
@@ -218,6 +221,7 @@ import useCollections from 'src/composables/useCollections'
 import useColorPicker from 'src/composables/useColorPicker'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
 import useCollectionStats from 'src/composables/useCollectionStats'
+import { collectionRights } from 'src/features/collections/permissions'
 
 const $route = useRoute()
 const {
@@ -230,6 +234,8 @@ const {
 
 const { collectionStats, loading: collectionStatsLoading, error: collectionStatsError, loadCollectionStats } = useCollectionStats()
 
+// Name, description and color are owner-only metadata (ADR 0007).
+const rights = computed(() => collectionRights(activeCollection.value))
 const isEditingDescription = ref(false)
 const isSavingDescription = ref(false)
 const editableDescription = ref('')

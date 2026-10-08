@@ -1,3 +1,7 @@
+import { authHeaders } from './auth'
+import { apiUrl } from './config'
+import { apiErrorFromResponse } from './errors'
+
 /**
  * Read an NDJSON (one JSON value per line) response body, calling `onValue` for each
  * line as it arrives. Lines may be split across network chunks, also inside a multi-byte
@@ -41,4 +45,34 @@ export async function readNdjson (
   }
   buffer += decoder.decode()
   handleLine(buffer)
+}
+
+export interface NdjsonRequest {
+  /** Called for every parsed line, in order. */
+  onValue: (value: unknown) => void
+  onInvalid?: (line: string, error: unknown) => void
+  signal?: AbortSignal
+}
+
+/**
+ * POST `body` as JSON to an NDJSON endpoint (`/api` + `path`) with the signed-in user's
+ * token and stream the answer to `onValue`. A non-2xx answer throws {@link ApiError}
+ * (with the backend's `detail`) before any line is read; aborting rejects with
+ * `AbortError`. Resolves when the stream ends; whether it ended *complete* is for the
+ * caller to judge from its own terminal line.
+ */
+export async function postNdjson (path: string, body: unknown, request: NdjsonRequest): Promise<void> {
+  const response = await fetch(apiUrl(path), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/x-ndjson',
+      ...authHeaders()
+    },
+    body: JSON.stringify(body),
+    signal: request.signal
+  })
+  if (!response.ok) throw await apiErrorFromResponse(response)
+  if (!response.body) throw new Error('The server did not return a streaming body.')
+  await readNdjson(response.body, request.onValue, request.onInvalid)
 }

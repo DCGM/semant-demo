@@ -1,4 +1,4 @@
-import { useApi } from 'src/composables/useApi'
+import { useApi } from 'src/shared/api'
 import type { TagSpans, PostSpan, PatchSpan } from 'src/models/tagSpans'
 import type { BulkUpdateSpansResponse, TagSpanWriteResult, WriteResult } from 'src/generated/api'
 

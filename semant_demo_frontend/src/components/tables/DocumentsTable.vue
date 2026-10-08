@@ -4,7 +4,7 @@
     :columns="columns"
     :rows="documents"
     row-key="id"
-    selection="multiple"
+    :selection="rights.editMembership ? 'multiple' : 'none'"
     v-model:selected="selected"
     :filter="filter"
     :pagination="initialPagination"
@@ -13,7 +13,7 @@
     table-header-style="background-color: rgba(0, 0, 0, 0.04)"
     style="border-bottom: 1px solid rgba(0, 0, 0, 0.25)"
     :row-class="() => 'cursor-pointer'"
-    @row-click="(_evt, row) => handleTagDocument(row.id)"
+    @row-click="(_evt: Event, row: Document) => handleTagDocument(row.id)"
     :loading="loading"
   >
     <template #top>
@@ -53,6 +53,7 @@
       <div style="width: 100%" class="row items-center q-my-sm">
         <RefreshButton @click="handleRefresh" />
         <AddDocumentDropdownBtn
+          v-if="rights.editMembership"
           @browse-library="handleBrowseLibrary"
           @create-document="handleCreateDocument"
           @upload-document="handleUploadDocument"
@@ -87,6 +88,7 @@
             <q-tooltip>Tag document</q-tooltip>
           </q-btn>
           <q-btn
+            v-if="rights.editMembership"
             dense
             flat
             round
@@ -144,7 +146,7 @@
 
   <Teleport to="body">
     <transition name="fade-slide-up">
-      <div v-if="selected.length > 0" class="bulk-action-bar">
+      <div v-if="selected.length > 0 && rights.editMembership" class="bulk-action-bar">
         <span class="bulk-count">{{ selected.length }} selected</span>
         <q-btn
           flat dense no-caps
@@ -178,6 +180,8 @@ import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
 import type { DocumentStats } from 'src/generated/api'
+import useCollections from 'src/composables/useCollections'
+import { collectionRights } from 'src/features/collections/permissions'
 
 const { documents, loadDocumentsByCollection, removeDoc, removeManyDocs, loading } = useDocuments()
 const { openBrowseLibraryDialog } = useBrowseLibraryDialog()
@@ -196,6 +200,13 @@ const collectionId = computed<string>(() => {
   }
   return value
 })
+
+// Adding and removing documents is the owner's (ADR 0007); shared users tag documents.
+// The collection is loaded by the enclosing CollectionDetailLayout.
+const { activeCollection } = useCollections()
+const rights = computed(() =>
+  collectionRights(activeCollection.value?.id === collectionId.value ? activeCollection.value : null)
+)
 
 onMounted(async () => {
   await loadDocumentsByCollection(collectionId.value)

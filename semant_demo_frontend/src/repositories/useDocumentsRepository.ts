@@ -1,4 +1,4 @@
-import { useApi } from 'src/composables/useApi'
+import { useApi } from 'src/shared/api'
 import { Document, DocumentBrowseParams, DocumentBrowse, Documents } from 'src/models/documents'
 import { DocumentStats, WriteResult } from 'src/generated/api'
 import { requireComplete } from 'src/utils/writeOutcome'

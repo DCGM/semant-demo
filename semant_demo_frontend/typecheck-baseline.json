@@ -4,8 +4,6 @@
   "src/components/auth/RegisterDialog.vue: TS7006: Parameter 'v' implicitly has an 'any' type.": 9,
   "src/components/auth/UserInfoDialog.vue: TS7006: Parameter 'v' implicitly has an 'any' type.": 5,
   "src/components/ChunkAnnotator.vue: TS2339: Property 'caretPositionFromPoint' does not exist on type 'Document'.": 2,
-  "src/components/tables/DocumentsTable.vue: TS7006: Parameter '_evt' implicitly has an 'any' type.": 1,
-  "src/components/tables/DocumentsTable.vue: TS7006: Parameter 'row' implicitly has an 'any' type.": 1,
   "src/pages/Collections/DocumentTaggingPage/components/ChunkTagAnnotator.vue: TS2339: Property 'caretPositionFromPoint' does not exist on type 'Document'.": 2,
   "src/pages/Collections/DocumentTaggingPage/composables/useTagging.ts: TS2339: Property 'addChunk2CollectionApiUserCollectionChunksPost' does not exist on type 'DefaultApi'.": 2,
   "src/pages/Collections/DocumentTaggingPage/composables/useTagging.ts: TS2339: Property 'approveSelectedTagChunkApiTagApprovePut' does not exist on type 'DefaultApi'.": 2,
@@ -19,11 +17,5 @@
   "src/pages/Collections/DocumentTaggingPage/composables/useTaggingPageState.ts: TS2538: Type 'unknown' cannot be used as an index type.": 2,
   "src/pages/Collections/DocumentTaggingPage/composables/useTaggingPageState.ts: TS7006: Parameter 's' implicitly has an 'any' type.": 1,
   "src/pages/Collections/DocumentTaggingPage/composables/useTaggingPageState.ts: TS7006: Parameter 'span' implicitly has an 'any' type.": 5,
-  "src/pages/Collections/xjuric31/DocumentDetailLayout.vue: TS7006: Parameter 'v' implicitly has an 'any' type.": 3,
-  "src/pages/Collections/xjuric31/DocumentDetailPage.vue: TS2347: Untyped function calls may not accept type arguments.": 1,
-  "src/pages/Collections/xjuric31/DocumentDetailPage.vue: TS2488: Type 'NodeListOf<HTMLElement>' must have a '[Symbol.iterator]()' method that returns an iterator.": 3,
-  "src/pages/FeedbackPage.vue: TS7006: Parameter 'value' implicitly has an 'any' type.": 2,
-  "src/services/DocumentsService.ts: TS2305: Module '\"src/models/documents\"' has no exported member 'DocumentBrowseResponse'.": 1,
-  "src/services/TagsService.ts: TS2305: Module '\"src/models/tags\"' has no exported member 'TagCreate'.": 1,
-  "src/stores/chunk_collection-store.ts: TS2353: Object literal may only specify known properties, and 'userId' does not exist in type 'RequestInit | InitOverrideFunction'.": 1
+  "src/pages/FeedbackPage.vue: TS7006: Parameter 'value' implicitly has an 'any' type.": 2
 }

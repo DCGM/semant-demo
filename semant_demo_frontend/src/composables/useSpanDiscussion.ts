@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { createContextGuard, isAbortError, postNdjson } from 'src/shared/api'
 
 /**
  * Streaming chat-with-AI helper for span discussion.
@@ -7,6 +8,10 @@ import { computed, ref } from 'vue'
  * the NDJSON response into incremental deltas appended to the assistant's
  * latest message. The backend is stateless w.r.t. conversation memory — the
  * frontend re-sends the entire history each turn.
+ *
+ * Each reply belongs to its turn and conversation: after `cancel()` its late deltas are
+ * dropped, and after `reset()` (another span, dialog closed) it cannot touch the new
+ * conversation's messages or streaming state.
  */
 
 export type SpanChatRole = 'user' | 'assistant'
@@ -20,21 +25,27 @@ export interface SpanChatStartArgs {
   spanId: string
 }
 
-const BACKEND_BASE_PATH = process.env.BACKEND_URL ? process.env.BACKEND_URL + '/api' : 'http://localhost:8000/api'
+interface ReplyLine {
+  delta?: string
+  done?: boolean
+  error?: string
+}
 
 export function useSpanDiscussion() {
   const messages = ref<SpanChatMessage[]>([])
   const isStreaming = ref(false)
   const error = ref<string | null>(null)
   const context = ref<SpanChatStartArgs | null>(null)
+  const conversation = createContextGuard()
+  const turn = createContextGuard()
   let activeAbort: AbortController | null = null
 
   /** Reset all state (called when dialog closes / reopens for another span). */
   const reset = (ctx: SpanChatStartArgs | null = null) => {
     cancel()
+    conversation.enter()
     messages.value = []
     error.value = null
-    isStreaming.value = false
     context.value = ctx
   }
 
@@ -43,6 +54,7 @@ export function useSpanDiscussion() {
       activeAbort.abort()
       activeAbort = null
     }
+    turn.enter()
     isStreaming.value = false
   }
 
@@ -61,92 +73,48 @@ export function useSpanDiscussion() {
     if (isStreaming.value) return
 
     messages.value.push({ role: 'user', content: trimmed })
-    const assistantIndex = messages.value.push({ role: 'assistant', content: '' }) - 1
+    // Strip the trailing empty assistant placeholder before sending.
+    const history = messages.value.map((m) => ({ role: m.role, content: m.content }))
+    messages.value.push({ role: 'assistant', content: '' })
+    const reply = messages.value[messages.value.length - 1]
 
+    turn.enter()
+    const isCurrentTurn = turn.capture()
+    const isCurrentConversation = conversation.capture()
     error.value = null
     isStreaming.value = true
     const abort = new AbortController()
     activeAbort = abort
 
-    const token = localStorage.getItem('auth_token')
     try {
-      const resp = await fetch(`${BACKEND_BASE_PATH}/ai/discuss_span`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/x-ndjson',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
+      await postNdjson('/ai/discuss_span', { span_id: context.value.spanId, messages: history }, {
+        signal: abort.signal,
+        onValue: (value) => {
+          if (!isCurrentTurn()) return
+          const line = value as ReplyLine
+          if (line.error) {
+            error.value = line.error
+            return
+          }
+          if (line.delta) reply.content += line.delta
         },
-        body: JSON.stringify({
-          span_id: context.value.spanId,
-          // Strip the trailing empty assistant placeholder before sending.
-          messages: messages.value
-            .slice(0, assistantIndex)
-            .map((m) => ({ role: m.role, content: m.content }))
-        }),
-        signal: abort.signal
+        onInvalid: (line, e) => console.warn('useSpanDiscussion: malformed NDJSON line', line, e)
       })
-
-      if (!resp.ok) {
-        const body = await resp.text().catch(() => '')
-        throw new Error(`Span discussion error (${resp.status}): ${body || resp.statusText}`)
-      }
-      if (!resp.body) {
-        throw new Error('Span discussion: backend did not return a streaming body.')
-      }
-
-      const reader = resp.body.getReader()
-      const decoder = new TextDecoder('utf-8')
-      let buffer = ''
-
-      const handleLine = (line: string) => {
-        const trimmedLine = line.trim()
-        if (!trimmedLine) return
-        let parsed: { delta?: string; done?: boolean; error?: string }
-        try {
-          parsed = JSON.parse(trimmedLine)
-        } catch (e) {
-          console.warn('useSpanDiscussion: malformed NDJSON line', trimmedLine, e)
-          return
-        }
-        if (parsed.error) {
-          error.value = parsed.error
-          return
-        }
-        if (parsed.delta) {
-          messages.value[assistantIndex]!.content += parsed.delta
-        }
-      }
-
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        let nl = buffer.indexOf('\n')
-        while (nl !== -1) {
-          handleLine(buffer.slice(0, nl))
-          buffer = buffer.slice(nl + 1)
-          nl = buffer.indexOf('\n')
-        }
-      }
-      buffer += decoder.decode()
-      if (buffer.trim()) handleLine(buffer)
     } catch (e: unknown) {
-      const err = e as { name?: string; message?: string }
-      if (err?.name === 'AbortError') {
-        // user cancelled — leave whatever was streamed so far
-      } else {
+      // A cancelled request is not an error; whatever was streamed so far stays.
+      if (isCurrentTurn() && !isAbortError(e)) {
         console.error('Span discussion failed', e)
-        error.value = err?.message || 'Span discussion request failed'
+        error.value = (e as { message?: string })?.message || 'Span discussion request failed'
       }
     } finally {
-      if (activeAbort === abort) activeAbort = null
-      isStreaming.value = false
-      // Drop trailing empty assistant message if nothing arrived.
-      const last = messages.value[messages.value.length - 1]
-      if (last && last.role === 'assistant' && !last.content) {
-        messages.value.pop()
+      if (isCurrentTurn()) {
+        activeAbort = null
+        isStreaming.value = false
+      }
+      // Drop this turn's assistant message if nothing arrived (not another conversation's).
+      if (isCurrentConversation() && !reply.content) {
+        const index = messages.value.indexOf(reply)
+        if (index !== -1) messages.value.splice(index, 1)
       }
     }
   }

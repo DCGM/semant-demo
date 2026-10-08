@@ -221,7 +221,7 @@
               >
                 <q-checkbox
                   :model-value="selectedAiTagIds.includes(tag.id)"
-                  @update:model-value="(v) => toggleAiTag(tag.id, !!v)"
+                  @update:model-value="(v: unknown) => toggleAiTag(tag.id, !!v)"
                   dense
                   size="sm"
                   :disable="aiAssist.isRunning.value"
@@ -359,7 +359,7 @@
                   dense
                   size="sm"
                   :disable="isBulkResolving"
-                  @update:model-value="(v) => toggleSelectAllSuggestions(!!v)"
+                  @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
                 >
                   <span class="text-caption text-grey-7">
                     {{ selectedSuggestionIds.size }} / {{ pendingAutoSpans.length }} selected
@@ -405,7 +405,7 @@
                 <div class="auto-span-header">
                   <q-checkbox
                     :model-value="entry.span.id ? selectedSuggestionIds.has(entry.span.id) : false"
-                    @update:model-value="(v) => toggleSuggestionSelection(entry.span, !!v)"
+                    @update:model-value="(v: unknown) => toggleSuggestionSelection(entry.span, !!v)"
                     @click.stop
                     dense
                     size="xs"
@@ -533,7 +533,7 @@ import TagExamples from 'src/components/TagExamples.vue'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
 import useAiAssistance, { type AiAssistanceMode } from 'src/composables/useAiAssistance'
 import useTagSpans from 'src/composables/useTagSpans'
-import { useApi } from 'src/composables/useApi'
+import { useApi } from 'src/shared/api'
 import { SpanType, WriteOutcome } from 'src/generated/api'
 import { describeIncomplete } from 'src/utils/writeOutcome'
 import type { TagSpan } from 'src/models/tagSpans'
@@ -1116,8 +1116,10 @@ watch(
 watch(
   () => props.collectionId,
   async (collectionId) => {
-    // A run of the previous collection must not add suggestions to the new one.
+    // A run of the previous collection must not add suggestions to the new one, and its
+    // annotations (the same chunk can be in both) must not stay on screen.
     aiAssist.reset()
+    tagSpans.clearAll()
     await loadCollection(collectionId)
     await loadTagsByCollection(collectionId)
   },
