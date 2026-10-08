@@ -118,9 +118,10 @@ python run.py
 ```
 
 The server starts with `uvicorn` in reload mode on port 8000. On startup it:
-1. Creates the SQLite `tasks` table
-2. Loads all RAG configurations from `rag/rag_configs/configs/*.yaml`
-3. Mounts static files from `STATIC_PATH` if the directory exists
+1. Creates missing SQL tables (`user`, `rag_user_feedback`); existing tables and rows are kept
+2. Connects to Weaviate (startup fails if it is not ready)
+3. Loads all RAG configurations from `rag/rag_configs/configs/*.yaml`
+4. Mounts static files from `STATIC_PATH` if the directory exists
 
 ### 6. Frontend
 
@@ -184,7 +185,7 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 | `LANGCHAIN_API_KEY` | _(empty)_ | No | LangChain/LangSmith tracing key |
 | `EMBEDDING_SERVICE_HOST` | `embedding-service` | No | Embedding service hostname (used to build the internal URL) |
 | `EMBEDDING_SERVICE_PORT` | `8001` | No | Embedding service port |
-| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | No | SQLAlchemy URL of the users/tasks database; the default is `tasks.db` in the backend working directory |
+| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | No | SQLAlchemy URL of the user accounts / RAG feedback database; the default is `tasks.db` in the backend working directory |
 | `SQL_DB_PATH` | _(none)_ | No | Used by Docker Compose for the `tasks.db` bind mount, not read by the backend itself. With the default `SQL_DB_URL`, set `SQL_DB_PATH` and ensure the target `tasks.db` file already exists |
 | `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION_…` | **Yes (prod)** | JWT signing secret — must be overridden in production with a long random string |
 | `FEEDBACK_WEBHOOK_URL` | _(empty)_ | No | Webhook URL for RAG feedback delivery |
@@ -220,11 +221,10 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 - Each RAG config can be tested independently by sending requests to `POST /api/rag` with the config's `id`
 - Test RAG routing with the `TestRag` class (returns a static response)
 
-### Tagging Debugging
+### AI Suggestion Debugging
 
-- Poll `GET /api/tag/task/status/{taskId}` to see `processed_count` / `all_texts_count` progress
-- `tag_processing_data` field contains per-chunk tagging decisions
-- Check SQLite directly: `sqlite3 tasks.db "SELECT * FROM tasks"`
+- Suggestion runs are request-scoped NDJSON streams (`/api/ai/suggest_spans/*`); the last line is an `end` event with the outcome and counts (saved, rejected, failed saves, provider failures). A stream without it was interrupted.
+- Saved suggestions are ordinary `auto` spans; reload them with `GET /api/tag_spans?collection_id=...`.
 
 ---
 
@@ -234,6 +234,6 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 2. **Set `PRODUCTION=true`** — currently only checked in config but can be used for conditional logging
 3. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
 4. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
-5. **SQLite limitations** — consider switching to PostgreSQL for concurrent tagging tasks under load
+5. **SQLite limitations** — the database holds only user accounts and RAG feedback; consider PostgreSQL (untested) for many concurrent writers. Run one backend process: chunk tag updates are serialized per process only (REFACTOR_STATUS.md)
 6. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
 7. **Embedding service scaling** — can run multiple instances behind a load balancer. The endpoint is built from `EMBEDDING_SERVICE_HOST` (default `embedding-service` in Docker, `localhost` outside) and `EMBEDDING_SERVICE_PORT` (default `8001`); point both at your load balancer to scale.

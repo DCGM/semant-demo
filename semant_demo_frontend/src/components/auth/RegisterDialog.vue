@@ -15,7 +15,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Username is required', v => v.length >= 3 || 'Minimum 3 characters']"
+            :rules="[(v: string) => !!v || 'Username is required', (v: string) => v.length >= 3 || 'Minimum 3 characters']"
           />
           <q-input
             v-model="name"
@@ -23,7 +23,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Name is required']"
+            :rules="[(v: string) => !!v || 'Name is required']"
           />
           <q-input
             v-model="institution"
@@ -38,7 +38,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Email is required', v => /.+@.+\..+/.test(v) || 'Enter a valid email']"
+            :rules="[(v: string) => !!v || 'Email is required', (v: string) => /.+@.+\..+/.test(v) || 'Enter a valid email']"
           />
           <q-input
             v-model="password"
@@ -47,7 +47,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Password is required', v => v.length >= 8 || 'Minimum 8 characters']"
+            :rules="[(v: string) => !!v || 'Password is required', (v: string) => v.length >= 8 || 'Minimum 8 characters']"
           >
             <template #append>
               <q-icon
@@ -64,7 +64,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Please confirm your password', v => v === password || 'Passwords do not match']"
+            :rules="[(v: string) => !!v || 'Please confirm your password', (v: string) => v === password || 'Passwords do not match']"
           />
 
           <div v-if="errorMsg" class="text-negative text-caption">{{ errorMsg }}</div>
@@ -85,6 +85,7 @@ import type { QForm } from 'quasar'
 import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
 
+defineProps<{ modelValue: boolean }>()
 const emit = defineEmits(['update:modelValue'])
 
 const $q = useQuasar()

@@ -1,7 +1,9 @@
 # Refactor plan
 
-Status: 
-No stages below are claimed complete.
+Status: R0–R6 implemented through #198–#210 on `197-refactor---base`; per-step outcomes,
+remaining exceptions and the exit verification are in REFACTOR_STATUS.md. The refactor is
+complete when that branch is reviewed and merged into `main` (with `main`'s required checks
+configured).
 Baseline: `main` at `375caa5f7f68defba25a56cccbb7dbc7fdf99a13`.
 
 Current implementation progress, temporary states, and discovered follow-up work are tracked in [REFACTOR_STATUS.md](REFACTOR_STATUS.md).

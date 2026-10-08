@@ -47,6 +47,16 @@ test('switching collection replaces the document view without stale chunks or an
   await expect(page.getByText(fixture.collection('newspapers').name, { exact: true }).first()).toBeVisible()
 })
 
+test('a link to the retired V2 document view opens the document view', async ({ page }) => {
+  await logIn(page, 'owner')
+
+  await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}/v2`)
+
+  await expect(page).toHaveURL(/\/documents\/[^/]+\/v1$/)
+  await expect(annotation(page, 'novak_manual')).toHaveText(fixture.span('novak_manual').quote)
+  await expect(page.getByRole('button', { name: 'V2' })).toHaveCount(0)
+})
+
 test('a new user registers, logs in and out', async ({ page }) => {
   // The e2e profile's user database is a temporary file; a unique name keeps reruns apart.
   const name = `newcomer${Date.now()}`

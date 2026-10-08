@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from semant_demo import schemas
+from semant_demo.adapters.sql.feedback import RagUserFeedback
 from semant_demo.features.search import service as search_service
 from semant_demo.features.search.service import SearchBackends
 
@@ -63,7 +64,7 @@ async def explain_selection(request: schemas.ExplainRequest,
 async def save_feedback(request: schemas.FeedbackRequest, db: AsyncSession = Depends(get_async_session),
                         current_user: User | None = Depends(current_active_optional_user)):
     try:
-        selser = select(schemas.RagUserFeedback).where(schemas.RagUserFeedback.response_id == request.response_id)
+        selser = select(RagUserFeedback).where(RagUserFeedback.response_id == request.response_id)
         result = await db.execute(selser)
         ex_feedback = result.scalar_one_or_none()
 
@@ -74,7 +75,7 @@ async def save_feedback(request: schemas.FeedbackRequest, db: AsyncSession = Dep
             ex_feedback.timestamp = datetime.datetime.now(datetime.timezone.utc)
         else:               #create new 
             serialized_sources = [doc.model_dump(mode='json') for doc in request.sources] if request.sources else []
-            new_feedback = schemas.RagUserFeedback(
+            new_feedback = RagUserFeedback(
                 response_id=request.response_id,
                 rag_id=request.rag_id,
                 question=request.question,

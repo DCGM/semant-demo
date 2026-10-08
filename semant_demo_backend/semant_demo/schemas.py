@@ -1,13 +1,10 @@
-"""Models shared outside the features: RAG and feedback HTTP models, configured Weaviate
-collection names and the SQL declarative base. Feature models live in each feature's
-``schemas.py``; shared corpus models in ``schema/``.
+"""Models shared outside the features: RAG and feedback HTTP models and the configured
+Weaviate collection names. Feature models live in each feature's ``schemas.py``; shared
+corpus models in ``schema/``; SQL tables in ``adapters/sql/``.
 """
 from pydantic import BaseModel
 from typing import Literal, TypedDict, Any
 from datetime import datetime
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, String, JSON, Integer, DateTime, Text
-import sqlalchemy.sql.functions as funcs
 
 from semant_demo.features.search.schemas import SearchType, TextChunkWithDocument
 
@@ -141,19 +138,3 @@ class CollectionNames(BaseModel):
     span_collection_name: str
     user_collection_link_name: str
     tag_to_user_collection_link_name: str
-
-# Task Model
-TasksBase = declarative_base()
-class RagUserFeedback(TasksBase):
-    __tablename__ = "rag_user_feedback"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    response_id = Column(String(36), index=True, unique=True, nullable=False)
-    timestamp = Column(DateTime(timezone=True), server_default=funcs.now())
-    rag_id = Column(String(255), nullable=False)
-    question = Column(Text, nullable=False)
-    answer = Column(Text, nullable=False)
-    rating = Column(Integer, nullable=False)  # 1 - like, -1 - dislike
-    # list of error types, if rating is -1
-    error_types = Column(JSON, nullable=True)
-    comment = Column(Text, nullable=True)
-    sources = Column(JSON, nullable=True)

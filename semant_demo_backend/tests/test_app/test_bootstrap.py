@@ -122,8 +122,9 @@ async def test_weaviate_is_connected_once_at_startup_and_closed_at_shutdown(tmp_
     async with LifespanManager(app), _client(app) as client:
         assert len(clients) == 1
         weaviate = app.state.resources.weaviate
-        # Every repository and the transitional facade use the one application client.
-        assert {id(r.client) for r in (weaviate.documents, weaviate.tags, weaviate.collections, weaviate.legacy)} \
+        # Every repository uses the one application client.
+        assert {id(r.client) for r in (weaviate.documents, weaviate.tags, weaviate.collections, weaviate.search,
+                                       weaviate.spans, weaviate.chunk_tags)} \
             == {id(clients[0])}
         for _ in range(2):
             assert (await client.get("/health")).status_code == 200
@@ -201,3 +202,28 @@ def test_export_script_writes_schema_offline(tmp_path, no_external_connections):
 
     assert "/api/search" in json.loads(output.read_text())["paths"]
     assert no_external_connections == []
+
+
+def test_sql_tables_are_users_and_rag_feedback():
+    from semant_demo.adapters.sql.tables import Base
+
+    assert set(Base.metadata.tables) == {"user", "rag_user_feedback"}
+
+
+async def test_startup_keeps_existing_users_and_feedback(tmp_path, no_external_connections):
+    config = make_test_config(tmp_path)
+    app = create_app(config, weaviate_connector=offline_weaviate)
+    async with LifespanManager(app), _client(app) as client:
+        assert (await _register(client, "kept@example.com")).status_code == 201
+    with sqlite3.connect(tmp_path / "test.db") as conn:
+        conn.execute("INSERT INTO rag_user_feedback (response_id, rag_id, question, answer, rating) "
+                     "VALUES ('r1', 'rag', 'q', 'a', 1)")
+
+    # A later start (e.g. a deployment) creates missing tables only.
+    app = create_app(config, weaviate_connector=offline_weaviate)
+    async with LifespanManager(app):
+        pass
+
+    assert _user_emails(tmp_path / "test.db") == ["kept@example.com"]
+    with sqlite3.connect(tmp_path / "test.db") as conn:
+        assert conn.execute("SELECT response_id FROM rag_user_feedback").fetchall() == [("r1",)]

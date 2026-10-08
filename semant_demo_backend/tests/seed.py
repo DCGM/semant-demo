@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.data import DataObject
 
-from semant_demo.schemas import CollectionNames, TasksBase
+from semant_demo.adapters.sql.tables import create_tables
+from semant_demo.schemas import CollectionNames
 from semant_demo.users.models import User
 from tests.corpus import Corpus
 from tests.fakes import fake_embedding
@@ -112,8 +113,7 @@ async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, cor
 
 async def seed_users(engine: AsyncEngine, corpus: Corpus) -> None:
     """Create the SQL tables and the corpus users (fixed ids and passwords)."""
-    async with engine.begin() as conn:
-        await conn.run_sync(TasksBase.metadata.create_all)
+    await create_tables(engine)
     password_helper = PasswordHelper()
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with session_maker() as session:

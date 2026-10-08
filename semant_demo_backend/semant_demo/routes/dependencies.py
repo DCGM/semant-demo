@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
 from semant_demo.adapters.sql.users import UserLookup
+from semant_demo.adapters.llm.responses import ResponsesChat
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
@@ -11,7 +12,6 @@ from semant_demo.config import Config
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.rag.rag_factory import RagRegistry
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import AsyncGenerator
@@ -45,10 +45,6 @@ def _weaviate(connection: HTTPConnection) -> WeaviateRepositories:
         raise HTTPException(status_code=503, detail="Application is not started.")
     return weaviate
 
-async def get_search(connection: HTTPConnection) -> WeaviateAbstraction:
-    """Transitional facade for routes not migrated yet; new code uses the repositories below."""
-    return _weaviate(connection).legacy
-
 async def get_documents(connection: HTTPConnection) -> DocumentRepository:
     return _weaviate(connection).documents
 
@@ -70,6 +66,9 @@ async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
 
 def get_topicer(connection: HTTPConnection) -> TopicerClient:
     return get_resources(connection).topicer
+
+def get_span_chat(connection: HTTPConnection) -> ResponsesChat:
+    return get_resources(connection).span_chat
 
 async def get_summarizer(connection: HTTPConnection) -> TemplatedSearchResultsSummarizer:
     return get_resources(connection).get_summarizer()

@@ -25,7 +25,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Name is required']"
+            :rules="[(v: string) => !!v || 'Name is required']"
           />
           <q-input
             v-model="editInstitution"
@@ -54,7 +54,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Password is required', v => v.length >= 8 || 'Minimum 8 characters']"
+            :rules="[(v: string) => !!v || 'Password is required', (v: string) => v.length >= 8 || 'Minimum 8 characters']"
           >
             <template #append>
               <q-icon
@@ -71,7 +71,7 @@
             outlined
             dense
             lazy-rules
-            :rules="[v => !!v || 'Please confirm your password', v => v === newPassword || 'Passwords do not match']"
+            :rules="[(v: string) => !!v || 'Please confirm your password', (v: string) => v === newPassword || 'Passwords do not match']"
           />
 
           <div v-if="passwordErrorMsg" class="text-negative text-caption">{{ passwordErrorMsg }}</div>

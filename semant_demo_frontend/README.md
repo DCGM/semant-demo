@@ -1,33 +1,32 @@
-# Image search (image-search-frontend)
+# SemANT demo frontend
 
-Semantic image search
+Vue 3 + Quasar SPA (package name `image-search-frontend` is historical). Setup, checks and
+client generation are described in [CONTRIBUTING.md](../CONTRIBUTING.md#2-setup-and-commands);
+the structure in [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md#3-frontend-semant_demo_frontend).
 
 ## Install the dependencies
 ```bash
-yarn
-# or
-npm install
+npm ci
 ```
 
 ### Start the app in development mode (hot-code reloading, error reporting, etc.)
 
-**Before running the app in development mode, backend types and functions need be generated.**
-1. activate virtual environment
-2. run `npm run sync-client` in the frontend folder (requires Java installed)
+The generated API client (`src/generated/api`) is committed. After a backend API change,
+regenerate it from the repository root with `make api-generate` (requires Java 11+); never
+edit it by hand. `npm run sync-client` is only used by the production image build
+(`deploy/Dockerfile`).
 
 ```bash
-quasar dev
+npm run dev
 ```
 
-
-### Lint the files
+### Checks
 ```bash
-yarn lint
-# or
-npm run lint
+npm run lint        # ESLint
+npm run typecheck   # vue-tsc against typecheck-baseline.json (empty: no known errors)
+npm test            # Vitest unit/component tests (test/unit)
+npm run test:e2e    # Playwright smoke suite; use `make test-e2e` from the root (needs Docker)
 ```
-
-
 
 ### Build the app for production
 ```bash

@@ -20,7 +20,6 @@ from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_topicer
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 from tests.app_support import make_test_config
 from tests.auth_support import auth_headers
 from tests.corpus import load_corpus
@@ -69,12 +68,6 @@ async def seeded_store(weaviate_client, collection_names, corpus, store_token):
         yield weaviate_client
     finally:
         await drop_app_collections(weaviate_client, collection_names, store_token)
-
-
-@pytest.fixture
-def searcher(seeded_store, collection_names) -> WeaviateAbstraction:
-    """Transitional facade, for adapters that have not moved to ``adapters/weaviate`` yet."""
-    return WeaviateAbstraction(seeded_store, collection_names)
 
 
 @pytest.fixture

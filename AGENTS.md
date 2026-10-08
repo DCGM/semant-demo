@@ -1,6 +1,6 @@
 # Agent instructions
 
-Status: draft for adoption, updated 2026-10-07. These rules supplement, not replace,
+Status: draft for adoption, updated 2026-10-08. These rules supplement, not replace,
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 During the architecture refactor, read docs/REFACTOR_STATUS.md before making changes. Update it when a refactor issue is completed, when a temporary architectural exception is introduced or removed, or when a newly discovered problem affects later refactor steps. Create/link a GitHub issue for substantive deferred work rather than describing it only in the status file.
@@ -94,8 +94,8 @@ Do not execute destructive schema/bootstrap scripts against an unverified endpoi
 
 Never manually edit generated API files, commit secrets, weaken assertions, bypass CI,
 or add blanket skips merely to produce a green result. A placeholder `npm test` is not
-a test pass. `make setup`, `make check` and `make api-generate` exist; other proposed
-`make` targets are unavailable until the refactor step that implements them.
+a test pass. `make setup`, `make check`, `make api-generate`, `make test-integration` and
+`make test-e2e` exist (the last two need Docker); `make dev` does not.
 
 For ordinary development and refactoring, use only the local database environment documented in `docs/DEVELOPMENT.md`.
 

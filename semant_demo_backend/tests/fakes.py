@@ -52,3 +52,22 @@ def fake_embedding(text: str, dim: int = FAKE_EMBEDDING_DIM) -> list[float]:
     values = [digest[i % len(digest)] / 255.0 - 0.5 for i in range(dim)]
     norm = math.sqrt(sum(v * v for v in values)) or 1.0
     return [v / norm for v in values]
+
+
+class FakeStreamingChat:
+    """Replaces ``adapters.llm.responses.ResponsesChat``: yields ``deltas``, records calls.
+
+    With ``error`` set, raises it after the deltas (a provider failing mid-stream).
+    """
+
+    def __init__(self, deltas: list[str] | None = None, error: Exception | None = None):
+        self.deltas = list(deltas if deltas is not None else ["Fits", " the tag."])
+        self.error = error
+        self.calls: list[tuple[str, list[dict[str, str]]]] = []
+
+    async def stream(self, instructions: str, messages: list[dict[str, str]]):
+        self.calls.append((instructions, messages))
+        for delta in self.deltas:
+            yield delta
+        if self.error is not None:
+            raise self.error

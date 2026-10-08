@@ -1,7 +1,8 @@
 # Target architecture
 
-Status: draft target, updated 2026-10-07 with confirmed Q1-Q5 decisions; not a
-description of completed refactoring.
+Status: architectural intent, updated 2026-10-07 with confirmed Q1-Q5 decisions. The
+refactor (#198–#210) implemented it where REFACTOR_STATUS.md says so; the current code is
+described in [ARCHITECTURE.md](ARCHITECTURE.md).
 Baseline: `main` at `375caa5f7f68defba25a56cccbb7dbc7fdf99a13`.
 See [ADRs](adr/README.md) for confirmed contracts, rationale, and deferred details.
 

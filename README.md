@@ -48,48 +48,42 @@ semant-demo/
 ├── embedding_service/             # Gemma embedding microservice (FastAPI, port 8001)
 ├── semant_demo_backend/           # main API server (FastAPI, port 8000)
 │   ├── semant_demo/
-│   │   ├── main.py                # FastAPI app, startup, core endpoints
-│   │   ├── config.py              # env-based configuration (Config singleton)
-│   │   ├── schemas.py             # RAG/feedback models, CollectionNames, SQLAlchemy base
-│   │   ├── schema/                # models shared by several features
-│   │   │   ├── ai_assistance.py   # span discussion chat schemas
-│   │   │   ├── chunks.py          # chunk projections (TextChunk, Chunk, ChunkText)
-│   │   │   ├── documents.py       # Document (one model for every read), DocumentDetail, …
-│   │   │   └── outcomes.py        # WriteResult and partial-write outcomes
-│   │   ├── gemma_embedding.py     # HTTP client to embedding_service
+│   │   ├── main.py                # create_app, routers, lifespan, error mapping
+│   │   ├── bootstrap.py           # per-app resources: SQL engine, Weaviate repositories, providers
+│   │   ├── config.py              # Config (read once from the environment or a mapping)
+│   │   ├── core/errors.py         # NotFoundError, InvalidRequestError, IncompleteWriteError
+│   │   ├── features/              # one package per feature: routes.py, service.py, schemas.py
+│   │   │   ├── collections/       # collections, sharing, membership, access.py (rights checks)
+│   │   │   ├── documents/         # public corpus reads, collection-scoped document reads
+│   │   │   ├── annotations/       # tags, spans, offsets, AI suggestions, span chat
+│   │   │   └── search/            # search service, filters
+│   │   ├── adapters/              # concrete storage and provider clients
+│   │   │   ├── weaviate/          # repositories (collections, documents, tags, spans,
+│   │   │   │                      # chunk_tags, search), client, paging, writes
+│   │   │   ├── sql/               # SQL Base, tables, user lookups, RAG feedback table
+│   │   │   ├── embeddings/        # embedding service client
+│   │   │   ├── topicer/           # Topicer span-proposal client
+│   │   │   └── llm/               # Responses API streaming (span chat)
+│   │   ├── routes/                # DI (dependencies.py) and routes outside features:
+│   │   │                          # rag, summarizer, feedback, user search
+│   │   ├── schema/                # shared corpus models (documents, chunks), write outcomes
+│   │   ├── schemas.py             # RAG/feedback HTTP models, CollectionNames
 │   │   ├── ollama_proxy.py        # round-robin Ollama client
-│   │   ├── ai_assistance/         # external AI integrations
-│   │   │   └── span_chat.py       # streaming "discuss this span" chat
-│   │   ├── adapters/topicer/      # async HTTP client for the Topicer span-proposal service
-│   │   ├── features/annotations/  # tags, spans, AI suggestions (suggestions.py)
-│   │   ├── configs/               # YAML configs (summariser prompts)
-│   │   ├── llm_api/               # async LLM abstraction (OpenAI, Ollama, Gemini)
+│   │   ├── configs/               # YAML configs (summariser prompts, search filters)
+│   │   ├── llm_api/               # async LLM abstraction (OpenAI, Ollama)
 │   │   ├── rag/                   # RAG implementations + YAML configs
-│   │   ├── routes/                # FastAPI routers (search, rag, tags, spans,
-│   │   │                          # ai_assistance, span_chat, collections,
-│   │   │                          # documents, users, feedback)
 │   │   ├── summarization/         # search-result summariser (Jinja2 templates)
-│   │   ├── tagging/               # LLM-based tag propagation logic
+│   │   ├── maintenance/           # chunk tag audit (explicit, reviewed cleanup)
 │   │   ├── users/                 # FastAPI Users (auth model, manager, JWT)
-│   │   ├── weaviate_utils/        # Weaviate abstraction layer (CRUD per collection)
-│   │   │   ├── weaviate_abstraction.py  # Main facade exposing every collection handler
-│   │   │   ├── document.py        # Document collection operations
-│   │   │   ├── text_chunk.py      # TextChunk collection operations
-│   │   │   ├── tag.py             # Tag collection operations
-│   │   │   ├── span.py            # Span collection (manual + auto spans, AI metadata)
-│   │   │   ├── user_collection.py # UserCollection (user-defined grouping) operations
-│   │   │   └── helpers.py         # Shared utility functions
 │   │   └── utils/                 # Jinja2 template helpers
-│   └── tests/                     # unit tests (auth, llm_api, summarization, utils)
+│   └── tests/                     # fast tests; integration/ (real Weaviate, `make test-integration`)
 ├── semant_demo_frontend/          # Vue/Quasar SPA
 │   └── src/
-│       ├── pages/                 # SearchPage, RagPage, TagManagementPage,
-│       │                          # FeedbackPage, AboutPage, OldUserCollectionsPage,
+│       ├── pages/                 # SearchPage, RagPage, FeedbackPage, AboutPage,
 │       │                          # Collections/* (UserCollectionsPage,
 │       │                          #   CollectionOverviewPage, CollectionDocumentsPage,
-│       │                          #   CollectionTagsPage, CollectionTaggingJobsPage,
-│       │                          #   CollectionMembersPage, DocumentDetailPageV2,
-│       │                          #   DocumentTaggingPage/)
+│       │                          #   CollectionTagsPage, CollectionMembersPage,
+│       │                          #   xjuric31/DocumentDetailPage: the document view)
 │       ├── app/                   # app shell: right sidebar, session scope
 │       ├── features/              # feature code moved so far (search, collections)
 │       ├── shared/api/            # API transport: backend URL, auth token, generated
@@ -119,89 +113,50 @@ flowchart LR
     end
 
     subgraph Backend ["Backend (FastAPI :8000)"]
-        API[main.py endpoints]
+        API["features/*/routes.py"]
+        SVC["feature services<br/>(access checks, workflows)"]
         RAG[RAG engines]
         SUM[Summariser]
-        TAG[Tagging worker]
-        WA["WeaviateAbstraction<br/>(unified data layer)"]
+        AD["adapters/<br/>(weaviate, sql, providers)"]
     end
 
     EMB[Embedding Service :8001]
     WV[(Weaviate :8080)]
-    SQL[(SQLite tasks.db)]
+    SQL[(SQLite: users, RAG feedback)]
     LLM[Ollama / OpenAI / Gemini]
+    TOP[Topicer]
 
-    FE -- REST --> API
-    API --> RAG
-    API --> SUM
-    API --> TAG
-    API -- embed query --> EMB
-    API --> WA
-    WA -- search/CRUD --> WV
-    TAG -- status --> SQL
+    FE -- REST / NDJSON --> API
+    API --> SVC
+    SVC --> AD
+    RAG --> SVC
+    SVC --> SUM
+    AD --> WV
+    AD --> SQL
+    AD --> EMB
+    AD --> TOP
+    AD --> LLM
     RAG --> LLM
     SUM --> LLM
-    TAG --> LLM
 ```
 
-### Weaviate Abstraction Layer
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current module map, access rules and
+streaming behavior, and [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md) for the
+intended direction.
 
-Weaviate access is moving to plain repositories in `semant_demo/adapters/weaviate/` (`DocumentRepository`, `TagRepository`, `UserCollectionRepository`; see [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md)). They take `UUID` ids, return application schemas and raise `core.errors.NotFoundError` for missing objects. The **WeaviateAbstraction** class below remains as a transitional bundle for code not migrated yet (span, AI assistance, search, RAG). It groups these collection handlers:
+### Weaviate access
 
-- **Document**: document metadata and retrieval
-- **TextChunk**: text passages with embeddings, metadata and search
-- **Tag**: tagging definitions, CRUD, and search
-- **Span**: tag span markers within chunks
-- **UserCollection**: user-defined groupings of chunks (collections per user)
-- **helpers**: shared utility functions (tag reference management, filtering, transforms) used across handlers
+Weaviate is read and written only through plain repositories in
+`semant_demo/adapters/weaviate/` (`UserCollectionRepository`, `DocumentRepository`,
+`TagRepository`, `SpanRepository`, `ChunkTagRepository`, `ChunkSearchRepository`), built once per
+application by `bootstrap.py` on one client. They take `UUID` ids, return application schemas,
+return `None` for a missing object on single reads and raise `core.errors.NotFoundError` where an
+operation needs one. Feature services call them after checking access; SDK filters and objects do
+not leave `adapters/`.
 
-Each handler encapsulates:
-- **Query construction** (filters, references, properties)
-- **Error handling** (custom Weaviate exceptions)
-- **Schema consistency** (CRUD operations always respect the schema)
-- **Async/await patterns** (non-blocking database I/O)
-
-**Collection names** are centrally managed via the `CollectionNames` schema (Pydantic model) and initialized from `config.py`, allowing handlers to reference collections by name without hardcoding. This makes collection names easily configurable across the application:
-```python
-# In schemas.py: CollectionNames defines the structure
-class CollectionNames(BaseModel):
-    chunks_collection_name: str
-    tag_collection_name: str
-    user_collection_name: str
-    document_collection_name: str
-    span_collection_name: str
-    user_collection_link_name: str
-    tag_to_user_collection_link_name: str
-
-# In config.py: CollectionNames values are initialized
-self.collectionNames = CollectionNames(
-    chunks_collection_name = "Chunks",
-    tag_collection_name = "Tag",
-    user_collection_name = "UserCollection",
-    document_collection_name = "Documents",
-    span_collection_name = "Span",
-    user_collection_link_name = "userCollection",
-    tag_to_user_collection_link_name = "tagToUserCollection",
-)
-
-# In handlers: Access collection names consistently
-collection = self.client.collections.get(self.collectionNames.chunks_collection_name)
-```
-
-**Usage example:**
-```python
-searcher = WeaviateAbstraction(client, collectionNames)  # initialized at startup
-
-# Create a tag
-tag = await searcher.tag.create(collection_id, tagData)
-
-# Search chunks
-results = await searcher.textChunk.search(query, limit=10, filters=...)
-
-# Manage user collections
-collections = await searcher.userCollection.read(userId)
-await searcher.userCollection.add_chunks(chunk_id, collection_id)
-```
+**Collection names** are centrally managed via the `CollectionNames` model (`schemas.py`) and
+initialized in `config.py` (`Chunks`, `Tag`, `UserCollection`, `Documents`, `Span`, reference
+names `userCollection` and `tagToUserCollection`); repositories receive them at construction.
 
 ## Quick Start
 
@@ -256,7 +211,7 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `MODEL_TEMPERATURE` | `0.0` | Default LLM temperature |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |
-| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Directory for the SQLite `tasks.db` database (mounted into the container) |
+| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Directory for the SQLite `tasks.db` database with user accounts and RAG feedback (mounted into the container; the name is historical) |
 | `ALLOWED_ORIGIN` | `https://demo.semant.cz` | CORS origin for frontend |
 | `PORT` | `8000` | Backend listen port |
 | `STATIC_PATH` | `./static` | Path to built frontend assets (production) |
@@ -280,78 +235,83 @@ For detailed setup instructions, advanced options, and data management, see [dep
 
 ## API Endpoints
 
+The authoritative contract is the OpenAPI schema (`/docs` on a running backend,
+`make api-generate` exports it and regenerates the frontend client). Login and resource
+rights are checked per operation as described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
+public corpus reads, search without a collection, RAG and summaries work anonymously. The
+`/api/ai/*` suggestion and span chat endpoints stream NDJSON.
+
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/auth/register` | Create a new account (email, password, username, name, institution) |
-| `POST` | `/api/auth/jwt/login` | Login with email or username — returns `access_token` |
-| `POST` | `/api/auth/jwt/logout` | Logout (client discards token) |
-| `GET` | `/api/users/me` | Current user info (requires Bearer token) |
-| `PATCH` | `/api/users/me` | Update current user (email / password / name / institution) |
-| `POST` | `/api/search` | Hybrid/text/vector search with filters |
-| `POST` | `/api/summarize/{type}` | Summarise search results (`results`) |
-| `POST` | `/api/question/{text}` | Q&A over search results (OpenAI) |
-| `GET` | `/api/document/{document_id}` | Retrieve one document by ID |
-| `GET` | `/api/documents/browse` | Browse documents in a collection with paging/filter/sort |
-| `GET`  | `/api/rag/configurations` | List available RAG configs |
-| `POST` | `/api/rag` | RAG chat request |
-| `POST` | `/api/rag/explain` | Explain selected text in RAG context |
-| `POST` | `/api/rag/feedback` | Save like/dislike feedback for RAG answer |
-| `POST` | `/api/tags` | Create a tag (`collection_id` query parameter) |
-| `GET` | `/api/tags/{tag_uuid}` | Get a tag by ID |
-| `PATCH` | `/api/tags/{tag_uuid}` | Update a tag |
-| `DELETE` | `/api/tags/{tag_uuid}` | Delete a tag |
-| `POST` | `/api/tag/task` | Start async LLM tagging job |
-| `GET`  | `/api/tag/configs` | List available tagging configs |
-| `GET`  | `/api/tag/tasks/info` | List all tagging tasks |
-| `GET`  | `/api/tag/task/status/{id}` | Poll tagging task status |
-| `DELETE` | `/api/tag/task/{id}` | Cancel a running tagging task |
-| `GET`  | `/api/tags` | List all tags |
-| `DELETE` | `/api/tags/automatic` | Remove automatic tag assignments |
-| `PUT` | `/api/tag/approve` | Approve a tag assignment |
-| `PUT` | `/api/tag/disapprove` | Reject a tag assignment |
-| `POST` | `/api/tags/filter` | Filter chunks by tag UUIDs |
-| `POST` | `/api/tag/textChunks` | Get chunks tagged with specific tags |
-| **Tag spans** | | |
-| `POST` | `/api/tag_spans` | Create one tag span (manual `pos`/`neg`) |
-| `GET` | `/api/tag_spans` | List spans (filterable by chunk / tag / collection) |
-| `POST` | `/api/tag_spans/batch` | Batch-fetch spans for many chunks |
-| `PATCH` | `/api/tag_spans/{span_id}` | Update span boundaries / type |
-| `DELETE` | `/api/tag_spans/{span_id}` | Delete a span |
-| `POST` | `/api/tag_spans/bulk_update` | Bulk update many spans in one call |
-| `POST` | `/api/tag_spans/in_document/delete` | Delete all spans for given tags inside a document |
-| **AI assistance** | | |
-| `POST` | `/api/ai/suggest_spans/thorough` | Stream span proposals chunk-by-chunk via Topicer (NDJSON) |
-| `POST` | `/api/ai/suggest_spans/optimized` | Stream span proposals via Topicer's DB-streaming endpoint (NDJSON) |
-| `POST` | `/api/ai/auto_spans/delete` | Delete `auto`-typed spans for a tag (optionally scoped to a document) |
-| `POST` | `/api/ai/discuss_span` | Stream a chat reply discussing a single span (NDJSON deltas) |
-| **User collections** | | |
-| `GET` | `/api/user_collections` | List collections for a user |
-| `GET` | `/api/user_collections/{collection_id}` | Get collection by ID |
-| `PATCH` | `/api/user_collections/{collection_id}` | Update collection metadata |
-| `DELETE` | `/api/collections/{collection_id}` | Delete collection |
-| `POST` | `/api/user_collection/chunks` | Add chunk to collection |
-| `GET`  | `/api/user_collection/chunks` | List chunks in a collection |
-| `GET` | `/api/user_collection/{collection_id}/stats` | Get aggregated collection stats |
-| `GET` | `/api/user_collection/{collection_id}/documents` | List documents in collection |
-| `POST` | `/api/collections/{collection_id}/documents/{document_id}` | Attach document (and its chunks) to collection |
-| `DELETE` | `/api/collections/{collection_id}/documents/{document_id}` | Detach document (and matching chunk refs) from collection |
-| `GET` | `/api/collections/{collection_id}/tags` | List tags in collection |
-| `GET` | `/api/collections/{collection_id}/documents/{document_id}/stats` | Per-document statistics inside a collection |
-| `GET` | `/api/collections/{collection_id}/documents/{document_id}/chunks/neighbours` | Fetch neighbour chunks around a target chunk |
-| `GET` | `/api/collections/{collection_id}/documents/{document_id}/chunks/range` | Fetch a chunk range inside a document |
-| `GET` | `/api/collections/{collection_id}/documents/{document_id}/chunks/count` | Count chunks of a document inside a collection |
-| **Users / feedback** | | |
-| `GET` | `/api/users/search` | Search users by partial email/username (for sharing collections) |
-| `POST` | `/api/v1/feedback` | Submit in-app feedback (persisted as JSONL) |
+| `GET` | `/api/users/search` | Search users by username substring. |
+| `POST` | `/api/tags` | Creates a tag in the collection, or returns the existing tag with the same fields. |
+| `GET` | `/api/tags/{tag_uuid}` | Retrieve tag by its id |
+| `DELETE` | `/api/tags/{tag_uuid}` | Deletes the tag with its annotations. |
+| `PATCH` | `/api/tags/{tag_uuid}` | Updates a tag. |
+| `GET` | `/api/user_collections` | Retrieves all collections for given user |
+| `POST` | `/api/user_collections` | Creates user collection in weaviate db, or not if the same user collection already exists |
+| `GET` | `/api/user_collections/{collection_id}` | Retrieves collection by its id |
+| `PATCH` | `/api/user_collections/{collection_id}` | Updates collection name/description/color. |
+| `PATCH` | `/api/collections/{collection_id}/owner` | Reassigns ownership of a collection to a different user. |
+| `POST` | `/api/user_collection/{collection_id}/chunks/{chunk_id}` | Connects chunk with user collection, and the chunk's document with the collection. |
+| `DELETE` | `/api/user_collection/{collection_id}/chunks/{chunk_id}` | Removes a chunk from a user collection. |
+| `POST` | `/api/collections/{collection_id}/share` | Shares a collection with another user. |
+| `DELETE` | `/api/collections/{collection_id}/share/{user_id}` | Revokes a collection share. |
+| `GET` | `/api/collections/{collection_id}/members` | Returns the users a collection is currently shared with. |
+| `GET` | `/api/user_collection/{collection_id}/stats` | Get Collection Stats |
+| `DELETE` | `/api/collections/{collection_id}` | Deletes a collection with its tags and annotations. |
+| `GET` | `/api/user_collection/{collection_id}/documents` | Returns documents which belong to collection given by id |
+| `POST` | `/api/collections/{collection_id}/documents/{document_id}` | Adds document to collection and also links all its chunks to that collection. |
+| `DELETE` | `/api/collections/{collection_id}/documents/{document_id}` | Removes a document and its chunks from a collection. |
+| `GET` | `/api/collections/{collection_id}/documents/{document_id}` | Returns chunks which belong to document and collection given by id |
+| `GET` | `/api/collections/{collection_id}/tags` | Returns tags which belong to collection given by id |
+| `GET` | `/api/collections/{collection_id}/documents/{document_id}/stats` | Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count. |
+| `GET` | `/api/collections/{collection_id}/documents/{document_id}/neighbour` | Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. |
+| `GET` | `/api/collections/{collection_id}/documents/{document_id}/chunks` | Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. |
+| `GET` | `/api/rag/configurations` | Get Avalaible Rag Configurations |
+| `POST` | `/api/rag` | Rag |
+| `POST` | `/api/rag/explain` | Explain Selection |
+| `POST` | `/api/rag/feedback` | Save Feedback |
+| `POST` | `/api/v1/feedback` | Save App Feedback |
+| `POST` | `/api/summarize/{summary_type}` | Summarize |
+| `POST` | `/api/question/{question_text}` | Question |
+| `GET` | `/api/document/{document_id}` | Retrieves document by its id |
+| `GET` | `/api/documents/browse` | Browses the corpus with pagination, filtering and sorting options. |
+| `GET` | `/api/documents/{document_id}/{collection_id}/chunks` | Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection. |
+| `GET` | `/api/documents/{document_id}/chunks/count` | Returns the total number of chunks in the given document (public corpus data). |
+| `POST` | `/api/tag_spans` | Adds new TagSpan and the matching chunk tag reference. |
+| `GET` | `/api/tag_spans` | Get stored TagSpans of a collection, optionally for one chunk. |
+| `POST` | `/api/tag_spans/batch` | Get stored TagSpans of a collection for multiple chunk IDs in a single request. |
+| `PATCH` | `/api/tag_spans/{span_id}` | Update TagSpan's information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. |
+| `DELETE` | `/api/tag_spans/{span_id}` | Delete a TagSpan and the chunk tag reference no other span backs. |
+| `POST` | `/api/tag_spans/bulk_update` | Apply the same :class:`PatchSpan` to many spans in one round-trip. |
+| `POST` | `/api/tag_spans/in_document/delete` | Bulk-delete approved (``type == 'pos'``) spans for the given tag ids within a single (collection, document) scope. |
+| `POST` | `/api/ai/suggest_spans/thorough` | Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags. |
+| `POST` | `/api/ai/suggest_spans/optimized` | Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. |
+| `POST` | `/api/ai/suggest_spans/selection` | Run AI span suggestion on a single user-selected passage that may span multiple chunks of the collection. |
+| `POST` | `/api/ai/auto_spans/delete` | Bulk-delete unresolved AI proposals (``type == 'auto'``) within a single (collection, document) for the given tag UUIDs. |
+| `POST` | `/api/ai/discuss_span` | Stream an assistant reply discussing whether the given span fits its tag. |
+| `GET` | `/api/search/filters` | Get Available Search Filters |
+| `POST` | `/api/search` | Search |
+| `POST` | `/api/auth/jwt/login` | Auth:Jwt.Login |
+| `POST` | `/api/auth/jwt/logout` | Auth:Jwt.Logout |
+| `POST` | `/api/auth/register` | Register:Register |
+| `GET` | `/api/users/me` | Users:Current User |
+| `PATCH` | `/api/users/me` | Users:Patch Current User |
+| `GET` | `/api/users/{id}` | Users:User |
+| `PATCH` | `/api/users/{id}` | Users:Patch User |
+| `DELETE` | `/api/users/{id}` | Users:Delete User |
+| `GET` | `/health` | Health |
 
 ## Testing
 
-```bash
-cd semant_demo_backend
-python -m pytest tests/ -v
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md#2-setup-and-commands). From the repository root:
 
-Tests cover the LLM API abstraction, Jinja2 template rendering and the summarisation pipeline. RAG factory loading is validated via test YAML configs under `rag/rag_configs/tests/`.
+```bash
+make check             # offline: Ruff, fast pytest suite, ESLint, vue-tsc, Vitest, API client drift
+make test-integration  # real-Weaviate tests in a throwaway container (Docker)
+make test-e2e          # Playwright smoke suite with fake AI providers (Docker)
+```
 
 ## Further Documentation
 
@@ -359,17 +319,20 @@ Tests cover the LLM API abstraction, Jinja2 template rendering and the summarisa
 |---|---|
 | [docs/VISION.md](docs/VISION.md) | Project vision, goals and user personas |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed architecture, RAG pipelines, data flow |
-| [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema and SQLite task model |
+| [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema and the SQL tables (users, RAG feedback) |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment and configuration guide |
 | [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and how to add page specific tools to it |
 | [docs/TODO.md](docs/TODO.md) | Recommended improvements and known technical debt |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development databases and test store rules |
+| [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md), [docs/adr/](docs/adr/README.md) | Architectural intent and decisions |
+| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | Contribution rules, checks, agent instructions |
 
 ## Contribution Guidelines
 
 1. Create an issue **and** a branch with the same name.
 2. Issue should contain: descriptive title, short summary, technical checklist, verification steps.
 3. Work on your branch; write notes/questions as issue comments.
-4. Write or update unit tests.
+4. Write or update tests (see [CONTRIBUTING.md](CONTRIBUTING.md#4-testing-contract)); run `make check`.
 5. Update relevant documentation; add/update diagrams where appropriate.
 6. Merge `main` into your branch, resolve conflicts.
 7. Open a pull request, assign a reviewer.

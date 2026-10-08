@@ -1,12 +1,12 @@
 # Refactor status
 
-Last updated: 2026-10-08 (#209)
+Last updated: 2026-10-08 (#210)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #209 — Consolidate frontend transport and context-scoped state
-  (in review, PR #231); next: #210.
+- Current issue: #210 — Remove transitional architecture and complete refactor
+  verification (in review); it is the last refactor issue.
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
@@ -14,8 +14,11 @@ Last updated: 2026-10-08 (#209)
   #203 (Collections feature migration, PR #221), #204 (annotation/chunk tag consistency,
   PR #223), #205 (Search feature service and adapter, PR #225), #206 (Annotations
   feature, PR #226), #207 (request-scoped AI suggestions, PR #228), #208 (schema
-  consolidation, PR #229)
-- Current stage: R5 frontend structure and roadmap seams (#209)
+  consolidation, PR #229), #209 (frontend transport and context-scoped state, PR #231)
+- Current stage: R6 retirement and verification (#210). Remaining before the refactor is
+  done: review/merge of #210, then a human with administration rights configures `main`'s
+  required checks before `197-refactor---base` is merged into `main` (see "#210 exit
+  verification").
 
 ## Development environment
 
@@ -680,37 +683,134 @@ Last updated: 2026-10-08 (#209)
   and the run ended with the request). Fast backend test for the fake Ollama route with the
   real summarizer client.
 
+## #210 outcome
+
+- Inventory (before deleting): `WeaviateAbstraction` — used only by span chat; old task/job
+  execution — none left in the backend (only the `TasksBase` name and the `tasks.db` file name);
+  deprecated exception shims — none left (`weaviate_exceptions.py` went in #206); duplicate
+  schemas — none (#208); transitional route/repository aliases — `get_search`, the `legacy`
+  field of `WeaviateRepositories`, the `searcher` test fixture; dead configuration —
+  `MODEL_NAME`, `USE_TRANSLATOR`; dead imports — 19 (Ruff F401); obsolete client code — the V2
+  document view calling removed task-era endpoints, the unused `sync-client-dev` script.
+- **Span chat** moved to the Annotations feature: `features/annotations/span_chat.py`
+  (`prepare_discussion` checks collection read access before the stream, as the route did;
+  `SpanDiscussion.deltas()` reads the context and streams) and `span_chat_routes.py`. Context
+  reads go through `DocumentRepository.read_chunk_text` / `read_following_chunk_texts`,
+  `TagRepository.read`, `SpanRepository.read` instead of raw Weaviate queries; the provider is
+  `adapters/llm/responses.ResponsesChat`, built by bootstrap from the app's config (it no longer
+  reads the process-wide `config`; the OpenAI client is now closed after each reply). Models
+  moved from `schema/ai_assistance.py` to `features/annotations/schemas.py`. Prompt, context
+  window, history limit, NDJSON lines and status codes are unchanged; invalid histories are
+  400 through `InvalidRequestError` with the same detail.
+- **Removed:** `weaviate_utils/weaviate_abstraction.py`, `ai_assistance/`,
+  `routes/span_chat_routes.py`, `routes/document_routes.py`, `schema/ai_assistance.py`,
+  `get_search`, `WeaviateRepositories.legacy`, the dead settings.
+- **Documents feature:** `features/documents/routes.py` + `service.py` (moved from
+  `routes/document_routes.py`). The service checks collection read access (and document
+  membership for chunk reads) before any read; public reads stay public.
+  `GET /api/documents/{document_id}/chunks/count` moved there from the Collections router
+  (deferred from #203): URL, operation id, anonymous access and response unchanged.
+- **SQL base:** `adapters/sql/base.Base` (was `schemas.TasksBase`), `adapters/sql/feedback.py`
+  (`RagUserFeedback`, was in `schemas.py`), `adapters/sql/tables.create_tables` (startup,
+  `tests/seed.py`). Table names and columns are unchanged; `create_all` only creates missing
+  tables. Existing databases keep their old unused `tasks` table (the local snapshot has
+  `rag_user_feedback`, `tasks`, `user`); it is not dropped. The default file name `tasks.db`
+  is kept because deployments mount it.
+- User search (`GET /api/users/search`) queries through `UserLookup.search_by_username`
+  instead of a session in the route (same query and response).
+- **V2 document view retired** (maintainer decision in this issue): `DocumentDetailPageV2.vue`
+  and `pages/Collections/DocumentTaggingPage/` (about 5,400 lines) are removed, with the V1/V2
+  toggle. `/collections/:c/documents/:d/v2` redirects to the document view. V2 called removed
+  endpoints (chunk add/remove, propose/approve/decline, propose best tag: runtime errors),
+  bypassed the #209 context guards and showed membership controls to shared users.
+- **Vue type-check baseline: 48 -> 0.** 30 entries left with V2; the rest fixed: typed
+  validation-rule callbacks in the auth dialogs and the feedback page, `modelValue` declared as
+  a prop of `RegisterDialog` (it was only passed through as an attribute),
+  `caretPositionFromPoint` typed locally (missing from the TypeScript 5.5 DOM types).
+- Ruff now also enforces unused imports (F401); package re-exports in `rag/__init__.py`
+  and `llm_api/__init__.py` are declared in `__all__`.
+- Docs reconciled: ARCHITECTURE (module map, dependencies, startup, access, span chat,
+  frontend routes; old tagging-task material removed and marked historical), README (structure,
+  architecture, endpoint table generated from the current OpenAPI, test commands), backend and
+  frontend READMEs, DATABASE (SQL tables), DEPLOYMENT (startup, debugging), TODO (resolved
+  items marked), CONTRIBUTING, AGENTS, REFACTOR_PLAN and TARGET_ARCHITECTURE status lines;
+  `TagSpans_benchmark.md` and `weaviate_benchmarks/` are marked historical.
+- API: the exported OpenAPI is identical to the base (compared with sorted keys); only the
+  position of the moved chunk-count path in the path list differs. The generated client is
+  unchanged (`make api-generate` produced no diff).
+- Tests: `tests/test_span_chat.py` (fakes: denied users read no context and call no provider,
+  unknown span, invalid history before access, shared user, prompt content with neighbours,
+  cross-chunk assembly, history limit, span deleted after the check, missing key, NDJSON done
+  and error lines); `tests/test_document_service.py` (public reads, owner/shared collection
+  reads, denial before any read, document outside the collection);
+  `test_api_contracts.py` (chunk-count operation unchanged, answered anonymously, malformed
+  id 404); `test_bootstrap.py` (SQL tables are exactly `user` and `rag_user_feedback`; a
+  restart keeps users and feedback). Integration: `test_span_chat.py` (real context from the
+  seeded store with a fake provider: shared user, cross-chunk span created through the API,
+  denial without a provider call); `test_repositories.py::test_collection_listing_beyond_one_page`
+  (1,006 extra collections for one user, owned and shared, deferred from #202). Browser: a
+  `/v2` link opens the document view.
+
+## #210 exit verification
+
+Commands run on the #210 branch (2026-10-08):
+
+- `make check`: Ruff clean; 407 fast backend tests passed; ESLint 0 errors (5 warnings);
+  vue-tsc 0 errors with an empty baseline; Vitest 92 passed; generated client up to date.
+- `make test-integration` (throwaway Weaviate 1.34.4): 220 passed.
+- `make test-e2e` (Playwright, fake providers): 14 passed — login across reload, register/
+  log in/out, shared user opens a shared document, annotations at their offsets, collection
+  switch without stale data, shared user without owner controls, tag editing and annotation
+  without membership controls, owner controls, search summary on selected results, sidebar
+  lifecycle, AI suggestions streaming/cancel/navigation, V2 redirect.
+- OpenAPI export compared with `origin/197-refactor---base` (above).
+
+Exit conditions (REFACTOR_PLAN.md section 5):
+
+- No application service reaches into a raw SDK client: `features/` imports no `weaviate`,
+  `openai`, `httpx` or SQLAlchemy module (checked by grep); services use concrete adapters as
+  documented. Residual outside features: `routes/summarizer_routes.py` (`/api/question` calls
+  the OpenAI SDK in the route) and `routes/rag_routes.py` (RAG feedback written with a session
+  in the route) — legacy RAG/summary modules that the target allows to stay until touched.
+- Protected access is enforced in the Collections, Documents, Search and Annotations services
+  (including AI suggestions and span chat); public corpus reads are intentional. Residual
+  exception: RAG, `/api/rag/explain`, `/api/summarize/{type}` and `/api/question/{text}` are
+  anonymous and call paid providers with client-supplied text (no private data):
+  [#234](https://github.com/DCGM/semant-demo/issues/234).
+- Partial outcomes are visible (#201, #204, #206, #207, #209) and covered by integration tests.
+- No user data is removed by the code changes: SQL tables are only created when missing
+  (tested), no Weaviate schema or data change, the chunk tag cleanup was not run.
+- No unreviewed API contract change: OpenAPI identical apart from path order; the only
+  user-visible change is the retired V2 view (decided in the issue).
+- No transitional facade remains. Remaining legacy items have owners (temporary exceptions
+  below and the linked issues).
+- **Not done (needs a human with administration rights):** `main` has no ruleset and is not
+  protected (`gh api repos/DCGM/semant-demo/rules/branches/main` returns `[]`, branch
+  `protected: false`; the classic protection endpoint is not readable with the available
+  token). The ruleset `refactor` requires "Backend tests", "Frontend checks", "Generated API
+  client drift" and "Integration tests" (strict) on `197-refactor---base` only. Configure the
+  same for `main` before merging the refactor into it.
+
 ## Temporary exceptions
 
-- **Process-wide `config` still read directly** by `ai_assistance/span_chat.py`. An app
-  built with `create_app(other_config)` still uses the process-wide settings for span chat.
-  `semant_demo.main:app` passes the same object, so production has one source. Topicer
-  takes the app's config since #207. Remove with the span-chat audit in #210. (The standalone scripts `rag/rag_runner_demo.py` and
-  `create_default_configurations.py` read it as their entry-point configuration.)
-- **Transitional `WeaviateAbstraction` facade** (`weaviate_utils/weaviate_abstraction.py`)
-  is still used by span chat only. It is built on the application's one client. Search,
-  summarizer, RAG (#205), tags/spans (#206) and AI suggestions (#207) no longer use it.
-  Remove the facade when span chat has moved (#210).
-- **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 48 errors;
-  60 before #209). Remaining real defects: the V2 document view
-  (`pages/Collections/DocumentTaggingPage/`, route `documentDetailV2`) calls `DefaultApi`
-  methods of the removed task-era endpoints (`useTagging.ts`: propose/approve tags, old
-  chunk add/remove) and has untyped span handling (`useTaggingPageState.ts`); the rest are
-  implicit-`any` callbacks in the auth dialogs and `FeedbackPage`, and the non-standard
-  `caretPositionFromPoint`. Hand these to #210 (fix or retire the V2 page; it was not
-  touched by #209).
-- **Ruff rule set limited** to `E9, F63, F7, F82`. The default rule set reports ~140 legacy
-  findings (unused/star imports, comparisons). Python formatting and a Python type checker
-  are not enforced yet.
-- **Access checks are called from route handlers** outside Collections, Search and
-  Annotations (span chat, document routes), because those features have no service layer
-  yet. Each handler calls the check before any other work. Audit the remaining Document and
-  span-chat boundaries under #210 while preserving intentionally public corpus reads.
-  Collections (#203), Search (#205), Annotations (#206) and AI suggestions (#207, in the
-  `prepare_*` functions) enforce access in their services; `service.save_span` is the
-  documented exception (its callers `create_span` and the suggestion workflow check first).
+- **Process-wide `config`** remains only as the entry-point configuration of
+  `semant_demo.main:app`, `run.py` and the standalone scripts
+  (`create_default_configurations.py`, `rag/rag_runner_demo.py`). Application code reads the
+  app's `Config` (span chat since #210).
+- **Routes outside features** (`routes/rag_routes.py`, `summarizer_routes.py`,
+  `feedback_routes.py`, `user_routes.py`) stay where they are (TARGET_ARCHITECTURE section 2
+  allows it until touched). `/api/question` calls the OpenAI SDK and RAG feedback uses a SQL
+  session directly in the route; their anonymous provider use is
+  [#234](https://github.com/DCGM/semant-demo/issues/234).
+- **Ruff rule set limited** to `E9, F63, F7, F82, F401`. The default set still reports legacy
+  findings (star imports in `rag/incremental_rag.py`, comparisons, long lines). Python
+  formatting and a Python type checker are not enforced.
 - **Vitest 0.23.4** is pinned because it is the last release supporting Vite 2
   (`@quasar/app-vite` 1). Upgrade together with Quasar app-vite 2 / Vite 5.
+- **`npm run sync-client`** is kept only because `deploy/Dockerfile` regenerates the client at
+  image build: [#233](https://github.com/DCGM/semant-demo/issues/233).
+- **`make dev`** (proposed in R0) does not exist; CONTRIBUTING documents running the backend and
+  frontend directly.
 
 ## Known problems affecting later steps
 
@@ -750,11 +850,11 @@ Last updated: 2026-10-08 (#209)
 - The search summary's *Brevity* option is sent nowhere: `/api/summarize/results` has no
   brevity parameter (unchanged from before #209 and PR #194).
 
-- Required checks are a repository setting, not part of the workflow file. As of
-  2026-10-07 the ruleset for `197-refactor---base` requires "Backend tests", "Frontend
-  checks", "Generated API client drift" and "Integration tests" (strict, branch up to
-  date). Before merging the refactor into `main`, verify and configure the same four
-  required checks for `main` with a repository administrator (#210).
+- Required checks are a repository setting, not part of the workflow file. The ruleset for
+  `197-refactor---base` requires "Backend tests", "Frontend checks", "Generated API client
+  drift" and "Integration tests" (strict, branch up to date). As of 2026-10-08 `main` has no
+  ruleset and no protection: a repository administrator must configure the same four required
+  checks before the refactor is merged into `main` (#210 exit verification).
 - PR preview deploys still run with production `OPENAI_API_KEY`/`JWT_SECRET` secrets on
   the self-hosted runner and still deploy after failed checks. Not changed in #200 (a
   deployment decision); tracked in #213.
@@ -763,8 +863,13 @@ Last updated: 2026-10-08 (#209)
   `restart: unless-stopped`, so it retries; there is no `depends_on`/health condition
   between the separately deployed stacks.
 - Tag creation deduplicates against at most 2000 tags of a collection: #218.
-- `UserCollectionRepository.read_all` pages by 1000; the multi-page path of that listing
-  is not exercised by a test (needs more than 1000 collections for one user); cover it
-  with a real-store regression test in #210.
+- Span chat slices UTF-16 span offsets as code points (shifted after non-BMP characters),
+  unchanged by the #210 move: [#232](https://github.com/DCGM/semant-demo/issues/232).
+- `/collections/:c/tagging_jobs` ("Tagging Jobs" tab) is an empty placeholder page left from
+  the removed jobs; kept (product decision whether to drop the tab).
+- Open issues that the refactor appears to have resolved or made obsolete (for the maintainer
+  to close or update, not closed by #210): #215 (fixed in #208), #181, #183, #186 (old
+  `weaviate_utils` repositories, superseded by #202–#206), #43 (async tagging workers;
+  ADR 0003).
 - The corpus has no stored cross-chunk annotations; `test_annotations.py` creates them
   through the API. Multi-page documents are created by the repository tests themselves.

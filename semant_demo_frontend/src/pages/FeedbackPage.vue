@@ -41,7 +41,7 @@
               autogrow
               counter
               lazy-rules
-              :rules="[(value) => !!value || 'Message is required']"
+              :rules="[(value: string) => !!value || 'Message is required']"
             />
 
             <q-input
@@ -52,7 +52,7 @@
               type="email"
               lazy-rules
               :rules="[
-                (value) =>
+                (value: string) =>
                   !value || /.+@.+\..+/.test(value) || 'Enter a valid email'
               ]"
             />

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
+from semant_demo.adapters.llm.responses import ResponsesChat
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.client import connect_weaviate
@@ -23,7 +24,6 @@ from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.rag.rag_factory import RagRegistry
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,6 @@ class WeaviateRepositories:
     spans: SpanRepository
     chunk_tags: ChunkTagRepository
     """Chunk tag re-derivation; its per-pair locks are shared by all requests of the application."""
-    legacy: WeaviateAbstraction
-    """Transitional facade for callers not migrated yet (see its module docstring)."""
 
     @classmethod
     def create(cls, client: WeaviateAsyncClient, config: Config) -> "WeaviateRepositories":
@@ -55,7 +53,6 @@ class WeaviateRepositories:
             search=ChunkSearchRepository(client, names),
             spans=SpanRepository(client, names),
             chunk_tags=ChunkTagRepository(client, names),
-            legacy=WeaviateAbstraction(client, names),
         )
 
 
@@ -66,6 +63,7 @@ class AppResources:
     session_maker: async_sessionmaker
     embeddings: GemmaEmbeddings
     topicer: TopicerClient
+    span_chat: ResponsesChat
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
@@ -77,7 +75,10 @@ class AppResources:
         session_maker = async_sessionmaker(engine, autocommit=False, autoflush=True, expire_on_commit=False)
         return cls(config=config, engine=engine, session_maker=session_maker,
                    embeddings=GemmaEmbeddings(config.GEMMA_URL),
-                   topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT))
+                   topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT),
+                   span_chat=ResponsesChat(api_key=config.SPAN_CHAT_API_KEY, base_url=config.SPAN_CHAT_API_URL,
+                                           model=config.SPAN_CHAT_MODEL, temperature=config.SPAN_CHAT_TEMPERATURE,
+                                           max_tokens=config.SPAN_CHAT_MAX_TOKENS))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
         """Open the application's Weaviate client; raises if it cannot be connected."""

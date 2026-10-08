@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
+"""HTTP routes of the Documents feature (public corpus reads); the rules live in ``service.py``."""
+from fastapi import APIRouter, Depends, Query
 
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.schema.documents import DocumentBrowse, Document, DocumentDetail
-from semant_demo.features.collections import access
+from semant_demo.features.documents import service
 from semant_demo.routes.dependencies import get_collections, get_documents
+from semant_demo.schema.documents import Document, DocumentBrowse, DocumentDetail
 from semant_demo.users.auth import current_active_optional_user, current_active_user
 from semant_demo.users.models import User
 
@@ -16,10 +17,7 @@ async def fetch_document(document_id: str, documents: DocumentRepository = Depen
     """
     Retrieves document by its id
     """
-    response = await documents.read(access.parse_id(document_id, "Document"))
-    if response is None:
-        raise HTTPException(status_code=404, detail=f"Document with id {document_id} not found")
-    return response
+    return await service.read_document(documents, document_id)
 
 @exp_router.get("/api/documents/browse", response_model=DocumentBrowse, response_model_exclude_none=True)
 async def browse_documents(collection_id: str | None = None,
@@ -38,20 +36,9 @@ async def browse_documents(collection_id: str | None = None,
         Browses the corpus with pagination, filtering and sorting options. With ``collection_id``
         only that collection's documents are browsed, which needs read access to it.
     """
-    scope = None
-    if collection_id is not None:
-        scope = (await access.require_collection_read(collections, current_user, collection_id)).collection_id
-    return await documents.browse(
-        collection_id=scope,
-        limit=limit,
-        offset=offset,
-        sort_by=sort_by,
-        sort_desc=sort_desc,
-        title=title,
-        author=author,
-        publisher=publisher,
-        document_type=document_type
-    )
+    return await service.browse(documents, collections, current_user, collection_id,
+                                limit=limit, offset=offset, sort_by=sort_by, sort_desc=sort_desc,
+                                title=title, author=author, publisher=publisher, document_type=document_type)
 
 
 @exp_router.get("/api/documents/{document_id}/{collection_id}/chunks", response_model=DocumentDetail, response_model_exclude_none=True)
@@ -63,9 +50,16 @@ async def fetch_document_chunks(document_id: str,
     """
     Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
     """
-    grant = await access.require_collection_read(collections, current_user, collection_id)
-    document = await access.require_document_in_collection(collections, document_id, grant.collection_id)
-    response = await documents.read_chunks(document_id=document, collection_id=grant.collection_id)
-    if response is None:
-        raise HTTPException(status_code=404, detail=f"Document with id {document_id} not found")
-    return response
+    return await service.read_chunks_in_collection(documents, collections, current_user, document_id, collection_id)
+
+
+@exp_router.get(
+    "/api/documents/{document_id}/chunks/count",
+    response_model=int,
+)
+async def count_document_chunks(
+    document_id: str,
+    documents: DocumentRepository = Depends(get_documents),
+) -> int:
+    """Returns the total number of chunks in the given document (public corpus data)."""
+    return await service.count_chunks(documents, document_id)

@@ -30,8 +30,6 @@ class Config:
         #self.GEMMA_URL = "http://localhost:8001"
 
         self.PRODUCTION = env.get("PRODUCTION", str(False)).lower() in TRUE_VALUES
-        self.MODEL_NAME = env.get("MODEL_NAME", 'clip-ViT-L-14')
-        self.USE_TRANSLATOR = env.get("USE_TRANSLATOR", str(False)).lower() in TRUE_VALUES
         self.PORT = int(env.get("PORT", 8000))
         self.STATIC_PATH = env.get("STATIC_PATH", "./static")
         self.ALLOWED_ORIGIN = env.get("ALLOWED_ORIGIN", "http://localhost:9000")

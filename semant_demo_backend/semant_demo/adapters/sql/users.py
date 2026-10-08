@@ -2,7 +2,7 @@
 from collections.abc import Iterable
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from semant_demo.users.models import User
@@ -26,4 +26,10 @@ class UserLookup:
         if not ids:
             return []
         result = await self.session.execute(select(User).where(User.id.in_(ids)))
+        return [UserSearchResult.model_validate(user) for user in result.scalars().all()]
+
+    async def search_by_username(self, fragment: str, limit: int) -> list[UserSearchResult]:
+        """Users whose username contains ``fragment`` (case-insensitive), at most ``limit``."""
+        result = await self.session.execute(
+            select(User).where(func.lower(User.username).like(f"%{fragment.lower()}%")).limit(limit))
         return [UserSearchResult.model_validate(user) for user in result.scalars().all()]
