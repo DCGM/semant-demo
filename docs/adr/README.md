@@ -8,13 +8,13 @@ for context, not treated as a live defect list.
 
 | Record | Status |
 | --- | --- |
-| [0001 - Simple feature monolith](0001-simple-feature-monolith.md) | Agreed direction; classes/interfaces optional. |
-| [0002 - Best-effort writes](0002-best-effort-writes.md) | Agreed principle; detailed result envelope proposed. |
+| [0001 - Simple feature monolith](0001-simple-feature-monolith.md) | Implemented architecture; classes/interfaces optional. |
+| [0002 - Best-effort writes](0002-best-effort-writes.md) | Implemented partial-outcome principle; further envelope details are optional refinements. |
 | [0003 - Request-scoped AI](0003-request-scoped-ai.md) | Agreed lifecycle; detailed events/retry policy proposed. |
-| [0004 - Storage and annotation search](0004-storage-and-annotation-search.md) | Chunk-based search retained; inconsistent entries are cleanup, not legacy features. |
+| [0004 - Storage and annotation search](0004-storage-and-annotation-search.md) | Implemented chunk-tag search; inconsistent entries need reviewed cleanup. |
 | [0005 - Testing contract](0005-testing-contract.md) | Implemented baseline; detailed test guidance supporting CONTRIBUTING. |
 | [0006 - Context and text](0006-context-and-text.md) | Search context/line-level roadmap agreed; mapping implementation left open. |
-| [0007 - Access and collaboration](0007-access-and-collaboration.md) | Shared annotation editing, no membership editing; local progressive UI. |
+| [0007 - Access and collaboration](0007-access-and-collaboration.md) | Implemented shared annotation editing, owner-only membership and local progressive UI. |
 | [Review notes](REVIEW_NOTES.md) | **Historical** pre-refactor findings and pinned code evidence (not a current defects list). |
 
 ## Confirmed decisions
