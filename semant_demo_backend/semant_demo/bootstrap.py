@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
+from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
+from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.rag.rag_factory import RagRegistry
@@ -35,6 +37,9 @@ class WeaviateRepositories:
     tags: TagRepository
     collections: UserCollectionRepository
     search: ChunkSearchRepository
+    spans: SpanRepository
+    chunk_tags: ChunkTagRepository
+    """Chunk tag re-derivation; its per-pair locks are shared by all requests of the application."""
     legacy: WeaviateAbstraction
     """Transitional facade for callers not migrated yet (see its module docstring)."""
 
@@ -47,6 +52,8 @@ class WeaviateRepositories:
             tags=TagRepository(client, names),
             collections=UserCollectionRepository(client, names),
             search=ChunkSearchRepository(client, names),
+            spans=SpanRepository(client, names),
+            chunk_tags=ChunkTagRepository(client, names),
             legacy=WeaviateAbstraction(client, names),
         )
 

@@ -524,7 +524,7 @@ export interface DefaultApiInterface {
     createTagApiTagsPostRequestOpts(requestParameters: CreateTagApiTagsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Creates a tag in weaviate db, or not if the same tag already exists
+     * Creates a tag in the collection, or returns the existing tag with the same fields. If the tag cannot be added to its collection it is removed again and the request fails (500); creating it again is safe.
      * @summary Create Tag
      * @param {string} collectionId 
      * @param {PostTag} postTag 
@@ -535,7 +535,7 @@ export interface DefaultApiInterface {
     createTagApiTagsPostRaw(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>>;
 
     /**
-     * Creates a tag in weaviate db, or not if the same tag already exists
+     * Creates a tag in the collection, or returns the existing tag with the same fields. If the tag cannot be added to its collection it is removed again and the request fails (500); creating it again is safe.
      * Create Tag
      */
     createTagApiTagsPost(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag>;
@@ -549,7 +549,7 @@ export interface DefaultApiInterface {
     createTagSpanApiTagSpansPostRequestOpts(requestParameters: CreateTagSpanApiTagSpansPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated.
+     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\'s document are rejected (400).
      * @summary Create Tag Span
      * @param {PostSpan} postSpan 
      * @param {*} [options] Override http request option.
@@ -559,7 +559,7 @@ export interface DefaultApiInterface {
     createTagSpanApiTagSpansPostRaw(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>>;
 
     /**
-     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated.
+     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\'s document are rejected (400).
      * Create Tag Span
      */
     createTagSpanApiTagSpansPost(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult>;
@@ -621,7 +621,7 @@ export interface DefaultApiInterface {
     deleteCollectionApiCollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Deletes a collection with its tags and annotations. Owner only.
+     * Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * @summary Delete Collection
      * @param {string} collectionId 
      * @param {*} [options] Override http request option.
@@ -631,7 +631,7 @@ export interface DefaultApiInterface {
     deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Deletes a collection with its tags and annotations. Owner only.
+     * Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -669,7 +669,7 @@ export interface DefaultApiInterface {
     deleteTagApiTagsTagUuidDeleteRequestOpts(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Deletes tag
+     * Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * @summary Delete Tag
      * @param {string} tagUuid 
      * @param {*} [options] Override http request option.
@@ -679,7 +679,7 @@ export interface DefaultApiInterface {
     deleteTagApiTagsTagUuidDeleteRaw(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Deletes tag
+     * Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Tag
      */
     deleteTagApiTagsTagUuidDelete(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -1999,7 +1999,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates a tag in weaviate db, or not if the same tag already exists
+     * Creates a tag in the collection, or returns the existing tag with the same fields. If the tag cannot be added to its collection it is removed again and the request fails (500); creating it again is safe.
      * Create Tag
      */
     async createTagApiTagsPostRaw(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Tag>> {
@@ -2010,7 +2010,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates a tag in weaviate db, or not if the same tag already exists
+     * Creates a tag in the collection, or returns the existing tag with the same fields. If the tag cannot be added to its collection it is removed again and the request fails (500); creating it again is safe.
      * Create Tag
      */
     async createTagApiTagsPost(requestParameters: CreateTagApiTagsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag> {
@@ -2053,7 +2053,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated.
+     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\'s document are rejected (400).
      * Create Tag Span
      */
     async createTagSpanApiTagSpansPostRaw(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>> {
@@ -2064,7 +2064,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated.
+     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\'s document are rejected (400).
      * Create Tag Span
      */
     async createTagSpanApiTagSpansPost(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult> {
@@ -2213,7 +2213,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes a collection with its tags and annotations. Owner only.
+     * Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     async deleteCollectionApiCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -2224,7 +2224,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes a collection with its tags and annotations. Owner only.
+     * Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     async deleteCollectionApiCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -2318,7 +2318,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes tag
+     * Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Tag
      */
     async deleteTagApiTagsTagUuidDeleteRaw(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -2329,7 +2329,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes tag
+     * Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Tag
      */
     async deleteTagApiTagsTagUuidDelete(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {

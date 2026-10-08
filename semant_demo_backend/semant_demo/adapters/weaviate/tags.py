@@ -8,7 +8,7 @@ import semant_demo.schemas as schemas
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import delete_tag_cascade
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
-from semant_demo.schema.tags import PatchTag, PostTag, Tag
+from semant_demo.features.annotations.schemas import PatchTag, PostTag, Tag
 
 # Request field -> stored property.
 _PROPERTIES = {
@@ -42,19 +42,17 @@ class TagRepository:
     def _tags(self):
         return self.client.collections.get(self.collectionNames.tag_collection_name)
 
-    async def create(self, collection_id: UUID, tag: PostTag) -> Tag:
+    async def find_same(self, collection_id: UUID, tag: PostTag) -> Tag | None:
         """
-        Creates a tag in the collection, or returns the existing tag with exactly the same
-        fields. Raises ``NotFoundError`` if the collection does not exist.
+        A tag of the collection with exactly the same fields (examples in any order), or
+        None. Raises ``NotFoundError`` if the collection does not exist.
 
-        The duplicate check reads at most 2000 tags of the collection.
+        Reads at most 2000 tags of the collection (#218).
         """
         collections = self.client.collections.get(self.collectionNames.user_collection_name)
         if await collections.query.fetch_object_by_id(collection_id, return_properties=[]) is None:
             raise NotFoundError("Collection not found")
-
-        tags = self._tags()
-        existing = await tags.query.fetch_objects(
+        existing = await self._tags().query.fetch_objects(
             filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
             limit=2000,
         )
@@ -64,11 +62,19 @@ class TagRepository:
                     tag.name, tag.shorthand, tag.color, tag.pictogram, tag.definition
             ) and set(found.examples) == set(tag.examples):
                 return found
+        return None
 
-        new_tag_uuid = await tags.data.insert(
+    async def insert(self, tag: PostTag) -> UUID:
+        """Stores the tag without a collection (see ``link_to_collection``) and returns its id."""
+        return await self._tags().data.insert(
             properties={_PROPERTIES[field]: value for field, value in tag.model_dump().items()})
-        await tags.data.reference_add(from_uuid=new_tag_uuid, from_property="userCollection", to=collection_id)
-        return Tag(id=new_tag_uuid, **tag.model_dump())
+
+    async def link_to_collection(self, tag_id: UUID, collection_id: UUID) -> None:
+        await self._tags().data.reference_add(from_uuid=tag_id, from_property="userCollection", to=collection_id)
+
+    async def delete_unlinked(self, tag_id: UUID) -> None:
+        """Deletes a tag that was just inserted; it has no spans or chunk tag references yet."""
+        await self._tags().data.delete_by_id(tag_id)
 
     async def read(self, tag_id: UUID) -> Tag | None:
         """The tag with this id, or None if it does not exist."""
@@ -126,7 +132,7 @@ class TagRepository:
     async def delete(self, tag_id: UUID) -> None:
         """
         Deletes the tag after its chunk tag references and spans. Raises ``NotFoundError``
-        if the tag does not exist.
+        if the tag does not exist and ``IncompleteWriteError`` if a step fails.
         """
         if await self._tags().query.fetch_object_by_id(tag_id, return_properties=[]) is None:
             raise NotFoundError("Tag not found")

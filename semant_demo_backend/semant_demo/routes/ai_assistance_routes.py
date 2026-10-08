@@ -35,7 +35,9 @@ from semant_demo.ai_assistance.topicer_client import (
     topicer_client,
 )
 from semant_demo.features.collections import access
-from semant_demo.routes.dependencies import get_search
+from semant_demo.features.annotations import service as annotation_service
+from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.routes.dependencies import get_annotation_store, get_search
 from semant_demo.schema.ai_assistance import (
     DeleteAutoSpansRequest,
     DeleteAutoSpansResponse,
@@ -44,8 +46,7 @@ from semant_demo.schema.ai_assistance import (
     SuggestSpansSelectionRequest,
     SuggestSpansSelectionResponse,
 )
-from semant_demo.schema.outcomes import outcome_of
-from semant_demo.schema.spans import PostSpan
+from semant_demo.features.annotations.schemas import PostSpan
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
@@ -89,7 +90,7 @@ async def _load_tag_dicts(
 
 
 async def _persist_proposal(
-    searcher: WeaviateAbstraction,
+    annotations: AnnotationStore,
     *,
     chunk_id: str,
     chunk_length: int,
@@ -116,7 +117,7 @@ async def _persist_proposal(
     if end <= start:
         return None, "invalid offsets"
     try:
-        span, tag_failures = await searcher.span.create(PostSpan(
+        result = await annotation_service.save_span(annotations, PostSpan(
             chunkId=str(chunk_id),
             tagId=str(tag_id),
             start=start,
@@ -125,7 +126,8 @@ async def _persist_proposal(
             reason=reason,
             confidence=confidence,
         ))
-        return span, ("search tag not updated" if tag_failures else None)
+        span = schemas.TagSpan(**result.model_dump(include=set(schemas.TagSpan.model_fields)))
+        return span, ("search tag not updated" if result.failed else None)
     except Exception as e:
         logger.warning(
             "Failed to persist auto span (chunk=%s, tag=%s, start=%s, end=%s): %s",
@@ -173,6 +175,7 @@ _THOROUGH_CONCURRENCY = 10
 
 async def _thorough_stream(
     searcher: WeaviateAbstraction,
+    annotations: AnnotationStore,
     *,
     collection_id: str,
     document_id: str,
@@ -220,7 +223,7 @@ async def _thorough_stream(
                 if not tag_id:
                     continue
                 tally.add(await _persist_proposal(
-                    searcher,
+                    annotations,
                     chunk_id=str(chunk.id),
                     chunk_length=len(chunk.text or ""),
                     tag_id=str(tag_id),
@@ -255,6 +258,7 @@ async def _thorough_stream(
 
 async def _optimized_stream(
     searcher: WeaviateAbstraction,
+    annotations: AnnotationStore,
     *,
     collection_id: str,
     document_id: str,
@@ -296,7 +300,7 @@ async def _optimized_stream(
                         tag_obj = proposal.get("tag") or {}
                         proposal_tag_id = str(tag_obj.get("id") or tag["id"])
                         tally.add(await _persist_proposal(
-                            searcher,
+                            annotations,
                             chunk_id=chunk_id,
                             chunk_length=len(chunk_text_by_id[chunk_id]),
                             tag_id=proposal_tag_id,
@@ -322,6 +326,7 @@ async def _optimized_stream(
 
 async def _selection_stream(
     searcher: WeaviateAbstraction,
+    annotations: AnnotationStore,
     *,
     chunk_ids: list[str],
     selection_start: int,
@@ -435,7 +440,7 @@ async def _selection_stream(
 
                 tally = _SaveTally()
                 tally.add(await _persist_proposal(
-                    searcher,
+                    annotations,
                     chunk_id=anchor_chunk_id,
                     chunk_length=remaining,
                     tag_id=str(tag_id),
@@ -473,6 +478,7 @@ _NDJSON_MEDIA_TYPE = "application/x-ndjson"
 async def suggest_spans_thorough(
     body: SuggestSpansRequest,
     searcher: WeaviateAbstraction = Depends(get_search),
+    annotations: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ):
     """
@@ -493,6 +499,7 @@ async def suggest_spans_thorough(
     return StreamingResponse(
         _thorough_stream(
             searcher,
+            annotations,
             collection_id=str(grant.collection_id),
             document_id=str(document_id),
             tag_ids=body.tag_ids,
@@ -516,6 +523,7 @@ async def suggest_spans_thorough(
 async def suggest_spans_optimized(
     body: SuggestSpansRequest,
     searcher: WeaviateAbstraction = Depends(get_search),
+    annotations: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ):
     """
@@ -534,6 +542,7 @@ async def suggest_spans_optimized(
     return StreamingResponse(
         _optimized_stream(
             searcher,
+            annotations,
             collection_id=str(grant.collection_id),
             document_id=str(document_id),
             tag_ids=body.tag_ids,
@@ -560,6 +569,7 @@ async def suggest_spans_optimized(
 async def suggest_spans_selection(
     body: SuggestSpansSelectionRequest,
     searcher: WeaviateAbstraction = Depends(get_search),
+    annotations: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ):
     """
@@ -595,6 +605,7 @@ async def suggest_spans_selection(
     return StreamingResponse(
         _selection_stream(
             searcher,
+            annotations,
             chunk_ids=body.chunk_ids,
             selection_start=body.selection_start,
             selection_end=body.selection_end,
@@ -610,7 +621,7 @@ async def suggest_spans_selection(
 )
 async def delete_auto_spans(
     body: DeleteAutoSpansRequest,
-    searcher: WeaviateAbstraction = Depends(get_search),
+    annotations: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> DeleteAutoSpansResponse:
     """
@@ -622,15 +633,6 @@ async def delete_auto_spans(
     ``failed`` those that could not be deleted (``delete_span``) and the chunk tag
     updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
     """
-    grant = await access.require_annotation_edit(searcher.userCollection, current_user, body.collection_id)
-    document = await access.require_document_in_collection(searcher.userCollection, body.document_id, grant.collection_id)
-    if not body.tag_ids:
-        return DeleteAutoSpansResponse(outcome=outcome_of(0, 0), deleted=0)
-    await access.require_tags_in_collection(searcher.tag, body.tag_ids, grant.collection_id)
-
-    result = await searcher.span.delete_auto_spans_in_scope(
-        collection_id=str(grant.collection_id),
-        document_id=str(document),
-        tag_ids=body.tag_ids,
-    )
+    result = await annotation_service.delete_suggestions_in_document(
+        annotations, current_user, body.collection_id, body.document_id, body.tag_ids)
     return DeleteAutoSpansResponse(**result.model_dump(), deleted=len(result.succeeded))

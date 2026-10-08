@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { Collection, Collections, PostCollection, PatchCollection } from 'src/models/collections'
 import { useCollectionRepository } from 'src/repositories/useCollectionRepository'
 import { ongoingNotification } from 'src/utils/notification'
+import { incompleteWriteMessage } from 'src/utils/writeOutcome'
 
 export const useCollectionsStore = defineStore('userCollections', () => {
   const collectionRepository = useCollectionRepository()
@@ -101,7 +102,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
     } catch (err) {
       error.value = 'Failed to delete collection'
       console.error('Error deleting collection:', err)
-      notif.error('Failed to delete collection')
+      notif.error(await incompleteWriteMessage(err, 'Failed to delete collection'))
     } finally {
       loading.value = false
     }
@@ -122,7 +123,7 @@ export const useCollectionsStore = defineStore('userCollections', () => {
       hadError = true
       error.value = 'Failed to delete some collections'
       console.error('Error deleting collections:', err)
-      notif.error('Failed to delete some collections')
+      notif.error(await incompleteWriteMessage(err, 'Failed to delete some collections'))
       // On error, restore via fresh fetch so non-deleted items reappear
       await fetchCollections()
     } finally {

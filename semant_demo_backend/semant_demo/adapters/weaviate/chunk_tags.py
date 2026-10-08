@@ -11,16 +11,24 @@ needs no further scope.
 spans currently stored. Span writes call it for every pair they touched, after the span
 write, so it is safe to repeat and keeps a reference while another span still backs it.
 It is not atomic with the span write: a failure is returned as a ``StepFailure`` and the
-span write is kept (ADR 0002). Two concurrent writes on the same pair can interleave
-their reads and writes; saving or deleting a span of that pair again re-derives it.
+span write is kept (ADR 0002).
+
+``ChunkTagRepository`` (used by the Annotations service) runs the re-derivation of one
+pair at a time within the process (#206). Every span write is followed by a sync that
+starts after it, so the last sync of a pair reads all earlier span writes and the pair
+ends consistent. Without this, two requests could interleave: one reads the spans, the
+other changes them and syncs, the first applies its stale result. The lock is
+process-local: with several worker processes the race remains (saving or deleting a
+span of that pair again, or the audit, re-derives it).
 
 ``audit_chunk_tags`` and ``apply_chunk_tag_fixes`` serve the separate, reviewed cleanup
 of existing data (``python -m semant_demo.maintenance.chunk_tag_audit``); nothing calls
 them during startup or normal requests.
 """
 import asyncio
+import weakref
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Callable, Iterable
 from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
@@ -99,6 +107,7 @@ async def _sync_pair(client: WeaviateAsyncClient, names: schemas.CollectionNames
 
 async def sync_chunk_tags(client: WeaviateAsyncClient, names: schemas.CollectionNames,
                           pairs: Iterable[ChunkTag], *, add: bool = True, remove: bool = True,
+                          lock_for: Callable[[ChunkTag], asyncio.Lock] | None = None,
                           ) -> tuple[list[ChunkTag], list[StepFailure]]:
     """Make the chunk tag references of ``pairs`` match their spans.
 
@@ -106,13 +115,18 @@ async def sync_chunk_tags(client: WeaviateAsyncClient, names: schemas.Collection
     and a ``update_chunk_tags`` failure for each pair whose read or write failed. A failed
     read is a failure, never taken as "no spans". ``add`` / ``remove`` restrict which
     corrections are made (the cleanup command uses them); span writes pass neither.
+    ``lock_for`` serializes the re-derivation of each pair (see ``ChunkTagRepository``).
     """
     pairs = sorted(set(pairs))
     sem = asyncio.Semaphore(_SYNC_CONCURRENCY)
 
     async def one(pair: ChunkTag):
         async with sem:
-            await _sync_pair(client, names, pair, add=add, remove=remove)
+            if lock_for is None:
+                await _sync_pair(client, names, pair, add=add, remove=remove)
+            else:
+                async with lock_for(pair):
+                    await _sync_pair(client, names, pair, add=add, remove=remove)
 
     results = await asyncio.gather(*(one(p) for p in pairs), return_exceptions=True)
     done: list[ChunkTag] = []
@@ -125,6 +139,27 @@ async def sync_chunk_tags(client: WeaviateAsyncClient, names: schemas.Collection
         else:
             done.append(pair)
     return done, failed
+
+
+class ChunkTagRepository:
+    """Chunk tag re-derivation for span writes, one pair at a time within the process."""
+
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
+        self.client = client
+        self.collectionNames = collectionNames
+        # A lock exists while some sync holds or waits for it.
+        self._locks: weakref.WeakValueDictionary[ChunkTag, asyncio.Lock] = weakref.WeakValueDictionary()
+
+    def _lock(self, pair: ChunkTag) -> asyncio.Lock:
+        lock = self._locks.get(pair)
+        if lock is None:
+            lock = self._locks[pair] = asyncio.Lock()
+        return lock
+
+    async def sync(self, pairs: Iterable[ChunkTag]) -> list[StepFailure]:
+        """Re-derive the pairs' references; returns a ``update_chunk_tags`` failure per failed pair."""
+        _, failed = await sync_chunk_tags(self.client, self.collectionNames, pairs, lock_for=self._lock)
+        return failed
 
 
 # ── Audit of existing data ────────────────────────────────────────────────

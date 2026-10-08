@@ -1,7 +1,43 @@
-from pydantic import BaseModel
+"""Inputs and results of the Annotations feature: tag definitions and span annotations."""
+from uuid import UUID
+
+from pydantic import BaseModel, model_validator
 
 from semant_demo.schema.outcomes import WriteResult
 from semant_demo.schemas import SpanType, TagSpan
+
+class Tag(BaseModel):
+    id: UUID
+    name: str
+    shorthand: str
+    color: str
+    pictogram: str
+    definition: str
+    examples: list[str]
+
+class PostTag(BaseModel):
+    name: str
+    shorthand: str
+    color: str
+    pictogram: str
+    definition: str
+    examples: list[str] = []
+
+class PatchTag(BaseModel):
+    name: str | None = None
+    shorthand: str | None = None
+    color: str | None = None
+    pictogram: str | None = None
+    definition: str | None = None
+    examples: list[str] | None = None
+
+    @model_validator(mode="after")
+    def check_at_least_one_field_set(self) -> "PatchTag":
+        # Null means "keep the current value"; tag fields cannot be cleared.
+        if not self.model_dump(exclude_unset=True, exclude_none=True):
+            raise ValueError("At least one field must be provided for update")
+        return self
+
 
 class PostSpan(BaseModel):
     start: int
@@ -61,6 +97,7 @@ class DeleteSpansForTagsRequest(BaseModel):
 class DeleteSpansForTagsResponse(WriteResult):
     """Result of a bulk per-tag deletion; ``succeeded`` lists the deleted span ids."""
     deleted: int
+
 
 class TagSpanBatchRequest(BaseModel):
     chunk_ids: list[str] | None = None

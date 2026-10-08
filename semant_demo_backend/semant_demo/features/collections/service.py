@@ -22,7 +22,7 @@ from semant_demo.features.collections.schemas import (
 from semant_demo.schema.chunks import Chunk
 from semant_demo.schema.documents import Document, DocumentStats
 from semant_demo.schema.outcomes import WriteResult
-from semant_demo.schema.tags import Tag
+from semant_demo.features.annotations.schemas import Tag
 from semant_demo.users.schemas import UserSearchResult
 
 Id = str | UUID
@@ -79,7 +79,10 @@ async def change_owner(collections: UserCollectionRepository, users: UserLookup,
 
 async def delete_collection(collections: UserCollectionRepository, user: Principal | None,
                             collection_id: Id) -> None:
-    """Deletes the collection with its tags and annotations. Owner only."""
+    """
+    Deletes the collection with its tags and annotations. Owner only. A failed step raises
+    ``IncompleteWriteError`` naming it and the completed steps; deleting again continues.
+    """
     grant = await access.require_collection_owner(collections, user, collection_id)
     await collections.delete(grant.collection_id)
 

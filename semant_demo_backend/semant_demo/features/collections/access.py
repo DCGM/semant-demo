@@ -30,9 +30,9 @@ from typing import Iterable, Protocol
 from uuid import UUID
 
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.core.errors import NotFoundError
-from semant_demo.weaviate_utils.span import Span
 
 
 class Principal(Protocol):
@@ -199,7 +199,7 @@ async def require_chunks_in_collection(collections: UserCollectionRepository, ch
     return ids
 
 
-async def collection_of_spans(spans: Span, tags: TagRepository, span_ids: Iterable[str | UUID]) -> UUID:
+async def collection_of_spans(spans: SpanRepository, tags: TagRepository, span_ids: Iterable[str | UUID]) -> UUID:
     """The one collection all given spans belong to (via their tag); not found otherwise."""
     ids = list(dict.fromkeys(parse_id(s, "Span") for s in span_ids))
     if not ids:

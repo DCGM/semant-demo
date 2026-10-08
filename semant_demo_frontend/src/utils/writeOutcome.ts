@@ -45,3 +45,19 @@ export function spanOf (result: TagSpanWriteResult): TagSpan {
   const { id, chunkId, tagId, start, end, type, reason, confidence } = result
   return { id, chunkId, tagId, start, end, type, reason, confidence }
 }
+
+/**
+ * Message of a write that stopped part way (tag creation, tag or collection deletion):
+ * the backend answers 500 with `detail`, the failed `step` and the completed steps.
+ * Returns `fallback` for any other error.
+ */
+export async function incompleteWriteMessage (err: unknown, fallback: string): Promise<string> {
+  const response = (err as { response?: Response } | null)?.response
+  if (!response || response.status !== 500) return fallback
+  try {
+    const body = await response.clone().json() as { detail?: unknown, step?: unknown }
+    return typeof body.detail === 'string' && typeof body.step === 'string' ? body.detail : fallback
+  } catch {
+    return fallback
+  }
+}

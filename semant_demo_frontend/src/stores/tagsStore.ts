@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { Tags, PostTag, PatchTag, Tag } from 'src/models/tags'
 import { useTagsRepository } from 'src/repositories/useTagsRepository'
 import { ongoingNotification } from 'src/utils/notification'
+import { incompleteWriteMessage } from 'src/utils/writeOutcome'
 
 export const useTagsStore = defineStore('tags', () => {
   const tagsRepository = useTagsRepository()
@@ -63,7 +64,7 @@ export const useTagsStore = defineStore('tags', () => {
     } catch (err) {
       error.value = 'Failed to create tag'
       console.error('Error creating tag:', err)
-      notif.error('Failed to create tag')
+      notif.error(await incompleteWriteMessage(err, 'Failed to create tag'))
       throw err
     } finally {
       loading.value = false
@@ -81,7 +82,7 @@ export const useTagsStore = defineStore('tags', () => {
     } catch (err) {
       error.value = 'Failed to delete tag'
       console.error('Error deleting tag:', err)
-      notif.error('Failed to delete tag')
+      notif.error(await incompleteWriteMessage(err, 'Failed to delete tag'))
     } finally {
       loading.value = false
     }
@@ -99,7 +100,7 @@ export const useTagsStore = defineStore('tags', () => {
     } catch (err) {
       error.value = 'Failed to delete some tags'
       console.error('Error deleting tags:', err)
-      notif.error('Failed to delete some tags')
+      notif.error(await incompleteWriteMessage(err, 'Failed to delete some tags'))
       throw err
     } finally {
       tagUuids.forEach((id) => pendingDeleteIds.value.delete(id))

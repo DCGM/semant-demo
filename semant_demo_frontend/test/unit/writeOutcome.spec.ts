@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SpanType, WriteOutcome } from 'src/generated/api'
-import { IncompleteWriteError, describeIncomplete, requireComplete, searchTagWarning, spanOf } from 'src/utils/writeOutcome'
+import { IncompleteWriteError, describeIncomplete, incompleteWriteMessage, requireComplete, searchTagWarning, spanOf } from 'src/utils/writeOutcome'
 
 describe('write outcomes', () => {
   it('passes complete results through', () => {
@@ -44,5 +44,17 @@ describe('write outcomes', () => {
     const span = { id: 's', chunkId: 'c', tagId: 't', start: 1, end: 4, type: SpanType.pos, reason: null, confidence: null }
     expect(spanOf({ ...span, outcome: WriteOutcome.complete, succeeded: ['s'], failed: [], unattempted: [] }))
       .toEqual(span)
+  })
+
+  it('shows the message of a write that stopped part way', async () => {
+    const body = { detail: 'Deleting the tag stopped at step delete_span.', step: 'delete_span', completed: {}, uncertain: false }
+    const stopped = { response: new Response(JSON.stringify(body), { status: 500 }) }
+    expect(await incompleteWriteMessage(stopped, 'Failed')).toBe(body.detail)
+  })
+
+  it('falls back for other errors', async () => {
+    expect(await incompleteWriteMessage(new Error('network'), 'Failed')).toBe('Failed')
+    expect(await incompleteWriteMessage({ response: new Response('Internal Server Error', { status: 500 }) }, 'Failed')).toBe('Failed')
+    expect(await incompleteWriteMessage({ response: new Response('{"detail": "x"}', { status: 404 }) }, 'Failed')).toBe('Failed')
   })
 })
