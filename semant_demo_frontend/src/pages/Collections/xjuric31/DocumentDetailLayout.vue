@@ -735,6 +735,9 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  // Leaving the document view aborts document-wide and selection runs; their late
+  // events are ignored. Suggestions already saved stay saved.
+  aiAssist.reset()
   aiAssist.aiTabActive.value = false
   aiAssist.highlightedAutoSpanId.value = null
 })
