@@ -1,16 +1,14 @@
 
 import openai
 import time
-import os
 
 from fastapi import APIRouter, Depends, HTTPException
-from semant_demo import schemas
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
-from semant_demo.config import config
+from semant_demo.features.search.schemas import SearchResponse, SummaryResponse
+from semant_demo.config import Config
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
 #import dependencies
-from semant_demo.routes.dependencies import get_search, get_summarizer #, get_engine
+from semant_demo.routes.dependencies import get_config, get_summarizer
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 import logging
@@ -20,13 +18,13 @@ from openai import AsyncOpenAI
 exp_router = APIRouter()
 
 
-def get_openai_client() -> AsyncOpenAI:
+def get_openai_client(config: Config) -> AsyncOpenAI:
     return AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
-@exp_router.post("/api/summarize/{summary_type}", response_model=schemas.SummaryResponse)
-async def summarize(search_response: schemas.SearchResponse, summary_type: str,
+@exp_router.post("/api/summarize/{summary_type}", response_model=SummaryResponse)
+async def summarize(search_response: SearchResponse, summary_type: str,
                     summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
-                    current_user: User | None = Depends(current_active_optional_user)) -> schemas.SummaryResponse:
+                    current_user: User | None = Depends(current_active_optional_user)) -> SummaryResponse:
     start_time = time.time()
     if summary_type != "results":
         # only "results" is supported now
@@ -37,15 +35,16 @@ async def summarize(search_response: schemas.SearchResponse, summary_type: str,
         search_response.results,
     )
     time_spent = time.time() - start_time
-    return schemas.SummaryResponse(
+    return SummaryResponse(
         summary=summary,
         time_spent=time_spent,
     )
 
 
-@exp_router.post("/api/question/{question_text}", response_model=schemas.SummaryResponse)
-async def question(search_response: schemas.SearchResponse, question_text: str,
-                   current_user: User | None = Depends(current_active_optional_user)) -> schemas.SummaryResponse:
+@exp_router.post("/api/question/{question_text}", response_model=SummaryResponse)
+async def question(search_response: SearchResponse, question_text: str,
+                   current_user: User | None = Depends(current_active_optional_user),
+                   config: Config = Depends(get_config)) -> SummaryResponse:
     # build your snippets with IDs
     snippets = [
         f"[doc{i+1}]" + res.text.replace('\\n', ' ')
@@ -72,7 +71,7 @@ async def question(search_response: schemas.SearchResponse, question_text: str,
     print(messages)
 
     try:
-        resp = await get_openai_client().chat.completions.create(
+        resp = await get_openai_client(config).chat.completions.create(
             model="gpt-4.1-mini",
             messages=messages,
             temperature=0.0,
@@ -84,7 +83,7 @@ async def question(search_response: schemas.SearchResponse, question_text: str,
 
     summary_text = resp.choices[0].message.content.strip()
 
-    return schemas.SummaryResponse(
+    return SummaryResponse(
         summary=summary_text,
         time_spent=search_response.time_spent,
     )

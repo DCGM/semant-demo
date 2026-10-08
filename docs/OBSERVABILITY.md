@@ -32,7 +32,7 @@ FastAPI backend
                                       └─ Grafana Explore and dashboards
 ```
 
-`semant_demo_backend/semant_demo/opentelemetry.py` owns providers, exporters and instrumentation. It is the only module that should create an OpenTelemetry provider or exporter. `semant_demo_backend/semant_demo/main.py` creates telemetry once during application import, records the completed feature action in the HTTP middleware, instruments the FastAPI application after routes are registered, and flushes telemetry during shutdown.
+`semant_demo_backend/semant_demo/opentelemetry.py` owns providers, exporters and instrumentation. It is the only module that should create an OpenTelemetry provider or exporter. `create_app()` in `semant_demo_backend/semant_demo/main.py` initializes telemetry once per application (the production process builds a single app), installs `RequestTelemetryMiddleware` (also in `opentelemetry.py`), instruments the FastAPI application after routes are registered, and the application lifespan flushes telemetry during shutdown. The middleware is plain ASGI, so streamed responses are timed until they end and a client disconnect still cancels the endpoint's remaining work.
 
 The Collector and LGTM storage are infrastructure outside this repository. Code can successfully send OTLP to port 4318 while data is still absent from Grafana if the Collector does not have the corresponding `logs`, `traces`, or `metrics` pipeline enabled.
 
@@ -60,7 +60,7 @@ Do not use a raw branch name, commit SHA, user name, URL, or random identifier a
 
 | Signal | Source in code | Current content | Intended destination |
 |---|---|---|---|
-| Logs | HTTP middleware in `main.py` and ordinary Python `logging` | Completed request log, request ID, method, path, status, duration; active trace/span IDs are injected automatically | Loki |
+| Logs | `RequestTelemetryMiddleware` in `opentelemetry.py` and ordinary Python `logging` | Completed request log (`INFO`), request ID, method, route template, status, duration; active trace/span IDs are injected automatically | Loki |
 | Traces | `FastAPIInstrumentor` in `opentelemetry.py` | Server span for each FastAPI request | Tempo |
 | Automatic metrics | FastAPI and `SystemMetricsInstrumentor` | Standard HTTP metrics plus process CPU time/utilization, memory usage and thread count | Prometheus-compatible metrics store |
 | Feature request counter | `record_feature_request()` | Completed RAG, search, summarization, AI-assistance and tagging actions; labels `feature`, `authentication`, `outcome` | Prometheus-compatible metrics store |
@@ -116,13 +116,15 @@ DEPLOYMENT_ENVIRONMENT=production
 
 The hostname `lgtm` works because both containers are attached to the external Docker network `web`. When the backend runs directly on the SemAnT PC rather than in Docker, use `http://localhost:4318` instead and explicitly set `OTEL_ENABLED=true` for that run.
 
-Every HTTP request produces one structured log with these attributes:
+Every HTTP request produces one structured log at `INFO` level (`HTTP request completed`, or `HTTP request failed` with the exception at `ERROR`), so it is exported with the deployed `LOG_LEVEL=INFO`. Attributes:
 
 - `request.id`: incoming `X-Request-ID` or a newly generated ID;
 - `http.request.method`;
-- `url.path` (query parameters and request bodies are deliberately omitted);
+- `http.route`: the matched route **template**, e.g. `/api/question/{question_text}`, or `<unmatched>` when no route matched. The raw path, query parameters and request bodies are deliberately omitted, because path parameters can carry user text such as a question;
 - `http.response.status_code`;
 - `http.server.request.duration_ms`.
+
+For the same reason, the middleware replaces the raw URL attributes that `FastAPIInstrumentor` puts on the server span (`http.target`, `http.url`, and `url.path`/`url.full`/`url.query` when the new semantic conventions are enabled) with the route template before the span ends. HTTP metrics already use the route template.
 
 The values are local to the current FastAPI request, so concurrent requests do not share or overwrite one another. The request ID is also returned in the `X-Request-ID` response header.
 
@@ -283,7 +285,7 @@ Before adding a signal, decide what operational question it answers. Prefer a sm
 2. Choose the type deliberately: a `Counter` for events that only increase, a `Histogram` for a size or duration where percentiles matter, and an observable gauge only for an instantaneous value.
 3. Give the metric a namespaced, unit-aware name such as `semant_demo.rag.documents.retrieved` or `semant_demo.llm.request.duration` with unit `s`.
 4. Keep metric attributes low-cardinality. Good examples: `operation`, `provider`, `model` from a controlled configuration, `outcome`. Bad examples: user input, document UUID, URL query string, request ID, exception text.
-5. Record it at the domain boundary where the outcome and duration are known. For example, feature metrics are recorded after `call_next()` in the HTTP middleware; an LLM metric belongs around the actual provider call.
+5. Record it at the domain boundary where the outcome and duration are known. For example, feature metrics are recorded when the response has completed in `RequestTelemetryMiddleware`; an LLM metric belongs around the actual provider call.
 6. Add a unit test that verifies classification and attributes, and document its expected Prometheus name and query here.
 7. Deploy, create the relevant traffic, wait one export interval, then find the metric in Prometheus before creating a dashboard panel.
 
@@ -333,7 +335,7 @@ logging.getLogger(__name__).info(
 )
 ```
 
-Use a stable event message and small structured fields. Request bodies, prompts, answers, tokens, passwords, JWTs, API keys, and full exception payloads must not be logged by default. If a log must be correlated with a request, rely on the middleware's `request.id` and the automatic trace context.
+Use a stable event message and small structured fields. Request bodies, raw URLs or paths, prompts, answers, tokens, passwords, JWTs, API keys, and full exception payloads must not be logged by default. If a log must be correlated with a request, rely on the middleware's `request.id` and the automatic trace context.
 
 ### Existing export path
 

@@ -1,5 +1,5 @@
 <template>
-  <q-layout view="hHh Lpr fff">
+  <q-layout view="hHh LpR fff">
     <q-header elevated class="bg-white text-grey-8">
       <q-toolbar class="GNL__toolbar">
         <q-btn class="q-mx-md" dense flat round @click="toggleLeftDrawer" icon="menu" />
@@ -12,7 +12,7 @@
         <q-space />
 
         <!-- User avatar with auth menu -->
-        <q-btn flat round dense>
+        <q-btn flat round dense aria-label="User menu">
           <q-avatar size="36px" :color="userStore.isLoggedIn ? undefined : 'grey-5'" text-color="primary">
             <img v-if="userStore.isLoggedIn" src="/boy-avatar2.png" style="border-radius:50%;width:100%;height:100%;object-fit:cover;" />
             <q-icon v-else name="person_outline" />
@@ -47,6 +47,17 @@
             </q-list>
           </q-menu>
         </q-btn>
+
+        <q-btn
+          v-if="rightSidebar.hasPanels"
+          class="q-mx-md"
+          dense
+          flat
+          round
+          aria-label="Toggle sidebar"
+          @click="rightSidebar.toggleOpen"
+          icon="view_sidebar"
+        />
       </q-toolbar>
     </q-header>
 
@@ -155,6 +166,7 @@
         <MiniStateButton :drawer-mini-state="drawerMiniState" @click="miniStateClick" />
       </div>
     </q-drawer>
+    <RightSidebar />
     <q-page-container>
       <router-view />
     </q-page-container>
@@ -171,6 +183,8 @@ import MiniStateButton from 'src/components/MiniStateButton.vue'
 import { ref, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
+import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
+import RightSidebar from 'src/app/sidebar/RightSidebar.vue'
 import LoginDialog from 'src/components/auth/LoginDialog.vue'
 import RegisterDialog from 'src/components/auth/RegisterDialog.vue'
 import UserInfoDialog from 'src/components/auth/UserInfoDialog.vue'
@@ -179,6 +193,7 @@ import AboutAppDialog from 'src/components/auth/AboutAppDialog.vue'
 const drawerMiniState = ref(false)
 
 const userStore = useUserStore()
+const rightSidebar = useRightSidebarStore()
 const $q = useQuasar()
 
 const leftDrawerOpen = ref(true)

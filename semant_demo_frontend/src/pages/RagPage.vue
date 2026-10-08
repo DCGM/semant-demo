@@ -212,27 +212,21 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
-import axios from 'axios'
 import { marked } from 'marked'
 import { useQuasar } from 'quasar'
+import { SearchType, type RagChatMessage, type RagRouteConfig, type TextChunkWithDocument } from 'src/generated/api'
+import { errorStatus, useApi } from 'src/shared/api'
 const $q = useQuasar() // notifications
+const api = useApi().default
 // ---------------------------------------------------
-interface Source {
-  text: string;
-}
+type Source = TextChunkWithDocument
 
 interface Message {
   sender: 'AI' | 'me';
   text: string;
   sources?: Source[];
   userRating?: number;
-  response_id?: string;
-}
-
-interface RagRouteConfig {
-  id: string
-  name: string
-  description: string
+  responseId?: string;
 }
 
 // First message from AI
@@ -271,15 +265,14 @@ const feedbackOptions = [
   { label: 'Citation issues / Chybějící nebo špatné zdroje', value: 'citation_error' },
   { label: 'Wrong language or formatting / Chybný jazyk nebo formátování', value: 'language_issue' }
 ]
-const selectedErrorTypes = ref([])
+const selectedErrorTypes = ref<string[]>([])
 
 // ----------------------Load RAGs----------------------
 
 async function loadRagConfigs () {
   try {
     isLoadingRagConfigs.value = true
-    const response = await axios.get('/api/rag/configurations')
-    rags.value = response.data
+    rags.value = await api.getAvalaibleRagConfigurationsApiRagConfigurationsGet()
     if (rags.value.length > 0) {
       selectedRAG.value = rags.value[0]
     }
@@ -334,34 +327,31 @@ const sendMessage = async () => {
     const allRelevantMsg = messages.value.slice(0, -1).filter(msg => msg.sources !== undefined || msg.sender === 'me') // remove messages without any informations
 
     // history for RAG
-    const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
+    const context = toChatHistory(allRelevantMsg)
 
-    const ragSearch = {
-      search_query: userQuery, // is change in rag generator anyway (bcs it have to be refrased based on history context)
-      limit: chunkNumber.value,
-      search_type: 'hybrid', // selectedDBSearch.value.value,
-      alpha: 0.5, // alpha.value, // vector search
-      min_year: null, // minYear.value ? minYear.value : null, - does not work now
-      max_year: null, // maxYear.value ? maxYear.value : null, - does not work now
-      min_date: null,
-      max_date: null,
-      language: null // language.value ? language.value : null - does not work now
-    }
-
-    // rag question + search
-    const ragRequestBody = {
-      question: userQuery,
-      history: context,
-      rag_search: ragSearch,
-      previous_documents: previousDocuments
-    }
-    const mainRagRequestBody = {
-      rag_id: selectedRAG.value?.id,
-      rag_request: ragRequestBody
-    }
-    const ragResponse = await axios.post('/api/rag', mainRagRequestBody)
-    const ragAnswer = ragResponse.data.rag_answer
-    const sources = ragResponse.data.sources
+    const ragResponse = await api.ragApiRagPost({
+      ragRequestMain: {
+        ragId: selectedRAG.value?.id ?? '',
+        ragRequest: {
+          question: userQuery,
+          history: context,
+          ragSearch: {
+            searchQuery: userQuery, // is change in rag generator anyway (bcs it have to be refrased based on history context)
+            limit: chunkNumber.value,
+            searchType: SearchType.hybrid,
+            alpha: 0.5, // vector search
+            minYear: null, // year/date/language filters do not work now
+            maxYear: null,
+            minDate: null,
+            maxDate: null,
+            language: null
+          },
+          previousDocuments
+        }
+      }
+    })
+    const ragAnswer = ragResponse.ragAnswer
+    const sources = ragResponse.sources
 
     // sources
     if (!sources || sources.length === 0) {
@@ -369,7 +359,7 @@ const sendMessage = async () => {
         sender: 'AI',
         text: 'Sorry we have no information about this topick.',
         sources: [],
-        response_id: crypto.randomUUID()
+        responseId: crypto.randomUUID()
       })
       return
     }
@@ -381,14 +371,12 @@ const sendMessage = async () => {
       sender: 'AI',
       text: ragAnswer,
       sources,
-      response_id: ragResponse.data.response_id
+      responseId: ragResponse.responseId
     })
   } catch (error) {
     console.error('RAG error:', error)
-    if (axios.isAxiosError(error) && error.response) {
-      if (error.response.status === 401) {
-        messages.value.push({ sender: 'AI', text: 'You have entered invalid API key.' })
-      }
+    if (errorStatus(error) === 401) {
+      messages.value.push({ sender: 'AI', text: 'You have entered invalid API key.' })
     } else {
       messages.value.push({ sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
     }
@@ -399,6 +387,10 @@ const sendMessage = async () => {
 }
 
 // ----------------------Other functions-----------------------------
+
+// chat history for the RAG backend
+const toChatHistory = (msgs: Message[]): RagChatMessage[] =>
+  msgs.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text }))
 
 // Markdown converter
 const convertToMarkdown = (markdownText: string) => {
@@ -504,7 +496,7 @@ const explainSelection = async () => {
   const allRelevantMsg = messages.value.slice(0, msgIndex).filter(msg => msg.sources !== undefined) // remove messages without any informations
 
   // history for RAG
-  const context = allRelevantMsg.map(msg => ({ role: msg.sender === 'me' ? 'user' : 'assistant', content: msg.text })) // convert to chatMessage format
+  const context = toChatHistory(allRelevantMsg)
 
   explanationDialog.value.show = true
   explanationDialog.value.loading = true
@@ -512,14 +504,16 @@ const explainSelection = async () => {
   selectionData.value.show = false
 
   try {
-    const response = await axios.post('/api/rag/explain', {
-      rag_id: selectedRAG.value?.id,
-      selected_text: selectionData.value.text,
-      sources: aiMsg.sources,
-      history: context,
-      full_answer: aiMsg.text
-    })
-    explanationDialog.value.text = response.data.explanation
+    const response = await api.explainSelectionApiRagExplainPost({
+      explainRequest: {
+        ragId: selectedRAG.value?.id ?? '',
+        selectedText: selectionData.value.text,
+        sources: aiMsg.sources ?? [],
+        history: context,
+        fullAnswer: aiMsg.text
+      }
+    }) as { explanation?: string }
+    explanationDialog.value.text = response.explanation ?? ''
   } catch (error) {
     explanationDialog.value.text = 'Sorry, this part can not be explained.'
   } finally {
@@ -550,15 +544,17 @@ const submitFeedback = async () => {
 
   try {
     msg.userRating = currentRating.value
-    await axios.post('/api/rag/feedback', {
-      rag_id: selectedRAG.value?.id,
-      response_id: msg.response_id,
-      question,
-      answer: msg.text,
-      sources: msg.sources,
-      rating: currentRating.value,
-      comment: feedbackComment.value,
-      error_types: selectedErrorTypes.value
+    await api.saveFeedbackApiRagFeedbackPost({
+      feedbackRequest: {
+        ragId: selectedRAG.value?.id ?? '',
+        responseId: msg.responseId ?? '',
+        question,
+        answer: msg.text,
+        sources: msg.sources ?? [],
+        rating: currentRating.value,
+        comment: feedbackComment.value,
+        errorTypes: selectedErrorTypes.value
+      }
     })
 
     // popup/alert window

@@ -108,6 +108,7 @@
             <div class="chunk-btn-group">
               <template v-if="item.inCollection">
                 <q-btn
+                  v-if="rights.editMembership"
                   flat dense round
                   icon="remove_circle_outline"
                   color="negative"
@@ -120,6 +121,7 @@
               </template>
               <template v-else>
                 <q-btn
+                  v-if="rights.editMembership"
                   flat dense round
                   icon="add_circle_outline"
                   color="positive"
@@ -483,7 +485,7 @@
           />
           <div class="bulk-spacer" />
           <q-btn
-            v-if="hasSelectedNotInCollection"
+            v-if="hasSelectedNotInCollection && rights.editMembership"
             flat dense no-caps
             icon="add_circle_outline"
             label="Add"
@@ -493,7 +495,7 @@
             @click="onBulkAdd"
           />
           <q-btn
-            v-if="hasSelectedInCollection"
+            v-if="hasSelectedInCollection && rights.editMembership"
             flat dense no-caps
             icon="remove_circle_outline"
             label="Remove"
@@ -533,6 +535,9 @@ import useAiAssistance from 'src/composables/useAiAssistance'
 import useSpanDiscussionDialog from 'src/composables/dialogs/useSpanDiscussionDialog'
 import ChunkAnnotator from 'src/components/ChunkAnnotator.vue'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
+import { IncompleteWriteError } from 'src/utils/writeOutcome'
+import useCollections from 'src/composables/useCollections'
+import { collectionRights } from 'src/features/collections/permissions'
 
 /**
  * Resolve a DOM node + offset into { chunkId, charOffset } by walking up
@@ -572,6 +577,13 @@ const props = defineProps<{
   collectionId: string
   documentId: string
 }>()
+
+// Shared users annotate but do not add or remove chunks (ADR 0007). The collection is
+// loaded by the enclosing document layout.
+const { activeCollection } = useCollections()
+const rights = computed(() =>
+  collectionRights(activeCollection.value?.id === props.collectionId ? activeCollection.value : null)
+)
 
 const { chunks, loading, error, loadChunksInCollectionDocument, addChunkToCollection, removeChunkFromCollection, getNeighbourChunk, countDocumentChunks, getChunksInRange } = useChunks()
 const { tags, loadTagsByCollection, createTag, updateTag } = useTags()
@@ -784,13 +796,38 @@ function selectAllNotInCollection() {
   selectedChunkIds.value = displayChunks.value.filter(c => !c.inCollection).map(c => c.id)
 }
 
+type Settled = { status: 'fulfilled' } | { status: 'rejected', reason: unknown }
+
+// A chunk is in the collection once its own link succeeded, even if linking its
+// document failed afterwards (IncompleteWriteError listing the chunk as succeeded).
+function chunkLinked(outcome: Settled, chunkId: string): boolean {
+  if (outcome.status === 'fulfilled') return true
+  const err = outcome.reason
+  return err instanceof IncompleteWriteError && (err.result.succeeded ?? []).includes(chunkId)
+}
+
+function notifyMembershipFailures(outcomes: Settled[], action: string) {
+  const errors = outcomes.flatMap(o => (o.status === 'rejected' ? [o.reason] : []))
+  if (!errors.length) return
+  console.error(`${action} failed`, errors)
+  const first = errors[0]
+  $q.notify({
+    type: 'negative',
+    message: `${action}: ${errors.length} of ${outcomes.length} chunk(s) not fully updated.`,
+    caption: first instanceof Error ? first.message : undefined,
+    timeout: 6000
+  })
+}
+
 async function onBulkAdd() {
   bulkLoading.value = true
   try {
-    const toAdd = selectedChunkIds.value.filter(id =>
+    const candidates = selectedChunkIds.value.filter(id =>
       !displayChunks.value.find(c => c.id === id)?.inCollection
     )
-    await Promise.all(toAdd.map(id => addChunkToCollection(id, props.collectionId)))
+    const outcomes = await Promise.allSettled(candidates.map(id => addChunkToCollection(id, props.collectionId)))
+    const toAdd = candidates.filter((id, i) => chunkLinked(outcomes[i], id))
+    notifyMembershipFailures(outcomes, 'Adding chunks')
     displayChunks.value = displayChunks.value.map(c =>
       toAdd.includes(c.id) ? { ...c, inCollection: true } : c
     )
@@ -807,10 +844,12 @@ async function onBulkAdd() {
 async function onBulkRemove() {
   bulkLoading.value = true
   try {
-    const toRemove = selectedChunkIds.value.filter(id =>
+    const candidates = selectedChunkIds.value.filter(id =>
       displayChunks.value.find(c => c.id === id)?.inCollection
     )
-    await Promise.all(toRemove.map(id => removeChunkFromCollection(id, props.collectionId)))
+    const outcomes = await Promise.allSettled(candidates.map(id => removeChunkFromCollection(id, props.collectionId)))
+    const toRemove = candidates.filter((_, i) => outcomes[i].status === 'fulfilled')
+    notifyMembershipFailures(outcomes, 'Removing chunks')
     displayChunks.value = displayChunks.value.map(c =>
       toRemove.includes(c.id) ? { ...c, inCollection: false } : c
     )
@@ -990,7 +1029,7 @@ function recalculateGutter() {
         if (cEl) {
           // Chunk is in the DOM — measure its text segments
           const segEls = cEl.querySelectorAll<HTMLElement>('.text-segment')
-          for (const segEl of segEls) {
+          for (const segEl of Array.from(segEls)) {
             const segStart = parseInt(segEl.dataset.start || '0')
             const segEnd = parseInt(segEl.dataset.end || '0')
             if (segStart < localEnd && segEnd > localStart) {
@@ -1098,10 +1137,10 @@ watch(gutterItems, (items, oldItems) => {
 tagNav.onScroll((item) => {
   if (!documentTextRef.value) return
   const chunkEls = documentTextRef.value.querySelectorAll<HTMLElement>('[data-chunk-id]')
-  for (const el of chunkEls) {
+  for (const el of Array.from(chunkEls)) {
     if (el.dataset.chunkId !== item.chunkId) continue
     const segs = el.querySelectorAll<HTMLElement>('.text-segment')
-    for (const seg of segs) {
+    for (const seg of Array.from(segs)) {
       const s = parseInt(seg.dataset.start || '0')
       if (s >= item.start && s < item.end) {
         seg.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1130,7 +1169,7 @@ watch(highlightedAutoSpanId, (spanId) => {
     ) as HTMLElement | null
     if (!chunkEl) return
     const segs = chunkEl.querySelectorAll<HTMLElement>('.text-segment')
-    for (const seg of segs) {
+    for (const seg of Array.from(segs)) {
       const s = parseInt(seg.dataset.start || '0')
       if (s >= span.start && s < span.end) {
         seg.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1385,6 +1424,8 @@ const onConfirmAiTagPicker = async () => {
     selectionEnd: end,
     tagIds
   })
+  // Cancelled, or the user moved to another document/collection meanwhile.
+  if (created === null) return
   if (!created.length && !aiAssist.lastSelectionError.value) {
     $q.notify({
       type: 'info',
@@ -1618,7 +1659,9 @@ async function loadGapAll(afterOrder: number, beforeOrder: number) {
 async function onAddChunk(chunk: Chunk) {
   chunkLoadingId.value = chunk.id
   try {
-    await addChunkToCollection(chunk.id, props.collectionId)
+    const [outcome] = await Promise.allSettled([addChunkToCollection(chunk.id, props.collectionId)])
+    notifyMembershipFailures([outcome], 'Adding the chunk')
+    if (!chunkLinked(outcome, chunk.id)) return
     const idx = displayChunks.value.findIndex(c => c.id === chunk.id)
     if (idx !== -1) {
       displayChunks.value = [
@@ -1638,7 +1681,9 @@ async function onAddChunk(chunk: Chunk) {
 async function onRemoveChunk(chunk: Chunk) {
   chunkLoadingId.value = chunk.id
   try {
-    await removeChunkFromCollection(chunk.id, props.collectionId)
+    const [outcome] = await Promise.allSettled([removeChunkFromCollection(chunk.id, props.collectionId)])
+    notifyMembershipFailures([outcome], 'Removing the chunk')
+    if (outcome.status !== 'fulfilled') return
     // Keep chunk visible as a preview (inCollection = false), only hide on explicit hide action
     const idx = displayChunks.value.findIndex(c => c.id === chunk.id)
     if (idx !== -1) {

@@ -1,5 +1,9 @@
 # Deployment & Configuration
 
+This document describes deployment and server configuration.
+
+For normal local development, including the local Weaviate and SQLite database snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Prerequisites
 
 | Component | Version | Notes |
@@ -33,9 +37,17 @@ The CI/CD pipeline (GitHub Actions, self-hosted runner) handles:
 
 ---
 
-## Step-by-Step Deployment (local / development)
+## Manual Standalone Setup
+
+For local development and test-owned database rules, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+The steps below describe how to construct a standalone environment from scratch.
 
 ### 1. Weaviate
+
+For normal development, use the local database snapshot under `local_data/` and start Weaviate as described in [DEVELOPMENT.md](DEVELOPMENT.md).
+
+The standalone setup below creates a separate development Weaviate instance from scratch:
 
 ```bash
 cd weaviate_utils
@@ -45,9 +57,12 @@ docker compose up -d
 Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures HNSW indexing. Weaviate version: **1.34.4**.
 
 To verify:
+
 ```bash
 curl http://localhost:8080/v1/.well-known/ready
 ```
+
+Do not use this empty standalone database when the realistic `local_data/weaviate_semant_test/` development snapshot is required.
 
 ### 2. Data Ingestion
 
@@ -64,6 +79,8 @@ python db_insert_jsonl.py \
     --source-dir /path/to/prepared_data \
     --delete-old
 ```
+
+> `--delete-old` is destructive. Verify that the configured Weaviate endpoint is a local development instance before using it.
 
 Options:
 - `--delete-old` — drop and recreate all collections
@@ -101,13 +118,15 @@ python run.py
 ```
 
 The server starts with `uvicorn` in reload mode on port 8000. On startup it:
-1. Creates the SQLite `tasks` table
-2. Loads all RAG configurations from `rag/rag_configs/configs/*.yaml`
-3. Mounts static files from `STATIC_PATH` if the directory exists
+1. Creates missing SQL tables (`user`, `rag_user_feedback`); existing tables and rows are kept
+2. Connects to Weaviate (startup fails if it is not ready)
+3. Loads all RAG configurations from `rag/rag_configs/configs/*.yaml`
+4. Mounts static files from `STATIC_PATH` if the directory exists
 
 ### 6. Frontend
 
 #### Development
+
 ```bash
 cd semant_demo_frontend
 npm install
@@ -115,11 +134,13 @@ npx quasar dev
 ```
 
 #### Production Build
+
 ```bash
 npx quasar build
 ```
 
 Output goes to `dist/spa/`. To serve from the backend, copy to the backend's `STATIC_PATH`:
+
 ```bash
 cp -r dist/spa/* ../semant_demo_backend/static/
 ```
@@ -129,11 +150,12 @@ The backend's `main.py` will auto-mount the directory and serve the SPA.
 #### Frontend Environment
 
 Set `BACKEND_URL` environment variable before building to point to your backend:
+
 ```bash
 BACKEND_URL=https://your-server.example.com npx quasar build
 ```
 
-If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` — a development-machine-specific URL that should be overridden (see `src/boot/axios.ts`).
+If unset, `quasar.config.js` sets `http://localhost:8000` — a development-machine-specific URL that should be overridden. Every API request (generated client and NDJSON streams) uses this one origin (`src/shared/api/config.ts`).
 
 ---
 
@@ -151,7 +173,7 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 | `OPENAI_API_KEY` | _(empty)_ | If using OpenAI RAG | OpenAI API key |
 | `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | No | OpenAI-compatible endpoint for RAG/OpenAI requests (OpenAI or OpenRouter) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | No | Default OpenAI model |
-| `GOOGLE_API_KEY` | _(empty)_ | If using Google RAG | Google Gemini API key |
+| `GOOGLE_API_KEY` | _(empty)_ | If using Google RAG | Google Gemini key |
 | `GOOGLE_MODEL` | `gemini-2.5-pro` | No | Default Google model |
 | `MODEL_TEMPERATURE` | `0.0` | No | Default LLM temperature |
 | `ALLOWED_ORIGIN` | `http://localhost:9000` | No | CORS allowed origin |
@@ -163,7 +185,8 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 | `LANGCHAIN_API_KEY` | _(empty)_ | No | LangChain/LangSmith tracing key |
 | `EMBEDDING_SERVICE_HOST` | `embedding-service` | No | Embedding service hostname (used to build the internal URL) |
 | `EMBEDDING_SERVICE_PORT` | `8001` | No | Embedding service port |
-| `SQL_DB_PATH` | _(none)_ | No | Used by Docker Compose for the `tasks.db` bind mount, not read by the backend itself. The backend always uses `tasks.db` in its working directory; for Docker deployments, set `SQL_DB_PATH` and ensure the target `tasks.db` file already exists |
+| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | No | SQLAlchemy URL of the user accounts / RAG feedback database; the default is `tasks.db` in the backend working directory |
+| `SQL_DB_PATH` | _(none)_ | No | Used by Docker Compose for the `tasks.db` bind mount, not read by the backend itself. With the default `SQL_DB_URL`, set `SQL_DB_PATH` and ensure the target `tasks.db` file already exists |
 | `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION_…` | **Yes (prod)** | JWT signing secret — must be overridden in production with a long random string |
 | `FEEDBACK_WEBHOOK_URL` | _(empty)_ | No | Webhook URL for RAG feedback delivery |
 | `FEEDBACK_LOG_PATH` | `feedback.log.jsonl` | No | Path for writing feedback logs |
@@ -179,6 +202,7 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 ## Debugging
 
 ### Backend
+
 - Run with `uvicorn` reload mode (default in `run.py`): changes auto-reload
 - FastAPI auto-generates interactive docs at `http://localhost:8000/docs` (Swagger) and `http://localhost:8000/redoc`
 - Enable debug logging: `logging.basicConfig(level=logging.DEBUG)` in `main.py`
@@ -186,19 +210,21 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 - Inspect DB state: `python weaviate_utils/inspect_chunks.py` / `inspect_documents.py`
 
 ### Frontend
+
 - Vue DevTools browser extension for component/store inspection
 - Quasar dev mode includes HMR and source maps
 - Network tab to inspect API calls and responses
 
 ### RAG Debugging
+
 - `adaptive_rag.py` includes `DEBUG_PRINT = True` — set to see LangGraph node transitions in stdout
 - Each RAG config can be tested independently by sending requests to `POST /api/rag` with the config's `id`
 - Test RAG routing with the `TestRag` class (returns a static response)
 
-### Tagging Debugging
-- Poll `GET /api/tag/task/status/{taskId}` to see `processed_count` / `all_texts_count` progress
-- `tag_processing_data` field contains per-chunk tagging decisions
-- Check SQLite directly: `sqlite3 tasks.db "SELECT * FROM tasks"`
+### AI Suggestion Debugging
+
+- Suggestion runs are request-scoped NDJSON streams (`/api/ai/suggest_spans/*`); the last line is an `end` event with the outcome and counts (saved, rejected, failed saves, provider failures). A stream without it was interrupted.
+- Saved suggestions are ordinary `auto` spans; reload them with `GET /api/tag_spans?collection_id=...`.
 
 ---
 
@@ -208,6 +234,6 @@ If unset, the Axios client defaults to `http://pcvaskom.fit.vutbr.cz:8024/api` �
 2. **Set `PRODUCTION=true`** — currently only checked in config but can be used for conditional logging
 3. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
 4. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
-5. **SQLite limitations** — consider switching to PostgreSQL for concurrent tagging tasks under load
+5. **SQLite limitations** — the database holds only user accounts and RAG feedback; consider PostgreSQL (untested) for many concurrent writers. Run one backend process for now: chunk-tag synchronization is serialized only within one process (see [TODO.md](TODO.md#known-correctness-and-behavior-limitations) and #206)
 6. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
 7. **Embedding service scaling** — can run multiple instances behind a load balancer. The endpoint is built from `EMBEDDING_SERVICE_HOST` (default `embedding-service` in Docker, `localhost` outside) and `EMBEDDING_SERVICE_PORT` (default `8001`); point both at your load balancer to scale.

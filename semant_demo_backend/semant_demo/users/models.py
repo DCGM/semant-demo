@@ -1,9 +1,9 @@
 from sqlalchemy import Column, String
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID
-from semant_demo.schemas import TasksBase
+from semant_demo.adapters.sql.base import Base
 
 
-class User(SQLAlchemyBaseUserTableUUID, TasksBase):
+class User(SQLAlchemyBaseUserTableUUID, Base):
     __tablename__ = "user"
 
     username = Column(String(100), unique=True, nullable=True, index=True)

@@ -80,7 +80,7 @@
 
                   <div v-if="userStore.isLoggedIn" class="col-12 col-sm-6 col-md-4">
                     <q-select
-                      v-model="searchForm.user_collection_id"
+                      v-model="searchForm.userCollectionId"
                       :options="collectionOptions"
                       label="Select a Collection"
                       outlined
@@ -88,7 +88,7 @@
                       emit-value
                       map-options
                       clearable
-                      :loading="loading"
+                      :loading="collectionsLoading"
                     >
                       <template v-slot:prepend>
                         <q-icon name="folder" />
@@ -115,8 +115,8 @@
                         <div class="q-px-sm" v-if="filterValues[filter.id]">
                           <q-range
                             v-model="filterValues[filter.id]"
-                            :min="filter.min_value != null ? Math.floor(filter.min_value) : 1800"
-                            :max="filter.max_value != null ? Math.ceil(filter.max_value) : 2026"
+                            :min="intervalBounds(filter).min"
+                            :max="intervalBounds(filter).max"
                             :step="1"
                             label
                             color="primary"
@@ -154,83 +154,6 @@
         </q-form>
       </q-card>
 
-      <div v-if="results.length" class="q-mb-xl">
-        <div class="row q-col-gutter-md">
-          <div class="col-12">
-            <q-card flat bordered class="bg-white">
-              <q-card-section class="row items-center justify-between q-col-gutter-sm">
-                <div class="text-subtitle2 text-grey-8">Summarization</div>
-                <div class="row q-gutter-sm">
-                  <q-btn
-                    color="secondary"
-                    icon="auto_awesome"
-                    label="Summarize Results"
-                    :loading="summarizing"
-                    @click="onSummarize"
-                    class="q-px-md"
-                  />
-                  <q-btn
-                    flat
-                    color="secondary"
-                    icon="tune"
-                    @click="showSummarizeOptions = !showSummarizeOptions"
-                  />
-                </div>
-              </q-card-section>
-
-              <q-slide-transition>
-                <div v-show="showSummarizeOptions">
-                  <q-separator inset />
-                  <q-card-section class="bg-grey-1">
-                    <div class="row q-col-gutter-md items-center">
-                      <div class="col-12 col-md row no-wrap q-gutter-md items-center">
-                        <q-select
-                          v-model="brevityType"
-                          :options="brevityTypes"
-                          label="Brevity"
-                          dense
-                          outlined
-                          class="col"
-                          emit-value
-                          map-options
-                        />
-                        <q-select
-                          v-model="summaryScope"
-                          :options="scopeOptions"
-                          label="Scope"
-                          dense
-                          outlined
-                          class="col"
-                          emit-value
-                          map-options
-                        />
-                      </div>
-                    </div>
-                  </q-card-section>
-                </div>
-              </q-slide-transition>
-
-              <q-separator />
-              <q-card-section class="bg-blue-grey-1" v-if="summary">
-                <div class="text-caption text-grey q-mb-sm">Time spent: {{ summaryTimeSpent.toFixed(2) }}s</div>
-                <div class="text-body2" style="white-space: pre-wrap;">
-                  <template v-for="(token, idx) in parsedSummaryTokens" :key="idx">
-                    <span v-if="token.type === 'text'">{{ token.value }}</span>
-                    <span v-else>
-                      <a
-                          href="#"
-                          class="citation-link"
-                          @click.prevent="jumpToResult(token.docNumber)"
-                        >[{{ token.docNumber }}]</a>
-                    </span>
-                  </template>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </div>
-      </div>
-
       <div v-if="results.length">
         <div class="row items-end justify-between q-mb-md">
           <div>
@@ -247,7 +170,7 @@
                 <div class="row q-gutter-sm items-center">
                   <q-select
                     v-model="targetCollectionId"
-                    :options="collectionOptions"
+                    :options="targetCollectionOptions"
                     label="Select Collection"
                     dense
                     outlined
@@ -278,16 +201,16 @@
             <q-card-section class="row no-wrap items-start">
               <div class="col">
                 <div class="text-h6 text-primary" style="line-height: 1.2;">
-                  {{ (currentPage - 1) * itemsPerPage + index + 1 }}. {{ chunk.query_title || chunk.title || "N/A" }}
+                  {{ (currentPage - 1) * itemsPerPage + index + 1 }}. {{ chunk.queryTitle || chunk.title || "N/A" }}
                 </div>
                 <div class="row q-gutter-x-md text-caption text-grey-8 q-mt-xs">
-                  <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.document_object.author || 'Unknown Author' }}</div>
-                  <div><q-icon name="event" class="q-mr-xs"/>{{ chunk.document_object.yearIssued || 'Year N/A' }}</div>
+                  <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.documentObject.author?.join(', ') || 'Unknown Author' }}</div>
+                  <div><q-icon name="event" class="q-mr-xs"/>{{ chunk.documentObject.yearIssued || 'Year N/A' }}</div>
                   <div><q-icon name="language" class="q-mr-xs"/>{{ chunk.language || 'N/A' }}</div>
-                  <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.from_page }}–{{ chunk.to_page }}</div>
+                  <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.fromPage }}–{{ chunk.toPage }}</div>
                 </div>
-                <div class="text-caption text-grey-8 q-mt-xs" v-if="chunk.document_object.title">
-                  <strong>Source:</strong> {{ chunk.document_object.title }}
+                <div class="text-caption text-grey-8 q-mt-xs" v-if="chunk.documentObject.title">
+                  <strong>Source:</strong> {{ chunk.documentObject.title }}
                 </div>
               </div>
               <div class="q-mr-md q-mt-xs">
@@ -302,23 +225,23 @@
                 {{ chunk.text }}
               </div>
 
-              <div class="q-mt-md" v-if="chunk.ner_P?.length || chunk.ner_G?.length || chunk.ner_I?.length || chunk.ner_M?.length || chunk.ner_O?.length">
+              <div class="q-mt-md" v-if="chunk.nerP?.length || chunk.nerG?.length || chunk.nerI?.length || chunk.nerM?.length || chunk.nerO?.length">
                 <div class="text-subtitle2 text-grey-7 q-mb-xs">Named Entities</div>
                 <div class="row q-gutter-sm">
-                  <q-badge color="blue-1" text-color="blue-9" class="q-pa-sm" v-if="chunk.ner_P?.length">
-                    <strong>People:</strong>&nbsp;{{ chunk.ner_P.join(', ') }}
+                  <q-badge color="blue-1" text-color="blue-9" class="q-pa-sm" v-if="chunk.nerP?.length">
+                    <strong>People:</strong>&nbsp;{{ chunk.nerP.join(', ') }}
                   </q-badge>
-                  <q-badge color="green-1" text-color="green-9" class="q-pa-sm" v-if="chunk.ner_G?.length">
-                    <strong>Places:</strong>&nbsp;{{ chunk.ner_G.join(', ') }}
+                  <q-badge color="green-1" text-color="green-9" class="q-pa-sm" v-if="chunk.nerG?.length">
+                    <strong>Places:</strong>&nbsp;{{ chunk.nerG.join(', ') }}
                   </q-badge>
-                  <q-badge color="purple-1" text-color="purple-9" class="q-pa-sm" v-if="chunk.ner_I?.length">
-                    <strong>Institutions:</strong>&nbsp;{{ chunk.ner_I.join(', ') }}
+                  <q-badge color="purple-1" text-color="purple-9" class="q-pa-sm" v-if="chunk.nerI?.length">
+                    <strong>Institutions:</strong>&nbsp;{{ chunk.nerI.join(', ') }}
                   </q-badge>
-                  <q-badge color="orange-1" text-color="orange-9" class="q-pa-sm" v-if="chunk.ner_M?.length">
-                    <strong>Media:</strong>&nbsp;{{ chunk.ner_M.join(', ') }}
+                  <q-badge color="orange-1" text-color="orange-9" class="q-pa-sm" v-if="chunk.nerM?.length">
+                    <strong>Media:</strong>&nbsp;{{ chunk.nerM.join(', ') }}
                   </q-badge>
-                  <q-badge color="grey-2" text-color="grey-9" class="q-pa-sm" v-if="chunk.ner_O?.length">
-                    <strong>Artifacts:</strong>&nbsp;{{ chunk.ner_O.join(', ') }}
+                  <q-badge color="grey-2" text-color="grey-9" class="q-pa-sm" v-if="chunk.nerO?.length">
+                    <strong>Artifacts:</strong>&nbsp;{{ chunk.nerO.join(', ') }}
                   </q-badge>
                 </div>
               </div>
@@ -340,44 +263,64 @@
 
     </div>
 
+    <RightSidebarPanel v-if="results.length || loading" id="search-summary" label="Summary" icon="auto_awesome">
+      <SearchSummaryPanel
+        :tokens="searchSummary.tokens"
+        :time-spent="searchSummary.timeSpent"
+        v-model:brevity="searchSummary.brevity"
+        v-model:scope="searchSummary.scope"
+        :error="searchSummary.error"
+        :loading="searchSummary.summarizing"
+        :disable="!results.length"
+        @summarize="searchSummary.summarize"
+        @cite="jumpToResult"
+      />
+    </RightSidebarPanel>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QCheckbox, QRange, QPagination, Notify } from 'quasar'
-import type { SearchRequest, SearchResponse, SummaryResponse, TextChunkWithDocument, SearchFiltersResponse, SearchFilter, SearchFilterInput } from 'src/models'
-import { api } from 'src/boot/axios'
-import { useApi } from 'src/composables/useApi'
-import { useCollectionStore } from 'src/stores/chunk_collection-store'
+import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type TextChunkWithDocument } from 'src/generated/api'
+import { useApi } from 'src/shared/api'
 import { useUserStore } from 'src/stores/user-store'
+import useCollections from 'src/composables/useCollections'
 import useDocuments from 'src/composables/useDocuments'
+import { collectionRights } from 'src/features/collections/permissions'
+import { useSearchRequest } from 'src/features/search/useSearchRequest'
+import { useSearchSummary } from 'src/features/search/useSearchSummary'
+import SearchSummaryPanel from 'src/features/search/SearchSummaryPanel.vue'
+import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
+
+const api = useApi().default
 
 // Search Form State
 const showFilters = ref(false)
-const showSummarizeOptions = ref(false)
 const searchForm = ref<SearchRequest>({
   query: '',
   limit: 50, // Increased default to show pagination better
-  user_collection_id: null,
-  type: 'hybrid',
-  search_title_generate: false,
-  search_summary_generate: false,
-  search_results_summary_generate: false,
+  userCollectionId: null,
+  type: SearchType.hybrid,
+  searchTitleGenerate: false,
+  searchSummaryGenerate: false,
+  searchResultsSummaryGenerate: false,
   filters: null,
-  min_year: null,
-  max_year: null,
-  min_date: null,
-  max_date: null,
+  minYear: null,
+  maxYear: null,
+  minDate: null,
+  maxDate: null,
   language: null,
-  tag_uuids: [],
+  tagUuids: [],
   positive: true,
   automatic: true
 })
 
 // Dynamic Filter Data State
+type IntervalValue = { min: number, max: number }
 const loadingFilters = ref(false)
 const availableSearchFilters = ref<SearchFilter[]>([])
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const filterValues = ref<Record<string, any>>({})
 
 function formatFilterLabel (id: string): string {
@@ -398,20 +341,25 @@ function getFilterIcon (id: string): string {
 function getNominalOptions (filter: SearchFilter) {
   if (!filter.values) return []
   return filter.values.map(v => ({
-    label: v.user_form,
-    value: v.backend_form
+    label: v.userForm,
+    value: v.backendForm
   }))
 }
 
-// Results State
-const loading = ref(false)
-let searchResponse: SearchResponse | null = null
-const results = ref<TextChunkWithDocument[]>([])
+/** Range of an interval filter (the generated client types its numeric bounds loosely). */
+function intervalBounds (filter: SearchFilter): IntervalValue {
+  const min = filter.minValue != null ? Math.floor(Number(filter.minValue)) : 1800
+  const max = filter.maxValue != null ? Math.ceil(Number(filter.maxValue)) : 2026
+  return { min, max }
+}
+
+// Results State: the current search context (results as retrieved)
+const searchRequest = useSearchRequest()
+const loading = searchRequest.loading
+const results = computed<TextChunkWithDocument[]>(() => searchRequest.context.value?.response.results ?? [])
+const timeSpent = computed(() => searchRequest.context.value?.response.timeSpent ?? 0)
 const selectedResults = ref<string[]>([])
 const targetCollectionId = ref<string | null>(null)
-const timeSpent = ref(0)
-const searchLog = ref<string[]>([])
-const lastSearchRequest = ref<SearchRequest | null>(null)
 
 // Pagination State
 const currentPage = ref(1)
@@ -422,67 +370,12 @@ const paginatedResults = computed(() => {
   return results.value.slice(start, start + itemsPerPage.value)
 })
 
-// Analysis Tools State
-const brevityType = ref('short')
-const brevityTypes = [
-  { label: 'Short', value: 'short' },
-  { label: 'Detailed', value: 'detailed' }
-]
+// Summarization (right sidebar): works on the current results or the selected ones
+const searchSummary = reactive(useSearchSummary(searchRequest.context, selectedResults))
 
-const summaryScopeDefault = 'broader'
-const summaryScope = ref(summaryScopeDefault)
-const scopeOptions = [
-  { label: 'Focused', value: 'focused' },
-  { label: 'Broader', value: 'broader' },
-  { label: 'Extensive', value: 'extensive' },
-  { label: 'Selected', value: 'selected' }
-]
-
-const scopeOptionsKMapping: Record<string, number | null> = {
-  focused: 3,
-  broader: 10,
-  extensive: null // all of it
-}
-
-const summarizing = ref(false)
-const summary = ref('')
-const summaryTimeSpent = ref(0)
+// Citations
 const highlightedDocNumber = ref<number | null>(null)
 let clearHighlightTimer: number | null = null
-
-const summarizedResultIndices = ref<number[]>([])
-
-type SummaryToken =
-  | { type: 'text'; value: string }
-  | { type: 'citation'; docNumber: number }
-
-function parseSummaryTokens (text: string, indicesMap: number[]): SummaryToken[] {
-  const tokens: SummaryToken[] = []
-  const citationRegex = /\[(doc([1-9][0-9]*))]/g
-  let lastIndex = 0
-
-  for (const match of text.matchAll(citationRegex)) {
-    const matchText = match[0]
-    const number = parseInt(match[2], 10)
-    const index = match.index ?? 0
-
-    if (index > lastIndex) {
-      tokens.push({ type: 'text', value: text.slice(lastIndex, index) })
-    }
-    const translatedNumber = indicesMap[number - 1] ?? number
-    tokens.push({ type: 'citation', docNumber: translatedNumber })
-
-    lastIndex = index + matchText.length
-  }
-
-  if (lastIndex < text.length) {
-    tokens.push({ type: 'text', value: text.slice(lastIndex) })
-  }
-
-  return tokens
-}
-
-const parsedSummaryTokens = computed(() => parseSummaryTokens(summary.value, summarizedResultIndices.value))
 
 async function jumpToResult (docNumber: number) {
   const resultIndex = docNumber - 1
@@ -510,50 +403,43 @@ async function jumpToResult (docNumber: number) {
 }
 
 // Collections & User State
-const collectionStore = useCollectionStore()
 const userStore = useUserStore()
-const apiClients = useApi()
+const { collections, loading: collectionsLoading, loadCollections: fetchCollections } = useCollections()
 const apiDocumentClient = useDocuments()
 
 async function loadCollections () {
-  if (!userStore.isLoggedIn || !userStore.getUserId) return
-
-  collectionStore.setUser(userStore.getUserId)
-  loading.value = true
-  try {
-    await collectionStore.fetchCollections(collectionStore.userId)
-  } catch (err) {
-    console.error(err)
-    Notify.create({ message: 'Failed to load collections', position: 'top', color: 'negative' })
-  } finally {
-    loading.value = false
-  }
+  if (!userStore.isLoggedIn) return
+  await fetchCollections()
 }
 
 watch(
-  selectedResults,
-  () => {
-    if (selectedResults.value.length === 0) {
-      summaryScope.value = summaryScopeDefault
-    } else {
-      summaryScope.value = 'selected'
+  () => userStore.getUserId,
+  async (userId, previousUserId) => {
+    if (previousUserId && userId !== previousUserId) {
+      // Signed out or another user: results and selections may come from the previous
+      // user's collections.
+      searchRequest.cancel()
+      selectedResults.value = []
+      searchForm.value.userCollectionId = null
+      targetCollectionId.value = null
     }
+    await loadCollections()
   }
 )
 
-watch(
-  () => userStore.getUserId,
-  async () => {
-    await loadCollections()
-  },
-  { immediate: true }
-)
-
+// Any readable collection can be searched ...
 const collectionOptions = computed(() =>
-  collectionStore.collections.map(c => ({
+  collections.value.map(c => ({
     label: c.name ?? `Collection ${c.id}`,
     value: c.id
   }))
+)
+
+// ... but only the owner adds documents and chunks to a collection.
+const targetCollectionOptions = computed(() =>
+  collections.value
+    .filter(c => collectionRights(c).editMembership)
+    .map(c => ({ label: c.name ?? `Collection ${c.id}`, value: c.id }))
 )
 
 type ActiveFilterBadge = {
@@ -566,20 +452,20 @@ type ActiveFilterBadge = {
 }
 
 const selectedCollectionLabel = computed(() => {
-  if (!searchForm.value.user_collection_id) return null
-  const option = collectionOptions.value.find(option => option.value === searchForm.value.user_collection_id)
-  return option?.label ?? `Collection ${searchForm.value.user_collection_id}`
+  if (!searchForm.value.userCollectionId) return null
+  const option = collectionOptions.value.find(option => option.value === searchForm.value.userCollectionId)
+  return option?.label ?? `Collection ${searchForm.value.userCollectionId}`
 })
 
 const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
   const badges: ActiveFilterBadge[] = []
 
-  if (searchForm.value.user_collection_id) {
+  if (searchForm.value.userCollectionId) {
     badges.push({
-      key: `collection:${searchForm.value.user_collection_id}`,
+      key: `collection:${searchForm.value.userCollectionId}`,
       type: 'collection',
       icon: 'folder',
-      label: selectedCollectionLabel.value ?? searchForm.value.user_collection_id
+      label: selectedCollectionLabel.value ?? searchForm.value.userCollectionId
     })
   }
 
@@ -588,9 +474,8 @@ const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
     if (!val) return
 
     if (filter.type === 'interval') {
-      const minDefault = filter.min_value != null ? Math.floor(filter.min_value) : 1800
-      const maxDefault = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
-      if (val.min !== minDefault || val.max !== maxDefault) {
+      const bounds = intervalBounds(filter)
+      if (val.min !== bounds.min || val.max !== bounds.max) {
         badges.push({
           key: `interval:${filter.id}`,
           type: 'dynamic',
@@ -601,8 +486,8 @@ const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
       }
     } else if (filter.type === 'nominal' && Array.isArray(val) && val.length > 0) {
       val.forEach((selectedBackendVal: string) => {
-        const nominalObj = filter.values?.find(v => v.backend_form === selectedBackendVal || v.user_form === selectedBackendVal)
-        const displayLabel = nominalObj ? nominalObj.user_form : selectedBackendVal
+        const nominalObj = filter.values?.find(v => v.backendForm === selectedBackendVal || v.userForm === selectedBackendVal)
+        const displayLabel = nominalObj ? nominalObj.userForm : selectedBackendVal
         badges.push({
           key: `nominal:${filter.id}:${selectedBackendVal}`,
           type: 'dynamic',
@@ -620,7 +505,7 @@ const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
 
 function removeFilterBadge (badge: ActiveFilterBadge) {
   if (badge.type === 'collection') {
-    searchForm.value.user_collection_id = null
+    searchForm.value.userCollectionId = null
     return
   }
 
@@ -629,9 +514,7 @@ function removeFilterBadge (badge: ActiveFilterBadge) {
     if (!filter) return
 
     if (filter.type === 'interval') {
-      const min = filter.min_value != null ? Math.floor(filter.min_value) : 1800
-      const max = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
-      filterValues.value[badge.filterId] = { min, max }
+      filterValues.value[badge.filterId] = intervalBounds(filter)
     } else if (filter.type === 'nominal' && badge.value) {
       const current = filterValues.value[badge.filterId] as string[]
       filterValues.value[badge.filterId] = current.filter(v => v !== badge.value)
@@ -640,12 +523,10 @@ function removeFilterBadge (badge: ActiveFilterBadge) {
 }
 
 function clearAllFilters () {
-  searchForm.value.user_collection_id = null
+  searchForm.value.userCollectionId = null
   availableSearchFilters.value.forEach(filter => {
     if (filter.type === 'interval') {
-      const min = filter.min_value != null ? Math.floor(filter.min_value) : 1800
-      const max = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
-      filterValues.value[filter.id] = { min, max }
+      filterValues.value[filter.id] = intervalBounds(filter)
     } else if (filter.type === 'nominal') {
       filterValues.value[filter.id] = []
     }
@@ -657,15 +538,14 @@ function clearAllFilters () {
 async function fetchAvailableFilters () {
   loadingFilters.value = true
   try {
-    const { data } = await api.get<SearchFiltersResponse>('/search/filters')
+    const data = await api.getAvailableSearchFiltersApiSearchFiltersGet()
     availableSearchFilters.value = data.filters || []
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const valuesMap: Record<string, any> = {}
     availableSearchFilters.value.forEach(filter => {
       if (filter.type === 'interval') {
-        const min = filter.min_value != null ? Math.floor(filter.min_value) : 1800
-        const max = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
-        valuesMap[filter.id] = { min, max }
+        valuesMap[filter.id] = intervalBounds(filter)
       } else if (filter.type === 'nominal') {
         valuesMap[filter.id] = []
       }
@@ -680,14 +560,8 @@ async function fetchAvailableFilters () {
 }
 
 async function onSearch () {
-  loading.value = true
-  results.value = []
   selectedResults.value = []
-  summary.value = ''
-  summaryTimeSpent.value = 0
-  summarizedResultIndices.value = []
   currentPage.value = 1 // reset pagination
-  searchResponse = null
 
   // Build dynamic filters payload
   const filtersPayload: SearchFilterInput[] = []
@@ -697,13 +571,12 @@ async function onSearch () {
     if (!val) return
 
     if (filter.type === 'interval') {
-      const minDefault = filter.min_value != null ? Math.floor(filter.min_value) : 1800
-      const maxDefault = filter.max_value != null ? Math.ceil(filter.max_value) : 2026
-      if (val.min !== minDefault || val.max !== maxDefault) {
+      const bounds = intervalBounds(filter)
+      if (val.min !== bounds.min || val.max !== bounds.max) {
         filtersPayload.push({
           id: filter.id,
-          min_value: val.min,
-          max_value: val.max
+          minValue: val.min,
+          maxValue: val.max
         })
       }
     } else if (filter.type === 'nominal' && Array.isArray(val) && val.length > 0) {
@@ -715,77 +588,26 @@ async function onSearch () {
   })
 
   // Attach filters array to request, clearing legacy fields
-  searchForm.value.filters = filtersPayload.length > 0 ? filtersPayload : null
-  searchForm.value.min_year = null
-  searchForm.value.max_year = null
-  searchForm.value.language = null
+  const request: SearchRequest = {
+    ...searchForm.value,
+    filters: filtersPayload.length > 0 ? filtersPayload : null,
+    minYear: null,
+    maxYear: null,
+    language: null
+  }
 
-  console.log('Submitting search with dynamic filters payload:', searchForm.value)
   try {
-    console.log('Search will start')
-    const { data } = await api.post<SearchResponse>('/search', searchForm.value)
-    console.log('Search response received:', data)
-    searchResponse = data
-    results.value = data.results || []
-    timeSpent.value = data.time_spent
-    searchLog.value = data.search_log
-    lastSearchRequest.value = data.search_request
-    if (results.value.length === 0) {
+    const context = await searchRequest.search(request)
+    if (!context) return // replaced by a newer search
+    if (context.response.results.length === 0) {
       Notify.create({ message: 'No results found', position: 'top', color: 'info' })
+    }
+    for (const warning of context.response.warnings ?? []) {
+      Notify.create({ message: warning, position: 'top', color: 'warning' })
     }
   } catch (e) {
     console.error(e)
     Notify.create({ message: 'Search failed', position: 'top', color: 'negative' })
-    results.value = []
-    searchResponse = null
-  } finally {
-    loading.value = false
-  }
-}
-
-async function onSummarize () {
-  if (!results.value.length || !lastSearchRequest.value || !searchResponse) return
-  summarizing.value = true
-
-  // select the focus
-  const summarizeK = scopeOptionsKMapping[summaryScope.value]
-  const scopedSearchResponse: SearchResponse = {
-    ...searchResponse
-  }
-
-  let currentIndices: number[] = []
-
-  if (summaryScope.value === 'selected') {
-    if (selectedResults.value.length === 0) {
-      Notify.create({ message: 'Please select at least one result for summarization.', position: 'top', color: 'warning' })
-      summarizing.value = false
-      return
-    }
-    scopedSearchResponse.results = []
-    results.value.forEach((r, index) => {
-      if (selectedResults.value.includes(r.id)) {
-        scopedSearchResponse.results.push(r)
-        currentIndices.push(index + 1)
-      }
-    })
-  } else if (summarizeK !== null) {
-    scopedSearchResponse.results = results.value.slice(0, summarizeK)
-    currentIndices = scopedSearchResponse.results.map((_, i) => i + 1)
-  } else {
-    scopedSearchResponse.results = results.value
-    currentIndices = results.value.map((_, i) => i + 1)
-  }
-
-  try {
-    const { data } = await api.post<SummaryResponse>('/summarize/results', scopedSearchResponse)
-    summarizedResultIndices.value = currentIndices
-    summary.value = data.summary
-    summaryTimeSpent.value = data.time_spent
-  } catch (e) {
-    summary.value = 'Failed to summarize.'
-    summaryTimeSpent.value = 0
-  } finally {
-    summarizing.value = false
   }
 }
 
@@ -800,15 +622,22 @@ async function addSelectedChunksToCollection () {
   }
 
   let successCount = 0
+  let failedCount = 0
   for (const chunkId of selectedResults.value) {
     try {
-      const data = await apiClients.default.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({ collectionId: targetCollectionId.value as string, chunkId })
-      if (data.created) successCount++
+      const data = await api.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({ collectionId: targetCollectionId.value as string, chunkId })
+      // Partial: the chunk may be linked while its document link failed.
+      if (data.outcome === WriteOutcome.complete) successCount++
+      else failedCount++
     } catch (e) {
+      failedCount++
       console.error(e)
     }
   }
   Notify.create({ message: `Added ${successCount} chunk(s) to collection`, position: 'top', color: 'positive' })
+  if (failedCount) {
+    Notify.create({ message: `${failedCount} chunk(s) could not be fully added; completed links were kept.`, position: 'top', color: 'negative' })
+  }
 }
 
 async function addSelectedDocumentsToCollection () {
@@ -825,17 +654,13 @@ async function addSelectedDocumentsToCollection () {
   const docIds = new Set(
     results.value
       .filter(r => selectedResults.value.includes(r.id))
-      .map(r => r.document_object.id)
+      .map(r => r.documentObject.id)
       .filter(id => id !== undefined)
   )
 
   for (const documentId of docIds) {
-    try {
-      await apiDocumentClient.addDocToCollection(documentId, targetCollectionId.value)
-      successCount++
-    } catch (e) {
-      console.error(e)
-    }
+    // The store reports failures itself and returns true only for a complete add.
+    if (await apiDocumentClient.addDocToCollection(documentId, targetCollectionId.value)) successCount++
   }
   Notify.create({ message: `Added ${successCount} document(s) to collection`, position: 'top', color: 'positive' })
 }
@@ -846,6 +671,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  searchRequest.cancel()
   if (clearHighlightTimer !== null) {
     window.clearTimeout(clearHighlightTimer)
   }
@@ -854,11 +680,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.citation-link {
-  color: var(--q-primary);
-  text-decoration: underline;
-}
-
 .citation-target-highlight {
   outline: 2px solid var(--q-secondary) !important;
   outline-offset: 0;

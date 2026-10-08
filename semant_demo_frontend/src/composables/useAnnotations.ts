@@ -3,6 +3,7 @@ import { useTagSpansStore } from 'src/stores/tagSpansStore'
 import { SpanType } from 'src/generated/api'
 import type { TagSpan } from 'src/models/tagSpans'
 import type { Chunk } from 'src/models/chunks'
+import { localRange, offsetBetween } from 'src/utils/spanOffsets'
 
 // ── Types ──────────────────────────────────────────────
 
@@ -86,17 +87,6 @@ export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => 
   // ── Cross-chunk offset math ──
 
   /**
-   * Returns true if all display chunks from fromIndex to toIndex (inclusive)
-   * have consecutive order values (no document gaps between them).
-   */
-  const areConsecutiveChunks = (fromIndex: number, toIndex: number): boolean => {
-    for (let i = fromIndex; i < toIndex; i++) {
-      if (allKnownChunks.value[i + 1].order !== allKnownChunks.value[i].order + 1) return false
-    }
-    return true
-  }
-
-  /**
    * Compute the cumulative character offset from the start of `fromChunkId`
    * to the start of `toChunkId`. Returns null if there is a document gap
    * anywhere along the path.
@@ -105,14 +95,7 @@ export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => 
     const fromIndex = allKnownChunkIndexById.value[fromChunkId]
     const toIndex = allKnownChunkIndexById.value[toChunkId]
     if (fromIndex === undefined || toIndex === undefined) return null
-    if (toIndex < fromIndex) return null
-    if (!areConsecutiveChunks(fromIndex, toIndex)) return null
-
-    let offset = 0
-    for (let i = fromIndex; i < toIndex; i++) {
-      offset += allKnownChunks.value[i].text.length
-    }
-    return offset
+    return offsetBetween(allKnownChunks.value, fromIndex, toIndex)
   }
 
   // ── Selection projection ──
@@ -132,17 +115,15 @@ export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => 
       if (offset === null) continue
 
       const chunkLength = chunk.text.length
-      const localStart = Math.max(0, sel.start - offset)
-      const localEnd = Math.min(chunkLength, sel.end - offset)
-      if (localEnd <= localStart) continue
+      const range = localRange(sel.start, sel.end, offset, chunkLength)
+      if (!range) continue
 
       // Only show start/end handle if the real selection boundary is in this chunk
       const showStartHandle = sel.start - offset >= 0 && sel.start - offset <= chunkLength
       const showEndHandle = sel.end - offset >= 0 && sel.end - offset <= chunkLength
 
       map[chunk.id] = {
-        start: localStart,
-        end: localEnd,
+        ...range,
         editingSpanId: sel.editingSpanId,
         tagId: sel.tagId,
         showStartHandle,
@@ -191,23 +172,13 @@ export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => 
             result.push({ ...span })
           } else {
             // Cross-chunk projection — only if every intermediate known chunk is consecutive
-            if (!areConsecutiveChunks(srcIndex, targetIndex)) continue
+            const offsetToTarget = offsetBetween(known, srcIndex, targetIndex)
+            if (offsetToTarget === null) continue
 
-            let offsetToTarget = 0
-            for (let i = srcIndex; i < targetIndex; i++) {
-              offsetToTarget += known[i].text.length
-            }
+            const range = localRange(span.start, span.end, offsetToTarget, targetLength)
+            if (!range) continue
 
-            const localStart = Math.max(0, span.start - offsetToTarget)
-            const localEnd = Math.min(targetLength, span.end - offsetToTarget)
-
-            if (localEnd <= localStart) continue
-
-            result.push({
-              ...span,
-              start: localStart,
-              end: localEnd
-            })
+            result.push({ ...span, ...range })
           }
         }
       }

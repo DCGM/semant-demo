@@ -78,10 +78,9 @@ const routes: RouteRecordRaw[] = [
             ]
           },
           {
-            name: 'documentDetailV2',
+            // The V2 document view was retired in #210; old links open the document view.
             path: 'v2',
-            component: () => import('pages/Collections/DocumentDetailPageV2.vue'),
-            props: true
+            redirect: { name: 'documentDetailV1' }
           }
         ]
       },

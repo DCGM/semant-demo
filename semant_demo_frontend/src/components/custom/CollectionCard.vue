@@ -38,7 +38,7 @@
         </q-card-section>
         <q-separator vertical />
         <q-card-actions vertical class="justify-around no-wrap">
-          <q-btn round flat icon="share" color="primary" @click.stop="handleShareProject">
+          <q-btn v-if="rights.share" round flat icon="share" color="primary" aria-label="Share collection" @click.stop="handleShareProject">
             <q-tooltip> Share collection </q-tooltip>
           </q-btn>
           <q-btn
@@ -50,10 +50,10 @@
           >
             <q-tooltip> Add to favorites </q-tooltip>
           </q-btn>
-          <q-btn round flat icon="edit" color="indigo-12" @click.stop="handleEditProject">
+          <q-btn v-if="rights.editMetadata" round flat icon="edit" color="indigo-12" aria-label="Edit collection" @click.stop="handleEditProject">
             <q-tooltip> Edit project info </q-tooltip>
           </q-btn>
-          <q-btn round flat icon="delete" color="negative" @click.stop="handleDeleteProject">
+          <q-btn v-if="rights.editMetadata" round flat icon="delete" color="negative" aria-label="Delete collection" @click.stop="handleDeleteProject">
             <q-tooltip> Delete project </q-tooltip>
           </q-btn>
         </q-card-actions>
@@ -64,6 +64,7 @@
 
 <script setup lang="ts">
 import { Collection } from 'src/models/collections'
+import { collectionRights } from 'src/features/collections/permissions'
 import { computed } from 'vue'
 
 interface Props {
@@ -73,6 +74,8 @@ interface Props {
 const emit = defineEmits(['edit', 'delete', 'enter', 'share'])
 
 const props = defineProps<Props>()
+// Sharing, editing and deleting are the owner's (ADR 0007); shared users only see the card.
+const rights = computed(() => collectionRights(props.collection))
 
 const createdOn = computed(() => {
   return props.collection.createdAt.toLocaleString()

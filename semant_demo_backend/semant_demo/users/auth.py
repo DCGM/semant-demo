@@ -1,18 +1,20 @@
 import uuid
 
+from fastapi import Depends
 from fastapi_users import FastAPIUsers
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
 
 from semant_demo.users.models import User
 from semant_demo.users.manager import get_user_manager
 from semant_demo.users.schemas import UserRead, UserCreate, UserUpdate
-from semant_demo.config import config
+from semant_demo.config import Config
+from semant_demo.routes.dependencies import get_config
 
 # JWT Bearer transport – token returned as JSON body on login
 bearer_transport = BearerTransport(tokenUrl="/api/auth/jwt/login")
 
 
-def get_jwt_strategy() -> JWTStrategy:
+def get_jwt_strategy(config: Config = Depends(get_config)) -> JWTStrategy:
     # 7-day lifetime; rotate secret via JWT_SECRET env var
     return JWTStrategy(secret=config.JWT_SECRET, lifetime_seconds=60 * 60 * 24 * 7)
 

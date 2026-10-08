@@ -283,12 +283,11 @@ const handleBulkDelete = () => {
   }).onOk(async () => {
     const ids = selected.value.map(tag => tag.id)
     selected.value = []
-    try {
-      await deleteManyTags(ids)
-    } catch {
-      // refetch to sync UI with backend after a partial/total failure
-      await loadTagsByCollection(collectionId.value)
-    }
+    // Resolves after every deletion has finished; only acknowledged ones are removed and
+    // failures are reported by the store. Reload afterwards (not before all deletions are
+    // done) so the list shows the backend's state.
+    const { failed } = await deleteManyTags(ids)
+    if (failed.length) await loadTagsByCollection(collectionId.value)
   })
 }
 

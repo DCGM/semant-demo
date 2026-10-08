@@ -33,11 +33,7 @@ module.exports = configure(function (/* ctx */) {
     // app boot file (/src/boot)
     // --> boot files are part of "main.js"
     // https://v2.quasar.dev/quasar-cli-vite/boot-files
-    boot: [
-
-      'axios',
-      'api-client'
-    ],
+    boot: [],
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-js#css
     css: [
@@ -64,6 +60,8 @@ module.exports = configure(function (/* ctx */) {
       },
 
       vueRouterMode: 'hash', // available values: 'hash', 'history'
+      // Browser tests build into a separate directory (see playwright.config.ts).
+      ...(process.env.QUASAR_DIST_DIR ? { distDir: process.env.QUASAR_DIST_DIR } : {}),
       // vueRouterBase,
       // vueDevtools,
       // vueOptionsAPI: false,

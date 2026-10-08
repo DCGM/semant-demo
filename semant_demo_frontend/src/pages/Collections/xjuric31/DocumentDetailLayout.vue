@@ -221,7 +221,7 @@
               >
                 <q-checkbox
                   :model-value="selectedAiTagIds.includes(tag.id)"
-                  @update:model-value="(v) => toggleAiTag(tag.id, !!v)"
+                  @update:model-value="(v: unknown) => toggleAiTag(tag.id, !!v)"
                   dense
                   size="sm"
                   :disable="aiAssist.isRunning.value"
@@ -311,6 +311,7 @@
               <span class="text-body2">
                 Processed {{ aiAssist.processedChunkCount.value }} chunks,
                 {{ aiAssist.totalSpansAdded.value }} suggestions.
+                <template v-if="aiAssist.lastStatus.value === 'cancelled'">Cancelled; saved suggestions are kept.</template>
               </span>
             </div>
 
@@ -358,7 +359,7 @@
                   dense
                   size="sm"
                   :disable="isBulkResolving"
-                  @update:model-value="(v) => toggleSelectAllSuggestions(!!v)"
+                  @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
                 >
                   <span class="text-caption text-grey-7">
                     {{ selectedSuggestionIds.size }} / {{ pendingAutoSpans.length }} selected
@@ -404,7 +405,7 @@
                 <div class="auto-span-header">
                   <q-checkbox
                     :model-value="entry.span.id ? selectedSuggestionIds.has(entry.span.id) : false"
-                    @update:model-value="(v) => toggleSuggestionSelection(entry.span, !!v)"
+                    @update:model-value="(v: unknown) => toggleSuggestionSelection(entry.span, !!v)"
                     @click.stop
                     dense
                     size="xs"
@@ -532,8 +533,9 @@ import TagExamples from 'src/components/TagExamples.vue'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
 import useAiAssistance, { type AiAssistanceMode } from 'src/composables/useAiAssistance'
 import useTagSpans from 'src/composables/useTagSpans'
-import { useApi } from 'src/composables/useApi'
-import { SpanType } from 'src/generated/api'
+import { useApi } from 'src/shared/api'
+import { SpanType, WriteOutcome } from 'src/generated/api'
+import { describeIncomplete } from 'src/utils/writeOutcome'
 import type { TagSpan } from 'src/models/tagSpans'
 import TagSearch from 'src/components/TagSearch.vue'
 import { useTagSearch } from 'src/composables/useTagSearch'
@@ -733,6 +735,9 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  // Leaving the document view aborts document-wide and selection runs; their late
+  // events are ignored. Suggestions already saved stay saved.
+  aiAssist.reset()
   aiAssist.aiTabActive.value = false
   aiAssist.highlightedAutoSpanId.value = null
 })
@@ -923,6 +928,7 @@ async function bulkResolveSelected(type: SpanType) {
       )
       .catch((e: unknown) => {
         console.error('Bulk resolve failed', e)
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : 'Failed to update the selected suggestions.' })
       })
     aiAssist.highlightedAutoSpanId.value = nextHighlight
   } finally {
@@ -946,12 +952,15 @@ async function onBulkDelete() {
     })
     lastDeletedCount.value = result.deleted
     lastStatusKind.value = 'deleted'
-    // Refresh auto spans currently in memory by dropping them from the store
-    // for the affected (chunk, tag) pairs.
-    const tagIdSet = new Set(selectedAiTagIds.value)
-    tagSpans.removeSpansLocally((s) => s.type === SpanType.auto && tagIdSet.has(s.tagId))
+    // Drop exactly the spans the backend deleted; failed ones stay visible.
+    const deletedIds = new Set(result.succeeded ?? [])
+    tagSpans.removeSpansLocally((s) => !!s.id && deletedIds.has(s.id))
+    if (result.outcome !== WriteOutcome.complete) {
+      $q.notify({ type: 'negative', message: describeIncomplete(result, 'Removing suggestions') })
+    }
   } catch (e) {
     console.error('Bulk delete of auto spans failed', e)
+    $q.notify({ type: 'negative', message: 'Failed to remove suggestions.' })
   } finally {
     isBulkDeleting.value = false
   }
@@ -991,14 +1000,18 @@ function onDeleteAllTagSpans(tag: Tag) {
           tagIds: [tag.id]
         }
       })
-      // Drop only approved spans for this tag from the in-memory store —
-      // mirrors what the backend just did.
-      tagSpans.removeSpansLocally((s) => s.tagId === tag.id && s.type === SpanType.pos)
-      $q.notify({
-        type: 'positive',
-        message: `Deleted ${result.deleted} approved annotation${result.deleted === 1 ? '' : 's'} of "${tag.name}".`,
-        timeout: 2500
-      })
+      // Drop exactly the spans the backend deleted; failed ones stay visible.
+      const deletedIds = new Set(result.succeeded ?? [])
+      tagSpans.removeSpansLocally((s) => !!s.id && deletedIds.has(s.id))
+      if (result.outcome === WriteOutcome.complete) {
+        $q.notify({
+          type: 'positive',
+          message: `Deleted ${result.deleted} approved annotation${result.deleted === 1 ? '' : 's'} of "${tag.name}".`,
+          timeout: 2500
+        })
+      } else {
+        $q.notify({ type: 'negative', message: describeIncomplete(result, `Deleting annotations of "${tag.name}"`) })
+      }
     } catch (e) {
       console.error('Failed to delete tag annotations', e)
       $q.notify({ type: 'negative', message: 'Failed to delete annotations.' })
@@ -1103,6 +1116,10 @@ watch(
 watch(
   () => props.collectionId,
   async (collectionId) => {
+    // A run of the previous collection must not add suggestions to the new one, and its
+    // annotations (the same chunk can be in both) must not stay on screen.
+    aiAssist.reset()
+    tagSpans.clearAll()
     await loadCollection(collectionId)
     await loadTagsByCollection(collectionId)
   },

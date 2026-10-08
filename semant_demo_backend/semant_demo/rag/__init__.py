@@ -1,4 +1,7 @@
+# Importing the implementations makes them available to the RAG factory.
 from semant_demo.rag.rag_generator import RagGenerator
 from semant_demo.rag.rag_test import TestRag
 from semant_demo.rag.agentic_rag import xmartiAgentRag
 from semant_demo.rag.incremental_rag import IncrementalAdaptiveRagGenerator
+
+__all__ = ["RagGenerator", "TestRag", "xmartiAgentRag", "IncrementalAdaptiveRagGenerator"]

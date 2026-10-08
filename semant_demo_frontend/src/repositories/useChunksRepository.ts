@@ -1,5 +1,6 @@
-import { useApi } from 'src/composables/useApi'
+import { useApi } from 'src/shared/api'
 import { Chunk, Chunks } from 'src/models/chunks'
+import { requireComplete } from 'src/utils/writeOutcome'
 
 export function useChunksRepository() {
   const api = useApi().default
@@ -12,11 +13,12 @@ export function useChunksRepository() {
       })
     },
 
+    /** Throws IncompleteWriteError when the chunk or its document could not be linked. */
     addChunkToCollection: async (chunkId: string, collectionId: string) => {
-      return api.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({
-        chunkId,
-        collectionId
-      })
+      return requireComplete(
+        await api.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({ chunkId, collectionId }),
+        'Adding the chunk'
+      )
     },
 
     removeChunkFromCollection: async (chunkId: string, collectionId: string) => {

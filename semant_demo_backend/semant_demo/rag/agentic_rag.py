@@ -4,18 +4,17 @@ from langchain_core.messages import (
     AIMessage,
     ToolMessage
 )
-from langchain_core.tools import tool
 from openai import AsyncOpenAI
 import time
 import json
 import uuid
-from typing import Dict, List, Any
 
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
-from semant_demo.schemas import SearchResponse, SearchRequest, SearchType, RagSearch, RagRequest, RagResponse
+from semant_demo.features.search.service import Retriever
+from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchType
+from semant_demo.schemas import RagSearch, RagRequest, RagResponse
 
 
 def create_async_openai_client(model_type: str, global_config: Config) -> AsyncOpenAI:
@@ -175,8 +174,8 @@ class LangchainLLM:
 
 
 class WeaviateToolWrapper:
-    def __init__(self, searcher: WeaviateAbstraction, rag_search: RagSearch, alpha: float, chunk_limit: int):
-        self.searcher = searcher
+    def __init__(self, retrieve: Retriever, rag_search: RagSearch, alpha: float, chunk_limit: int):
+        self.retrieve = retrieve
         self.rag_search = rag_search
         self.alpha = alpha
         self.chunk_limit = chunk_limit
@@ -199,7 +198,7 @@ class WeaviateToolWrapper:
             automatic = False
         )
 
-        search_response = await self.searcher.textChunk.search(search_request)
+        search_response = await self.retrieve(search_request)
         return search_response
 
     # @tool
@@ -335,7 +334,7 @@ class xmartiAgentRag(BaseRag):
     async def rag_request(
         self,
         request: RagRequest,
-        searcher: WeaviateAbstraction
+        retrieve: Retriever
     ) -> RagResponse:
 
         start_time = time.perf_counter()
@@ -343,7 +342,7 @@ class xmartiAgentRag(BaseRag):
         # Tool init
         iteration_limit = self.agent_iterations  # Use the configured number of agent iterations
         weaviate_tool = WeaviateToolWrapper(
-            searcher=searcher,
+            retrieve=retrieve,
             rag_search=request.rag_search,
             alpha=self.alpha,
             chunk_limit=self.chunk_limit

@@ -1,6 +1,6 @@
 <template>
   <div class="collection-members q-pa-md">
-    <q-card flat bordered class="panel-card">
+    <q-card v-if="rights.share" flat bordered class="panel-card q-mb-lg">
       <q-card-section class="q-pb-sm">
         <div class="text-subtitle1 text-weight-medium">Share with a user</div>
         <div class="panel-subtitle">Search by username or name</div>
@@ -53,7 +53,7 @@
       </q-card-section>
     </q-card>
 
-    <q-card flat bordered class="panel-card q-mt-lg">
+    <q-card flat bordered class="panel-card">
       <q-card-section class="q-pb-sm">
         <div class="text-subtitle1 text-weight-medium">Shared with</div>
       </q-card-section>
@@ -70,12 +70,13 @@
               <q-item-label>{{ displayName(user) }}</q-item-label>
               <q-item-label v-if="user.username" caption>@{{ user.username }}</q-item-label>
             </q-item-section>
-            <q-item-section side>
+            <q-item-section v-if="rights.share" side>
               <q-btn
                 flat
                 dense
                 round
                 icon="person_remove"
+                aria-label="Cancel share"
                 color="negative"
                 :loading="actingUserId === user.id"
                 @click="cancelShare(user)"
@@ -102,6 +103,9 @@ import { useCollectionRepository } from 'src/repositories/useCollectionRepositor
 import { useUserStore } from 'src/stores/user-store'
 import { UserSearchResult } from 'src/generated/api'
 import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
+import useCollections from 'src/composables/useCollections'
+import { collectionRights } from 'src/features/collections/permissions'
+import { createContextGuard } from 'src/shared/api'
 
 const $route = useRoute()
 const userRepository = useUserRepository()
@@ -112,6 +116,13 @@ const collectionId = computed(() => {
   const value = $route.params.collectionId
   return typeof value === 'string' ? value : ''
 })
+
+// Shared users see the member list but only the owner shares and unshares (ADR 0007).
+// The collection is loaded by the enclosing CollectionDetailLayout.
+const { activeCollection } = useCollections()
+const rights = computed(() =>
+  collectionRights(activeCollection.value?.id === collectionId.value ? activeCollection.value : null)
+)
 
 const sharedUsers = ref<UserSearchResult[]>([])
 const membersLoading = ref(false)
@@ -143,17 +154,25 @@ const initials = (user: UserSearchResult) => {
 const isAlreadyShared = (user: UserSearchResult) =>
   sharedUsers.value.some((shared) => shared.id === user.id)
 
+// Answers for an earlier collection or an earlier search query are dropped.
+const membersGuard = createContextGuard()
+const searchGuard = createContextGuard()
+
 const loadMembers = async () => {
   if (!collectionId.value) return
+  membersGuard.enter()
+  const isCurrent = membersGuard.capture()
   membersLoading.value = true
   membersError.value = null
   try {
-    sharedUsers.value = await collectionRepository.getMembers(collectionId.value)
+    const members = await collectionRepository.getMembers(collectionId.value)
+    if (isCurrent()) sharedUsers.value = members
   } catch (err) {
+    if (!isCurrent()) return
     membersError.value = 'Failed to load shared users'
     console.error('Error fetching collection members:', err)
   } finally {
-    membersLoading.value = false
+    if (isCurrent()) membersLoading.value = false
   }
 }
 
@@ -188,10 +207,13 @@ const cancelShare = async (user: UserSearchResult) => {
 }
 
 watch(searchQuery, async (query) => {
+  searchGuard.enter()
+  const isCurrent = searchGuard.capture()
   const trimmed = query.trim()
   if (trimmed.length < MIN_SEARCH_LENGTH) {
     searchResults.value = []
     searchAttempted.value = false
+    searchLoading.value = false
     return
   }
 
@@ -199,11 +221,30 @@ watch(searchQuery, async (query) => {
   searchAttempted.value = false
   try {
     const results = await userRepository.search(trimmed)
-    searchResults.value = results.filter((user) => user.id !== userStore.getUserId)
+    if (isCurrent()) searchResults.value = results.filter((user) => user.id !== userStore.getUserId)
   } finally {
-    searchLoading.value = false
-    searchAttempted.value = true
+    if (isCurrent()) {
+      searchLoading.value = false
+      searchAttempted.value = true
+    }
   }
+})
+
+watch(collectionId, () => {
+  sharedUsers.value = []
+  void loadMembers()
+})
+
+// Signed out or another user: the member list and user search belong to the old session.
+watch(() => userStore.getUserId, (userId, previousUserId) => {
+  if (!previousUserId || userId === previousUserId) return
+  membersGuard.enter()
+  searchGuard.enter()
+  sharedUsers.value = []
+  searchResults.value = []
+  membersLoading.value = false
+  searchLoading.value = false
+  if (userId) void loadMembers()
 })
 
 onMounted(() => {

@@ -1,6 +1,6 @@
 import { Feedback } from 'src/models/feedback'
 import { FeedbackSchema } from 'src/schemas/feedback'
-import FeedbackService from 'src/services/FeedbackService'
+import { useApi } from 'src/shared/api'
 
 const FeedbackRepository = {
   submit: async (feedback: Feedback): Promise<void> => {
@@ -10,7 +10,10 @@ const FeedbackRepository = {
       throw new Error('Invalid feedback data')
     }
 
-    await FeedbackService.submit(parsedData.data)
+    const { type, subject, message, email } = parsedData.data
+    await useApi().default.saveAppFeedbackApiV1FeedbackPost({
+      appFeedbackRequest: { type, subject: subject || null, message, email: email || null }
+    })
   }
 }
 

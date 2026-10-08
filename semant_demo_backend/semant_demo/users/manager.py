@@ -9,8 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from semant_demo.users.models import User
-from semant_demo.routes.dependencies import get_async_session
-from semant_demo.config import config
+from semant_demo.routes.dependencies import get_async_session, get_config
+from semant_demo.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +20,10 @@ async def get_user_db(session: AsyncSession = Depends(get_async_session)):
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
-    reset_password_token_secret = config.JWT_SECRET
-    verification_token_secret = config.JWT_SECRET
+    def __init__(self, user_db, jwt_secret: str, **kwargs):
+        super().__init__(user_db, **kwargs)
+        self.reset_password_token_secret = jwt_secret
+        self.verification_token_secret = jwt_secret
 
     async def _get_by_username(self, username: str) -> Optional[User]:
         session = self.user_db.session
@@ -65,5 +67,5 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         logger.info(f"Verification requested for user {user.id}.")
 
 
-async def get_user_manager(user_db=Depends(get_user_db)):
-    yield UserManager(user_db)
+async def get_user_manager(user_db=Depends(get_user_db), config: Config = Depends(get_config)):
+    yield UserManager(user_db, jwt_secret=config.JWT_SECRET)

@@ -5,3 +5,6 @@
 /node_modules
 .eslintrc.js
 /src-ssr
+/src/generated
+/test-results
+/playwright-report

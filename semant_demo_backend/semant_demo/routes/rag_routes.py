@@ -5,15 +5,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from semant_demo import schemas
-from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
+from semant_demo.adapters.sql.feedback import RagUserFeedback
+from semant_demo.features.search import service as search_service
+from semant_demo.features.search.service import SearchBackends
 
 #import dependencies
-from semant_demo.routes.dependencies import get_async_session, get_search #, get_engine
+from semant_demo.routes.dependencies import get_async_session, get_search_backends, get_rag_registry
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 
 
-from semant_demo.rag.rag_factory import get_all_rag_configurations, RAG_INSTANCES
+from semant_demo.rag.rag_factory import RagRegistry
 
 import datetime
 import logging
@@ -22,34 +24,39 @@ exp_router = APIRouter()
 
 #routest
 @exp_router.get("/api/rag/configurations", response_model=list[schemas.RagRouteConfig])
-async def get_avalaible_rag_configurations(current_user: User | None = Depends(current_active_optional_user)):
-    return get_all_rag_configurations()
+async def get_avalaible_rag_configurations(current_user: User | None = Depends(current_active_optional_user),
+                                           rag_registry: RagRegistry = Depends(get_rag_registry)):
+    return rag_registry.get_all_configurations()
 
 @exp_router.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagRequestMain, searcher: WeaviateAbstraction = Depends(get_search),
-              current_user: User | None = Depends(current_active_optional_user)) -> schemas.RagResponse:
+async def rag(request: schemas.RagRequestMain, search_backends: SearchBackends = Depends(get_search_backends),
+              current_user: User | None = Depends(current_active_optional_user),
+              rag_registry: RagRegistry = Depends(get_rag_registry)) -> schemas.RagResponse:
     #find and check rag
     id = request.rag_id
-    if id not in RAG_INSTANCES:
+    if id not in rag_registry.instances:
         raise HTTPException(status_code=400, detail=f"Unknown RAG configuration: {id}.")
     
     logging.info(f"RAG request received for RAG ID: {id} with question: {request.rag_request.question}")
     
     #load class and call instance
-    rag_instance = RAG_INSTANCES[id]
-    return await rag_instance.rag_request(request=request.rag_request, searcher=searcher)
+    rag_instance = rag_registry.instances[id]
+    # RAG requests carry no collection or tags: retrieval covers the public corpus.
+    retrieve = search_service.public_retriever(search_backends)
+    return await rag_instance.rag_request(request=request.rag_request, retrieve=retrieve)
 
 @exp_router.post("/api/rag/explain")
 async def explain_selection(request: schemas.ExplainRequest,
-                            current_user: User | None = Depends(current_active_optional_user)):
+                            current_user: User | None = Depends(current_active_optional_user),
+                            rag_registry: RagRegistry = Depends(get_rag_registry)):
     id = request.rag_id
-    if id not in RAG_INSTANCES:
+    if id not in rag_registry.instances:
         raise HTTPException(status_code=400, detail=f"Unknown RAG configuration: {id} used for explaining.")
     
     logging.info(f"Explain request received for RAG ID: {id} with selected text: {request.selected_text}")
 
     #load class and call instance
-    rag_instance = RAG_INSTANCES[id]
+    rag_instance = rag_registry.instances[id]
     return await rag_instance.explain_selection(request=request)
 
 # endpoint of feedback - like/dislike
@@ -57,7 +64,7 @@ async def explain_selection(request: schemas.ExplainRequest,
 async def save_feedback(request: schemas.FeedbackRequest, db: AsyncSession = Depends(get_async_session),
                         current_user: User | None = Depends(current_active_optional_user)):
     try:
-        selser = select(schemas.RagUserFeedback).where(schemas.RagUserFeedback.response_id == request.response_id)
+        selser = select(RagUserFeedback).where(RagUserFeedback.response_id == request.response_id)
         result = await db.execute(selser)
         ex_feedback = result.scalar_one_or_none()
 
@@ -68,7 +75,7 @@ async def save_feedback(request: schemas.FeedbackRequest, db: AsyncSession = Dep
             ex_feedback.timestamp = datetime.datetime.now(datetime.timezone.utc)
         else:               #create new 
             serialized_sources = [doc.model_dump(mode='json') for doc in request.sources] if request.sources else []
-            new_feedback = schemas.RagUserFeedback(
+            new_feedback = RagUserFeedback(
                 response_id=request.response_id,
                 rag_id=request.rag_id,
                 question=request.question,

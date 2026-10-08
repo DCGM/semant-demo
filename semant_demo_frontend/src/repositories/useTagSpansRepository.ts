@@ -1,5 +1,6 @@
-import { useApi } from 'src/composables/useApi'
-import type { TagSpan, TagSpans, PostSpan, PatchSpan } from 'src/models/tagSpans'
+import { useApi } from 'src/shared/api'
+import type { TagSpans, PostSpan, PatchSpan } from 'src/models/tagSpans'
+import type { BulkUpdateSpansResponse, TagSpanWriteResult, WriteResult } from 'src/generated/api'
 
 export function useTagSpansRepository() {
   const api = useApi().default
@@ -18,30 +19,33 @@ export function useTagSpansRepository() {
       })
     },
 
-    create: async (span: PostSpan): Promise<TagSpan> => {
+    /** The saved span; ``outcome`` is partial when its search tag could not be updated. */
+    create: async (span: PostSpan): Promise<TagSpanWriteResult> => {
       return api.createTagSpanApiTagSpansPost({
         postSpan: span
       })
     },
 
-    update: async (spanId: string, tagSpan: PatchSpan): Promise<TagSpan> => {
+    /** The updated span; ``outcome`` is partial when its search tag could not be updated. */
+    update: async (spanId: string, tagSpan: PatchSpan): Promise<TagSpanWriteResult> => {
       return api.updateTagSpanApiTagSpansSpanIdPatch({
         spanId,
         patchSpan: tagSpan
       })
     },
 
-    bulkUpdate: async (spanIds: string[], patch: PatchSpan): Promise<TagSpans> => {
-      const res = await api.bulkUpdateTagSpansApiTagSpansBulkUpdatePost({
+    /** Best effort: ``spans`` holds the updated spans, ``failed`` the rest. */
+    bulkUpdate: async (spanIds: string[], patch: PatchSpan): Promise<BulkUpdateSpansResponse> => {
+      return api.bulkUpdateTagSpansApiTagSpansBulkUpdatePost({
         bulkUpdateSpansRequest: {
           spanIds,
           update: patch
         }
       })
-      return res.spans
     },
 
-    delete: async (spanId: string): Promise<void> => {
+    /** ``outcome`` is partial when the span was deleted but its search tag was not updated. */
+    delete: async (spanId: string): Promise<WriteResult> => {
       return api.deleteTagSpanApiTagSpansSpanIdDelete({ spanId })
     }
   }

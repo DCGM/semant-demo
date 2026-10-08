@@ -2,9 +2,20 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { PostSpan, TagSpans, PatchSpan } from 'src/models/tagSpans'
 import { useTagSpansRepository } from 'src/repositories/useTagSpansRepository'
+import { requireComplete, searchTagWarning, spanOf } from 'src/utils/writeOutcome'
+import { warningNotification } from 'src/utils/notification'
+import { createScope } from 'src/shared/api'
 
+/**
+ * Spans of the document view, keyed by chunk id. They belong to one collection (a chunk
+ * can be in several collections, each with its own annotations): loading spans for
+ * another collection, or `clearAll()` (document change, logout), starts a new scope.
+ * Responses and write results of the old scope do not change the new one; the writes
+ * themselves are kept by the backend.
+ */
 export const useTagSpansStore = defineStore('tagSpans', () => {
   const repo = useTagSpansRepository()
+  const scope = createScope()
 
   /** All spans keyed by chunkId */
   const spansByChunkId = ref<Record<string, TagSpans>>({})
@@ -18,39 +29,64 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
    */
   const spansVersion = ref(0)
 
+  /** Switches to `collectionId`, dropping the spans of another collection. */
+  const enterCollection = (collectionId: string) => {
+    if (scope.enter(collectionId)) {
+      spansByChunkId.value = {}
+      error.value = null
+      loading.value = false
+    }
+    return scope.capture()
+  }
+
   const fetchSpansForChunkInCollection = async (chunkId: string, collectionId: string) => {
+    const isCurrent = enterCollection(collectionId)
     try {
       const spans = await repo.getByChunkIdInCollection(chunkId, collectionId)
+      if (!isCurrent()) return
       spansByChunkId.value = {
         ...spansByChunkId.value,
         [chunkId]: spans
       }
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to fetch spans for chunk', chunkId, err)
       error.value = 'Failed to fetch spans'
     }
   }
 
   const fetchSpansForChunksInCollection = async (chunkIds: string[], collectionId: string) => {
+    const isCurrent = enterCollection(collectionId)
     loading.value = true
     error.value = null
     try {
       const result = await repo.getByChunkIdsInCollection(chunkIds, collectionId)
+      if (!isCurrent()) return
       spansByChunkId.value = { ...spansByChunkId.value, ...result }
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to fetch spans', err)
       error.value = 'Failed to fetch spans'
     } finally {
-      loading.value = false
+      if (isCurrent()) loading.value = false
     }
   }
 
+  /** Show a warning when a span write was kept but its search tag update failed. */
+  const warnIfSearchTagFailed = (warning: string | null) => {
+    if (warning) warningNotification(warning)
+  }
+
   const createSpan = async (span: PostSpan) => {
+    const isCurrent = scope.capture()
     try {
-      const newSpan = await repo.create(span)
-      spansByChunkId.value[span.chunkId] = [...(spansByChunkId.value[span.chunkId] || []), newSpan]
+      const result = await repo.create(span)
+      warnIfSearchTagFailed(searchTagWarning(result, 'saved'))
+      if (!isCurrent()) return
+      spansByChunkId.value[span.chunkId] = [...(spansByChunkId.value[span.chunkId] || []), spanOf(result)]
       spansVersion.value++
     } catch (err) {
+      if (!isCurrent()) throw err
       console.error('Failed to create span', err)
       error.value = 'Failed to create span'
       throw err
@@ -58,11 +94,16 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   }
 
   const updateSpan = async (spanId: string, chunkId: string, update: PatchSpan) => {
+    const isCurrent = scope.capture()
     try {
-      const updatedSpan = await repo.update(spanId, update)
-      spansByChunkId.value[chunkId] = spansByChunkId.value[chunkId].map((s) => (s.id === spanId ? updatedSpan : s))
+      const result = await repo.update(spanId, update)
+      warnIfSearchTagFailed(searchTagWarning(result, 'saved'))
+      if (!isCurrent()) return
+      const updatedSpan = spanOf(result)
+      spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).map((s) => (s.id === spanId ? updatedSpan : s))
       spansVersion.value++
     } catch (err) {
+      if (!isCurrent()) throw err
       console.error('Failed to update span', err)
       error.value = 'Failed to update span'
       throw err
@@ -80,9 +121,15 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
    */
   const bulkUpdateSpans = async (spanIds: string[], update: PatchSpan) => {
     if (spanIds.length === 0) return
+    const isCurrent = scope.capture()
     try {
-      const updated = await repo.bulkUpdate(spanIds, update)
-      const byId = new Map(updated.map((s) => [s.id, s] as const))
+      const result = await repo.bulkUpdate(spanIds, update)
+      if (!isCurrent()) {
+        requireComplete(result, 'Updating the selected suggestions')
+        return
+      }
+      // Apply the spans that were updated, then report any that were not.
+      const byId = new Map(result.spans.map((s) => [s.id, s] as const))
 
       const next: Record<string, TagSpans> = { ...spansByChunkId.value }
       for (const chunkId of Object.keys(next)) {
@@ -102,7 +149,9 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
 
       spansByChunkId.value = next
       spansVersion.value++
+      requireComplete(result, 'Updating the selected suggestions')
     } catch (err) {
+      if (!isCurrent()) throw err
       console.error('Failed to bulk-update spans', err)
       error.value = 'Failed to bulk-update spans'
       throw err
@@ -110,20 +159,27 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   }
 
   const deleteSpan = async (spanId: string, chunkId: string) => {
+    const isCurrent = scope.capture()
     try {
-      await repo.delete(spanId)
-      spansByChunkId.value[chunkId] = spansByChunkId.value[chunkId].filter((s) => s.id !== spanId)
+      const result = await repo.delete(spanId)
+      warnIfSearchTagFailed(searchTagWarning(result, 'deleted'))
+      if (!isCurrent()) return
+      spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).filter((s) => s.id !== spanId)
       spansVersion.value++
     } catch (err) {
+      if (!isCurrent()) throw err
       console.error('Failed to delete span', err)
       error.value = 'Failed to delete span'
       throw err
     }
   }
 
+  /** Drops all spans and starts a new scope (document change, logout). */
   const clearAll = () => {
+    scope.reset()
     spansByChunkId.value = {}
     error.value = null
+    loading.value = false
   }
 
   /**

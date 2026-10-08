@@ -1,12 +1,16 @@
 
 # BulkUpdateSpansResponse
 
-Updated spans returned by a bulk update.
+Result of a bulk update: the updated spans, plus per-span failures (best effort).
 
 ## Properties
 
 Name | Type
 ------------ | -------------
+`outcome` | [WriteOutcome](WriteOutcome.md)
+`succeeded` | Array&lt;string&gt;
+`failed` | [Array&lt;StepFailure&gt;](StepFailure.md)
+`unattempted` | Array&lt;string&gt;
 `spans` | [Array&lt;TagSpan&gt;](TagSpan.md)
 
 ## Example
@@ -16,6 +20,10 @@ import type { BulkUpdateSpansResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
+  "outcome": null,
+  "succeeded": null,
+  "failed": null,
+  "unattempted": null,
   "spans": null,
 } satisfies BulkUpdateSpansResponse
 

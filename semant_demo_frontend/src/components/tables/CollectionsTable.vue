@@ -55,13 +55,14 @@
     </template>
     <template #body-cell-actions="tableProps">
       <q-td :props="tableProps">
-        <div class="row no-wrap items-center q-gutter-xs" @click.stop>
+        <div v-if="isOwned(tableProps.row)" class="row no-wrap items-center q-gutter-xs" @click.stop>
           <q-btn
             flat
             dense
             round
             icon="share"
             color="primary"
+            aria-label="Share collection"
             @click="emit('share', tableProps.row)"
           >
             <q-tooltip>Share collection</q-tooltip>
@@ -72,6 +73,7 @@
             round
             icon="edit"
             color="primary"
+            aria-label="Edit collection"
             @click="emit('edit', tableProps.row)"
           />
           <q-btn
@@ -80,9 +82,13 @@
             round
             icon="delete"
             color="negative"
+            aria-label="Delete collection"
             @click="emit('delete', tableProps.row)"
           />
         </div>
+        <q-icon v-else name="group" color="grey-6" size="sm" @click.stop>
+          <q-tooltip>Shared with you by {{ tableProps.row.owner }}; only the owner can share, edit or delete it.</q-tooltip>
+        </q-icon>
       </q-td>
     </template>
     <template #body-cell-color="tableProps">
@@ -117,6 +123,7 @@
           label="Share selected"
           color="primary"
           size="md"
+          :disable="!allSelectedOwned"
           @click="handleBulkShare"
         />
         <q-btn
@@ -125,8 +132,10 @@
           label="Delete selected"
           color="negative"
           size="md"
+          :disable="!allSelectedOwned"
           @click="handleBulkDelete"
         />
+        <span v-if="!allSelectedOwned" class="bulk-hint">Only the owner can share or delete a collection.</span>
         <q-btn
           flat dense round
           icon="close"
@@ -146,6 +155,7 @@ import { useQuasar, type QTableColumn } from 'quasar'
 import { Collection } from 'src/models/collections'
 import useShareCollectionsDialog from 'src/composables/dialogs/useShareCollectionsDialog'
 import { UserSearchResult } from 'src/generated/api'
+import { collectionRights } from 'src/features/collections/permissions'
 
 interface Props {
   collections: Collection[]
@@ -234,8 +244,12 @@ const columns: QTableColumn<Collection>[] = [
 const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
 const columnOptions = columns.filter((column) => !column.required)
 
+// Sharing and deleting are the owner's (ADR 0007).
+const isOwned = (collection: Collection) => collectionRights(collection).share
+const allSelectedOwned = computed(() => selected.value.every(isOwned))
+
 const handleBulkShare = () => {
-  if (selected.value.length === 0) return
+  if (selected.value.length === 0 || !allSelectedOwned.value) return
   const collectionIds = selected.value.map((c) => c.id)
   openShareCollectionsDialog({ collectionCount: collectionIds.length })
     .onOk((user: UserSearchResult) => {
@@ -245,7 +259,7 @@ const handleBulkShare = () => {
 }
 
 const handleBulkDelete = () => {
-  if (selected.value.length === 0) return
+  if (selected.value.length === 0 || !allSelectedOwned.value) return
   const count = selected.value.length
   $q.dialog({
     title: 'Delete Selected Collections',
@@ -295,6 +309,12 @@ const loading = computed(() => props.loading)
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
   z-index: 9000;
   white-space: nowrap;
+}
+
+.bulk-hint {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  padding: 0 6px;
 }
 
 .bulk-count {

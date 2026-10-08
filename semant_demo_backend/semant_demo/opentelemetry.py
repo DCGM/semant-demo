@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 import socket
 from dataclasses import dataclass
+from time import perf_counter
 from typing import TYPE_CHECKING
 from urllib.parse import urljoin
+from uuid import uuid4
 
 from opentelemetry import _logs, metrics, trace
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
@@ -22,8 +24,10 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from starlette.datastructures import Headers, MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from semant_demo.config import config
+from semant_demo.config import Config
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -61,12 +65,9 @@ def feature_for_request(path: str, method: str) -> str | None:
         return "search"
     if path.startswith("/api/summarize/") or path.startswith("/api/question/"):
         return "summarize"
-    if path.startswith("/api/ai/") or path in {
-        "/api/propose_tags",
-        "/api/propose_best_tag",
-    }:
+    if path.startswith("/api/ai/"):
         return "ai_assistance"
-    if path in {"/api/tag/task", "/api/tags", "/api/tags/filter"}:
+    if path in {"/api/tags", "/api/tag_spans", "/api/tag_spans/batch", "/api/tag_spans/bulk_update"}:
         return "tagging"
     return None
 
@@ -155,8 +156,99 @@ class OpenTelemetry:
         self.trace_provider.shutdown()
 
 
-def initialize_opentelemetry() -> OpenTelemetry | None:
-    """Configure OTLP/HTTP exporters and application instrumentors."""
+UNMATCHED_ROUTE = "<unmatched>"
+
+# Server-span attributes that FastAPIInstrumentor fills from the raw request URL.
+_RAW_URL_SPAN_ATTRIBUTES = ("http.target", "http.url", "url.path", "url.full", "url.query")
+
+
+def route_template(scope: Scope) -> str:
+    """The matched route's path template, e.g. ``/api/question/{question_text}``.
+
+    Never the raw path: path parameters can carry user text (a question, a search).
+    """
+    return getattr(scope.get("route"), "path_format", None) or UNMATCHED_ROUTE
+
+
+def _redact_server_span(route: str) -> None:
+    """Replace the raw URL on the current server span with the route template."""
+    span = trace.get_current_span()
+    if not span.is_recording():
+        return
+    recorded = getattr(span, "attributes", None) or {}
+    for key in _RAW_URL_SPAN_ATTRIBUTES:
+        if key in recorded:
+            span.set_attribute(key, "" if key == "url.query" else route)
+
+
+class RequestTelemetryMiddleware:
+    """Create one structured ``INFO`` log record for every completed HTTP request.
+
+    Also records the feature metrics when ``telemetry`` is enabled. Logs and the server
+    span carry the route template, not the raw URL. It is a plain ASGI middleware so a
+    streamed response is timed until its end and a client disconnect still reaches the
+    endpoint, which cancels its remaining work.
+    """
+
+    def __init__(self, app: ASGIApp, telemetry: OpenTelemetry | None = None):
+        self.app = app
+        self.telemetry = telemetry
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
+        request_id = headers.get("x-request-id", str(uuid4()))
+        started_at = perf_counter()
+        attributes = {
+            "request.id": request_id,
+            "http.request.method": scope["method"],
+        }
+        feature = feature_for_request(scope["path"], scope["method"])
+        authentication = request_authentication(headers.get("authorization"))
+        status_code = 500
+
+        async def send_with_request_id(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                MutableHeaders(scope=message)["X-Request-ID"] = request_id
+                # The server span ends with the response body, so redact it now.
+                _redact_server_span(route_template(scope))
+            await send(message)
+
+        def record(status: int, duration_seconds: float) -> None:
+            # Known only after routing; also set when the endpoint raised.
+            attributes["http.route"] = route_template(scope)
+            _redact_server_span(attributes["http.route"])  # a span still open after an error
+            attributes["http.response.status_code"] = status
+            attributes["http.server.request.duration_ms"] = round(duration_seconds * 1000, 2)
+            if self.telemetry is not None and feature is not None:
+                self.telemetry.record_feature_request(
+                    feature=feature,
+                    authentication=authentication,
+                    status_code=status,
+                    duration_seconds=duration_seconds,
+                )
+
+        try:
+            await self.app(scope, receive, send_with_request_id)
+        except Exception:
+            record(500, perf_counter() - started_at)
+            logging.getLogger(__name__).exception("HTTP request failed", extra=attributes)
+            raise
+
+        record(status_code, perf_counter() - started_at)
+        logging.getLogger(__name__).info("HTTP request completed", extra=attributes)
+
+
+def initialize_opentelemetry(config: Config) -> OpenTelemetry | None:
+    """Configure OTLP/HTTP exporters and application instrumentors.
+
+    Providers are process-wide, so call this once per process (``create_app`` does).
+    """
     if not config.OTEL_ENABLED:
         return None
 

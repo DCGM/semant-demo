@@ -106,6 +106,17 @@ erDiagram
 
 Stores bibliographic metadata for each digitised document (book, periodical issue, etc.). No vector index — documents are not directly searchable by similarity.
 
+The property list in the diagram above is older than the local development snapshot
+(`local_data/`, checked 2026-10-08), which stores `author` (`text[]`), `subtitle`,
+`partNumber` (`text`), `url` (`uuid`), `placeOfPublication`, `editors`, `seriesName`,
+`seriesNumber` (`text`), `edition`, `illustrators`, `translators`, `redaktors` and has no
+`library`, `authors`, `subTitle`, `description`, `keywords`, `genre`, `placeTerm`,
+`section`, `region` or `id_code`. Deployed databases were not checked. The API reads every
+store through one model, `schema/documents.Document`: the snapshot's properties plus the
+older `library`, `description`, `keywords` (`text[]`), `genre` and `placeTerm`. Properties
+a store lacks are absent from the answer; stored properties the model does not name (e.g.
+`authors`, `subTitle`, `manufacturePublisher`) are not returned, as before #208.
+
 Key fields:
 - `library` — source digital library identifier (e.g. `"mzk"`)
 - `yearIssued` / `dateIssued` — used for temporal filtering
@@ -129,10 +140,20 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 | Reference | Target | Cardinality | Description |
 |---|---|---|---|
 | `document` | Documents | 1 | Parent document |
-| `automaticTag` | Tag | many | Tags assigned by LLM |
-| `positiveTag` | Tag | many | Tags approved by user |
-| `negativeTag` | Tag | many | Tags rejected by user |
+| `automaticTag` | Tag | many | Tags of `auto` spans anchored on this chunk (unresolved AI suggestions) |
+| `positiveTag` | Tag | many | Tags of `pos` spans anchored on this chunk (approved) |
+| `negativeTag` | Tag | many | Tags of `neg` spans anchored on this chunk (rejected) |
 | `userCollection` | UserCollection | many | User collections containing this chunk |
+
+The three tag references are what tag-filtered search uses. They are derived from the
+`Span` collection: a chunk holds a tag reference exactly when at least one span of the
+matching type with that tag is anchored on the chunk (its `text_chunk` reference). The
+lists follow the spans' current type: approving a suggestion (`auto` → `pos`) moves its
+tag from `automaticTag` to `positiveTag` unless another `auto` span of that tag remains;
+`automaticTag` does not record that the AI once proposed an approved tag. Span
+writes maintain this; a reference without such a span is a data inconsistency, not a
+supported legacy state (ADR 0004). `python -m semant_demo.maintenance.chunk_tag_audit`
+reports inconsistencies.
 
 ### Collection: `Tag`
 
@@ -173,36 +194,23 @@ References:
 | `tag` | Tag | 1 | The tag this span instantiates |
 | `text_chunk` | Chunks | 1 | The chunk inside which the span lives |
 
-> **Lazy schema migration.** Older deployments created the `Span` collection without `reason` / `confidence`. The backend (`Span._ensure_ai_properties` in `weaviate_utils/span.py`) idempotently adds these properties on first AI-write, so no manual migration is required.
+> **Lazy schema migration.** Older deployments created the `Span` collection without `reason` / `confidence`. The backend (`SpanRepository._ensure_ai_properties` in `adapters/weaviate/spans.py`) idempotently adds these properties on first AI-write, so no manual migration is required.
 
-> **Cascade on tag/chunk delete.** Deleting a Tag or a Chunk also removes all Spans referencing them; this is enforced by the backend (`weaviate_utils/helpers.py`, `delete_span_cascade`) rather than by Weaviate itself.
+> **Cascade on tag delete.** Deleting a Tag (also as part of deleting its collection) first removes the chunk tag references to it, then its Spans, then the Tag; this is done by the backend (`adapters/weaviate/writes.py`) rather than by Weaviate itself. It is not atomic: a failed step keeps the completed deletions and is reported, and deleting again continues.
 
 ---
 
 ## SQLite Schema
 
-SQLite holds two tables, both created automatically at startup via `TasksBase.metadata.create_all`.
+The SQL database (`SQL_DB_URL`, SQLite file `tasks.db` by default — the name is historical)
+holds two application tables, declared on `adapters/sql/base.Base` and created at startup by
+`adapters/sql/tables.create_tables` when missing: `user` (below) and `rag_user_feedback` (likes /
+dislikes of RAG answers, `adapters/sql/feedback.py`). Startup never drops or alters existing
+tables or rows.
 
-### `tasks` — Asynchronous tagging jobs
-
-```sql
-CREATE TABLE tasks (
-    taskId          VARCHAR(36)  PRIMARY KEY,   -- UUID
-    status          VARCHAR(20)  DEFAULT 'PENDING',  -- PENDING | RUNNING | COMPLETED | FAILED
-    result          JSON,                        -- final result or error
-    all_texts_count INTEGER,                     -- total chunks to process
-    processed_count INTEGER,                     -- chunks processed so far
-    collection_name VARCHAR,                     -- target chunk collection
-    tag_id          VARCHAR(36),                 -- UUID of the tag being applied
-    tag_processing_data JSON,                    -- per-chunk tagging details
-    time_updated    DATETIME,                    -- auto-updated timestamp
-    task_name       VARCHAR                      -- asyncio task name (for cancellation)
-);
-```
-
-Task lifecycle: `PENDING` → `RUNNING` → `COMPLETED` / `FAILED`
-
-The backend polls this table via `GET /api/tag/task/status/{taskId}` and the frontend uses periodic polling to display progress.
+Databases created before the refactor may also contain a `tasks` table from the removed
+background tagging jobs. Nothing reads or writes it any more; it is left in place (dropping it
+would be a separate, reviewed data change).
 
 ### `user` — User accounts (FastAPI Users)
 

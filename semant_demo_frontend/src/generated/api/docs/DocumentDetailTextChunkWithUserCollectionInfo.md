@@ -1,6 +1,7 @@
 
 # DocumentDetailTextChunkWithUserCollectionInfo
 
+A chunk of the document view. ``text`` is the canonical stored text that span offsets refer to (never display-normalized).
 
 ## Properties
 

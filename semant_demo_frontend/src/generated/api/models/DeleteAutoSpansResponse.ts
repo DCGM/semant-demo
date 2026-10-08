@@ -13,12 +13,51 @@
  */
 
 import { mapValues } from '../runtime';
+import type { WriteOutcome } from './WriteOutcome';
+import {
+    WriteOutcomeFromJSON,
+    WriteOutcomeFromJSONTyped,
+    WriteOutcomeToJSON,
+    WriteOutcomeToJSONTyped,
+} from './WriteOutcome';
+import type { StepFailure } from './StepFailure';
+import {
+    StepFailureFromJSON,
+    StepFailureFromJSONTyped,
+    StepFailureToJSON,
+    StepFailureToJSONTyped,
+} from './StepFailure';
+
 /**
- * Result of a bulk auto-span deletion.
+ * Result of a bulk auto-span deletion; ``succeeded`` lists the deleted span ids.
  * @export
  * @interface DeleteAutoSpansResponse
  */
 export interface DeleteAutoSpansResponse {
+    /**
+     * 
+     * @type {WriteOutcome}
+     * @memberof DeleteAutoSpansResponse
+     */
+    outcome: WriteOutcome;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof DeleteAutoSpansResponse
+     */
+    succeeded?: Array<string>;
+    /**
+     * 
+     * @type {Array<StepFailure>}
+     * @memberof DeleteAutoSpansResponse
+     */
+    failed?: Array<StepFailure>;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof DeleteAutoSpansResponse
+     */
+    unattempted?: Array<string>;
     /**
      * 
      * @type {number}
@@ -27,10 +66,13 @@ export interface DeleteAutoSpansResponse {
     deleted: number;
 }
 
+
+
 /**
  * Check if a given object implements the DeleteAutoSpansResponse interface.
  */
 export function instanceOfDeleteAutoSpansResponse(value: object): value is DeleteAutoSpansResponse {
+    if (!('outcome' in value) || value['outcome'] === undefined) return false;
     if (!('deleted' in value) || value['deleted'] === undefined) return false;
     return true;
 }
@@ -45,6 +87,10 @@ export function DeleteAutoSpansResponseFromJSONTyped(json: any, ignoreDiscrimina
     }
     return {
         
+        'outcome': WriteOutcomeFromJSON(json['outcome']),
+        'succeeded': json['succeeded'] == null ? undefined : json['succeeded'],
+        'failed': json['failed'] == null ? undefined : ((json['failed'] as Array<any>).map(StepFailureFromJSON)),
+        'unattempted': json['unattempted'] == null ? undefined : json['unattempted'],
         'deleted': json['deleted'],
     };
 }
@@ -60,6 +106,10 @@ export function DeleteAutoSpansResponseToJSONTyped(value?: DeleteAutoSpansRespon
 
     return {
         
+        'outcome': WriteOutcomeToJSON(value['outcome']),
+        'succeeded': value['succeeded'],
+        'failed': value['failed'] == null ? undefined : ((value['failed'] as Array<any>).map(StepFailureToJSON)),
+        'unattempted': value['unattempted'],
         'deleted': value['deleted'],
     };
 }

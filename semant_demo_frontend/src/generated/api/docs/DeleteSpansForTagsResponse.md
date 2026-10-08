@@ -1,12 +1,16 @@
 
 # DeleteSpansForTagsResponse
 
-Result of a bulk per-tag deletion.
+Result of a bulk per-tag deletion; ``succeeded`` lists the deleted span ids.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
+`outcome` | [WriteOutcome](WriteOutcome.md)
+`succeeded` | Array&lt;string&gt;
+`failed` | [Array&lt;StepFailure&gt;](StepFailure.md)
+`unattempted` | Array&lt;string&gt;
 `deleted` | number
 
 ## Example
@@ -16,6 +20,10 @@ import type { DeleteSpansForTagsResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
+  "outcome": null,
+  "succeeded": null,
+  "failed": null,
+  "unattempted": null,
   "deleted": null,
 } satisfies DeleteSpansForTagsResponse
 
