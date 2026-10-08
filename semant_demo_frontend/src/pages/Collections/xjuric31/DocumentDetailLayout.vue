@@ -311,6 +311,7 @@
               <span class="text-body2">
                 Processed {{ aiAssist.processedChunkCount.value }} chunks,
                 {{ aiAssist.totalSpansAdded.value }} suggestions.
+                <template v-if="aiAssist.lastStatus.value === 'cancelled'">Cancelled; saved suggestions are kept.</template>
               </span>
             </div>
 
@@ -1112,6 +1113,8 @@ watch(
 watch(
   () => props.collectionId,
   async (collectionId) => {
+    // A run of the previous collection must not add suggestions to the new one.
+    aiAssist.reset()
     await loadCollection(collectionId)
     await loadTagsByCollection(collectionId)
   },

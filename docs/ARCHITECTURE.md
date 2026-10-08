@@ -61,7 +61,6 @@ flowchart LR
         DI["dependencies.py<br/>(DI Container)"]
         SUM_R[summarizer_routes]
         RAG_R[rag_routes]
-        AI_R[ai_assistance_routes]
         CHAT_R[span_chat_routes]
         DOC_R[document_routes]
         USR_R[user_routes]
@@ -85,25 +84,25 @@ flowchart LR
         RAG_F[rag/]
         SUM[summarization/]
         TAG_F[tagging/]
-        AI_F["ai_assistance/<br/>(topicer_client, span_chat)"]
+        AI_F["ai_assistance/<br/>(span_chat)"]
         USERS[users/]
         COL_F["features/collections/<br/>(routes, service, access, schemas)"]
         SEARCH_F["features/search/<br/>(routes, service, filters, schemas)"]
-        ANN_F["features/annotations/<br/>(routes, service, offsets, schemas)"]
+        ANN_F["features/annotations/<br/>(routes, service, offsets, schemas,<br/>suggestions, suggestion_routes)"]
+        TOPICER["adapters/topicer/"]
     end
 
     APP --> DI & RAG_F & USERS
-    SUM_R & RAG_R & AI_R & CHAT_R & DOC_R & COL_F & SEARCH_F & ANN_F & USR_R & FB_R & AUTH_R --> DI
+    SUM_R & RAG_R & CHAT_R & DOC_R & COL_F & SEARCH_F & ANN_F & USR_R & FB_R & AUTH_R --> DI
     DI --> WS
     RAG_R --> RAG_F
     RAG_R --> SEARCH_F
     SEARCH_F --> COL_F
+    ANN_F --> TOPICER
     SEARCH_F --> GEMMA
     SEARCH_F --> SUM
     SUM_R --> SUM
     ANN_F --> COL_F
-    AI_R --> ANN_F
-    AI_R --> AI_F
     CHAT_R --> AI_F
     RAG_F --> LLM_API
     SUM --> LLM_API
@@ -347,7 +346,7 @@ Tags can additionally be anchored to specific character ranges inside a chunk vi
 
 Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `text_chunk` → `Chunks` — rather than as plain UUID properties. The backend lazily ensures `reason`/`confidence` properties exist on legacy collections (`SpanRepository._ensure_ai_properties`).
 
-The Annotations feature (`features/annotations/service.py`, #206) owns tag and span use cases: access checks (read: collection read; spans: annotation edit; tags: tag-definition edit — owner and shared users), offset validation, the span write followed by the chunk tag re-derivation, and partial outcomes. Routes only parse HTTP; `adapters/weaviate/spans.py` and `tags.py` only read and write. The AI suggestion routes save validated proposals and delete suggestions through the same service.
+The Annotations feature (`features/annotations/service.py`, #206) owns tag and span use cases: access checks (read: collection read; spans: annotation edit; tags: tag-definition edit — owner and shared users), offset validation, the span write followed by the chunk tag re-derivation, and partial outcomes. Routes only parse HTTP; `adapters/weaviate/spans.py` and `tags.py` only read and write. AI suggestions (`suggestions.py`, below) save validated proposals and delete suggestions through the same service.
 
 Coordinates (`features/annotations/offsets.py`, frontend twin `src/utils/spanOffsets.ts`, shared cases in `semant_demo_backend/tests/fixtures/text_offsets.json`): a span is stored on the chunk where it starts; `start`/`end` are half-open UTF-16 code-unit offsets (the browser's `String.length`) from the start of that chunk's text. `end` may exceed the chunk: the span continues into the following chunks of the document while their `order` is consecutive, whether or not they are in the collection. Span creation and offset changes are rejected with 400 when `start` is negative or not inside the anchor chunk, the span is empty, it crosses a gap in chunk order, or it ends after the document's text. Changes that do not touch offsets (approve, reject, retag) do not re-check stored offsets.
 
@@ -357,19 +356,22 @@ REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/co
 
 Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans (#204): a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk; covering the following chunks is a post-refactor TODO). The lists follow the spans' current type: `automaticTag` holds tags with unresolved AI suggestions, so approving a suggestion moves the tag from the chunk's `automaticTag` list to its `positiveTag` list unless another `auto` span of that tag remains. Every span create, update (also offset-only, so saving again retries) and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). Within one process the re-derivation of a pair runs one at a time (`ChunkTagRepository`), so concurrent writes on the same pair end consistent; with several worker processes they can still leave it stale. That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see DEVELOPMENT.md).
 
-#### AI Assistance (`ai_assistance/`, `routes/ai_assistance_routes.py`, `routes/span_chat_routes.py`)
+#### AI Assistance (`features/annotations/suggestions.py`, `suggestion_routes.py`, `adapters/topicer/`, `ai_assistance/span_chat.py`, `routes/span_chat_routes.py`)
 
 External AI integrations that produce or critique spans. All streaming endpoints use NDJSON (`application/x-ndjson`) so the frontend can render partial results incrementally.
 
-**Topicer span proposal.** `topicer_client.py` is an async `httpx` client for the Topicer service (`TOPICER_URL`, default `http://topicer:8089`). Topicer returns proposed `(start, end, reason, confidence)` triples per `(chunk, tag)` pair. The backend exposes two routes:
+**Topicer span proposal.** `adapters/topicer/client.py` (`TopicerClient`, built by bootstrap from `TOPICER_URL` — default `http://topicer:8089` — `TOPICER_CONFIG_NAME` and `TOPICER_TIMEOUT`) is an async `httpx` client for the Topicer service. Topicer returns proposed `(tag, start, end, reason, confidence)` per chunk. The workflow (`features/annotations/suggestions.py`, #207) is request-scoped (ADR 0003): a `prepare_*` function checks annotation-edit access and the tag/document/chunk scope and loads tags and chunks before the stream starts (a denied request makes no provider call); iterating the run calls Topicer (at most 10 calls of a run at a time), validates each proposal (its tag must be a requested tag, its chunk a chunk of the document in the collection, its offsets `0 <= start < end <= len(text sent)`, read as code points and stored as UTF-16 units; invalid proposals are rejected, not clamped), saves each valid one as an `auto` span with its chunk tag, and yields a `result` event after the write. The route only encodes events as NDJSON. Each stream ends with an `end` event (`outcome` complete / partial / failed, counts of saved, rejected, failed saves, chunk tag failures and provider failures); a stream without it was interrupted. Failures do not stop the run and nothing is rolled back. On client disconnect the route closes the run: running Topicer calls are cancelled and awaited, a span write in progress finishes first, saved spans remain. Running again stores duplicate `auto` spans for identical proposals (no comparison with stored spans).
 
 | Route | Topicer call | Behaviour |
 |---|---|---|
-| `POST /api/ai/suggest_spans/thorough` | `POST /v1/tags/propose/texts` (per chunk) | Backend iterates over chunks of the target collection, calling Topicer per chunk and emitting one NDJSON line per completed chunk. Slower but resilient to per-chunk failures. |
-| `POST /api/ai/suggest_spans/optimized` | `POST /v1/tags/propose/db/stream` | Backend forwards Topicer's own DB-streaming response straight to the client, line-by-line. Fastest path; Topicer pulls chunks directly from Weaviate. |
-| `POST /api/ai/auto_spans/delete` | — | Cleanup endpoint: deletes all `auto`-typed spans for the given tag(s), optionally scoped to a single document. |
+| `POST /api/ai/suggest_spans/thorough` | `POST /v1/tags/propose/texts` (per chunk) | One call per chunk of the document in the collection with all requested tags; one `result` line per chunk in completion order. Slower but resilient to per-chunk failures. |
+| `POST /api/ai/suggest_spans/optimized` | `POST /v1/tags/propose/db/stream` (per tag) | Topicer pre-filters chunks by vector similarity and streams them; one `result` line per returned chunk, tags one after another. Proposals on chunks outside the collection are rejected. |
+| `POST /api/ai/suggest_spans/selection` | `POST /v1/tags/propose/texts` (once) | The user's selection (UTF-16 offsets over the selected chunks' concatenated text); one `result` line per proposal. Spans are anchored on the chunk where they start; their end counts the document's chunks in between, also those outside the collection. |
+| `POST /api/ai/auto_spans/delete` | — | Cleanup endpoint: deletes the `auto` spans of the given tags in one document of the collection. |
 
-Approved proposals are written to the `Span` collection as `auto` spans; reviewers then promote them to `pos` (or remove them) through the standard span endpoints.
+Reviewers then approve (`pos`) or reject (`neg`) suggestions through the standard span endpoints.
+
+The frontend (`src/composables/useAiAssistance.ts`) reads the stream with `src/utils/ndjson.ts`, shows saved suggestions as they arrive and reports partial, failed and interrupted runs. Each run carries a token; changing document or collection aborts it and its late events no longer change the store, errors or loading state.
 
 **Span discussion chat.** `span_chat.py` builds a rich system prompt around a single span — tag definition + examples, host document metadata, the span's chunk text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a configurable window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters drawn from the same and neighbouring chunks of the document) — and streams the assistant reply from any OpenAI-compatible Chat Completions endpoint. The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON deltas; configuration lives in the `SPAN_CHAT_*` env-var group.
 

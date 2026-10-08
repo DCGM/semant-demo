@@ -1423,7 +1423,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequestOpts(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
      * @summary Suggest Spans Optimized
      * @param {SuggestSpansRequest} suggestSpansRequest 
      * @param {*} [options] Override http request option.
@@ -1433,7 +1433,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
      * Suggest Spans Optimized
      */
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -1447,7 +1447,7 @@ export interface DefaultApiInterface {
     suggestSpansSelectionApiAiSuggestSpansSelectionPostRequestOpts(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Run AI span suggestion on a single user-selected passage that may span multiple chunks of the collection. The frontend sends the chunk IDs in document order; offsets are measured in UTF-16 code units against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per proposal, then a :class:`SuggestSpansRunEnd` — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
      * @summary Suggest Spans Selection
      * @param {SuggestSpansSelectionRequest} suggestSpansSelectionRequest 
      * @param {*} [options] Override http request option.
@@ -1457,7 +1457,7 @@ export interface DefaultApiInterface {
     suggestSpansSelectionApiAiSuggestSpansSelectionPostRaw(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Run AI span suggestion on a single user-selected passage that may span multiple chunks of the collection. The frontend sends the chunk IDs in document order; offsets are measured in UTF-16 code units against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per proposal, then a :class:`SuggestSpansRunEnd` — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
      * Suggest Spans Selection
      */
     suggestSpansSelectionApiAiSuggestSpansSelectionPost(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -1471,7 +1471,7 @@ export interface DefaultApiInterface {
     suggestSpansThoroughApiAiSuggestSpansThoroughPostRequestOpts(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``); each line is a :class:`SuggestSpansChunkResult`.
+     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``): one :class:`SuggestSpansChunkResult` per chunk, then a :class:`SuggestSpansRunEnd`.
      * @summary Suggest Spans Thorough
      * @param {SuggestSpansRequest} suggestSpansRequest 
      * @param {*} [options] Override http request option.
@@ -1481,7 +1481,7 @@ export interface DefaultApiInterface {
     suggestSpansThoroughApiAiSuggestSpansThoroughPostRaw(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``); each line is a :class:`SuggestSpansChunkResult`.
+     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``): one :class:`SuggestSpansChunkResult` per chunk, then a :class:`SuggestSpansRunEnd`.
      * Suggest Spans Thorough
      */
     suggestSpansThoroughApiAiSuggestSpansThoroughPost(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -4004,7 +4004,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -4015,7 +4015,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. NDJSON results are streamed straight through to the client as they arrive.
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -4057,7 +4057,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Run AI span suggestion on a single user-selected passage that may span multiple chunks of the collection. The frontend sends the chunk IDs in document order; offsets are measured in UTF-16 code units against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per proposal, then a :class:`SuggestSpansRunEnd` — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
      * Suggest Spans Selection
      */
     async suggestSpansSelectionApiAiSuggestSpansSelectionPostRaw(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -4068,7 +4068,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Run AI span suggestion on a single user-selected passage that may span multiple consecutive chunks. The frontend sends the chunk IDs in document order; offsets are measured against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per persisted span — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
+     * Run AI span suggestion on a single user-selected passage that may span multiple chunks of the collection. The frontend sends the chunk IDs in document order; offsets are measured in UTF-16 code units against the concatenation of their text.  The endpoint streams NDJSON (``application/x-ndjson``) — one :class:`SuggestSpansChunkResult` per proposal, then a :class:`SuggestSpansRunEnd` — so the UI can render suggestions incrementally and abort the run mid-flight by closing the connection.  Each persisted span is anchored on the chunk that contains its *start* offset (mirroring how non-AI cross-chunk spans are stored), not on the first chunk of the selection.
      * Suggest Spans Selection
      */
     async suggestSpansSelectionApiAiSuggestSpansSelectionPost(requestParameters: SuggestSpansSelectionApiAiSuggestSpansSelectionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -4110,7 +4110,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``); each line is a :class:`SuggestSpansChunkResult`.
+     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``): one :class:`SuggestSpansChunkResult` per chunk, then a :class:`SuggestSpansRunEnd`.
      * Suggest Spans Thorough
      */
     async suggestSpansThoroughApiAiSuggestSpansThoroughPostRaw(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -4121,7 +4121,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``); each line is a :class:`SuggestSpansChunkResult`.
+     * Thorough AI span suggestion: every collection chunk in the document is sent to the LLM together with all selected tags.  Persists each accepted proposal as a span with type ``auto``. The endpoint streams NDJSON lines (``application/x-ndjson``): one :class:`SuggestSpansChunkResult` per chunk, then a :class:`SuggestSpansRunEnd`.
      * Suggest Spans Thorough
      */
     async suggestSpansThoroughApiAiSuggestSpansThoroughPost(requestParameters: SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {

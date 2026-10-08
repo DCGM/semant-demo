@@ -4,8 +4,7 @@ Tests in this package must carry ``pytestmark = pytest.mark.integration``. A mis
 unowned store is an error, not a skip, so a required integration run cannot pass
 without exercising Weaviate.
 """
-from contextlib import asynccontextmanager
-
+import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
@@ -13,13 +12,14 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from weaviate.classes.query import QueryReference
 from weaviate.collections.data.async_ import _DataCollectionAsync
 
+from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.main import create_app
-from semant_demo.routes import ai_assistance_routes
+from semant_demo.routes.dependencies import get_topicer
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
 from tests.app_support import make_test_config
 from tests.auth_support import auth_headers
@@ -98,8 +98,8 @@ def spans(seeded_store, collection_names) -> SpanRepository:
 
 
 @pytest.fixture
-async def api_client(tmp_path, store_endpoint, seeded_store, corpus):
-    """HTTP client for an app using the seeded store and a SQLite database with corpus users."""
+async def api_app(tmp_path, store_endpoint, seeded_store, corpus):
+    """A started app using the seeded store and a SQLite database with corpus users."""
     config = make_test_config(tmp_path, **store_endpoint.app_environ())
     engine = create_async_engine(config.SQL_DB_URL)
     try:
@@ -108,10 +108,40 @@ async def api_client(tmp_path, store_endpoint, seeded_store, corpus):
         await engine.dispose()
     app = create_app(config)
     async with LifespanManager(app):
-        # Unhandled server errors become 500 responses, as a real client would see them.
-        transport = ASGITransport(app=app, raise_app_exceptions=False)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield client
+        yield app
+
+
+@pytest.fixture
+async def api_client(api_app):
+    """HTTP client for ``api_app``."""
+    # Unhandled server errors become 500 responses, as a real client would see them.
+    transport = ASGITransport(app=api_app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+
+class RecordingTransport(httpx.AsyncBaseTransport):
+    """Passes requests to ``inner`` and records their paths."""
+
+    def __init__(self, inner: httpx.AsyncBaseTransport, calls: list[str]):
+        self.inner = inner
+        self.calls = calls
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.calls.append(request.url.path)
+        return await self.inner.handle_async_request(request)
+
+
+@pytest.fixture
+def use_topicer(api_app):
+    """``use_topicer(provider_app)`` routes the app's Topicer calls to an ASGI app; returns the called paths."""
+    def install(provider_app) -> list[str]:
+        calls: list[str] = []
+        transport = RecordingTransport(ASGITransport(app=provider_app), calls)
+        client = TopicerClient("http://fake-topicer", "test", 30.0, transport=transport)
+        api_app.dependency_overrides[get_topicer] = lambda: client
+        return calls
+    return install
 
 
 @pytest.fixture
@@ -143,19 +173,9 @@ def fail_writes(monkeypatch):
 
 
 @pytest.fixture
-def fake_topicer(monkeypatch, corpus):
-    """Route AI suggestion calls to the deterministic fake Topicer and record them."""
-    calls = []
-    app = create_fake_provider_app(corpus)
-
-    @asynccontextmanager
-    async def client():
-        calls.append("topicer")
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://fake-topicer") as c:
-            yield c
-
-    monkeypatch.setattr(ai_assistance_routes, "topicer_client", client)
-    return calls
+def fake_topicer(use_topicer, corpus):
+    """Route AI suggestion calls to the deterministic fake Topicer; the called paths."""
+    return use_topicer(create_fake_provider_app(corpus))
 
 
 @pytest.fixture

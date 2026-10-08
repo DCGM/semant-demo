@@ -2,41 +2,49 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from semant_demo.ai_assistance.topicer_client import propose_for_db_stream, propose_for_text_chunk
+from semant_demo.adapters.topicer.client import TopicerClient, TopicerTag
 from tests.corpus import load_corpus
 from tests.fake_providers import FAKE_REASON, create_fake_provider_app
 from tests.fakes import FAKE_EMBEDDING_DIM, fake_embedding
 
 
 @pytest.fixture
-async def fake_client():
-    app = create_fake_provider_app(load_corpus())
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://fake") as client:
+def fake_app():
+    return create_fake_provider_app(load_corpus())
+
+
+@pytest.fixture
+async def fake_client(fake_app):
+    async with AsyncClient(transport=ASGITransport(app=fake_app), base_url="http://fake") as client:
         yield client
 
 
-def tag_dict(tag):
-    return {"id": tag["id"], "name": tag["name"], "definition": tag["definition"], "examples": tag["examples"]}
+@pytest.fixture
+def topicer(fake_app):
+    return TopicerClient("http://fake", "test", 5.0, transport=ASGITransport(app=fake_app))
 
 
-async def test_text_proposals_mark_tag_examples(fake_client):
+def topicer_tag(tag):
+    return TopicerTag(id=tag["id"], name=tag["name"], definition=tag["definition"], examples=tag["examples"])
+
+
+async def test_text_proposals_mark_tag_examples(topicer):
     corpus = load_corpus()
     chunk = corpus.chunks["chronicle_2"]
 
-    proposals = await propose_for_text_chunk(
-        fake_client, chunk_id=chunk["id"], chunk_text=chunk["text"], tags=[tag_dict(corpus.tags["person"])])
+    proposals = await topicer.propose_for_text(
+        chunk_id=chunk["id"], text=chunk["text"], tags=[topicer_tag(corpus.tags["person"])])
 
     assert [(p["span_start"], p["span_end"], p["tag"]["id"], p["reason"]) for p in proposals] == [
         (51, 60, corpus.tags["person"]["id"], FAKE_REASON)]
     assert chunk["text"][51:60] == "Jan Novák"
 
 
-async def test_db_stream_covers_collection_chunks_of_document(fake_client):
+async def test_db_stream_covers_collection_chunks_of_document(topicer):
     corpus = load_corpus()
 
-    events = [event async for event in propose_for_db_stream(
-        fake_client,
-        tag=tag_dict(corpus.tags["person"]),
+    events = [event async for event in topicer.propose_for_db_stream(
+        tag=topicer_tag(corpus.tags["person"]),
         collection_id=corpus.collections["chronicles"]["id"],
         document_id=corpus.documents["chronicle"]["id"],
     )]

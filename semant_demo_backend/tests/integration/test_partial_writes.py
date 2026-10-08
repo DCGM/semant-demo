@@ -6,16 +6,13 @@ back, and loops over changing result sets terminate.
 """
 import asyncio
 import json
-from contextlib import asynccontextmanager
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from weaviate.classes.data import DataObject
 from weaviate.exceptions import WeaviateTimeoutError
 
-from semant_demo.routes import ai_assistance_routes
 
 pytestmark = pytest.mark.integration
 
@@ -178,7 +175,14 @@ async def test_cascade_stops_when_deletes_on_a_short_page_do_not_take_effect(
 # ── AI suggestions ─────────────────────────────────────────────────────────
 
 def events_of(response):
-    return [json.loads(line) for line in response.text.splitlines()]
+    """The result events of a suggestion stream; checks that it ends with one end event."""
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [e["event"] for e in events].count("end") == 1 and events[-1]["event"] == "end", events
+    return events[:-1]
+
+
+def end_of(response):
+    return json.loads(response.text.splitlines()[-1])
 
 
 async def test_ai_storage_failures_are_reported(api_client, login, ids, store, fake_topicer, fail_writes):
@@ -191,11 +195,14 @@ async def test_ai_storage_failures_are_reported(api_client, login, ids, store, f
     events = events_of(response)
     assert sorted(e["unsaved"] for e in events) == [1, 1]
     assert all(e["spans"] == [] and "storage failure" in e["error"] for e in events)
+    assert end_of(response) == {
+        "event": "end", "outcome": "failed", "saved": 0, "rejected": 0, "save_failures": 2,
+        "search_tag_failures": 0, "provider_failures": 0, "error": None}
     assert await store.span_count() == spans_before
 
 
 async def test_ai_proposals_for_chunks_outside_the_collection_are_not_saved(
-        api_client, login, ids, store, corpus, monkeypatch):
+        api_client, login, ids, store, corpus, use_topicer):
     # A provider returning a chunk that is not in the collection (chronicle_3 is in newspapers).
     provider = FastAPI()
 
@@ -206,12 +213,7 @@ async def test_ai_proposals_for_chunks_outside_the_collection_are_not_saved(
             {"tag": {"id": ids.tag["person"]}, "span_start": 0, "span_end": 5}]}
         return StreamingResponse(iter([json.dumps(event) + "\n"]), media_type="application/x-ndjson")
 
-    @asynccontextmanager
-    async def client():
-        async with AsyncClient(transport=ASGITransport(app=provider), base_url="http://fake") as c:
-            yield c
-
-    monkeypatch.setattr(ai_assistance_routes, "topicer_client", client)
+    use_topicer(provider)
     spans_before = await store.span_count()
     body = {"collection_id": ids.col["chronicles"], "document_id": ids.doc["chronicle"], "tag_ids": [ids.tag["person"]]}
 
@@ -220,4 +222,5 @@ async def test_ai_proposals_for_chunks_outside_the_collection_are_not_saved(
     [event] = events_of(response)
     assert (event["spans"], event["unsaved"]) == ([], 1)
     assert "chunk outside the collection" in event["error"]
+    assert (end_of(response)["outcome"], end_of(response)["rejected"]) == ("complete", 1)
     assert await store.span_count() == spans_before

@@ -316,13 +316,15 @@ async def test_shared_user_runs_ai_suggestions(api_client, login, ids, store, fa
     response = await api_client.post("/api/ai/suggest_spans/thorough", headers=await login("annotator"),
                                      json=suggest_body(ids))
 
-    events = [__import__("json").loads(line) for line in response.text.splitlines()]
+    *events, end = [__import__("json").loads(line) for line in response.text.splitlines()]
     saved = [s for e in events for s in e["spans"]]
     assert response.status_code == 200
-    assert fake_topicer == ["topicer"]
+    # One provider call per chunk of the document in the collection.
+    assert fake_topicer == ["/v1/tags/propose/texts"] * 2
     # "Jan Novák" occurs once in each chronicle chunk of the collection.
     assert sorted(s["chunkId"] for s in saved) == sorted([ids.chunk["chronicle_1"], ids.chunk["chronicle_2"]])
     assert all(e["unsaved"] == 0 and e["error"] is None for e in events)
+    assert (end["event"], end["outcome"], end["saved"]) == ("end", "complete", 2)
     assert await store.span_count() == spans_before + 2
 
 

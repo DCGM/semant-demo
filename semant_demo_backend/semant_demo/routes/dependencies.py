@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
 from semant_demo.adapters.sql.users import UserLookup
+from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -66,6 +67,9 @@ async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
     weaviate = _weaviate(connection)
     return SearchBackends(chunks=weaviate.search, collections=weaviate.collections, tags=weaviate.tags,
                           embeddings=get_resources(connection).embeddings)
+
+def get_topicer(connection: HTTPConnection) -> TopicerClient:
+    return get_resources(connection).topicer
 
 async def get_summarizer(connection: HTTPConnection) -> TemplatedSearchResultsSummarizer:
     return get_resources(connection).get_summarizer()

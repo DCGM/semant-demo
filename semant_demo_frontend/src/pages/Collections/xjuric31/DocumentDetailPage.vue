@@ -1413,6 +1413,8 @@ const onConfirmAiTagPicker = async () => {
     selectionEnd: end,
     tagIds
   })
+  // Cancelled, or the user moved to another document/collection meanwhile.
+  if (created === null) return
   if (!created.length && !aiAssist.lastSelectionError.value) {
     $q.notify({
       type: 'info',

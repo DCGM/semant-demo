@@ -26,6 +26,7 @@ anthropic==1.11.0
     # via pydantic-ai-slim
 anyio==4.15.1
     # via
+    #   -r requirements.txt
     #   anthropic
     #   google-genai
     #   groq
