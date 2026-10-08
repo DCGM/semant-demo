@@ -6,7 +6,7 @@ Last updated: 2026-10-08 (#205)
 
 - Integration branch: `197-refactor---base`
 - Current issue: #205 — Migrate Search to application service and Weaviate adapter
-  boundaries (in review); next: #206 (Annotations feature).
+  boundaries (in review, PR #225); next: #206 (Annotations feature).
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
