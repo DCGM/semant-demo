@@ -25,7 +25,7 @@ from tests.auth_support import auth_headers
 from tests.corpus import load_corpus
 from tests.fake_providers import create_fake_provider_app
 from tests.seed import seed_users, seed_weaviate
-from tests.weaviate_store import StoreEndpoint, connect, create_app_schema, drop_app_collections
+from tests.weaviate_store import StoreEndpoint, connect, reset_app_collections
 
 
 @pytest.fixture
@@ -57,17 +57,22 @@ async def weaviate_client(store_endpoint):
         await client.close()
 
 
+@pytest.fixture(scope="session")
+def created_app_schema() -> dict:
+    """Application collection configs as last created in this run (see ``reset_app_collections``)."""
+    return {}
+
+
 @pytest.fixture
-async def seeded_store(weaviate_client, collection_names, corpus, store_token):
-    """Fresh application collections holding the fixture corpus; dropped afterwards."""
-    # Also removes leftovers of an interrupted earlier test in this owned instance.
-    await drop_app_collections(weaviate_client, collection_names, store_token)
-    await create_app_schema(weaviate_client, collection_names)
+async def seeded_store(weaviate_client, collection_names, corpus, store_token, created_app_schema):
+    """Application collections holding only the fixture corpus.
+
+    Emptied (or recreated if their schema changed) before each test, which also removes
+    whatever an earlier, possibly failed, test left in this owned instance.
+    """
+    await reset_app_collections(weaviate_client, collection_names, store_token, created_app_schema)
     await seed_weaviate(weaviate_client, collection_names, corpus, store_token)
-    try:
-        yield weaviate_client
-    finally:
-        await drop_app_collections(weaviate_client, collection_names, store_token)
+    return weaviate_client
 
 
 @pytest.fixture
