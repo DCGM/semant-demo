@@ -1,16 +1,17 @@
 # Refactor status
 
-Last updated: 2026-10-08 (#203)
+Last updated: 2026-10-08 (#204)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #203 — Migrate Collections to feature/service/access/adapter boundaries
+- Current issue: #204 — Make annotation state and searchable chunk tags consistent
   (in review)
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
-  write outcomes, PR #216), #202 (adapter foundation, PR #219)
+  write outcomes, PR #216), #202 (adapter foundation, PR #219), #203 (Collections
+  feature/service)
 - Current stage: R3
 
 ## Development environment
@@ -233,7 +234,60 @@ Last updated: 2026-10-08 (#203)
   repository method or user lookup, share/owner-change validation, member lookup); the
   existing HTTP integration tests (CRUD, sharing, membership, paging) pass unchanged.
 - `GET /api/documents/{document_id}/chunks/count` (public corpus read) is still registered
-  by the Collections router; move it with Documents (#204).
+  by the Collections router; move it when Documents is migrated (no issue yet; #204 is
+  the chunk tag consistency issue, not Documents).
+
+## #204 outcome
+
+- Contract (ADR 0004): chunk `automaticTag` / `positiveTag` / `negativeTag` references
+  are the projection of the spans. A chunk references tag `T` through the property of
+  span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is
+  anchored on it (`text_chunk`; a cross-chunk span counts on its first chunk only, as it
+  is stored). Search is unchanged and still filters on these references.
+- Before: no backend path wrote these references at all (span create/update/delete,
+  bulk and scoped deletes, AI proposals). The local snapshot has 0 chunk tag references
+  and 602 spans: 250 references the spans require are missing (187 automatic, 37
+  positive, 26 negative), so tag-filtered search there finds nothing. No unbacked
+  references exist in the snapshot.
+- `adapters/weaviate/chunk_tags.py`: `sync_chunk_tags(pairs)` re-derives the references
+  of given (chunk, tag) pairs from the spans stored now (reads the pair's spans and the
+  chunk's references, adds/removes only the difference). It is idempotent, so a second
+  backing span neither duplicates the reference nor is the reference removed while
+  another span needs it. A failed read is a failure, never "no spans".
+- Every span mutation calls it after the span write for the pairs it touched: create;
+  PATCH with a type change (approve/reject) or tag reassignment (old and new tag; offset-
+  only patches touch nothing); bulk update (once per pair after all span updates);
+  single, scoped (`in_document/delete`) and AI (`auto_spans/delete`) deletes; AI proposal
+  persistence. It also runs when the span write raised (a timed-out write may have
+  landed), then the error propagates. Tag and collection deletes already removed the
+  references (#202).
+- Best effort (ADR 0002): a failed reference write keeps the span write and is reported
+  as step `update_chunk_tags` with item `chunk_id:tag_id`. Saving the span again (e.g.
+  PATCH with its type) re-derives the pair; a failed sync after a delete is left for the
+  audit. No background repair.
+- Contract changes (generated client regenerated, frontend updated):
+  - `POST /api/tag_spans` and `PATCH /api/tag_spans/{id}` return `TagSpanWriteResult`
+    (the `TagSpan` fields plus `outcome`, `succeeded`, `failed`, `unattempted`);
+  - `DELETE /api/tag_spans/{id}` returns 200 with a `WriteResult` (was 204, no body);
+  - bulk update and the scoped/AI deletes may list `update_chunk_tags` failures in
+    `failed` (outcome `partial`); AI suggestion events report saved spans whose chunk tag
+    failed in `error`.
+  - Frontend: the span store keeps the saved/deleted span locally and shows a warning for
+    a partial result (`searchTagWarning`), instead of treating it as a failed write.
+- Audit/cleanup: `python -m semant_demo.maintenance.chunk_tag_audit` (DEVELOPMENT.md
+  section 10) reports `unbacked` and `missing` references; `--apply REPORT
+  --remove-unbacked/--add-missing --confirm-endpoint HOST:PORT` corrects only the listed
+  pairs after re-checking them. Run read-only against the local snapshot (result above);
+  `--apply` was not run against any development, shared or production database.
+- Tests: `tests/integration/test_chunk_tags.py` (real Weaviate, HTTP API + tag-filtered
+  BM25 search): create, suggestion create, approve, reject, delete, second backing span
+  then final removal, approving one of two suggestions, tag reassignment, offset-only
+  change, bulk approve, scoped and AI deletes, injected reference write failures on
+  create (then re-save fixes) and delete, a timed-out-but-applied update, failed read not
+  taken as absence, audit/cleanup removing only unbacked (also duplicated) references and
+  keeping one backed since the audit. With the sync disabled, 14 of these 19 fail. The
+  fixture corpus is validated to satisfy the contract. Fast tests: cleanup refuses without
+  a matching confirmed endpoint, before connecting; frontend unit tests for the warning.
 
 ## Temporary exceptions
 
@@ -260,8 +314,12 @@ Last updated: 2026-10-08 (#203)
 - **Access checks are called from route handlers** outside Collections (tag, span, AI
   assistance, span chat, search, document routes), because those features have no service
   layer yet. Each handler calls the check before any other work. Move the calls into
-  services as Documents (#204), Search (#205), Annotations (#206) and AI assistance (#207)
-  are extracted. Collections does this in its service since #203.
+  services as Documents (no issue yet), Search (#205), Annotations (#206) and AI
+  assistance (#207) are extracted. Collections does this in its service since #203.
+- **Span write orchestration in the legacy span adapter** (#204): span write followed by
+  the chunk tag sync and the outcome reporting live in `weaviate_utils/span.py`, which
+  calls `adapters/weaviate/chunk_tags.sync_chunk_tags`. Move the orchestration into the
+  Annotations service and the span adapter to `adapters/weaviate/` in #206.
 - **Tag and collection delete cascades return 500** when a step fails (now including the
   no-progress stop); completed deletions are kept but not itemized. They have no
   `WriteResult` yet; not changed in #203 (it would change the delete contract); revisit
@@ -270,6 +328,16 @@ Last updated: 2026-10-08 (#203)
   (`@quasar/app-vite` 1). Upgrade together with Quasar app-vite 2 / Vite 5.
 
 ## Known problems affecting later steps
+
+- Existing data needs the reviewed #204 cleanup before tag-filtered search reflects
+  annotations created before #204 (in the local snapshot: 250 missing references). Not
+  run; deployed databases were not audited.
+- Chunk tag sync is not atomic with the span write and not serialized: two concurrent
+  writes on the same (chunk, tag) pair can interleave and leave the pair stale until a
+  span of that pair is saved again or the audit corrects it.
+- Removing a chunk or document from a collection leaves its spans and therefore its chunk
+  tag references (consistent with each other, unchanged by #204); search scoped to the
+  collection excludes the chunk through membership.
 
 - `GET /api/documents/{document_id}/{collection_id}/chunks` returns 500 for documents
   with authors (`schemas.Document.author` is `str`, the store holds a list): #215. The

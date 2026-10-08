@@ -65,7 +65,8 @@ class SuggestSpansChunkResult(BaseModel):
 
     error: str | None = None
     """Set if processing this chunk failed, or if some proposals could not be saved
-    (then ``spans`` holds the ones that were saved and ``unsaved`` counts the rest)."""
+    (then ``spans`` holds the ones that were saved and ``unsaved`` counts the rest), or
+    if the chunk tag of a saved span (used by tag-filtered search) could not be updated."""
 
     unsaved: int = 0
     """Proposals returned by the provider that were not saved: storage failures or

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { WriteOutcome } from 'src/generated/api'
-import { IncompleteWriteError, describeIncomplete, requireComplete } from 'src/utils/writeOutcome'
+import { SpanType, WriteOutcome } from 'src/generated/api'
+import { IncompleteWriteError, describeIncomplete, requireComplete, searchTagWarning, spanOf } from 'src/utils/writeOutcome'
 
 describe('write outcomes', () => {
   it('passes complete results through', () => {
@@ -29,5 +29,20 @@ describe('write outcomes', () => {
   it('describes total failure', () => {
     expect(describeIncomplete({ outcome: WriteOutcome.failed, failed: [] }, 'Removing the document'))
       .toMatch(/^Removing the document failed\./)
+  })
+
+  it('warns about a span write whose search tag update failed', () => {
+    const failed = [{ itemId: 'chunk:tag', step: 'update_chunk_tags', message: 'x', uncertain: false }]
+    expect(searchTagWarning({ outcome: WriteOutcome.complete, succeeded: ['s'] }, 'saved')).toBeNull()
+    expect(searchTagWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed }, 'saved'))
+      .toMatch(/saved, but tag search was not updated/)
+    expect(searchTagWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed }, 'deleted'))
+      .toMatch(/deleted, but tag search may still find/)
+  })
+
+  it('keeps only the span fields of a span write result', () => {
+    const span = { id: 's', chunkId: 'c', tagId: 't', start: 1, end: 4, type: SpanType.pos, reason: null, confidence: null }
+    expect(spanOf({ ...span, outcome: WriteOutcome.complete, succeeded: ['s'], failed: [], unattempted: [] }))
+      .toEqual(span)
   })
 })

@@ -24,6 +24,15 @@ class PatchSpan(BaseModel):
     tagId: str | None = None
 
 
+class TagSpanWriteResult(TagSpan, WriteResult):
+    """
+    A created or updated span with the outcome of the write. ``succeeded`` holds the span
+    id. ``failed`` lists chunk tag updates (``update_chunk_tags``) that did not complete:
+    the span is saved, but tag-filtered search does not reflect it until the span is
+    saved again.
+    """
+
+
 class BulkUpdateSpansRequest(BaseModel):
     """
     Request body for bulk-applying the same :class:`PatchSpan` patch to many

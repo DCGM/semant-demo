@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { PostSpan, TagSpans, PatchSpan } from 'src/models/tagSpans'
 import { useTagSpansRepository } from 'src/repositories/useTagSpansRepository'
-import { requireComplete } from 'src/utils/writeOutcome'
+import { requireComplete, searchTagWarning, spanOf } from 'src/utils/writeOutcome'
+import { warningNotification } from 'src/utils/notification'
 
 export const useTagSpansStore = defineStore('tagSpans', () => {
   const repo = useTagSpansRepository()
@@ -46,11 +47,17 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     }
   }
 
+  /** Show a warning when a span write was kept but its search tag update failed. */
+  const warnIfSearchTagFailed = (warning: string | null) => {
+    if (warning) warningNotification(warning)
+  }
+
   const createSpan = async (span: PostSpan) => {
     try {
-      const newSpan = await repo.create(span)
-      spansByChunkId.value[span.chunkId] = [...(spansByChunkId.value[span.chunkId] || []), newSpan]
+      const result = await repo.create(span)
+      spansByChunkId.value[span.chunkId] = [...(spansByChunkId.value[span.chunkId] || []), spanOf(result)]
       spansVersion.value++
+      warnIfSearchTagFailed(searchTagWarning(result, 'saved'))
     } catch (err) {
       console.error('Failed to create span', err)
       error.value = 'Failed to create span'
@@ -60,9 +67,11 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
 
   const updateSpan = async (spanId: string, chunkId: string, update: PatchSpan) => {
     try {
-      const updatedSpan = await repo.update(spanId, update)
+      const result = await repo.update(spanId, update)
+      const updatedSpan = spanOf(result)
       spansByChunkId.value[chunkId] = spansByChunkId.value[chunkId].map((s) => (s.id === spanId ? updatedSpan : s))
       spansVersion.value++
+      warnIfSearchTagFailed(searchTagWarning(result, 'saved'))
     } catch (err) {
       console.error('Failed to update span', err)
       error.value = 'Failed to update span'
@@ -114,9 +123,10 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
 
   const deleteSpan = async (spanId: string, chunkId: string) => {
     try {
-      await repo.delete(spanId)
+      const result = await repo.delete(spanId)
       spansByChunkId.value[chunkId] = spansByChunkId.value[chunkId].filter((s) => s.id !== spanId)
       spansVersion.value++
+      warnIfSearchTagFailed(searchTagWarning(result, 'deleted'))
     } catch (err) {
       console.error('Failed to delete span', err)
       error.value = 'Failed to delete span'

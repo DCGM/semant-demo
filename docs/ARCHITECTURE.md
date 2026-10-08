@@ -345,6 +345,8 @@ Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `tex
 
 REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/collection), `POST /batch`, `PATCH /{id}`, `DELETE /{id}`, `POST /bulk_update`, `POST /in_document/delete` (delete spans for given tags inside a single document).
 
+Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans (#204): a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk). Every span create, type/tag change and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see DEVELOPMENT.md).
+
 #### AI Assistance (`ai_assistance/`, `routes/ai_assistance_routes.py`, `routes/span_chat_routes.py`)
 
 External AI integrations that produce or critique spans. All streaming endpoints use NDJSON (`application/x-ndjson`) so the frontend can render partial results incrementally.

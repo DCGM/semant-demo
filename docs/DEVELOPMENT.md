@@ -295,6 +295,26 @@ Before using such a command:
 
 Agents must not infer that an endpoint is safe merely because it is described as "test".
 
+### Chunk tag audit and cleanup
+
+`python -m semant_demo.maintenance.chunk_tag_audit` (run in `semant_demo_backend/`)
+compares the chunk `automaticTag` / `positiveTag` / `negativeTag` references with the spans
+(ADR 0004). Without options it only reads and prints counts; `--report FILE` also writes
+the list of `unbacked` references (no matching span) and `missing` references (a span
+exists, the chunk lacks the reference). It uses the `WEAVIATE_*` settings.
+
+Correcting data is a separate, reviewed step: review the report, back up the data, then
+
+```bash
+python -m semant_demo.maintenance.chunk_tag_audit --apply FILE \
+  --remove-unbacked [--add-missing] --confirm-endpoint localhost:8080
+```
+
+It refuses to run unless `--confirm-endpoint` and the report's endpoint equal the
+configured endpoint, and it re-checks every listed (chunk, tag) pair against the spans
+stored at that moment. Never run `--apply` against a shared or production database
+without explicit authorization for that task.
+
 ## 11. Testing versus development data
 
 There are two different uses of Weaviate during development:

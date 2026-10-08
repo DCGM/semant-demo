@@ -1,4 +1,4 @@
-import { WriteOutcome, type WriteResult } from 'src/generated/api'
+import { WriteOutcome, type TagSpan, type TagSpanWriteResult, type WriteResult } from 'src/generated/api'
 
 /**
  * Multi-write operations are best effort (ADR 0002): the backend keeps completed writes
@@ -26,4 +26,22 @@ export class IncompleteWriteError extends Error {
 export function requireComplete<T extends WriteResult> (result: T, what: string): T {
   if (result.outcome !== WriteOutcome.complete) throw new IncompleteWriteError(result, what)
   return result
+}
+
+/**
+ * A single span write saves the span first and then updates the chunk tag that
+ * tag-filtered search uses. When only the second step failed the span change stands;
+ * this returns the warning to show (or null when the write was complete).
+ */
+export function searchTagWarning (result: WriteResult, action: 'saved' | 'deleted'): string | null {
+  if (result.outcome === WriteOutcome.complete) return null
+  return action === 'saved'
+    ? 'The annotation was saved, but tag search was not updated for it. Save the annotation again to retry.'
+    : 'The annotation was deleted, but tag search may still find its passage.'
+}
+
+/** The span part of a span write result, without the outcome fields. */
+export function spanOf (result: TagSpanWriteResult): TagSpan {
+  const { id, chunkId, tagId, start, end, type, reason, confidence } = result
+  return { id, chunkId, tagId, start, end, type, reason, confidence }
 }

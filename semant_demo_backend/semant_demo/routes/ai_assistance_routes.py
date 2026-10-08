@@ -104,7 +104,8 @@ async def _persist_proposal(
     Validate a provider proposal and persist it as an auto-typed span.
 
     Returns ``(span, None)`` when saved, or ``(None, reason)`` when it was not:
-    a tag outside the request, invalid offsets, or a storage failure.
+    a tag outside the request, invalid offsets, or a storage failure. A saved span whose
+    chunk tag (used by tag-filtered search) could not be updated is ``(span, reason)``.
     """
     if tag_id not in allowed_tag_ids:
         return None, "tag outside the request"
@@ -115,7 +116,7 @@ async def _persist_proposal(
     if end <= start:
         return None, "invalid offsets"
     try:
-        return await searcher.span.create(PostSpan(
+        span, tag_failures = await searcher.span.create(PostSpan(
             chunkId=str(chunk_id),
             tagId=str(tag_id),
             start=start,
@@ -123,7 +124,8 @@ async def _persist_proposal(
             type=schemas.SpanType.auto,
             reason=reason,
             confidence=confidence,
-        )), None
+        ))
+        return span, ("search tag not updated" if tag_failures else None)
     except Exception as e:
         logger.warning(
             "Failed to persist auto span (chunk=%s, tag=%s, start=%s, end=%s): %s",
@@ -139,11 +141,14 @@ class _SaveTally:
         self.spans: list[schemas.TagSpan] = []
         self.unsaved = 0
         self.reasons: set[str] = set()
+        self.untagged = 0
 
     def add(self, saved: tuple[schemas.TagSpan | None, str | None]) -> None:
         span, reason = saved
         if span is not None:
             self.spans.append(span)
+            if reason:
+                self.untagged += 1
         else:
             self.unsaved += 1
             self.reasons.add(reason or "not saved")
@@ -152,6 +157,8 @@ class _SaveTally:
         errors = [error] if error else []
         if self.unsaved:
             errors.append(f"{self.unsaved} proposal(s) not saved ({', '.join(sorted(self.reasons))})")
+        if self.untagged:
+            errors.append(f"{self.untagged} saved proposal(s) not yet findable by tag search")
         return SuggestSpansChunkResult(
             chunk_id=chunk_id, spans=self.spans, error="; ".join(errors) or None, unsaved=self.unsaved,
         )
@@ -612,7 +619,8 @@ async def delete_auto_spans(
 
     Useful for cleaning up suggestions the user did not get around to
     approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and
-    ``failed`` those that could not be deleted.
+    ``failed`` those that could not be deleted (``delete_span``) and the chunk tag
+    updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
     """
     grant = await access.require_annotation_edit(searcher.userCollection, current_user, body.collection_id)
     document = await access.require_document_in_collection(searcher.userCollection, body.document_id, grant.collection_id)
