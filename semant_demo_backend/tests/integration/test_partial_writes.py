@@ -159,6 +159,19 @@ async def test_cascade_stops_when_deletes_do_not_take_effect(
     assert await store.tag(ids.tag["place"]) is not None
 
 
+
+async def test_cascade_stops_when_deletes_on_a_short_page_do_not_take_effect(
+        api_client, login, ids, store, collection_names, fail_writes):
+    # Only the corpus' few `place` spans match: a short last page must also be re-queried.
+    fail_writes("delete_by_id", collection=collection_names.span_collection_name, no_op=True)
+
+    response = await asyncio.wait_for(
+        api_client.delete(f"/api/tags/{ids.tag['place']}", headers=await login("owner")), timeout=60)
+
+    assert response.status_code == 500
+    assert await store.tag(ids.tag["place"]) is not None
+    assert await store.span(ids.span["brno_manual"]) is not None
+
 # ── AI suggestions ─────────────────────────────────────────────────────────
 
 def events_of(response):

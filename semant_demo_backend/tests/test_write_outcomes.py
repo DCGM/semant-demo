@@ -1,9 +1,11 @@
-"""Outcome classification and the no-progress guard for "first page again" loops."""
+"""Outcome classification, the no-progress guard and the "first page again" delete loop."""
+from types import SimpleNamespace
+
 import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.schema.outcomes import WriteOutcome, outcome_of
-from semant_demo.adapters.weaviate.writes import NoProgressError, guard_progress, step_failure
+from semant_demo.adapters.weaviate.writes import PAGE_SIZE, NoProgressError, _drain, guard_progress, step_failure
 
 
 @pytest.mark.parametrize("succeeded, failed, unattempted, expected", [
@@ -36,3 +38,42 @@ def test_guard_allows_new_pages_and_stops_on_a_repeated_object():
 
     with pytest.raises(NoProgressError):
         guard_progress(seen, ["c", "d"])
+
+
+class FakeCollection:
+    """A collection whose query returns the objects still in ``matching``."""
+
+    def __init__(self, ids):
+        self.matching = list(ids)
+        self.queries = 0
+        self.query = self
+
+    async def fetch_objects(self, filters=None, limit=None, return_properties=None):
+        self.queries += 1
+        return SimpleNamespace(objects=[SimpleNamespace(uuid=i) for i in self.matching[:limit]])
+
+
+async def test_drain_stops_on_a_short_page_whose_writes_do_not_take_effect():
+    collection = FakeCollection(["a", "b", "c"])  # fewer than one page
+    processed = []
+
+    async def no_op(uuid):  # reports success, removes nothing
+        processed.append(uuid)
+
+    with pytest.raises(NoProgressError):
+        await _drain(collection, None, no_op)
+
+    assert processed == ["a", "b", "c"]
+    assert collection.queries == 2
+
+
+async def test_drain_requeries_until_nothing_matches():
+    collection = FakeCollection(range(PAGE_SIZE + 5))
+
+    async def remove(uuid):
+        collection.matching.remove(uuid)
+
+    await _drain(collection, None, remove)
+
+    assert collection.matching == []
+    assert collection.queries == 3  # full page, short page, empty result
