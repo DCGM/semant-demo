@@ -1,5 +1,11 @@
 # Repository re-review against the agreed plan
 
+> **Historical snapshot (2026-10-07).** These observations predate the completed
+> #197 refactor and must not be presented as current defects. Use
+> [ARCHITECTURE.md](../ARCHITECTURE.md), [TODO.md](../TODO.md) and open GitHub issues
+> for current behavior. The full #197 delivery log is
+> [archived](../archive/refactor-2026/REFACTOR_STATUS.md).
+
 Date: 2026-10-07.
 Baseline: `main` commit `375caa5f7f68defba25a56cccbb7dbc7fdf99a13`.
 Documentation updated after Q1-Q5 clarification on 2026-10-07. This corrects product

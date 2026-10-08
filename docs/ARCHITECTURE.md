@@ -1,8 +1,11 @@
 # Architecture
 
-Status: describes the code on `197-refactor---base` after the architecture refactor (#198–#210).
-The intended direction is [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md); decisions are in the
-[ADRs](adr/README.md); remaining known problems are listed in [REFACTOR_STATUS.md](REFACTOR_STATUS.md).
+Current post-refactor architecture of the application. The final integration with `main`
+(including the main-only observability work) is tracked by
+[#236](https://github.com/DCGM/semant-demo/issues/236). Ongoing design constraints are
+in [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md), adopted decisions in the
+[ADRs](adr/README.md), and outstanding problems in [TODO.md](TODO.md).
+Historical refactor progress is [archived](archive/refactor-2026/README.md).
 
 ## System Overview
 
@@ -197,7 +200,7 @@ but not change membership, metadata or sharing. Public corpus reads (`GET /api/d
 `/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`, search
 without collection and tags) need no login. RAG, `/api/summarize/results` and
 `/api/question/{text}` are public too and call LLM providers with client-supplied text;
-this is the existing product behavior, recorded as a residual exception in REFACTOR_STATUS.md.
+this existing product behavior is tracked for an access/cost decision in [#234](https://github.com/DCGM/semant-demo/issues/234).
 
 The JWT secret is configured via the `JWT_SECRET` environment variable (default is a placeholder — **must be overridden in production**).
 
@@ -346,7 +349,7 @@ Tag creation inserts the tag and then links it to its collection; when the link 
 
 REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/collection), `POST /batch`, `PATCH /{id}`, `DELETE /{id}`, `POST /bulk_update`, `POST /in_document/delete` (delete spans for given tags inside a single document).
 
-Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans (#204): a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk; covering the following chunks is a post-refactor TODO). The lists follow the spans' current type: `automaticTag` holds tags with unresolved AI suggestions, so approving a suggestion moves the tag from the chunk's `automaticTag` list to its `positiveTag` list unless another `auto` span of that tag remains. Every span create, update (also offset-only, so saving again retries) and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). Within one process the re-derivation of a pair runs one at a time (`ChunkTagRepository`), so concurrent writes on the same pair end consistent; with several worker processes they can still leave it stale. That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see DEVELOPMENT.md).
+Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans (#204): a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk; indexing following chunks is deferred to [#224](https://github.com/DCGM/semant-demo/issues/224)). The lists follow the spans' current type: `automaticTag` holds tags with unresolved AI suggestions, so approving a suggestion moves the tag from the chunk's `automaticTag` list to its `positiveTag` list unless another `auto` span of that tag remains. Every span create, update (also offset-only, so saving again retries) and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). Within one process the re-derivation of a pair runs one at a time (`ChunkTagRepository`), so concurrent writes on the same pair end consistent; with several worker processes they can still leave it stale. That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see DEVELOPMENT.md).
 
 #### AI Assistance (`features/annotations/suggestions.py`, `suggestion_routes.py`, `span_chat.py`, `span_chat_routes.py`, `adapters/topicer/`, `adapters/llm/`)
 

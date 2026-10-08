@@ -324,16 +324,18 @@ make test-e2e          # Playwright smoke suite with fake AI providers (Docker)
 | [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and how to add page specific tools to it |
 | [docs/TODO.md](docs/TODO.md) | Recommended improvements and known technical debt |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development databases and test store rules |
-| [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md), [docs/adr/](docs/adr/README.md) | Architectural intent and decisions |
-| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | Contribution rules, checks, agent instructions |
+| [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md), [docs/adr/](docs/adr/README.md) | Ongoing architecture principles and adopted decisions |
+| [docs/archive/refactor-2026/](docs/archive/refactor-2026/README.md) | Archived #197 refactor plan, detailed outcomes and older TODO list |
+| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | `main`-based PR workflow, checks and agent instructions |
 
 ## Contribution Guidelines
 
-1. Create an issue **and** a branch with the same name.
-2. Issue should contain: descriptive title, short summary, technical checklist, verification steps.
-3. Work on your branch; write notes/questions as issue comments.
-4. Write or update tests (see [CONTRIBUTING.md](CONTRIBUTING.md#4-testing-contract)); run `make check`.
-5. Update relevant documentation; add/update diagrams where appropriate.
-6. Merge `main` into your branch, resolve conflicts.
-7. Open a pull request, assign a reviewer.
-8. After approval, merge/rebase and delete the branch.
+After the final #197 integration ([#236](https://github.com/DCGM/semant-demo/issues/236)),
+`main` is the canonical development branch. Fetch the latest `origin/main`, create a
+short-lived issue/topic branch **from `main`**, implement the focused change with
+tests/docs, and open a pull request **into `main`**. Resolve newer `main` changes
+on your topic branch and wait for required checks and review. Do not push directly
+to `main` or routinely branch/PR from the historical refactor integration branch.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md#6-branching-review-and-merge) for exact commands,
+review requirements, and test selection; [AGENTS.md](AGENTS.md) adds rules for agents.
