@@ -400,8 +400,10 @@ Last updated: 2026-10-08 (#206)
 - Tag creation (recorded after #202): the service inserts the tag and then links it.
   If the link fails, it deletes the new tag again (best effort) and fails with 500 and
   `{"detail", "step": "link_collection", "completed": {}, "uncertain"}`; nothing remains,
-  creating again is safe. If the deletion fails too, `completed` is `{"insert_tag": 1}` and
-  the detail names the tag id that may remain (unreachable: it belongs to no collection).
+  creating again is safe. If the deletion fails too, `step` is `delete_unlinked_tag`,
+  `completed` is `{"insert_tag": 1}`, `uncertain` is set if either write timed out, and the
+  detail says the link failed and names the tag id that may remain (unreachable: it
+  belongs to no collection).
   Before: 500 and an orphaned tag every time.
 - Deletion cascades (follow-up from PR #221), decision: **keep the 204-on-success
   contract** (no `WriteResult` for these deletes): a delete either finishes or is

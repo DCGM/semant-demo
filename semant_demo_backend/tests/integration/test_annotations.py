@@ -10,6 +10,7 @@ import asyncio
 import pytest
 from weaviate.classes.data import DataObject
 from weaviate.classes.query import QueryReference
+from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.weaviate import chunk_tags as chunk_tags_module
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
@@ -164,9 +165,28 @@ async def test_tag_that_cannot_be_removed_after_a_failed_link_is_reported(
                                      params={"collection_id": ids.col["chronicles"]}, json=NEW_TAG)
 
     assert response.status_code == 500
-    assert response.json()["completed"] == {"insert_tag": 1}
-    assert "may remain" in response.json()["detail"]
+    body = response.json()
+    assert (body["step"], body["completed"], body["uncertain"]) == ("delete_unlinked_tag", {"insert_tag": 1}, False)
+    assert "may remain" in body["detail"]
     assert await count(seeded_store, tag_collection) == tags_before + 1
+
+
+async def test_timed_out_cleanup_after_a_failed_link_is_reported_as_uncertain(
+        api_client, login, ids, seeded_store, collection_names, fail_writes):
+    tag_collection = collection_names.tag_collection_name
+    tags_before = await count(seeded_store, tag_collection)
+    fail_writes("reference_add", collection=tag_collection)
+    fail_writes("delete_by_id", collection=tag_collection, error=WeaviateTimeoutError("timed out"))
+
+    response = await api_client.post("/api/tags", headers=await login("owner"),
+                                     params={"collection_id": ids.col["chronicles"]}, json=NEW_TAG)
+
+    assert response.status_code == 500
+    body = response.json()
+    assert (body["step"], body["uncertain"], body["completed"]) == ("delete_unlinked_tag", True, {"insert_tag": 1})
+    assert "could not be added to the collection" in body["detail"] and "link_collection failed" in body["detail"]
+    assert "may remain" in body["detail"]
+    assert await count(seeded_store, tag_collection) == tags_before + 1  # the injected timeout deleted nothing
 
 
 async def test_creating_the_tag_again_after_a_failed_link_succeeds(api_client, login, ids, collection_names,
