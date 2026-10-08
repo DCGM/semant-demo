@@ -46,3 +46,29 @@ test('switching collection replaces the document view without stale chunks or an
   await expect(annotation(page, 'novak_manual')).toHaveCount(0)
   await expect(page.getByText(fixture.collection('newspapers').name, { exact: true }).first()).toBeVisible()
 })
+
+test('a new user registers, logs in and out', async ({ page }) => {
+  // The e2e profile's user database is a temporary file; a unique name keeps reruns apart.
+  const name = `newcomer${Date.now()}`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'User menu' }).click()
+  await page.getByText('Register', { exact: true }).click()
+  await page.getByLabel('Username').fill(name)
+  await page.getByLabel('Name', { exact: true }).fill('New Comer')
+  await page.getByLabel('Email').fill(`${name}@example.com`)
+  await page.getByLabel('Password', { exact: true }).fill('a-long-test-password')
+  await page.getByLabel('Confirm Password').fill('a-long-test-password')
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByText('Account created! You can now log in.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'User menu' }).click()
+  await page.getByText('Log In', { exact: true }).click()
+  await page.getByLabel('Email or Username').fill(`${name}@example.com`)
+  await page.getByLabel('Password', { exact: true }).fill('a-long-test-password')
+  await page.getByRole('button', { name: 'Log In' }).click()
+  await expect(page.getByText('Welcome, New Comer!')).toBeVisible()
+
+  await page.getByRole('button', { name: 'User menu' }).click()
+  await page.getByText('Log Out', { exact: true }).click()
+  await expect(page.getByText('You have been logged out.')).toBeVisible()
+})
