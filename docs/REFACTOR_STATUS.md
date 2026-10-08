@@ -1,17 +1,17 @@
 # Refactor status
 
-Last updated: 2026-10-08 (#204)
+Last updated: 2026-10-08 (#204, after deferral tracking)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
 - Current issue: #204 — Make annotation state and searchable chunk tags consistent
-  (in review)
+  (in review, PR #223); next: #205 (Search service/adapter migration).
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
-  write outcomes, PR #216), #202 (adapter foundation, PR #219), #203 (Collections
-  feature/service)
+  write outcomes, PR #216), #202 (adapter foundation, PR #219),
+  #203 (Collections feature migration, PR #221)
 - Current stage: R3
 
 ## Development environment
@@ -234,8 +234,8 @@ Last updated: 2026-10-08 (#204)
   repository method or user lookup, share/owner-change validation, member lookup); the
   existing HTTP integration tests (CRUD, sharing, membership, paging) pass unchanged.
 - `GET /api/documents/{document_id}/chunks/count` (public corpus read) is still registered
-  by the Collections router; move it when Documents is migrated (no issue yet; #204 is
-  the chunk tag consistency issue, not Documents).
+  by the Collections router; move it to the Documents router in #210, preserving public
+  access and API behavior.
 
 ## #204 outcome
 
@@ -297,7 +297,7 @@ Last updated: 2026-10-08 (#204)
   An app built with `create_app(other_config)` still uses the process-wide settings for
   these calls. `semant_demo.main:app` passes the same object, so production has one source.
   Remove when the embedding provider is injected (#205) and the AI assistance workflow is
-  extracted (#207).
+  extracted (#207); audit remaining provider/span-chat globals in #210.
 - **Transitional `WeaviateAbstraction` facade** (`weaviate_utils/weaviate_abstraction.py`)
   is still used by span routes and AI assistance (#206/#207), span chat, search,
   summarizer and RAG (#205). It is built on the application's one client. The span and
@@ -307,15 +307,17 @@ Last updated: 2026-10-08 (#204)
 - **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 60 errors).
   Several are real defects: `useTagging.ts` calls `DefaultApi` methods that no longer exist,
   `chunk_collection-store.ts` passes `userId` as fetch options, services import missing
-  model exports. Remove entries as the owning features are migrated (#203–#209).
+  model exports. Shrink the baseline as frontend code is migrated (#209), then reconcile
+  any remaining entries with explicit owners during #210.
 - **Ruff rule set limited** to `E9, F63, F7, F82`. The default rule set reports ~140 legacy
   findings (unused/star imports, comparisons). Python formatting and a Python type checker
   are not enforced yet.
 - **Access checks are called from route handlers** outside Collections (tag, span, AI
   assistance, span chat, search, document routes), because those features have no service
-  layer yet. Each handler calls the check before any other work. Move the calls into
-  services as Documents (no issue yet), Search (#205), Annotations (#206) and AI
-  assistance (#207) are extracted. Collections does this in its service since #203.
+  layer yet. Each handler calls the check before any other work. Move Search, Annotations
+  and AI checks into services with #205–#207; audit remaining Document, tag and span-chat
+  boundaries under #210 while preserving intentionally public corpus reads. Collections
+  has enforced access in its service since #203.
 - **Span write orchestration in the legacy span adapter** (#204): span write followed by
   the chunk tag sync and the outcome reporting live in `weaviate_utils/span.py`, which
   calls `adapters/weaviate/chunk_tags.sync_chunk_tags`. Move the orchestration into the
@@ -342,19 +344,27 @@ Last updated: 2026-10-08 (#204)
 - `GET /api/documents/{document_id}/{collection_id}/chunks` returns 500 for documents
   with authors (`schemas.Document.author` is `str`, the store holds a list): #215. The
   repository test of this read uses the author-less fixture document for that reason.
+  Fix with a multi-author read test and remove the known-broken exception in #208.
 - Search tag filters (`tag_uuids`) are not restricted to tags of readable collections;
-  only `user_collection_id` is checked. Belongs to the Search migration (#205).
+  only `user_collection_id` is checked. Explicitly authorize supplied tag IDs before
+  retrieval in #205, including searches without a collection filter.
 - A partial add chunk (chunk linked, document link failed) leaves the chunk in the
   collection while its document is not, so collection+document requests for that document
   return 404 until the add is retried (the partial outcome is reported to the user).
+- Shared users still see owner-only membership, metadata and sharing controls despite
+  backend denial; hide or disable these controls without restricting tag editing/member
+  listing (#209).
+- Partial-write failure notifications from #201 lack focused browser/component regression
+  coverage; add it in #209.
 - `Tag.create` inserts the tag and then links it to the collection; if the link fails the
   tag exists without a collection and is inaccessible (the error is returned as 500).
+  Decide and test an explicit recovery/reporting policy in #206.
 
 - Required checks are a repository setting, not part of the workflow file. As of
   2026-10-07 the ruleset for `197-refactor---base` requires "Backend tests", "Frontend
   checks", "Generated API client drift" and "Integration tests" (strict, branch up to
-  date). `main` has no required status checks yet; add the same four before the refactor
-  is merged to `main`.
+  date). Before merging the refactor into `main`, verify and configure the same four
+  required checks for `main` with a repository administrator (#210).
 - PR preview deploys still run with production `OPENAI_API_KEY`/`JWT_SECRET` secrets on
   the self-hosted runner and still deploy after failed checks. Not changed in #200 (a
   deployment decision); tracked in #213.
@@ -366,6 +376,7 @@ Last updated: 2026-10-08 (#204)
 - `search_filters.fetch_db_filter_stats` (used by `generate_default_filters_async`)
   opens its own Weaviate connection; only scripts call it. Revisit with Search (#205).
 - `UserCollectionRepository.read_all` pages by 1000; the multi-page path of that listing
-  is not exercised by a test (needs more than 1000 collections for one user).
+  is not exercised by a test (needs more than 1000 collections for one user); cover it
+  with a real-store regression test in #210.
 - The corpus has no cross-chunk annotations; add them with the tests that need them
   (#204/#206). Multi-page documents are created by the repository tests themselves.
