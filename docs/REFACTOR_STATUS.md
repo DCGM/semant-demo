@@ -1,17 +1,17 @@
 # Refactor status
 
-Last updated: 2026-10-08
+Last updated: 2026-10-08 (#203)
 
 ## Current state
 
 - Integration branch: `197-refactor---base`
-- Current issue: #202 — Integrate the repository cleanup PR stack and establish adapter
-  conventions (in review)
+- Current issue: #203 — Migrate Collections to feature/service/access/adapter boundaries
+  (in review)
 - Completed refactor issues: #198 (bootstrap and configuration; manually verified
   against local Weaviate), #199 (fast checks and blocking CI, PR #211), #200 (isolated
   real-store and browser test infrastructure, PR #214), #201 (access checks and partial
-  write outcomes, PR #216)
-- Current stage: R2
+  write outcomes, PR #216), #202 (adapter foundation, PR #219)
+- Current stage: R3
 
 ## Development environment
 
@@ -209,6 +209,32 @@ Last updated: 2026-10-08
   SQL user lookups); fast tests for the startup connection, startup failure without
   Weaviate and the default connector's error.
 
+## #203 outcome
+
+- Collections is a feature package: `features/collections/routes.py` (moved from
+  `routes/user_collection_routes.py`), `service.py`, `access.py`, `schemas.py` (moved from
+  `schema/collections.py`). The Weaviate adapter stays `adapters/weaviate/collections.py`.
+  No ports, models or service classes were added.
+- `service.py` holds one function per use case (metadata, owner change, delete, sharing,
+  members, stats, document/tag lists, collection-scoped document reads, membership
+  changes). Each takes the repositories it needs plus the user (or `None`) and runs the
+  access check itself before any other read or write, so non-HTTP callers get the same
+  rules. Routes only parse HTTP, inject dependencies and call one service function.
+  Other features may call these functions instead of the repository.
+- Owner change checks `access.require_admin` in the service as well (the route still
+  uses the `current_active_admin` dependency, so HTTP behavior is unchanged).
+- SQL user lookups: `adapters/sql/users.UserLookup` wraps one request's session and returns
+  `UserSearchResult` instead of ORM users; injected by `routes.dependencies.get_user_lookup`.
+  The service does the sharing/owner-change/member lookups; routes no longer touch SQL.
+- No API change: the exported OpenAPI schema is byte-identical to the base, the generated
+  client is unchanged.
+- Tests: `tests/test_collection_service.py` (service called directly: owner/shared/
+  unrelated/admin/anonymous for every collection operation, denied calls reach no
+  repository method or user lookup, share/owner-change validation, member lookup); the
+  existing HTTP integration tests (CRUD, sharing, membership, paging) pass unchanged.
+- `GET /api/documents/{document_id}/chunks/count` (public corpus read) is still registered
+  by the Collections router; move it with Documents (#204).
+
 ## Temporary exceptions
 
 - **Process-wide `config` still read directly** by provider/adapter modules:
@@ -224,9 +250,6 @@ Last updated: 2026-10-08
   text chunk adapters, `weaviate_utils/helpers.py` (re-exports `step_failure`/
   `guard_progress`) and `weaviate_exceptions.py` stay until those migrations. Remove the
   facade when its last caller has moved (#210).
-- **SQL user lookups for sharing/owner change are orchestrated in route handlers**, like
-  the access checks. Move into the Collections service (#203).
-
 - **Vue type-check baseline** (`semant_demo_frontend/typecheck-baseline.json`, 60 errors).
   Several are real defects: `useTagging.ts` calls `DefaultApi` methods that no longer exist,
   `chunk_collection-store.ts` passes `userId` as fetch options, services import missing
@@ -234,13 +257,15 @@ Last updated: 2026-10-08
 - **Ruff rule set limited** to `E9, F63, F7, F82`. The default rule set reports ~140 legacy
   findings (unused/star imports, comparisons). Python formatting and a Python type checker
   are not enforced yet.
-- **Access checks are called from route handlers**, not from feature service functions,
-  because the service layer does not exist yet. Each handler calls the check before any
-  other work. Move the calls into services as Collections (#203), Annotations (#206) and
-  AI assistance (#207) are extracted, so non-HTTP callers are covered too.
+- **Access checks are called from route handlers** outside Collections (tag, span, AI
+  assistance, span chat, search, document routes), because those features have no service
+  layer yet. Each handler calls the check before any other work. Move the calls into
+  services as Documents (#204), Search (#205), Annotations (#206) and AI assistance (#207)
+  are extracted. Collections does this in its service since #203.
 - **Tag and collection delete cascades return 500** when a step fails (now including the
   no-progress stop); completed deletions are kept but not itemized. They have no
-  `WriteResult` yet; revisit with #203/#206.
+  `WriteResult` yet; not changed in #203 (it would change the delete contract); revisit
+  together with tag deletion in #206.
 - **Vitest 0.23.4** is pinned because it is the last release supporting Vite 2
   (`@quasar/app-vite` 1). Upgrade together with Quasar app-vite 2 / Vite 5.
 

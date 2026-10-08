@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
+from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -29,6 +30,10 @@ def get_config(connection: HTTPConnection) -> Config:
 async def get_async_session(connection: HTTPConnection) -> AsyncGenerator[AsyncSession, None]:
     async with get_resources(connection).session_maker() as session:
         yield session
+
+async def get_user_lookup(connection: HTTPConnection) -> AsyncGenerator[UserLookup, None]:
+    async with get_resources(connection).session_maker() as session:
+        yield UserLookup(session)
 
 def _weaviate(connection: HTTPConnection) -> WeaviateRepositories:
     # Connected at startup (bootstrap); never opened from a request.
