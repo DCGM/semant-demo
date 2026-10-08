@@ -64,6 +64,7 @@ export * from './SummaryResponse';
 export * from './Tag';
 export * from './TagSpan';
 export * from './TagSpanBatchRequest';
+export * from './TagSpanWriteResult';
 export * from './TextChunkWithDocumentInput';
 export * from './TextChunkWithDocumentOutput';
 export * from './Url';

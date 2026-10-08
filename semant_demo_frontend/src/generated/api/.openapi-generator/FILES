@@ -68,6 +68,7 @@ docs/SummaryResponse.md
 docs/Tag.md
 docs/TagSpan.md
 docs/TagSpanBatchRequest.md
+docs/TagSpanWriteResult.md
 docs/TextChunkWithDocumentInput.md
 docs/TextChunkWithDocumentOutput.md
 docs/Url.md
@@ -146,6 +147,7 @@ models/SummaryResponse.ts
 models/Tag.ts
 models/TagSpan.ts
 models/TagSpanBatchRequest.ts
+models/TagSpanWriteResult.ts
 models/TextChunkWithDocumentInput.ts
 models/TextChunkWithDocumentOutput.ts
 models/Url.ts

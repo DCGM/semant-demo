@@ -310,7 +310,7 @@ example().catch(console.error);
 
 Bulk Update Tag Spans
 
-Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated.
+Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated (&#x60;&#x60;update_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;).
 
 ### Example
 
@@ -521,11 +521,11 @@ example().catch(console.error);
 
 ## createTagSpanApiTagSpansPost
 
-> TagSpan createTagSpanApiTagSpansPost(postSpan)
+> TagSpanWriteResult createTagSpanApiTagSpansPost(postSpan)
 
 Create Tag Span
 
-Adds new TagSpan
+Adds new TagSpan and the matching chunk tag reference. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was saved but the chunk tag could not be updated.
 
 ### Example
 
@@ -570,7 +570,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**TagSpan**](TagSpan.md)
+[**TagSpanWriteResult**](TagSpanWriteResult.md)
 
 ### Authorization
 
@@ -669,7 +669,7 @@ example().catch(console.error);
 
 Delete Auto Spans
 
-Bulk-delete unresolved AI proposals (&#x60;&#x60;type &#x3D;&#x3D; \&#39;auto\&#39;&#x60;&#x60;) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted.
+Bulk-delete unresolved AI proposals (&#x60;&#x60;type &#x3D;&#x3D; \&#39;auto\&#39;&#x60;&#x60;) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted (&#x60;&#x60;delete_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;).
 
 ### Example
 
@@ -813,7 +813,7 @@ example().catch(console.error);
 
 Delete Spans For Tags In Document
 
-Bulk-delete approved (&#x60;&#x60;type &#x3D;&#x3D; \&#39;pos\&#39;&#x60;&#x60;) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted.
+Bulk-delete approved (&#x60;&#x60;type &#x3D;&#x3D; \&#39;pos\&#39;&#x60;&#x60;) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted (&#x60;&#x60;delete_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;).
 
 ### Example
 
@@ -953,11 +953,11 @@ example().catch(console.error);
 
 ## deleteTagSpanApiTagSpansSpanIdDelete
 
-> deleteTagSpanApiTagSpansSpanIdDelete(spanId)
+> WriteResult deleteTagSpanApiTagSpansSpanIdDelete(spanId)
 
 Delete Tag Span
 
-Delete a TagSpan\&#39;s information
+Delete a TagSpan and the chunk tag reference no other span backs. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was deleted but the chunk tag could not be updated.
 
 ### Example
 
@@ -1002,7 +1002,7 @@ example().catch(console.error);
 
 ### Return type
 
-`void` (Empty response body)
+[**WriteResult**](WriteResult.md)
 
 ### Authorization
 
@@ -1017,7 +1017,7 @@ example().catch(console.error);
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **204** | Successful Response |  -  |
+| **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -3672,11 +3672,11 @@ example().catch(console.error);
 
 ## updateTagSpanApiTagSpansSpanIdPatch
 
-> TagSpan updateTagSpanApiTagSpansSpanIdPatch(spanId, patchSpan)
+> TagSpanWriteResult updateTagSpanApiTagSpansSpanIdPatch(spanId, patchSpan)
 
 Update Tag Span
 
-Update TagSpan\&#39;s information (start, end, tagId, ...)
+Update TagSpan\&#39;s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was updated but the chunk tags could not be.
 
 ### Example
 
@@ -3724,7 +3724,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**TagSpan**](TagSpan.md)
+[**TagSpanWriteResult**](TagSpanWriteResult.md)
 
 ### Authorization
 

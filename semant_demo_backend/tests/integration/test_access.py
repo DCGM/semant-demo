@@ -162,8 +162,8 @@ async def test_shared_user_edits_annotations_without_changing_membership(api_cli
         "span_ids": [ids.span["lhota_automatic"], span_id], "update": {"type": "pos"}})
     deleted = await api_client.delete(f"/api/tag_spans/{span_id}", headers=headers)
 
-    assert [created.status_code, patched.status_code, bulk.status_code, deleted.status_code] == [200, 200, 200, 204]
-    assert bulk.json()["outcome"] == "complete"
+    assert [created.status_code, patched.status_code, bulk.status_code, deleted.status_code] == [200, 200, 200, 200]
+    assert [r.json()["outcome"] for r in (created, patched, bulk, deleted)] == ["complete"] * 4
     assert (await store.span(ids.span["lhota_automatic"]))["type"] == "pos"
     assert await store.span(span_id) is None
     assert await store.collections_of_chunk(ids.chunk["chronicle_2"]) == membership_before

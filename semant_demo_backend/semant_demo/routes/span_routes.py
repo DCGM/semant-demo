@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, Query, status, Response
+from fastapi import APIRouter, Depends, Query
 
 from semant_demo import schemas
 from semant_demo.weaviate_utils.weaviate_abstraction import WeaviateAbstraction
@@ -21,7 +21,9 @@ from semant_demo.schema.spans import (
     BulkUpdateSpansRequest,
     BulkUpdateSpansResponse,
     TagSpanBatchRequest,
+    TagSpanWriteResult,
 )
+from semant_demo.schema.outcomes import WriteResult
 logging.basicConfig(level=logging.INFO)
 
 exp_router = APIRouter()
@@ -29,17 +31,28 @@ exp_router = APIRouter()
 # Annotations (spans) belong to the collection of their tag. Reading needs collection
 # read access; creating, editing and deleting needs annotation-edit access (owner or
 # shared user). Spans are only placed on chunks of that collection.
+#
+# Every span write also updates the chunk-level tag references that tag-filtered search
+# uses (``adapters/weaviate/chunk_tags.py``). That second write is best effort: when it
+# fails the span write is kept and the response reports it as a partial outcome.
 
-@exp_router.post("/api/tag_spans", response_model=schemas.TagSpan)
+
+def _span_write_result(span: schemas.TagSpan, failed) -> TagSpanWriteResult:
+    return TagSpanWriteResult(**span.model_dump(), outcome=outcome_of(1, len(failed)),
+                              succeeded=[str(span.id)], failed=failed)
+
+
+@exp_router.post("/api/tag_spans", response_model=TagSpanWriteResult)
 async def create_tag_span(span: PostSpan, tagger: WeaviateAbstraction = Depends(get_search),
-                          current_user: User = Depends(current_active_user)) -> schemas.TagSpan:
+                          current_user: User = Depends(current_active_user)) -> TagSpanWriteResult:
     """
-    Adds new TagSpan
+    Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when
+    the span was saved but the chunk tag could not be updated.
     """
     collection_id = await access.collection_of_tags(tagger.tag, [span.tagId])
     await access.require_annotation_edit(tagger.userCollection, current_user, collection_id)
     await access.require_chunks_in_collection(tagger.userCollection, [span.chunkId], collection_id)
-    return await tagger.span.create(span=span)
+    return _span_write_result(*await tagger.span.create(span=span))
 
 
 @exp_router.get("/api/tag_spans", response_model=list[schemas.TagSpan])
@@ -70,7 +83,7 @@ async def read_tag_spans_batch(
     return await tagger.span.read_batch(chunk_ids=body.chunk_ids, collection_id=str(grant.collection_id))
 
 
-@exp_router.patch("/api/tag_spans/{span_id}", response_model=schemas.TagSpan)
+@exp_router.patch("/api/tag_spans/{span_id}", response_model=TagSpanWriteResult)
 async def update_tag_span(
     span_id: str,
     body: PatchSpan,
@@ -78,17 +91,20 @@ async def update_tag_span(
     current_user: User = Depends(current_active_user),
 ):
     """
-    Update TagSpan's information (start, end, tagId, ...)
+    Update TagSpan's information (start, end, tagId, ...), then re-derive the chunk tag
+    references of its (chunk, tag) pair (and the new pair on a tag change), so saving again
+    retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated
+    but the chunk tags could not be.
     """
     collection_id = await access.collection_of_spans(tagger.span, tagger.tag, [span_id])
     await access.require_annotation_edit(tagger.userCollection, current_user, collection_id)
     if body.tagId is not None:
         await access.require_tags_in_collection(tagger.tag, [body.tagId], collection_id)
 
-    return await tagger.span.update(
+    return _span_write_result(*await tagger.span.update(
         span_id=span_id,
         update_fields=body
-    )
+    ))
 
 
 @exp_router.post(
@@ -108,7 +124,8 @@ async def bulk_update_tag_spans(
 
     All spans must belong to one collection the user may annotate; otherwise nothing
     is updated. Updates are best effort: ``spans`` holds the updated spans and
-    ``failed`` the spans that could not be updated.
+    ``failed`` the spans that could not be updated (``update_span``) and the chunk tag
+    updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
     """
     if not body.span_ids:
         return BulkUpdateSpansResponse(outcome=outcome_of(0, 0), spans=[])
@@ -129,19 +146,20 @@ async def bulk_update_tag_spans(
     )
 
 
-@exp_router.delete("/api/tag_spans/{span_id}", status_code=status.HTTP_204_NO_CONTENT)
+@exp_router.delete("/api/tag_spans/{span_id}", response_model=WriteResult)
 async def delete_tag_span(
     span_id: str,
     tagger: WeaviateAbstraction = Depends(get_search),
     current_user: User = Depends(current_active_user),
-):
+) -> WriteResult:
     """
-    Delete a TagSpan's information
+    Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is
+    ``partial`` when the span was deleted but the chunk tag could not be updated.
     """
     collection_id = await access.collection_of_spans(tagger.span, tagger.tag, [span_id])
     await access.require_annotation_edit(tagger.userCollection, current_user, collection_id)
-    await tagger.span.delete(span_id=span_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    failed = await tagger.span.delete(span_id=span_id)
+    return WriteResult(outcome=outcome_of(1, len(failed)), succeeded=[span_id], failed=failed)
 
 
 @exp_router.post(
@@ -159,7 +177,8 @@ async def delete_spans_for_tags_in_document(
     auto suggestions are left untouched.
 
     Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could
-    not be deleted.
+    not be deleted (``delete_span``) and the chunk tag updates that failed
+    (``update_chunk_tags``, item ``chunk_id:tag_id``).
     """
     grant = await access.require_annotation_edit(tagger.userCollection, current_user, body.collection_id)
     await access.require_tags_in_collection(tagger.tag, body.tag_ids, grant.collection_id)

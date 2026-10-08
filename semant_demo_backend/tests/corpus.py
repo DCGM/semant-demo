@@ -81,6 +81,11 @@ def _validate(corpus: Corpus) -> None:
         assert entry["chunk"] in chunks
         for ref in ("positiveTag", "automaticTag", "negativeTag"):
             assert all(t in tags for t in entry[ref])
+    # Chunk tags are exactly the projection of the spans (ADR 0004, #204).
+    ref_of = {"pos": "positiveTag", "auto": "automaticTag", "neg": "negativeTag"}
+    required = {(s["chunk"], s["tag"], ref_of[s["type"]]) for s in corpus.spans.values()}
+    stored = {(e["chunk"], t, ref) for e in corpus.chunk_tags for ref in ref_of.values() for t in e[ref]}
+    assert stored == required, "chunk_tags must match the spans"
 
 
 @cache

@@ -23,6 +23,7 @@ from semant_demo.weaviate_exceptions import (
 )
 from weaviate.classes.query import QueryReference
 
+from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, sync_chunk_tags
 from semant_demo.weaviate_utils.helpers import WeaviateHelpers, step_failure
 from semant_demo.schema.outcomes import StepFailure, WriteResult, outcome_of
 import semant_demo.schemas as schemas
@@ -80,9 +81,15 @@ class Span():
     def move(self):
         pass
     
-    async def create(self, span: PostSpan) -> schemas.TagSpan:
+    async def _sync_chunk_tags(self, pairs) -> list[StepFailure]:
+        """Re-derive the chunk tag references of the touched (chunk, tag) pairs."""
+        _, failed = await sync_chunk_tags(self.client, self.collectionNames, pairs)
+        return failed
+
+    async def create(self, span: PostSpan) -> tuple[schemas.TagSpan, list[StepFailure]]:
         """
-        Create a new span and link it to the chunk and tag.
+        Create a new span and link it to the chunk and tag, then add the matching chunk
+        tag reference. Returns the span and the chunk tag failures (the span is kept).
         """
         if not self.span_collection:
             raise RuntimeError("Span_test collection not available")
@@ -102,14 +109,21 @@ class Span():
         if span.confidence is not None:
             properties["confidence"] = float(span.confidence)
 
-        span_id = await self.span_collection.data.insert(
-            properties=properties,
-            references={
-                "tag": span.tagId,
-                "text_chunk": span.chunkId
-            }
-        )
+        pairs = [ChunkTag.of(span.chunkId, span.tagId)]
+        try:
+            span_id = await self.span_collection.data.insert(
+                properties=properties,
+                references={
+                    "tag": span.tagId,
+                    "text_chunk": span.chunkId
+                }
+            )
+        except Exception:
+            # A timed-out insert may still have been stored.
+            await self._sync_chunk_tags(pairs)
+            raise
 
+        failed = await self._sync_chunk_tags(pairs)
         return schemas.TagSpan(
             id=str(span_id),
             chunkId=span.chunkId,
@@ -119,16 +133,29 @@ class Span():
             type=span.type,
             reason=span.reason,
             confidence=span.confidence,
-        )
+        ), failed
 
-    async def delete(self, span_id: str) -> None:
+    async def delete(self, span_id: str) -> list[StepFailure]:
         """
-        Delete a span by its ID.
+        Delete a span by its ID, then remove chunk tag references no other span backs.
+        Returns the chunk tag failures (the deletion is kept).
         """
         if not self.span_collection:
             raise RuntimeError("Span_test collection not available")
 
-        await self.helpers.delete_span_cascade(span_id=span_id)
+        pairs = self._pairs(await self.read_refs([UUID(str(span_id))]))
+        try:
+            await self.helpers.delete_span_cascade(span_id=span_id)
+        except Exception:
+            # A timed-out delete may still have been applied.
+            await self._sync_chunk_tags(pairs)
+            raise
+        return await self._sync_chunk_tags(pairs)
+
+    @staticmethod
+    def _pairs(refs: dict[UUID, tuple[list[UUID], list[UUID]]]) -> set[ChunkTag]:
+        """(chunk, tag) pairs of spans, from :meth:`read_refs`."""
+        return {ChunkTag(c, t) for tags, chunks in refs.values() for t in tags for c in chunks}
 
     async def read(self, span_id: str) -> schemas.TagSpan:
         """
@@ -359,10 +386,33 @@ class Span():
 
         return result
 
-    async def update(self, span_id: str, update_fields: PatchSpan) -> schemas.TagSpan:
+    async def update(self, span_id: str, update_fields: PatchSpan) -> tuple[schemas.TagSpan, list[StepFailure]]:
         """
-        Update start or end position or tag reference.
+        Update start or end position, type or tag reference, then re-derive the chunk tag
+        references of the span's (chunk, tag) pair, and of the new pair on a tag change.
+        This runs for every patch, also offset-only, so saving a span again retries a
+        chunk tag update that failed before. Returns the span and the chunk tag failures
+        (the span update is kept).
         """
+        pairs = await self._pairs_touched_by(span_ids=[span_id], update_fields=update_fields)
+        try:
+            span = await self._update(span_id, update_fields)
+        except Exception:
+            # The update may have been partly applied (or applied despite a timeout).
+            await self._sync_chunk_tags(pairs)
+            raise
+        return span, await self._sync_chunk_tags(pairs)
+
+    async def _pairs_touched_by(self, *, span_ids: list[str], update_fields: PatchSpan) -> set[ChunkTag]:
+        """(chunk, tag) pairs to re-derive after patching the spans: their current pairs
+        and, on a tag change, the new tag's."""
+        pairs = self._pairs(await self.read_refs([UUID(str(s)) for s in span_ids]))
+        if update_fields.tagId is not None:
+            pairs |= {ChunkTag.of(p.chunk_id, update_fields.tagId) for p in pairs}
+        return pairs
+
+    async def _update(self, span_id: str, update_fields: PatchSpan) -> schemas.TagSpan:
+        """Update the span only, without its chunk tags."""
         if not self.span_collection:
             raise RuntimeError("Span_test collection is not available")
 
@@ -414,13 +464,16 @@ class Span():
         per-span HTTP round-trip and the browser's 6-conn-per-origin cap.
 
         Best effort: returns the updated spans and a failure record for each span
-        that could not be updated. Completed updates are kept.
+        that could not be updated and for each chunk tag update that failed. Completed
+        updates are kept. Chunk tags are re-derived once per touched (chunk, tag) pair
+        after all span updates, also for spans whose update failed.
         """
         if not span_ids:
             return [], []
 
+        pairs = await self._pairs_touched_by(span_ids=span_ids, update_fields=update_fields)
         results = await asyncio.gather(
-            *(self.update(span_id=sid, update_fields=update_fields) for sid in span_ids),
+            *(self._update(span_id=sid, update_fields=update_fields) for sid in span_ids),
             return_exceptions=True,
         )
 
@@ -431,6 +484,7 @@ class Span():
                 failed.append(step_failure("update_span", sid, res))
             else:
                 updated.append(res)
+        failed += await self._sync_chunk_tags(pairs)
         return updated, failed
 
     async def delete_auto_spans_in_scope(
@@ -515,15 +569,22 @@ class Span():
 
         PAGE_SIZE = 500
         span_ids: list[str] = []
+        pairs: set[ChunkTag] = set()
         while True:
             response = await self.span_collection.query.fetch_objects(
                 filters=filters,
                 return_properties=[],
+                return_references=[QueryReference(link_on="tag"), QueryReference(link_on="text_chunk")],
                 limit=PAGE_SIZE,
                 offset=len(span_ids),
             )
             objs = response.objects or []
             span_ids.extend(str(o.uuid) for o in objs)
+            for o in objs:
+                refs = o.references or {}
+                tags, chunks = refs.get("tag"), refs.get("text_chunk")
+                pairs |= {ChunkTag.of(c.uuid, t.uuid)
+                          for t in (tags.objects if tags else []) for c in (chunks.objects if chunks else [])}
             if len(objs) < PAGE_SIZE:
                 break
 
@@ -535,4 +596,7 @@ class Span():
                 deleted.append(span_id)
             except Exception as e:
                 failed.append(step_failure("delete_span", span_id, e))
-        return WriteResult(outcome=outcome_of(len(deleted), len(failed)), succeeded=deleted, failed=failed)
+        # Re-derived after all deletions, also for spans whose deletion failed.
+        tag_failures = await self._sync_chunk_tags(pairs)
+        return WriteResult(outcome=outcome_of(len(deleted), len(failed) + len(tag_failures)),
+                           succeeded=deleted, failed=failed + tag_failures)

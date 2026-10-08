@@ -1,6 +1,6 @@
 import { useApi } from 'src/composables/useApi'
-import type { TagSpan, TagSpans, PostSpan, PatchSpan } from 'src/models/tagSpans'
-import type { BulkUpdateSpansResponse } from 'src/generated/api'
+import type { TagSpans, PostSpan, PatchSpan } from 'src/models/tagSpans'
+import type { BulkUpdateSpansResponse, TagSpanWriteResult, WriteResult } from 'src/generated/api'
 
 export function useTagSpansRepository() {
   const api = useApi().default
@@ -19,13 +19,15 @@ export function useTagSpansRepository() {
       })
     },
 
-    create: async (span: PostSpan): Promise<TagSpan> => {
+    /** The saved span; ``outcome`` is partial when its search tag could not be updated. */
+    create: async (span: PostSpan): Promise<TagSpanWriteResult> => {
       return api.createTagSpanApiTagSpansPost({
         postSpan: span
       })
     },
 
-    update: async (spanId: string, tagSpan: PatchSpan): Promise<TagSpan> => {
+    /** The updated span; ``outcome`` is partial when its search tag could not be updated. */
+    update: async (spanId: string, tagSpan: PatchSpan): Promise<TagSpanWriteResult> => {
       return api.updateTagSpanApiTagSpansSpanIdPatch({
         spanId,
         patchSpan: tagSpan
@@ -42,7 +44,8 @@ export function useTagSpansRepository() {
       })
     },
 
-    delete: async (spanId: string): Promise<void> => {
+    /** ``outcome`` is partial when the span was deleted but its search tag was not updated. */
+    delete: async (spanId: string): Promise<WriteResult> => {
       return api.deleteTagSpanApiTagSpansSpanIdDelete({ spanId })
     }
   }
