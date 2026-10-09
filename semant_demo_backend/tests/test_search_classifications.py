@@ -42,3 +42,14 @@ def test_stored_properties_are_not_mutated():
 
 def test_chunk_without_classifications_has_none():
     assert classifications({"text": "t", "language": "ces"}) == {}
+
+
+def test_scalar_values_become_one_element_lists():
+    stored = {"communicative_mode": "narration", "complexity": 3, "style": True, "documentary_role": 0}
+
+    assert classifications(stored) == {
+        "communicative_mode": ["narration"],
+        "complexity": ["3"],
+        "documentary_role": ["0"],
+        "style": ["True"],
+    }
