@@ -212,6 +212,7 @@
                 <div class="text-caption text-grey-8 q-mt-xs" v-if="chunk.documentObject.title">
                   <strong>Source:</strong> {{ chunk.documentObject.title }}
                 </div>
+                <ResultClassifications :metadata="chunk.metadata" :filters="availableSearchFilters" />
               </div>
               <div class="q-mr-md q-mt-xs">
                 <q-checkbox v-model="selectedResults" :val="chunk.id" color="primary" dense />
@@ -291,6 +292,7 @@ import { collectionRights } from 'src/features/collections/permissions'
 import { useSearchRequest } from 'src/features/search/useSearchRequest'
 import { useSearchSummary } from 'src/features/search/useSearchSummary'
 import SearchSummaryPanel from 'src/features/search/SearchSummaryPanel.vue'
+import ResultClassifications from 'src/features/search/ResultClassifications.vue'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 
 const api = useApi().default

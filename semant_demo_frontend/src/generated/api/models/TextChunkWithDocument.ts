@@ -26,6 +26,9 @@ import {
  * display text (``service.display_text``: hyphenated line breaks joined), not the
  * canonical stored text; span offsets do not apply to it. The document view reads
  * canonical text (``DocumentDetail``).
+ * 
+ * ``metadata`` holds the chunk's stored classifications (``filters.TASK_CLASSES``) that
+ * have values: property name -> values, in ``TASK_CLASSES`` order.
  * @export
  * @interface TextChunkWithDocument
  */
@@ -156,6 +159,12 @@ export interface TextChunkWithDocument {
      * @memberof TextChunkWithDocument
      */
     documentObject: Document;
+    /**
+     * 
+     * @type {{ [key: string]: Array<string>; }}
+     * @memberof TextChunkWithDocument
+     */
+    metadata?: { [key: string]: Array<string>; };
 }
 
 /**
@@ -204,6 +213,7 @@ export function TextChunkWithDocumentFromJSONTyped(json: any, ignoreDiscriminato
         'querySummary': json['query_summary'] == null ? undefined : json['query_summary'],
         'summary': json['summary'] == null ? undefined : json['summary'],
         'documentObject': DocumentFromJSON(json['document_object']),
+        'metadata': json['metadata'] == null ? undefined : json['metadata'],
     };
 }
 
@@ -239,6 +249,7 @@ export function TextChunkWithDocumentToJSONTyped(value?: TextChunkWithDocument |
         'query_summary': value['querySummary'],
         'summary': value['summary'],
         'document_object': DocumentToJSON(value['documentObject']),
+        'metadata': value['metadata'],
     };
 }
 

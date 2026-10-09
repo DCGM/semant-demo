@@ -30,6 +30,7 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty
 from weaviate.classes.query import Filter
 
+from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.schemas import CollectionNames
 
 MARKER_COLLECTION = "SemantTestStoreMarker"
@@ -211,8 +212,10 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
     """Create the application collections as the backend expects them.
 
     Mirrors the properties and references the backend reads and writes in the current
-    deployed schema (docs/DATABASE.md); metadata-enrichment properties that no code path
-    uses are omitted. Vectors are self-provided under the ``default`` name.
+    deployed schema (docs/DATABASE.md), including the ``text[]`` chunk classifications
+    written by ``data_tools/meta_data_enrichment`` (search filters and hit ``metadata``);
+    other enrichment properties are omitted. Vectors are self-provided under the
+    ``default`` name.
     """
     text, text_array, integer = DataType.TEXT, DataType.TEXT_ARRAY, DataType.INT
     vectors = Configure.Vectors.self_provided()
@@ -283,6 +286,7 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
             Property(name="from_page", data_type=integer),
             Property(name="to_page", data_type=integer),
             Property(name="end_paragraph", data_type=DataType.BOOL),
+            *(Property(name=name, data_type=text_array) for name in TASK_CLASSES),
         ],
         references=[
             ReferenceProperty(name="document", target_collection=names.document_collection_name),

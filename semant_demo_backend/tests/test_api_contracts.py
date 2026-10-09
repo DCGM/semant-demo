@@ -118,3 +118,19 @@ def test_search_response_is_accepted_back_as_summary_input():
 
     assert wire["results"][0]["document_object"]["author"] == ["Karel Pisatel", "Marie Pisatelová"]
     assert again.model_dump(mode="json") == wire
+
+
+def test_search_hit_classifications_are_optional_and_round_trip(tmp_path):
+    hit_schema = create_app(make_test_config(tmp_path)).openapi()["components"]["schemas"]["TextChunkWithDocument"]
+    assert "metadata" not in hit_schema.get("required", [])
+    assert hit_schema["properties"]["metadata"]["additionalProperties"] == {"type": "array", "items": {"type": "string"}}
+
+    hit = TextChunkWithDocument(
+        id=CHUNK, text="Milá Marie.", start_page_id=PAGE, from_page=1, to_page=1, document=DOC, order=0,
+        document_object=Document(id=DOC, **STORED), metadata={"style": ["informal", "literary"]})
+    wire = hit.model_dump(mode="json")
+    assert TextChunkWithDocument.model_validate(wire).metadata == {"style": ["informal", "literary"]}
+
+    # A client that does not know the field (e.g. an older search page posting results back).
+    del wire["metadata"]
+    assert TextChunkWithDocument.model_validate(wire).metadata == {}

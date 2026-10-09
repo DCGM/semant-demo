@@ -47,3 +47,12 @@ When a user submits a search request to the POST `/api/search` endpoint, they in
 
 3. **Database Execution (`ChunkSearchRepository.search`)**:
    The adapter runs the `.bm25()`, `.near_vector()` or `.hybrid()` query with the combined filter, so restrictions apply during retrieval, not to the top-k hits afterwards. The query vector for vector/hybrid search is computed beforehand by the service through the injected embedding client.
+
+## 5. Classifications on Search Hits
+Each search hit (`TextChunkWithDocument`) has an optional `metadata` field with the chunk's stored classifications: property name -> list of values, e.g. `{"communicative_mode": ["narration"], "style": ["formal", "literary"]}`.
+
+- Only the classification properties named by `TASK_CLASSES` (`features/search/filters.py`) are included, in that order; other chunk or document properties are never copied. `ChunkSearchRepository.search` builds it with `classifications()` (`adapters/weaviate/search.py`).
+- Properties without values are left out, so an unclassified chunk has `{}`. A single string (older data) becomes a one-element list; empty and repeated values are dropped.
+- Retrieval, ranking and filters are unchanged; clients that ignore the field keep working.
+
+The Search page (`features/search/ResultClassifications.vue`) shows them on each result as "name: values", using the `name` and `user_form` of the filter whose `target_property` matches, with a humanized fallback. The first three are shown; *Show more* / *Show less* expands one result only.

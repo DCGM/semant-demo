@@ -1,7 +1,7 @@
 
 # TextChunkWithDocument
 
-A search hit: the chunk, its document and optional generated summaries. ``text`` is display text (``service.display_text``: hyphenated line breaks joined), not the canonical stored text; span offsets do not apply to it. The document view reads canonical text (``DocumentDetail``).
+A search hit: the chunk, its document and optional generated summaries. ``text`` is display text (``service.display_text``: hyphenated line breaks joined), not the canonical stored text; span offsets do not apply to it. The document view reads canonical text (``DocumentDetail``).  ``metadata`` holds the chunk\'s stored classifications (``filters.TASK_CLASSES``) that have values: property name -> values, in ``TASK_CLASSES`` order.
 
 ## Properties
 
@@ -28,6 +28,7 @@ Name | Type
 `querySummary` | string
 `summary` | string
 `documentObject` | [Document](Document.md)
+`metadata` | { [key: string]: Array&lt;string&gt;; }
 
 ## Example
 
@@ -57,6 +58,7 @@ const example = {
   "querySummary": null,
   "summary": null,
   "documentObject": null,
+  "metadata": null,
 } satisfies TextChunkWithDocument
 
 console.log(example)
