@@ -1,5 +1,7 @@
 """The test store is demonstrably isolated: owned by this run, reset per test, cleaned up selectively."""
 import pytest
+from weaviate.collections.classes.batch import DeleteManyReturn
+from weaviate.collections.data.async_ import _DataCollectionAsync
 
 from tests.weaviate_store import (
     MARKER_COLLECTION,
@@ -99,3 +101,71 @@ async def test_reset_refuses_another_runs_store(seeded_store, collection_names, 
 
     chunks = seeded_store.collections.get(collection_names.chunks_collection_name)
     assert (await chunks.aggregate.over_all(total_count=True)).total_count > 0
+
+
+@pytest.fixture
+def fake_delete_many(monkeypatch, collection_names):
+    """Replace ``delete_many`` on the Chunks collection with ``fake(original, self, where)``.
+
+    Fails the test after ``max_calls`` calls, so a reset that keeps retrying cannot hang
+    the suite.
+    """
+    original = _DataCollectionAsync.delete_many
+
+    def install(fake, max_calls=5):
+        calls = []
+
+        async def wrapper(self, where, **kwargs):
+            if self.name != collection_names.chunks_collection_name:
+                return await original(self, where, **kwargs)
+            calls.append(where)
+            assert len(calls) <= max_calls, "reset kept calling delete_many without stopping"
+            return await fake(original, self, where)
+
+        monkeypatch.setattr(_DataCollectionAsync, "delete_many", wrapper)
+        return calls
+    return install
+
+
+@pytest.mark.parametrize("failed, successful", [(2, 1), (3, 0)], ids=["some-failed", "all-failed"])
+async def test_reset_fails_when_deletions_fail(
+        seeded_store, collection_names, store_token, created_app_schema, fake_delete_many, failed, successful):
+    async def failing(original, self, where):
+        return DeleteManyReturn(failed=failed, matches=failed + successful, objects=None, successful=successful)
+    calls = fake_delete_many(failing)
+
+    with pytest.raises(RuntimeError, match="deletions failed"):
+        await reset_app_collections(seeded_store, collection_names, store_token, created_app_schema)
+    assert len(calls) == 1
+
+
+async def test_reset_fails_when_deletion_makes_no_progress(
+        seeded_store, collection_names, store_token, created_app_schema, fake_delete_many):
+    async def stuck(original, self, where):
+        return DeleteManyReturn(failed=0, matches=3, objects=None, successful=0)
+    calls = fake_delete_many(stuck)
+
+    with pytest.raises(RuntimeError, match="no progress"):
+        await reset_app_collections(seeded_store, collection_names, store_token, created_app_schema)
+    assert len(calls) == 1
+
+
+async def test_reset_repeats_partial_batches_until_empty(
+        seeded_store, collection_names, store_token, created_app_schema, fake_delete_many, corpus):
+    chunks = seeded_store.collections.get(collection_names.chunks_collection_name)
+
+    async def one_per_batch(original, self, where):
+        # Like a server whose QUERY_MAXIMUM_RESULTS is 1: one object deleted per call.
+        objects = (await chunks.query.fetch_objects(limit=1)).objects
+        if not objects:
+            return await original(self, where)
+        await chunks.data.delete_by_id(objects[0].uuid)
+        total = (await chunks.aggregate.over_all(total_count=True)).total_count
+        return DeleteManyReturn(failed=0, matches=total + 1, objects=None, successful=1)
+
+    calls = fake_delete_many(one_per_batch, max_calls=len(corpus.chunks) + 1)
+
+    await reset_app_collections(seeded_store, collection_names, store_token, created_app_schema)
+
+    assert (await chunks.aggregate.over_all(total_count=True)).total_count == 0
+    assert len(calls) == len(corpus.chunks) + 1
