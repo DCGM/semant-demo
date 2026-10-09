@@ -19,7 +19,7 @@ jobs:
   test-backend:
     name: Backend tests
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, semant-server]
+    runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
       options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
@@ -33,13 +33,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up virtual environment
         run: python -m venv /tmp/venv
-      # Every wheel is checked against the hashes in the lock, so the pip cache shared by
-      # the runners on this host (see docs/DEVELOPMENT.md) cannot substitute a package.
-      # If the cache directory is missing or not writable, pip warns and downloads instead.
+      # The pip cache is shared by the CI runners on this host (setup: deploy/README.md)
+      # and is trusted: only these CI jobs write to it. --require-hashes checks every
+      # downloaded archive against the lock, also when pip's HTTP cache serves it; a wheel
+      # pip built locally from an sdist is reused after checking only the source hash
+      # recorded with it in the cache. All locked packages currently install from wheels.
+      # pip silently downloads without a cache it cannot write, so check that first.
       # --no-compile: this venv is used once; skipping .pyc precompilation saves ~20 s.
       - name: Install pinned dependencies
         working-directory: semant_demo_backend
         run: |
+          if probe=$(mktemp -p "$PIP_CACHE_DIR" .write-probe.XXXXXX 2>/dev/null); then
+            rm -f "$probe"
+            echo "pip cache $PIP_CACHE_DIR is writable by $(id -u):$(id -g)"
+          else
+            echo "::warning title=pip cache unavailable::$PIP_CACHE_DIR is not writable by $(id -u):$(id -g) ($(ls -ldn "$PIP_CACHE_DIR" 2>&1)); installing without the cache. See deploy/README.md."
+          fi
           /tmp/venv/bin/pip install --require-hashes --no-compile -r requirements-dev.lock
           /tmp/venv/bin/pip install --no-compile --no-deps -e .
       - name: Lint
@@ -72,7 +81,7 @@ jobs:
   test-frontend:
     name: Frontend checks
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, semant-server]
+    runs-on: [self-hosted, semant-ci]
     container:
       image: node:22
       options: --user 1025:1027
@@ -101,7 +110,7 @@ jobs:
   test-integration:
     name: Integration tests
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, semant-server]
+    runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
       options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
@@ -132,13 +141,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up virtual environment
         run: python -m venv /tmp/venv
-      # Every wheel is checked against the hashes in the lock, so the pip cache shared by
-      # the runners on this host (see docs/DEVELOPMENT.md) cannot substitute a package.
-      # If the cache directory is missing or not writable, pip warns and downloads instead.
+      # The pip cache is shared by the CI runners on this host (setup: deploy/README.md)
+      # and is trusted: only these CI jobs write to it. --require-hashes checks every
+      # downloaded archive against the lock, also when pip's HTTP cache serves it; a wheel
+      # pip built locally from an sdist is reused after checking only the source hash
+      # recorded with it in the cache. All locked packages currently install from wheels.
+      # pip silently downloads without a cache it cannot write, so check that first.
       # --no-compile: this venv is used once; skipping .pyc precompilation saves ~20 s.
       - name: Install pinned dependencies
         working-directory: semant_demo_backend
         run: |
+          if probe=$(mktemp -p "$PIP_CACHE_DIR" .write-probe.XXXXXX 2>/dev/null); then
+            rm -f "$probe"
+            echo "pip cache $PIP_CACHE_DIR is writable by $(id -u):$(id -g)"
+          else
+            echo "::warning title=pip cache unavailable::$PIP_CACHE_DIR is not writable by $(id -u):$(id -g) ($(ls -ldn "$PIP_CACHE_DIR" 2>&1)); installing without the cache. See deploy/README.md."
+          fi
           /tmp/venv/bin/pip install --require-hashes --no-compile -r requirements-dev.lock
           /tmp/venv/bin/pip install --no-compile --no-deps -e .
       - name: Wait for Weaviate
@@ -157,7 +175,7 @@ jobs:
     name: Generated API client drift
     needs: [test-backend]
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, semant-server]
+    runs-on: [self-hosted, semant-ci]
     container:
       # Same generator version as semant_demo_frontend/openapitools.json.
       image: openapitools/openapi-generator-cli:v7.20.0
