@@ -63,5 +63,12 @@
     {"chunk": "chronicle_2", "positiveTag": ["place"], "automaticTag": [], "negativeTag": ["person"]},
     {"chunk": "chronicle_3", "positiveTag": ["event"], "automaticTag": [], "negativeTag": []},
     {"chunk": "letters_1", "positiveTag": [], "automaticTag": ["place"], "negativeTag": []}
-  ]
+  ],
+  "chunk_classifications": {
+    "chronicle_1": {
+      "subject_domain": ["ddc_900_history_geography", "news_and_current_affairs"], "communicative_mode": ["narration"],
+      "complexity": ["moderate"], "style": ["formal"]
+    },
+    "letters_1": {"communicative_mode": ["interaction"], "style": ["informal"]}
+  }
 }

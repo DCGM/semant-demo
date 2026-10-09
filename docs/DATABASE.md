@@ -134,6 +134,7 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 - `from_page` / `to_page` — page range in the source document
 - `start_page_id` — UUID of the first page
 - `ner_*` — named entity arrays extracted by NER (Persons, Temporal, Address, Geographical, Institution, Media, Cultural artifacts)
+- classifications (`text[]`, e.g. `communicative_mode`, `style`, `subject_domain`) — written by `data_tools/meta_data_enrichment`; the properties named in `features/search/filters.py::TASK_CLASSES` are search filters and are returned as a hit's `metadata` ([SEARCH_FILTERS](SEARCH_FILTERS.md#5-classifications-on-search-hits))
 
 #### References from Chunks
 

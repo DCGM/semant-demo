@@ -4,6 +4,9 @@ Owns filter translation, the choice of query call, the returned references/prope
 the mapping of result objects. Embeddings are computed by the caller (``query.vector``);
 no provider is called here.
 """
+from collections.abc import Mapping
+from typing import Any
+
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import Metrics
 from weaviate.classes.query import Filter, QueryReference
@@ -11,6 +14,7 @@ from weaviate.classes.query import Filter, QueryReference
 import semant_demo.schemas as schemas
 from semant_demo.adapters.weaviate.chunk_tags import REF_BY_TYPE
 from semant_demo.features.annotations.schemas import SpanType
+from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, TagFilter, TextChunkWithDocument
 from semant_demo.schema.documents import Document
 
@@ -69,6 +73,7 @@ class ChunkSearchRepository:
                 **obj.properties,
                 document_object=Document(id=first_doc.uuid, **doc_props),
                 document=first_doc.uuid,
+                metadata=classifications(obj.properties),
             ))
         return results
 
@@ -104,6 +109,24 @@ class ChunkSearchRepository:
         if not filters:
             return None
         return Filter.all_of(filters) if len(filters) > 1 else filters[0]
+
+
+def classifications(properties: Mapping[str, Any]) -> dict[str, list[str]]:
+    """The populated classification properties (``TASK_CLASSES``) of a chunk, in that order.
+
+    Stored as ``text[]``; a single string (older data) becomes a one-element list. Empty
+    and repeated values are dropped, other properties are never included.
+    """
+    result = {}
+    for name in TASK_CLASSES:
+        stored = properties.get(name)
+        if stored is None:
+            continue
+        values = [stored] if isinstance(stored, str) else stored
+        values = list(dict.fromkeys(str(v) for v in values if v is not None and v != ""))
+        if values:
+            result[name] = values
+    return result
 
 
 def _vector(query: ChunkQuery) -> list[float]:

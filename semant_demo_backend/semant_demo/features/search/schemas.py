@@ -102,11 +102,15 @@ class TextChunkWithDocument(TextChunk):
     display text (``service.display_text``: hyphenated line breaks joined), not the
     canonical stored text; span offsets do not apply to it. The document view reads
     canonical text (``DocumentDetail``).
+
+    ``metadata`` holds the chunk's stored classifications (``filters.TASK_CLASSES``) that
+    have values: property name -> values, in ``TASK_CLASSES`` order.
     """
     query_title: str | None = None
     query_summary: str | None = None
     summary: str | None = None
     document_object: Document
+    metadata: dict[str, list[str]] = {}
 
 
 class SearchResponse(BaseModel):

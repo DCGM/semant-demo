@@ -9,6 +9,8 @@ The fixture corpus (tests/fixtures/corpus.json):
 * chunk tags: chronicle_1 positive person / automatic place, chronicle_2 positive place /
   negative person, chronicle_3 positive event, letters_1 automatic place.
 * documents: chronicle (1851), letters (1902), gazette (no year); every chunk is "ces".
+* classifications: chronicle_1 (narration, moderate, formal, two subject domains),
+  letters_1 (interaction, informal); no other chunk has any.
 
 Every exclusion test first shows that the excluded chunk matches the same query without
 the restriction, so its absence comes from the filter.
@@ -141,6 +143,31 @@ async def test_results_map_document_authors(chunks, corpus):
     assert str(hit.document) == corpus.documents["letters"]["id"]
     assert hit.document_object.author == ["Karel Pisatel", "Marie Pisatelová"]
     assert hit.document_object.yearIssued == 1902
+
+
+@pytest.mark.parametrize("mode", list(SearchType))
+async def test_results_carry_the_stored_classifications(chunks, corpus, mode):
+    found = await chunks.search(query(mode=mode, vector=fake_embedding(ALL_WORDS)))
+
+    assert len(found) == len(corpus.chunks)
+    by_id = {str(hit.id): hit.metadata for hit in found}
+    for chunk in corpus.chunks.values():
+        assert by_id[chunk["id"]] == corpus.chunk_classifications.get(chunk["key"], {})
+    # Stored values keep their order, properties follow the filter definitions.
+    assert list(by_id[corpus.chunks["chronicle_1"]["id"]]) == ["communicative_mode", "complexity", "style",
+                                                                "subject_domain"]
+    assert list(by_id[corpus.chunks["letters_1"]["id"]]) == ["communicative_mode", "style"]
+
+
+@pytest.mark.parametrize("condition, expected", [
+    (FieldCondition("communicative_mode", Op.contains_any, ["narration"]), {"chronicle_1"}),
+    (FieldCondition("communicative_mode", Op.contains_any, ["narration", "interaction"]), {"chronicle_1", "letters_1"}),
+    (FieldCondition("subject_domain", Op.contains_any, ["news_and_current_affairs"]), {"chronicle_1"}),
+    (FieldCondition("style", Op.contains_any, ["formal"]), {"chronicle_1"}),
+    (FieldCondition("style", Op.contains_any, ["literary"]), set()),
+])
+async def test_classification_conditions(chunks, keys, condition, expected):
+    assert keys(await chunks.search(query(conditions=(condition,)))) == expected
 
 
 async def test_document_filter_stats(chunks):
@@ -305,3 +332,15 @@ async def test_summary_failure_returns_the_results_with_a_warning(post_search, k
     assert response.status_code == 200, response.text
     assert keys(response.json()["results"]) == set(corpus.chunks)
     assert response.json()["warnings"] == [service.SUMMARY_FAILED_WARNING]
+
+
+async def test_classification_filter_and_hit_metadata(post_search, keys, corpus):
+    response = await post_search("owner", filters=[{"id": "style", "values": ["Informal"]}])
+
+    assert response.status_code == 200, response.text
+    [hit] = response.json()["results"]
+    assert keys([hit]) == {"letters_1"}
+    assert hit["metadata"] == {"communicative_mode": ["interaction"], "style": ["informal"]}
+
+    unfiltered = await post_search("owner")
+    assert {r["id"]: r["metadata"] for r in unfiltered.json()["results"]}[corpus.chunks["gazette_1"]["id"]] == {}

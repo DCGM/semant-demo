@@ -90,6 +90,7 @@ async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, cor
                 "from_page": chunk["from_page"],
                 "to_page": chunk["to_page"],
                 "end_paragraph": True,
+                **corpus.chunk_classifications.get(key, {}),
             },
             references=references,
             vector={"default": fake_embedding(chunk["text"])},

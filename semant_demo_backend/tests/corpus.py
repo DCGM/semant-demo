@@ -12,6 +12,8 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
+from semant_demo.features.search.filters import TASK_CLASSES
+
 CORPUS_PATH = Path(__file__).parent / "fixtures" / "corpus.json"
 
 
@@ -55,6 +57,11 @@ class Corpus:
     def chunk_tags(self) -> list[dict[str, Any]]:
         return self.raw["chunk_tags"]
 
+    @property
+    def chunk_classifications(self) -> dict[str, dict[str, list[str]]]:
+        """Stored classification properties by chunk key; unlisted chunks have none."""
+        return self.raw["chunk_classifications"]
+
 
 def _validate(corpus: Corpus) -> None:
     users, collections, chunks, tags = corpus.users, corpus.collections, corpus.chunks, corpus.tags
@@ -86,6 +93,10 @@ def _validate(corpus: Corpus) -> None:
     required = {(s["chunk"], s["tag"], ref_of[s["type"]]) for s in corpus.spans.values()}
     stored = {(e["chunk"], t, ref) for e in corpus.chunk_tags for ref in ref_of.values() for t in e[ref]}
     assert stored == required, "chunk_tags must match the spans"
+    for chunk_key, properties in corpus.chunk_classifications.items():
+        assert chunk_key in chunks
+        for name, values in properties.items():
+            assert set(values) <= set(TASK_CLASSES[name]), (chunk_key, name)
 
 
 @cache
