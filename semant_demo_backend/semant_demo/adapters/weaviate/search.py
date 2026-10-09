@@ -114,15 +114,16 @@ class ChunkSearchRepository:
 def classifications(properties: Mapping[str, Any]) -> dict[str, list[str]]:
     """The populated classification properties (``TASK_CLASSES``) of a chunk, in that order.
 
-    Stored as ``text[]``; a single string (older data) becomes a one-element list. Empty
-    and repeated values are dropped, other properties are never included.
+    Stored as ``text[]``; a single value (older data, e.g. a string) becomes a one-element
+    list of its text. Empty and repeated values are dropped, other properties are never
+    included.
     """
     result = {}
     for name in TASK_CLASSES:
         stored = properties.get(name)
         if stored is None:
             continue
-        values = [stored] if isinstance(stored, str) else stored
+        values = stored if isinstance(stored, (list, tuple)) else [stored]
         values = list(dict.fromkeys(str(v) for v in values if v is not None and v != ""))
         if values:
             result[name] = values
