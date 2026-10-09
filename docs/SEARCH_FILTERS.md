@@ -55,4 +55,4 @@ Each search hit (`TextChunkWithDocument`) has an optional `metadata` field with 
 - Properties without values are left out, so an unclassified chunk has `{}`. A single string (older data) becomes a one-element list; empty and repeated values are dropped.
 - Retrieval, ranking and filters are unchanged; clients that ignore the field keep working.
 
-The Search page (`features/search/ResultClassifications.vue`) shows them on each result as "name: values", using the `name` and `user_form` of the filter whose `target_property` matches, with a humanized fallback. The first three are shown; *Show more* / *Show less* expands one result only.
+The Search page (`features/search/ResultClassifications.vue`) shows them on each result as one line of value badges, using the `user_form` of the filter whose `target_property` matches (humanized fallback). The badge color encodes the category: each search filter position has its own color (`CATEGORY_COLORS` in `features/search/classifications.ts`); the category name is in the badge tooltip and in screen-reader text. Badges that do not fit on the first line are hidden behind *+N more* / *Show less*, which expands one result only.
