@@ -31,7 +31,7 @@ For normal local development, including the local Weaviate and SQLite database s
 
 For server deployments, use the compose files in `deploy/` instead of the manual steps below. A full description of the Docker stack, environment variables, and CI/CD automation is in [deploy/README.md](../deploy/README.md).
 
-The CI/CD pipeline (GitHub Actions, self-hosted runner) handles:
+The CI/CD pipeline (GitHub Actions; tests on the self-hosted `semant-ci` runners, deployments on `semant-server`, see [deploy/README.md](../deploy/README.md#runners)) handles:
 - **Production** — triggered by a `v*.*.*` tag pushed from `main`
 - **Test previews** — one persistent instance for `main`, plus ephemeral per-PR instances that are automatically torn down when the PR closes
 

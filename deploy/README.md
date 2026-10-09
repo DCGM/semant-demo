@@ -209,7 +209,26 @@ The script connects to `localhost:8080` while the stack continues running—noth
 
 ## CI/CD — GitHub Actions
 
-Deployment is fully automated via GitHub Actions on a self-hosted runner (`semant-server`).
+Tests and deployment run on self-hosted GitHub Actions runners, all on **one physical
+server** sharing its Docker daemon.
+
+### Runners
+
+| Label | Runners | Jobs |
+|---|---|---|
+| `semant-ci` | two runners for CI | `test-backend`, `test-frontend`, `test-integration`, `api-client-drift` |
+| `semant-server` | the original runner, configured for deployment | `deploy-production`, `deploy-test-main`, `deploy-test-pr`, `teardown-test-pr` |
+
+Jobs select runners with `runs-on: [self-hosted, <label>]`. The two `semant-ci` runners let
+the test jobs of one run, or of two runs, execute in parallel, while deployments stay on
+the runner that holds their working directory, Compose projects and database paths.
+
+Because all runners share one host, parallel jobs compete for CPU, memory and disk, and
+every job's containers (including the per-job Weaviate service of the integration tests)
+run on the same Docker daemon. Job containers and service containers are created per
+job with unique names and no volumes apart from the shared pip cache below, so jobs do
+not see each other's data. Free disk space matters: a full disk fails the Docker builds
+of the deploy jobs.
 
 ### Workflows
 
@@ -253,24 +272,44 @@ sudo chown runner:runner /mnt/ssd2/semant_demo_app_test_data
 ### Shared pip cache for CI jobs
 
 The backend and integration test jobs mount `CI_PIP_CACHE_DIR` (default
-`/var/cache/semant-ci/pip`) into their containers as pip's cache, so pinned wheels are not
-downloaded on every run. All runners on the host can share it: pip writes cache entries
-atomically, and every installed wheel is verified against the hashes in
-`semant_demo_backend/requirements-dev.lock` (`--require-hashes`), so a corrupted or
-substituted cache entry fails the install instead of being used. Runners on another host
-need their own directory.
+`/var/cache/semant-ci/pip`) into their containers as pip's cache (`PIP_CACHE_DIR=/pip-cache`),
+so pinned packages are not downloaded on every run. Both `semant-ci` runners use the same
+directory: pip writes each cache entry to a temporary file and renames it into place, so
+concurrent jobs never read a partial entry. Runners on another host need their own
+directory.
 
-The job containers run as uid 1025, gid 1027, which must own the directory:
+The cache is a **trusted directory**; only the CI job containers may write to it. The jobs
+install `semant_demo_backend/requirements-dev.lock` with `--require-hashes`, and pip checks
+every downloaded archive against the lock's hashes, including archives served from the
+cache. That does not cover everything in the cache: a wheel that pip builds locally from a
+source distribution is stored under `wheels/` and reused after pip checks only the source
+archive hash recorded next to it, not the wheel itself. Today every locked package installs
+from a published wheel, and the editable project is built in a temporary cache that is
+discarded, so nothing is built into the shared cache.
+
+The job containers run as uid 1025, gid 1027. Setup (already done on the server):
 
 ```bash
 sudo mkdir -p /var/cache/semant-ci/pip
 sudo chown 1025:1027 /var/cache/semant-ci/pip
+sudo chmod 775 /var/cache/semant-ci/pip
 ```
 
-If the directory is missing or not writable, pip prints a warning, disables the cache and
-downloads as before; the jobs do not fail. pip never prunes the cache, so it grows with
-dependency updates (about 160 MB for one lock). Clear it when disk space is needed; the
-next run refills it:
+**Checking it works.** Before installing, the "Install pinned dependencies" step tries to
+create a file in the cache and prints `pip cache /pip-cache is writable by 1025:1027`. If
+that fails it adds a `pip cache unavailable` warning annotation to the run, showing the
+directory's owner and mode. pip itself only prints a warning, disables the cache and
+downloads everything, so a green job does not prove that the cache works. In a working run,
+the step log shows `Using cached …` for the packages, and the cache directory on the host
+is not empty:
+
+```bash
+sudo du -sh /var/cache/semant-ci/pip
+```
+
+**Cleaning it.** pip never prunes the cache, so it grows with dependency updates (about
+160 MB for one lock). Clear it when disk space is needed or if you suspect a bad entry;
+the next run refills it:
 
 ```bash
 sudo find /var/cache/semant-ci/pip -mindepth 1 -delete
