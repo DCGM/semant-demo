@@ -185,13 +185,26 @@ async def reset_app_collections(
         created.update(await _app_schema(client, names))
         return
     for name in _app_collections_in_drop_order(names):
-        collection = client.collections.get(name)
-        # delete_many removes at most QUERY_MAXIMUM_RESULTS objects per call.
-        while (await collection.data.delete_many(where=Filter.by_id().not_equal(_NIL_UUID))).matches:
-            pass
-        remaining = (await collection.aggregate.over_all(total_count=True)).total_count
-        if remaining:
-            raise RuntimeError(f"Resetting {name} left {remaining} objects.")
+        await _delete_all_objects(client.collections.get(name))
+
+
+async def _delete_all_objects(collection) -> None:
+    """Delete every object of ``collection`` or raise; never loops without progress."""
+    # delete_many removes at most QUERY_MAXIMUM_RESULTS objects per call, so repeat
+    # until nothing matches.
+    while True:
+        result = await collection.data.delete_many(where=Filter.by_id().not_equal(_NIL_UUID))
+        if result.failed:
+            raise RuntimeError(
+                f"Resetting {collection.name}: {result.failed} of {result.matches} deletions failed.")
+        if not result.matches:
+            break
+        if not result.successful:
+            raise RuntimeError(
+                f"Resetting {collection.name} made no progress: {result.matches} objects matched, none deleted.")
+    remaining = (await collection.aggregate.over_all(total_count=True)).total_count
+    if remaining:
+        raise RuntimeError(f"Resetting {collection.name} left {remaining} objects.")
 
 
 async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames) -> None:
