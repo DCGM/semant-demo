@@ -129,7 +129,7 @@ The server starts with `uvicorn` in reload mode on port 8000. On startup it:
 
 ```bash
 cd semant_demo_frontend
-npm install
+npm ci
 npx quasar dev
 ```
 

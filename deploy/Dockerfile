@@ -6,29 +6,27 @@ RUN apk add --no-cache git
 
 ARG REPO=https://github.com/DCGM/semant-demo.git
 ARG BRANCH=main
+# Full commit SHA to build. CI sets it to the commit that passed its checks, so a later push
+# to BRANCH cannot change what is deployed. Empty: build the current tip of BRANCH.
+ARG COMMIT=
 
-RUN mkdir -p /tmp/repo && \
-    git clone --branch "${BRANCH}" --depth 1 "${REPO}" /tmp/repo
+RUN if [ -n "${COMMIT}" ]; then \
+        git init -q /tmp/repo && \
+        git -C /tmp/repo fetch --depth 1 "${REPO}" "${COMMIT}" && \
+        git -C /tmp/repo checkout -q FETCH_HEAD && \
+        test "$(git -C /tmp/repo rev-parse HEAD)" = "${COMMIT}"; \
+    else \
+        git clone --branch "${BRANCH}" --depth 1 "${REPO}" /tmp/repo; \
+    fi
 
 
-FROM python:3.12-slim AS backend-openapi
-COPY --from=git /tmp/repo/semant_demo_backend/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
-COPY --from=git /tmp/repo/semant_demo_backend /app
-WORKDIR /app
-RUN python export_openapi.py --output /tmp/openapi.json
-
-
+# The frontend is built from the committed generated API client (src/generated/api), which
+# CI checks against a fresh generation (api-client-drift); it is not regenerated here.
 FROM node:22 AS node-build
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    default-jre-headless && \
-    rm -rf /var/lib/apt/lists/*
 RUN npm install -g @quasar/cli
 COPY --from=git /tmp/repo/ /repo/
 WORKDIR /repo/semant_demo_frontend
-RUN npm install
-COPY --from=backend-openapi /tmp/openapi.json /repo/semant_demo_backend/openapi.json
-RUN npm run sync-client
+RUN npm ci
 ARG BACKEND_URL
 RUN BACKEND_URL=${BACKEND_URL} npx quasar build
 

@@ -293,8 +293,11 @@ jobs:
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}"
           PREV_BRANCH=$(grep "^BRANCH=" "$DEPLOY_PATH/.env" 2>/dev/null | cut -d= -f2 || true)
           echo "PREV_BRANCH=${PREV_BRANCH}" >> "$GITHUB_ENV"
+          PREV_COMMIT=$(grep "^COMMIT=" "$DEPLOY_PATH/.env" 2>/dev/null | cut -d= -f2 || true)
+          echo "PREV_COMMIT=${PREV_COMMIT}" >> "$GITHUB_ENV"
           cp "$DEPLOY_PATH/.env.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=${{ github.ref_name }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${{ github.sha }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=${{ vars.SQL_DB_DIR }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^DOMAIN=.*|DOMAIN=${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
@@ -366,6 +369,7 @@ jobs:
           [ -n "$BACKEND_IMG" ] && docker tag semant-demo-rollback "$BACKEND_IMG" || true
 
           sed -i "s|^BRANCH=.*|BRANCH=$PREV|" .env
+          sed -i "s|^COMMIT=.*|COMMIT=${{ env.PREV_COMMIT }}|" .env
           docker compose -p semant-demo -f ./docker-compose.app.yaml up -d
           echo "Rollback complete."
 
@@ -450,6 +454,7 @@ jobs:
 
           cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=main|"                                                                                    "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${{ github.sha }}|"                                                                       "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
@@ -594,6 +599,7 @@ jobs:
 
           cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=$(escape_sed_replacement "${BRANCH}")|"                                      "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${{ github.event.pull_request.head.sha }}|"                                 "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"

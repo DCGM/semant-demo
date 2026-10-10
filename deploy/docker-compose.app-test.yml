@@ -8,6 +8,7 @@ services:
       args:
         - REPO=${REPO}
         - BRANCH=${BRANCH}
+        - COMMIT=${COMMIT:-}
         - BACKEND_URL=${BACKEND_URL}
     env_file:
       - path: .env
