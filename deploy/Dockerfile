@@ -6,8 +6,9 @@ RUN apk add --no-cache git
 
 ARG REPO=https://github.com/DCGM/semant-demo.git
 ARG BRANCH=main
-# Full commit SHA to build. CI sets it to the commit that passed its checks, so a later push
-# to BRANCH cannot change what is deployed. Empty: build the current tip of BRANCH.
+# Full commit SHA to build. CI sets it to the commit the deploy run is for (the same commit its
+# deploy files come from), so a later push to BRANCH cannot change what is deployed.
+# Empty: build the current tip of BRANCH.
 ARG COMMIT=
 
 RUN if [ -n "${COMMIT}" ]; then \

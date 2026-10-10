@@ -74,7 +74,7 @@ cp .env.example .env
 | **Build arguments** | | |
 | `REPO` | `https://github.com/DCGM/semant-demo.git` | Git repository to clone |
 | `BRANCH` | `main` | Branch to build from |
-| `COMMIT` | _(empty)_ | Full commit SHA to build. CI sets it to the commit that passed its checks (production: the tagged commit; PR previews: the PR head), so a later push cannot change the deployed source. Empty builds the current tip of `BRANCH` |
+| `COMMIT` | _(empty)_ | Full commit SHA to build. CI sets it to the commit the deploy run is for and copies the Dockerfile, Compose file and `.env` template from that same commit, so a later push cannot change the deployed source. Production: the tagged commit; test-main: the pushed `main` commit (both after the required checks pass on it). PR previews: the PR head, while the PR checks run on GitHub's merge commit and the preview needs only the backend tests (#213). Empty builds the current tip of `BRANCH` |
 | `BACKEND_URL` | `https://demo.semant.cz` | Public backend URL baked into the frontend bundle at build time |
 | `DOMAIN` | `demo.semant.cz` | Domain name for the Traefik Host rule |
 | **Weaviate** | | |
