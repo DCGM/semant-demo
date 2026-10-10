@@ -204,11 +204,16 @@ jobs:
     runs-on: [self-hosted, semant-server]
     environment: production
     timeout-minutes: 30
+
+    env:
+      # The one commit deployed: deploy files and the image source (COMMIT) both use it.
+      DEPLOY_COMMIT: ${{ github.sha }}
     
     steps:
       - name: Checkout repository 
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.DEPLOY_COMMIT }}
           fetch-depth: 0
 
       - name: Validate tag points to a commit contained in main
@@ -262,26 +267,20 @@ jobs:
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}"
-          TMP_DIR="/tmp/semant-deploy"
+          cd "$GITHUB_WORKSPACE"
 
-          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
-
-          git clone --depth=1 --filter=blob:none --sparse \
-            --branch "${{ github.ref_name }}" \
-            "https://github.com/DCGM/semant-demo.git" \
-            "$TMP_DIR/repo"
-
-          cd "$TMP_DIR/repo"
-          git sparse-checkout set deploy/docker-compose.app.yaml deploy/Dockerfile deploy/.env.example
+          HEAD=$(git rev-parse HEAD)
+          if [ "$HEAD" != "$DEPLOY_COMMIT" ]; then
+            echo "ERROR: Checked out $HEAD, expected deploy commit $DEPLOY_COMMIT" >&2 ; exit 1
+          fi
 
           if [ ! -f "deploy/docker-compose.app.yaml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.example" ]; then
-            echo "ERROR: Required files not found in deploy/ for ref ${{ github.ref_name }}" >&2 ; exit 1
+            echo "ERROR: Required files not found in deploy/ at $DEPLOY_COMMIT" >&2 ; exit 1
           fi
 
           cp deploy/docker-compose.app.yaml "$DEPLOY_PATH/"
           cp deploy/Dockerfile "$DEPLOY_PATH/"
           cp deploy/.env.example "$DEPLOY_PATH/"
-          rm -rf "$TMP_DIR"
 
       - name: Create .env
         env:
@@ -297,7 +296,7 @@ jobs:
           echo "PREV_COMMIT=${PREV_COMMIT}" >> "$GITHUB_ENV"
           cp "$DEPLOY_PATH/.env.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=${{ github.ref_name }}|" "$DEPLOY_PATH/.env"
-          sed -i "s|^COMMIT=.*|COMMIT=${{ github.sha }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${DEPLOY_COMMIT}|" "$DEPLOY_PATH/.env"
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=${{ vars.SQL_DB_DIR }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^DOMAIN=.*|DOMAIN=${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
@@ -380,6 +379,10 @@ jobs:
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
 
+    env:
+      # The one commit deployed: deploy files and the image source (COMMIT) both use it.
+      DEPLOY_COMMIT: ${{ github.sha }}
+
     steps:
       - name: Validate SQL database directory
         run: |
@@ -414,30 +417,32 @@ jobs:
             echo "Deploy directory already exists: $FULL_PATH"
           fi
 
+      - name: Check out deploy files at the deploy commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_COMMIT }}
+          path: deploy-src
+          sparse-checkout: deploy
+          persist-credentials: false
+
       - name: Update deploy files
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-main"
-          TMP_DIR="/tmp/semant-test-main-deploy"
+          cd "$GITHUB_WORKSPACE/deploy-src"
 
-          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
-
-          git clone --depth=1 --filter=blob:none --sparse \
-            --branch "main" \
-            "https://github.com/DCGM/semant-demo.git" \
-            "$TMP_DIR/repo"
-
-          cd "$TMP_DIR/repo"
-          git sparse-checkout set deploy/docker-compose.app-test.yml deploy/Dockerfile deploy/.env.test.example
+          HEAD=$(git rev-parse HEAD)
+          if [ "$HEAD" != "$DEPLOY_COMMIT" ]; then
+            echo "ERROR: Checked out $HEAD, expected deploy commit $DEPLOY_COMMIT" >&2 ; exit 1
+          fi
 
           if [ ! -f "deploy/docker-compose.app-test.yml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.test.example" ]; then
-            echo "ERROR: Required files not found in deploy/ for branch main" >&2 ; exit 1
+            echo "ERROR: Required files not found in deploy/ at $DEPLOY_COMMIT" >&2 ; exit 1
           fi
 
           cp deploy/docker-compose.app-test.yml "$DEPLOY_PATH/"
           cp deploy/Dockerfile "$DEPLOY_PATH/"
           cp deploy/.env.test.example "$DEPLOY_PATH/"
-          rm -rf "$TMP_DIR"
 
       - name: Create .env
         env:
@@ -454,7 +459,7 @@ jobs:
 
           cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=main|"                                                                                    "$DEPLOY_PATH/.env"
-          sed -i "s|^COMMIT=.*|COMMIT=${{ github.sha }}|"                                                                       "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${DEPLOY_COMMIT}|"                                                                        "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
@@ -521,6 +526,9 @@ jobs:
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       BRANCH: ${{ github.head_ref }}
+      # The one commit deployed: deploy files and the image source (COMMIT) both use it. This is
+      # the PR head; the pull_request checks test GitHub's merge commit instead (#213).
+      DEPLOY_COMMIT: ${{ github.event.pull_request.head.sha }}
 
     steps:
       - name: Validate SQL database directory
@@ -559,30 +567,32 @@ jobs:
             echo "Deploy directory already exists: $FULL_PATH"
           fi
 
+      - name: Check out deploy files at the deploy commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_COMMIT }}
+          path: deploy-src
+          sparse-checkout: deploy
+          persist-credentials: false
+
       - name: Update deploy files
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
-          TMP_DIR="/tmp/semant-test-deploy-${PR_NUMBER}"
+          cd "$GITHUB_WORKSPACE/deploy-src"
 
-          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
-
-          git clone --depth=1 --filter=blob:none --sparse \
-            --branch "$BRANCH" \
-            "https://github.com/DCGM/semant-demo.git" \
-            "$TMP_DIR/repo"
-
-          cd "$TMP_DIR/repo"
-          git sparse-checkout set deploy/docker-compose.app-test.yml deploy/Dockerfile deploy/.env.test.example
+          HEAD=$(git rev-parse HEAD)
+          if [ "$HEAD" != "$DEPLOY_COMMIT" ]; then
+            echo "ERROR: Checked out $HEAD, expected deploy commit $DEPLOY_COMMIT" >&2 ; exit 1
+          fi
 
           if [ ! -f "deploy/docker-compose.app-test.yml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.test.example" ]; then
-            echo "ERROR: Required files not found in deploy/ for branch $BRANCH" >&2 ; exit 1
+            echo "ERROR: Required files not found in deploy/ at $DEPLOY_COMMIT" >&2 ; exit 1
           fi
 
           cp deploy/docker-compose.app-test.yml "$DEPLOY_PATH/"
           cp deploy/Dockerfile "$DEPLOY_PATH/"
           cp deploy/.env.test.example "$DEPLOY_PATH/"
-          rm -rf "$TMP_DIR"
 
       - name: Create .env
         env:
@@ -599,7 +609,7 @@ jobs:
 
           cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=$(escape_sed_replacement "${BRANCH}")|"                                      "$DEPLOY_PATH/.env"
-          sed -i "s|^COMMIT=.*|COMMIT=${{ github.event.pull_request.head.sha }}|"                                 "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${DEPLOY_COMMIT}|"                                                          "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
