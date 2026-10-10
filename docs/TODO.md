@@ -23,7 +23,7 @@ This document indexes **current** known limitations and future work, not a secon
 
 - [#230 — document sidebar integration](https://github.com/DCGM/semant-demo/issues/230): move document tools into the app-level sidebar when the UX is decided.
 - [#43 — optional durable bulk tagging jobs](https://github.com/DCGM/semant-demo/issues/43): evaluate the requirement and worker/deployment budget first; the current `Tagging Jobs` tab is a placeholder, not an active queue.
-- From the earlier backlog: consider runtime dependency pinning and repeatable image builds; SQL backend scalability beyond the current SQLite use; unified RAG model/prompt creation; search pagination; startup/provider readiness checks; package metadata and broader formatting/type-checking. Create a focused issue and tests before implementation—prioritize them only when an issue is scoped and approved.
+- From the earlier backlog: consider repeatable image builds beyond the backend Python lock (#139: base-image digests, the unpinned embedding service requirements); SQL backend scalability beyond the current SQLite use; unified RAG model/prompt creation; search pagination; startup/provider readiness checks; package metadata and broader formatting/type-checking. Create a focused issue and tests before implementation—prioritize them only when an issue is scoped and approved.
 
 ## Documentation policy
 

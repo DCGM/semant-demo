@@ -155,8 +155,8 @@ From the repository root:
 python3.12 -m venv .venv
 . .venv/bin/activate
 
-python -m pip install -r semant_demo_backend/requirements.txt
-python -m pip install -e semant_demo_backend
+python -m pip install -r semant_demo_backend/requirements-dev.lock
+python -m pip install --no-deps -e semant_demo_backend
 ```
 
 Start the backend from `semant_demo_backend/` so the current relative SQLite path resolves correctly:

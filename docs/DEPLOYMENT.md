@@ -35,6 +35,8 @@ The CI/CD pipeline (GitHub Actions; tests on the self-hosted `semant-ci` runners
 - **Production** — triggered by a `v*.*.*` tag pushed from `main`
 - **Test previews** — one persistent instance for `main`, plus ephemeral per-PR instances that are automatically torn down when the PR closes
 
+The backend image installs `semant_demo_backend/requirements-runtime.lock` with `--require-hashes`: the same Python package versions that CI tests, with no resolution at build time (see [CONTRIBUTING.md](../CONTRIBUTING.md) for updating the locks). To audit a running instance, run `docker compose -p <project> -f <compose file> exec app python -m pip freeze --user` and compare it with the lock. The lock does not freeze the floating `python:3.12` / `python:3.12-slim` base images (OS packages and patch release), nor the separate embedding service image (`deploy/Dockerfile.embedder`), which still installs unpinned requirements.
+
 ---
 
 ## Manual Standalone Setup
@@ -113,7 +115,7 @@ Multiple Ollama instances can be load-balanced by setting `OLLAMA_URLS` to a com
 
 ```bash
 cd semant_demo_backend
-pip install -r requirements.txt
+pip install --require-hashes -r requirements-runtime.lock
 python run.py
 ```
 

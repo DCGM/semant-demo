@@ -29,6 +29,7 @@ only for regenerating the API client. From the repository root:
 | --- | --- |
 | `make setup` | Create `.venv` if missing, install `semant_demo_backend/requirements-dev.lock` and the backend package, run `npm ci`. |
 | `make check` | Fast offline checks: backend Ruff and fast pytest suite, frontend ESLint, Vue type check and Vitest, generated-client drift. No keys, GPU, Weaviate or AI services. |
+| `make lock` / `make lock-check` | Regenerate the backend Python locks / fail if either is stale for its requirements (pip-tools, needs network). |
 | `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. |
 | `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. |
 | `make test-e2e` | Build the frontend and run the Playwright smoke suite against the deterministic backend profile (throwaway Weaviate, fixture corpus, fake AI providers). Needs Docker; installs Playwright's Chromium on first use. |
@@ -58,13 +59,26 @@ scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/pyth
 scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && PYTHON=../.venv/bin/python npm run test:e2e'
 ```
 
-Dependencies: `requirements.txt` holds runtime dependencies (used by the production image);
-`requirements-dev.txt` adds test/lint tools; `requirements-dev.lock` pins the full set.
-After changing either file, regenerate the lock with pip-tools
-(`pip-compile --allow-unsafe --generate-hashes --no-emit-index-url --strip-extras -o
-requirements-dev.lock requirements-dev.txt` in `semant_demo_backend`) and review the diff.
-The lock must keep its hashes: CI installs it with `--require-hashes` from a cache shared
-between runs (see `deploy/README.md`). Frontend versions are
+Backend dependencies (`semant_demo_backend/`, target CPython 3.12 on Linux x86_64):
+
+- `requirements.txt` declares the direct runtime dependencies; `requirements-dev.txt` adds
+  test/lint tools. Do not install either directly; they are inputs to the locks.
+- `requirements-dev.lock` pins and hashes the full development set; `make setup` and CI
+  install it.
+- `requirements-runtime.lock` pins and hashes only the runtime closure; `deploy/Dockerfile`
+  installs it with `--require-hashes`. It is compiled with the dev lock as a constraint, so
+  production gets exactly the versions CI tests.
+
+After changing either requirements file, run `make lock` (`scripts/python-locks.sh update`,
+with `pip install pip-tools==7.6.2` in `.venv`) and review both lock diffs. Existing pins are
+kept; upgrade deliberately, e.g. for a security fix, with
+`LOCK_COMPILE_ARGS="--upgrade-package NAME" make lock` (or `--upgrade` for everything), and
+review the changed versions. The fast tests (`tests/test_dependency_locks.py`) fail when a
+lock no longer covers the declared requirements or the two locks pin different runtime
+versions; the CI `python-locks` job re-resolves both locks and installs the runtime lock on
+its own (`pip check`, OpenAPI export). Deployments wait for it. Locks must keep their
+hashes: CI installs them with `--require-hashes` from a cache shared between runs (see
+`deploy/README.md`). Frontend versions are
 pinned by `package-lock.json`; Vitest 0.23 is the last line supporting the Vite 2 used by
 `@quasar/app-vite` 1.
 
