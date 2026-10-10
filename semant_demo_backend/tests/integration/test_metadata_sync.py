@@ -18,7 +18,7 @@ from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType
 from semant_demo.maintenance.metadata_sync import (
-    apply_exit_code, apply_report, build_report, read_library_map, write_candidates)
+    apply_exit_code, apply_report, build_report, read_library_map, write_inferred)
 
 pytestmark = pytest.mark.integration
 
@@ -62,9 +62,8 @@ async def test_report_apply_and_read_back(seeded_store, collection_names, corpus
         "yearIssued": {"old": None, "new": 1899},
         "publisher": {"old": None, "new": "Pražský tisk"},
         "seriesNumber": {"old": None, "new": "IV"},
+        "public": {"old": None, "new": True},   # access follows the source library's row
     }
-    assert "public" not in by_id[gazette]["changes"]  # stored public absent: still an access change
-    assert by_id[gazette]["held"]["public"]["new"] is True
     assert by_id[chronicle]["kind"] == "no_library"
     assert by_id[letters]["kind"] == "no_source_row"
     assert report["counts"]["unresolved"] == {"no_library": 1, "no_source_row": 1}
@@ -83,7 +82,7 @@ async def test_report_apply_and_read_back(seeded_store, collection_names, corpus
     assert document.yearIssued == 1899
     assert document.dateIssued == datetime(1899, 5, 12, tzinfo=timezone.utc)
     assert document.publisher == "Pražský tisk" and document.seriesNumber == "IV"
-    assert document.author is None and document.public is None
+    assert document.author is None and document.public is True
     assert document.title == corpus.documents["gazette"]["properties"]["title"]
 
     hits = await ChunkSearchRepository(seeded_store, collection_names).search(ChunkQuery(
@@ -100,47 +99,50 @@ def page_row(page_id: str, library: str, parent: str) -> dict:
     return row(page_id, library, parent_id=UUID(parent), parent_library=library, record_type="page")
 
 
-async def test_page_evidence_candidate_is_applied_only_after_review(seeded_store, collection_names, corpus, source,
-                                                                    tmp_path):
+async def test_inferred_libraries_are_applied_with_their_access(seeded_store, collection_names, corpus, source,
+                                                                tmp_path):
     chronicle, gazette, letters = (corpus.documents[k]["id"] for k in ("chronicle", "gazette", "letters"))
     start = {key: c["start_page_id"] for key, c in corpus.chunks.items()}
     source.execute(insert(META_RECORDS), [
-        row(chronicle, "mzk", metadata_json={"Publisher": [["MZK tisk"]]}),
-        row(chronicle, "nkp", public=True, metadata_json={"Publisher": [["NKP tisk"]]}),
+        row(chronicle, "mzk", public=True, metadata_json={"Publisher": [["MZK tisk"]]}),
+        row(chronicle, "nkp", public=False, metadata_json={"Publisher": [["NKP tisk"]]}),
         # Both distinct start pages of the chronicle (three chunks) lead to it in nkp only.
         page_row(start["chronicle_1"], "nkp", chronicle), page_row(start["chronicle_3"], "nkp", chronicle),
-        # The gazette's only start page is mirrored by both libraries.
-        row(gazette, "mzk"), row(gazette, "nkp"),
+        # The gazette's only start page is mirrored by both libraries: the priority decides.
+        row(gazette, "mzk", metadata_json={"Publisher": [["MZK noviny"]]}),
+        row(gazette, "nkp", metadata_json={"Publisher": [["NKP noviny"]]}),
         page_row(start["gazette_1"], "mzk", gazette), page_row(start["gazette_1"], "nkp", gazette),
-        row(letters, "mzk"),  # no page rows: falls through to the unique-row rule
+        row(letters, "mzk", public=True),  # no page rows: the mirror's only library
     ])
     await add_text_property(seeded_store, collection_names, "library")
-    options = dict(endpoint="test", source_name="sqlite", infer_from_pages=True, infer_unique=True)
 
-    report = json.loads(json.dumps(await build_report(seeded_store, collection_names, source, **options)))
+    report = json.loads(json.dumps(await build_report(
+        seeded_store, collection_names, source, endpoint="test", source_name="sqlite", infer_from_pages=True,
+        priority=("knav", "mzk", "nkp"), infer_from_mirror=True)))
 
     by_id = {e["id"]: e for e in report["documents"]}
     evidence = by_id[chronicle]["page_evidence"]
-    assert (by_id[chronicle]["status"], by_id[chronicle]["library_from"]) == ("candidate", "page_ancestry")
+    assert by_id[chronicle]["library_from"] == "page_ancestry"
     assert (evidence["confidence"], evidence["chunks"], evidence["start_pages"], evidence["verified_pages"]) == (
         "high", 3, 2, {"nkp": 2})
-    assert by_id[gazette]["kind"] == "page_evidence_ambiguous"
+    assert by_id[gazette]["library_from"] == "page_priority"
     assert by_id[gazette]["page_evidence"]["verified_pages"] == {"mzk": 1, "nkp": 1}
-    assert (by_id[letters]["status"], by_id[letters]["library_from"]) == ("candidate", "inferred_unique")
+    assert by_id[letters]["library_from"] == "mirror_unique"
     assert by_id[letters]["page_evidence"]["confidence"] == "none"
+    assert report["counts"]["unresolved"] == {}
 
-    with pytest.raises(LookupError):  # candidates are never applied without review
-        await apply_report(seeded_store, collection_names, report)
-    unreviewed = await apply_report(seeded_store, collection_names, report, accept_incomplete=True)
-    assert unreviewed["eligible"] == 0 and apply_exit_code(unreviewed) == 1
+    result = await apply_report(seeded_store, collection_names, report)   # nothing unresolved: no acceptance needed
+    assert (result["eligible"], result["verified"]) == (3, 3) and apply_exit_code(result) == 0
 
-    candidates = tmp_path / "candidates.csv"
-    write_candidates(candidates, report)
-    reviewed = {i: lib for i, lib in read_library_map(candidates).items() if str(i) == chronicle}
-    report = await build_report(seeded_store, collection_names, source, library_map=reviewed, **options)
-    result = await apply_report(seeded_store, collection_names, report, accept_incomplete=True)
+    documents = DocumentRepository(seeded_store, collection_names)
+    assert corpus.documents["chronicle"]["properties"]["public"] is True
+    chronicle_doc = await documents.read(UUID(chronicle))
+    assert (chronicle_doc.library, chronicle_doc.publisher, chronicle_doc.public) == ("nkp", "NKP tisk", False)
+    gazette_doc = await documents.read(UUID(gazette))
+    assert (gazette_doc.library, gazette_doc.publisher) == ("mzk", "MZK noviny")
+    assert corpus.documents["letters"]["properties"]["public"] is False
+    assert ((await documents.read(UUID(letters))).library, (await documents.read(UUID(letters))).public) == ("mzk", True)
 
-    assert (result["eligible"], result["verified"]) == (1, 1)
-    document = await DocumentRepository(seeded_store, collection_names).read(UUID(chronicle))
-    assert (document.library, document.publisher) == ("nkp", "NKP tisk")
-    assert document.public is corpus.documents["chronicle"]["properties"]["public"]  # rights unchanged
+    inferred = tmp_path / "inferred.csv"
+    assert write_inferred(inferred, report) == 3
+    assert read_library_map(inferred) == {UUID(chronicle): "nkp", UUID(gazette): "mzk", UUID(letters): "mzk"}

@@ -7,11 +7,14 @@ from rows of other libraries, and a value the row lacks stays absent.
 ``metadata_json`` comes from the MODS parser: each key holds the values of the record and
 of its ancestors, usually as nested lists, own values first. ``values`` flattens any
 nesting depth-first, so the record's own value wins and the order is stable.
+
+A periodical item's ``title`` may hold only its issue number (``mzk``: "12"), so ``title``
+is composed from the record and its ancestors in the same library (``compose_title``).
 """
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,8 @@ class SourceRecord:
     start_date: datetime | date | None = None
     end_date: datetime | date | None = None
     metadata_json: Mapping[str, Any] | None = None
+    parent_id: str | None = None
+    parent_library: str | None = None
 
 
 def values(data: Any) -> list[str]:
@@ -116,10 +121,107 @@ FIELDS = (
 """Every field ``map_record`` can return."""
 
 
-def map_record(record: SourceRecord) -> dict[str, Any]:
+def _own(value: Any) -> str | None:
+    """The first own value of a MODS key: the first group when the values are nested by level
+    (record first, then its ancestors), else the first value."""
+    if isinstance(value, list) and value and isinstance(value[0], list):
+        value = value[0]
+    return first(value)
+
+
+def own_title(record: SourceRecord) -> str | None:
+    """The title of the record's own level: the ``title`` column, else its own MODS title,
+    else, for a part of a parent record (a volume or issue), its own MODS part number."""
+    meta = record.metadata_json or {}
+    title = first(record.title) or _own(meta.get("Title"))
+    return title or (_own(meta.get("PartNumber")) if record.parent_id else None)
+
+
+_LEADING = " .,:;/-"
+_TRAILING = " ,:;/"
+_MAIN_TITLE_END = ".:;/"
+NEAR_DUPLICATE_DISTANCE = 2
+NEAR_DUPLICATE_MIN_LENGTH = 6
+"""Shorter titles (issue and volume numbers, years) are compared only for equality."""
+
+
+def _distance(a: str, b: str, limit: int) -> int:
+    """Levenshtein distance, or ``limit + 1`` when it exceeds ``limit``."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current = [i]
+        for j, cb in enumerate(b, start=1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (ca != cb)))
+        if min(current) > limit:
+            return limit + 1
+        previous = current
+    return previous[-1]
+
+
+def _same(a: str, b: str) -> bool:
+    a, b = a.casefold(), b.casefold()
+    if a == b:
+        return True
+    return min(len(a), len(b)) >= NEAR_DUPLICATE_MIN_LENGTH and \
+        _distance(a, b, NEAR_DUPLICATE_DISTANCE) <= NEAR_DUPLICATE_DISTANCE
+
+
+def _ends_main_title(text: str, at: int) -> bool:
+    rest = text[at:].lstrip()
+    return not rest or rest[0] in _MAIN_TITLE_END
+
+
+def _repeated_main_title(title: str, part: str) -> int:
+    """The length of the longest leading piece of ``title`` that is a main title of ``part``
+    (``part`` up to a ``.``, ``:``, ``;`` or ``/``, or all of it) and ends a main title in
+    ``title`` too; 0 if none. "Právo lidu. 183" repeats "Právo lidu" of "Právo lidu: časopis…"."""
+    folded, part_folded = title.casefold(), part.casefold()
+    for end in range(len(part), 0, -1):
+        if end < len(part) and part[end] not in _MAIN_TITLE_END:
+            continue
+        main = part_folded[:end].rstrip()
+        if main and folded.startswith(main) and _ends_main_title(title, len(main)):
+            return len(main)
+    return 0
+
+
+def _starts_with(text: str, prefix: str) -> bool:
+    """``text`` begins with ``prefix`` as whole words (``"1932"`` does not begin with ``"1"``)."""
+    return len(text) > len(prefix) and text.casefold().startswith(prefix.casefold()) \
+        and not text[len(prefix)].isalnum()
+
+
+def compose_title(levels: list[str | None]) -> str | None:
+    """One title from the titles of a record's levels, root first (e.g. periodical, volume,
+    issue), joined by ``". "``.
+
+    A level first loses a leading repeat of a kept main title (``"Křesťanská revue. 6"`` under
+    ``"Křesťanská revue"`` adds ``"6"``; ``"Právo lidu. 183"`` under ``"Právo lidu: časopis…"``
+    adds ``"183"``). Each of its ``". "``-separated pieces is then left out if it differs by at
+    most 2 characters from a kept piece (case-insensitively; pieces under 6 characters only
+    if equal), or a kept piece begins with it (a shortened variant).
+    """
+    kept: list[str] = []
+    for level in levels:
+        title = (level or "").lstrip(_LEADING).rstrip(_TRAILING)
+        for part in kept:
+            if repeated := _repeated_main_title(title, part):
+                title = title[repeated:].lstrip(_LEADING)
+        for piece in title.split(". "):
+            piece = piece.lstrip(_LEADING).rstrip(_TRAILING)
+            if piece and not any(_same(piece, part) or _starts_with(part, piece) for part in kept):
+                kept.append(piece)
+    return "".join(part if not i else (" " if kept[i - 1].endswith(".") else ". ") + part
+                   for i, part in enumerate(kept)) or None
+
+
+def map_record(record: SourceRecord, ancestors: Sequence[SourceRecord] = ()) -> dict[str, Any]:
     """The document metadata of one mirror row, by application field name.
 
-    Fields the row has no value for are left out. ``title``, ``dateIssued`` and
+    Fields the row has no value for are left out. ``title`` is composed from the row's and
+    its ``ancestors``' (same library, root first) own titles; ``dateIssued`` and
     ``yearIssued`` come from the row's own columns, else from its MODS values;
     ``titleMetadata``, ``dateIssuedMetadata`` and ``yearIssuedMetadata`` keep the MODS
     values. A day is kept only if it lies in the chosen year.
@@ -133,7 +235,7 @@ def map_record(record: SourceRecord) -> dict[str, Any]:
         day = None
 
     mapped: dict[str, Any] = {
-        "title": first(record.title) or first(meta.get("Title")),
+        "title": compose_title([own_title(level) for level in (*ancestors, record)]),
         "titleMetadata": first(meta.get("Title")),
         "subtitle": first(meta.get("Subtitle")),
         "partNumber": first(meta.get("PartNumber")),

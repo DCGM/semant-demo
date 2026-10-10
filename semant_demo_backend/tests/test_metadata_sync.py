@@ -6,13 +6,15 @@ from uuid import UUID
 import pytest
 from sqlalchemy import create_engine, insert
 
-from semant_demo.adapters.sql.kramerius_metadata import META_RECORDS, PageChain, read_meta_records, read_page_chains
+from semant_demo.adapters.sql.kramerius_metadata import (
+    META_RECORDS, PageChain, read_ancestors, read_meta_records, read_page_chains)
 from semant_demo.config import Config
 from semant_demo.maintenance import metadata_sync
-from semant_demo.maintenance.kramerius_mapping import FIELDS, IssueDate, SourceRecord, map_record, parse_issue_date, values
+from semant_demo.maintenance.kramerius_mapping import (
+    FIELDS, IssueDate, SourceRecord, compose_title, map_record, parse_issue_date, values)
 from semant_demo.maintenance.metadata_sync import (
     apply_exit_code, apply_report, build_report, classify_pages, coerce, plan_document, read_library_map,
-    target_properties, write_candidates)
+    target_properties, write_inferred)
 
 DOC = UUID("5e3a0000-0000-4000-8000-00000000d001")
 OTHER = UUID("5e3a0000-0000-4000-8000-00000000d002")
@@ -113,6 +115,45 @@ def test_a_day_outside_the_chosen_year_is_dropped():
     assert mapped["dateIssuedMetadata"] == datetime(1890, 12, 12, tzinfo=UTC)
 
 
+@pytest.mark.parametrize("levels, title", [
+    (["Časopis českého lékárnictva", "2", "12"], "Časopis českého lékárnictva. 2. 12"),     # mzk: numbers only
+    (["Časopis českého lékárnictva", None, "Časopis českého lékárnictva. 12"], "Časopis českého lékárnictva. 12"),
+    (["Křesťanská revue", ". 70", "Křesťanská revue. 6"], "Křesťanská revue. 70. 6"),       # nkp: own prefix
+    (["ČSNN : časopis neurologů", "ČSNN : časopis neurologů", "ČSNN"], "ČSNN : časopis neurologů"),  # short variant
+    (["Lidové noviny", "Lidové novíny."], "Lidové noviny"),                                # within 2 characters
+    (["Lidové noviny", "Lidové listy"], "Lidové noviny. Lidové listy"),
+    (["Právo lidu: časopis hájící zájmy", "20", "Právo lidu. 183"], "Právo lidu: časopis hájící zájmy. 20. 183"),
+    (["Reichenberger Zeitung: Organ", "57", "Reichenberger Zeitung: Tagblatt. 57"],   # repeated pieces
+     "Reichenberger Zeitung: Organ. 57. Tagblatt"),
+    (["1932", "1"], "1932. 1"), (["2", "12"], "2. 12"), (["12", "12"], "12"),             # short: only equality
+    (["Čas. čes. lék.", "2"], "Čas. čes. lék. 2"),
+    (["Verše psané na vodu: Starojaponská pětiverší"], "Verše psané na vodu: Starojaponská pětiverší"),
+    ([None, " "], None),
+])
+def test_title_is_composed_from_the_levels(levels, title):
+    assert compose_title(levels) == title
+
+
+def test_map_record_composes_the_title_from_ancestors():
+    periodical = record(title=None, metadata_json={"Title": [["Časopis českého lékárnictva", "Čas. čes. lék"]]})
+    volume = record(title="2")
+    item = record(title="12", metadata_json={"Title": [[], [], ["Časopis českého lékárnictva", "Čas. čes. lék"]]})
+
+    mapped = map_record(item, [periodical, volume])
+
+    assert mapped["title"] == "Časopis českého lékárnictva. 2. 12"
+    assert mapped["titleMetadata"] == "Časopis českého lékárnictva"
+    assert map_record(item)["title"] == "12"
+
+
+def test_a_part_without_a_title_is_named_by_its_part_number():
+    periodical = record(title="Právo lidu")
+    volume = record(title=None, parent_id="p", metadata_json={"Title": [[], ["Právo lidu"]], "PartNumber": [["20"], []]})
+    item = record(title="Právo lidu. 183", parent_id="v")
+    assert map_record(item, [periodical, volume])["title"] == "Právo lidu. 20. 183"
+    assert "title" not in map_record(record(metadata_json={"PartNumber": [["7"]]}))   # not a part of anything
+
+
 @pytest.mark.parametrize("value, data_type, expected", [
     ("IV", "text", "IV"),
     ("12", "int", 12),
@@ -166,14 +207,10 @@ def test_stored_values_the_source_lacks_are_reported_not_cleared():
     assert entry["stale"] == ["author"] and "author" not in entry["changes"]
 
 
-def test_access_change_is_held_unless_requested():
-    stored = {"library": "nkp", "public": False}
-    held = plan(stored, [NKP])
-    applied = plan(stored, [NKP], update_access=True)
-
-    assert held["held"]["public"] == {"old": False, "new": True, "reason": "access flag; needs --update-access"}
-    assert "public" not in held["changes"]
-    assert applied["changes"]["public"] == {"old": False, "new": True}
+@pytest.mark.parametrize("old, new, row", [(False, True, NKP), (True, False, MZK)])
+def test_access_follows_the_source_library_row(old, new, row):
+    entry = plan({"library": row.library, "public": old}, [MZK, NKP])
+    assert entry["changes"]["public"] == {"old": old, "new": new}   # no --overwrite needed
 
 
 def test_differing_values_are_replaced_only_with_overwrite():
@@ -210,22 +247,27 @@ def test_library_map_supplies_the_library_and_fills_a_declared_property():
     assert entry["changes"]["library"] == {"old": None, "new": "mzk"}
 
 
-def test_unique_row_is_only_a_candidate_and_never_changes_access():
-    entry = plan({"public": False}, [NKP], infer_unique=True, update_access=True)
+def test_mirror_inference_uses_the_unique_row_or_the_priority():
+    unique = plan({"public": False}, [NKP], infer_from_mirror=True)
+    assert unique["status"] == "update" and unique["library_from"] == "mirror_unique"
+    assert unique["changes"]["library"] == {"old": None, "new": "nkp"}
+    assert unique["changes"]["public"] == {"old": False, "new": True}
 
-    assert entry["status"] == "candidate" and entry["library_from"] == "inferred_unique"
-    assert entry["changes"]["library"] == {"old": None, "new": "nkp"}
-    assert entry["held"]["public"]["reason"] == "access flag; never changed for an inferred library"
-    assert plan({}, [MZK, NKP], infer_unique=True)["kind"] == "multiple_libraries"
+    chosen = plan({}, [MZK, NKP], infer_from_mirror=True, priority=("knav", "nkp", "mzk"))
+    assert (chosen["library"], chosen["library_from"]) == ("nkp", "mirror_priority")
+    assert plan({}, [MZK, NKP], infer_from_mirror=True)["kind"] == "multiple_libraries"
+    assert plan({}, [MZK, NKP], infer_from_mirror=True, priority=("knav",))["kind"] == "multiple_libraries"
+    assert plan({}, [MZK, NKP], priority=("mzk",))["kind"] == "multiple_libraries"   # not without the flag
+    assert plan({"library": "mzk"}, [MZK, NKP], infer_from_mirror=True, priority=("nkp",))["library"] == "mzk"
 
 
 def test_distrusted_stored_library_is_resolved_again():
     stored = {"library": "mzk"}
     assert plan(stored, [NKP], distrusted=frozenset({"mzk"}))["kind"] == "no_library"
-    inferred = plan(stored, [NKP], distrusted=frozenset({"mzk"}), infer_unique=True)
+    inferred = plan(stored, [NKP], distrusted=frozenset({"mzk"}), infer_from_mirror=True)
     mapped = plan(stored, [MZK, NKP], distrusted=frozenset({"mzk"}), mapped_library="nkp")
 
-    assert inferred["status"] == "candidate" and inferred["changes"]["library"] == {"old": "mzk", "new": "nkp"}
+    assert inferred["status"] == "update" and inferred["changes"]["library"] == {"old": "mzk", "new": "nkp"}
     assert mapped["status"] == "update" and mapped["changes"]["library"] == {"old": "mzk", "new": "nkp"}
     assert mapped["changes"]["publisher"]["new"] == "NKP publisher"
 
@@ -277,7 +319,7 @@ def source():
 
 def add_rows(connection, *rows):
     connection.execute(insert(META_RECORDS), [
-        {"parent_id": None, "parent_library": None, "public": False, "in_library": False, "record_type": None,
+        {"parent_id": None, "parent_library": None, "public": None, "in_library": False, "record_type": None,
          "title": None, "date": None, "start_date": None, "end_date": None, "metadata_json": None, **row}
         for row in rows])
 
@@ -338,7 +380,7 @@ async def test_report_continues_past_documents_without_source_rows(source, monke
     report = await report_of(source)
 
     counts = report["counts"]
-    assert (counts["in_scope"], counts["eligible"], counts["candidate"]) == (2, 1, 0)
+    assert (counts["in_scope"], counts["eligible"]) == (2, 1)
     assert counts["unresolved"] == {"no_source_row": 1}
     assert counts["mirror_libraries"] == {"none": 1, "one": 1, "several": 0}
     assert counts["library_from"] == {"stored": 1}
@@ -363,25 +405,26 @@ async def test_report_lists_requested_ids_missing_from_the_target(source, monkey
                                     "reason": "no such document in the target collection"}]
 
 
-async def test_candidates_are_written_for_review(source, monkeypatch, tmp_path):
+async def test_inferred_libraries_are_written_with_their_evidence(source, monkeypatch, tmp_path):
     FakeDocuments({DOC: {}, OTHER: {}}).install(monkeypatch)
     add_rows(source, {"id": DOC, "library": "nkp"}, {"id": OTHER, "library": "mzk"}, {"id": OTHER, "library": "nkp"})
-    report = await report_of(source, infer_unique=True)
-    path = tmp_path / "candidates.csv"
+    report = await report_of(source, infer_from_mirror=True)
+    path = tmp_path / "inferred.csv"
 
-    assert write_candidates(path, report) == 1
+    assert write_inferred(path, report) == 1
+    assert path.read_text(encoding="utf-8").splitlines()[1] == f"{DOC},nkp,mirror_unique,,,"
     assert read_library_map(path) == {DOC: "nkp"}
-    assert report["counts"]["candidate"] == 1 and report["counts"]["unresolved"] == {"multiple_libraries": 1}
+    assert report["counts"]["unresolved"] == {"multiple_libraries": 1}
 
 
-async def test_candidates_without_changes_are_listed(source, monkeypatch, tmp_path):
+async def test_inferred_libraries_without_changes_are_listed(source, monkeypatch, tmp_path):
     schema = {k: v for k, v in CURRENT_SCHEMA.items() if k != "library"}
     FakeDocuments({DOC: {}}, schema=schema).install(monkeypatch)
     add_rows(source, {"id": DOC, "library": "nkp"})
-    report = await report_of(source, infer_unique=True)
+    report = await report_of(source, infer_from_mirror=True)
 
-    assert [e["status"] for e in report["documents"]] == ["candidate"]
-    assert write_candidates(tmp_path / "c.csv", report) == 1
+    assert [e["status"] for e in report["documents"]] == ["unchanged"]
+    assert write_inferred(tmp_path / "c.csv", report) == 1
 
 
 async def test_report_is_json_and_apply_writes_and_verifies_reviewed_changes(source, monkeypatch):
@@ -392,9 +435,9 @@ async def test_report_is_json_and_apply_writes_and_verifies_reviewed_changes(sou
 
     result = await apply_report(None, NAMES, report)
 
-    assert {k: result[k] for k in ("in_scope", "unresolved", "candidate", "eligible", "applied", "verified",
+    assert {k: result[k] for k in ("in_scope", "unresolved", "eligible", "applied", "verified",
                                    "already_applied", "not_applied", "failed")} == {
-        "in_scope": 2, "unresolved": 0, "candidate": 0, "eligible": 2, "applied": 2, "verified": 2,
+        "in_scope": 2, "unresolved": 0, "eligible": 2, "applied": 2, "verified": 2,
         "already_applied": 0, "not_applied": [], "failed": []}
     assert apply_exit_code(result) == 0
     assert store.documents[DOC] == {"library": "mzk", "title": "T", "yearIssued": 1929,
@@ -459,15 +502,15 @@ async def test_apply_with_nothing_eligible_is_not_a_success(source, monkeypatch)
 async def test_apply_refuses_incomplete_reports_unless_accepted(source, monkeypatch):
     store = FakeDocuments({DOC: {"library": "mzk"}, OTHER: {}}).install(monkeypatch)
     add_rows(source, {"id": DOC, "library": "mzk", "title": "New"}, {"id": OTHER, "library": "nkp"})
-    report = await report_of(source, infer_unique=True)
-    assert report["counts"]["candidate"] == 1
+    report = await report_of(source)
+    assert report["counts"]["unresolved"] == {"no_library": 1}
 
-    with pytest.raises(LookupError, match="1 documents in the report are unresolved or candidates"):
+    with pytest.raises(LookupError, match="1 documents in the report are unresolved"):
         await apply_report(None, NAMES, report)
     result = await apply_report(None, NAMES, report, accept_incomplete=True)
 
-    assert (result["eligible"], result["verified"], result["candidate"]) == (1, 1, 1)
-    assert store.documents[OTHER] == {}  # the candidate is never written
+    assert (result["eligible"], result["verified"], result["unresolved"]) == (1, 1, 1)
+    assert store.documents[OTHER] == {}  # the unresolved document is never written
 
 
 @pytest.mark.parametrize("report_schema, store_schema", [
@@ -606,37 +649,42 @@ NO_PAGES = classify_pages([], False, [])
 
 
 @pytest.mark.parametrize("evidence", [HIGH_NKP, LOW_NKP])
-def test_page_evidence_gives_only_a_candidate_from_its_library(evidence):
-    entry = plan({"public": False}, [MZK, NKP], pages=evidence, update_access=True)
+def test_page_evidence_assigns_its_library(evidence):
+    entry = plan({"public": False}, [MZK, NKP], pages=evidence)
 
-    assert entry["status"] == "candidate" and entry["library_from"] == "page_ancestry"
+    assert entry["status"] == "update" and entry["library_from"] == "page_ancestry"
     assert entry["changes"]["library"] == {"old": None, "new": "nkp"}
     assert entry["changes"]["publisher"]["new"] == "NKP publisher"            # only the nkp row is used
-    assert entry["held"]["public"]["reason"] == "access flag; never changed for an inferred library"
+    assert entry["changes"]["public"] == {"old": False, "new": True}           # access of the chosen library
     assert entry["page_evidence"] is evidence
 
 
-def test_ambiguous_page_evidence_stays_unresolved():
-    entry = plan({}, [MZK, NKP], pages=AMBIGUOUS, infer_unique=True)
-    assert entry["kind"] == "page_evidence_ambiguous"
+def test_ambiguous_page_evidence_uses_the_priority_or_stays_unresolved():
+    assert plan({}, [MZK, NKP], pages=AMBIGUOUS)["kind"] == "page_evidence_ambiguous"
+    assert plan({}, [MZK, NKP], pages=AMBIGUOUS, priority=("knav",))["kind"] == "page_evidence_ambiguous"
+    entry = plan({}, [MZK, NKP], pages=AMBIGUOUS, priority=("knav", "nkp", "mzk"))
+    assert (entry["library"], entry["library_from"]) == ("nkp", "page_priority")
+    # The priority chooses among the libraries the pages reach, not among all mirror rows.
+    knav = record("knav")
+    assert plan({}, [MZK, NKP, knav], pages=AMBIGUOUS, priority=("knav", "mzk"))["library"] == "mzk"
 
 
 def test_documents_without_page_evidence_use_the_other_rules():
     assert plan({}, [MZK, NKP], pages=NO_PAGES)["kind"] == "multiple_libraries"
-    entry = plan({}, [NKP], pages=NO_PAGES, infer_unique=True)
-    assert entry["status"] == "candidate" and entry["library_from"] == "inferred_unique"
+    entry = plan({}, [NKP], pages=NO_PAGES, infer_from_mirror=True)
+    assert entry["status"] == "update" and entry["library_from"] == "mirror_unique"
+    assert plan({"library": "mzk"}, [MZK, NKP], pages=NO_PAGES)["library_from"] == "stored"
 
 
-def test_stored_library_contradicted_by_pages_is_a_conflict_with_a_proposal():
-    entry = plan({"library": "mzk"}, [MZK, NKP], pages=HIGH_NKP)
-    assert entry["kind"] == "page_evidence_conflict" and entry["proposed_library"] == "nkp"
-    assert plan({"library": "nkp"}, [MZK, NKP], pages=HIGH_NKP)["status"] == "update"   # consistent stored value
+def test_page_evidence_replaces_a_contradicted_stored_library():
+    entry = plan({"library": "mzk", "publisher": "MZK publisher"}, [MZK, NKP], pages=HIGH_NKP)
+    assert entry["library_from"] == "page_ancestry" and entry["changes"]["library"] == {"old": "mzk", "new": "nkp"}
+    assert entry["held"]["publisher"]["new"] == "NKP publisher"   # other values still need --overwrite
+    assert plan({"library": "nkp"}, [MZK, NKP], pages=HIGH_NKP)["library_from"] == "page_ancestry"
     assert plan({"library": "mzk"}, [MZK, NKP], pages=AMBIGUOUS)["library_from"] == "stored"  # one of the verified
-
-
-def test_distrusted_stored_mzk_becomes_a_page_candidate():
-    entry = plan({"library": "mzk"}, [MZK, NKP], pages=HIGH_NKP, distrusted=frozenset({"mzk"}))
-    assert entry["status"] == "candidate" and entry["changes"]["library"] == {"old": "mzk", "new": "nkp"}
+    knav = plan({"library": "knav"}, [MZK, NKP], pages=AMBIGUOUS, priority=("nkp",))
+    assert knav["library_from"] == "page_priority" and knav["changes"]["library"] == {"old": "knav", "new": "nkp"}
+    assert plan({"library": "knav"}, [MZK, NKP], pages=AMBIGUOUS)["kind"] == "page_evidence_ambiguous"
 
 
 @pytest.mark.parametrize("kwargs, origin", [
@@ -649,7 +697,7 @@ def test_explicit_libraries_win_over_pages_and_are_flagged(kwargs, origin):
     assert entry["page_evidence_disagrees"] is True
 
 
-async def test_report_with_page_evidence_and_candidate_file(source, monkeypatch, tmp_path):
+async def test_report_with_page_evidence_and_inferred_file(source, monkeypatch, tmp_path):
     FakeDocuments({DOC: {}, OTHER: {}}).install(monkeypatch)
     starts = {DOC: ([str(P[0]), str(P[1]), str(P[1])], False), OTHER: ([], False)}
 
@@ -661,6 +709,7 @@ async def test_report_with_page_evidence_and_candidate_file(source, monkeypatch,
              {"id": OTHER, "library": "nkp"})
 
     report = await report_of(source, infer_from_pages=True)
+    assert await report_of(source, infer_from_pages=True, infer_from_mirror=True, priority=("nkp",)) != report
 
     by_id = {e["id"]: e for e in report["documents"]}
     assert by_id[str(DOC)]["library_from"] == "page_ancestry"
@@ -668,7 +717,44 @@ async def test_report_with_page_evidence_and_candidate_file(source, monkeypatch,
     assert by_id[str(OTHER)]["kind"] == "multiple_libraries"
     assert report["counts"]["page_evidence"] == {"high": 1, "no_chunks": 1}
 
-    path = tmp_path / "candidates.csv"
-    assert write_candidates(path, report) == 1
-    assert path.read_text(encoding="utf-8").splitlines()[2] == f"{DOC},nkp,page_ancestry,high,2,"
+    path = tmp_path / "inferred.csv"
+    assert write_inferred(path, report) == 1
+    assert path.read_text(encoding="utf-8").splitlines()[1] == f"{DOC},nkp,page_ancestry,high,2,"
     assert read_library_map(path) == {DOC: "nkp"}
+
+
+def test_ancestors_stay_in_the_record_library(source):
+    periodical, volume = UUID(int=0x401), UUID(int=0x402)
+    add_rows(source,
+             {"id": periodical, "library": "mzk", "title": "Periodical"},
+             {"id": volume, "library": "mzk", "parent_id": periodical, "parent_library": "mzk", "title": "2"},
+             {"id": DOC, "library": "mzk", "parent_id": volume, "parent_library": "mzk", "title": "12"},
+             {"id": DOC, "library": "nkp", "parent_id": volume, "parent_library": "mzk"},   # cross-library parent
+             {"id": OTHER, "library": "mzk", "parent_id": UUID(int=0x999), "parent_library": "mzk"})
+    records = [r for rows in read_meta_records(source, [DOC, OTHER]).values() for r in rows]
+    cache = {}
+
+    ancestors = read_ancestors(source, records, cache)
+
+    assert [r.title for r in ancestors[(str(DOC), "mzk")]] == ["Periodical", "2"]
+    assert ancestors[(str(DOC), "nkp")] == [] and ancestors[(str(OTHER), "mzk")] == []
+    assert map_record(next(r for r in records if r.library == "mzk"), ancestors[(str(DOC), "mzk")])["title"] == \
+        "Periodical. 2. 12"
+    assert read_ancestors(source, records, cache, max_depth=1)[(str(DOC), "mzk")] == [
+        next(r for r in cache.values() if r and r.title == "2")]
+
+
+def test_ancestor_walk_stops_at_a_cycle(source):
+    a = UUID(int=0x501)
+    add_rows(source, {"id": a, "library": "mzk", "parent_id": DOC, "parent_library": "mzk"},
+             {"id": DOC, "library": "mzk", "parent_id": a, "parent_library": "mzk"})
+    records = read_meta_records(source, [DOC])[DOC]
+    assert [r.id for r in read_ancestors(source, records)[(str(DOC), "mzk")]] == [str(a)]
+
+
+async def test_report_titles_use_the_ancestors(source, monkeypatch):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": OTHER, "library": "mzk", "title": "Periodical"},
+             {"id": DOC, "library": "mzk", "parent_id": OTHER, "parent_library": "mzk", "title": "12"})
+    report = await report_of(source)
+    assert report["documents"][0]["changes"]["title"] == {"old": None, "new": "Periodical. 12"}
