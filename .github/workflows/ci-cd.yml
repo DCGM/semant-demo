@@ -171,6 +171,43 @@ jobs:
         working-directory: semant_demo_backend
         run: /tmp/venv/bin/pytest -m integration -v --durations=25
 
+  # The production image installs requirements-runtime.lock (#139). Check that it alone
+  # installs, is consistent and serves the same OpenAPI schema, and that neither lock is
+  # stale for its inputs (re-resolved with the pinned pip-tools; needs the package index).
+  python-locks:
+    name: Python dependency locks
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: python:3.12
+      options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
+    env:
+      HOME: /tmp
+      PIP_CACHE_DIR: /pip-cache
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the runtime lock only
+        working-directory: semant_demo_backend
+        run: |
+          python -m venv /tmp/runtime
+          /tmp/runtime/bin/pip install --require-hashes --no-compile -r requirements-runtime.lock
+          /tmp/runtime/bin/pip install --no-compile --no-deps -e .
+          /tmp/runtime/bin/pip check
+          if /tmp/runtime/bin/python -c "import pytest" 2>/dev/null; then
+            echo "::error::test tools are installed by the runtime lock" >&2
+            exit 1
+          fi
+      - name: Export OpenAPI schema from the runtime install
+        working-directory: semant_demo_backend
+        run: /tmp/runtime/bin/python export_openapi.py --output /tmp/openapi.json
+      - name: Re-resolve locks
+        run: |
+          python -m venv /tmp/tools
+          /tmp/tools/bin/pip install --no-compile pip-tools==7.6.2
+          LOCK_COMPILER=/tmp/tools/bin/pip-compile scripts/python-locks.sh check
+
   api-client-drift:
     name: Generated API client drift
     needs: [test-backend]
@@ -199,7 +236,7 @@ jobs:
 
   deploy-production:
     name: Deploy Production ${{ github.ref_name }}
-    needs: [test-backend, test-frontend, test-integration, api-client-drift]
+    needs: [test-backend, test-frontend, test-integration, api-client-drift, python-locks]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: [self-hosted, semant-server]
     environment: production
@@ -374,7 +411,7 @@ jobs:
 
   deploy-test-main:
     name: Deploy test-main
-    needs: [test-backend, test-frontend, test-integration, api-client-drift]
+    needs: [test-backend, test-frontend, test-integration, api-client-drift, python-locks]
     if: github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
