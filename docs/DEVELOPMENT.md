@@ -315,6 +315,42 @@ configured endpoint, and it re-checks every listed (chunk, tag) pair against the
 stored at that moment. Never run `--apply` against a shared or production database
 without explicit authorization for that task.
 
+### Kramerius metadata sync
+
+`python -m semant_demo.maintenance.metadata_sync` (run in `semant_demo_backend/`) copies
+document metadata from the Kramerius PostgreSQL mirror (`meta_records`, maintained by the
+`librarymetadata` project) to the `Documents` collection (#257). The mirror's SQLAlchemy URL
+comes from `KRAMERIUS_METADATA_DSN` (install a PostgreSQL driver such as `psycopg`
+separately; never put the password on the command line), Weaviate from the `WEAVIATE_*`
+settings. The field mapping is in [DATABASE.md](DATABASE.md#document-metadata-from-the-kramerius-mirror).
+
+Each document uses only the mirror row of its own source library, `(id, library)`: the
+document's stored `library` or, for stores without it, a `--library-map` CSV of
+`document_id,library` lines. Values missing in that row are never taken from another
+library. Documents with no library, a stored library differing from the map, or no row for
+their library are reported as `unresolved` and not changed.
+
+Without `--apply` the command only reads; `--report FILE` writes every document's planned
+`changes`, `held` changes, `skipped` values (not fitting the declared type) and `stale`
+properties (stored, absent from the source). Narrow the scope with `--document-ids FILE`,
+`--limit N` and `--after ID` (continue from a report's `next_after`). Empty properties are
+filled; replacing a differing value needs `--overwrite` and changing `public` needs
+`--update-access`, otherwise they are `held`. Values are never cleared and the schema is
+never changed: only declared properties are written, converted to their declared type.
+
+After reviewing the report and backing up the data:
+
+```bash
+python -m semant_demo.maintenance.metadata_sync --apply FILE --confirm-endpoint localhost:8080
+```
+
+It refuses to run unless the configured endpoint and collection equal the report's and
+the declared property types are unchanged. Each property is written only while its stored
+value still equals the reviewed old value, so running it again after a failure skips
+finished documents and lists documents changed meanwhile. It exits with 1 if any listed
+document was not updated. Never run `--apply` against a shared or production database
+without explicit authorization for that task.
+
 ## 11. Testing versus development data
 
 There are two different uses of Weaviate during development:
