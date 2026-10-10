@@ -122,8 +122,42 @@ Key fields:
 - `yearIssued` / `dateIssued` — used for temporal filtering
 - `authors` — array of author names
 - `documentType`, `genre`, `keywords` — categorical metadata
-- `url` — link back to the source digital library page
+- `url` — in the local snapshot (`uuid`) the Kramerius record UUID, equal to the document
+  id, not a link; resolving library-specific source links is [#255](https://github.com/DCGM/semant-demo/issues/255)
 - `public` — whether the document is publicly accessible
+
+#### Document metadata from the Kramerius mirror
+
+`python -m semant_demo.maintenance.metadata_sync` ([DEVELOPMENT](DEVELOPMENT.md#kramerius-metadata-sync))
+fills these properties from the `meta_records` row of the document's source library
+(`semant_demo/maintenance/kramerius_mapping.py`). MODS values (`metadata_json`) list the
+record's own values before its ancestors'; "first" is the first non-empty one, "all" every
+distinct value in that order. A field is written only if the collection declares one of
+its property names (the first declared one is used) and the value fits the declared type;
+otherwise the report lists it as undeclared or skipped.
+
+| Field | Source (same row only) | Property names (current, older) | API (`Document`) |
+|---|---|---|---|
+| title | `title`, else first MODS `Title` | `title` | yes |
+| titleMetadata | first MODS `Title` | `titleMetadata` | no (stored provenance) |
+| subtitle | first `Subtitle` | `subtitle`, `subTitle` | `subtitle` |
+| partNumber, partName | first `PartNumber`, `PartName` | same (`partNumber` `text` or `int`) | yes |
+| dateIssued | day of `date` (else MODS `DateIssued`), only when it names the day and lies in yearIssued; midnight UTC | `dateIssued` | yes |
+| yearIssued | year of `date`, else of `start_date`/`end_date` in one year, else of MODS `DateIssued`; ranges give none | `yearIssued` | yes |
+| dateIssuedMetadata, yearIssuedMetadata | MODS `DateIssued` alone | same | no (stored provenance) |
+| author | all `Author` | `author`, `authors` | `author` |
+| editors, illustrators, translators, redaktors | all `Editor`, `Illustrator`, `Translator`, `Redaktor` | same | yes |
+| publisher, language, seriesName, edition | first `Publisher`, `Language` (code as normalized by the MODS parser), `SeriesName`, `Edition` | same | yes |
+| seriesNumber | first `SeriesNumber` (text such as "IV" kept) | `seriesNumber` (`text` or `int`) | yes |
+| placeOfPublication | first `PlaceTerm` | `placeOfPublication`, `placeTerm` | yes |
+| manufacturePublisher, manufacturePlaceTerm | first `ManufacturePublisher`, `ManufacturePlaceTerm` | same | no (stored only) |
+| documentType | `record_type` | `documentType` | yes |
+| public | `public`; changed only with `--update-access` | `public` | yes |
+| library | the selected library | `library` | yes |
+
+`url` and chunk `language` are not written. `in_library` of the selected row is shown in the
+report but does not change anything. Of the stores checked, the local snapshot declares no
+`library` property, so its documents need a library map and keep no stored provenance.
 
 ### Collection: `Chunks`
 

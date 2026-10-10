@@ -23,10 +23,9 @@ Load chunks and document IDs to weaviate:
 ```
 python db_insert_jsonl.py --source-dir /mnt/ssd2/weaviate_data/all.768/chunks.vec.lang/ --delete-old
 ```
-Load the metadata to weaviate:
-```
-python update_metadata.py --logging-on
-```
+Load the metadata to weaviate: `update_metadata.py` was replaced by the reviewed
+report/apply command `python -m semant_demo.maintenance.metadata_sync` in
+`semant_demo_backend/` (#257); see `docs/DEVELOPMENT.md`, "Kramerius metadata sync".
 ------
 ### Local
 Jus in step "Load chunks and document IDs to weaviate" load from local files:
