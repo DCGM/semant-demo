@@ -10,19 +10,28 @@ selected row lacks stays as it is. The source library is, in this order:
    (e.g. ``mzk``, which older code used as a default);
 3. ``--library-map`` (same CSV format): a verified library for documents storing none; a
    stored library that differs from it makes the document unresolved;
-4. with ``--infer-unique-library`` only: the library of the mirror's only row for the id.
-   Such documents are ``candidate``, never applied; ``--candidates FILE`` writes them as a
-   CSV to review and pass back as ``--library-map``.
+4. with ``--infer-library-from-pages`` only: the library in which the mirror rows of the
+   document's chunk start pages (``Chunks.start_page_id``) lead, through
+   ``(parent_id, parent_library)``, to the document itself (``page_ancestry``; ``high``
+   confidence with 2+ distinct pages, ``low`` with one). Chains that reach the document in
+   several libraries are ``page_evidence_ambiguous``; a stored library the chains contradict
+   is ``page_evidence_conflict`` with a ``proposed_library``. Documents without chunks or
+   matching pages fall through to 5;
+5. with ``--infer-unique-library`` only: the library of the mirror's only row for the id.
 
-Anything else (no library, a conflict, several mirror libraries without a verified one, no
-row for the library) is ``unresolved`` with the libraries the mirror has for the id.
+Libraries from 4 and 5 are ``candidate``s: never applied and never used to change
+``public``; ``--candidates FILE`` writes them, with their evidence, as a CSV to review and
+pass back as ``--library-map``. Anything else (no library, a conflict, several mirror
+libraries without a verified one, no row for the library) is ``unresolved`` with the
+libraries the mirror has for the id.
 
 Report (read-only, the default)::
 
     KRAMERIUS_METADATA_DSN=postgresql+psycopg://user@host:5888/librarymetadata_all \\
     python -m semant_demo.maintenance.metadata_sync --report metadata.json \\
         [--library-map verified.csv] [--library-override corrections.csv] \\
-        [--distrust-stored mzk] [--infer-unique-library --candidates candidates.csv] \\
+        [--distrust-stored mzk] [--infer-library-from-pages] [--infer-unique-library] \\
+        [--candidates candidates.csv] \\
         [--document-ids ids.txt | --after UUID] [--limit N] [--overwrite] [--update-access]
 
 Declare ``Documents.library`` where it is missing (an additive, reviewed schema change)::
@@ -72,14 +81,20 @@ from sqlalchemy.engine import Connection
 from weaviate import WeaviateAsyncClient
 
 import semant_demo.schemas as schemas
-from semant_demo.adapters.sql.kramerius_metadata import read_meta_records
+from semant_demo.adapters.sql.kramerius_metadata import PageChain, read_meta_records, read_page_chains
 from semant_demo.adapters.weaviate.document_metadata import (
-    add_text_property, document_property_types, read_document_page, read_documents, update_document)
+    add_text_property, document_property_types, read_document_page, read_documents, read_start_pages,
+    update_document)
 from semant_demo.maintenance.kramerius_mapping import FIELDS, SourceRecord, map_record
 
 PAGE_SIZE = 100
 DSN_VARIABLE = "KRAMERIUS_METADATA_DSN"
 LIBRARY = "library"
+INFERRED = ("inferred_unique", "page_ancestry")
+"""Library origins that are only candidates: never applied, never change ``public``."""
+MAX_CHUNKS_PER_DOCUMENT = 1000
+"""Chunks read per document for page evidence."""
+PAGE_SAMPLE = 3
 
 # Property names of older stores, after the current one.
 TARGET_NAMES = {
@@ -95,10 +110,54 @@ class Unresolved(Exception):
         self.kind = kind
 
 
+def classify_pages(start_pages: list[Any], truncated: bool, chains: list[PageChain]) -> dict[str, Any]:
+    """The page evidence of one document from its chunks' ``start_page_id`` values and the
+    mirror chains of those pages (``read_page_chains``).
+
+    ``confidence``: ``no_chunks``; ``none`` (no page chain reaches the document); ``high``
+    (2+ distinct pages reach it, all in one library); ``low`` (one such page); ``ambiguous``
+    (chains reach it in several libraries, e.g. a page UUID mirrored by two libraries).
+    """
+    valid: set[UUID] = set()
+    invalid = 0
+    for value in start_pages:
+        try:
+            valid.add(UUID(str(value)))
+        except ValueError:
+            invalid += 1
+    verified: dict[str, set[UUID]] = {}
+    other = Counter()
+    for chain in chains:
+        if chain.status == "verified":
+            verified.setdefault(chain.library, set()).add(chain.page_id)
+        else:
+            other[chain.status] += 1
+    counts = {library: len(pages) for library, pages in sorted(verified.items())}
+    if not start_pages:
+        confidence = "no_chunks"
+    elif not counts:
+        confidence = "none"
+    elif len(counts) > 1:
+        confidence = "ambiguous"
+    else:
+        confidence = "high" if next(iter(counts.values())) >= 2 else "low"
+    sample = sorted(chains, key=lambda c: (c.status != "verified", c.library, str(c.page_id)))[:PAGE_SAMPLE]
+    return {
+        "method": "page_ancestry", "confidence": confidence, "chunks": len(start_pages), "truncated": truncated,
+        "start_pages": len(valid), "invalid_page_ids": invalid,
+        "pages_not_in_mirror": len(valid - {c.page_id for c in chains}),
+        "verified_pages": counts, "unverified_chains": dict(sorted(other.items())),
+        "sample": [{"page": str(c.page_id), "library": c.library, "status": c.status,
+                    "path": [str(i) for i in c.path]} for c in sample],
+    }
+
+
 def resolve_library(stored: Any, libraries: list[str], *, mapped: str | None = None, override: str | None = None,
-                    distrusted: frozenset[str] = frozenset(), infer_unique: bool = False) -> tuple[str, str]:
-    """(library, where it came from) of a document whose mirror rows have ``libraries``;
-    raises ``Unresolved``."""
+                    distrusted: frozenset[str] = frozenset(), infer_unique: bool = False,
+                    pages: dict[str, Any] | None = None) -> tuple[str, str]:
+    """(library, where it came from) of a document whose mirror rows have ``libraries`` and
+    whose page evidence (``classify_pages``, if requested) is ``pages``; raises ``Unresolved``."""
+    page_libraries = sorted(pages["verified_pages"]) if pages else []
     if override:
         return override, "override"
     stored = stored.strip() if isinstance(stored, str) else None
@@ -107,9 +166,18 @@ def resolve_library(stored: Any, libraries: list[str], *, mapped: str | None = N
     if stored and mapped and stored != mapped:
         raise Unresolved("library_conflict", f"stored library {stored!r} differs from mapped library {mapped!r}")
     if stored:
+        if page_libraries and stored not in page_libraries:
+            raise Unresolved("page_evidence_conflict",
+                             f"stored library {stored!r}, but the start pages reach the document only in "
+                             f"{', '.join(page_libraries)}; correct it with --library-override if confirmed")
         return stored, "stored"
     if mapped:
         return mapped, "library_map"
+    if pages and pages["confidence"] == "ambiguous":
+        raise Unresolved("page_evidence_ambiguous",
+                         f"the start pages reach the document in {', '.join(page_libraries)}; needs a verified library map")
+    if pages and pages["confidence"] in ("high", "low"):
+        return page_libraries[0], "page_ancestry"
     if len(libraries) > 1:
         raise Unresolved("multiple_libraries", f"the mirror has rows for {', '.join(libraries)}; "
                                                "needs a verified library map")
@@ -189,20 +257,29 @@ def coerce(value: Any, data_type: str) -> Any:
 def plan_document(document_id: UUID, stored: dict[str, Any], records: list[SourceRecord],
                   targets: dict[str, tuple[str, str]], *, mapped_library: str | None = None,
                   override_library: str | None = None, distrusted: frozenset[str] = frozenset(),
-                  infer_unique: bool = False, overwrite: bool = False, update_access: bool = False) -> dict[str, Any]:
+                  infer_unique: bool = False, pages: dict[str, Any] | None = None,
+                  overwrite: bool = False, update_access: bool = False) -> dict[str, Any]:
     """The report entry of one document: its source and the property changes."""
     libraries = sorted({r.library for r in records})
     entry: dict[str, Any] = {"id": str(document_id), "stored_library": jsonable(stored.get(LIBRARY)),
                              "mirror_libraries": libraries}
+    if pages is not None:
+        entry["page_evidence"] = pages
     try:
         library, origin = resolve_library(stored.get(LIBRARY), libraries, mapped=mapped_library,
                                           override=override_library, distrusted=distrusted,
-                                          infer_unique=infer_unique)
+                                          infer_unique=infer_unique, pages=pages)
         record = select_record(records, library)
     except Unresolved as e:
-        return {**entry, "status": "unresolved", "kind": e.kind, "reason": str(e)}
+        unresolved = {**entry, "status": "unresolved", "kind": e.kind, "reason": str(e)}
+        if e.kind == "page_evidence_conflict":
+            unresolved["proposed_library"] = sorted(pages["verified_pages"])[0] \
+                if len(pages["verified_pages"]) == 1 else None
+        return unresolved
     entry.update(library=library, library_from=origin, in_library=record.in_library)
-    inferred = origin == "inferred_unique"
+    if pages and pages["verified_pages"] and library not in pages["verified_pages"]:
+        entry["page_evidence_disagrees"] = True  # an explicit map or override wins; shown for review
+    inferred = origin in INFERRED
 
     mapped = map_record(record)
     changes: dict[str, Any] = {}
@@ -264,7 +341,8 @@ async def _pages(client: WeaviateAsyncClient, names: schemas.CollectionNames, do
 async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection, *,
                        endpoint: str, source_name: str, library_map: dict[UUID, str] | None = None,
                        library_override: dict[UUID, str] | None = None, distrusted: frozenset[str] = frozenset(),
-                       infer_unique: bool = False, document_ids: list[UUID] | None = None,
+                       infer_unique: bool = False, infer_from_pages: bool = False,
+                       document_ids: list[UUID] | None = None,
                        after: UUID | None = None, limit: int | None = None,
                        overwrite: bool = False, update_access: bool = False) -> dict:
     """The report of the documents in scope. Reads only. Raises ``LookupError`` if the
@@ -280,6 +358,8 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
     last: UUID | None = None
     async for page in _pages(client, names, document_ids, after, limit):
         records = read_meta_records(source, [i for i, stored in page if stored is not None])
+        evidence = await _page_evidence(client, names, source, [i for i, stored in page if stored is not None]) \
+            if infer_from_pages else {}
         for document_id, stored in page:
             last = document_id
             if stored is None:
@@ -289,7 +369,8 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
             entries.append(plan_document(
                 document_id, stored, records.get(document_id, []), targets,
                 mapped_library=library_map.get(document_id), override_library=library_override.get(document_id),
-                distrusted=distrusted, infer_unique=infer_unique, overwrite=overwrite, update_access=update_access))
+                distrusted=distrusted, infer_unique=infer_unique, pages=evidence.get(document_id),
+                overwrite=overwrite, update_access=update_access))
 
     reached_limit = document_ids is None and limit is not None and len(entries) == limit
     plain = {"id", "status", "stored_library", "mirror_libraries", "library", "library_from", "in_library"}
@@ -301,13 +382,29 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
         "options": {"overwrite": overwrite, "update_access": update_access, "after": after and str(after),
                     "limit": limit, "document_ids": document_ids is not None, "library_map": len(library_map),
                     "library_override": len(library_override), "distrust_stored": sorted(distrusted),
-                    "infer_unique_library": infer_unique},
+                    "infer_unique_library": infer_unique, "infer_library_from_pages": infer_from_pages},
         "target_schema": {prop: data_type for prop, data_type in targets.values()},
         "undeclared_fields": undeclared,
         "counts": _counts(entries),
         "next_after": str(last) if reached_limit and last else None,
         "documents": [e for e in entries if e["status"] != "unchanged" or set(e) - plain],
     }
+
+
+async def _page_evidence(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection,
+                         document_ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
+    """``classify_pages`` of each document, from its chunks' start pages and the mirror."""
+    start_pages = {i: await read_start_pages(client, names, i, MAX_CHUNKS_PER_DOCUMENT) for i in document_ids}
+    valid: dict[UUID, set[UUID]] = {}
+    for document_id, (values, _) in start_pages.items():
+        valid[document_id] = set()
+        for value in values:
+            try:
+                valid[document_id].add(UUID(str(value)))
+            except ValueError:
+                pass
+    chains = read_page_chains(source, valid)
+    return {i: classify_pages(values, truncated, chains[i]) for i, (values, truncated) in start_pages.items()}
 
 
 def _counts(entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -324,6 +421,9 @@ def _counts(entries: list[dict[str, Any]]) -> dict[str, Any]:
         "unresolved": dict(sorted(Counter(e["kind"] for e in entries if e["status"] == "unresolved").items())),
         "mirror_libraries": {"none": mirror[0], "one": mirror[1], "several": mirror[2]},
         "library_from": dict(sorted(Counter(e["library_from"] for e in entries if "library_from" in e).items())),
+        "page_evidence": dict(sorted(Counter(e["page_evidence"]["confidence"] for e in entries
+                                             if "page_evidence" in e).items())),
+        "page_evidence_disagrees": sum(1 for e in entries if e.get("page_evidence_disagrees")),
         "with_held_changes": sum(1 for e in entries if "held" in e),
         "with_skipped_values": sum(1 for e in entries if "skipped" in e),
         "with_stale_values": sum(1 for e in entries if "stale" in e),
@@ -427,15 +527,16 @@ def apply_exit_code(result: dict) -> int:
 
 
 def read_library_map(path: Path) -> dict[UUID, str]:
-    """``document_id,library`` lines; blank lines and ``#`` comments are ignored. Raises
+    """``document_id,library`` lines (further columns, e.g. candidate evidence, are ignored);
+    blank lines and ``#`` comments are ignored. Raises
     ``ValueError`` for a malformed line or an id listed with two libraries."""
     mapping: dict[UUID, str] = {}
     with path.open(encoding="utf-8", newline="") as file:
         for number, row in enumerate(csv.reader(file), start=1):
             if not row or not row[0].strip() or row[0].lstrip().startswith("#"):
                 continue
-            if len(row) != 2 or not row[1].strip():
-                raise ValueError(f"{path}:{number}: expected document_id,library")
+            if len(row) < 2 or not row[1].strip():
+                raise ValueError(f"{path}:{number}: expected document_id,library[,evidence...]")
             document_id, library = UUID(row[0].strip()), row[1].strip()
             if mapping.get(document_id, library) != library:
                 raise ValueError(f"{path}:{number}: {document_id} is listed with two libraries")
@@ -443,12 +544,21 @@ def read_library_map(path: Path) -> dict[UUID, str]:
     return mapping
 
 
+CANDIDATE_COLUMNS = ("document_id", "library", "method", "confidence", "verified_pages", "stored_library")
+
+
 def write_candidates(path: Path, report: dict) -> int:
-    """Write the report's candidate libraries as a library map to review; the number written."""
+    """Write the report's candidate libraries as a library map to review; the number written.
+
+    The columns after ``document_id,library`` are evidence; ``read_library_map`` ignores them."""
     candidates = [e for e in report["documents"] if e["status"] == "candidate"]
     with path.open("w", encoding="utf-8", newline="") as file:
-        file.write("# Inferred from the mirror's only row for each id; review before using as --library-map\n")
-        csv.writer(file).writerows((e["id"], e["library"]) for e in candidates)
+        file.write("# Candidate libraries, not verified: keep only reviewed lines, then use as --library-map\n")
+        file.write("# " + ",".join(CANDIDATE_COLUMNS) + "\n")
+        csv.writer(file).writerows(
+            (e["id"], e["library"], e["library_from"], (e.get("page_evidence") or {}).get("confidence", ""),
+             (e.get("page_evidence") or {}).get("verified_pages", {}).get(e["library"], ""), e["stored_library"] or "")
+            for e in candidates)
     return len(candidates)
 
 
@@ -466,6 +576,9 @@ def _parser() -> argparse.ArgumentParser:
                    help="treat this stored library value as unverified (repeatable)")
     p.add_argument("--infer-unique-library", action="store_true",
                    help="propose the library of the mirror's only row as a candidate")
+    p.add_argument("--infer-library-from-pages", action="store_true",
+                   help="propose the library whose mirror page chains (from the chunks' start_page_id) "
+                        "reach the document as a candidate")
     p.add_argument("--candidates", type=Path, help="write candidate libraries (CSV) to this file")
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--document-ids", type=Path, help="only these documents (one UUID per line)")
@@ -554,6 +667,7 @@ async def _main(argv: list[str]) -> int:
                     source_name=make_url(dsn).render_as_string(hide_password=True),
                     library_map=library_map, library_override=library_override,
                     distrusted=frozenset(args.distrust_stored), infer_unique=args.infer_unique_library,
+                    infer_from_pages=args.infer_library_from_pages,
                     document_ids=document_ids, after=args.after, limit=args.limit,
                     overwrite=args.overwrite, update_access=args.update_access)
             except LookupError as e:

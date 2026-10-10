@@ -17,7 +17,8 @@ from semant_demo.adapters.weaviate.document_metadata import add_text_property, d
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType
-from semant_demo.maintenance.metadata_sync import apply_exit_code, apply_report, build_report
+from semant_demo.maintenance.metadata_sync import (
+    apply_exit_code, apply_report, build_report, read_library_map, write_candidates)
 
 pytestmark = pytest.mark.integration
 
@@ -32,7 +33,8 @@ def source():
 
 
 def row(document_id: str, library: str, **values) -> dict:
-    return {"id": UUID(document_id), "library": library, "public": False, "in_library": True,
+    return {"id": UUID(document_id), "library": library, "parent_id": None, "parent_library": None,
+            "public": False, "in_library": True,
             "record_type": None, "title": None, "date": None, "start_date": None, "end_date": None,
             "metadata_json": None, **values}
 
@@ -92,3 +94,53 @@ async def test_report_apply_and_read_back(seeded_store, collection_names, corpus
 
     again = await apply_report(seeded_store, collection_names, report, accept_incomplete=True)
     assert again["already_applied"] == 1 and apply_exit_code(again) == 0
+
+
+def page_row(page_id: str, library: str, parent: str) -> dict:
+    return row(page_id, library, parent_id=UUID(parent), parent_library=library, record_type="page")
+
+
+async def test_page_evidence_candidate_is_applied_only_after_review(seeded_store, collection_names, corpus, source,
+                                                                    tmp_path):
+    chronicle, gazette, letters = (corpus.documents[k]["id"] for k in ("chronicle", "gazette", "letters"))
+    start = {key: c["start_page_id"] for key, c in corpus.chunks.items()}
+    source.execute(insert(META_RECORDS), [
+        row(chronicle, "mzk", metadata_json={"Publisher": [["MZK tisk"]]}),
+        row(chronicle, "nkp", public=True, metadata_json={"Publisher": [["NKP tisk"]]}),
+        # Both distinct start pages of the chronicle (three chunks) lead to it in nkp only.
+        page_row(start["chronicle_1"], "nkp", chronicle), page_row(start["chronicle_3"], "nkp", chronicle),
+        # The gazette's only start page is mirrored by both libraries.
+        row(gazette, "mzk"), row(gazette, "nkp"),
+        page_row(start["gazette_1"], "mzk", gazette), page_row(start["gazette_1"], "nkp", gazette),
+        row(letters, "mzk"),  # no page rows: falls through to the unique-row rule
+    ])
+    await add_text_property(seeded_store, collection_names, "library")
+    options = dict(endpoint="test", source_name="sqlite", infer_from_pages=True, infer_unique=True)
+
+    report = json.loads(json.dumps(await build_report(seeded_store, collection_names, source, **options)))
+
+    by_id = {e["id"]: e for e in report["documents"]}
+    evidence = by_id[chronicle]["page_evidence"]
+    assert (by_id[chronicle]["status"], by_id[chronicle]["library_from"]) == ("candidate", "page_ancestry")
+    assert (evidence["confidence"], evidence["chunks"], evidence["start_pages"], evidence["verified_pages"]) == (
+        "high", 3, 2, {"nkp": 2})
+    assert by_id[gazette]["kind"] == "page_evidence_ambiguous"
+    assert by_id[gazette]["page_evidence"]["verified_pages"] == {"mzk": 1, "nkp": 1}
+    assert (by_id[letters]["status"], by_id[letters]["library_from"]) == ("candidate", "inferred_unique")
+    assert by_id[letters]["page_evidence"]["confidence"] == "none"
+
+    with pytest.raises(LookupError):  # candidates are never applied without review
+        await apply_report(seeded_store, collection_names, report)
+    unreviewed = await apply_report(seeded_store, collection_names, report, accept_incomplete=True)
+    assert unreviewed["eligible"] == 0 and apply_exit_code(unreviewed) == 1
+
+    candidates = tmp_path / "candidates.csv"
+    write_candidates(candidates, report)
+    reviewed = {i: lib for i, lib in read_library_map(candidates).items() if str(i) == chronicle}
+    report = await build_report(seeded_store, collection_names, source, library_map=reviewed, **options)
+    result = await apply_report(seeded_store, collection_names, report, accept_incomplete=True)
+
+    assert (result["eligible"], result["verified"]) == (1, 1)
+    document = await DocumentRepository(seeded_store, collection_names).read(UUID(chronicle))
+    assert (document.library, document.publisher) == ("nkp", "NKP tisk")
+    assert document.public is corpus.documents["chronicle"]["properties"]["public"]  # rights unchanged
