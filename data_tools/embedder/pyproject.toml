@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "semantembedder"
+version = "0.1.0"
+description = "A configurable pipeline that embeds Weaviate records via an OpenAI-compatible (vLLM) API and stores them as named vectors."
+readme = "README.md"
+authors = [
+    { name = "Martin Docekal" }
+]
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "classconfig>=1.0.17",
+    "weaviate-client>=4.20.4",
+    "openai>=2.0.0",
+    "tqdm>=4.0.0",
+    "PyYAML>=6.0",
+    "jinja2>=3.0.0"
+]
+
+[project.scripts]
+semantembedder = "semantembedder.__main__:main"
+
+[tool.setuptools]
+packages = ["semantembedder"]
