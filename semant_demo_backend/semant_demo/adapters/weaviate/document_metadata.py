@@ -56,3 +56,13 @@ async def add_text_property(client: WeaviateAsyncClient, names: schemas.Collecti
     tokenization: a filter on ``cuni`` does not match ``cuni_fsv``); existing documents have no value."""
     await _documents(client, names).config.add_property(
         Property(name=name, data_type=DataType.TEXT, tokenization=Tokenization.FIELD))
+
+
+async def read_start_pages(client: WeaviateAsyncClient, names: schemas.CollectionNames,
+                           document_id: UUID, limit: int) -> tuple[list[Any], bool]:
+    """The ``start_page_id`` values (as stored, possibly missing or invalid) of up to ``limit``
+    chunks of the document, and whether it has more chunks. Reads no text or vectors."""
+    response = await client.collections.get(names.chunks_collection_name).query.fetch_objects(
+        filters=Filter.by_ref("document").by_id().equal(document_id),
+        limit=limit + 1, return_properties=["start_page_id"])
+    return [obj.properties.get("start_page_id") for obj in response.objects[:limit]], len(response.objects) > limit

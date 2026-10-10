@@ -6,13 +6,13 @@ from uuid import UUID
 import pytest
 from sqlalchemy import create_engine, insert
 
-from semant_demo.adapters.sql.kramerius_metadata import META_RECORDS, read_meta_records
+from semant_demo.adapters.sql.kramerius_metadata import META_RECORDS, PageChain, read_meta_records, read_page_chains
 from semant_demo.config import Config
 from semant_demo.maintenance import metadata_sync
 from semant_demo.maintenance.kramerius_mapping import FIELDS, IssueDate, SourceRecord, map_record, parse_issue_date, values
 from semant_demo.maintenance.metadata_sync import (
-    apply_exit_code, apply_report, build_report, coerce, plan_document, read_library_map, target_properties,
-    write_candidates)
+    apply_exit_code, apply_report, build_report, classify_pages, coerce, plan_document, read_library_map,
+    target_properties, write_candidates)
 
 DOC = UUID("5e3a0000-0000-4000-8000-00000000d001")
 OTHER = UUID("5e3a0000-0000-4000-8000-00000000d002")
@@ -277,8 +277,9 @@ def source():
 
 def add_rows(connection, *rows):
     connection.execute(insert(META_RECORDS), [
-        {"public": False, "in_library": False, "record_type": None, "title": None, "date": None,
-         "start_date": None, "end_date": None, "metadata_json": None, **row} for row in rows])
+        {"parent_id": None, "parent_library": None, "public": False, "in_library": False, "record_type": None,
+         "title": None, "date": None, "start_date": None, "end_date": None, "metadata_json": None, **row}
+        for row in rows])
 
 
 def test_read_meta_records_groups_all_libraries_by_id(source):
@@ -523,3 +524,151 @@ def test_library_map_rejects_an_id_with_two_libraries(tmp_path):
     path.write_text(f"{DOC},mzk\n{DOC},nkp\n", encoding="utf-8")
     with pytest.raises(ValueError, match="two libraries"):
         read_library_map(path)
+
+
+# --- page evidence -----------------------------------------------------------------------
+
+P = [UUID(int=0x100 + i) for i in range(10)]   # page ids
+ISSUE, VOLUME, ELSEWHERE = UUID(int=0x201), UUID(int=0x202), UUID(int=0x203)
+
+
+def page(page_id, library, parent, parent_library=None):
+    return {"id": page_id, "library": library, "parent_id": parent, "parent_library": parent_library or library,
+            "record_type": "page"}
+
+
+def statuses(chains):
+    return sorted((c.page_id, c.library, c.status) for c in chains)
+
+
+def test_page_chains_follow_parents_within_one_library(source):
+    add_rows(source,
+             {"id": DOC, "library": "mzk"}, {"id": DOC, "library": "nkp"},
+             page(P[0], "mzk", DOC),                       # direct child, mzk only
+             page(P[1], "nkp", DOC),                       # a different page in nkp
+             page(P[2], "mzk", ISSUE), {"id": ISSUE, "library": "mzk", "parent_id": VOLUME, "parent_library": "mzk"},
+             {"id": VOLUME, "library": "mzk", "parent_id": DOC, "parent_library": "mzk"},   # via intermediate nodes
+             page(P[3], "mzk", DOC), page(P[3], "nkp", DOC),                               # mirrored page
+             page(P[4], "mzk", ELSEWHERE), {"id": ELSEWHERE, "library": "mzk"},             # another document
+             page(P[5], "mzk", UUID(int=0x999)),                                            # broken parent
+             page(P[6], "mzk", DOC, "nkp"))                                                 # cross-library hop
+
+    chains = read_page_chains(source, {DOC: set(P[:8])})[DOC]
+
+    assert statuses(chains) == sorted([
+        (P[0], "mzk", "verified"), (P[1], "nkp", "verified"), (P[2], "mzk", "verified"),
+        (P[3], "mzk", "verified"), (P[3], "nkp", "verified"), (P[4], "mzk", "other_document"),
+        (P[5], "mzk", "broken"), (P[6], "mzk", "cross_library")])   # P[7] is not in the mirror: no chain
+    assert next(c for c in chains if c.page_id == P[2]).path == (P[2], ISSUE, VOLUME, DOC)
+
+
+def test_page_chains_stop_at_cycles_and_depth(source):
+    a, b = UUID(int=0x301), UUID(int=0x302)
+    add_rows(source, page(P[0], "mzk", a), {"id": a, "library": "mzk", "parent_id": b, "parent_library": "mzk"},
+             {"id": b, "library": "mzk", "parent_id": a, "parent_library": "mzk"},
+             page(P[1], "mzk", ISSUE), {"id": ISSUE, "library": "mzk", "parent_id": VOLUME, "parent_library": "mzk"},
+             {"id": VOLUME, "library": "mzk", "parent_id": DOC, "parent_library": "mzk"}, {"id": DOC, "library": "mzk"})
+
+    assert statuses(read_page_chains(source, {DOC: {P[0], P[1]}}, max_depth=2)[DOC]) == [
+        (P[0], "mzk", "cycle"), (P[1], "mzk", "too_deep")]
+    assert statuses(read_page_chains(source, {DOC: {P[1]}}, max_depth=3)[DOC]) == [(P[1], "mzk", "verified")]
+
+
+def chain(page_id, library, status="verified"):
+    return PageChain(page_id, library, status, (page_id, DOC))
+
+
+@pytest.mark.parametrize("start_pages, chains, confidence, verified", [
+    ([], [], "no_chunks", {}),
+    ([None, "not-a-uuid"], [], "none", {}),
+    ([str(P[0])], [chain(P[0], "mzk", "other_document")], "none", {}),
+    ([str(P[0]), str(P[0]), str(P[0])], [chain(P[0], "nkp")], "low", {"nkp": 1}),   # one page, three chunks
+    ([str(P[0]), str(P[1])], [chain(P[0], "nkp"), chain(P[1], "nkp")], "high", {"nkp": 2}),
+    ([str(P[0])], [chain(P[0], "mzk"), chain(P[0], "nkp")], "ambiguous", {"mzk": 1, "nkp": 1}),
+    ([str(P[0]), str(P[1])], [chain(P[0], "mzk"), chain(P[1], "nkp")], "ambiguous", {"mzk": 1, "nkp": 1}),
+])
+def test_page_evidence_confidence(start_pages, chains, confidence, verified):
+    evidence = classify_pages(start_pages, False, chains)
+    assert evidence["confidence"] == confidence and evidence["verified_pages"] == verified
+    assert evidence["method"] == "page_ancestry"
+
+
+def test_page_evidence_counts_invalid_and_unmatched_pages():
+    evidence = classify_pages([str(P[0]), str(P[1]), None, "x"], True, [chain(P[0], "mzk", "broken")])
+    assert (evidence["chunks"], evidence["start_pages"], evidence["invalid_page_ids"], evidence["pages_not_in_mirror"],
+            evidence["unverified_chains"], evidence["truncated"]) == (4, 2, 2, 1, {"broken": 1}, True)
+
+
+HIGH_NKP = classify_pages([str(P[0]), str(P[1])], False, [chain(P[0], "nkp"), chain(P[1], "nkp")])
+LOW_NKP = classify_pages([str(P[0])], False, [chain(P[0], "nkp")])
+AMBIGUOUS = classify_pages([str(P[0])], False, [chain(P[0], "mzk"), chain(P[0], "nkp")])
+NO_PAGES = classify_pages([], False, [])
+
+
+@pytest.mark.parametrize("evidence", [HIGH_NKP, LOW_NKP])
+def test_page_evidence_gives_only_a_candidate_from_its_library(evidence):
+    entry = plan({"public": False}, [MZK, NKP], pages=evidence, update_access=True)
+
+    assert entry["status"] == "candidate" and entry["library_from"] == "page_ancestry"
+    assert entry["changes"]["library"] == {"old": None, "new": "nkp"}
+    assert entry["changes"]["publisher"]["new"] == "NKP publisher"            # only the nkp row is used
+    assert entry["held"]["public"]["reason"] == "access flag; never changed for an inferred library"
+    assert entry["page_evidence"] is evidence
+
+
+def test_ambiguous_page_evidence_stays_unresolved():
+    entry = plan({}, [MZK, NKP], pages=AMBIGUOUS, infer_unique=True)
+    assert entry["kind"] == "page_evidence_ambiguous"
+
+
+def test_documents_without_page_evidence_use_the_other_rules():
+    assert plan({}, [MZK, NKP], pages=NO_PAGES)["kind"] == "multiple_libraries"
+    entry = plan({}, [NKP], pages=NO_PAGES, infer_unique=True)
+    assert entry["status"] == "candidate" and entry["library_from"] == "inferred_unique"
+
+
+def test_stored_library_contradicted_by_pages_is_a_conflict_with_a_proposal():
+    entry = plan({"library": "mzk"}, [MZK, NKP], pages=HIGH_NKP)
+    assert entry["kind"] == "page_evidence_conflict" and entry["proposed_library"] == "nkp"
+    assert plan({"library": "nkp"}, [MZK, NKP], pages=HIGH_NKP)["status"] == "update"   # consistent stored value
+    assert plan({"library": "mzk"}, [MZK, NKP], pages=AMBIGUOUS)["library_from"] == "stored"  # one of the verified
+
+
+def test_distrusted_stored_mzk_becomes_a_page_candidate():
+    entry = plan({"library": "mzk"}, [MZK, NKP], pages=HIGH_NKP, distrusted=frozenset({"mzk"}))
+    assert entry["status"] == "candidate" and entry["changes"]["library"] == {"old": "mzk", "new": "nkp"}
+
+
+@pytest.mark.parametrize("kwargs, origin", [
+    ({"mapped_library": "mzk"}, "library_map"),
+    ({"override_library": "mzk"}, "override"),
+])
+def test_explicit_libraries_win_over_pages_and_are_flagged(kwargs, origin):
+    entry = plan({}, [MZK, NKP], pages=HIGH_NKP, **kwargs)
+    assert entry["status"] == "update" and entry["library_from"] == origin
+    assert entry["page_evidence_disagrees"] is True
+
+
+async def test_report_with_page_evidence_and_candidate_file(source, monkeypatch, tmp_path):
+    FakeDocuments({DOC: {}, OTHER: {}}).install(monkeypatch)
+    starts = {DOC: ([str(P[0]), str(P[1]), str(P[1])], False), OTHER: ([], False)}
+
+    async def read_start_pages(client, names, document_id, limit):
+        return starts[document_id]
+    monkeypatch.setattr(metadata_sync, "read_start_pages", read_start_pages)
+    add_rows(source, {"id": DOC, "library": "mzk"}, {"id": DOC, "library": "nkp"},
+             page(P[0], "nkp", DOC), page(P[1], "nkp", DOC), {"id": OTHER, "library": "mzk"},
+             {"id": OTHER, "library": "nkp"})
+
+    report = await report_of(source, infer_from_pages=True)
+
+    by_id = {e["id"]: e for e in report["documents"]}
+    assert by_id[str(DOC)]["library_from"] == "page_ancestry"
+    assert by_id[str(DOC)]["page_evidence"]["verified_pages"] == {"nkp": 2}
+    assert by_id[str(OTHER)]["kind"] == "multiple_libraries"
+    assert report["counts"]["page_evidence"] == {"high": 1, "no_chunks": 1}
+
+    path = tmp_path / "candidates.csv"
+    assert write_candidates(path, report) == 1
+    assert path.read_text(encoding="utf-8").splitlines()[2] == f"{DOC},nkp,page_ancestry,high,2,"
+    assert read_library_map(path) == {DOC: "nkp"}

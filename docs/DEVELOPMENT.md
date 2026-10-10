@@ -330,11 +330,41 @@ complete" row is never chosen. The library is, in order: an approved correction
 (`--library-override FILE`), the stored `library` (unless listed by `--distrust-stored`,
 e.g. `mzk`, which older code wrote as a default and the API still shows for documents
 without one), a verified map (`--library-map FILE`; a different stored library is a
-`library_conflict`), or, only with `--infer-unique-library`, the library of the mirror's
-only row for the id. Inferred libraries are `candidate`s: never applied, never used to
-change `public`; `--candidates FILE` writes them as a map to review and pass back with
-`--library-map`. Documents with several mirror libraries and no verified one, a conflict,
-or no row for their library are `unresolved`. Map files are CSV `document_id,library`.
+`library_conflict`), page evidence (`--infer-library-from-pages`, below), or, only with
+`--infer-unique-library`, the library of the mirror's only row for the id. Inferred
+libraries are `candidate`s: never applied, never used to change `public`; `--candidates
+FILE` writes them, with method, confidence, verified page count and stored library, as a
+map to review: keep only the accepted lines and pass the file back with `--library-map`.
+Documents with several mirror libraries and no verified one, a conflict, or no row for
+their library are `unresolved`. Map files are CSV `document_id,library` (further columns
+are ignored).
+
+**Page evidence** (`--infer-library-from-pages`, report only). For each document the
+command reads the distinct `Chunks.start_page_id` values of up to 1000 of its chunks (one
+query per document; no text or vectors), looks the page UUIDs up in `meta_records` in all
+libraries, and walks each page row up `(parent_id, parent_library)` within its own library
+(batched, max depth 16) until it reaches the document's id. A page UUID match alone proves
+nothing: only chains that reach the document count. Distinct start pages are the evidence
+unit (several chunks on one page count once).
+
+| Evidence | Report | Effect |
+|---|---|---|
+| 2+ distinct pages reach the document, all in one library | `page_evidence.confidence: high` | `candidate` (`library_from: page_ancestry`) |
+| exactly one such page | `low` | `candidate`; review with extra care |
+| chains reach the document in several libraries (mirrored page UUIDs, or different pages in different libraries) | `ambiguous` | `unresolved: page_evidence_ambiguous`; never the most common library |
+| a stored library the chains do not reach | | `unresolved: page_evidence_conflict` with `proposed_library`; correct only with a reviewed `--library-override` |
+| a `--library-map` / `--library-override` library the chains do not reach | | the explicit library is used; `page_evidence_disagrees: true` for review |
+| no chunks, no valid start page, no page in the mirror, or no chain reaches the document | `no_chunks` / `none` | the other rules apply unchanged |
+
+Each entry's `page_evidence` lists chunks read (`truncated` beyond 1000), distinct valid
+start pages, invalid or missing `start_page_id` values, pages not in the mirror, verified
+pages per library, the statuses of chains that did not reach the document
+(`other_document`, `cross_library`, `broken`, `cycle`, `too_deep`) and up to three sample
+paths (UUIDs only). Page evidence never permits a `public` change. Failure modes: a store
+without `start_page_id` gives `none`; a mirror missing one library's page rows makes the
+other library look unique, so check the per-library page counts of the document when
+reviewing (two libraries with their own, differently identified pages are separate
+digitizations; the text came from the one whose pages match).
 
 **Update rule.** Empty properties are filled; replacing a differing value needs
 `--overwrite` and changing `public` needs `--update-access` (keep it off unless a rights
@@ -392,10 +422,11 @@ database or production. `make test-integration` does not use `local_data/`.
    the mirror.
 
 3. **Read-only inventory.** `python -m semant_demo.maintenance.metadata_sync --report
-   r1.json --infer-unique-library --distrust-stored mzk --candidates candidates.csv
-   --overwrite` (add `--limit N` / `--document-ids FILE` to narrow it). Check
-   `counts`: `mirror_libraries` (none / one / several), `unresolved` kinds, `candidate`,
-   `changed_properties`, `held_properties`, and sample `changes` per library in `r1.json`.
+   r1.json --infer-library-from-pages --infer-unique-library --distrust-stored mzk
+   --candidates candidates.csv --overwrite` (add `--limit N` / `--document-ids FILE` to
+   narrow it). Check `counts`: `mirror_libraries` (none / one / several), `page_evidence`,
+   `library_from`, `unresolved` kinds, `candidate`, `changed_properties`,
+   `held_properties`, and sample `changes` and `page_evidence` per library in `r1.json`.
 
 4. **Review libraries.** Review `candidates.csv`; keep the verified lines as the library
    map. Put approved corrections of wrong stored values in an override file. Documents
@@ -417,6 +448,22 @@ database or production. `make test-integration` does not use `local_data/`.
 
 9. **Clean up.** `docker stop semant-weaviate-metadata-test`; delete `$COPY` when done.
    Confirm the development snapshot was not modified (counts, no `library` property).
+
+#### Results of the local check (2026-10-10)
+
+Copy of the 500-document snapshot (3,260 chunks in 32 documents) and the real mirror:
+237 documents have mirror rows in one library, 263 in several. Page evidence: 468
+documents have no chunks; of the 263 with several libraries, 250 have no chunks, 4 were
+resolved to `mzk` (3 `high`, 1 `low`; both libraries hold the same number of pages but only
+`mzk`'s page UUIDs match the chunks) and 9 stay `page_evidence_ambiguous` (the same page
+UUIDs reach the document in both libraries). All 14 single-library documents with chunks
+got the same library from their pages as from the unique-row rule. A stored fake `mzk` and
+a stored wrong `nkp` were reported as `page_evidence_conflict` with the correct
+`proposed_library`. A reviewed subset (3 page candidates, 2 overrides) applied and verified
+5/5 with `public` unchanged; applying again and a fresh report found nothing to do. With
+`--overwrite`, `mzk` periodical items replace a full title by the issue number (e.g.
+"Časopis českého lékárnictva. 12" -> "12"): review title replacements before using it.
+Details are on PR #258.
 
 ## 11. Testing versus development data
 
