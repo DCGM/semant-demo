@@ -13,7 +13,6 @@ This document indexes **current** known limitations and future work, not a secon
 
 ## Deployment, security and tests
 
-- [#233 — deploy committed API client](https://github.com/DCGM/semant-demo/issues/233): the production Docker build currently regenerates the generated frontend client; build the already tested committed client instead, with deterministic dependency installation.
 - [#234 — anonymous paid-provider access](https://github.com/DCGM/semant-demo/issues/234): decide login/rate/cost limits for the public RAG, summary and question endpoints. It is not a private-data access leak, but may incur provider costs.
 - [#212 — browser smoke suite in CI](https://github.com/DCGM/semant-demo/issues/212): browser tests are available via `make test-e2e`; evaluate making them an additional blocking CI check.
 - [#213 — isolate PR preview secrets and gate deployment](https://github.com/DCGM/semant-demo/issues/213): deployment/security follow-up; not a current feature priority during limited testing. Revisit before widening exposure.

@@ -13,8 +13,8 @@ npm ci
 
 The generated API client (`src/generated/api`) is committed. After a backend API change,
 regenerate it from the repository root with `make api-generate` (requires Java 11+); never
-edit it by hand. `npm run sync-client` is only used by the production image build
-(`deploy/Dockerfile`).
+edit it by hand. The production image (`deploy/Dockerfile`) builds from this committed
+client with `npm ci`; it does not regenerate it.
 
 ```bash
 npm run dev

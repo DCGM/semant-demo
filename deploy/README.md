@@ -11,7 +11,7 @@ This folder manages the full application stack — backend, embedding service, a
 | `docker-compose.database.yml` | Weaviate database container (production) |
 | `docker-compose.database-test.yml` | Weaviate database container (test) |
 | `docker-compose.embedder.yml` | GPU embedding service container |
-| `Dockerfile` | Multi-stage build for the backend + frontend |
+| `Dockerfile` | Multi-stage build for the backend + frontend (frontend: `npm ci` and the committed generated API client, not regenerated) |
 | `Dockerfile.embedder` | Build for the embedding service |
 | `update.sh` | Wrapper script — loads `.env`, sets variables and forwards arguments to `docker compose` |
 | `.env.example` | Environment variables template for production |
@@ -74,6 +74,7 @@ cp .env.example .env
 | **Build arguments** | | |
 | `REPO` | `https://github.com/DCGM/semant-demo.git` | Git repository to clone |
 | `BRANCH` | `main` | Branch to build from |
+| `COMMIT` | _(empty)_ | Full commit SHA to build. CI sets it to the commit that passed its checks (production: the tagged commit; PR previews: the PR head), so a later push cannot change the deployed source. Empty builds the current tip of `BRANCH` |
 | `BACKEND_URL` | `https://demo.semant.cz` | Public backend URL baked into the frontend bundle at build time |
 | `DOMAIN` | `demo.semant.cz` | Domain name for the Traefik Host rule |
 | **Weaviate** | | |
