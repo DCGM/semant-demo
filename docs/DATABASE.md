@@ -142,7 +142,7 @@ otherwise the report lists it as undeclared or skipped.
 | titleMetadata | first MODS `Title` | `titleMetadata` | no (stored provenance) |
 | subtitle | first `Subtitle` | `subtitle`, `subTitle` | `subtitle` |
 | partNumber, partName | first `PartNumber`, `PartName` | same (`partNumber` `text` or `int`) | yes |
-| dateIssued | day of `date` (else MODS `DateIssued`), only when it names the day and lies in yearIssued; midnight UTC | `dateIssued` | yes |
+| dateIssued | day of `date`, else of equal `start_date`/`end_date` (not 1 January), else of MODS `DateIssued`; only when the source names the day and it lies in yearIssued; midnight UTC | `dateIssued` | yes |
 | yearIssued | year of `date`, else of `start_date`/`end_date` in one year, else of MODS `DateIssued`; ranges give none | `yearIssued` | yes |
 | dateIssuedMetadata, yearIssuedMetadata | MODS `DateIssued` alone | same | no (stored provenance) |
 | author | all `Author` | `author`, `authors` | `author` |
@@ -153,11 +153,14 @@ otherwise the report lists it as undeclared or skipped.
 | manufacturePublisher, manufacturePlaceTerm | first `ManufacturePublisher`, `ManufacturePlaceTerm` | same | no (stored only) |
 | documentType | `record_type` | `documentType` | yes |
 | public | `public`; changed only with `--update-access` | `public` | yes |
-| library | the selected library | `library` | yes |
+| library | the selected library (see the source library rule in DEVELOPMENT) | `library` (`text`, field tokenization; added by `--add-library-property`) | yes |
 
 `url` and chunk `language` are not written. `in_library` of the selected row is shown in the
-report but does not change anything. Of the stores checked, the local snapshot declares no
-`library` property, so its documents need a library map and keep no stored provenance.
+report but does not change anything (the mirror sets it on rows added or updated since the
+column was introduced; `false` is not an access or deletion signal). The local snapshot
+declares no `library`; applying needs it declared first. In the snapshot (checked
+2026-10-10 against the mirror) 237 of 500 documents have mirror rows in one library and
+263 in several (207 of them `mzk` + `nkp`), so the latter need a verified library map.
 
 ### Collection: `Chunks`
 
