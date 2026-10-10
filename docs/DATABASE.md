@@ -138,7 +138,7 @@ otherwise the report lists it as undeclared or skipped.
 
 | Field | Source (same row only) | Property names (current, older) | API (`Document`) |
 |---|---|---|---|
-| title | `title`, else first MODS `Title` | `title` | yes |
+| title | the own titles of the row's ancestors in the same library and the row, root first, joined by ". " (e.g. periodical. volume. issue). A level's own title is `title`, else its own MODS `Title`, else (for a part) its own `PartNumber`; a leading repeat of a kept main title is dropped, and pieces within 2 characters of a kept piece (6+ characters; shorter only if equal) or a shortened variant are left out | `title` | yes |
 | titleMetadata | first MODS `Title` | `titleMetadata` | no (stored provenance) |
 | subtitle | first `Subtitle` | `subtitle`, `subTitle` | `subtitle` |
 | partNumber, partName | first `PartNumber`, `PartName` | same (`partNumber` `text` or `int`) | yes |
@@ -152,7 +152,7 @@ otherwise the report lists it as undeclared or skipped.
 | placeOfPublication | first `PlaceTerm` | `placeOfPublication`, `placeTerm` | yes |
 | manufacturePublisher, manufacturePlaceTerm | first `ManufacturePublisher`, `ManufacturePlaceTerm` | same | no (stored only) |
 | documentType | `record_type` | `documentType` | yes |
-| public | `public`; changed only with `--update-access` | `public` | yes |
+| public | `public` of the selected row, always (access matches the source library's record) | `public` | yes |
 | library | the selected library (see the source library rule in DEVELOPMENT) | `library` (`text`, field tokenization; added by `--add-library-property`) | yes |
 
 `url` and chunk `language` are not written. `in_library` of the selected row is shown in the
@@ -160,7 +160,8 @@ report but does not change anything (the mirror sets it on rows added or updated
 column was introduced; `false` is not an access or deletion signal). The local snapshot
 declares no `library`; applying needs it declared first. In the snapshot (checked
 2026-10-10 against the mirror) 237 of 500 documents have mirror rows in one library and
-263 in several (207 of them `mzk` + `nkp`), so the latter need a verified library map.
+263 in several (207 of them `mzk` + `nkp`); for these the library comes from page evidence or
+`--library-priority` (DEVELOPMENT).
 
 ### Collection: `Chunks`
 

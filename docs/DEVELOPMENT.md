@@ -326,63 +326,74 @@ separately authorized operation (#259); this section covers the local check.
 
 **Source library rule.** Each document uses only the mirror row of its own source library,
 `(id, library)`; values that row lacks are never taken from another library, and the "most
-complete" row is never chosen. The library is, in order: an approved correction
-(`--library-override FILE`), the stored `library` (unless listed by `--distrust-stored`,
-e.g. `mzk`, which older code wrote as a default and the API still shows for documents
-without one), a verified map (`--library-map FILE`; a different stored library is a
-`library_conflict`), page evidence (`--infer-library-from-pages`, below), or, only with
-`--infer-unique-library`, the library of the mirror's only row for the id. Inferred
-libraries are `candidate`s: never applied, never used to change `public`; `--candidates
-FILE` writes them, with method, confidence, verified page count and stored library, as a
-map to review: keep only the accepted lines and pass the file back with `--library-map`.
-Documents with several mirror libraries and no verified one, a conflict, or no row for
-their library are `unresolved`. Map files are CSV `document_id,library` (further columns
-are ignored).
+complete" row is never chosen. The library is, in order:
 
-**Page evidence** (`--infer-library-from-pages`, report only). For each document the
-command reads the distinct `Chunks.start_page_id` values of up to 1000 of its chunks (one
-query per document; no text or vectors), looks the page UUIDs up in `meta_records` in all
+1. an approved correction (`--library-override FILE`);
+2. a verified map (`--library-map FILE`; a different stored library is a `library_conflict`);
+3. page evidence (`--infer-library-from-pages`, below); it replaces a stored library it
+   contradicts;
+4. the stored `library`, unless listed by `--distrust-stored` (e.g. `mzk`, which older code
+   wrote as a default and the API still shows for documents without one);
+5. with `--infer-library-from-mirror`, for documents without page evidence (no chunks, or no
+   page reaching the document): the mirror's only library for the id (`mirror_unique`),
+   else the first library of `--library-priority` the mirror has (`mirror_priority`).
+
+`--library-priority LIB,LIB,...` (highest first) encodes which libraries hold partial copies
+of others; it chooses only among libraries that have the document (that its pages reach, or,
+in 5, that have a row). Inferred libraries (3 and 5) are applied like the others; each entry
+records `library_from` and its evidence, and `--inferred FILE` writes them (document,
+library, method, confidence, verified pages, stored library) as a CSV for sampling. A wrong
+line can be corrected and passed back with `--library-override`. Documents with no library,
+a conflict, several mirror libraries none of which is in the priority list, or no row for
+their library are `unresolved`. Map files are CSV `document_id,library` (further columns are
+ignored).
+
+**Page evidence** (`--infer-library-from-pages`). For each document the command reads the
+distinct `Chunks.start_page_id` values of up to 1000 of its chunks (one query per document,
+16 at a time; no text or vectors), looks the page UUIDs up in `meta_records` in all
 libraries, and walks each page row up `(parent_id, parent_library)` within its own library
 (batched, max depth 16) until it reaches the document's id. A page UUID match alone proves
 nothing: only chains that reach the document count. Distinct start pages are the evidence
 unit (several chunks on one page count once).
 
-| Evidence | Report | Effect |
+| Evidence | Report | Library |
 |---|---|---|
-| 2+ distinct pages reach the document, all in one library | `page_evidence.confidence: high` | `candidate` (`library_from: page_ancestry`) |
-| exactly one such page | `low` | `candidate`; review with extra care |
-| chains reach the document in several libraries (mirrored page UUIDs, or different pages in different libraries) | `ambiguous` | `unresolved: page_evidence_ambiguous`; never the most common library |
-| a stored library the chains do not reach | | `unresolved: page_evidence_conflict` with `proposed_library`; correct only with a reviewed `--library-override` |
-| a `--library-map` / `--library-override` library the chains do not reach | | the explicit library is used; `page_evidence_disagrees: true` for review |
-| no chunks, no valid start page, no page in the mirror, or no chain reaches the document | `no_chunks` / `none` | the other rules apply unchanged |
+| 2+ distinct pages reach the document, all in one library | `page_evidence.confidence: high` | that library (`library_from: page_ancestry`), replacing a different stored library |
+| exactly one such page | `low` | the same |
+| chains reach the document in several libraries (mirrored page UUIDs, or different pages in different libraries) | `ambiguous` | a stored library among them, else the first of them in `--library-priority` (`page_priority`), else `unresolved: page_evidence_ambiguous` |
+| a `--library-map` / `--library-override` library the chains do not reach | | the explicit library; `page_evidence_disagrees: true` for review |
+| no chunks, no valid start page, no page in the mirror, or no chain reaches the document | `no_chunks` / `none` | the stored library, else rule 5 |
 
 Each entry's `page_evidence` lists chunks read (`truncated` beyond 1000), distinct valid
 start pages, invalid or missing `start_page_id` values, pages not in the mirror, verified
 pages per library, the statuses of chains that did not reach the document
 (`other_document`, `cross_library`, `broken`, `cycle`, `too_deep`) and up to three sample
-paths (UUIDs only). Page evidence never permits a `public` change. Failure modes: a store
-without `start_page_id` gives `none`; a mirror missing one library's page rows makes the
-other library look unique, so check the per-library page counts of the document when
-reviewing (two libraries with their own, differently identified pages are separate
-digitizations; the text came from the one whose pages match).
+paths (UUIDs only). Failure modes: a store without `start_page_id` gives `none`; a mirror
+missing one library's page rows makes the other library look unique (two libraries with
+their own, differently identified pages are separate digitizations; the text came from the
+one whose pages match).
 
-**Update rule.** Empty properties are filled; replacing a differing value needs
-`--overwrite` and changing `public` needs `--update-access` (keep it off unless a rights
-review authorizes it); otherwise the change is `held`. Values are never cleared (`stale`
-lists stored values the source row lacks). Only declared properties are written, in their
-declared type; the schema changes only through `--add-library-property`, which adds a text
-`library` (whole-value tokenization) so the source library is stored. Applying requires it.
-`in_library` is reported only: the mirror sets it on rows added or updated since the column
-was introduced, so `false` may just mean "not reprocessed".
+**Update rule.** `library` and `public` always follow the selected row, so a document's
+access matches its record in the source library (this can make a document public or
+private; the report's `changed_properties.public` counts them). `title` is composed from the
+row and its ancestors in the same library (periodical, volume, issue; see
+[DATABASE.md](DATABASE.md#document-metadata-from-the-kramerius-mirror)). Other empty
+properties are filled; replacing a differing value needs `--overwrite`, otherwise the change
+is `held`. Values are never cleared (`stale` lists stored values the source row lacks). Only
+declared properties are written, in their declared type; the schema changes only through
+`--add-library-property`, which adds a text `library` (whole-value tokenization) so the
+source library is stored. Applying requires it. `in_library` is reported only: the mirror
+sets it on rows added or updated since the column was introduced, so `false` may just mean
+"not reprocessed".
 
 **Apply rule.** `--apply REPORT --confirm-endpoint HOST:PORT` refuses to run unless the
 endpoint and collection equal the report's, the declared types are unchanged and include
-`library`, and, without `--accept-incomplete`, the report has no unresolved or candidate
-documents. Per document it writes only if the stored library and every changed property
-still equal the report's old values, then reads the values back. The check and the write
-are not atomic, so apply while nothing else edits document metadata. Running it again
-skips finished documents. Exit code 1: nothing was eligible, or an eligible document was
-not written or not verified (listed with the reason).
+`library`, and, without `--accept-incomplete`, the report has no unresolved documents. Per
+document it writes only if the stored library and every changed property still equal the
+report's old values, then reads the values back. The check and the write are not atomic, so
+apply while nothing else edits document metadata. Running it again skips finished
+documents. Exit code 1: nothing was eligible, or an eligible document was not written or
+not verified (listed with the reason).
 
 #### Local check on a copy of the development snapshot
 
@@ -422,21 +433,21 @@ database or production. `make test-integration` does not use `local_data/`.
    the mirror.
 
 3. **Read-only inventory.** `python -m semant_demo.maintenance.metadata_sync --report
-   r1.json --infer-library-from-pages --infer-unique-library --distrust-stored mzk
-   --candidates candidates.csv --overwrite` (add `--limit N` / `--document-ids FILE` to
-   narrow it). Check `counts`: `mirror_libraries` (none / one / several), `page_evidence`,
-   `library_from`, `unresolved` kinds, `candidate`, `changed_properties`,
-   `held_properties`, and sample `changes` and `page_evidence` per library in `r1.json`.
+   r1.json --infer-library-from-pages --library-priority LIB,LIB,...
+   --infer-library-from-mirror --distrust-stored mzk --inferred inferred.csv --overwrite`
+   (add `--limit N` / `--document-ids FILE` to narrow it). Check `counts`:
+   `mirror_libraries` (none / one / several), `page_evidence`, `library_from`,
+   `library_replaced`, `unresolved` kinds, `changed_properties` (especially `public` and
+   `title`) and `held_properties`, and sample `changes` and `page_evidence` per library.
 
-4. **Review libraries.** Review `candidates.csv`; keep the verified lines as the library
-   map. Put approved corrections of wrong stored values in an override file. Documents
-   with several mirror libraries stay unresolved without independent evidence.
+4. **Sample libraries.** Check a sample of `inferred.csv` per method (especially `low` and
+   `page_priority`/`mirror_priority`); put corrections in an override file.
 
 5. **Declare `library` on the copy:** `--add-library-property --confirm-endpoint localhost:18080`.
 
-6. **Report for applying:** `--report r2.json --distrust-stored mzk --library-map
-   verified.csv [--library-override corrections.csv] --overwrite`. Review every
-   replacement (`old` -> `new`) and the unresolved list.
+6. **Report for applying:** the step 3 options (plus `--library-override corrections.csv`)
+   with `--report r2.json`. Sample replacements (`old` -> `new`) and review the unresolved
+   list.
 
 7. **Apply to the copy:** `--apply r2.json --confirm-endpoint localhost:18080
    [--accept-incomplete]`. Check `eligible`, `applied`, `verified`, `not_applied`, `failed`.
@@ -453,17 +464,23 @@ database or production. `make test-integration` does not use `local_data/`.
 
 Copy of the 500-document snapshot (3,260 chunks in 32 documents) and the real mirror:
 237 documents have mirror rows in one library, 263 in several. Page evidence: 468
-documents have no chunks; of the 263 with several libraries, 250 have no chunks, 4 were
-resolved to `mzk` (3 `high`, 1 `low`; both libraries hold the same number of pages but only
-`mzk`'s page UUIDs match the chunks) and 9 stay `page_evidence_ambiguous` (the same page
-UUIDs reach the document in both libraries). All 14 single-library documents with chunks
-got the same library from their pages as from the unique-row rule. A stored fake `mzk` and
-a stored wrong `nkp` were reported as `page_evidence_conflict` with the correct
-`proposed_library`. A reviewed subset (3 page candidates, 2 overrides) applied and verified
-5/5 with `public` unchanged; applying again and a fresh report found nothing to do. With
-`--overwrite`, `mzk` periodical items replace a full title by the issue number (e.g.
-"Časopis českého lékárnictva. 12" -> "12"): review title replacements before using it.
-Details are on PR #258.
+documents have no chunks; 23 got a library from their pages (20 `high`, 3 `low`; of the 263
+with several libraries, 4 resolved to `mzk`, where both libraries hold the same number of
+pages but only `mzk`'s page UUIDs match the chunks), and 9 are `ambiguous` (the same page
+UUIDs reach the document in two libraries). All 14 single-library documents with chunks got
+the same library from their pages as their single mirror row.
+
+With the example priority `nkp,mzk` and `--infer-library-from-mirror` (2.2 s for the 500):
+23 `page_ancestry`, 9 `page_priority`, 218 `mirror_unique`, 249 `mirror_priority`, 1
+unresolved (`eod` + `knav`, neither in the list). The order matters: with `mzk,nkp`, 215
+documents get `mzk` instead of `nkp`. `--overwrite` changes 360
+titles, mostly issue numbers becoming full titles ("284" -> "Tagesbote. 76. 284"; "Právo
+lidu. 183" -> "Právo lidu: časopis hájící zájmy… . 20. 183"). `mzk` issue rows without a
+title or part number give only the periodical title ("Národní listy. 241" -> "Národní
+listy"). 21 documents become non-public (the selected row's `public` is `false`), none
+become public. Applying wrote and verified 499/499; applying again and a fresh report found
+nothing to do; a stored library planted wrong was replaced from `high` page evidence and
+verified. Details are on PR #258.
 
 ## 11. Testing versus development data
 

@@ -32,6 +32,15 @@ META_RECORDS = Table(
 )
 
 
+def _record(row: Any) -> SourceRecord:
+    return SourceRecord(
+        id=str(row["id"]), library=row["library"], public=row["public"], in_library=row["in_library"],
+        record_type=row["record_type"], title=row["title"], date=row["date"],
+        start_date=row["start_date"], end_date=row["end_date"], metadata_json=row["metadata_json"],
+        parent_id=row["parent_id"] and str(row["parent_id"]), parent_library=row["parent_library"],
+    )
+
+
 def read_meta_records(connection: Connection, ids: Sequence[UUID]) -> dict[UUID, list[SourceRecord]]:
     """Every mirror row of these ids, of any library, by id. Ids without rows are absent."""
     if not ids:
@@ -39,12 +48,52 @@ def read_meta_records(connection: Connection, ids: Sequence[UUID]) -> dict[UUID,
     rows = connection.execute(select(META_RECORDS).where(META_RECORDS.c.id.in_(list(ids))))
     found: dict[UUID, list[SourceRecord]] = {}
     for row in rows.mappings():
-        found.setdefault(row["id"], []).append(SourceRecord(
-            id=str(row["id"]), library=row["library"], public=row["public"], in_library=row["in_library"],
-            record_type=row["record_type"], title=row["title"], date=row["date"],
-            start_date=row["start_date"], end_date=row["end_date"], metadata_json=row["metadata_json"],
-        ))
+        found.setdefault(row["id"], []).append(_record(row))
     return found
+
+
+ANCESTOR_MAX_DEPTH = 8
+
+
+def read_ancestors(connection: Connection, records: Iterable[SourceRecord],
+                   cache: dict[tuple[str, str], SourceRecord | None] | None = None,
+                   max_depth: int = ANCESTOR_MAX_DEPTH) -> dict[tuple[str, str], list[SourceRecord]]:
+    """The ancestors of each record, ``(id, library)``, root first, following ``(parent_id,
+    parent_library)`` while the parent is in the record's library; the walk stops at a parent in
+    another library, a missing row, a cycle or ``max_depth``. Rows are read level by level in
+    batches; ``cache`` (``(id, library)`` -> row or None) may be shared between calls."""
+    cache = {} if cache is None else cache
+    walks = {(r.id, r.library): [r] for r in records}
+
+    def parent(record: SourceRecord) -> tuple[str, str] | None:
+        if record.parent_id and record.parent_library == record.library:
+            return record.parent_id, record.library
+        return None
+
+    active = list(walks)
+    while active:
+        missing = sorted({key for walk in (walks[k] for k in active)
+                          if (key := parent(walk[-1])) is not None and key not in cache})
+        for start in range(0, len(missing), _ID_BATCH):
+            batch = missing[start:start + _ID_BATCH]
+            for key in batch:
+                cache[key] = None
+            ids = sorted({UUID(i) for i, _ in batch})
+            for row in connection.execute(select(META_RECORDS).where(META_RECORDS.c.id.in_(ids))).mappings():
+                key = (str(row["id"]), row["library"])
+                if key in cache:
+                    cache[key] = _record(row)
+        still = []
+        for key in active:
+            walk = walks[key]
+            up = parent(walk[-1])
+            node = cache.get(up) if up else None
+            if node is None or len(walk) > max_depth or any((n.id, n.library) == up for n in walk):
+                continue
+            walk.append(node)
+            still.append(key)
+        active = still
+    return {key: walk[:0:-1] for key, walk in walks.items()}
 
 
 PAGE_CHAIN_MAX_DEPTH = 16
