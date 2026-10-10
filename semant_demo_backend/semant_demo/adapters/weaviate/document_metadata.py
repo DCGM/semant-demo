@@ -1,12 +1,14 @@
 """Document metadata synchronization: the ``Documents`` schema, reads by page or id, updates (#257).
 
-Only reads the schema; never creates, alters or drops a collection or property.
+Never creates, drops or alters a collection; ``add_text_property`` only adds a property,
+on explicit request.
 """
 from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
+from weaviate.classes.config import DataType, Property, Tokenization
 from weaviate.classes.query import Filter
 
 import semant_demo.schemas as schemas
@@ -47,3 +49,10 @@ async def update_document(client: WeaviateAsyncClient, names: schemas.Collection
                           document_id: UUID, properties: dict[str, Any]) -> None:
     """Set these properties of the document; others are kept."""
     await _documents(client, names).data.update(uuid=document_id, properties=properties)
+
+
+async def add_text_property(client: WeaviateAsyncClient, names: schemas.CollectionNames, name: str) -> None:
+    """Declare a text property on the documents collection, matched as a whole value (``field``
+    tokenization: a filter on ``cuni`` does not match ``cuni_fsv``); existing documents have no value."""
+    await _documents(client, names).config.add_property(
+        Property(name=name, data_type=DataType.TEXT, tokenization=Tokenization.FIELD))

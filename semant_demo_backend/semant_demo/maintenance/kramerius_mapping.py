@@ -82,9 +82,11 @@ def parse_issue_date(text: str | None, start: datetime | date | None = None,
     ``5.1929``, ``1929``, ``[1929?]`` or ``asi 1929``.
 
     A year or month gives only the year, never an invented day. A range, open range or
-    partial year (``1890-1895``, ``1890-``, ``189-``) gives nothing, unless the mirror's
-    parsed ``start``/``end`` both lie in one year: then that year. ``start`` alone is not
-    used, because the mirror stores a point date and an open range the same way.
+    partial year (``1890-1895``, ``1890-``, ``189-``) or an unparsed text (the mirror's
+    ``not_found``) gives nothing from the text; then the mirror's parsed ``start``/``end``
+    are used: equal values give that day (except 1 January, possibly a year-only value),
+    values in one year give the year. ``start`` alone is not used, because the mirror stores
+    a point date (a year as 1 January) and an open range the same way.
     """
     if text:
         cleaned = _APPROXIMATE.sub("", re.sub(r"[\[\]?]", "", text).strip())
@@ -99,6 +101,8 @@ def parse_issue_date(text: str | None, start: datetime | date | None = None,
         if match := _YEAR.match(cleaned):
             return IssueDate(year=int(match.group(1)))
     if start is not None and end is not None and start.year == end.year:
+        if start == end and (start.month, start.day) != (1, 1):
+            return _day(str(start.year), str(start.month), str(start.day))
         return IssueDate(year=start.year)
     return IssueDate()
 

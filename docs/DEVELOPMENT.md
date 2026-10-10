@@ -319,37 +319,104 @@ without explicit authorization for that task.
 
 `python -m semant_demo.maintenance.metadata_sync` (run in `semant_demo_backend/`) copies
 document metadata from the Kramerius PostgreSQL mirror (`meta_records`, maintained by the
-`librarymetadata` project) to the `Documents` collection (#257). The mirror's SQLAlchemy URL
-comes from `KRAMERIUS_METADATA_DSN` (install a PostgreSQL driver such as `psycopg`
-separately; never put the password on the command line), Weaviate from the `WEAVIATE_*`
-settings. The field mapping is in [DATABASE.md](DATABASE.md#document-metadata-from-the-kramerius-mirror).
+`librarymetadata` project) to the `Documents` collection (#257). The field mapping is in
+[DATABASE.md](DATABASE.md#document-metadata-from-the-kramerius-mirror); all options are in
+the module docstring (`--help`). Writing to the deployed test or production stores is a
+separately authorized operation (#259); this section covers the local check.
 
-Each document uses only the mirror row of its own source library, `(id, library)`: the
-document's stored `library` or, for stores without it, a `--library-map` CSV of
-`document_id,library` lines. Values missing in that row are never taken from another
-library. Documents with no library, a stored library differing from the map, or no row for
-their library are reported as `unresolved` and not changed.
+**Source library rule.** Each document uses only the mirror row of its own source library,
+`(id, library)`; values that row lacks are never taken from another library, and the "most
+complete" row is never chosen. The library is, in order: an approved correction
+(`--library-override FILE`), the stored `library` (unless listed by `--distrust-stored`,
+e.g. `mzk`, which older code wrote as a default and the API still shows for documents
+without one), a verified map (`--library-map FILE`; a different stored library is a
+`library_conflict`), or, only with `--infer-unique-library`, the library of the mirror's
+only row for the id. Inferred libraries are `candidate`s: never applied, never used to
+change `public`; `--candidates FILE` writes them as a map to review and pass back with
+`--library-map`. Documents with several mirror libraries and no verified one, a conflict,
+or no row for their library are `unresolved`. Map files are CSV `document_id,library`.
 
-Without `--apply` the command only reads; `--report FILE` writes every document's planned
-`changes`, `held` changes, `skipped` values (not fitting the declared type) and `stale`
-properties (stored, absent from the source). Narrow the scope with `--document-ids FILE`,
-`--limit N` and `--after ID` (continue from a report's `next_after`). Empty properties are
-filled; replacing a differing value needs `--overwrite` and changing `public` needs
-`--update-access`, otherwise they are `held`. Values are never cleared and the schema is
-never changed: only declared properties are written, converted to their declared type.
+**Update rule.** Empty properties are filled; replacing a differing value needs
+`--overwrite` and changing `public` needs `--update-access` (keep it off unless a rights
+review authorizes it); otherwise the change is `held`. Values are never cleared (`stale`
+lists stored values the source row lacks). Only declared properties are written, in their
+declared type; the schema changes only through `--add-library-property`, which adds a text
+`library` (whole-value tokenization) so the source library is stored. Applying requires it.
+`in_library` is reported only: the mirror sets it on rows added or updated since the column
+was introduced, so `false` may just mean "not reprocessed".
 
-After reviewing the report and backing up the data:
+**Apply rule.** `--apply REPORT --confirm-endpoint HOST:PORT` refuses to run unless the
+endpoint and collection equal the report's, the declared types are unchanged and include
+`library`, and, without `--accept-incomplete`, the report has no unresolved or candidate
+documents. Per document it writes only if the stored library and every changed property
+still equal the report's old values, then reads the values back. The check and the write
+are not atomic, so apply while nothing else edits document metadata. Running it again
+skips finished documents. Exit code 1: nothing was eligible, or an eligible document was
+not written or not verified (listed with the reason).
 
-```bash
-python -m semant_demo.maintenance.metadata_sync --apply FILE --confirm-endpoint localhost:8080
-```
+#### Local check on a copy of the development snapshot
 
-It refuses to run unless the configured endpoint and collection equal the report's and
-the declared property types are unchanged. Each property is written only while its stored
-value still equals the reviewed old value, so running it again after a failure skips
-finished documents and lists documents changed meanwhile. It exits with 1 if any listed
-document was not updated. Never run `--apply` against a shared or production database
-without explicit authorization for that task.
+Never run this against the only copy of `local_data/weaviate_semant_test/`, a shared
+database or production. `make test-integration` does not use `local_data/`.
+
+1. **Copy the snapshot offline.** Stop the development Weaviate (`docker stop
+   semant-weaviate-dev`) so the files are consistent, check free space (the snapshot is
+   ~110 MB; Weaviate turns read-only above `DISK_USE_READONLY_PERCENTAGE` of its disk),
+   and copy it to an empty directory, e.g. `$COPY`. Some files are owned by the container's
+   root user, so copy (and optionally checksum) through a container:
+
+   ```bash
+   mkdir "$COPY"
+   docker run --rm --entrypoint sh \
+     --mount type=bind,source="$(pwd)/local_data/weaviate_semant_test",target=/src,readonly \
+     --mount type=bind,source="$COPY",target=/dst \
+     cr.weaviate.io/semitechnologies/weaviate:1.34.4 -c 'cp -a /src/. /dst/'
+   ```
+
+   Restart the development Weaviate (section 3), then start the copy as a second instance
+   with the section 3 command, changing only the name, ports and mount source:
+   `--name semant-weaviate-metadata-test -p 127.0.0.1:18080:8080 -p 127.0.0.1:15051:50051
+   --mount type=bind,source="$COPY",target=/var/lib/weaviate`. Check
+   `curl localhost:18080/v1/.well-known/ready`, `/v1/schema/Documents` and the object counts.
+
+2. **Point the command at the copy and the mirror.** In `semant_demo_backend/`:
+
+   ```bash
+   export WEAVIATE_HOST=localhost WEAVIATE_REST_PORT=18080 WEAVIATE_GRPC_PORT=15051
+   ../.venv/bin/pip install "psycopg[binary]"     # driver, not an app dependency
+   export KRAMERIUS_METADATA_DSN="postgresql+psycopg://librarymetadata_all@127.0.0.1:5888/librarymetadata_all"
+   ```
+
+   The DSN assumes an SSH tunnel to the mirror on port 5888 that you are authorized to
+   use; keep passwords out of the command line and the repository. The command only reads
+   the mirror.
+
+3. **Read-only inventory.** `python -m semant_demo.maintenance.metadata_sync --report
+   r1.json --infer-unique-library --distrust-stored mzk --candidates candidates.csv
+   --overwrite` (add `--limit N` / `--document-ids FILE` to narrow it). Check
+   `counts`: `mirror_libraries` (none / one / several), `unresolved` kinds, `candidate`,
+   `changed_properties`, `held_properties`, and sample `changes` per library in `r1.json`.
+
+4. **Review libraries.** Review `candidates.csv`; keep the verified lines as the library
+   map. Put approved corrections of wrong stored values in an override file. Documents
+   with several mirror libraries stay unresolved without independent evidence.
+
+5. **Declare `library` on the copy:** `--add-library-property --confirm-endpoint localhost:18080`.
+
+6. **Report for applying:** `--report r2.json --distrust-stored mzk --library-map
+   verified.csv [--library-override corrections.csv] --overwrite`. Review every
+   replacement (`old` -> `new`) and the unresolved list.
+
+7. **Apply to the copy:** `--apply r2.json --confirm-endpoint localhost:18080
+   [--accept-incomplete]`. Check `eligible`, `applied`, `verified`, `not_applied`, `failed`.
+
+8. **Read back** through the application (`DocumentRepository.read` / `read_chunks`, a
+   search with a `yearIssued` filter, the `library` of hits), then run step 7 again
+   (expect `already_applied`) and a fresh report (expect `eligible: 0` apart from
+   documents edited meanwhile).
+
+9. **Clean up.** `docker stop semant-weaviate-metadata-test`; delete `$COPY` when done.
+   Confirm the development snapshot was not modified (counts, no `library` property).
 
 ## 11. Testing versus development data
 
