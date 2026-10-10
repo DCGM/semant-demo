@@ -7,7 +7,7 @@ PYTHON ?= $(VENV)/bin/python
 PY := $(if $(findstring /,$(PYTHON)),$(abspath $(PYTHON)),$(PYTHON))
 FAST_TESTS := not integration and not live and not benchmark
 
-.PHONY: setup check check-backend check-frontend api-generate api-check test-integration test-e2e
+.PHONY: setup check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e
 
 ## Install pinned development dependencies (backend venv and frontend node_modules).
 setup:
@@ -44,3 +44,11 @@ api-generate:
 
 api-check:
 	cd semant_demo_frontend && PYTHON=$(PY) npm run api-check
+
+## Regenerate the backend Python locks after changing requirements*.txt (needs pip-tools).
+lock:
+	LOCK_COMPILER=$(VENV)/bin/pip-compile scripts/python-locks.sh update
+
+## Fail if either backend Python lock is stale for its requirements (needs network).
+lock-check:
+	LOCK_COMPILER=$(VENV)/bin/pip-compile scripts/python-locks.sh check

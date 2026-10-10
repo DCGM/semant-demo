@@ -37,8 +37,12 @@ FROM python:3.12 AS python-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ build-essential && \
     rm -rf /var/lib/apt/lists/*
-COPY --from=git /tmp/repo/semant_demo_backend/requirements.txt /tmp/requirements.txt
-RUN pip install --user --no-cache-dir -r /tmp/requirements.txt
+# Install the hashed runtime lock, which pins the same versions as the CI-tested dev lock;
+# --require-hashes also rejects any dependency the lock does not pin, so nothing is resolved
+# here. requirements.txt only declares the direct dependencies (#139).
+COPY --from=git /tmp/repo/semant_demo_backend/requirements-runtime.lock /tmp/requirements-runtime.lock
+RUN pip install --user --no-cache-dir --require-hashes -r /tmp/requirements-runtime.lock && \
+    pip check
 
 
 
