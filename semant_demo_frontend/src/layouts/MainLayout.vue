@@ -100,31 +100,33 @@
 
           <q-separator inset class="q-my-sm" />
 
-          <q-item
-            class="drawer-item"
-            v-for="link in drawerLinks2"
-            :key="link.label"
-            :to="link.to"
-            clickable
-            v-ripple
-          >
-            <q-item-section class="avatar" avatar>
-              <q-icon :name="link.icon" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label class="item-label">{{ link.label }}</q-item-label>
-            </q-item-section>
-            <q-tooltip
-              class="text-subtitle2"
-              anchor="center right"
-              self="center left"
-              v-if="drawerMiniState"
+          <template v-if="drawerLinks2.length">
+            <q-item
+              class="drawer-item"
+              v-for="link in drawerLinks2"
+              :key="link.label"
+              clickable
+              v-ripple
+              @click="link.action"
             >
-              {{ link.label }}
-            </q-tooltip>
-          </q-item>
+              <q-item-section class="avatar" avatar>
+                <q-icon :name="link.icon" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label class="item-label">{{ link.label }}</q-item-label>
+              </q-item-section>
+              <q-tooltip
+                class="text-subtitle2"
+                anchor="center right"
+                self="center left"
+                v-if="drawerMiniState"
+              >
+                {{ link.label }}
+              </q-tooltip>
+            </q-item>
 
-          <q-separator inset class="q-my-sm" />
+            <q-separator inset class="q-my-sm" />
+          </template>
 
           <div v-if="!drawerMiniState">
             <q-item
@@ -145,7 +147,14 @@
             <q-separator inset class="q-my-sm" />
           </div>
 
-          <q-item class="drawer-item" v-for="link in drawerLinks4" :key="link.label" clickable v-ripple>
+          <q-item
+            class="drawer-item"
+            v-for="link in drawerLinks4"
+            :key="link.label"
+            clickable
+            v-ripple
+            @click="link.action"
+          >
             <q-item-section class="avatar" avatar>
               <q-icon :name="link.icon" />
             </q-item-section>
@@ -182,7 +191,7 @@
 <script setup lang="ts">
 import MiniStateButton from 'src/components/MiniStateButton.vue'
 import semantLogo from 'src/assets/semant-logo.png'
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
@@ -206,24 +215,39 @@ const showAbout = ref(false)
 
 onMounted(async () => {
   // Restore session if a token exists in localStorage
-  await userStore.fetchCurrentUser()
+  await userStore.restoreSession()
 })
-const drawerLinks1 = [
+
+interface DrawerAction {
+  label: string
+  icon: string
+  action: () => void
+}
+
+// Navigation follows the session: protected pages and account actions only when signed
+// in, Log in / Register only when signed out. The backend still authorizes every request.
+const drawerLinks1 = computed(() => [
   { label: 'Document search', icon: 'search', to: { name: 'search' } },
   { label: 'Chat Assistant', icon: 'chat', to: { name: 'rag' } },
-  { label: 'Collections', icon: 'folder', to: { name: 'collections' } },
+  ...(userStore.isLoggedIn ? [{ label: 'Collections', icon: 'folder', to: { name: 'collections' } }] : []),
   { label: 'About', icon: 'info', to: { name: 'about' } }
-]
+])
 
-const drawerLinks2 = [
-  { label: 'Settings', icon: 'settings', to: { name: 'settings' } }
-]
+// Account settings live in the account dialog; there is no settings page.
+const drawerLinks2 = computed<DrawerAction[]>(() => userStore.isLoggedIn
+  ? [{ label: 'Settings', icon: 'settings', action: () => { showUserInfo.value = true } }]
+  : [])
 
 const drawerLinks3 = [
   { label: 'Send feedback', icon: '', to: { name: 'feedback' } }
 ]
 
-const drawerLinks4 = [{ icon: 'logout', label: 'Sign out' }]
+const drawerLinks4 = computed<DrawerAction[]>(() => userStore.isLoggedIn
+  ? [{ label: 'Sign out', icon: 'logout', action: handleLogout }]
+  : [
+      { label: 'Log in', icon: 'login', action: () => { showLogin.value = true } },
+      { label: 'Register', icon: 'person_add', action: () => { showRegister.value = true } }
+    ])
 
 function toggleLeftDrawer () {
   leftDrawerOpen.value = !leftDrawerOpen.value
@@ -239,7 +263,6 @@ async function handleLogout () {
   })
 }
 const miniStateClick = () => {
-  console.log('Mini state clicked')
   drawerMiniState.value = !drawerMiniState.value
 }
 

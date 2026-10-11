@@ -2,6 +2,9 @@ import { defineStore } from 'pinia'
 import type { UserRead } from 'src/generated/api'
 import { clearAuthToken, getAuthToken, setAuthToken, useApi } from 'src/shared/api'
 
+// The restore of a stored token in flight, shared by everyone who waits for it.
+let restoring: Promise<void> | null = null
+
 interface UserStoreState {
   user: UserRead | null
   token: string | null
@@ -40,6 +43,16 @@ export const useUserStore = defineStore('user', {
       } finally {
         this.forgetSession()
       }
+    },
+
+    /**
+     * Restores the session of a stored token once (layout start-up and the first guarded
+     * navigation share one request). Resolves at once without a token or when already done.
+     */
+    restoreSession (): Promise<void> {
+      if (!this.token || this.user) return Promise.resolve()
+      restoring ??= this.fetchCurrentUser().finally(() => { restoring = null })
+      return restoring
     },
 
     async fetchCurrentUser (): Promise<void> {
