@@ -2,6 +2,7 @@ apis/AuthApi.ts
 apis/DefaultApi.ts
 apis/UsersApi.ts
 apis/index.ts
+docs/AdjacentChunks.md
 docs/AppFeedbackRequest.md
 docs/AuthApi.md
 docs/BearerResponse.md
@@ -80,6 +81,7 @@ docs/ValuesAnyOfInner.md
 docs/WriteOutcome.md
 docs/WriteResult.md
 index.ts
+models/AdjacentChunks.ts
 models/AppFeedbackRequest.ts
 models/BearerResponse.ts
 models/BulkUpdateSpansRequest.ts

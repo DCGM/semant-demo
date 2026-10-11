@@ -51,6 +51,7 @@ async def test_removing_a_chunk_twice_succeeds(api_client, login, ids, store):
     ("GET", "/api/documents/not-a-uuid/chunks/count"),
     ("GET", "/api/documents/{doc}/chunks/{unknown}/window"),
     ("GET", "/api/documents/{unknown}/chunks/{chunk}/window"),
+    ("GET", "/api/documents/{unknown}/chunks/{chunk}/adjacent?direction=after"),
 ])
 async def test_unknown_objects_are_not_found(api_client, login, ids, method, path):
     response = await api_client.request(method, path.format(c=ids.col["chronicles"], unknown=UNKNOWN,
@@ -78,6 +79,15 @@ async def test_public_chunk_window(api_client, ids, corpus):
     assert [c["id"] for c in body["chunks"]] == [ids.chunk["chronicle_1"], ids.chunk["chronicle_2"]]
     assert [c["text"] for c in body["chunks"]] == [corpus.chunks[k]["text"] for k in ("chronicle_1", "chronicle_2")]
     assert (body["has_before"], body["has_after"], body["total_chunks"]) == (False, True, 3)
+
+
+async def test_public_adjacent_chunks(api_client, ids, corpus):
+    response = await api_client.get(f"/api/documents/{ids.doc['chronicle']}/chunks/{ids.chunk['chronicle_1']}/adjacent",
+                                    params={"direction": "after", "limit": 1})
+
+    assert response.status_code == 200, response.text
+    assert [c["id"] for c in response.json()["chunks"]] == [ids.chunk["chronicle_2"]]
+    assert response.json()["has_more"] is True
 
 
 async def test_chunk_window_refuses_a_chunk_of_another_document(api_client, ids):

@@ -88,3 +88,14 @@ class DocumentChunkWindow(BaseModel):
     has_before: bool
     has_after: bool
     total_chunks: int
+
+
+class AdjacentChunks(BaseModel):
+    """
+    Chunks directly before or after a chunk of a corpus document, in document order, without
+    the chunk itself (public). Extends a :class:`DocumentChunkWindow` without reading the
+    document metadata or chunk count again. ``has_more`` tells whether the document
+    continues beyond them in that direction.
+    """
+    chunks: list[TextChunk]
+    has_more: bool

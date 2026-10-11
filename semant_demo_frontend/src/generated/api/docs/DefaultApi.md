@@ -37,6 +37,7 @@ All URIs are relative to *http://localhost*
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
 | [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
+| [**readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet**](DefaultApi.md#readdocumentadjacentchunksapidocumentsdocumentidchunkschunkidadjacentget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/adjacent | Read Document Adjacent Chunks |
 | [**readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet**](DefaultApi.md#readdocumentchunkwindowapidocumentsdocumentidchunkschunkidwindowget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/window | Read Document Chunk Window |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
@@ -2420,6 +2421,83 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet
+
+> AdjacentChunks readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(documentId, chunkId, direction, limit)
+
+Read Document Adjacent Chunks
+
+Returns up to &#x60;&#x60;limit&#x60;&#x60; chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with &#x60;&#x60;/window&#x60;&#x60; without reading the document metadata or chunk count again.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    documentId: documentId_example,
+    // string
+    chunkId: chunkId_example,
+    // 'before' | 'after'
+    direction: direction_example,
+    // number (optional)
+    limit: 56,
+  } satisfies ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest;
+
+  try {
+    const data = await api.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+| **chunkId** | `string` |  | [Defaults to `undefined`] |
+| **direction** | `before`, `after` |  | [Defaults to `undefined`] [Enum: before, after] |
+| **limit** | `number` |  | [Optional] [Defaults to `5`] |
+
+### Return type
+
+[**AdjacentChunks**](AdjacentChunks.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 

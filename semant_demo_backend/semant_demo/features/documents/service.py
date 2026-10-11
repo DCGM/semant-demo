@@ -14,7 +14,8 @@ from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.collections import access
 from semant_demo.features.collections.access import Principal
-from semant_demo.schema.documents import Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
+from semant_demo.schema.chunks import TextChunk
+from semant_demo.schema.documents import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 
 Id = str | UUID
 
@@ -36,33 +37,67 @@ MAX_WINDOW_SIDE = 50
 """Most chunks read on either side of the anchor chunk in one passage request."""
 
 
-async def read_chunk_window(documents: DocumentRepository, document_id: Id, chunk_id: Id,
-                            before: int, after: int) -> DocumentChunkWindow:
-    """
-    A passage of a corpus document (public): the chunk and up to ``before``/``after``
-    (at most ``MAX_WINDOW_SIDE``) chunks around it. The chunk must belong to the document.
-    """
-    if not (0 <= before <= MAX_WINDOW_SIDE and 0 <= after <= MAX_WINDOW_SIDE):
-        raise InvalidRequestError(f"before and after must be between 0 and {MAX_WINDOW_SIDE}")
+def _check_window_side(*sides: int) -> None:
+    if not all(0 <= side <= MAX_WINDOW_SIDE for side in sides):
+        raise InvalidRequestError(f"before, after and limit must be between 0 and {MAX_WINDOW_SIDE}")
+
+
+async def _read_anchor(documents: DocumentRepository, document_id: Id, chunk_id: Id) -> TextChunk:
+    """The chunk, which must belong to the document (otherwise "not found")."""
     doc_id = access.parse_id(document_id, "Document")
     anchor = await documents.read_chunk(access.parse_id(chunk_id, "Chunk"))
     if anchor is None or anchor.document != doc_id:
         raise NotFoundError(f"Chunk with id {chunk_id} not found in document {document_id}")
-    document = await read_document(documents, doc_id)
+    return anchor
 
-    preceding, following = [], []
-    if anchor.order is not None:
-        # One more than requested on each side tells whether the document continues.
-        preceding = await documents.read_adjacent_chunks(doc_id, anchor.order, "before", before + 1)
-        following = await documents.read_adjacent_chunks(doc_id, anchor.order, "after", after + 1)
+
+async def _adjacent(documents: DocumentRepository, anchor: TextChunk, direction: str,
+                    count: int) -> tuple[list[TextChunk], bool]:
+    """Up to ``count`` chunks next to the anchor (document order) and whether more follow."""
+    if anchor.order is None:
+        return [], False
+    # One more than requested tells whether the document continues.
+    chunks = await documents.read_adjacent_chunks(anchor.document, anchor.order, direction, count + 1)
+    if direction == "before":
+        return chunks[max(len(chunks) - count, 0):], len(chunks) > count
+    return chunks[:count], len(chunks) > count
+
+
+async def read_chunk_window(documents: DocumentRepository, document_id: Id, chunk_id: Id,
+                            before: int, after: int) -> DocumentChunkWindow:
+    """
+    A passage of a corpus document (public): the chunk and up to ``before``/``after``
+    (at most ``MAX_WINDOW_SIDE``) chunks around it, with the document metadata and chunk
+    count. The chunk must belong to the document.
+    """
+    _check_window_side(before, after)
+    anchor = await _read_anchor(documents, document_id, chunk_id)
+    document = await read_document(documents, anchor.document)
+    preceding, has_before = await _adjacent(documents, anchor, "before", before)
+    following, has_after = await _adjacent(documents, anchor, "after", after)
     return DocumentChunkWindow(
         document=document,
-        chunks=[*preceding[max(len(preceding) - before, 0):], anchor, *following[:after]],
+        chunks=[*preceding, anchor, *following],
         anchor_chunk_id=anchor.id,
-        has_before=len(preceding) > before,
-        has_after=len(following) > after,
-        total_chunks=await documents.count_chunks(doc_id),
+        has_before=has_before,
+        has_after=has_after,
+        total_chunks=await documents.count_chunks(anchor.document),
     )
+
+
+async def read_adjacent_chunks(documents: DocumentRepository, document_id: Id, chunk_id: Id,
+                               direction: str, limit: int) -> AdjacentChunks:
+    """
+    Up to ``limit`` (at most ``MAX_WINDOW_SIDE``) chunks before or after a chunk of a corpus
+    document (public), to extend a passage. Reads only the chunk and its neighbours: no
+    document metadata, no chunk count. The chunk must belong to the document.
+    """
+    if direction not in ("before", "after"):
+        raise InvalidRequestError("direction must be 'before' or 'after'")
+    _check_window_side(limit)
+    anchor = await _read_anchor(documents, document_id, chunk_id)
+    chunks, has_more = await _adjacent(documents, anchor, direction, limit)
+    return AdjacentChunks(chunks=chunks, has_more=has_more)
 
 
 async def browse(documents: DocumentRepository, collections: UserCollectionRepository, user: Principal | None,

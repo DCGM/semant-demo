@@ -31,6 +31,12 @@ const windowBody = (anchor: number, orders: number[], more: { before?: boolean, 
   total_chunks: 100
 })
 
+/** Backend answer of the extension read for the chunks at `orders`. */
+const adjacentBody = (orders: number[], hasMore: boolean) => ({
+  chunks: windowBody(orders[0] ?? 0, orders).chunks,
+  has_more: hasMore
+})
+
 /** Fetch stand-in: each call waits until the test answers it. */
 function controlledFetch () {
   const calls: { url: URL, signal?: AbortSignal | null, answer: (body: unknown, status?: number) => void }[] = []
@@ -92,7 +98,7 @@ describe('useChunkContext', () => {
     expect([context.loading.value, context.error.value, context.containsTarget.value]).toEqual([false, null, true])
   })
 
-  it('extends the passage from its edges', async () => {
+  it('extends the passage from its edges, reading only the neighbours', async () => {
     const context = useChunkContext()
     const opening = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
     await flush()
@@ -102,16 +108,34 @@ describe('useChunkContext', () => {
     const earlier = context.extend('before')
     await flush()
     expect(context.extending.value).toBe('before')
-    expect(calls[1].url.pathname).toBe('/api/documents/doc-1/chunks/doc-1-c9/window')
-    expect(Object.fromEntries(calls[1].url.searchParams)).toEqual({ before: `${CONTEXT_STEP}`, after: '0' })
-    calls[1].answer(windowBody(9, [4, 5, 6, 7, 8, 9], { before: false, after: true }))
+    expect(calls[1].url.pathname).toBe('/api/documents/doc-1/chunks/doc-1-c9/adjacent')
+    expect(Object.fromEntries(calls[1].url.searchParams)).toEqual({ direction: 'before', limit: `${CONTEXT_STEP}` })
+    calls[1].answer(adjacentBody([4, 5, 6, 7, 8], false))
     await earlier
 
     expect(context.chunks.value.map(c => c.order)).toEqual([4, 5, 6, 7, 8, 9, 10, 11])
     expect([context.hasBefore.value, context.hasAfter.value, context.extending.value]).toEqual([false, true, null])
+    // The header's document and count are kept from the first read.
+    expect([context.document.value?.title, context.totalChunks.value]).toEqual(['Title of doc-1', 100])
     // Nothing more before the start of the document.
     await context.extend('before')
     expect(calls).toHaveLength(2)
+  })
+
+  it('asks to show the target again on every open, also of the same target', async () => {
+    const context = useChunkContext()
+    const target = { documentId: 'doc-1', chunkId: 'doc-1-c10' }
+
+    const first = context.open(target)
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11]))
+    await first
+    const again = context.open(target)
+    await flush()
+    calls[1].answer(windowBody(10, [9, 10, 11]))
+    await again
+
+    expect(context.focusRequest.value).toBe(2)
   })
 
   it('drops the answer for an earlier target', async () => {
@@ -140,7 +164,7 @@ describe('useChunkContext', () => {
     const later = context.extend('after')
     await flush()
     context.clear()
-    calls[1].answer(windowBody(11, [11, 12, 13]))
+    calls[1].answer(adjacentBody([12, 13], false))
     await later
 
     expect([context.target.value, context.chunks.value, context.extending.value]).toEqual([null, [], null])
@@ -167,67 +191,82 @@ describe('useChunkContext', () => {
 })
 
 describe('ChunkContextPanel', () => {
+  const chunks = [chunk(3), chunk(4), chunk(5)]
+  const document = { id: 'doc-1', title: 'Kronika', author: ['Jan Novák'], yearIssued: 1921 }
+  let scroll: ReturnType<typeof vi.fn>
+  let scrolled: Element[] // the elements scrolled into view, in order
+
+  beforeEach(() => {
+    // jsdom has no scrollIntoView.
+    scrolled = []
+    scroll = vi.fn(function (this: Element) { scrolled.push(this) })
+    HTMLElement.prototype.scrollIntoView = scroll
+  })
+
   afterEach(() => {
-    // jsdom has no scrollIntoView; the tests add a spy.
     delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView
   })
 
-  const chunks = [chunk(3), chunk(4), chunk(5)]
-  const document = { id: 'doc-1', title: 'Kronika', author: ['Jan Novák'], yearIssued: 1921 }
-
   function mountPanel (props: Record<string, unknown> = {}) {
     return mount(ChunkContextPanel, {
-      props: { targetChunkId: 'doc-1-c4', document, chunks, totalChunks: 20, ...props },
+      props: { targetChunkId: 'doc-1-c4', document, chunks, focusRequest: 1, ...props },
       global: { plugins: [[Quasar, {}]] }
     })
   }
 
-  it('highlights the target chunk and shows the document and position', () => {
-    const scroll = vi.fn()
-    HTMLElement.prototype.scrollIntoView = scroll
-    const wrapper = mountPanel({ hasBefore: true })
+  const button = (wrapper: ReturnType<typeof mountPanel>, label: string) =>
+    wrapper.findAll('button').find(b => b.text().includes(label))
+
+  it('highlights the target chunk under a header with title, year and Focus on result', async () => {
+    const wrapper = mountPanel({ hasBefore: true, returnLabel: 'Focus on result' })
+    await flushPromises()
 
     const target = wrapper.get('[aria-current="true"]')
     expect(target.attributes('data-chunk-id')).toBe('doc-1-c4')
-    expect(target.classes()).toContain('chunk-context__chunk--target')
     expect(wrapper.findAll('.chunk-context__chunk--target')).toHaveLength(1)
-    expect(wrapper.get('[data-testid="chunk-context-document"]').text()).toContain('Kronika')
-    expect(wrapper.get('[data-testid="chunk-context-position"]').text()).toBe('Passage 5 of 20 · Pages 5–5')
+    expect(scroll).toHaveBeenCalledTimes(1)
+    const header = wrapper.get('[data-testid="chunk-context-header"]')
+    expect(header.text()).toContain('Kronika')
+    expect(header.text()).toContain('1921')
+    expect(header.text()).toContain('Focus on result')
+    // No positions or page labels, and no separate "Jump to match".
+    expect(wrapper.text()).not.toMatch(/Passage|Pages|Jump to match/)
     expect(wrapper.text()).toContain('Show earlier text')
     expect(wrapper.text()).toContain('End of document')
   })
 
-  it('jumps to the loaded target and reloads a dropped one', async () => {
-    const scroll = vi.fn()
-    HTMLElement.prototype.scrollIntoView = scroll
+  it('scrolls to the same target again on every focus request', async () => {
+    // Regression: opening the same result again after reading elsewhere did not return to it.
     const wrapper = mountPanel()
     await flushPromises()
-    expect(scroll).toHaveBeenCalledTimes(1) // the new target is brought into view once loaded
-    scroll.mockClear()
-
-    await wrapper.findAll('button').find(b => b.text().includes('Jump to match'))!.trigger('click')
     expect(scroll).toHaveBeenCalledTimes(1)
-    expect(wrapper.emitted('reload')).toBeUndefined()
 
-    await wrapper.setProps({ chunks: [chunk(10), chunk(11)] })
-    await wrapper.findAll('button').find(b => b.text().includes('Jump to match'))!.trigger('click')
-    expect(wrapper.emitted('reload')).toHaveLength(1)
+    // The same target is opened again: reloading, then the same chunks.
+    await wrapper.setProps({ focusRequest: 2, loading: true, chunks: [] })
+    await wrapper.setProps({ loading: false, chunks })
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledTimes(2)
+    expect(scrolled[1]).toBe(wrapper.get('[aria-current="true"]').element)
+
+    // Extending (no focus request) does not scroll back.
+    await wrapper.setProps({ chunks: [chunk(2), ...chunks] })
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledTimes(2)
   })
 
   it('offers extension, return and retry as events', async () => {
-    const wrapper = mountPanel({ hasBefore: true, hasAfter: true, returnLabel: 'Back to result 7' })
+    const wrapper = mountPanel({ hasBefore: true, hasAfter: true, returnLabel: 'Focus on result' })
 
-    const button = (label: string) => wrapper.findAll('button').find(b => b.text().includes(label))!
-    await button('Show earlier text').trigger('click')
-    await button('Show later text').trigger('click')
-    await button('Back to result 7').trigger('click')
+    await button(wrapper, 'Show earlier text')!.trigger('click')
+    await button(wrapper, 'Show later text')!.trigger('click')
+    await button(wrapper, 'Focus on result')!.trigger('click')
 
     expect(wrapper.emitted('extend')).toEqual([['before'], ['after']])
     expect(wrapper.emitted('return')).toHaveLength(1)
 
     await wrapper.setProps({ chunks: [], document: null, error: 'Gone.' })
     expect(wrapper.get('[role="alert"]').text()).toContain('Gone.')
-    await button('Retry').trigger('click')
+    await button(wrapper, 'Retry')!.trigger('click')
     expect(wrapper.emitted('reload')).toHaveLength(1)
   })
 

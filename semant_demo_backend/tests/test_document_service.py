@@ -175,3 +175,42 @@ async def test_chunk_window_size_is_limited(before, after):
         await service.read_chunk_window(documents, DOCUMENT, documents.chunks[0].id, before, after)
 
     assert documents.reads == []
+
+
+@pytest.mark.parametrize("anchor, direction, limit, orders, has_more", [
+    (4, "before", 2, [1, 2], True),
+    (4, "before", 5, [0, 1, 2], False),
+    (2, "after", 1, [4], True),
+    (2, "after", 2, [4, 5], False),
+    (5, "after", 3, [], False),
+])
+async def test_adjacent_chunks_extend_without_metadata_or_count(anchor, direction, limit, orders, has_more):
+    documents = FakeChunks()
+    chunk = next(c for c in documents.chunks if c.order == anchor)
+
+    adjacent = await service.read_adjacent_chunks(documents, str(DOCUMENT), str(chunk.id), direction, limit)
+
+    assert ([c.order for c in adjacent.chunks], adjacent.has_more) == (orders, has_more)
+    # Only the neighbours are read: no document metadata, no chunk count aggregation.
+    assert documents.reads == [("adjacent", direction, limit + 1)]
+
+
+@pytest.mark.parametrize("case", ["unknown chunk", "chunk of another document"])
+async def test_adjacent_chunks_need_a_chunk_of_the_document(case):
+    documents = FakeChunks()
+    chunk_id = uuid4() if case == "unknown chunk" else documents.foreign.id
+
+    with pytest.raises(NotFoundError):
+        await service.read_adjacent_chunks(documents, DOCUMENT, chunk_id, "after", 5)
+
+    assert documents.reads == []
+
+
+@pytest.mark.parametrize("direction, limit", [("sideways", 5), ("after", service.MAX_WINDOW_SIDE + 1), ("before", -1)])
+async def test_adjacent_chunks_request_is_validated(direction, limit):
+    documents = FakeChunks()
+
+    with pytest.raises(InvalidRequestError):
+        await service.read_adjacent_chunks(documents, DOCUMENT, documents.chunks[0].id, direction, limit)
+
+    assert documents.reads == []

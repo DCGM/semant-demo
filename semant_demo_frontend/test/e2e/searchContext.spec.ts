@@ -45,8 +45,10 @@ test('double-clicking a result shows it highlighted in its document', async ({ p
 
   await expect(page.getByTestId('right-sidebar-title')).toHaveText('Document')
   await expect(match(page)).toHaveText(new RegExp(chronicle[1].text))
-  await expect(panel(page)).toContainText(chronicleTitle)
-  await expect(panel(page).getByTestId('chunk-context-position')).toContainText('Passage 2 of 3')
+  const header = panel(page).getByTestId('chunk-context-header')
+  await expect(header).toContainText(chronicleTitle)
+  await expect(header).toContainText(`${fixture.document('chronicle').properties.yearIssued}`)
+  await expect(header.getByRole('button', { name: 'Focus on result' })).toBeVisible()
   // The neighbours are context, not matches.
   await expect(panel(page).locator('.chunk-context__chunk')).toHaveText(chronicle.map(c => new RegExp(c.text)))
   await expect(panel(page)).toContainText('Start of document')
@@ -76,7 +78,7 @@ test('double-clicking a result shows it highlighted in its document', async ({ p
   await expect(page.getByTestId('right-sidebar-title')).toHaveText('Summary')
 })
 
-test('back to the result restores its page; unknown chunks fail safely', async ({ page }) => {
+test('Focus on result restores its page; unknown chunks fail safely', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await search(page, 1)
   const result = page.locator('#result-1')
@@ -88,7 +90,7 @@ test('back to the result restores its page; unknown chunks fail safely', async (
   await page.locator('.q-pagination').getByRole('button', { name: '2', exact: true }).first().click()
   await expect(page.locator('#result-11')).toBeVisible()
   await expect(result).toHaveCount(0)
-  await panel(page).getByRole('button', { name: 'Back to result 1' }).click()
+  await panel(page).getByRole('button', { name: 'Focus on result' }).click()
   await expect(result).toBeVisible()
   await expect(result).toHaveClass(/citation-target-highlight/)
   await expect(result).toBeInViewport()
@@ -100,7 +102,7 @@ test('back to the result restores its page; unknown chunks fail safely', async (
   await expect(panel(page).locator('.chunk-context__chunk')).toHaveCount(0)
 })
 
-test('on a phone the context is an overlay and back to the result closes it', async ({ page }) => {
+test('on a phone the context is an overlay and Focus on result closes it', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await search(page)
   // The navigation starts open as an overlay; tap beside it to close it.
@@ -112,7 +114,7 @@ test('on a phone the context is an overlay and back to the result closes it', as
   await expect(match(page)).toBeVisible()
   await expect(match(page)).toBeInViewport()
 
-  await panel(page).getByRole('button', { name: 'Back to result 1' }).click()
+  await panel(page).getByRole('button', { name: 'Focus on result' }).click()
   await expect(page.locator('.q-drawer--right')).toBeHidden()
   await expect(page.locator('#result-1')).toBeInViewport()
 })

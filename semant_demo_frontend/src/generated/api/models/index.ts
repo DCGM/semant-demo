@@ -1,5 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
+export * from './AdjacentChunks';
 export * from './AppFeedbackRequest';
 export * from './BearerResponse';
 export * from './BulkUpdateSpansRequest';
