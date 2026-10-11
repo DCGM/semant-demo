@@ -1,11 +1,13 @@
 """HTTP routes of the Documents feature (public corpus reads); the rules live in ``service.py``."""
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.features.documents import service
 from semant_demo.routes.dependencies import get_collections, get_documents
-from semant_demo.schema.documents import Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
+from semant_demo.schema.documents import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 from semant_demo.users.auth import current_active_optional_user, current_active_user
 from semant_demo.users.models import User
 
@@ -82,3 +84,23 @@ async def read_document_chunk_window(
     in document order (public corpus data). Used to show a search hit in its context.
     """
     return await service.read_chunk_window(documents, document_id, chunk_id, before, after)
+
+
+@exp_router.get(
+    "/api/documents/{document_id}/chunks/{chunk_id}/adjacent",
+    response_model=AdjacentChunks,
+    response_model_exclude_none=True,
+)
+async def read_document_adjacent_chunks(
+    document_id: str,
+    chunk_id: str,
+    direction: Literal["before", "after"],
+    limit: int = Query(default=5, ge=1, le=service.MAX_WINDOW_SIDE),
+    documents: DocumentRepository = Depends(get_documents),
+) -> AdjacentChunks:
+    """
+    Returns up to ``limit`` chunks directly before or after the chunk, in document order,
+    without the chunk itself (public corpus data). Extends a passage read with ``/window``
+    without reading the document metadata or chunk count again.
+    """
+    return await service.read_adjacent_chunks(documents, document_id, chunk_id, direction, limit)

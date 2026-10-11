@@ -136,6 +136,21 @@ async def test_chunk_window_is_answered_anonymously_and_bounded(tmp_path):
     assert unknown.status_code == 404
 
 
+async def test_adjacent_chunks_are_answered_anonymously_and_validated(tmp_path):
+    # #244: extending a passage reads only the neighbours.
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_documents] = _Documents
+    path = f"/api/documents/{DOC}/chunks/{CHUNK}/adjacent"
+
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        adjacent = await client.get(path, params={"direction": "after", "limit": 5})
+        sideways = await client.get(path, params={"direction": "sideways"})
+        too_many = await client.get(path, params={"direction": "before", "limit": 51})
+
+    assert (adjacent.status_code, adjacent.json()) == (200, {"chunks": [], "has_more": False})
+    assert (sideways.status_code, too_many.status_code) == (422, 422)
+
+
 def test_search_response_is_accepted_back_as_summary_input():
     # The search page posts a search response to /api/summarize; both directions are one model.
     hit = TextChunkWithDocument(

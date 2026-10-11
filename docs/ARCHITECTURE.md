@@ -200,7 +200,8 @@ Resource rights (owner, shared user, admin) are checked by the feature services 
 `features/collections/access.py`: shared users may read and annotate (spans, tag definitions)
 but not change membership, metadata or sharing. Public corpus reads (`GET /api/document/{id}`,
 `/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`,
-`/api/documents/{id}/chunks/{chunk_id}/window` (a bounded passage around a chunk), search
+`/api/documents/{id}/chunks/{chunk_id}/window` and `/adjacent` (a bounded passage around a
+chunk and its extension), search
 without collection and tags) need no login. RAG, `/api/summarize/results` and
 `/api/question/{text}` are public too and call LLM providers with client-supplied text;
 this existing product behavior is tracked for an access/cost decision in [#234](https://github.com/DCGM/semant-demo/issues/234).

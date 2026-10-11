@@ -5,38 +5,22 @@
     </div>
 
     <template v-else>
-      <div v-if="document" class="chunk-context__document" data-testid="chunk-context-document">
-        <div class="text-subtitle2 text-weight-medium chunk-context__title">{{ documentTitle }}</div>
-        <div class="text-caption text-grey-8">
-          <span v-if="document.author?.length">{{ document.author.join(', ') }} · </span>
-          <span>{{ document.yearIssued || 'Year N/A' }}</span>
-          <span v-if="document.publisher"> · {{ document.publisher }}</span>
+      <!-- Stays at the top of the sidebar's scroller while the text scrolls. -->
+      <div ref="headerEl" class="chunk-context__header" data-testid="chunk-context-header">
+        <div v-if="document" class="chunk-context__document">
+          <div class="text-subtitle2 text-weight-medium chunk-context__title">{{ documentTitle }}</div>
+          <div class="text-caption text-grey-8">{{ document.yearIssued || 'Year N/A' }}</div>
         </div>
-        <div v-if="targetChunk" class="text-caption text-grey-8" data-testid="chunk-context-position">
-          Passage {{ positionLabel }} · Pages {{ targetChunk.fromPage }}–{{ targetChunk.toPage }}
-        </div>
-      </div>
-
-      <div class="row q-gutter-xs">
         <q-btn
           v-if="returnLabel"
           dense
           flat
           no-caps
           color="primary"
-          icon="arrow_back"
+          icon="center_focus_strong"
           :label="returnLabel"
+          class="chunk-context__return"
           @click="emit('return')"
-        />
-        <q-btn
-          dense
-          flat
-          no-caps
-          color="primary"
-          icon="my_location"
-          label="Jump to match"
-          :disable="loading"
-          @click="jumpToTarget"
         />
       </div>
 
@@ -74,13 +58,8 @@
             :class="{ 'chunk-context__chunk--target': chunk.id === targetChunkId }"
             :aria-current="chunk.id === targetChunkId ? 'true' : undefined"
             :aria-label="chunk.id === targetChunkId ? 'Matched passage' : undefined"
-            :tabindex="chunk.id === targetChunkId ? -1 : undefined"
             :data-chunk-id="chunk.id"
           >
-            <div class="chunk-context__pages text-caption text-grey-7">
-              <span v-if="chunk.id === targetChunkId" class="chunk-context__match-label">Match · </span>
-              Pages {{ chunk.fromPage }}–{{ chunk.toPage }}
-            </div>
             <div class="chunk-context__chunk-text text-body2">{{ chunk.text }}</div>
           </section>
         </div>
@@ -104,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { QBtn, QSpinner } from 'quasar'
 import type { Document, TextChunk } from 'src/generated/api'
 import type { ContextDirection } from './useChunkContext'
@@ -117,7 +96,9 @@ const props = withDefaults(defineProps<{
   chunks: TextChunk[]
   hasBefore?: boolean
   hasAfter?: boolean
-  totalChunks?: number | null
+  /** Changes with every request to show the target (also the same one again): it is
+   * scrolled into view as soon as it is loaded. */
+  focusRequest?: number
   loading?: boolean
   extending?: ContextDirection | null
   error?: string | null
@@ -127,7 +108,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   hasBefore: false,
   hasAfter: false,
-  totalChunks: null,
+  focusRequest: 0,
   loading: false,
   extending: null,
   error: null,
@@ -137,12 +118,12 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   extend: [direction: ContextDirection]
-  /** Load the passage around the target again (retry, or the target was dropped). */
+  /** Load the passage around the target again (retry). */
   reload: []
   return: []
 }>()
 
-const targetChunk = computed(() => props.chunks.find(c => c.id === props.targetChunkId) ?? null)
+const targetLoaded = computed(() => props.chunks.some(c => c.id === props.targetChunkId))
 
 const documentTitle = computed(() => {
   const d = props.document
@@ -151,11 +132,7 @@ const documentTitle = computed(() => {
   return [d.title || 'Untitled document', d.subtitle, part].filter(Boolean).join(' – ')
 })
 
-const positionLabel = computed(() => {
-  const order = targetChunk.value?.order
-  if (order === null || order === undefined) return '?'
-  return props.totalChunks ? `${order + 1} of ${props.totalChunks}` : `${order + 1}`
-})
+const headerEl = ref<HTMLElement | null>(null)
 
 // Chunk elements by id, to bring the target into view.
 const chunkEls = new Map<string, HTMLElement>()
@@ -164,35 +141,37 @@ function setChunkEl (id: string, el: HTMLElement | null) {
   else chunkEls.delete(id)
 }
 
-// Set when a new target is shown or "Jump to match" had to reload it: the target is
-// scrolled into view as soon as it is loaded.
+// Set by every request to show the target; cleared once it is in view.
 let scrollPending = true
+watch(() => props.focusRequest, () => { scrollPending = true })
 
-function scrollToTarget (focus: boolean) {
-  const el = props.targetChunkId ? chunkEls.get(props.targetChunkId) : undefined
-  if (!el) return false
-  el.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
-  if (focus) el.focus({ preventScroll: true })
-  return true
-}
-
-function jumpToTarget () {
-  if (scrollToTarget(true)) return
-  // Not loaded (dropped while reading further): read the passage around it again.
-  scrollPending = true
-  emit('reload')
-}
-
-watch(() => props.targetChunkId, () => { scrollPending = true })
-
-watch(() => [props.loading, targetChunk.value] as const, async ([loading, chunk]) => {
-  if (loading || !chunk || !scrollPending) return
+watch(() => [props.focusRequest, props.loading, targetLoaded.value] as const, async ([, loading, loaded]) => {
+  if (loading || !loaded || !scrollPending) return
   await nextTick()
-  if (scrollToTarget(false)) scrollPending = false
+  const el = props.targetChunkId ? chunkEls.get(props.targetChunkId) : undefined
+  if (!el) return
+  scrollPending = false
+  // Clear of the sticky header; a match taller than half the screen shows from its start.
+  el.style.scrollMarginTop = `${(headerEl.value?.offsetHeight ?? 0) + 8}px`
+  const tall = el.getBoundingClientRect().height > window.innerHeight / 2
+  el.scrollIntoView?.({ behavior: 'smooth', block: tall ? 'start' : 'center' })
 }, { immediate: true })
 </script>
 
 <style scoped>
+.chunk-context__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 0 4px;
+  background: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.chunk-context__return {
+  margin-left: -6px;
+}
+
 .chunk-context__title {
   line-height: 1.3;
   overflow-wrap: anywhere;
@@ -216,17 +195,6 @@ watch(() => [props.loading, targetChunk.value] as const, async ([loading, chunk]
 .chunk-context__chunk--target {
   border-left-color: var(--q-primary);
   background-color: #fff8d6;
-  outline: none;
-}
-
-.chunk-context__chunk--target:focus-visible {
-  outline: 2px solid var(--q-primary);
-  outline-offset: 1px;
-}
-
-.chunk-context__match-label {
-  color: var(--q-primary);
-  font-weight: 500;
 }
 
 .chunk-context__chunk-text {

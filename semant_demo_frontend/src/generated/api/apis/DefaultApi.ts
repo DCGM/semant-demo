@@ -15,6 +15,7 @@
 
 import * as runtime from '../runtime';
 import type {
+  AdjacentChunks,
   AppFeedbackRequest,
   BulkUpdateSpansRequest,
   BulkUpdateSpansResponse,
@@ -60,6 +61,8 @@ import type {
   WriteResult,
 } from '../models/index';
 import {
+    AdjacentChunksFromJSON,
+    AdjacentChunksToJSON,
     AppFeedbackRequestFromJSON,
     AppFeedbackRequestToJSON,
     BulkUpdateSpansRequestFromJSON,
@@ -283,6 +286,13 @@ export interface QuestionApiQuestionQuestionTextPostRequest {
 
 export interface RagApiRagPostRequest {
     ragRequestMain: RagRequestMain;
+}
+
+export interface ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest {
+    documentId: string;
+    chunkId: string;
+    direction: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum;
+    limit?: number;
 }
 
 export interface ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest {
@@ -1199,6 +1209,36 @@ export interface DefaultApiInterface {
      * Rag
      */
     ragApiRagPost(requestParameters: RagApiRagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RagResponse>;
+
+    /**
+     * Creates request options for readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet without sending the request
+     * @param {string} documentId 
+     * @param {string} chunkId 
+     * @param {'before' | 'after'} direction 
+     * @param {number} [limit] 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequestOpts(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * @summary Read Document Adjacent Chunks
+     * @param {string} documentId 
+     * @param {string} chunkId 
+     * @param {'before' | 'after'} direction 
+     * @param {number} [limit] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRaw(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AdjacentChunks>>;
+
+    /**
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Read Document Adjacent Chunks
+     */
+    readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AdjacentChunks>;
 
     /**
      * Creates request options for readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet without sending the request
@@ -3498,6 +3538,76 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet without sending the request
+     */
+    async readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequestOpts(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet().'
+            );
+        }
+
+        if (requestParameters['chunkId'] == null) {
+            throw new runtime.RequiredError(
+                'chunkId',
+                'Required parameter "chunkId" was null or undefined when calling readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet().'
+            );
+        }
+
+        if (requestParameters['direction'] == null) {
+            throw new runtime.RequiredError(
+                'direction',
+                'Required parameter "direction" was null or undefined when calling readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['direction'] != null) {
+            queryParameters['direction'] = requestParameters['direction'];
+        }
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/documents/{document_id}/chunks/{chunk_id}/adjacent`;
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+        urlPath = urlPath.replace(`{${"chunk_id"}}`, encodeURIComponent(String(requestParameters['chunkId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Read Document Adjacent Chunks
+     */
+    async readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRaw(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AdjacentChunks>> {
+        const requestOptions = await this.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AdjacentChunksFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Read Document Adjacent Chunks
+     */
+    async readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AdjacentChunks> {
+        const response = await this.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet without sending the request
      */
     async readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequestOpts(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest): Promise<runtime.RequestOpts> {
@@ -4597,3 +4707,12 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
 }
+
+/**
+ * @export
+ */
+export const ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum = {
+    before: 'before',
+    after: 'after'
+} as const;
+export type ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum = typeof ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum[keyof typeof ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum];
