@@ -269,3 +269,154 @@ describe('MainLayout navigation', () => {
     expect(document.body.textContent).toContain('You have been logged out.')
   })
 })
+
+describe('late /users/me answers', () => {
+  const originalFetch = globalThis.fetch
+  const userA = { id: 'uA', email: 'a@example.com', username: 'a', name: 'User A' }
+  const userB = { id: 'uB', email: 'b@example.com', username: 'b', name: 'User B' }
+  // Pending /users/me requests by the token they were sent with, oldest first.
+  let pending: Map<string, Array<{ answer: (user: object) => void, fail: (status: number) => void }>>
+  let sent: string[]
+  let denied: number
+
+  function answer (token: string, user: object) { take(token).answer(user) }
+  function fail (token: string, status = 500) { take(token).fail(status) }
+  function take (token: string) {
+    const request = pending.get(token)?.shift()
+    if (!request) throw new Error(`no pending request for ${token}`)
+    return request
+  }
+
+  // A stored token whose user is not known yet (page load, or a new sign-in).
+  function storeToken (store: ReturnType<typeof useUserStore>, token: string) {
+    store.forgetSession()
+    setAuthToken(token)
+    store.token = token
+  }
+
+  function setup () {
+    const store = useUserStore()
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    installAuthGuard(router, store, () => { denied++ })
+    return { store, router }
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    pending = new Map()
+    sent = []
+    denied = 0
+    globalThis.fetch = vi.fn((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const token = new Headers(init?.headers).get('Authorization')?.replace('Bearer ', '') ?? ''
+      sent.push(token)
+      return new Promise<Response>((resolve) => {
+        pending.set(token, [...(pending.get(token) ?? []), {
+          answer: (user) => resolve(new Response(JSON.stringify(user), { status: 200, headers: { 'Content-Type': 'application/json' } })),
+          fail: (status) => resolve(new Response('{"detail":"error"}', { status }))
+        }])
+      })
+    }) as typeof fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    clearAuthToken()
+  })
+
+  it('a successful answer after sign-out does not sign the old user back in', async () => {
+    const { store, router } = setup()
+    storeToken(store, 'A')
+    const navigation = router.push('/collections')
+    await flushPromises()
+
+    store.forgetSession() // sign-out while /users/me is pending
+    answer('A', userA)
+    await navigation
+
+    expect([store.isLoggedIn, store.user, store.token]).toEqual([false, null, null])
+    expect(router.currentRoute.value.name).toBe('search')
+    expect(denied).toBe(1)
+  })
+
+  it('a failed answer after sign-out and a new sign-in keeps the new session', async () => {
+    const { store } = setup()
+    storeToken(store, 'A')
+    const restoringA = store.restoreSession()
+    await flushPromises()
+
+    storeToken(store, 'B') // signed out, then in as B
+    store.user = userB as typeof store.user
+    fail('A')
+    await restoringA
+
+    expect([store.isLoggedIn, store.token, store.user?.id]).toEqual([true, 'B', 'uB'])
+  })
+
+  it('A\'s late answer does not replace B after an account switch', async () => {
+    const { store, router } = setup()
+    storeToken(store, 'A')
+    const restoringA = store.restoreSession()
+    await flushPromises()
+
+    storeToken(store, 'B')
+    const navigation = router.push('/collections')
+    await flushPromises()
+    answer('B', userB)
+    await navigation
+    answer('A', userA)
+    await restoringA
+
+    expect([store.token, store.user?.id]).toEqual(['B', 'uB'])
+    expect(router.currentRoute.value.name).toBe('collections')
+  })
+
+  it('B restores with its own request while A\'s is still pending, and the guard waits for B', async () => {
+    const { store, router } = setup()
+    storeToken(store, 'A')
+    const restoringA = store.restoreSession()
+    await flushPromises()
+
+    storeToken(store, 'B')
+    const navigation = router.push('/collections')
+    await flushPromises()
+    expect(sent).toEqual(['A', 'B']) // B did not reuse A's request
+
+    answer('A', userA) // A's request ends first; B's restore is still the tracked one
+    await restoringA
+    void store.restoreSession()
+    await flushPromises()
+    expect(sent).toEqual(['A', 'B'])
+    expect([store.isLoggedIn, router.currentRoute.value.name]).toEqual([false, undefined]) // still waiting
+
+    answer('B', userB)
+    await navigation
+    expect([store.user?.id, router.currentRoute.value.name, denied]).toEqual(['uB', 'collections', 0])
+  })
+
+  it('the drawer shows the signed-out menu when the restore answers after sign-out', async () => {
+    setAuthToken('A')
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [...routes, { name: 'rag', path: '/rag', component: Page }, { name: 'feedback', path: '/feedback', component: Page }]
+    })
+    await router.push('/search')
+    const wrapper = mount(MainLayout, {
+      global: {
+        plugins: [[Quasar, { plugins: { Notify } }], pinia, router],
+        stubs: { RightSidebar: true, LoginDialog: true, RegisterDialog: true, UserInfoDialog: true, AboutAppDialog: true }
+      }
+    })
+    await flushPromises() // the layout restores the stored session
+    const store = useUserStore()
+
+    store.forgetSession()
+    answer('A', userA)
+    await flushPromises()
+
+    const labels = wrapper.findAll('.drawer-item .item-label').map((item) => item.text())
+    expect(labels).toEqual(expect.arrayContaining(['Log in', 'Register']))
+    expect(labels.filter((l) => ['Collections', 'Settings', 'Sign out'].includes(l))).toEqual([])
+  })
+})
