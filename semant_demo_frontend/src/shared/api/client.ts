@@ -1,5 +1,5 @@
 import { AuthApi, Configuration, DefaultApi, UsersApi, type Middleware } from 'src/generated/api'
-import { authHeaders } from './auth'
+import { authHeaders, reportUnauthorized } from './auth'
 import { BACKEND_URL } from './config'
 
 export interface ApiClients {
@@ -11,13 +11,18 @@ export interface ApiClients {
 /**
  * Adds the current bearer token to every request, including operations whose schema
  * declares no security (public reads that still honour a signed-in user). Read per
- * request, like the NDJSON transport does (`authHeaders`).
+ * request, like the NDJSON transport does (`authHeaders`). A 401 answer to a request
+ * sent with a token reports that token as no longer valid (`onUnauthorized`).
  */
 const authentication: Middleware = {
   pre: async ({ url, init }) => ({
     url,
     init: { ...init, headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders() } }
-  })
+  }),
+  post: async ({ init, response }) => {
+    if (response.status === 401) reportUnauthorized(init.headers as Record<string, string> | undefined)
+    return response
+  }
 }
 
 /**

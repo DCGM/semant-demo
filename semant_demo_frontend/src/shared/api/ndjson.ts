@@ -1,4 +1,4 @@
-import { authHeaders } from './auth'
+import { authHeaders, reportUnauthorized } from './auth'
 import { apiUrl } from './config'
 import { apiErrorFromResponse } from './errors'
 
@@ -62,16 +62,18 @@ export interface NdjsonRequest {
  * caller to judge from its own terminal line.
  */
 export async function postNdjson (path: string, body: unknown, request: NdjsonRequest): Promise<void> {
+  const headers = authHeaders()
   const response = await fetch(apiUrl(path), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/x-ndjson',
-      ...authHeaders()
+      ...headers
     },
     body: JSON.stringify(body),
     signal: request.signal
   })
+  if (response.status === 401) reportUnauthorized(headers)
   if (!response.ok) throw await apiErrorFromResponse(response)
   if (!response.body) throw new Error('The server did not return a streaming body.')
   await readNdjson(response.body, request.onValue, request.onInvalid)

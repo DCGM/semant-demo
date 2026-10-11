@@ -29,3 +29,21 @@ export function authHeaders (): Record<string, string> {
   const token = getAuthToken()
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
+
+type UnauthorizedListener = (token: string) => void
+const unauthorizedListeners = new Set<UnauthorizedListener>()
+
+/**
+ * Calls `listener` with the token a request was sent with when the backend rejected it
+ * as unauthenticated (401: expired or revoked). Returns a function that unsubscribes.
+ */
+export function onUnauthorized (listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener)
+  return () => { unauthorizedListeners.delete(listener) }
+}
+
+/** Reports a 401 answer to a request sent with `headers`; requests without a token are ignored. */
+export function reportUnauthorized (headers: Record<string, string> | undefined): void {
+  const token = headers?.Authorization?.match(/^Bearer (.+)$/)?.[1]
+  if (token) unauthorizedListeners.forEach((listener) => listener(token))
+}

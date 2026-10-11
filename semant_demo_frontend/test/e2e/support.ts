@@ -23,7 +23,7 @@ export async function logIn (page: Page, userKey: string): Promise<void> {
   const user = fixture.user(userKey)
   await page.goto('/')
   await page.getByRole('button', { name: 'User menu' }).click()
-  await page.getByText('Log In', { exact: true }).click()
+  await page.locator('.q-menu').getByText('Log In', { exact: true }).click()
   await page.getByLabel('Email or Username').fill(user.username)
   await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Log In' }).click()

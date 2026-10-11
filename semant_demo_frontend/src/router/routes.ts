@@ -19,11 +19,13 @@ const routes: RouteRecordRaw[] = [
       },
       {
         name: 'collections',
+        meta: { requiresAuth: true },
         path: '/collections',
         component: () => import('pages/Collections/UserCollectionsPage.vue')
       },
       {
         name: 'collectionDetail',
+        meta: { requiresAuth: true },
         path: '/collections/:collectionId',
         component: () => import('layouts/CollectionDetailLayout.vue'),
         props: true,
@@ -58,6 +60,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         name: 'documentDetailLayout',
+        meta: { requiresAuth: true },
         path: '/collections/:collectionId/documents/:documentId',
         component: () => import('layouts/DocumentDetailLayout.vue'),
         props: true,

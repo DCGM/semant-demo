@@ -75,7 +75,7 @@ test('a new user registers, logs in and out', async ({ page }) => {
   const name = `newcomer${Date.now()}`
   await page.goto('/')
   await page.getByRole('button', { name: 'User menu' }).click()
-  await page.getByText('Register', { exact: true }).click()
+  await page.locator('.q-menu').getByText('Register', { exact: true }).click()
   await page.getByLabel('Username').fill(name)
   await page.getByLabel('Name', { exact: true }).fill('New Comer')
   await page.getByLabel('Email').fill(`${name}@example.com`)
@@ -85,7 +85,7 @@ test('a new user registers, logs in and out', async ({ page }) => {
   await expect(page.getByText('Account created! You can now log in.')).toBeVisible()
 
   await page.getByRole('button', { name: 'User menu' }).click()
-  await page.getByText('Log In', { exact: true }).click()
+  await page.locator('.q-menu').getByText('Log In', { exact: true }).click()
   await page.getByLabel('Email or Username').fill(`${name}@example.com`)
   await page.getByLabel('Password', { exact: true }).fill('a-long-test-password')
   await page.getByRole('button', { name: 'Log In' }).click()
