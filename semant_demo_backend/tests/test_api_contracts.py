@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SummaryRequest, TextChunkWithDocument
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_documents
+from semant_demo.schema.chunks import TextChunk
 from semant_demo.schema.documents import Document, DocumentBrowse
 from tests.app_support import make_test_config, offline_weaviate
 
@@ -61,6 +62,17 @@ class _Documents:
     async def count_chunks(self, document_id):
         return 3 if document_id == DOC else 0
 
+    async def read_chunk(self, chunk_id):
+        return _hit_chunk() if chunk_id == CHUNK else None
+
+    async def read_adjacent_chunks(self, document_id, order, direction, limit):
+        return []
+
+
+def _hit_chunk() -> TextChunk:
+    return TextChunk(id=CHUNK, text="Milá Marie, píši Ti z Prahy.", start_page_id=PAGE, from_page=1, to_page=1,
+                     document=DOC, order=0)
+
 
 async def test_document_responses_serialize_stored_properties(tmp_path):
     app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
@@ -102,6 +114,26 @@ async def test_chunk_count_is_answered_anonymously(tmp_path):
 
     assert (count.status_code, count.json()) == (200, 3)
     assert malformed.status_code == 404
+
+
+async def test_chunk_window_is_answered_anonymously_and_bounded(tmp_path):
+    # #244: the search page shows a hit in its document context without a login.
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_documents] = _Documents
+    path = f"/api/documents/{DOC}/chunks/{CHUNK}/window"
+
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        window = await client.get(path, params={"before": 2, "after": 2})
+        too_wide = await client.get(path, params={"before": 51})
+        unknown = await client.get(f"/api/documents/{DOC}/chunks/{PAGE}/window")
+
+    assert window.status_code == 200, window.text
+    body = window.json()
+    assert ([c["id"] for c in body["chunks"]], body["anchor_chunk_id"]) == ([str(CHUNK)], str(CHUNK))
+    assert (body["has_before"], body["has_after"], body["total_chunks"]) == (False, False, 3)
+    assert body["document"]["title"] == "Dopisy z Prahy"
+    assert too_wide.status_code == 422
+    assert unknown.status_code == 404
 
 
 def test_search_response_is_accepted_back_as_summary_input():

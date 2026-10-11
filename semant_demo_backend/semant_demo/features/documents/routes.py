@@ -5,7 +5,7 @@ from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.features.documents import service
 from semant_demo.routes.dependencies import get_collections, get_documents
-from semant_demo.schema.documents import Document, DocumentBrowse, DocumentDetail
+from semant_demo.schema.documents import Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 from semant_demo.users.auth import current_active_optional_user, current_active_user
 from semant_demo.users.models import User
 
@@ -63,3 +63,22 @@ async def count_document_chunks(
 ) -> int:
     """Returns the total number of chunks in the given document (public corpus data)."""
     return await service.count_chunks(documents, document_id)
+
+
+@exp_router.get(
+    "/api/documents/{document_id}/chunks/{chunk_id}/window",
+    response_model=DocumentChunkWindow,
+    response_model_exclude_none=True,
+)
+async def read_document_chunk_window(
+    document_id: str,
+    chunk_id: str,
+    before: int = Query(default=3, ge=0, le=service.MAX_WINDOW_SIDE),
+    after: int = Query(default=3, ge=0, le=service.MAX_WINDOW_SIDE),
+    documents: DocumentRepository = Depends(get_documents),
+) -> DocumentChunkWindow:
+    """
+    Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document,
+    in document order (public corpus data). Used to show a search hit in its context.
+    """
+    return await service.read_chunk_window(documents, document_id, chunk_id, before, after)

@@ -201,3 +201,16 @@ the new request's loading state.
 | Page | Panel id | Component | Description |
 |------|----------|-----------|-------------|
 | Search (`pages/SearchPage.vue`) | `search-summary` | `features/search/SearchSummaryPanel.vue` | Summarization of the current search results (focused: first 3, broader: first 10, extensive: all, selected: the selected results). Citations move the user to the cited result. Logic in `features/search/useSearchSummary.ts`. |
+| Search (`pages/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). Shows the document metadata and a bounded passage around the hit with the hit highlighted, *Show earlier/later text*, *Jump to match* and *Back to result N* (restores the result's page and scrolls to it; closes the overlay on narrow screens). The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
+
+### Document context (`features/documents/`)
+
+`useChunkContext()` holds one target (`documentId`, `chunkId`) and reads the public corpus
+endpoint `GET /api/documents/{document_id}/chunks/{chunk_id}/window?before=&after=` (at most
+50 chunks per side; the chunk must belong to the document, otherwise 404). It starts with 3
+chunks on each side, extends by 5 from either edge and keeps at most 60 chunks, dropping the
+other end (*Jump to match* reloads the passage when the hit was dropped). Opening another
+target, `clear()` or unmounting aborts running requests and drops their late answers. A
+missing chunk or document is reported in the panel; no other text is shown. The panel takes
+everything through props and reports `extend`, `reload` and `return` events, so it can also
+show other sources (e.g. RAG citations, #243). Text is the canonical stored chunk text.

@@ -5,6 +5,7 @@
     bordered
     class="search-result bg-white"
     :class="{ 'search-result--selected': selected, 'citation-target-highlight': highlighted }"
+    @dblclick="onDoubleClick"
   >
     <q-card-section class="search-result__header">
       <!-- Only the title row is indented by the checkbox; the rest aligns with the passage. -->
@@ -20,6 +21,19 @@
         <div class="col search-result__title text-h6 text-primary">
           {{ number }}. {{ title }}
         </div>
+        <q-btn
+          flat
+          dense
+          round
+          icon="menu_book"
+          :color="contextShown ? 'primary' : 'grey-7'"
+          :aria-label="`View result ${number} in its document`"
+          class="search-result__context"
+          data-testid="view-context"
+          @click="emit('view-context')"
+        >
+          <q-tooltip>View in document</q-tooltip>
+        </q-btn>
       </div>
       <div class="search-result__meta row text-caption text-grey-8">
         <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.documentObject.author?.join(', ') || 'Unknown Author' }}</div>
@@ -80,7 +94,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { QBadge, QCard, QCardSection, QCheckbox, QIcon, QSeparator } from 'quasar'
+import { QBadge, QBtn, QCard, QCardSection, QCheckbox, QIcon, QSeparator, QTooltip } from 'quasar'
 import type { SearchFilter, TextChunkWithDocument } from 'src/generated/api'
 import ResultClassifications from './ResultClassifications.vue'
 import { isConstrainedResultWidth } from './resultLayout'
@@ -92,9 +106,22 @@ const props = withDefaults(defineProps<{
   filters: readonly SearchFilter[]
   selected?: boolean
   highlighted?: boolean
-}>(), { selected: false, highlighted: false })
+  /** The result is the one shown in the document context view. */
+  contextShown?: boolean
+}>(), { selected: false, highlighted: false, contextShown: false })
 
-const emit = defineEmits<{(e: 'update:selected', value: boolean): void}>()
+const emit = defineEmits<{
+  'update:selected': [value: boolean]
+  'view-context': []
+}>()
+
+// Double-clicking the card or its text opens the result in its document. Controls keep
+// their own behavior: a double-click on the checkbox only toggles it, never opens.
+function onDoubleClick (event: MouseEvent) {
+  const target = event.target as Element | null
+  if (target?.closest('button, a, input, [role="checkbox"]')) return
+  emit('view-context')
+}
 
 const title = computed(() => props.chunk.queryTitle || props.chunk.title || 'N/A')
 const textId = computed(() => `result-text-${props.chunk.id}`)
@@ -154,6 +181,11 @@ onBeforeUnmount(() => observer?.disconnect())
 .search-result__select {
   flex: none;
   margin: 2px 8px 0 -4px;
+}
+
+.search-result__context {
+  flex: none;
+  margin: -4px -8px 0 4px;
 }
 
 .search-result__title {

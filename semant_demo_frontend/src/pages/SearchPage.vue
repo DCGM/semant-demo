@@ -201,7 +201,9 @@
             :filters="availableSearchFilters"
             :selected="selectedResults.includes(chunk.id)"
             :highlighted="highlightedDocNumber === resultNumber(index)"
+            :context-shown="contextResultNumber === resultNumber(index)"
             @update:selected="setSelected(chunk.id, $event)"
+            @view-context="viewContext(chunk, resultNumber(index))"
           />
         </div>
 
@@ -232,12 +234,31 @@
         @cite="jumpToResult"
       />
     </RightSidebarPanel>
+
+    <!-- Registered once a result is opened, so the Summary stays the default panel. -->
+    <RightSidebarPanel v-if="contextResultNumber !== null" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
+      <ChunkContextPanel
+        :target-chunk-id="chunkContext.target?.chunkId ?? null"
+        :document="chunkContext.document"
+        :chunks="chunkContext.chunks"
+        :has-before="chunkContext.hasBefore"
+        :has-after="chunkContext.hasAfter"
+        :total-chunks="chunkContext.totalChunks"
+        :loading="chunkContext.loading"
+        :extending="chunkContext.extending"
+        :error="chunkContext.error"
+        :return-label="`Back to result ${contextResultNumber}`"
+        @extend="chunkContext.extend"
+        @reload="chunkContext.load"
+        @return="returnToContextResult"
+      />
+    </RightSidebarPanel>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
-import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, Notify } from 'quasar'
+import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, Notify, useQuasar } from 'quasar'
 import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type TextChunkWithDocument } from 'src/generated/api'
 import { useApi } from 'src/shared/api'
 import { useUserStore } from 'src/stores/user-store'
@@ -250,6 +271,9 @@ import SearchSummaryPanel from 'src/features/search/SearchSummaryPanel.vue'
 import SearchResultCard from 'src/features/search/SearchResultCard.vue'
 import { escapeClearsSelection } from 'src/features/search/resultLayout'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
+import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
+import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
+import { useChunkContext } from 'src/features/documents/useChunkContext'
 
 const api = useApi().default
 
@@ -378,6 +402,35 @@ async function jumpToResult (docNumber: number) {
     target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
   }
 }
+
+// Document context (right sidebar): one result shown in its document
+const CONTEXT_PANEL_ID = 'search-context'
+const $q = useQuasar()
+const rightSidebar = useRightSidebarStore()
+const chunkContext = reactive(useChunkContext())
+const contextResultNumber = ref<number | null>(null)
+
+async function viewContext (chunk: TextChunkWithDocument, number: number) {
+  contextResultNumber.value = number
+  const opening = chunkContext.open({ documentId: chunk.document, chunkId: chunk.id })
+  await nextTick() // the panel registers when the first result is opened
+  rightSidebar.activate(CONTEXT_PANEL_ID)
+  await opening
+}
+
+async function returnToContextResult () {
+  if (contextResultNumber.value === null) return
+  // On narrow screens the sidebar covers the results.
+  if ($q.screen.lt.md) rightSidebar.open = false
+  await jumpToResult(contextResultNumber.value)
+}
+
+// The shown result belongs to one search: another search (or none) closes it and its
+// panel, so the view never shows a result that is no longer in the list.
+watch(() => searchRequest.context.value?.id, () => {
+  chunkContext.clear()
+  contextResultNumber.value = null
+})
 
 // Collections & User State
 const userStore = useUserStore()

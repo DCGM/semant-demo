@@ -29,6 +29,7 @@ import type {
   DiscussSpanRequest,
   Document,
   DocumentBrowse,
+  DocumentChunkWindow,
   DocumentDetail,
   DocumentStats,
   ExplainRequest,
@@ -87,6 +88,8 @@ import {
     DocumentToJSON,
     DocumentBrowseFromJSON,
     DocumentBrowseToJSON,
+    DocumentChunkWindowFromJSON,
+    DocumentChunkWindowToJSON,
     DocumentDetailFromJSON,
     DocumentDetailToJSON,
     DocumentStatsFromJSON,
@@ -280,6 +283,13 @@ export interface QuestionApiQuestionQuestionTextPostRequest {
 
 export interface RagApiRagPostRequest {
     ragRequestMain: RagRequestMain;
+}
+
+export interface ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest {
+    documentId: string;
+    chunkId: string;
+    before?: number;
+    after?: number;
 }
 
 export interface ReadTagSpansApiTagSpansGetRequest {
@@ -1189,6 +1199,36 @@ export interface DefaultApiInterface {
      * Rag
      */
     ragApiRagPost(requestParameters: RagApiRagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RagResponse>;
+
+    /**
+     * Creates request options for readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet without sending the request
+     * @param {string} documentId 
+     * @param {string} chunkId 
+     * @param {number} [before] 
+     * @param {number} [after] 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequestOpts(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * @summary Read Document Chunk Window
+     * @param {string} documentId 
+     * @param {string} chunkId 
+     * @param {number} [before] 
+     * @param {number} [after] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRaw(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentChunkWindow>>;
+
+    /**
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Read Document Chunk Window
+     */
+    readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentChunkWindow>;
 
     /**
      * Creates request options for readTagSpansApiTagSpansGet without sending the request
@@ -3454,6 +3494,69 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async ragApiRagPost(requestParameters: RagApiRagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RagResponse> {
         const response = await this.ragApiRagPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet without sending the request
+     */
+    async readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequestOpts(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet().'
+            );
+        }
+
+        if (requestParameters['chunkId'] == null) {
+            throw new runtime.RequiredError(
+                'chunkId',
+                'Required parameter "chunkId" was null or undefined when calling readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['before'] != null) {
+            queryParameters['before'] = requestParameters['before'];
+        }
+
+        if (requestParameters['after'] != null) {
+            queryParameters['after'] = requestParameters['after'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/documents/{document_id}/chunks/{chunk_id}/window`;
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+        urlPath = urlPath.replace(`{${"chunk_id"}}`, encodeURIComponent(String(requestParameters['chunkId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Read Document Chunk Window
+     */
+    async readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRaw(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentChunkWindow>> {
+        const requestOptions = await this.readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentChunkWindowFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Read Document Chunk Window
+     */
+    async readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentChunkWindow> {
+        const response = await this.readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
