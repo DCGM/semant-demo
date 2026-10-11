@@ -4,9 +4,10 @@
       <q-toolbar class="GNL__toolbar">
         <q-btn class="q-mx-md" dense flat round @click="toggleLeftDrawer" icon="menu" />
 
-        <q-toolbar-title shrink class="row items-center no-wrap toolbar-title">
-          <router-link to="/" style="text-decoration: none; color: inherit;">
-            <span class="q-ml-sm">semANT search demo</span>
+        <q-toolbar-title shrink class="row items-center no-wrap">
+          <router-link to="/" class="row items-center no-wrap" style="text-decoration: none; color: inherit;">
+            <img :src="semantLogo" alt="semANT logo" class="toolbar-logo" />
+            <span class="q-ml-sm toolbar-title">semANT demo</span>
           </router-link>
         </q-toolbar-title>
         <q-space />
@@ -180,6 +181,7 @@
 
 <script setup lang="ts">
 import MiniStateButton from 'src/components/MiniStateButton.vue'
+import semantLogo from 'src/assets/semant-logo.png'
 import { ref, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/stores/user-store'
@@ -294,6 +296,11 @@ const miniStateClick = () => {
     color: #1a73e8;
     font-weight: 600;
   }
+}
+
+.toolbar-logo {
+  height: 36px;
+  width: auto;
 }
 
 @media screen and (max-width: 600px) {

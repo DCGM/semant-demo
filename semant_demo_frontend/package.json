@@ -1,8 +1,8 @@
 {
-  "name": "image-search-frontend",
+  "name": "semant-demo-frontend",
   "version": "0.0.1",
-  "description": "Semantic image search",
-  "productName": "Image search",
+  "description": "semANT demo: semantic exploration of digitised cultural-heritage texts",
+  "productName": "semANT demo",
   "author": "Michal Hradis <michal.hradis@gmail.com>",
   "private": true,
   "scripts": {
