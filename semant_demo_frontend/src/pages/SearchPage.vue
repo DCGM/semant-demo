@@ -189,65 +189,17 @@
         </q-slide-transition>
 
         <div class="q-gutter-y-md">
-          <q-card
+          <SearchResultCard
             v-for="(chunk, index) in paginatedResults"
-            :id="`result-${(currentPage - 1) * itemsPerPage + index + 1}`"
+            :id="`result-${resultNumber(index)}`"
             :key="chunk.id"
-            flat
-            bordered
-            class="bg-white"
-            :class="{ 'citation-target-highlight': highlightedDocNumber === (currentPage - 1) * itemsPerPage + index + 1 }"
-          >
-            <q-card-section class="row no-wrap items-start">
-              <div class="col">
-                <div class="text-h6 text-primary" style="line-height: 1.2;">
-                  {{ (currentPage - 1) * itemsPerPage + index + 1 }}. {{ chunk.queryTitle || chunk.title || "N/A" }}
-                </div>
-                <div class="row q-gutter-x-md text-caption text-grey-8 q-mt-xs">
-                  <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.documentObject.author?.join(', ') || 'Unknown Author' }}</div>
-                  <div><q-icon name="event" class="q-mr-xs"/>{{ chunk.documentObject.yearIssued || 'Year N/A' }}</div>
-                  <div><q-icon name="language" class="q-mr-xs"/>{{ chunk.language || 'N/A' }}</div>
-                  <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.fromPage }}–{{ chunk.toPage }}</div>
-                </div>
-                <div class="text-caption text-grey-8 q-mt-xs" v-if="chunk.documentObject.title">
-                  <strong>Source:</strong> {{ chunk.documentObject.title }}
-                </div>
-                <ResultClassifications :metadata="chunk.metadata" :filters="availableSearchFilters" />
-              </div>
-              <div class="q-mr-md q-mt-xs">
-                <q-checkbox v-model="selectedResults" :val="chunk.id" color="primary" dense />
-              </div>
-            </q-card-section>
-
-            <q-separator inset />
-
-            <q-card-section>
-              <div class="text-body1" style="white-space: pre-wrap; color: #333;">
-                {{ chunk.text }}
-              </div>
-
-              <div class="q-mt-md" v-if="chunk.nerP?.length || chunk.nerG?.length || chunk.nerI?.length || chunk.nerM?.length || chunk.nerO?.length">
-                <div class="text-subtitle2 text-grey-7 q-mb-xs">Named Entities</div>
-                <div class="row q-gutter-sm">
-                  <q-badge color="blue-1" text-color="blue-9" class="q-pa-sm" v-if="chunk.nerP?.length">
-                    <strong>People:</strong>&nbsp;{{ chunk.nerP.join(', ') }}
-                  </q-badge>
-                  <q-badge color="green-1" text-color="green-9" class="q-pa-sm" v-if="chunk.nerG?.length">
-                    <strong>Places:</strong>&nbsp;{{ chunk.nerG.join(', ') }}
-                  </q-badge>
-                  <q-badge color="purple-1" text-color="purple-9" class="q-pa-sm" v-if="chunk.nerI?.length">
-                    <strong>Institutions:</strong>&nbsp;{{ chunk.nerI.join(', ') }}
-                  </q-badge>
-                  <q-badge color="orange-1" text-color="orange-9" class="q-pa-sm" v-if="chunk.nerM?.length">
-                    <strong>Media:</strong>&nbsp;{{ chunk.nerM.join(', ') }}
-                  </q-badge>
-                  <q-badge color="grey-2" text-color="grey-9" class="q-pa-sm" v-if="chunk.nerO?.length">
-                    <strong>Artifacts:</strong>&nbsp;{{ chunk.nerO.join(', ') }}
-                  </q-badge>
-                </div>
-              </div>
-            </q-card-section>
-          </q-card>
+            :chunk="chunk"
+            :number="resultNumber(index)"
+            :filters="availableSearchFilters"
+            :selected="selectedResults.includes(chunk.id)"
+            :highlighted="highlightedDocNumber === resultNumber(index)"
+            @update:selected="setSelected(chunk.id, $event)"
+          />
         </div>
 
         <div class="flex flex-center q-mt-xl">
@@ -282,7 +234,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
-import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QCheckbox, QRange, QPagination, Notify } from 'quasar'
+import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, Notify } from 'quasar'
 import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type TextChunkWithDocument } from 'src/generated/api'
 import { useApi } from 'src/shared/api'
 import { useUserStore } from 'src/stores/user-store'
@@ -292,7 +244,7 @@ import { collectionRights } from 'src/features/collections/permissions'
 import { useSearchRequest } from 'src/features/search/useSearchRequest'
 import { useSearchSummary } from 'src/features/search/useSearchSummary'
 import SearchSummaryPanel from 'src/features/search/SearchSummaryPanel.vue'
-import ResultClassifications from 'src/features/search/ResultClassifications.vue'
+import SearchResultCard from 'src/features/search/SearchResultCard.vue'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 
 const api = useApi().default
@@ -371,6 +323,16 @@ const paginatedResults = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
   return results.value.slice(start, start + itemsPerPage.value)
 })
+
+/** 1-based position in the whole result list of the `index`-th result on this page. */
+function resultNumber (index: number): number {
+  return (currentPage.value - 1) * itemsPerPage.value + index + 1
+}
+
+function setSelected (chunkId: string, selected: boolean) {
+  const others = selectedResults.value.filter(id => id !== chunkId)
+  selectedResults.value = selected ? [...others, chunkId] : others
+}
 
 // Summarization (right sidebar): works on the current results or the selected ones
 const searchSummary = reactive(useSearchSummary(searchRequest.context, selectedResults))
@@ -682,11 +644,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.citation-target-highlight {
-  outline: 2px solid var(--q-secondary) !important;
-  outline-offset: 0;
-}
-
 :deep(.active-filter-chip .q-chip__icon--remove) {
   margin-left: 5px;
 }
