@@ -27,7 +27,7 @@ test('a shared user gets no owner-only collection controls', async ({ page }) =>
 
   await page.getByText('Documents & tagging', { exact: true }).click()
   await expect(page.getByText(fixture.document('chronicle').properties.title, { exact: true })).toBeVisible()
-  await expect(page.getByText('Add Document')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Add from Library' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Remove document from collection' })).toHaveCount(0)
 })
 
@@ -55,6 +55,7 @@ test('the owner keeps the collection controls', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Cancel share' })).toBeVisible()
 
   await page.getByText('Documents & tagging', { exact: true }).click()
-  await expect(page.getByText('Add Document')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add from Library' })).toBeVisible()
+  await expect(page.getByText(/Create New Document|Upload Document/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Remove document from collection' }).first()).toBeVisible()
 })

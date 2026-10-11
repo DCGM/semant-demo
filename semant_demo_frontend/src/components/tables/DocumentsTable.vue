@@ -52,11 +52,12 @@
       </q-select>
       <div style="width: 100%" class="row items-center q-my-sm">
         <RefreshButton @click="handleRefresh" />
-        <AddDocumentDropdownBtn
+        <BaseButton
           v-if="rights.editMembership"
-          @browse-library="handleBrowseLibrary"
-          @create-document="handleCreateDocument"
-          @upload-document="handleUploadDocument"
+          icon="library_add"
+          label="Add from Library"
+          color="primary"
+          @click="handleBrowseLibrary"
         />
         <q-input
           class="q-ml-md"
@@ -175,7 +176,7 @@ import useDocuments from 'src/composables/useDocuments'
 import useBrowseLibraryDialog from 'src/composables/dialogs/useBrowseLibraryDialog'
 import { computed, onMounted, ref } from 'vue'
 import RefreshButton from '../custom/RefreshButton.vue'
-import AddDocumentDropdownBtn from '../custom/AddDocumentDropdownBtn.vue'
+import BaseButton from '../custom/BaseButton.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocumentsRepository } from 'src/repositories/useDocumentsRepository'
@@ -239,14 +240,6 @@ const handleRefresh = async () => {
 
 const handleBrowseLibrary = () => {
   openBrowseLibraryDialog({ collectionId: collectionId.value })
-}
-
-const handleCreateDocument = () => {
-  console.log('Create document - not implemented yet')
-}
-
-const handleUploadDocument = () => {
-  console.log('Upload document - not implemented yet')
 }
 
 const handleTagDocument = (documentId: string) => {
