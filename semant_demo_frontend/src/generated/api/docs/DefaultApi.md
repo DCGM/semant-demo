@@ -37,6 +37,7 @@ All URIs are relative to *http://localhost*
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
 | [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
+| [**readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet**](DefaultApi.md#readdocumentchunkwindowapidocumentsdocumentidchunkschunkidwindowget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/window | Read Document Chunk Window |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
 | [**removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectioncollectionidchunkschunkiddelete) | **DELETE** /api/user_collection/{collection_id}/chunks/{chunk_id} | Remove Chunk From Collection |
@@ -2419,6 +2420,83 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet
+
+> DocumentChunkWindow readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(documentId, chunkId, before, after)
+
+Read Document Chunk Window
+
+Returns the chunk and up to &#x60;&#x60;before&#x60;&#x60;/&#x60;&#x60;after&#x60;&#x60; neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    documentId: documentId_example,
+    // string
+    chunkId: chunkId_example,
+    // number (optional)
+    before: 56,
+    // number (optional)
+    after: 56,
+  } satisfies ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest;
+
+  try {
+    const data = await api.readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+| **chunkId** | `string` |  | [Defaults to `undefined`] |
+| **before** | `number` |  | [Optional] [Defaults to `3`] |
+| **after** | `number` |  | [Optional] [Defaults to `3`] |
+
+### Return type
+
+[**DocumentChunkWindow**](DocumentChunkWindow.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: `application/json`
 
 

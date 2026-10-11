@@ -433,3 +433,20 @@ async def test_sharing_and_unsharing_twice(collections, corpus):
     for _ in range(2):
         await collections.unshare(newspapers, annotator)
     assert await collections.read_shared_user_ids(newspapers) == []
+
+
+async def test_chunk_and_adjacent_chunks_in_document_order(documents, big_document):
+    # #244: the passage around a search hit.
+    document_id, chunk_ids = big_document
+
+    anchor = await documents.read_chunk(chunk_ids[150])
+    before = await documents.read_adjacent_chunks(document_id, 150, "before", 3)
+    after = await documents.read_adjacent_chunks(document_id, 150, "after", 2)
+    at_end = await documents.read_adjacent_chunks(document_id, BIG_DOCUMENT_CHUNKS - 1, "after", 5)
+
+    assert (anchor.document, anchor.order, anchor.text) == (document_id, 150, "Odstavec 150")
+    assert [c.id for c in before] == chunk_ids[147:150]
+    assert [c.id for c in after] == chunk_ids[151:153]
+    assert {c.document for c in before + after} == {document_id}
+    assert at_end == []
+    assert await documents.read_chunk(UNKNOWN) is None

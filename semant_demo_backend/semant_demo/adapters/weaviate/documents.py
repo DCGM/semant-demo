@@ -6,13 +6,21 @@ from weaviate.classes.query import Filter, QueryReference, Sort
 
 import semant_demo.schemas as schemas
 from semant_demo.adapters.weaviate.paging import fetch_all
-from semant_demo.schema.chunks import ChunkText
+from semant_demo.schema.chunks import ChunkText, TextChunk
 from semant_demo.schema.documents import Document, DocumentBrowse, DocumentDetail, DocumentDetailTextChunkWithUserCollectionInfo
 
 
-def _to_chunk_text(obj) -> ChunkText:
+def _document_id(obj) -> UUID | None:
     docs = (obj.references or {}).get("document")
-    return ChunkText(id=obj.uuid, document_id=docs.objects[0].uuid if docs and docs.objects else None,
+    return docs.objects[0].uuid if docs and docs.objects else None
+
+
+def _to_text_chunk(obj, document_id: UUID) -> TextChunk:
+    return TextChunk(**{**obj.properties, "id": obj.uuid, "document": document_id})
+
+
+def _to_chunk_text(obj) -> ChunkText:
+    return ChunkText(id=obj.uuid, document_id=_document_id(obj),
                      order=obj.properties["order"], text=obj.properties.get("text") or "")
 
 
@@ -82,6 +90,29 @@ class DocumentRepository:
             return_references=[QueryReference(link_on="document", return_properties=[])],
         )
         return [_to_chunk_text(o) for o in response.objects]
+
+    async def read_chunk(self, chunk_id: UUID) -> TextChunk | None:
+        """The chunk with its stored properties, or None if it (or its document link) does not exist."""
+        obj = await self._chunks().query.fetch_object_by_id(
+            chunk_id, return_references=[QueryReference(link_on="document", return_properties=[])])
+        document_id = _document_id(obj) if obj is not None else None
+        return _to_text_chunk(obj, document_id) if document_id is not None else None
+
+    async def read_adjacent_chunks(self, document_id: UUID, order: int, direction: str, limit: int) -> list[TextChunk]:
+        """
+        Up to ``limit`` chunks of the document directly before (``direction="before"``) or
+        after (``"after"``) the chunk with ``order``, nearest first, returned in document order.
+        """
+        before = direction == "before"
+        position = Filter.by_property("order")
+        response = await self._chunks().query.fetch_objects(
+            filters=(Filter.by_ref("document").by_id().equal(document_id)
+                     & (position.less_than(order) if before else position.greater_than(order))),
+            sort=Sort.by_property("order", ascending=not before),
+            limit=limit,
+        )
+        chunks = [_to_text_chunk(o, document_id) for o in response.objects]
+        return chunks[::-1] if before else chunks
 
     async def count_chunks(self, document_id: UUID) -> int:
         """The number of chunks of the document (0 for an unknown document)."""

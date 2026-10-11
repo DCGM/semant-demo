@@ -8,9 +8,10 @@ from uuid import uuid4
 
 import pytest
 
-from semant_demo.core.errors import NotFoundError
+from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.collections.access import AuthenticationRequired
 from semant_demo.features.documents import service
+from semant_demo.schema.chunks import TextChunk
 from semant_demo.schema.documents import Document, DocumentBrowse, DocumentDetail
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
@@ -89,5 +90,88 @@ async def test_document_outside_the_collection_is_not_read():
 
     with pytest.raises(NotFoundError):
         await service.read_chunks_in_collection(documents, FakeCollections(), OWNER, OUTSIDE_DOCUMENT, COLLECTION)
+
+    assert documents.reads == []
+
+
+#####################################
+# Passage around a chunk (#244)     #
+#####################################
+
+def _chunk(order, document=DOCUMENT):
+    return TextChunk(id=uuid4(), text=f"Odstavec {order}", start_page_id=uuid4(), from_page=order, to_page=order,
+                     document=document, order=order)
+
+
+class FakeChunks(FakeDocuments):
+    """A document with chunks at orders 0, 1, 2, 4, 5 (a gap at 3), and one chunk of another document."""
+
+    def __init__(self):
+        super().__init__()
+        self.chunks = [_chunk(order) for order in (0, 1, 2, 4, 5)]
+        self.foreign = _chunk(0, OUTSIDE_DOCUMENT)
+
+    async def read_chunk(self, chunk_id):
+        return next((c for c in [*self.chunks, self.foreign] if c.id == chunk_id), None)
+
+    async def read_adjacent_chunks(self, document_id, order, direction, limit):
+        self.reads.append(("adjacent", direction, limit))
+        if direction == "before":
+            return [c for c in self.chunks if c.order < order][-limit:]
+        return [c for c in self.chunks if c.order > order][:limit]
+
+
+@pytest.mark.parametrize("anchor, before, after, orders, has_before, has_after", [
+    (2, 1, 1, [1, 2, 4], True, True),
+    (2, 5, 5, [0, 1, 2, 4, 5], False, False),
+    (0, 3, 1, [0, 1], False, True),
+    (5, 2, 0, [2, 4, 5], True, False),
+    (4, 0, 0, [4], True, True),
+])
+async def test_chunk_window_is_bounded_and_in_document_order(anchor, before, after, orders, has_before, has_after):
+    documents = FakeChunks()
+    chunk = next(c for c in documents.chunks if c.order == anchor)
+
+    window = await service.read_chunk_window(documents, str(DOCUMENT), str(chunk.id), before, after)
+
+    assert [c.order for c in window.chunks] == orders
+    assert (window.has_before, window.has_after) == (has_before, has_after)
+    assert window.anchor_chunk_id == chunk.id
+    assert (window.document.title, window.total_chunks) == ("Kronika", 3)
+
+
+async def test_chunk_window_of_a_chunk_without_order_is_the_chunk_alone():
+    documents = FakeChunks()
+    chunk = documents.chunks[0].model_copy(update={"order": None})
+    documents.chunks = [chunk]
+
+    window = await service.read_chunk_window(documents, DOCUMENT, chunk.id, 3, 3)
+
+    assert ([c.id for c in window.chunks], window.has_before, window.has_after) == ([chunk.id], False, False)
+
+
+@pytest.mark.parametrize("case", ["unknown chunk", "chunk of another document", "malformed chunk",
+                                  "malformed document"])
+async def test_chunk_window_needs_a_chunk_of_the_document(case):
+    documents = FakeChunks()
+    document_id, chunk_id = {
+        "unknown chunk": (DOCUMENT, uuid4()),
+        "chunk of another document": (DOCUMENT, documents.foreign.id),
+        "malformed chunk": (DOCUMENT, "not-a-uuid"),
+        "malformed document": ("not-a-uuid", documents.chunks[0].id),
+    }[case]
+
+    with pytest.raises(NotFoundError):
+        await service.read_chunk_window(documents, document_id, chunk_id, 1, 1)
+
+    assert documents.reads == []
+
+
+@pytest.mark.parametrize("before, after", [(-1, 0), (0, service.MAX_WINDOW_SIDE + 1)])
+async def test_chunk_window_size_is_limited(before, after):
+    documents = FakeChunks()
+
+    with pytest.raises(InvalidRequestError):
+        await service.read_chunk_window(documents, DOCUMENT, documents.chunks[0].id, before, after)
 
     assert documents.reads == []

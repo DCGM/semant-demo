@@ -22,7 +22,7 @@ test('search results show classification badges on one expandable line', async (
   await expect(badges.first()).toHaveClass(/bg-orange-1/) // color of its search filter's position
   await expect(letter.locator('.classification-badge').last()).toHaveClass(/bg-teal-4/) // style
   await expect(letter.locator('.classification-badge')).toHaveText(['Communicative Mode: Interaction', 'Style: Informal'])
-  await expect(letter.getByRole('button')).toHaveCount(0) // fits on one line
+  await expect(letter.locator('.result-classifications').getByRole('button')).toHaveCount(0) // fits on one line
   await expect(gazette.locator('.result-classifications')).toHaveCount(0)
 
   const line = chronicle.locator('.classification-line')

@@ -102,7 +102,7 @@ describe('SearchResultCard', () => {
 
     expect(text.text()).toBe(longText)
     expect(text.classes()).not.toContain('search-result__text--preview')
-    expect(wrapper.find('button').exists()).toBe(false) // no Show full text control
+    expect(wrapper.find('.search-result__toggle').exists()).toBe(false) // no Show full text control
     const header = wrapper.get('.search-result__header').text()
     for (const value of ['Jan Novák', '1921', 'cs', 'Pages: 3–4', 'Source: Kronika obce Lhota']) {
       expect(header).toContain(value)

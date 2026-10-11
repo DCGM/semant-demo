@@ -73,3 +73,18 @@ class DocumentDetail(BaseModel):
     """A document with all its chunks, each marked with membership in one collection."""
     document: Document
     chunks: list[DocumentDetailTextChunkWithUserCollectionInfo]
+
+
+class DocumentChunkWindow(BaseModel):
+    """
+    A bounded passage of a corpus document around one of its chunks (public): up to the
+    requested number of chunks before and after the anchor chunk, in document order, with
+    the anchor included. ``text`` is the canonical stored text. ``has_before``/``has_after``
+    tell whether the document continues beyond the returned chunks.
+    """
+    document: Document
+    chunks: list[TextChunk]
+    anchor_chunk_id: UUID
+    has_before: bool
+    has_after: bool
+    total_chunks: int

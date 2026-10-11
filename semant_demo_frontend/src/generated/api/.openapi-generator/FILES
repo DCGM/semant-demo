@@ -20,6 +20,7 @@ docs/Detail.md
 docs/DiscussSpanRequest.md
 docs/Document.md
 docs/DocumentBrowse.md
+docs/DocumentChunkWindow.md
 docs/DocumentDetail.md
 docs/DocumentDetailTextChunkWithUserCollectionInfo.md
 docs/DocumentStats.md
@@ -65,6 +66,7 @@ docs/Tag.md
 docs/TagSpan.md
 docs/TagSpanBatchRequest.md
 docs/TagSpanWriteResult.md
+docs/TextChunk.md
 docs/TextChunkWithDocument.md
 docs/Url.md
 docs/UserCreate.md
@@ -94,6 +96,7 @@ models/Detail.ts
 models/DiscussSpanRequest.ts
 models/Document.ts
 models/DocumentBrowse.ts
+models/DocumentChunkWindow.ts
 models/DocumentDetail.ts
 models/DocumentDetailTextChunkWithUserCollectionInfo.ts
 models/DocumentStats.ts
@@ -139,6 +142,7 @@ models/Tag.ts
 models/TagSpan.ts
 models/TagSpanBatchRequest.ts
 models/TagSpanWriteResult.ts
+models/TextChunk.ts
 models/TextChunkWithDocument.ts
 models/Url.ts
 models/UserCreate.ts

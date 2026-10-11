@@ -199,7 +199,8 @@ Routes authenticate; services authorize ([ADR 0007](adr/0007-access-and-collabor
 Resource rights (owner, shared user, admin) are checked by the feature services through
 `features/collections/access.py`: shared users may read and annotate (spans, tag definitions)
 but not change membership, metadata or sharing. Public corpus reads (`GET /api/document/{id}`,
-`/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`, search
+`/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`,
+`/api/documents/{id}/chunks/{chunk_id}/window` (a bounded passage around a chunk), search
 without collection and tags) need no login. RAG, `/api/summarize/results` and
 `/api/question/{text}` are public too and call LLM providers with client-supplied text;
 this existing product behavior is tracked for an access/cost decision in [#234](https://github.com/DCGM/semant-demo/issues/234).
@@ -386,7 +387,7 @@ Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
 
 | Route | Page | Description |
 |---|---|---|
-| `/search` | `SearchPage` | Main search interface with filters, results, summaries |
+| `/search` | `SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
 | `/rag` | `RagPage` | Multi-turn RAG chat with source citations |
 | `/collections` | `Collections/UserCollectionsPage` | List user collections |
 | `/collections/:cid/overview` | `Collections/CollectionOverviewPage` | Collection summary & stats |
@@ -401,7 +402,7 @@ Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
 
 State management via Pinia stores (`user-store`, `collectionsStore`, `collectionStatsStore`, `chunksStore`, `documentsStore`, `tagsStore`, `tagSpansStore`). Reusable streaming logic lives in `composables/` (e.g. `useSpanDiscussion` for the NDJSON span chat).
 
-All network calls go through `src/shared/api`: one backend origin (`BACKEND_URL`), one bearer-token source, the OpenAPI-generated TypeScript client (`src/generated/`, via `useApi()`, used directly or through `repositories/`) and `postNdjson()` for the NDJSON streams (span suggestions, span discussion), which sends the same token and turns a refused request into an `ApiError` with the backend's `detail`. There is no other HTTP client. State that belongs to a context (collection, document, search, conversation) drops answers that arrive after the context changed (`createContextGuard`/`createScope`); signing out clears user-scoped stores (`app/session.ts`), and a 401 answer to a request sent with the current token signs the user out locally (expired or revoked session). The `/collections` routes need a signed-in user (`meta.requiresAuth`, `router/authGuard.ts`): a direct link waits for a stored session to be restored, otherwise goes to search, and signing out on such a route leaves it. The navigation drawer follows the session (Collections, Settings — the account dialog — and Sign out when signed in; Log in and Register otherwise). Back arrows (collection workspace → collection list, document view → collection documents) link to a fixed parent route rather than browser history and never change drawer state; drawer collapse uses the separate neutral `MiniStateButton`. These are UI conveniences; the backend authorizes every request. The app-level right sidebar (`app/sidebar/`) hosts page tools such as the search summary; see [RIGHT_SIDEBAR.md](RIGHT_SIDEBAR.md). Owner-only collection controls are hidden for shared users (`features/collections/permissions.ts`, mirroring the backend rules).
+All network calls go through `src/shared/api`: one backend origin (`BACKEND_URL`), one bearer-token source, the OpenAPI-generated TypeScript client (`src/generated/`, via `useApi()`, used directly or through `repositories/`) and `postNdjson()` for the NDJSON streams (span suggestions, span discussion), which sends the same token and turns a refused request into an `ApiError` with the backend's `detail`. There is no other HTTP client. State that belongs to a context (collection, document, search, conversation) drops answers that arrive after the context changed (`createContextGuard`/`createScope`); signing out clears user-scoped stores (`app/session.ts`), and a 401 answer to a request sent with the current token signs the user out locally (expired or revoked session). The `/collections` routes need a signed-in user (`meta.requiresAuth`, `router/authGuard.ts`): a direct link waits for a stored session to be restored, otherwise goes to search, and signing out on such a route leaves it. The navigation drawer follows the session (Collections, Settings — the account dialog — and Sign out when signed in; Log in and Register otherwise). Back arrows (collection workspace → collection list, document view → collection documents) link to a fixed parent route rather than browser history and never change drawer state; drawer collapse uses the separate neutral `MiniStateButton`. These are UI conveniences; the backend authorizes every request. The app-level right sidebar (`app/sidebar/`) hosts page tools such as the search summary and the document context of a search result; see [RIGHT_SIDEBAR.md](RIGHT_SIDEBAR.md). Owner-only collection controls are hidden for shared users (`features/collections/permissions.ts`, mirroring the backend rules).
 
 ### 4. Weaviate + Utilities (repository root `weaviate_utils/`)
 
