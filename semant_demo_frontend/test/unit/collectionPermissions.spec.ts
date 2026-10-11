@@ -12,10 +12,12 @@ import DocumentsTable from 'src/components/tables/DocumentsTable.vue'
 import { useCollectionsStore } from 'src/stores/collectionsStore'
 import * as notificationModule from 'src/utils/notification'
 import * as documentsRepositoryModule from 'src/repositories/useDocumentsRepository'
+import * as browseLibraryDialogModule from 'src/composables/dialogs/useBrowseLibraryDialog'
 
 type Spy = ReturnType<typeof vi.fn>
 const { notif } = notificationModule as unknown as { notif: { error: Spy } }
 const { repo } = documentsRepositoryModule as unknown as { repo: { removeFromCollection: Spy, getAllByCollection: Spy } }
+const { openBrowseLibraryDialog } = browseLibraryDialogModule as unknown as { openBrowseLibraryDialog: Spy }
 
 // Confirmation dialogs are accepted at once.
 vi.mock('quasar', async () => {
@@ -41,6 +43,10 @@ vi.mock('src/repositories/useCollectionRepository', () => ({
   })
 }))
 vi.mock('src/repositories/useUserRepository', () => ({ useUserRepository: () => ({ search: async () => [] }) }))
+vi.mock('src/composables/dialogs/useBrowseLibraryDialog', () => {
+  const openBrowseLibraryDialog = vi.fn()
+  return { default: () => ({ openBrowseLibraryDialog }), openBrowseLibraryDialog }
+})
 vi.mock('src/repositories/useDocumentsRepository', () => {
   const repo = { removeFromCollection: vi.fn(), getAllByCollection: vi.fn(), getStats: async () => null }
   return { useDocumentsRepository: () => repo, repo }
@@ -143,16 +149,29 @@ describe('DocumentsTable', () => {
     const wrapper = await mountFor(true)
 
     expect(titles(wrapper)).toEqual(['d1', 'd2', 'd3'])
-    expect(wrapper.text()).not.toContain('Add Document')
+    expect(wrapper.text()).not.toContain('Add from Library')
     expect(wrapper.find('button[aria-label="Remove document from collection"]').exists()).toBe(false)
     expect(wrapper.find('tbody .q-checkbox').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  // Adding from the library is the only implemented way to add documents (#252).
+  it('offers the owner a direct Add from Library action and no create or upload', async () => {
+    const wrapper = await mountFor(false)
+
+    const add = wrapper.findAll('button').filter((b) => b.text().includes('Add from Library'))
+    expect(add).toHaveLength(1)
+    expect(document.body.textContent).not.toMatch(/Create New Document|Upload Document/)
+
+    await add[0].trigger('click')
+    expect(openBrowseLibraryDialog).toHaveBeenCalledWith({ collectionId: 'col-1' })
+    expect(document.body.textContent).not.toMatch(/Create New Document|Upload Document/)
     wrapper.unmount()
   })
 
   it('removes only the documents whose removal was acknowledged and reports the rest', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const wrapper = await mountFor(false)
-    expect(wrapper.text()).toContain('Add Document')
     repo.removeFromCollection.mockImplementation(async (documentId: string) => {
       if (documentId === 'd2') throw new Error('storage failed')
       return { outcome: 'complete' }
