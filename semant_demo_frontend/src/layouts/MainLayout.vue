@@ -2,7 +2,16 @@
   <q-layout view="hHh LpR fff">
     <q-header elevated class="bg-white text-grey-8">
       <q-toolbar class="GNL__toolbar">
-        <q-btn class="q-mx-md" dense flat round @click="toggleLeftDrawer" icon="menu" />
+        <q-btn
+          class="q-mx-md"
+          dense
+          flat
+          round
+          icon="menu"
+          :aria-label="leftDrawerOpen ? 'Hide navigation' : 'Show navigation'"
+          :aria-expanded="leftDrawerOpen"
+          @click="toggleLeftDrawer"
+        />
 
         <q-toolbar-title shrink class="row items-center no-wrap">
           <router-link to="/" class="row items-center no-wrap" style="text-decoration: none; color: inherit;">
