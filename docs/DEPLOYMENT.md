@@ -33,7 +33,7 @@ For server deployments, use the compose files in `deploy/` instead of the manual
 
 The CI/CD pipeline (GitHub Actions; tests on the self-hosted `semant-ci` runners, deployments on `semant-server`, see [deploy/README.md](../deploy/README.md#runners)) handles:
 - **Production** — triggered by a `v*.*.*` tag pushed from `main`
-- **Test previews** — one persistent instance for `main`, plus ephemeral per-PR instances that are automatically torn down when the PR closes
+- **Test previews** — one persistent instance for `main`, plus ephemeral per-PR instances that are automatically torn down when the PR closes. PR previews use dedicated preview credentials and deploy even when checks fail, for manual diagnosis; see [PR preview credentials](../deploy/README.md#pr-preview-credentials)
 
 The backend image installs `semant_demo_backend/requirements-runtime.lock` with `--require-hashes`: the same Python package versions that CI tests, with no resolution at build time (see [CONTRIBUTING.md](../CONTRIBUTING.md) for updating the locks). To audit a running instance, run `docker compose -p <project> -f <compose file> exec app python -m pip freeze --user` and compare it with the lock. The lock does not freeze the floating `python:3.12` / `python:3.12-slim` base images (OS packages and patch release), nor the separate embedding service image (`deploy/Dockerfile.embedder`), which still installs unpinned requirements.
 
