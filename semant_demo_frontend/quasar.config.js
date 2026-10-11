@@ -211,7 +211,7 @@ module.exports = configure(function (/* ctx */) {
       builder: {
         // https://www.electron.build/configuration/configuration
 
-        appId: 'image-search-frontend'
+        appId: 'semant-demo-frontend'
       }
     },
 

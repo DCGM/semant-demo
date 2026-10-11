@@ -1,6 +1,6 @@
-# SemANT demo frontend
+# semANT demo frontend
 
-Vue 3 + Quasar SPA (package name `image-search-frontend` is historical). Setup, checks and
+Vue 3 + Quasar SPA. Setup, checks and
 client generation are described in [CONTRIBUTING.md](../CONTRIBUTING.md#2-setup-and-commands);
 the structure in [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md#3-frontend-semant_demo_frontend).
 

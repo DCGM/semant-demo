@@ -4,6 +4,19 @@ import { annotation, chunkText, fixture, logIn, openDocument } from './support'
 // Small browser smoke suite on the seeded fixture corpus. Tests only read data, so they
 // share one backend; a test that mutates data must create and remove its own.
 
+test('app is branded semANT demo with the semANT logo', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page).toHaveTitle('semANT demo')
+  const banner = page.getByRole('banner')
+  await expect(banner.getByText('semANT demo', { exact: true })).toBeVisible()
+  await expect(banner.getByRole('img', { name: 'semANT logo' })).toBeVisible()
+  const href = await page.locator('link[rel="icon"][sizes="32x32"]').getAttribute('href')
+  const favicon = await page.request.get(new URL(href ?? '', page.url()).href)
+  expect(favicon.ok()).toBe(true)
+  expect(favicon.headers()['content-type']).toBe('image/png')
+})
+
 test('logged-in user stays authenticated across a reload', async ({ page }) => {
   await logIn(page, 'owner')
 
