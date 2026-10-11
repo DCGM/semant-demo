@@ -255,9 +255,56 @@ Set these in **Settings → Secrets and variables → Actions → Variables**:
 
 ### Required GitHub Secrets
 
-| Secret | Description |
-|---|---|
-| `OPENAI_API_KEY` | OpenAI / OpenRouter API key |
+Set these in **Settings → Secrets and variables → Actions → Secrets**:
+
+| Secret | Used by | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | production, `test-main` | OpenAI / OpenRouter API key |
+| `JWT_SECRET` | production, `test-main` | JWT signing secret (long random string) |
+| `OPENAI_API_KEY_PREVIEW` | PR previews only | Separate provider key with a low spending limit (see below) |
+| `JWT_SECRET_PREVIEW` | PR previews only | Separate JWT signing secret, different from `JWT_SECRET` |
+
+### PR preview credentials
+
+PR previews run unreviewed PR code on the deployment runner, so `deploy-test-pr` never
+receives the production `OPENAI_API_KEY` or `JWT_SECRET`. It writes `OPENAI_API_KEY_PREVIEW`
+and `JWT_SECRET_PREVIEW` into the preview `.env` as `OPENAI_API_KEY` and `JWT_SECRET`, so
+the application itself needs no change. If either preview secret is missing, the job's first
+step ("Check preview credentials") fails with an error naming it; there is no fallback to
+the production secrets. Production and `test-main` keep using the production secrets.
+
+A repository administrator provisions them (only administrators can set Actions secrets):
+
+1. **Provider key:** in the OpenAI / OpenRouter account, create a separate project or key
+   used only for previews and give it a low monthly budget / spending limit, so a leaked or
+   misused key can cost at most that amount. Never reuse the production key.
+2. **JWT secret:** generate a fresh value that is not the production one, e.g.
+   `openssl rand -base64 48`.
+3. Store each value with **Settings → Secrets and variables → Actions → New repository
+   secret**, or `gh secret set OPENAI_API_KEY_PREVIEW` / `gh secret set JWT_SECRET_PREVIEW`,
+   which read the value from the prompt or stdin. Do not pass values as command-line
+   arguments or paste them into issues, logs or chat.
+
+**Rotation.** Rotate after a suspected leak, when someone with access leaves, or
+periodically:
+
+1. Create the new provider key (or JWT value) and update the secret as above.
+2. Redeploy open previews by pushing to their PRs or re-running their `deploy-test-pr` job;
+   each deploy rewrites the preview `.env`. A preview not redeployed keeps the old values.
+3. Revoke the old provider key in the provider console. A new `JWT_SECRET_PREVIEW`
+   invalidates existing preview logins once a preview is redeployed; users log in again.
+
+The separate credentials limit what preview code can obtain. They are not full isolation:
+previews, test jobs and the other deployments share the same server and Docker daemon, and
+code running there with access to that daemon can reach more than its own `.env`. That is a
+known scope boundary; host separation is not planned.
+
+**Test results versus preview availability.** `deploy-test-pr` runs with `if: always()`
+after the backend tests, so a preview is built and deployed even when backend, frontend,
+integration, API client drift or dependency lock checks fail; this lets developers diagnose a
+failing PR by hand. A healthy preview (and a green "Deploy test PR" job) does **not** mean
+the PR passed CI or can be merged: the failed checks stay visible on the PR, and branch
+protection, not the preview, blocks merging. The deploy job's summary repeats this.
 
 ### First-time Server Setup
 

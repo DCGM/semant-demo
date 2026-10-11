@@ -555,6 +555,8 @@ jobs:
 
   deploy-test-pr:
     name: "Deploy test PR #${{ github.event.pull_request.number }}"
+    # always(): the preview deploys even when checks fail, for manual diagnosis. Failed checks
+    # still block merging through branch protection, not the preview (#213).
     needs: [test-backend]
     if: always() && github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, semant-server]
@@ -568,6 +570,22 @@ jobs:
       DEPLOY_COMMIT: ${{ github.event.pull_request.head.sha }}
 
     steps:
+      # Previews run unreviewed PR code, so they get dedicated preview credentials and never the
+      # production OPENAI_API_KEY / JWT_SECRET; a missing one fails here, with no fallback (#213).
+      - name: Check preview credentials
+        env:
+          OPENAI_API_KEY_PREVIEW: ${{ secrets.OPENAI_API_KEY_PREVIEW }}
+          JWT_SECRET_PREVIEW: ${{ secrets.JWT_SECRET_PREVIEW }}
+        run: |
+          missing=0
+          for name in OPENAI_API_KEY_PREVIEW JWT_SECRET_PREVIEW; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set. PR previews do not fall back to production credentials; see deploy/README.md (PR preview credentials)."
+              missing=1
+            fi
+          done
+          exit $missing
+
       - name: Validate SQL database directory
         run: |
           SQL_DB_DIR="${{ vars.SQL_DB_DIR_TEST }}"
@@ -633,8 +651,9 @@ jobs:
 
       - name: Create .env
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          # Written to the preview .env as OPENAI_API_KEY / JWT_SECRET.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_PREVIEW }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET_PREVIEW }}
         run: |
           BASE_DOMAIN="${{ vars.BASE_DOMAIN }}"
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
@@ -697,6 +716,7 @@ jobs:
             if curl --fail --silent --max-time 10 "$TEST_URL"; then
               echo ""
               echo "Health check passed: $TEST_URL"
+              echo "Preview https://${TEST_SUBDOMAIN} is up for manual testing. Previews deploy even when checks fail, so this says nothing about whether the PR passed CI; see the PR's checks." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
           done
