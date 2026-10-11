@@ -395,6 +395,25 @@ apply while nothing else edits document metadata. Running it again skips finishe
 documents. Exit code 1: nothing was eligible, or an eligible document was not written or
 not verified (listed with the reason).
 
+**Single-pass sync** (#259). `--sync --confirm-endpoint HOST:PORT --checkpoint FILE` plus the
+report's library options plans and writes the corpus one page (100 documents) at a time
+without a report: each page is planned from the values just read, its changes are written at
+once and only the written documents are read back; nothing is reread afterwards. It refuses
+to start unless the endpoint is confirmed and `library` is declared as text (declare it first
+with `--add-library-property`). The checkpoint (JSON, replaced atomically after each page)
+holds the endpoint, collection, declared types, options, the last finished id, the running
+counts (examined, updated, unchanged, unresolved kinds, failed, `library_from`, `public`
+transitions such as `true_to_false`) and the ids whose write failed or did not read back.
+Running the same command again resumes it: those ids are planned again first, then the pass
+continues after the last finished id; a page interrupted before its checkpoint is redone, and
+replanning makes that safe (written documents are then `unchanged`). A checkpoint with a
+different endpoint, collection, schema or options is refused; use a new checkpoint per
+environment. The manifest (`--manifest`, default `CHECKPOINT.manifest.jsonl`) lists unresolved
+and failed ids with the reason, not metadata. A failing page is retried twice with a pause
+before the run stops (resumable). Progress goes to stderr, the summary to stdout; the mirror
+password is never printed. Exit code 1 while failed ids remain. Run it while nothing else
+edits document metadata.
+
 #### Local check on a copy of the development snapshot
 
 Never run this against the only copy of `local_data/weaviate_semant_test/`, a shared
@@ -481,6 +500,19 @@ listy"). 21 documents become non-public (the selected row's `public` is `false`)
 become public. Applying wrote and verified 499/499; applying again and a fresh report found
 nothing to do; a stored library planted wrong was replaced from `high` page evidence and
 verified. Details are on PR #258.
+
+#### Deployed test database (2026-10-11, #259)
+
+`localhost:8082` (test-main and PR previews; the same 500 documents, 3,260 chunks) on the
+server, mirror `librarymetadata_all` on `127.0.0.1:5888` (library ids `nkp`, `mzk`; no `ndk`).
+After a Weaviate filesystem backup (`pre-metadata-sync-259-2026-10-11`) and
+`--add-library-property --confirm-endpoint localhost:8082`, `--sync` with
+`--infer-library-from-pages --infer-library-from-mirror --distrust-stored mzk
+--library-priority nkp,mzk --overwrite` ran 20 documents (`--limit 20`), then resumed to the
+end in 13 s: 500 examined, 499 updated and verified, 0 failed, 1 unresolved (`eod` + `knav`),
+21 `public` true→false, none false→true; counts as in the local check above. A run with a new
+checkpoint updated nothing. Production (`localhost:8080`, 484,336 documents, `yearIssued` of
+type `int`) waits for the test result to be accepted.
 
 ## 11. Testing versus development data
 

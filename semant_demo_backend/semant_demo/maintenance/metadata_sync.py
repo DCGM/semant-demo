@@ -1,4 +1,4 @@
-"""Report, and on explicit request apply, document metadata from the Kramerius mirror (#257).
+"""Report, and on explicit request apply or sync, document metadata from the Kramerius mirror (#257).
 
 Each Weaviate document takes its metadata from exactly one mirror row: the row of its own
 source library, ``(id, library)``. Nothing is taken from another library's row: a value the
@@ -40,6 +40,20 @@ Declare ``Documents.library`` where it is missing (an additive, reviewed schema 
 
     python -m semant_demo.maintenance.metadata_sync --add-library-property --confirm-endpoint localhost:8080
 
+Or plan and write in a single pass, page by page, without a report (back up the data first)::
+
+    python -m semant_demo.maintenance.metadata_sync --sync --confirm-endpoint localhost:8080 \\
+        --checkpoint sync.json [--manifest sync.jsonl] [the report's library options] [--overwrite] \\
+        [--after UUID] [--limit N]
+
+Each page of ``Documents`` is planned from the values just read, its changes are written and the
+written documents read back; nothing is reread afterwards. The checkpoint (JSON) is saved after
+each page with the last finished id, running counts (including ``public`` transitions) and the
+ids whose write failed or did not read back; running the same command again resumes it,
+planning those ids again first. The manifest lists unresolved and failed ids with reasons.
+The exit code is 1 while failed ids remain. Resuming requires the same endpoint, collection,
+declared types and options; use a new checkpoint per environment.
+
 Apply the changes listed in a reviewed report (back up the data first)::
 
     python -m semant_demo.maintenance.metadata_sync --apply metadata.json --confirm-endpoint localhost:8080 \\
@@ -72,6 +86,7 @@ PostgreSQL driver, e.g. ``psycopg``, is installed separately).
 import argparse
 import asyncio
 import csv
+import hashlib
 import json
 import os
 import sys
@@ -365,23 +380,11 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
     last: UUID | None = None
     cache: dict[tuple[str, str], SourceRecord | None] = {}
     async for page in _pages(client, names, document_ids, after, limit):
-        records = read_meta_records(source, [i for i, stored in page if stored is not None])
-        ancestors = read_ancestors(source, [r for rows in records.values() for r in rows], cache)
-        if len(cache) > 100_000:  # parents (periodicals, volumes) recur on neighbouring pages
-            cache.clear()
-        evidence = await _page_evidence(client, names, source, [i for i, stored in page if stored is not None]) \
-            if infer_from_pages else {}
-        for document_id, stored in page:
-            last = document_id
-            if stored is None:
-                entries.append({"id": str(document_id), "status": "unresolved", "kind": "not_in_target",
-                                "reason": "no such document in the target collection"})
-                continue
-            entries.append(plan_document(
-                document_id, stored, records.get(document_id, []), targets,
-                mapped_library=library_map.get(document_id), override_library=library_override.get(document_id),
-                distrusted=distrusted, pages=evidence.get(document_id), priority=priority,
-                infer_from_mirror=infer_from_mirror, ancestors=ancestors, overwrite=overwrite))
+        entries += await _plan_page(
+            client, names, source, page, targets, cache, library_map=library_map,
+            library_override=library_override, distrusted=distrusted, infer_from_pages=infer_from_pages,
+            priority=priority, infer_from_mirror=infer_from_mirror, overwrite=overwrite)
+        last = page[-1][0]
 
     reached_limit = document_ids is None and limit is not None and len(entries) == limit
     plain = {"id", "status", "stored_library", "mirror_libraries", "library", "library_from", "in_library"}
@@ -402,6 +405,32 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
         "documents": [e for e in entries
                       if e["status"] != "unchanged" or set(e) - plain or e.get("library_from") in INFERRED],
     }
+
+
+async def _plan_page(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection,
+                     page: list[tuple[UUID, dict[str, Any] | None]], targets: dict[str, tuple[str, str]],
+                     cache: dict[tuple[str, str], SourceRecord | None], *, library_map: dict[UUID, str],
+                     library_override: dict[UUID, str], distrusted: frozenset[str], infer_from_pages: bool,
+                     priority: tuple[str, ...], infer_from_mirror: bool, overwrite: bool) -> list[dict[str, Any]]:
+    """The report entries (``plan_document``) of one page of (id, stored properties or None)."""
+    present = [i for i, stored in page if stored is not None]
+    records = read_meta_records(source, present)
+    ancestors = read_ancestors(source, [r for rows in records.values() for r in rows], cache)
+    if len(cache) > 100_000:  # parents (periodicals, volumes) recur on neighbouring pages
+        cache.clear()
+    evidence = await _page_evidence(client, names, source, present) if infer_from_pages else {}
+    entries = []
+    for document_id, stored in page:
+        if stored is None:
+            entries.append({"id": str(document_id), "status": "unresolved", "kind": "not_in_target",
+                            "reason": "no such document in the target collection"})
+            continue
+        entries.append(plan_document(
+            document_id, stored, records.get(document_id, []), targets,
+            mapped_library=library_map.get(document_id), override_library=library_override.get(document_id),
+            distrusted=distrusted, pages=evidence.get(document_id), priority=priority,
+            infer_from_mirror=infer_from_mirror, ancestors=ancestors, overwrite=overwrite))
+    return entries
 
 
 async def _page_evidence(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection,
@@ -543,6 +572,223 @@ def apply_exit_code(result: dict) -> int:
     return 0 if result["eligible"] and complete and not result["failed"] and not result["not_applied"] else 1
 
 
+SYNC_ATTEMPTS = 3
+"""Tries of one batch (read, plan, write, read back) before the run stops; batches are idempotent."""
+SYNC_BACKOFF = 10.0
+
+
+def _fingerprint(mapping: dict[UUID, str] | None) -> str | None:
+    if not mapping:
+        return None
+    lines = "\n".join(f"{i},{library}" for i, library in sorted(mapping.items()))
+    return hashlib.sha256(lines.encode()).hexdigest()[:16]
+
+
+def _sync_counts() -> dict[str, Any]:
+    return {"examined": 0, "updated": 0, "unchanged": 0, "unresolved": {}, "failed": 0, "library_from": {},
+            "public": {"false_to_true": 0, "true_to_false": 0, "unset_to_true": 0, "unset_to_false": 0},
+            "with_held_changes": 0, "with_skipped_values": 0, "changed_properties": {}}
+
+
+def _add(counter: dict[str, int], key: str, n: int = 1) -> None:
+    counter[key] = counter.get(key, 0) + n
+
+
+def _public_transition(change: dict[str, Any]) -> str:
+    old = {True: "true", False: "false"}.get(change["old"], "unset")
+    return f"{old}_to_{'true' if change['new'] else 'false'}"
+
+
+def _write_json(path: Path, data: Any) -> None:
+    """Replace the file atomically, so a crash leaves the previous checkpoint."""
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+async def _sync_batch(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection,
+                      page: list[tuple[UUID, dict[str, Any] | None]], targets: dict[str, tuple[str, str]],
+                      types: dict[str, str], cache: dict, plan_options: dict[str, Any]) -> dict[str, Any]:
+    """Plan one page, write its changes and read the written documents back. Returns its counts,
+    manifest lines and the ids not verified; changes nothing else, so a failed batch can be retried."""
+    entries = await _plan_page(client, names, source, page, targets, cache, **plan_options)
+    counts = _sync_counts()
+    manifest: list[dict[str, Any]] = []
+    failed: list[str] = []
+    written: dict[UUID, dict[str, Any]] = {}
+    for entry in entries:
+        counts["examined"] += 1
+        counts["with_held_changes"] += "held" in entry
+        counts["with_skipped_values"] += "skipped" in entry
+        if "library_from" in entry:
+            _add(counts["library_from"], entry["library_from"])
+        if entry["status"] == "unresolved":
+            _add(counts["unresolved"], entry["kind"])
+            manifest.append({"id": entry["id"], "status": "unresolved", "kind": entry["kind"],
+                             "reason": entry["reason"], "mirror_libraries": entry.get("mirror_libraries", [])})
+        elif entry["status"] == "unchanged":
+            counts["unchanged"] += 1
+        else:
+            document_id = UUID(entry["id"])
+            pending = {prop: _to_weaviate(change["new"], types[prop]) for prop, change in entry["changes"].items()}
+            try:
+                await update_document(client, names, document_id, pending)
+            except Exception as e:  # the write may or may not have happened; a retry plans it again
+                failed.append(entry["id"])
+                manifest.append({"id": entry["id"], "status": "failed", "reason": f"{type(e).__name__}: {e}"})
+            else:
+                written[document_id] = entry
+    read_back = await read_documents(client, names, list(written))
+    for document_id, entry in written.items():
+        stored = read_back.get(document_id, {})
+        differing = sorted(p for p, c in entry["changes"].items() if jsonable(stored.get(p)) != c["new"])
+        if differing:
+            failed.append(entry["id"])
+            manifest.append({"id": entry["id"], "status": "failed",
+                             "reason": f"read back differs: {', '.join(differing)}"})
+            continue
+        counts["updated"] += 1
+        for prop in entry["changes"]:
+            _add(counts["changed_properties"], prop)
+        if "public" in entry["changes"]:
+            _add(counts["public"], _public_transition(entry["changes"]["public"]))
+    counts["failed"] = len(failed)
+    return {"counts": counts, "manifest": manifest, "failed": failed}
+
+
+def _merge_counts(total: dict[str, Any], batch: dict[str, Any]) -> None:
+    for key, value in batch.items():
+        if isinstance(value, dict):
+            for k, n in value.items():
+                _add(total[key], k, n)
+        else:
+            total[key] += value
+
+
+async def sync(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection, *,
+               checkpoint: Path, manifest: Path, endpoint: str, source_name: str,
+               library_map: dict[UUID, str] | None = None, library_override: dict[UUID, str] | None = None,
+               distrusted: frozenset[str] = frozenset(), infer_from_pages: bool = False,
+               priority: tuple[str, ...] = (), infer_from_mirror: bool = False, overwrite: bool = False,
+               after: UUID | None = None, limit: int | None = None,
+               progress=lambda line: print(line, file=sys.stderr, flush=True)) -> dict[str, Any]:
+    """Plan and apply the documents one page at a time, in a single pass (#259).
+
+    Each page is planned from the values just read (as ``build_report``), its changes are
+    written at once and the written documents read back. ``checkpoint`` (JSON) holds the last
+    id of the finished pages, the running counts and the ids whose write failed or did not read
+    back; it is saved after each page, and an existing checkpoint is resumed: its failed ids are
+    planned again first, then the pass continues after its last id. ``manifest`` (JSON lines)
+    gets one line per unresolved or failed document. ``limit`` bounds the documents of this run.
+    Raises ``LookupError`` before writing if the collection does not declare ``library`` as
+    text, or if the checkpoint belongs to another endpoint, collection, schema or options."""
+    types = await document_property_types(client, names)
+    if types is None:
+        raise LookupError(f"Collection {names.document_collection_name} does not exist")
+    if types.get(LIBRARY) != "text":
+        raise LookupError(f"{names.document_collection_name} declares no text property '{LIBRARY}'; declare it "
+                          "first (--add-library-property)")
+    targets, undeclared = target_properties(types)
+    target_schema = {prop: data_type for prop, data_type in targets.values()}
+    library_map = library_map or {}
+    library_override = library_override or {}
+    plan_options = {"library_map": library_map, "library_override": library_override, "distrusted": distrusted,
+                    "infer_from_pages": infer_from_pages, "priority": priority,
+                    "infer_from_mirror": infer_from_mirror, "overwrite": overwrite}
+    options = {"overwrite": overwrite, "distrust_stored": sorted(distrusted),
+               "infer_library_from_pages": infer_from_pages, "library_priority": list(priority),
+               "infer_library_from_mirror": infer_from_mirror, "library_map": _fingerprint(library_map),
+               "library_override": _fingerprint(library_override)}
+    identity = {"endpoint": endpoint, "collection": names.document_collection_name, "options": options,
+                "target_schema": target_schema}
+
+    if checkpoint.exists():
+        state = json.loads(checkpoint.read_text(encoding="utf-8"))
+        differing = sorted(key for key, value in identity.items() if state.get(key) != value)
+        if differing:
+            raise LookupError(f"The checkpoint {checkpoint} has a different {', '.join(differing)}; use the same "
+                              "options or a new checkpoint")
+        if after is not None:
+            raise LookupError("--after cannot be combined with resuming a checkpoint")
+        progress(f"Resuming {checkpoint}: after {state['after']}, {len(state['retry'])} failed to retry")
+    else:
+        state = {**identity, "source": source_name, "undeclared_fields": undeclared,
+                 "started": datetime.now(timezone.utc).isoformat(), "after": after and str(after), "done": False,
+                 "retry": [], "counts": _sync_counts()}
+        _write_json(checkpoint, state)
+
+    cache: dict[tuple[str, str], SourceRecord | None] = {}
+    started = datetime.now(timezone.utc)
+    examined = 0
+
+    async def run(read_page) -> dict[str, Any]:
+        for attempt in range(1, SYNC_ATTEMPTS + 1):
+            try:
+                page = await read_page()
+                return {"page": page, **(await _sync_batch(client, names, source, page, targets, types, cache,
+                                                           plan_options) if page else {})}
+            except Exception as e:
+                if attempt == SYNC_ATTEMPTS:
+                    raise
+                progress(f"Batch after {state['after']} failed ({type(e).__name__}: {e}); retrying")
+                await asyncio.sleep(SYNC_BACKOFF * attempt)
+
+    def finish(batch: dict[str, Any], retried: list[str]) -> None:
+        with manifest.open("a", encoding="utf-8") as file:
+            for line in batch["manifest"]:
+                file.write(json.dumps(line, ensure_ascii=False) + "\n")
+            for document_id in sorted(set(retried) - set(batch["failed"])):
+                file.write(json.dumps({"id": document_id, "status": "verified_on_retry"}) + "\n")
+        state["retry"] = sorted((set(state["retry"]) - set(retried)) | set(batch["failed"]))
+        state["updated"] = datetime.now(timezone.utc).isoformat()
+        _write_json(checkpoint, state)
+        counts = state["counts"]
+        seconds = max((datetime.now(timezone.utc) - started).total_seconds(), 1e-3)
+        progress(f"examined {counts['examined']} updated {counts['updated']} unchanged {counts['unchanged']} "
+                 f"unresolved {sum(counts['unresolved'].values())} failed {counts['failed']} "
+                 f"to retry {len(state['retry'])} after {state['after']} ({examined / seconds:.1f}/s this run)")
+
+    for start in range(0, len(state["retry"]), PAGE_SIZE):
+        retried = state["retry"][start:start + PAGE_SIZE]
+        ids = [UUID(i) for i in retried]
+
+        async def read_retried(ids=ids):
+            stored = await read_documents(client, names, ids)
+            return [(i, stored.get(i)) for i in ids]
+        batch = await run(read_retried)
+        counts = batch["counts"]
+        # counted when first examined; the outcome replaces the failure
+        counts.update(examined=0, library_from={}, with_held_changes=0, with_skipped_values=0)
+        state["counts"]["failed"] -= len(retried)
+        _merge_counts(state["counts"], counts)
+        finish(batch, retried)
+
+    while not state["done"] and (limit is None or examined < limit):
+        size = PAGE_SIZE if limit is None else min(PAGE_SIZE, limit - examined)
+        cursor = UUID(state["after"]) if state["after"] else None
+        batch = await run(lambda: read_document_page(client, names, cursor, size))
+        if not batch["page"]:
+            state["done"] = True
+            _write_json(checkpoint, state)
+            break
+        examined += len(batch["page"])
+        state["after"] = str(batch["page"][-1][0])
+        state["done"] = len(batch["page"]) < size
+        _merge_counts(state["counts"], batch["counts"])
+        finish(batch, [])
+
+    state["finished"] = datetime.now(timezone.utc).isoformat()
+    _write_json(checkpoint, state)
+    return {key: state[key] for key in ("endpoint", "collection", "source", "options", "undeclared_fields",
+                                        "after", "done", "counts")} | {
+        "to_retry": len(state["retry"]), "checkpoint": str(checkpoint), "manifest": str(manifest)}
+
+
+def sync_exit_code(result: dict) -> int:
+    """0 unless documents remain whose write failed or did not read back."""
+    return 1 if result["to_retry"] else 0
+
+
 def read_library_map(path: Path) -> dict[UUID, str]:
     """``document_id,library`` lines (further columns, e.g. inferred-library evidence, are ignored);
     blank lines and ``#`` comments are ignored. Raises
@@ -617,8 +863,14 @@ def _parser() -> argparse.ArgumentParser:
                    help="with --apply: apply although the report has unresolved documents")
     p.add_argument("--add-library-property", action="store_true",
                    help="declare the text property 'library' on the documents collection")
+    p.add_argument("--sync", action="store_true",
+                   help="plan and write page by page in a single pass (needs --confirm-endpoint, --checkpoint)")
+    p.add_argument("--checkpoint", type=Path,
+                   help="with --sync: progress file (JSON); an existing one is resumed")
+    p.add_argument("--manifest", type=Path,
+                   help="with --sync: unresolved and failed documents (JSON lines; default CHECKPOINT.manifest.jsonl)")
     p.add_argument("--confirm-endpoint", metavar="HOST:PORT",
-                   help="with --apply or --add-library-property: the configured Weaviate endpoint")
+                   help="with --sync, --apply or --add-library-property: the configured Weaviate endpoint")
     return p
 
 
@@ -635,9 +887,12 @@ async def _main(argv: list[str]) -> int:
     names = config.collectionNames
 
     report = engine = None
-    if args.apply or args.add_library_property:
-        if args.apply and args.add_library_property:
-            print("Use --apply and --add-library-property separately", file=sys.stderr)
+    if args.apply or args.add_library_property or args.sync:
+        if sum(map(bool, (args.apply, args.add_library_property, args.sync, args.report))) > 1:
+            print("Use --report, --sync, --apply and --add-library-property separately", file=sys.stderr)
+            return 2
+        if args.sync and (not args.checkpoint or args.document_ids or args.inferred):
+            print("--sync needs --checkpoint and takes neither --document-ids nor --inferred", file=sys.stderr)
             return 2
         if args.confirm_endpoint != endpoint:
             print(f"Refusing to write: configured endpoint {endpoint}, --confirm-endpoint {args.confirm_endpoint}",
@@ -678,6 +933,22 @@ async def _main(argv: list[str]) -> int:
             await add_text_property(client, names, LIBRARY)
             print(f"Declared {names.document_collection_name}.{LIBRARY} (text)")
             return 0
+        if args.sync:
+            with engine.connect() as source:
+                try:
+                    result = await sync(
+                        client, names, source, checkpoint=args.checkpoint,
+                        manifest=args.manifest or args.checkpoint.with_name(args.checkpoint.name + ".manifest.jsonl"),
+                        endpoint=endpoint, source_name=make_url(dsn).render_as_string(hide_password=True),
+                        library_map=library_map, library_override=library_override,
+                        distrusted=frozenset(args.distrust_stored), infer_from_pages=args.infer_library_from_pages,
+                        priority=args.library_priority, infer_from_mirror=args.infer_library_from_mirror,
+                        overwrite=args.overwrite, after=args.after, limit=args.limit)
+                except LookupError as e:
+                    print(e, file=sys.stderr)
+                    return 2
+            print(json.dumps(result, indent=2))
+            return sync_exit_code(result)
         if report is not None:
             try:
                 result = await apply_report(client, names, report, accept_incomplete=args.accept_incomplete)
