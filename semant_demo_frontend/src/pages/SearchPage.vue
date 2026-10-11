@@ -163,11 +163,15 @@
         </div>
 
         <q-slide-transition>
-          <div v-show="userStore.isLoggedIn && selectedResults.length > 0" class="q-mb-lg">
+          <div v-show="selectedResults.length > 0" class="q-mb-lg">
             <q-card flat bordered class="bg-primary text-white">
-              <q-card-section class="row items-center justify-between q-pa-sm">
-                <div class="text-subtitle2 q-ml-sm">{{ selectedResults.length }} item(s) selected</div>
-                <div class="row q-gutter-sm items-center">
+              <q-card-section class="selection-toolbar q-pa-sm">
+                <div class="row items-center no-wrap">
+                  <div class="text-subtitle2 q-ml-sm col" aria-live="polite">{{ selectedResults.length }} item(s) selected</div>
+                  <q-btn flat color="white" icon="close" label="Clear selection" @click="clearSelection" />
+                </div>
+                <!-- Collection membership: signed-in users with a collection they may edit (the backend checks again). -->
+                <div v-if="canAddToCollections" class="selection-toolbar__actions">
                   <q-select
                     v-model="targetCollectionId"
                     :options="targetCollectionOptions"
@@ -177,11 +181,10 @@
                     dark
                     emit-value
                     map-options
-                    style="min-width: 220px"
+                    class="selection-toolbar__collection"
                   />
                   <q-btn flat color="white" icon="library_add" label="Add Chunks" @click="addSelectedChunksToCollection" />
                   <q-btn flat color="white" icon="post_add" label="Add Documents" @click="addSelectedDocumentsToCollection" />
-                  <q-btn flat color="white" icon="close" round dense @click="selectedResults = []" />
                 </div>
               </q-card-section>
             </q-card>
@@ -245,6 +248,7 @@ import { useSearchRequest } from 'src/features/search/useSearchRequest'
 import { useSearchSummary } from 'src/features/search/useSearchSummary'
 import SearchSummaryPanel from 'src/features/search/SearchSummaryPanel.vue'
 import SearchResultCard from 'src/features/search/SearchResultCard.vue'
+import { escapeClearsSelection } from 'src/features/search/resultLayout'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 
 const api = useApi().default
@@ -329,6 +333,15 @@ function resultNumber (index: number): number {
   return (currentPage.value - 1) * itemsPerPage.value + index + 1
 }
 
+function clearSelection () {
+  selectedResults.value = []
+}
+
+// Escape clears the whole selection (all pages) unless a field or overlay needs it.
+function onKeydown (event: KeyboardEvent) {
+  if (selectedResults.value.length && escapeClearsSelection(event)) clearSelection()
+}
+
 function setSelected (chunkId: string, selected: boolean) {
   const others = selectedResults.value.filter(id => id !== chunkId)
   selectedResults.value = selected ? [...others, chunkId] : others
@@ -405,6 +418,7 @@ const targetCollectionOptions = computed(() =>
     .filter(c => collectionRights(c).editMembership)
     .map(c => ({ label: c.name ?? `Collection ${c.id}`, value: c.id }))
 )
+const canAddToCollections = computed(() => userStore.isLoggedIn && targetCollectionOptions.value.length > 0)
 
 type ActiveFilterBadge = {
   key: string
@@ -630,11 +644,13 @@ async function addSelectedDocumentsToCollection () {
 }
 
 onMounted(async () => {
+  window.addEventListener('keydown', onKeydown)
   await fetchAvailableFilters()
   await loadCollections()
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
   searchRequest.cancel()
   if (clearHighlightTimer !== null) {
     window.clearTimeout(clearHighlightTimer)
@@ -644,6 +660,18 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.selection-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+
+.selection-toolbar__collection {
+  flex: 1 1 220px;
+}
+
 :deep(.active-filter-chip .q-chip__icon--remove) {
   margin-left: 5px;
 }

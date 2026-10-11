@@ -1,12 +1,14 @@
 <template>
   <q-card
+    ref="root"
     flat
     bordered
     class="search-result bg-white"
     :class="{ 'search-result--selected': selected, 'citation-target-highlight': highlighted }"
   >
     <q-card-section class="search-result__header">
-      <div class="row no-wrap items-start">
+      <!-- Only the title row is indented by the checkbox; the rest aligns with the passage. -->
+      <div class="search-result__title-row row no-wrap items-start">
         <q-checkbox
           :model-value="selected"
           :aria-label="`Select result ${number}: ${title}`"
@@ -15,29 +17,42 @@
           class="search-result__select"
           @update:model-value="emit('update:selected', $event)"
         />
-        <div class="col search-result__heading">
-          <div class="search-result__title text-h6 text-primary">
-            {{ number }}. {{ title }}
-          </div>
-          <div class="search-result__meta row text-caption text-grey-8">
-            <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.documentObject.author?.join(', ') || 'Unknown Author' }}</div>
-            <div><q-icon name="event" class="q-mr-xs"/>{{ chunk.documentObject.yearIssued || 'Year N/A' }}</div>
-            <div><q-icon name="language" class="q-mr-xs"/>{{ chunk.language || 'N/A' }}</div>
-            <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.fromPage }}–{{ chunk.toPage }}</div>
-          </div>
-          <div class="search-result__source text-caption text-grey-8" v-if="chunk.documentObject.title">
-            <strong>Source:</strong> {{ chunk.documentObject.title }}
-          </div>
-          <ResultClassifications :metadata="chunk.metadata" :filters="filters" />
+        <div class="col search-result__title text-h6 text-primary">
+          {{ number }}. {{ title }}
         </div>
       </div>
+      <div class="search-result__meta row text-caption text-grey-8">
+        <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.documentObject.author?.join(', ') || 'Unknown Author' }}</div>
+        <div><q-icon name="event" class="q-mr-xs"/>{{ chunk.documentObject.yearIssued || 'Year N/A' }}</div>
+        <div><q-icon name="language" class="q-mr-xs"/>{{ chunk.language || 'N/A' }}</div>
+        <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.fromPage }}–{{ chunk.toPage }}</div>
+      </div>
+      <div class="search-result__source text-caption text-grey-8" v-if="chunk.documentObject.title">
+        <strong>Source:</strong> {{ chunk.documentObject.title }}
+      </div>
+      <ResultClassifications :metadata="chunk.metadata" :filters="filters" />
     </q-card-section>
 
     <q-separator inset />
 
     <q-card-section class="search-result__body">
-      <!-- The complete passage, always: no clamp, collapse or height limit. -->
-      <div class="search-result__text text-body1">{{ chunk.text }}</div>
+      <!-- The complete passage is always in the DOM; a narrow card only clips it to a preview. -->
+      <div
+        :id="textId"
+        ref="textEl"
+        class="search-result__text text-body1"
+        :class="{ 'search-result__text--preview': preview }"
+      >{{ chunk.text }}</div>
+      <button
+        v-if="constrained && (expanded || clipped)"
+        type="button"
+        class="search-result__toggle text-primary"
+        :aria-expanded="expanded"
+        :aria-controls="textId"
+        @click="expanded = !expanded"
+      >
+        {{ expanded ? 'Show less' : 'Show full text' }}
+      </button>
 
       <div class="q-mt-md" v-if="chunk.nerP?.length || chunk.nerG?.length || chunk.nerI?.length || chunk.nerM?.length || chunk.nerO?.length">
         <div class="text-subtitle2 text-grey-7 q-mb-xs">Named Entities</div>
@@ -64,10 +79,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { QBadge, QCard, QCardSection, QCheckbox, QIcon, QSeparator } from 'quasar'
 import type { SearchFilter, TextChunkWithDocument } from 'src/generated/api'
 import ResultClassifications from './ResultClassifications.vue'
+import { isConstrainedResultWidth } from './resultLayout'
 
 const props = withDefaults(defineProps<{
   chunk: TextChunkWithDocument
@@ -81,6 +97,37 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{(e: 'update:selected', value: boolean): void}>()
 
 const title = computed(() => props.chunk.queryTitle || props.chunk.title || 'N/A')
+const textId = computed(() => `result-text-${props.chunk.id}`)
+
+// A narrow card (narrow window, or both sidebars open) previews the passage; wide cards
+// always show all of it. Measured on the card itself, not the viewport.
+const root = ref<InstanceType<typeof QCard> | null>(null)
+const textEl = ref<HTMLElement | null>(null)
+const constrained = ref(false)
+const expanded = ref(false) // per result, never part of the search state
+const clipped = ref(false)
+const preview = computed(() => constrained.value && !expanded.value)
+
+function measure () {
+  const card = root.value?.$el as HTMLElement | undefined
+  if (card) constrained.value = isConstrainedResultWidth(card.clientWidth)
+  // The toggle is offered only when the preview really hides text.
+  void nextTick(() => {
+    const el = textEl.value
+    if (el && preview.value) clipped.value = el.scrollHeight > el.clientHeight + 1
+  })
+}
+
+let observer: ResizeObserver | null = null
+onMounted(() => {
+  measure()
+  if (typeof ResizeObserver !== 'undefined') {
+    observer = new ResizeObserver(measure)
+    observer.observe(root.value?.$el as HTMLElement)
+  }
+})
+watch(() => props.chunk.text, measure)
+onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <style scoped>
@@ -109,11 +156,8 @@ const title = computed(() => props.chunk.queryTitle || props.chunk.title || 'N/A
   margin: 2px 8px 0 -4px;
 }
 
-.search-result__heading {
-  min-width: 0;
-}
-
 .search-result__title {
+  min-width: 0;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -132,6 +176,28 @@ const title = computed(() => props.chunk.queryTitle || props.chunk.title || 'N/A
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: #333;
+}
+
+.search-result__text--preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
+}
+
+.search-result__toggle {
+  margin-top: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.search-result__toggle:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 599px) {
