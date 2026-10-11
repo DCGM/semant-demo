@@ -29,7 +29,7 @@ test('a signed-out user sees Log in and Register, also in the collapsed drawer',
   await page.goto('/')
   await expectSignedOutMenu(page)
 
-  await drawer(page).getByRole('button').filter({ hasText: 'chevron_left' }).click() // collapse
+  await drawer(page).getByRole('button', { name: 'Collapse navigation' }).click()
   await expect(drawer(page)).toHaveClass(/q-drawer--mini/)
   await expect(drawer(page).locator('.drawer-item')).toHaveCount(5) // search, chat, about, log in, register
   await expect(drawer(page).getByText('folder', { exact: true })).toHaveCount(0) // no Collections icon
@@ -98,4 +98,54 @@ test('a stored session that is no longer valid restores as signed out', async ({
   await page.reload()
 
   await expectSignedOutMenu(page)
+})
+
+// #253: back arrows go to a fixed parent page and leave the left navigation drawer alone;
+// the drawer's own collapse control is a separate, labelled toggle.
+test('back arrows go to the parent page without changing the navigation drawer', async ({ page }) => {
+  const collection = fixture.collection('chronicles')
+  const document = fixture.document('chronicle')
+  await logIn(page, 'owner')
+
+  await drawer(page).getByRole('button', { name: 'Collapse navigation' }).click()
+  await expect(drawer(page)).toHaveClass(/q-drawer--mini/)
+
+  // Direct link to the document view: no in-app history, back still goes to the collection.
+  await page.goto(`/#/collections/${collection.id}/documents/${document.id}`)
+  await expect(page.getByText('Document detail')).toBeVisible()
+  await page.getByRole('link', { name: 'Back to collection documents' }).click()
+  await expect(page).toHaveURL(new RegExp(`#/collections/${collection.id}/documents$`))
+  await expect(drawer(page)).toHaveClass(/q-drawer--mini/)
+
+  await drawer(page).getByRole('button', { name: 'Expand navigation' }).click()
+  await expect(drawer(page)).not.toHaveClass(/q-drawer--mini/)
+  await page.getByRole('link', { name: 'Back to collections' }).click()
+  await expect(page).toHaveURL(/#\/collections$/)
+  await expect(drawer(page)).toBeVisible()
+  await expect(drawer(page)).not.toHaveClass(/q-drawer--mini/)
+
+  // Top-level pages have no back arrow.
+  await expect(page.getByRole('link', { name: /^Back to/ })).toHaveCount(0)
+  await drawerItem(page, 'Document search').click()
+  await expect(page.getByRole('link', { name: /^Back to/ })).toHaveCount(0)
+})
+
+test('on a phone, back arrows navigate and leave the overlay navigation closed', async ({ page }) => {
+  const collection = fixture.collection('chronicles')
+  await logIn(page, 'owner')
+  await page.setViewportSize({ width: 390, height: 844 })
+
+  await page.goto(`/#/collections/${collection.id}/documents/${fixture.document('chronicle').id}`)
+  await expect(page.getByText('Document detail')).toBeVisible()
+  await expect(drawer(page)).toBeHidden()
+  await expect(page.getByRole('button', { name: /^(Collapse|Expand) navigation$/ })).toHaveCount(0)
+
+  await page.getByRole('link', { name: 'Back to collection documents' }).click()
+  await expect(page).toHaveURL(new RegExp(`#/collections/${collection.id}/documents$`))
+  await page.getByRole('link', { name: 'Back to collections' }).click()
+  await expect(page).toHaveURL(/#\/collections$/)
+  await expect(drawer(page)).toBeHidden()
+
+  await page.getByRole('button', { name: 'Show navigation' }).click()
+  await expect(drawer(page)).toBeVisible()
 })

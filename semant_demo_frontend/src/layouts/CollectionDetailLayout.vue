@@ -11,8 +11,9 @@
             icon="arrow_back"
             :to="{ name: 'collections' }"
             class="collection-back-btn"
+            aria-label="Back to collections"
           >
-            <q-tooltip>Back to Collections</q-tooltip>
+            <q-tooltip>Back to collections</q-tooltip>
           </q-btn>
           <button
             v-if="activeCollectionColor"

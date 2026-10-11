@@ -1,13 +1,19 @@
 <template>
+  <!-- Collapses/expands a drawer to its mini state. It is neutral and double-chevroned on
+       purpose so it is not mistaken for a blue back arrow (#253); it never navigates. -->
   <q-btn
     size="15px"
     dense
     round
     unelevated
-    color="primary"
+    class="mini-state-btn"
     :icon="icon"
-    @click="miniStateClick"
-  />
+    :aria-label="label"
+    :aria-expanded="!drawerMiniState"
+    @click="emit('click')"
+  >
+    <q-tooltip>{{ label }}</q-tooltip>
+  </q-btn>
 </template>
 
 <script setup lang="ts">
@@ -22,14 +28,21 @@ const emit = defineEmits(['click'])
 
 // points in the direction the drawer will move
 const icon = computed(() => {
-  const expand = props.side === 'left' ? 'chevron_right' : 'chevron_left'
-  const collapse = props.side === 'left' ? 'chevron_left' : 'chevron_right'
+  const expand = props.side === 'left' ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'
+  const collapse = props.side === 'left' ? 'keyboard_double_arrow_left' : 'keyboard_double_arrow_right'
   return props.drawerMiniState ? expand : collapse
 })
 
-const miniStateClick = () => {
-  console.log('Mini state clicked')
-  emit('click')
-}
-
+const label = computed(() => {
+  const target = props.side === 'left' ? 'navigation' : 'sidebar'
+  return props.drawerMiniState ? `Expand ${target}` : `Collapse ${target}`
+})
 </script>
+
+<style scoped lang="scss">
+.mini-state-btn {
+  background: #fff;
+  color: #5f6368;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+</style>

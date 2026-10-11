@@ -311,8 +311,11 @@
                 flat dense round
                 icon="arrow_back"
                 class="suggest-tags-btn suggest-tags-back"
+                aria-label="Back to tag selection"
                 @click="showAiTagPicker = false"
-              />
+              >
+                <q-tooltip>Back to tag selection</q-tooltip>
+              </q-btn>
             </div>
             <div class="popover-header">
               <span class="popover-title">Select tag</span>

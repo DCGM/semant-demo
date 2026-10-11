@@ -8,8 +8,14 @@
   >
     <q-header class="doc-header q-pl-sm" bordered>
       <q-toolbar class="doc-header-toolbar">
-        <q-btn flat round dense icon="arrow_back" :to="backToDocumentsRoute">
-          <q-tooltip>Back to documents</q-tooltip>
+        <!-- A fixed parent route, not browser history, so direct links go back predictably (#253). -->
+        <q-btn
+          flat round dense
+          icon="arrow_back"
+          :to="backToDocumentsRoute"
+          aria-label="Back to collection documents"
+        >
+          <q-tooltip>Back to collection documents</q-tooltip>
         </q-btn>
 
         <div class="q-ml-sm" v-if="documentData">
@@ -34,6 +40,8 @@
           size="md"
           icon="menu"
           :color="drawerOpen ? undefined : 'primary'"
+          :aria-label="drawerOpen ? 'Hide panel' : 'Show panel'"
+          :aria-expanded="drawerOpen"
           @click="drawerOpen = !drawerOpen"
         >
           <q-tooltip>{{ drawerOpen ? 'Hide panel' : 'Show panel' }}</q-tooltip>
