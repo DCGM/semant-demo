@@ -511,7 +511,10 @@ After a Weaviate filesystem backup (`pre-metadata-sync-259-2026-10-11`) and
 --library-priority nkp,mzk --overwrite` ran 20 documents (`--limit 20`), then resumed to the
 end in 13 s: 500 examined, 499 updated and verified, 0 failed, 1 unresolved (`eod` + `knav`),
 21 `public` true→false, none false→true; counts as in the local check above. A run with a new
-checkpoint updated nothing. Production (`localhost:8080`, 484,336 documents, `yearIssued` of
+checkpoint updated nothing. 24 of the 95 monographs have no author or publisher: every
+mirror row of each has `metadata_json` NULL and `mods_path = not_found` (in the whole mirror
+83% of `nkp` and 36% of `mzk` monograph rows), so the sync cannot fill them until the mirror
+re-downloads those MODS records. Production (`localhost:8080`, 484,336 documents, `yearIssued` of
 type `int`) waits for the test result to be accepted.
 
 ## 11. Testing versus development data
