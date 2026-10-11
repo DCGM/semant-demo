@@ -17,7 +17,8 @@ export interface ApiClients {
 const authentication: Middleware = {
   pre: async ({ url, init }) => ({
     url,
-    init: { ...init, headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders() } }
+    // A request that names its token itself (`fetchCurrentUser`) keeps it.
+    init: { ...init, headers: { ...authHeaders(), ...(init.headers as Record<string, string> | undefined) } }
   }),
   post: async ({ init, response }) => {
     if (response.status === 401) reportUnauthorized(init.headers as Record<string, string> | undefined)
