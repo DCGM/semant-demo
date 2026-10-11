@@ -13,8 +13,8 @@ from semant_demo.maintenance import metadata_sync
 from semant_demo.maintenance.kramerius_mapping import (
     FIELDS, IssueDate, SourceRecord, compose_title, map_record, parse_issue_date, values)
 from semant_demo.maintenance.metadata_sync import (
-    apply_exit_code, apply_report, build_report, classify_pages, coerce, plan_document, read_library_map,
-    target_properties, write_inferred)
+    apply_exit_code, apply_report, build_report, classify_pages, coerce, plan_document, read_library_map, sync,
+    sync_exit_code, target_properties, write_inferred)
 
 DOC = UUID("5e3a0000-0000-4000-8000-00000000d001")
 OTHER = UUID("5e3a0000-0000-4000-8000-00000000d002")
@@ -527,6 +527,156 @@ async def test_apply_refuses_an_unsuitable_schema(source, monkeypatch, report_sc
         await apply_report(None, NAMES, report)
 
 
+# --- single-pass sync -------------------------------------------------------------------
+
+async def sync_of(source, directory, **kwargs):
+    return await sync(None, NAMES, source, checkpoint=directory / "sync.json", manifest=directory / "sync.jsonl",
+                      endpoint="localhost:8080", source_name="test", progress=lambda line: None, **kwargs)
+
+
+def manifest_of(tmp_path):
+    return [json.loads(line) for line in (tmp_path / "sync.jsonl").read_text(encoding="utf-8").splitlines()]
+
+
+async def test_sync_writes_page_by_page_and_reads_back_only_updated_documents(source, monkeypatch, tmp_path):
+    third = UUID(int=3)
+    store = FakeDocuments({DOC: {"library": "mzk", "public": False}, OTHER: {"library": "mzk", "title": "U"},
+                           third: {}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "T", "public": True},
+             {"id": OTHER, "library": "mzk", "title": "U"})
+    reads = []
+    read = metadata_sync.read_documents
+
+    async def counting_read(client, names, ids):
+        reads.append(list(ids))
+        return await read(client, names, ids)
+    monkeypatch.setattr(metadata_sync, "read_documents", counting_read)
+    monkeypatch.setattr(metadata_sync, "PAGE_SIZE", 2)
+
+    result = await sync_of(source, tmp_path)
+
+    counts = result["counts"]
+    assert (counts["examined"], counts["updated"], counts["unchanged"], counts["failed"]) == (3, 1, 1, 0)
+    assert counts["unresolved"] == {"no_library": 1}
+    assert counts["public"]["false_to_true"] == 1 and counts["changed_properties"] == {"public": 1, "title": 1}
+    assert result["done"] and result["to_retry"] == 0 and sync_exit_code(result) == 0
+    assert store.documents[DOC] == {"library": "mzk", "public": True, "title": "T"}
+    assert reads == [[DOC], []]  # only written documents are read back
+    assert manifest_of(tmp_path) == [{"id": str(third), "status": "unresolved", "kind": "no_library",
+                                      "reason": "no library and no mirror row", "mirror_libraries": []}]
+    assert '"T"' not in (tmp_path / "sync.json").read_text()  # the checkpoint holds no metadata values
+
+
+async def test_sync_refuses_a_store_without_a_library_property(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {}}, schema={k: v for k, v in CURRENT_SCHEMA.items() if k != "library"})
+    store.install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "nkp", "title": "T"})
+    with pytest.raises(LookupError, match="add-library-property"):
+        await sync_of(source, tmp_path, infer_from_mirror=True)
+    assert store.updates == [] and not (tmp_path / "sync.json").exists()
+
+
+async def test_sync_rerun_on_a_new_checkpoint_changes_nothing(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {}, OTHER: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "nkp", "title": "T"}, {"id": OTHER, "library": "mzk", "title": "U"})
+    first = await sync_of(source, tmp_path, infer_from_mirror=True)
+    assert first["counts"]["updated"] == 2 and first["counts"]["library_from"] == {
+        "mirror_unique": 1, "stored": 1}
+
+    (tmp_path / "again").mkdir()
+    again = await sync_of(source, tmp_path / "again", infer_from_mirror=True)
+
+    assert (again["counts"]["updated"], again["counts"]["unchanged"]) == (0, 2)
+    assert len(store.updates) == 2
+
+
+async def test_sync_resumes_after_the_checkpoint_and_retries_failures_first(source, monkeypatch, tmp_path):
+    ids = [UUID(int=i) for i in range(1, 6)]
+    store = FakeDocuments({i: {"library": "mzk"} for i in ids}).install(monkeypatch)
+    add_rows(source, *({"id": i, "library": "mzk", "title": "New"} for i in ids))
+    monkeypatch.setattr(metadata_sync, "PAGE_SIZE", 2)
+    store.fail.add(ids[1])
+
+    first = await sync_of(source, tmp_path, limit=3)
+
+    assert (first["after"], first["done"], first["to_retry"]) == (str(ids[2]), False, 1)
+    assert first["counts"]["failed"] == 1 and sync_exit_code(first) == 1
+    assert manifest_of(tmp_path) == [{"id": str(ids[1]), "status": "failed", "reason": "TimeoutError: timed out"}]
+    store.fail.clear()
+
+    second = await sync_of(source, tmp_path)
+
+    assert second["done"] and second["to_retry"] == 0 and sync_exit_code(second) == 0
+    counts = second["counts"]
+    assert (counts["examined"], counts["updated"], counts["failed"]) == (5, 5, 0)
+    assert [d for d, _ in store.updates] == [ids[0], ids[2], ids[1], ids[3], ids[4]]
+    assert manifest_of(tmp_path)[-1] == {"id": str(ids[1]), "status": "verified_on_retry"}
+    assert all(d["title"] == "New" for d in store.documents.values())
+
+
+async def test_sync_keeps_writes_that_do_not_read_back_for_retry(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "New"})
+    store.lose_writes = True
+    result = await sync_of(source, tmp_path)
+    assert result["to_retry"] == 1 and result["counts"]["updated"] == 0
+    assert manifest_of(tmp_path)[0]["reason"] == "read back differs: title"
+
+
+async def test_sync_interrupted_mid_page_redoes_that_page(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {"library": "mzk"}, OTHER: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, *({"id": i, "library": "mzk", "title": "New"} for i in (DOC, OTHER)))
+    monkeypatch.setattr(metadata_sync, "SYNC_ATTEMPTS", 1)
+    read = metadata_sync.read_documents
+
+    async def crash(client, names, ids):
+        raise ConnectionError("lost")
+    monkeypatch.setattr(metadata_sync, "read_documents", crash)
+    with pytest.raises(ConnectionError):
+        await sync_of(source, tmp_path)
+    assert json.loads((tmp_path / "sync.json").read_text())["after"] is None  # the page is not finished
+    monkeypatch.setattr(metadata_sync, "read_documents", read)
+
+    result = await sync_of(source, tmp_path)
+
+    assert result["done"] and result["counts"]["examined"] == 2
+    assert (result["counts"]["updated"], result["counts"]["unchanged"]) == (0, 2)  # written before the crash
+    assert all(d["title"] == "New" for d in store.documents.values())
+
+
+async def test_sync_retries_a_failing_batch(source, monkeypatch, tmp_path):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "New"})
+    monkeypatch.setattr(metadata_sync, "SYNC_BACKOFF", 0)
+    page = metadata_sync.read_document_page
+    calls = []
+
+    async def flaky(*args):
+        calls.append(1)
+        if len(calls) == 1:
+            raise ConnectionError("blip")
+        return await page(*args)
+    monkeypatch.setattr(metadata_sync, "read_document_page", flaky)
+
+    assert (await sync_of(source, tmp_path))["counts"]["updated"] == 1
+
+
+@pytest.mark.parametrize("change", [{"overwrite": True}, {"priority": ("nkp",)}, {"library_override": {DOC: "nkp"}}])
+async def test_sync_refuses_a_checkpoint_with_other_options(source, monkeypatch, tmp_path, change):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    await sync_of(source, tmp_path, limit=1)
+    with pytest.raises(LookupError, match="options"):
+        await sync_of(source, tmp_path, **change)
+
+
+async def test_sync_refuses_a_checkpoint_of_another_endpoint(source, monkeypatch, tmp_path):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    await sync_of(source, tmp_path, limit=1)
+    with pytest.raises(LookupError, match="endpoint"):
+        await sync(None, NAMES, source, checkpoint=tmp_path / "sync.json", manifest=tmp_path / "sync.jsonl",
+                   endpoint="localhost:8082", source_name="test", progress=lambda line: None)
+
+
 # --- command line ------------------------------------------------------------------------
 
 @pytest.fixture
@@ -553,6 +703,18 @@ async def test_apply_refuses_before_connecting(no_connection, tmp_path, report, 
 @pytest.mark.parametrize("args", [[], ["--confirm-endpoint", "server:8080"]])
 async def test_schema_change_refuses_before_connecting(no_connection, args):
     assert await metadata_sync._main(["--add-library-property", *args]) == 2
+
+
+@pytest.mark.parametrize("args", [
+    ["--sync", "--checkpoint", "c.json"],                                            # no confirmation
+    ["--sync", "--checkpoint", "c.json", "--confirm-endpoint", "server:8080"],      # another endpoint
+    ["--sync", "--confirm-endpoint", "localhost:8080"],                             # no checkpoint
+    ["--sync", "--checkpoint", "c.json", "--confirm-endpoint", "localhost:8080",
+     "--report", "r.json"],
+])
+async def test_sync_refuses_before_connecting(no_connection, monkeypatch, args):
+    monkeypatch.setenv(metadata_sync.DSN_VARIABLE, "sqlite://")
+    assert await metadata_sync._main(args) == 2
 
 
 async def test_report_needs_a_source_before_connecting(no_connection):
