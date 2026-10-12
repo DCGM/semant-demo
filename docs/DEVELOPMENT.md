@@ -539,7 +539,11 @@ the 24 monographs without author or publisher remain (none of their rows has met
 documents whose pages reach only another library keep it although `nkp` has metadata. A run
 with the production options (`--distrust-stored mzk` only) and a new checkpoint updated
 nothing. Production (`localhost:8080`, 484,336 documents, `yearIssued` of
-type `int`) waits for the test result to be accepted.
+type `int`; `Documents` is an alias of `Documents_test`, which `--add-library-property`
+resolves) ran on 2026-10-12 with the production options above, without a backup (by
+decision): 484,282 of 484,336 updated and verified in 56 min, 0 failed, 54 unresolved
+(libraries outside `nkp,mzk`, mostly `cuni_fsv` + `svkhk`), `public` true→false 1,833 and
+false→true 1,020, 60,835 documents whose selected row has no metadata (#259).
 
 ## 11. Testing versus development data
 
