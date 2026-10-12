@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import {
-  annotation, chunkText, deleteAddedSpans, deleteSuggestions, fixture, logIn, openDocument, removeChunk, selectText
+  annotation, chunkText, deleteAddedSpans, deleteSuggestions, fixture, logIn, openDocument, removeChunk, selectText,
+  sidebarPanelButton
 } from './support'
 
 // Document viewer interactions: text selection and annotation editing, the span gutter,
@@ -33,7 +34,7 @@ async function tallestMarker (page: Page): Promise<Locator> {
 test('a selection across two chunks is tagged, marked in the gutter and deleted again', async ({ page }) => {
   await logIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  // Approved fixture spans only: the AI suggestion is hidden outside the AI assist tab.
+  // Approved fixture spans only: the AI suggestion is hidden outside the AI assist panel.
   await expect(page.locator('.gutter-item')).toHaveCount(2)
 
   const chunk1Length = fixture.chunk('chronicle_1').text.length
@@ -98,13 +99,13 @@ test('the tags panel hides tags, steps through their annotations and is searched
   await expect(page.locator('.tag-card')).toContainText(fixture.tag('place').name)
 })
 
-test('AI suggestions show only with the AI assist tab and highlight between card and gutter', async ({ page }) => {
+test('AI suggestions show only with the AI assist panel and highlight between card and gutter', async ({ page }) => {
   await logIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await expect(annotation(page, 'novak_manual')).toBeVisible()
   await expect(annotation(page, 'lhota_automatic')).toHaveCount(0)
 
-  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await sidebarPanelButton(page, 'AI assist').click()
   await expect(annotation(page, 'lhota_automatic')).toBeVisible()
   const card = page.locator('.auto-span-card').filter({ hasText: fixture.tag('place').name })
   await expect(card).toHaveCount(1)
@@ -112,12 +113,12 @@ test('AI suggestions show only with the AI assist tab and highlight between card
   await expect(card).toHaveClass(/is-highlighted/)
   await expect(page.locator('.gutter-item.is-highlighted')).toHaveCount(1)
 
-  await page.getByRole('tab', { name: 'Tags' }).click()
+  await sidebarPanelButton(page, 'Tags').click()
   await expect(annotation(page, 'lhota_automatic')).toHaveCount(0)
   await expect(page.locator('.gutter-item.is-highlighted')).toHaveCount(0)
 })
 
-test('Suggest tags on a selection runs in the AI assist tab', async ({ page }) => {
+test('Suggest tags on a selection runs in the AI assist panel', async ({ page }) => {
   await logIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
 
@@ -129,7 +130,7 @@ test('Suggest tags on a selection runs in the AI assist tab', async ({ page }) =
   await popover(page).getByRole('button', { name: 'Run AI' }).click()
 
   await expect(popover(page)).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: 'AI assist' })).toHaveAttribute('aria-selected', 'true')
+  await expect(sidebarPanelButton(page, 'AI assist')).toHaveAttribute('aria-current', 'true')
   await expect(page.locator('.auto-span-card').filter({ hasText: fixture.tag('person').name }).first()).toBeVisible()
 })
 
@@ -167,14 +168,18 @@ test('on a narrow window the text, gutters and side panel stay usable', async ({
 
   await expect(annotation(page, 'novak_manual')).toBeVisible()
   await expect(page.locator('.gutter-item')).toHaveCount(2)
+  // Below 1024 px the sidebar is an overlay that starts closed, so the text keeps the width.
+  const sidebar = page.locator('.q-drawer--right')
+  await expect(sidebar).toBeHidden()
+  await page.getByRole('button', { name: 'Toggle sidebar' }).click()
   await expect(page.locator('.tag-card')).toHaveCount(2)
-  await page.getByRole('button', { name: 'Hide panel' }).click()
-  await expect(page.locator('.tag-card').first()).toBeHidden()
-  await page.getByRole('button', { name: 'Show panel' }).click()
   await expect(page.locator('.tag-card').first()).toBeVisible()
+  // Tap beside the overlay to close it.
+  await page.locator('.q-drawer__backdrop:not(.hidden)').first().click({ position: { x: 100, y: 400 } })
+  await expect(sidebar).toBeHidden()
 })
 
-test('the AI assist and tags panels keep their state across tab switches', async ({ page }) => {
+test('the AI assist and tags panels keep their state across panel switches', async ({ page }) => {
   await logIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   const tagNames = () => page.locator('.tag-card .tag-name').allTextContents()
@@ -186,15 +191,15 @@ test('the AI assist and tags panels keep their state across tab switches', async
   await person.dragTo(place, { targetPosition: { x: 40, y: 5 } })
   expect(await tagNames()).toEqual([fixture.tag('person').name, fixture.tag('place').name])
 
-  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await sidebarPanelButton(page, 'AI assist').click()
   await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
   await page.getByRole('radio', { name: 'Thorough (every chunk in collection)' }).click()
 
-  await page.getByRole('tab', { name: 'Tags' }).click()
+  await sidebarPanelButton(page, 'Tags').click()
   await expect(page.locator('.tag-card')).toHaveCount(2)
   expect(await tagNames()).toEqual([fixture.tag('person').name, fixture.tag('place').name])
 
-  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await sidebarPanelButton(page, 'AI assist').click()
   await expect(page.getByRole('radio', { name: 'Thorough (every chunk in collection)' })).toHaveAttribute('aria-checked', 'true')
   await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('person').name })).toHaveAttribute('aria-checked', 'true')
   await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('place').name })).toHaveAttribute('aria-checked', 'false')

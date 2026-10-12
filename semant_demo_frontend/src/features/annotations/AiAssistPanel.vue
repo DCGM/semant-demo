@@ -566,7 +566,7 @@ function onEditEntryTag(entry: AutoSpanEntry) {
   tagEditing.editTag(entry.tag)
 }
 
-// The panel stays alive across tab switches (keep-alive) and keeps its state there. The
+// The panel stays alive while another sidebar panel is shown and keeps its state. The
 // run state itself is reset by the document view; the panel drops its own selection and
 // status when the document or collection changes, and the chosen tags (a collection's
 // tags) when the collection changes.

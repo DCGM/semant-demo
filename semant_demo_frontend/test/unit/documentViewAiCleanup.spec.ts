@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { shallowMount } from '@vue/test-utils'
+import { mount, shallowMount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
 
 import DocumentViewLayout from 'src/features/documents/viewer/DocumentViewLayout.vue'
+import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
 
@@ -95,5 +96,71 @@ describe('DocumentViewLayout AI cleanup', () => {
     expect([ai.isRunning.value, ai.isSelectionRunning.value]).toEqual([false, false])
     expect([ai.lastError.value, ai.lastSelectionError.value, ai.lastStatus.value]).toEqual([null, null, null])
     expect([ai.processedChunkCount.value, ai.totalSpansAdded.value, ai.totalUnsaved.value]).toEqual([0, 0, 0])
+  })
+})
+
+describe('DocumentViewLayout sidebar panels', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  function mountLayout () {
+    // The real layout and panel wrappers register in the sidebar; the tools are stubbed.
+    return mount(DocumentViewLayout, {
+      props: { collectionId: 'c', documentId: 'd' },
+      global: {
+        plugins: [[Quasar, {}]],
+        stubs: {
+          RouterView: true,
+          QBtn: true,
+          DocumentTagsPanel: true,
+          AiAssistPanel: true,
+          DocumentMetadataPanel: true
+        }
+      }
+    })
+  }
+
+  const ctrlF = () => {
+    const event = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, cancelable: true })
+    window.dispatchEvent(event)
+    return event
+  }
+
+  it('registers the tools and shows auto spans only while the AI assist panel is active', async () => {
+    const wrapper = mountLayout()
+    await flush()
+    const sidebar = useRightSidebarStore()
+    const ai = useAiAssistance()
+    expect(sidebar.sortedPanels.map((p) => p.label)).toEqual(['Tags', 'AI assist', 'Document'])
+    expect([sidebar.activePanel?.label, ai.aiPanelActive.value]).toEqual(['Tags', false])
+
+    sidebar.activate('document-ai')
+    await flush()
+    expect(ai.aiPanelActive.value).toBe(true)
+    ai.highlightedAutoSpanId.value = 'span-1'
+
+    sidebar.activate('document-metadata')
+    await flush()
+    expect([ai.aiPanelActive.value, ai.highlightedAutoSpanId.value]).toEqual([false, null])
+
+    sidebar.activate('document-ai')
+    await flush()
+    wrapper.unmount()
+    expect([sidebar.hasPanels, ai.aiPanelActive.value]).toEqual([false, false])
+  })
+
+  it('takes Ctrl+F for the tag search only while the Tags panel is active', async () => {
+    const wrapper = mountLayout()
+    await flush()
+    const sidebar = useRightSidebarStore()
+    sidebar.open = false
+
+    expect(ctrlF().defaultPrevented).toBe(true)
+    expect(sidebar.open).toBe(true) // the closed sidebar opens on the search
+
+    sidebar.activate('document-ai')
+    expect(ctrlF().defaultPrevented).toBe(false) // the browser's find
+
+    wrapper.unmount()
+    expect(ctrlF().defaultPrevented).toBe(false)
   })
 })

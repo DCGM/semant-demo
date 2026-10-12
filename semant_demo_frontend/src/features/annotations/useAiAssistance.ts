@@ -89,17 +89,11 @@ let activeRunToken = 0
 let activeSelectionToken = 0
 
 // Shared UI state across the document layout (AI panel) and the document page.
-// Auto (AI-suggested) spans should only be rendered while the user is on the
-// "AI assist" tab; the highlighted id supports two-way selection between a
+// Auto (AI-suggested) spans should only be rendered while the "AI assist" sidebar
+// panel is the active one; the highlighted id supports two-way selection between a
 // suggestion card in the panel and the corresponding span in the text.
-const aiTabActive = ref(false)
+const aiPanelActive = ref(false)
 const highlightedAutoSpanId = ref<string | null>(null)
-
-// Bumped when something outside the layout (e.g. the in-text selection
-// popover's "Suggest tags" button) wants the right drawer to switch to the
-// "AI assist" tab. The layout owns ``drawerTab`` / ``drawerOpen`` so we use a
-// nonce-watch handshake instead of trying to share that state across files.
-const aiPanelRequestNonce = ref(0)
 
 const isSelectionRunning = ref(false)
 const lastSelectionError = ref<string | null>(null)
@@ -378,15 +372,6 @@ export function useAiAssistance() {
   }
 
   /**
-   * Ask the document layout to switch the right drawer to the "AI assist"
-   * tab (and open it if it's collapsed). Implemented via a nonce so that
-   * repeated calls each trigger the layout's watcher.
-   */
-  const requestOpenAiPanel = () => {
-    aiPanelRequestNonce.value += 1
-  }
-
-  /**
    * Reset all run-state (counters, errors, highlight). Called when the user
    * navigates between documents or collections so stale "Processed X chunks" /
    * pending suggestions don't leak across them. Running requests are aborted and
@@ -414,7 +399,6 @@ export function useAiAssistance() {
     reset,
     runOnSelection,
     cancelSelection,
-    requestOpenAiPanel,
     isRunning: computed(() => isRunning.value),
     isSelectionRunning: computed(() => isSelectionRunning.value),
     lastError: computed(() => lastError.value),
@@ -423,8 +407,7 @@ export function useAiAssistance() {
     processedChunkCount: computed(() => processedChunkIds.value.size),
     totalSpansAdded: computed(() => totalSpansAdded.value),
     totalUnsaved: computed(() => totalUnsaved.value),
-    aiTabActive,
-    aiPanelRequestNonce,
+    aiPanelActive,
     highlightedAutoSpanId,
     pendingAutoSpans,
     nextPendingSuggestionAfter,

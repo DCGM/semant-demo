@@ -418,9 +418,9 @@ and `router/` the routes and sign-in guard.
 | `auth` | login/register/account dialogs, `userStore`, user search |
 | `feedback` | feedback page and its schema |
 
-The document view (`features/documents/viewer/`) is `DocumentViewLayout` (header, side
-drawer with the tags, AI assist and document panels; loads the document, collection and tags)
-around the reader page `DocumentReaderPage`. The reader composes the displayed chunks
+The document view (`features/documents/viewer/`) is `DocumentViewLayout` (header; the tags,
+AI assist and document tools as panels of the app's right sidebar; loads the document,
+collection and tags) around the reader page `DocumentReaderPage`. The reader composes the displayed chunks
 (`useChunkWindow`: collection chunks, previews and hidden gap chunks), chunk membership
 (`useChunkMembership`), gutter measurement (`useReaderGutters`), the offset helpers
 (`readerOffsets.ts`, on top of `annotations/spanOffsets.ts`), and the annotation components

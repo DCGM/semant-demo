@@ -214,7 +214,7 @@ watch(
   }
 )
 
-// The panel stays alive across tab switches (keep-alive) and keeps its order and search;
+// The panel stays alive while another sidebar panel is shown and keeps its order and search;
 // another collection has other tags, so both start over.
 watch(
   () => props.collectionId,

@@ -30,6 +30,11 @@ export async function logIn (page: Page, userKey: string): Promise<void> {
   await expect(page.getByText(`Welcome, ${user.name}!`)).toBeVisible()
 }
 
+/** The rail icon of a right sidebar panel; clicking it shows the panel. */
+export function sidebarPanelButton (page: Page, label: string): Locator {
+  return page.locator('.q-drawer--right').getByRole('listitem', { name: label, exact: true })
+}
+
 /** Opens a collection's document view through the UI, as a user would. */
 export async function openDocument (page: Page, collectionKey: string, documentKey: string): Promise<void> {
   await page.locator('.q-drawer').getByText('Collections', { exact: true }).click()
