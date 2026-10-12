@@ -336,7 +336,16 @@ complete" row is never chosen. The library is, in order:
    wrote as a default and the API still shows for documents without one);
 5. with `--infer-library-from-mirror`, for documents without page evidence (no chunks, or no
    page reaching the document): the mirror's only library for the id (`mirror_unique`),
-   else the first library of `--library-priority` the mirror has (`mirror_priority`).
+   else the choice among the mirror's libraries (`mirror_metadata` / `mirror_priority`).
+
+**Choosing among several libraries** (the pages reach several, or rule 5): with
+`--prefer-library-with-metadata`, the only one whose mirror row has bibliographic metadata
+(MODS in `metadata_json`; `page_metadata` / `mirror_metadata`); otherwise, among those that
+have it (or all if none has), the first in `--library-priority` (`page_priority` /
+`mirror_priority`). The mirror downloaded MODS (with the images) only for part of the
+documents, so a library row without it gives no author or publisher; a stored library and
+pages reaching a single library are kept even without metadata. Report and sync counts
+include `without_source_metadata` (resolved documents whose selected row has none).
 
 `--library-priority LIB,LIB,...` (highest first) encodes which libraries hold partial copies
 of others; it chooses only among libraries that have the document (that its pages reach, or,
@@ -360,7 +369,7 @@ unit (several chunks on one page count once).
 |---|---|---|
 | 2+ distinct pages reach the document, all in one library | `page_evidence.confidence: high` | that library (`library_from: page_ancestry`), replacing a different stored library |
 | exactly one such page | `low` | the same |
-| chains reach the document in several libraries (mirrored page UUIDs, or different pages in different libraries) | `ambiguous` | a stored library among them, else the first of them in `--library-priority` (`page_priority`), else `unresolved: page_evidence_ambiguous` |
+| chains reach the document in several libraries (mirrored page UUIDs, or different pages in different libraries) | `ambiguous` | a stored library among them, else the choice among them (`page_metadata` / `page_priority`, above), else `unresolved: page_evidence_ambiguous` |
 | a `--library-map` / `--library-override` library the chains do not reach | | the explicit library; `page_evidence_disagrees: true` for review |
 | no chunks, no valid start page, no page in the mirror, or no chain reaches the document | `no_chunks` / `none` | the stored library, else rule 5 |
 
@@ -453,7 +462,7 @@ database or production. `make test-integration` does not use `local_data/`.
 
 3. **Read-only inventory.** `python -m semant_demo.maintenance.metadata_sync --report
    r1.json --infer-library-from-pages --library-priority LIB,LIB,...
-   --infer-library-from-mirror --distrust-stored mzk --inferred inferred.csv --overwrite`
+   --prefer-library-with-metadata --infer-library-from-mirror --distrust-stored mzk --inferred inferred.csv --overwrite`
    (add `--limit N` / `--document-ids FILE` to narrow it). Check `counts`:
    `mirror_libraries` (none / one / several), `page_evidence`, `library_from`,
    `library_replaced`, `unresolved` kinds, `changed_properties` (especially `public` and
@@ -514,7 +523,22 @@ end in 13 s: 500 examined, 499 updated and verified, 0 failed, 1 unresolved (`eo
 checkpoint updated nothing. 24 of the 95 monographs have no author or publisher: every
 mirror row of each has `metadata_json` NULL and `mods_path = not_found` (in the whole mirror
 83% of `nkp` and 36% of `mzk` monograph rows), so the sync cannot fill them until the mirror
-re-downloads those MODS records. Production (`localhost:8080`, 484,336 documents, `yearIssued` of
+re-downloads those MODS records.
+
+The 2026-10-12 rerun added `--prefer-library-with-metadata` (decision on #259: the mirror
+downloaded MODS only for part of the documents, so the library whose row has them is the
+most useful choice among several). After a new backup (`pre-metadata-sync-259-metadata-2026-10-12`),
+`--sync` with the options above plus `--prefer-library-with-metadata` and, for this rerun
+only, `--distrust-stored nkp` (so the libraries stored by the first run were chosen again):
+500 examined, 79 updated and verified (`nkp` -> `mzk` 60, -> `kvkli` 13, -> `zmp` 3, `nacr`,
+`nfa`; the earlier unresolved `eod` + `knav` document -> `knav`), 0 failed, 0 unresolved, 19
+`public` false→true (the chosen row is public), 48 titles, 5 author lists. Library origins:
+133 `mirror_metadata`, 1 `page_metadata`, 117 `mirror_priority` (72 of them both libraries
+with metadata, 45 neither). Documents whose selected row has no metadata fell from 193 to 115;
+the 24 monographs without author or publisher remain (none of their rows has metadata). 2
+documents whose pages reach only another library keep it although `nkp` has metadata. A run
+with the production options (`--distrust-stored mzk` only) and a new checkpoint updated
+nothing. Production (`localhost:8080`, 484,336 documents, `yearIssued` of
 type `int`) waits for the test result to be accepted.
 
 ## 11. Testing versus development data

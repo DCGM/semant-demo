@@ -160,8 +160,8 @@ report but does not change anything (the mirror sets it on rows added or updated
 column was introduced; `false` is not an access or deletion signal). The local snapshot
 declares no `library`; applying needs it declared first. In the snapshot (checked
 2026-10-10 against the mirror) 237 of 500 documents have mirror rows in one library and
-263 in several (207 of them `mzk` + `nkp`); for these the library comes from page evidence or
-`--library-priority` (DEVELOPMENT).
+263 in several (207 of them `mzk` + `nkp`); for these the library comes from page evidence, the library
+whose row has MODS metadata (`--prefer-library-with-metadata`) or `--library-priority` (DEVELOPMENT).
 
 ### Collection: `Chunks`
 

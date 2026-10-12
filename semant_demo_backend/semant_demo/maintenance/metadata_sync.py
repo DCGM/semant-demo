@@ -13,14 +13,20 @@ selected row lacks stays as it is. The source library is, in this order:
    ``(parent_id, parent_library)``, to the document itself (``page_ancestry``; confidence
    ``high`` with 2+ distinct pages, ``low`` with one). It replaces a stored library the pages
    contradict. When the pages reach the document in several libraries (a library mirroring
-   another's page UUIDs), a stored library among them is kept, else the first of them in
-   ``--library-priority`` is used (``page_priority``), else the document is unresolved
+   another's page UUIDs), a stored library among them is kept, else the choice among them
+   (below, ``page_metadata`` or ``page_priority``), else the document is unresolved
    (``page_evidence_ambiguous``);
 4. the stored ``library`` property, unless its value is listed by ``--distrust-stored``
    (e.g. ``mzk``, which older code used as a default);
 5. with ``--infer-library-from-mirror``, for documents without page evidence (no chunks or
    no page reaching the document): the mirror's only library for the id (``mirror_unique``),
-   else the first of ``--library-priority`` the mirror has (``mirror_priority``).
+   else the choice among the mirror's libraries (``mirror_metadata`` or ``mirror_priority``).
+
+The choice among several libraries: with ``--prefer-library-with-metadata``, the only one
+whose row has bibliographic metadata (MODS, ``metadata_json``; ``*_metadata``), else, among
+those that have it (or all if none has), the first in ``--library-priority`` (``*_priority``).
+The mirror downloaded MODS only for part of the documents, so a library without it gives no
+author or publisher.
 
 Anything else (no library, a conflict, several mirror libraries without a choice, no row
 for the library) is ``unresolved`` with the libraries the mirror has for the id. Each entry
@@ -34,6 +40,7 @@ Report (read-only, the default)::
     python -m semant_demo.maintenance.metadata_sync --report metadata.json \\
         [--library-map verified.csv] [--library-override corrections.csv] [--distrust-stored mzk] \\
         [--infer-library-from-pages] [--library-priority mzk,nkp] [--infer-library-from-mirror] \\
+        [--prefer-library-with-metadata] \\
         [--inferred inferred.csv] [--document-ids ids.txt | --after UUID] [--limit N] [--overwrite]
 
 Declare ``Documents.library`` where it is missing (an additive, reviewed schema change)::
@@ -109,7 +116,8 @@ from semant_demo.maintenance.kramerius_mapping import FIELDS, SourceRecord, map_
 PAGE_SIZE = 100
 DSN_VARIABLE = "KRAMERIUS_METADATA_DSN"
 LIBRARY = "library"
-INFERRED = ("page_ancestry", "page_priority", "mirror_unique", "mirror_priority")
+INFERRED = ("page_ancestry", "page_metadata", "page_priority", "mirror_unique", "mirror_metadata",
+            "mirror_priority")
 """Library origins that are inferred rather than stored or given (``--inferred`` lists them)."""
 MAX_CHUNKS_PER_DOCUMENT = 1000
 """Chunks read per document for page evidence."""
@@ -176,11 +184,28 @@ def _first_by_priority(libraries: list[str], priority: tuple[str, ...]) -> str |
     return next((library for library in priority if library in libraries), None)
 
 
+def _choose(libraries: list[str], priority: tuple[str, ...],
+            with_metadata: frozenset[str] | None) -> tuple[str, str] | None:
+    """(library, "metadata" or "priority") chosen among several, or None: the only one with
+    metadata (if ``with_metadata`` is given), else the first by priority among those with it,
+    or among all if none has it."""
+    if with_metadata is not None:
+        having = [library for library in libraries if library in with_metadata]
+        if len(having) == 1:
+            return having[0], "metadata"
+        libraries = having or libraries
+    chosen = _first_by_priority(libraries, priority)
+    return (chosen, "priority") if chosen else None
+
+
 def resolve_library(stored: Any, libraries: list[str], *, mapped: str | None = None, override: str | None = None,
                     distrusted: frozenset[str] = frozenset(), pages: dict[str, Any] | None = None,
-                    priority: tuple[str, ...] = (), infer_from_mirror: bool = False) -> tuple[str, str]:
+                    priority: tuple[str, ...] = (), infer_from_mirror: bool = False,
+                    with_metadata: frozenset[str] | None = None) -> tuple[str, str]:
     """(library, where it came from) of a document whose mirror rows have ``libraries`` and
-    whose page evidence (``classify_pages``, if requested) is ``pages``; raises ``Unresolved``."""
+    whose page evidence (``classify_pages``, if requested) is ``pages``; raises ``Unresolved``.
+    ``with_metadata``, if given, are the libraries whose rows have metadata, preferred when
+    choosing among several."""
     page_libraries = sorted(pages["verified_pages"]) if pages else []
     if override:
         return override, "override"
@@ -196,8 +221,8 @@ def resolve_library(stored: Any, libraries: list[str], *, mapped: str | None = N
     if page_libraries:
         if stored in page_libraries:
             return stored, "stored"
-        if chosen := _first_by_priority(page_libraries, priority):
-            return chosen, "page_priority"
+        if chosen := _choose(page_libraries, priority, with_metadata):
+            return chosen[0], f"page_{chosen[1]}"
         raise Unresolved("page_evidence_ambiguous",
                          f"the start pages reach the document in {', '.join(page_libraries)}"
                          + (f", stored library {stored!r}" if stored else "")
@@ -206,8 +231,8 @@ def resolve_library(stored: Any, libraries: list[str], *, mapped: str | None = N
         return stored, "stored"
     if infer_from_mirror and len(libraries) == 1:
         return libraries[0], "mirror_unique"
-    if infer_from_mirror and (chosen := _first_by_priority(libraries, priority)):
-        return chosen, "mirror_priority"
+    if infer_from_mirror and (chosen := _choose(libraries, priority, with_metadata)):
+        return chosen[0], f"mirror_{chosen[1]}"
     if len(libraries) > 1:
         raise Unresolved("multiple_libraries", f"the mirror has rows for {', '.join(libraries)}"
                          + ("; none of them is in --library-priority" if infer_from_mirror
@@ -287,12 +312,14 @@ def plan_document(document_id: UUID, stored: dict[str, Any], records: list[Sourc
                   targets: dict[str, tuple[str, str]], *, mapped_library: str | None = None,
                   override_library: str | None = None, distrusted: frozenset[str] = frozenset(),
                   pages: dict[str, Any] | None = None, priority: tuple[str, ...] = (),
-                  infer_from_mirror: bool = False,
+                  infer_from_mirror: bool = False, prefer_metadata: bool = False,
                   ancestors: dict[tuple[str, str], list[SourceRecord]] | None = None,
                   overwrite: bool = False) -> dict[str, Any]:
     """The report entry of one document: its source and the property changes. ``ancestors``
-    (``read_ancestors``) of the selected row compose its title."""
+    (``read_ancestors``) of the selected row compose its title. ``prefer_metadata`` prefers,
+    among several libraries, those whose row has ``metadata_json``."""
     libraries = sorted({r.library for r in records})
+    with_metadata = frozenset(r.library for r in records if r.metadata_json) if prefer_metadata else None
     entry: dict[str, Any] = {"id": str(document_id), "stored_library": jsonable(stored.get(LIBRARY)),
                              "mirror_libraries": libraries}
     if pages is not None:
@@ -300,11 +327,13 @@ def plan_document(document_id: UUID, stored: dict[str, Any], records: list[Sourc
     try:
         library, origin = resolve_library(stored.get(LIBRARY), libraries, mapped=mapped_library,
                                           override=override_library, distrusted=distrusted, pages=pages,
-                                          priority=priority, infer_from_mirror=infer_from_mirror)
+                                          priority=priority, infer_from_mirror=infer_from_mirror,
+                                          with_metadata=with_metadata)
         record = select_record(records, library)
     except Unresolved as e:
         return {**entry, "status": "unresolved", "kind": e.kind, "reason": str(e)}
-    entry.update(library=library, library_from=origin, in_library=record.in_library)
+    entry.update(library=library, library_from=origin, in_library=record.in_library,
+                 has_metadata=bool(record.metadata_json))
     if pages and pages["verified_pages"] and library not in pages["verified_pages"]:
         entry["page_evidence_disagrees"] = True  # an explicit map or override wins; shown for review
 
@@ -365,7 +394,8 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
                        endpoint: str, source_name: str, library_map: dict[UUID, str] | None = None,
                        library_override: dict[UUID, str] | None = None, distrusted: frozenset[str] = frozenset(),
                        infer_from_pages: bool = False, priority: tuple[str, ...] = (),
-                       infer_from_mirror: bool = False, document_ids: list[UUID] | None = None,
+                       infer_from_mirror: bool = False, prefer_metadata: bool = False,
+                       document_ids: list[UUID] | None = None,
                        after: UUID | None = None, limit: int | None = None, overwrite: bool = False) -> dict:
     """The report of the documents in scope. Reads only. Raises ``LookupError`` if the
     documents collection does not exist."""
@@ -383,11 +413,13 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
         entries += await _plan_page(
             client, names, source, page, targets, cache, library_map=library_map,
             library_override=library_override, distrusted=distrusted, infer_from_pages=infer_from_pages,
-            priority=priority, infer_from_mirror=infer_from_mirror, overwrite=overwrite)
+            priority=priority, infer_from_mirror=infer_from_mirror, prefer_metadata=prefer_metadata,
+            overwrite=overwrite)
         last = page[-1][0]
 
     reached_limit = document_ids is None and limit is not None and len(entries) == limit
-    plain = {"id", "status", "stored_library", "mirror_libraries", "library", "library_from", "in_library"}
+    plain = {"id", "status", "stored_library", "mirror_libraries", "library", "library_from", "in_library",
+             "has_metadata"}
     return {
         "endpoint": endpoint,
         "collection": names.document_collection_name,
@@ -397,7 +429,8 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
                     "limit": limit, "document_ids": document_ids is not None, "library_map": len(library_map),
                     "library_override": len(library_override), "distrust_stored": sorted(distrusted),
                     "infer_library_from_pages": infer_from_pages, "library_priority": list(priority),
-                    "infer_library_from_mirror": infer_from_mirror},
+                    "infer_library_from_mirror": infer_from_mirror,
+                    "prefer_library_with_metadata": prefer_metadata},
         "target_schema": {prop: data_type for prop, data_type in targets.values()},
         "undeclared_fields": undeclared,
         "counts": _counts(entries),
@@ -411,7 +444,8 @@ async def _plan_page(client: WeaviateAsyncClient, names: schemas.CollectionNames
                      page: list[tuple[UUID, dict[str, Any] | None]], targets: dict[str, tuple[str, str]],
                      cache: dict[tuple[str, str], SourceRecord | None], *, library_map: dict[UUID, str],
                      library_override: dict[UUID, str], distrusted: frozenset[str], infer_from_pages: bool,
-                     priority: tuple[str, ...], infer_from_mirror: bool, overwrite: bool) -> list[dict[str, Any]]:
+                     priority: tuple[str, ...], infer_from_mirror: bool, prefer_metadata: bool,
+                     overwrite: bool) -> list[dict[str, Any]]:
     """The report entries (``plan_document``) of one page of (id, stored properties or None)."""
     present = [i for i, stored in page if stored is not None]
     records = read_meta_records(source, present)
@@ -429,7 +463,8 @@ async def _plan_page(client: WeaviateAsyncClient, names: schemas.CollectionNames
             document_id, stored, records.get(document_id, []), targets,
             mapped_library=library_map.get(document_id), override_library=library_override.get(document_id),
             distrusted=distrusted, pages=evidence.get(document_id), priority=priority,
-            infer_from_mirror=infer_from_mirror, ancestors=ancestors, overwrite=overwrite))
+            infer_from_mirror=infer_from_mirror, prefer_metadata=prefer_metadata, ancestors=ancestors,
+            overwrite=overwrite))
     return entries
 
 
@@ -470,6 +505,7 @@ def _counts(entries: list[dict[str, Any]]) -> dict[str, Any]:
         "page_evidence": dict(sorted(Counter(e["page_evidence"]["confidence"] for e in entries
                                              if "page_evidence" in e).items())),
         "page_evidence_disagrees": sum(1 for e in entries if e.get("page_evidence_disagrees")),
+        "without_source_metadata": sum(1 for e in entries if e.get("has_metadata") is False),
         "library_replaced": sum(1 for e in entries if not _empty(e.get("changes", {}).get(LIBRARY, {}).get("old"))),
         "with_held_changes": sum(1 for e in entries if "held" in e),
         "with_skipped_values": sum(1 for e in entries if "skipped" in e),
@@ -587,7 +623,8 @@ def _fingerprint(mapping: dict[UUID, str] | None) -> str | None:
 def _sync_counts() -> dict[str, Any]:
     return {"examined": 0, "updated": 0, "unchanged": 0, "unresolved": {}, "failed": 0, "library_from": {},
             "public": {"false_to_true": 0, "true_to_false": 0, "unset_to_true": 0, "unset_to_false": 0},
-            "with_held_changes": 0, "with_skipped_values": 0, "changed_properties": {}}
+            "without_source_metadata": 0, "with_held_changes": 0, "with_skipped_values": 0,
+            "changed_properties": {}}
 
 
 def _add(counter: dict[str, int], key: str, n: int = 1) -> None:
@@ -620,6 +657,7 @@ async def _sync_batch(client: WeaviateAsyncClient, names: schemas.CollectionName
         counts["examined"] += 1
         counts["with_held_changes"] += "held" in entry
         counts["with_skipped_values"] += "skipped" in entry
+        counts["without_source_metadata"] += entry.get("has_metadata") is False
         if "library_from" in entry:
             _add(counts["library_from"], entry["library_from"])
         if entry["status"] == "unresolved":
@@ -669,8 +707,8 @@ async def sync(client: WeaviateAsyncClient, names: schemas.CollectionNames, sour
                checkpoint: Path, manifest: Path, endpoint: str, source_name: str,
                library_map: dict[UUID, str] | None = None, library_override: dict[UUID, str] | None = None,
                distrusted: frozenset[str] = frozenset(), infer_from_pages: bool = False,
-               priority: tuple[str, ...] = (), infer_from_mirror: bool = False, overwrite: bool = False,
-               after: UUID | None = None, limit: int | None = None,
+               priority: tuple[str, ...] = (), infer_from_mirror: bool = False, prefer_metadata: bool = False,
+               overwrite: bool = False, after: UUID | None = None, limit: int | None = None,
                progress=lambda line: print(line, file=sys.stderr, flush=True)) -> dict[str, Any]:
     """Plan and apply the documents one page at a time, in a single pass (#259).
 
@@ -694,10 +732,12 @@ async def sync(client: WeaviateAsyncClient, names: schemas.CollectionNames, sour
     library_override = library_override or {}
     plan_options = {"library_map": library_map, "library_override": library_override, "distrusted": distrusted,
                     "infer_from_pages": infer_from_pages, "priority": priority,
-                    "infer_from_mirror": infer_from_mirror, "overwrite": overwrite}
+                    "infer_from_mirror": infer_from_mirror, "prefer_metadata": prefer_metadata,
+                    "overwrite": overwrite}
     options = {"overwrite": overwrite, "distrust_stored": sorted(distrusted),
                "infer_library_from_pages": infer_from_pages, "library_priority": list(priority),
-               "infer_library_from_mirror": infer_from_mirror, "library_map": _fingerprint(library_map),
+               "infer_library_from_mirror": infer_from_mirror, "prefer_library_with_metadata": prefer_metadata,
+               "library_map": _fingerprint(library_map),
                "library_override": _fingerprint(library_override)}
     identity = {"endpoint": endpoint, "collection": names.document_collection_name, "options": options,
                 "target_schema": target_schema}
@@ -758,7 +798,8 @@ async def sync(client: WeaviateAsyncClient, names: schemas.CollectionNames, sour
         batch = await run(read_retried)
         counts = batch["counts"]
         # counted when first examined; the outcome replaces the failure
-        counts.update(examined=0, library_from={}, with_held_changes=0, with_skipped_values=0)
+        counts.update(examined=0, library_from={}, without_source_metadata=0, with_held_changes=0,
+                      with_skipped_values=0)
         state["counts"]["failed"] -= len(retried)
         _merge_counts(state["counts"], counts)
         finish(batch, retried)
@@ -852,6 +893,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--infer-library-from-mirror", action="store_true",
                    help="for documents without page evidence and without a stored library: the mirror's "
                         "only library, else the first of --library-priority it has")
+    p.add_argument("--prefer-library-with-metadata", action="store_true",
+                   help="choosing among several libraries (pages or mirror), prefer the one whose mirror row has "
+                        "bibliographic metadata (metadata_json); --library-priority breaks remaining ties")
     p.add_argument("--inferred", type=Path, help="write the inferred libraries and their evidence (CSV) to this file")
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--document-ids", type=Path, help="only these documents (one UUID per line)")
@@ -943,6 +987,7 @@ async def _main(argv: list[str]) -> int:
                         library_map=library_map, library_override=library_override,
                         distrusted=frozenset(args.distrust_stored), infer_from_pages=args.infer_library_from_pages,
                         priority=args.library_priority, infer_from_mirror=args.infer_library_from_mirror,
+                        prefer_metadata=args.prefer_library_with_metadata,
                         overwrite=args.overwrite, after=args.after, limit=args.limit)
                 except LookupError as e:
                     print(e, file=sys.stderr)
@@ -965,6 +1010,7 @@ async def _main(argv: list[str]) -> int:
                     library_map=library_map, library_override=library_override,
                     distrusted=frozenset(args.distrust_stored), infer_from_pages=args.infer_library_from_pages,
                     priority=args.library_priority, infer_from_mirror=args.infer_library_from_mirror,
+                    prefer_metadata=args.prefer_library_with_metadata,
                     document_ids=document_ids, after=args.after, limit=args.limit, overwrite=args.overwrite)
             except LookupError as e:
                 print(e, file=sys.stderr)
