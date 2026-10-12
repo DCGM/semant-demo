@@ -34,7 +34,7 @@ All files are in `semant_demo_frontend/src`.
 
 | File | Purpose |
 |------|---------|
-| `app/sidebar/RightSidebar.vue` | The sidebar shell (`q-drawer`). Placed once in `layouts/MainLayout.vue`. Knows nothing about the individual pages. |
+| `app/sidebar/RightSidebar.vue` | The sidebar shell (`q-drawer`). Placed once in `app/MainLayout.vue`. Knows nothing about the individual pages. |
 | `app/sidebar/RightSidebarPanel.vue` | Wrapper a page uses to add a tool to the sidebar. |
 | `app/sidebar/rightSidebarStore.ts` | Pinia store with the shell state only: registered panels, active panel, open and mini states, the element panels render into. |
 | `features/<feature>/` | The tools themselves, next to the feature they belong to, e.g. `features/search/SearchSummaryPanel.vue`. |
@@ -200,8 +200,8 @@ the new request's loading state.
 
 | Page | Panel id | Component | Description |
 |------|----------|-----------|-------------|
-| Search (`pages/SearchPage.vue`) | `search-summary` | `features/search/SearchSummaryPanel.vue` | Summarization of the current search results (focused: first 3, broader: first 10, extensive: all, selected: the selected results). Citations move the user to the cited result. Logic in `features/search/useSearchSummary.ts`. |
-| Search (`pages/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
+| Search (`features/search/SearchPage.vue`) | `search-summary` | `features/search/SearchSummaryPanel.vue` | Summarization of the current search results (focused: first 3, broader: first 10, extensive: all, selected: the selected results). Citations move the user to the cited result. Logic in `features/search/useSearchSummary.ts`. |
+| Search (`features/search/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
 
 ### Document context (`features/documents/`)
 

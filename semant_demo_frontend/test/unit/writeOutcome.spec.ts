@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SpanType, WriteOutcome } from 'src/generated/api'
-import { IncompleteWriteError, describeIncomplete, incompleteWriteMessage, requireComplete, searchTagWarning, spanOf } from 'src/utils/writeOutcome'
+import { IncompleteWriteError, describeIncomplete, incompleteWriteMessage, requireComplete, searchTagWarning, spanOf } from 'src/shared/writeOutcome'
 
 describe('write outcomes', () => {
   it('passes complete results through', () => {

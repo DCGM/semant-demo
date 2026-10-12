@@ -2,27 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { shallowMount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
-import { ref } from 'vue'
 
 import DocumentDetailLayout from 'src/pages/Collections/xjuric31/DocumentDetailLayout.vue'
-import useAiAssistance from 'src/composables/useAiAssistance'
-import { useTagSpansStore } from 'src/stores/tagSpansStore'
+import useAiAssistance from 'src/features/annotations/useAiAssistance'
+import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
 
-// The layout's data loading is not under test: these composables return empty state.
+// The layout's data loading is not under test: the stores load empty state.
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: {}, query: {} }) }))
-vi.mock('src/repositories/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
-vi.mock('src/composables/useDocuments', () => ({
-  default: () => ({ activeDocument: ref(null), loadDocument: vi.fn(async () => undefined) })
+vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
+vi.mock('src/features/documents/useDocumentsRepository', () => ({ useDocumentsRepository: () => ({ getById: async () => null }) }))
+vi.mock('src/features/user_collections/useUserCollectionsRepository', () => ({
+  useUserCollectionsRepository: () => ({ getById: async () => null })
 }))
-vi.mock('src/composables/useCollections', () => ({
-  default: () => ({ activeCollection: ref(null), loadCollection: vi.fn(async () => undefined) })
-}))
-vi.mock('src/composables/useTags', () => ({
-  default: () => ({
-    tags: ref([]), loading: ref(false), loadTagsByCollection: vi.fn(async () => undefined), createTag: vi.fn(), updateTag: vi.fn()
-  })
-}))
-vi.mock('src/composables/dialogs/useTagsDialog', () => ({ default: () => ({ openTagsDialog: vi.fn() }) }))
+vi.mock('src/features/annotations/useTagsRepository', () => ({ useTagsRepository: () => ({ getAllByCollection: async () => [] }) }))
+vi.mock('src/features/annotations/useTagsDialog', () => ({ default: () => ({ openTagsDialog: vi.fn() }) }))
 vi.mock('src/shared/api', async () => ({
   ...(await vi.importActual<typeof import('src/shared/api')>('src/shared/api')),
   useApi: () => ({ default: {} })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ref } from 'vue'
 
-import usePagination from 'src/composables/usePagination'
+import usePagination from 'src/shared/usePagination'
 
 describe('usePagination', () => {
   it('returns no pages for an empty list', () => {

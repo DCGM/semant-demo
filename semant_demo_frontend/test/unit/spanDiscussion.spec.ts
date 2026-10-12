@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import useSpanDiscussion from 'src/composables/useSpanDiscussion'
+import useSpanDiscussion from 'src/features/annotations/useSpanDiscussion'
 
 const encoder = new TextEncoder()
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))

@@ -1,13 +1,13 @@
 import { onScopeDispose, watch } from 'vue'
 import { Notify } from 'quasar'
-import { useUserStore } from 'src/stores/user-store'
-import { useCollectionsStore } from 'src/stores/collectionsStore'
-import { useDocumentsStore } from 'src/stores/documentsStore'
-import { useTagsStore } from 'src/stores/tagsStore'
-import { useTagSpansStore } from 'src/stores/tagSpansStore'
-import { useChunksStore } from 'src/stores/chunksStore'
-import { useCollectionStatsStore } from 'src/stores/collectionStatsStore'
-import useAiAssistance from 'src/composables/useAiAssistance'
+import { useUserStore } from 'src/features/auth/userStore'
+import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
+import { useDocumentsStore } from 'src/features/documents/documentsStore'
+import { useTagsStore } from 'src/features/annotations/tagsStore'
+import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
+import { useChunksStore } from 'src/features/documents/chunksStore'
+import { useCollectionStatsStore } from 'src/features/user_collections/collectionStatsStore'
+import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import { endSession, onUnauthorized } from 'src/shared/api'
 
 /**
@@ -23,7 +23,7 @@ export function clearUserScopedState (): void {
   useChunksStore().clear()
   useDocumentsStore().clear()
   useCollectionStatsStore().clear()
-  useCollectionsStore().clear()
+  useUserCollectionsStore().clear()
 }
 
 /**

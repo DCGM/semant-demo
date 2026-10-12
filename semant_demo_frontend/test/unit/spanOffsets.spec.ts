@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { offsetBetween, projectSpan } from 'src/utils/spanOffsets'
+import { offsetBetween, projectSpan } from 'src/features/annotations/spanOffsets'
 import fixture from '../../../semant_demo_backend/tests/fixtures/text_offsets.json'
 
 // Cases shared with the backend (tests/test_span_offsets.py). The backend also rejects

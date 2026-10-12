@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 
-import MiniStateButton from 'src/components/MiniStateButton.vue'
+import MiniStateButton from 'src/app/MiniStateButton.vue'
 
 function mountButton (drawerMiniState: boolean, side?: 'left' | 'right') {
   return mount(MiniStateButton, {

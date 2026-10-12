@@ -522,25 +522,24 @@
 </template>
 
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useQuasar } from 'quasar'
-import useChunks from 'src/composables/useChunks'
-import useTags from 'src/composables/useTags'
-import { useAnnotations } from 'src/composables/useAnnotations'
-import type { ProjectedSpan } from 'src/composables/useAnnotations'
-import useTagSpans from 'src/composables/useTagSpans'
-import useTagsDialog from 'src/composables/dialogs/useTagsDialog'
-import type { PostTag, PatchTag, Tag } from 'src/models/tags'
-import { SpanType } from 'src/generated/api'
-import type { CollectionChunk } from 'src/generated/api'
-import { useTagNavigation } from 'src/composables/useTagNavigation'
-import useAiAssistance from 'src/composables/useAiAssistance'
-import useSpanDiscussionDialog from 'src/composables/dialogs/useSpanDiscussionDialog'
-import ChunkAnnotator from 'src/components/ChunkAnnotator.vue'
-import ErrorDisplay from 'src/components/custom/ErrorDisplay.vue'
-import { IncompleteWriteError } from 'src/utils/writeOutcome'
-import useCollections from 'src/composables/useCollections'
-import { collectionRights } from 'src/features/collections/permissions'
+import useChunks from 'src/features/documents/useChunks'
+import { useTagsStore } from 'src/features/annotations/tagsStore'
+import { useAnnotations } from 'src/features/annotations/useAnnotations'
+import type { ProjectedSpan } from 'src/features/annotations/useAnnotations'
+import useTagSpans from 'src/features/annotations/useTagSpans'
+import useTagsDialog from 'src/features/annotations/useTagsDialog'
+import { PostTag, PatchTag, Tag, SpanType, CollectionChunk } from 'src/generated/api'
+import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
+import useAiAssistance from 'src/features/annotations/useAiAssistance'
+import useSpanDiscussionDialog from 'src/features/annotations/useSpanDiscussionDialog'
+import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
+import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
+import { IncompleteWriteError } from 'src/shared/writeOutcome'
+import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
+import { collectionRights } from 'src/features/user_collections/permissions'
 
 /**
  * Resolve a DOM node + offset into { chunkId, charOffset } by walking up
@@ -583,13 +582,15 @@ const props = defineProps<{
 
 // Shared users annotate but do not add or remove chunks (ADR 0007). The collection is
 // loaded by the enclosing document layout.
-const { activeCollection } = useCollections()
+const { activeCollection } = storeToRefs(useUserCollectionsStore())
 const rights = computed(() =>
   collectionRights(activeCollection.value?.id === props.collectionId ? activeCollection.value : null)
 )
 
 const { chunks, loading, error, loadChunksInCollectionDocument, addChunkToCollection, removeChunkFromCollection, getNeighbourChunk, countDocumentChunks, getChunksInRange } = useChunks()
-const { tags, loadTagsByCollection, createTag, updateTag } = useTags()
+const tagsStore = useTagsStore()
+const { tags } = storeToRefs(tagsStore)
+const { fetchTagsByCollection, createTag, updateTag } = tagsStore
 const { openTagsDialog } = useTagsDialog()
 
 // Local display chunks — a superset of collection chunks plus any expanded previews
@@ -1277,7 +1278,7 @@ const onTagClick = async (tagId: string) => {
 const onCreateTagClick = () => {
   openTagsDialog({ dialogType: 'CREATE' }).onOk(async (tagData: PostTag) => {
     const newTag = await createTag(props.collectionId, tagData)
-    await loadTagsByCollection(props.collectionId)
+    await fetchTagsByCollection(props.collectionId)
     await onTagClick(newTag.id)
   })
 }
@@ -1293,7 +1294,7 @@ const onOpenTagDetails = () => {
   if (!tag) return
   openTagsDialog({ dialogType: 'EDIT', tag }).onOk(async (updatedData: PatchTag) => {
     await updateTag(tag.id, updatedData)
-    await loadTagsByCollection(props.collectionId)
+    await fetchTagsByCollection(props.collectionId)
   })
 }
 
@@ -1778,7 +1779,7 @@ const onEscape = (e: KeyboardEvent) => {
 
 onMounted(async () => {
   await Promise.all([
-    loadTagsByCollection(props.collectionId),
+    fetchTagsByCollection(props.collectionId),
     loadChunksInCollectionDocument(props.collectionId, props.documentId)
   ])
 

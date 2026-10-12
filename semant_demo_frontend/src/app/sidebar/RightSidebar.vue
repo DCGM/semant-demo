@@ -51,7 +51,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
-import MiniStateButton from 'src/components/MiniStateButton.vue'
+import MiniStateButton from 'src/app/MiniStateButton.vue'
 import { useRightSidebarStore } from './rightSidebarStore'
 
 // same as the q-drawer default, used by the left drawer

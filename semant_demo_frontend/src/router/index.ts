@@ -7,7 +7,7 @@ import {
 } from 'vue-router'
 
 import { Notify } from 'quasar'
-import { useUserStore } from 'src/stores/user-store'
+import { useUserStore } from 'src/features/auth/userStore'
 import routes from './routes'
 import { installAuthGuard } from './authGuard'
 
