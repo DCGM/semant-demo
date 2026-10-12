@@ -10,6 +10,7 @@ from uuid import UUID
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import DataType, Property, Tokenization
 from weaviate.classes.query import Filter
+from weaviate.exceptions import WeaviateUnsupportedFeatureError
 
 import semant_demo.schemas as schemas
 
@@ -53,8 +54,15 @@ async def update_document(client: WeaviateAsyncClient, names: schemas.Collection
 
 async def add_text_property(client: WeaviateAsyncClient, names: schemas.CollectionNames, name: str) -> None:
     """Declare a text property on the documents collection, matched as a whole value (``field``
-    tokenization: a filter on ``cuni`` does not match ``cuni_fsv``); existing documents have no value."""
-    await _documents(client, names).config.add_property(
+    tokenization: a filter on ``cuni`` does not match ``cuni_fsv``); existing documents have no value.
+    An alias (e.g. ``Documents`` -> ``Documents_test`` in the deployment) is resolved first: Weaviate
+    1.34 serves reads through an alias but not schema updates."""
+    collection = names.document_collection_name
+    try:
+        alias = await client.alias.get(alias_name=collection)
+    except WeaviateUnsupportedFeatureError:  # before 1.32: no aliases
+        alias = None
+    await client.collections.get(alias.collection if alias else collection).config.add_property(
         Property(name=name, data_type=DataType.TEXT, tokenization=Tokenization.FIELD))
 
 
