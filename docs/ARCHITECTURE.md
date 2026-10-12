@@ -88,7 +88,8 @@ semant_demo_backend/semant_demo/
   schemas.py              RAG/feedback HTTP models, CollectionNames
   rag/, summarization/, llm_api/, ollama_proxy.py   RAG pipelines, search summaries, LLM clients
   users/                  FastAPI Users: model, manager, auth routers, schemas
-  maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync)
+  maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
+                          document_cleanup (audit, then gated delete of documents without chunks)
 ```
 
 ```mermaid
@@ -421,6 +422,8 @@ DEVELOPMENT.md):
 Document metadata from the Kramerius PostgreSQL mirror is synchronized by the backend
 command `python -m semant_demo.maintenance.metadata_sync` (read-only report, then explicit
 apply, or a checkpointed single-pass `--sync`; source library only — see DEVELOPMENT.md and DATABASE.md).
+Documents without chunks are audited, and on explicit request deleted, by
+`python -m semant_demo.maintenance.document_cleanup` (#281; see DEVELOPMENT.md).
 
 ## Historical material
 
