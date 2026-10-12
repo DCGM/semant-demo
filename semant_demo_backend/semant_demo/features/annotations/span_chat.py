@@ -19,12 +19,11 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from semant_demo.core.errors import InvalidRequestError
-from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanChatMessage, Tag, TagSpan
+from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanChatMessage, Tag, TagSpan, AnnotationChunk
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.collections import access
 from semant_demo.features.collections.access import Principal
-from semant_demo.schema.chunks import ChunkText
-from semant_demo.schema.documents import Document
+from semant_demo.features.documents.schemas import Document
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +88,7 @@ def _format_metadata(doc: Document | None) -> str:
 
 
 async def _chunks_in_range(store: AnnotationStore, document_id: UUID, min_order: int,
-                           max_order: int) -> list[ChunkText]:
+                           max_order: int) -> list[AnnotationChunk]:
     """Chunks of the document with ``min_order <= order <= max_order``, ascending."""
     if max_order < min_order:
         return []
@@ -184,7 +183,7 @@ async def build_context_message(store: AnnotationStore, *, span: TagSpan, contex
     before, after = _trim_context(assembled_text, s_start, s_end, window_chars)
 
     # Neighbouring chunks (outside the span) when the in-text window is too short.
-    neighbours: list[ChunkText] = []
+    neighbours: list[AnnotationChunk] = []
     needs_prev = s_start < window_chars
     needs_next = len(assembled_text) - s_end < window_chars
     if document_id and chunk_order is not None and (needs_prev or needs_next):

@@ -1,5 +1,5 @@
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
-from semant_demo.schemas import RagRequest, RagResponse
+from semant_demo.features.rag.schemas import RagRequest, RagResponse
 from semant_demo.config import Config
 from semant_demo.features.search.service import Retriever
 @register_rag_class

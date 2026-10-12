@@ -36,7 +36,7 @@ from semant_demo.features.annotations.schemas import (
 )
 from semant_demo.features.collections import access
 from semant_demo.features.collections.access import Principal
-from semant_demo.schema.outcomes import StepFailure, WriteResult, outcome_of
+from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 
 Id = str | UUID
 

@@ -11,15 +11,14 @@ import pytest
 from semant_demo.adapters.llm.responses import ResponsesChat
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import span_chat
-from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanType, Tag, TagSpan
+from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanType, Tag, TagSpan, AnnotationChunk
 from semant_demo.features.collections.access import AuthenticationRequired
-from semant_demo.schema.chunks import ChunkText
-from semant_demo.schema.documents import Document
+from semant_demo.features.documents.schemas import Document
 from tests.fakes import FakeStreamingChat
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
 COLLECTION, DOCUMENT, TAG = uuid4(), uuid4(), uuid4()
-CHUNKS = [ChunkText(id=uuid4(), document_id=DOCUMENT, order=i, text=t)
+CHUNKS = [AnnotationChunk(id=uuid4(), document_id=DOCUMENT, order=i, text=t)
           for i, t in enumerate(["Before. ", "Jan Nov", "ák went home. ", "After."])]
 
 

@@ -1,12 +1,11 @@
-"""Models shared outside the features: RAG and feedback HTTP models and the configured
-Weaviate collection names. Feature models live in each feature's ``schemas.py``; shared
-corpus models in ``schema/``; SQL tables in ``adapters/sql/``.
-"""
-from pydantic import BaseModel
-from typing import Literal, TypedDict, Any
+"""RAG HTTP models. The internal state of the adaptive RAG lives with its implementation
+(``rag/incremental_rag.py``)."""
 from datetime import datetime
+from typing import Literal
 
-from semant_demo.features.search.schemas import SearchType, TextChunkWithDocument
+from pydantic import BaseModel
+
+from semant_demo.features.search.schemas import SearchResultChunk, SearchType
 
 
 class RagRouteConfig(BaseModel):
@@ -42,7 +41,7 @@ class RagRequest(BaseModel):
     history: list[RagChatMessage] | None = None
     # search parameters
     rag_search: RagSearch
-    previous_documents: list[TextChunkWithDocument] = []
+    previous_documents: list[SearchResultChunk] = []
 
 # rag request from frontend to backend
 
@@ -58,34 +57,7 @@ class RagResponse(BaseModel):
     rag_answer: str
     time_spent: float
     response_id: str
-    sources: list[TextChunkWithDocument]
-
-
-class ExtractedMeradata(BaseModel):
-    min_year: int | None = None
-    max_year: int | None = None
-    min_date: datetime | None = None
-    max_date: datetime | None = None
-    language: str | None = None
-
-# class defining state of the adaptive rag
-
-
-class AdaptiveRagState(TypedDict):
-    language: str | None  # ces, des, eng, ...
-    question: str
-    original_question: str
-    queries: list[str]
-    context_sufficient: bool
-    history: list[Any]
-    documents: list[Any]
-    generation: str
-    metadata: ExtractedMeradata
-    metadata_extraction_allowed: bool
-    retrieval_iteration_counter: int
-    generation_iteration_counter: int
-    feedback: str
-    web_search_performed: bool
+    sources: list[SearchResultChunk]
 
 
 class AvailableRagConfigurationsResponse(BaseModel):
@@ -104,37 +76,15 @@ class ExplainRequest(BaseModel):
     # chat history, to keep context
     history: list[RagChatMessage] | None = None
     # sources / chunks of the id question
-    sources: list[TextChunkWithDocument]
+    sources: list[SearchResultChunk]
 
 
 class FeedbackRequest(BaseModel):
     rag_id: str
     response_id: str
     question: str
-    sources: list[TextChunkWithDocument]
+    sources: list[SearchResultChunk]
     answer: str
     rating: int                                     # should be: 1 - like / -1 - dislike
     error_types: list[str] | None = None
     comment: str | None = None
-
-
-class AppFeedbackRequest(BaseModel):
-    type: str
-    subject: str | None = None
-    message: str
-    email: str | None = None
-
-
-class CreateResponse(BaseModel):
-    created: bool
-    message: str
-
-# Weaviate collections
-class CollectionNames(BaseModel):
-    chunks_collection_name: str
-    tag_collection_name: str
-    user_collection_name: str
-    document_collection_name: str
-    span_collection_name: str
-    user_collection_link_name: str
-    tag_to_user_collection_link_name: str

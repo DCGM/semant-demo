@@ -7,9 +7,9 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
 from weaviate.exceptions import WeaviateTimeoutError
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.core.errors import IncompleteWriteError
-from semant_demo.schema.outcomes import StepFailure
+from semant_demo.core.outcomes import StepFailure
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ async def _delete_references_to(collection, from_property: str, target_id: UUID,
     await _drain(collection, Filter.by_ref(from_property).by_id().equal(target_id), unlink, progress, step)
 
 
-async def _tag_cascade(client: WeaviateAsyncClient, names: schemas.CollectionNames, tag_id: UUID,
+async def _tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, tag_id: UUID,
                        progress: _Progress) -> None:
     chunks = client.collections.get(names.chunks_collection_name)
     for prop in ("automaticTag", "positiveTag", "negativeTag"):
@@ -118,7 +118,7 @@ def _incomplete(what: str, progress: _Progress, exc: Exception) -> IncompleteWri
         step=progress.step, completed=progress.completed, uncertain=_is_timeout(exc))
 
 
-async def delete_tag_cascade(client: WeaviateAsyncClient, names: schemas.CollectionNames, tag_id: UUID) -> None:
+async def delete_tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, tag_id: UUID) -> None:
     """Delete a tag after its chunk tag references and its spans.
 
     Best effort without rollback: a failure stops the cascade, keeps what was done and
@@ -134,7 +134,7 @@ async def delete_tag_cascade(client: WeaviateAsyncClient, names: schemas.Collect
         raise _incomplete("tag", progress, exc) from exc
 
 
-async def delete_collection_cascade(client: WeaviateAsyncClient, names: schemas.CollectionNames,
+async def delete_collection_cascade(client: WeaviateAsyncClient, names: CollectionNames,
                                     collection_id: UUID) -> None:
     """Delete a collection after its chunk/document links and its tags (with their spans).
 

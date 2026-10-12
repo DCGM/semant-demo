@@ -4,10 +4,10 @@ from uuid import UUID
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference, Sort
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
-from semant_demo.schema.chunks import ChunkText, TextChunk
-from semant_demo.schema.documents import Document, DocumentBrowse, DocumentDetail, DocumentDetailTextChunkWithUserCollectionInfo
+from semant_demo.features.annotations.schemas import AnnotationChunk
+from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse, DocumentDetail, DocumentViewChunk
 
 
 def _document_id(obj) -> UUID | None:
@@ -15,17 +15,17 @@ def _document_id(obj) -> UUID | None:
     return docs.objects[0].uuid if docs and docs.objects else None
 
 
-def _to_text_chunk(obj, document_id: UUID) -> TextChunk:
-    return TextChunk(**{**obj.properties, "id": obj.uuid, "document": document_id})
+def _to_text_chunk(obj, document_id: UUID) -> DocumentChunk:
+    return DocumentChunk(**{**obj.properties, "id": obj.uuid, "document": document_id})
 
 
-def _to_chunk_text(obj) -> ChunkText:
-    return ChunkText(id=obj.uuid, document_id=_document_id(obj),
+def _to_chunk_text(obj) -> AnnotationChunk:
+    return AnnotationChunk(id=obj.uuid, document_id=_document_id(obj),
                      order=obj.properties["order"], text=obj.properties.get("text") or "")
 
 
 class DocumentRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
 
@@ -64,7 +64,7 @@ class DocumentRepository:
         chunks = []
         for chunk_obj in chunk_objects:
             refs = chunk_obj.references.get(link) if chunk_obj.references else None
-            chunks.append(DocumentDetailTextChunkWithUserCollectionInfo(
+            chunks.append(DocumentViewChunk(
                 id=chunk_obj.uuid,
                 **chunk_obj.properties,
                 document=document_response.uuid,
@@ -72,14 +72,14 @@ class DocumentRepository:
             ))
         return DocumentDetail(document=document, chunks=chunks)
 
-    async def read_chunk_text(self, chunk_id: UUID) -> ChunkText | None:
+    async def read_chunk_text(self, chunk_id: UUID) -> AnnotationChunk | None:
         """The chunk's document, order and text, or None if it does not exist."""
         obj = await self._chunks().query.fetch_object_by_id(
             chunk_id, return_properties=["order", "text"],
             return_references=[QueryReference(link_on="document", return_properties=[])])
         return _to_chunk_text(obj) if obj is not None else None
 
-    async def read_following_chunk_texts(self, document_id: UUID, after_order: int, limit: int) -> list[ChunkText]:
+    async def read_following_chunk_texts(self, document_id: UUID, after_order: int, limit: int) -> list[AnnotationChunk]:
         """Up to ``limit`` chunks of the document with order greater than ``after_order``, in order."""
         response = await self._chunks().query.fetch_objects(
             filters=(Filter.by_ref("document").by_id().equal(document_id)
@@ -91,14 +91,14 @@ class DocumentRepository:
         )
         return [_to_chunk_text(o) for o in response.objects]
 
-    async def read_chunk(self, chunk_id: UUID) -> TextChunk | None:
+    async def read_chunk(self, chunk_id: UUID) -> DocumentChunk | None:
         """The chunk with its stored properties, or None if it (or its document link) does not exist."""
         obj = await self._chunks().query.fetch_object_by_id(
             chunk_id, return_references=[QueryReference(link_on="document", return_properties=[])])
         document_id = _document_id(obj) if obj is not None else None
         return _to_text_chunk(obj, document_id) if document_id is not None else None
 
-    async def read_adjacent_chunks(self, document_id: UUID, order: int, direction: str, limit: int) -> list[TextChunk]:
+    async def read_adjacent_chunks(self, document_id: UUID, order: int, direction: str, limit: int) -> list[DocumentChunk]:
         """
         Up to ``limit`` chunks of the document directly before (``direction="before"``) or
         after (``"after"``) the chunk with ``order``, nearest first, returned in document order.

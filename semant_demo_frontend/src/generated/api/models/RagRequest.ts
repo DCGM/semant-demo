@@ -20,13 +20,13 @@ import {
     RagChatMessageToJSON,
     RagChatMessageToJSONTyped,
 } from './RagChatMessage';
-import type { TextChunkWithDocument } from './TextChunkWithDocument';
+import type { SearchResultChunk } from './SearchResultChunk';
 import {
-    TextChunkWithDocumentFromJSON,
-    TextChunkWithDocumentFromJSONTyped,
-    TextChunkWithDocumentToJSON,
-    TextChunkWithDocumentToJSONTyped,
-} from './TextChunkWithDocument';
+    SearchResultChunkFromJSON,
+    SearchResultChunkFromJSONTyped,
+    SearchResultChunkToJSON,
+    SearchResultChunkToJSONTyped,
+} from './SearchResultChunk';
 import type { RagSearch } from './RagSearch';
 import {
     RagSearchFromJSON,
@@ -61,10 +61,10 @@ export interface RagRequest {
     ragSearch: RagSearch;
     /**
      * 
-     * @type {Array<TextChunkWithDocument>}
+     * @type {Array<SearchResultChunk>}
      * @memberof RagRequest
      */
-    previousDocuments?: Array<TextChunkWithDocument>;
+    previousDocuments?: Array<SearchResultChunk>;
 }
 
 /**
@@ -89,7 +89,7 @@ export function RagRequestFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'question': json['question'],
         'history': json['history'] == null ? undefined : ((json['history'] as Array<any>).map(RagChatMessageFromJSON)),
         'ragSearch': RagSearchFromJSON(json['rag_search']),
-        'previousDocuments': json['previous_documents'] == null ? undefined : ((json['previous_documents'] as Array<any>).map(TextChunkWithDocumentFromJSON)),
+        'previousDocuments': json['previous_documents'] == null ? undefined : ((json['previous_documents'] as Array<any>).map(SearchResultChunkFromJSON)),
     };
 }
 
@@ -107,7 +107,7 @@ export function RagRequestToJSONTyped(value?: RagRequest | null, ignoreDiscrimin
         'question': value['question'],
         'history': value['history'] == null ? undefined : ((value['history'] as Array<any>).map(RagChatMessageToJSON)),
         'rag_search': RagSearchToJSON(value['ragSearch']),
-        'previous_documents': value['previousDocuments'] == null ? undefined : ((value['previousDocuments'] as Array<any>).map(TextChunkWithDocumentToJSON)),
+        'previous_documents': value['previousDocuments'] == null ? undefined : ((value['previousDocuments'] as Array<any>).map(SearchResultChunkToJSON)),
     };
 }
 

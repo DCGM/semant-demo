@@ -11,14 +11,13 @@ from uuid import UUID
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference, Sort
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import delete_collection_cascade, step_failure
 from semant_demo.core.errors import NotFoundError
-from semant_demo.schema.chunks import Chunk
-from semant_demo.features.collections.schemas import Collection, CollectionStats, PatchCollection, PostCollection
-from semant_demo.schema.documents import Document, DocumentStats
-from semant_demo.schema.outcomes import StepFailure, WriteResult, outcome_of
+from semant_demo.features.collections.schemas import CollectionChunk, Collection, CollectionStats, PatchCollection, PostCollection
+from semant_demo.features.documents.schemas import Document, DocumentStats
+from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 from semant_demo.features.annotations.schemas import SpanType
 
 logger = logging.getLogger(__name__)
@@ -46,9 +45,9 @@ def to_collection(obj) -> Collection:
     )
 
 
-def to_chunk(obj, in_collection: bool) -> Chunk:
+def to_chunk(obj, in_collection: bool) -> CollectionChunk:
     props = obj.properties
-    return Chunk(
+    return CollectionChunk(
         id=obj.uuid,
         text=props["text"],
         order=props["order"],
@@ -62,7 +61,7 @@ def to_chunk(obj, in_collection: bool) -> Chunk:
 
 
 class UserCollectionRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
         self.link = collectionNames.user_collection_link_name
@@ -251,7 +250,7 @@ class UserCollectionRepository:
         response = await self._chunks().query.fetch_objects(filters=filters, limit=len(chunk_ids), return_properties=[])
         return {o.uuid for o in response.objects}
 
-    async def read_all_chunks_by_document(self, document_id: UUID, collection_id: UUID) -> list[Chunk]:
+    async def read_all_chunks_by_document(self, document_id: UUID, collection_id: UUID) -> list[CollectionChunk]:
         """The document's chunks that belong to the collection, in order."""
         objects = await fetch_all(
             self._chunks(),
@@ -262,7 +261,7 @@ class UserCollectionRepository:
         return [to_chunk(obj, in_collection=True) for obj in objects]
 
     async def get_chunks_in_range(self, document_id: UUID, collection_id: UUID,
-                                  order_gt: int | None, order_lt: int | None) -> list[Chunk]:
+                                  order_gt: int | None, order_lt: int | None) -> list[CollectionChunk]:
         """
         The document's chunks with order strictly greater than ``order_gt`` and strictly
         less than ``order_lt`` (each bound optional), in order, marked with membership.
@@ -281,7 +280,7 @@ class UserCollectionRepository:
         return [to_chunk(obj, in_collection=collection_id in _ref_ids(obj, self.link)) for obj in objects]
 
     async def get_neighbour_chunk(self, document_id: UUID, collection_id: UUID,
-                                  direction: str, boundary_order: int) -> Chunk | None:
+                                  direction: str, boundary_order: int) -> CollectionChunk | None:
         """
         The chunk immediately before (``prev``) or after (``next``) ``boundary_order`` in
         the document, marked with membership; None if there is none.

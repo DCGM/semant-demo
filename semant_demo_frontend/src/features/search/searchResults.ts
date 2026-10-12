@@ -1,4 +1,4 @@
-import type { SearchResponse, TextChunkWithDocument } from 'src/generated/api'
+import type { SearchResponse, SearchResultChunk } from 'src/generated/api'
 
 /**
  * The results of one search, as retrieved: the explicit input of tools working on search
@@ -23,7 +23,7 @@ export type ResultScope =
   | { kind: 'selected'; ids: readonly string[] } // the results the user selected
 
 export interface ResultSubset {
-  results: TextChunkWithDocument[]
+  results: SearchResultChunk[]
   /** 1-based number of each result in the full result list (citations refer to these). */
   numbers: number[]
 }

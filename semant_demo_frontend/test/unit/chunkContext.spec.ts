@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 
-import type { TextChunk, TextChunkWithDocument } from 'src/generated/api'
+import type { DocumentChunk, SearchResultChunk } from 'src/generated/api'
 import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
 import { CONTEXT_SIDE, CONTEXT_STEP, mergeChunks, useChunkContext } from 'src/features/documents/useChunkContext'
 import SearchResultCard from 'src/features/search/SearchResultCard.vue'
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-const chunk = (order: number, document = 'doc-1'): TextChunk => ({
+const chunk = (order: number, document = 'doc-1'): DocumentChunk => ({
   id: `${document}-c${order}`,
   text: `Paragraph ${order}`,
   startPageId: `page-${order}`,
@@ -288,7 +288,7 @@ describe('SearchResultCard context action', () => {
     toPage: 1,
     document: 'doc-1',
     documentObject: { id: 'doc-1', title: 'Kronika' }
-  } as unknown as TextChunkWithDocument
+  } as unknown as SearchResultChunk
 
   function mountCard () {
     return mount(SearchResultCard, {

@@ -19,8 +19,8 @@ import type {
   AppFeedbackRequest,
   BulkUpdateSpansRequest,
   BulkUpdateSpansResponse,
-  Chunk,
   Collection,
+  CollectionChunk,
   CollectionStats,
   CreateResponse,
   DeleteAutoSpansRequest,
@@ -69,10 +69,10 @@ import {
     BulkUpdateSpansRequestToJSON,
     BulkUpdateSpansResponseFromJSON,
     BulkUpdateSpansResponseToJSON,
-    ChunkFromJSON,
-    ChunkToJSON,
     CollectionFromJSON,
     CollectionToJSON,
+    CollectionChunkFromJSON,
+    CollectionChunkToJSON,
     CollectionStatsFromJSON,
     CollectionStatsToJSON,
     CreateResponseFromJSON,
@@ -932,13 +932,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRaw(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Chunk | null>>>;
+    getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRaw(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CollectionChunk | null>>>;
 
     /**
      * Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
      * Get Chunks In Range
      */
-    getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Chunk | null>>;
+    getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<CollectionChunk | null>>;
 
     /**
      * Creates request options for getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet without sending the request
@@ -958,13 +958,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRaw(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Chunk>>>;
+    getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRaw(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CollectionChunk>>>;
 
     /**
      * Returns chunks which belong to document and collection given by id
      * Get Collection Document Chunks
      */
-    getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Chunk>>;
+    getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<CollectionChunk>>;
 
     /**
      * Creates request options for getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet without sending the request
@@ -1109,13 +1109,13 @@ export interface DefaultApiInterface {
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRaw(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Chunk>>;
+    getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRaw(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionChunk>>;
 
     /**
      * Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. Marks in_collection accordingly.
      * Get Neighbour Chunk
      */
-    getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Chunk>;
+    getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionChunk>;
 
     /**
      * Creates request options for getTagApiTagsTagUuidGet without sending the request
@@ -2908,18 +2908,18 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
      * Get Chunks In Range
      */
-    async getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRaw(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Chunk | null>>> {
+    async getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRaw(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CollectionChunk | null>>> {
         const requestOptions = await this.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(ChunkFromJSON));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(CollectionChunkFromJSON));
     }
 
     /**
      * Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
      * Get Chunks In Range
      */
-    async getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Chunk | null>> {
+    async getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(requestParameters: GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<CollectionChunk | null>> {
         const response = await this.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -2968,18 +2968,18 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Returns chunks which belong to document and collection given by id
      * Get Collection Document Chunks
      */
-    async getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRaw(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Chunk>>> {
+    async getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRaw(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CollectionChunk>>> {
         const requestOptions = await this.getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(ChunkFromJSON));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(CollectionChunkFromJSON));
     }
 
     /**
      * Returns chunks which belong to document and collection given by id
      * Get Collection Document Chunks
      */
-    async getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Chunk>> {
+    async getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(requestParameters: GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<CollectionChunk>> {
         const response = await this.getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -3316,18 +3316,18 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      * Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. Marks in_collection accordingly.
      * Get Neighbour Chunk
      */
-    async getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRaw(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Chunk>> {
+    async getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRaw(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionChunk>> {
         const requestOptions = await this.getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => ChunkFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionChunkFromJSON(jsonValue));
     }
 
     /**
      * Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. Marks in_collection accordingly.
      * Get Neighbour Chunk
      */
-    async getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Chunk> {
+    async getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(requestParameters: GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionChunk> {
         const response = await this.getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRaw(requestParameters, initOverrides);
         return await response.value();
     }

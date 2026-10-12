@@ -32,7 +32,7 @@ from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagIssue, apply_chunk_tag_fixes, audit_chunk_tags
 
 
@@ -40,7 +40,7 @@ def _counts(issues: list[ChunkTagIssue]) -> dict[str, int]:
     return dict(sorted(Counter(f"{i.kind}:{i.ref}" for i in issues).items()))
 
 
-async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNames, endpoint: str) -> dict:
+async def build_report(client: WeaviateAsyncClient, names: CollectionNames, endpoint: str) -> dict:
     issues = await audit_chunk_tags(client, names)
     return {
         "endpoint": endpoint,
@@ -55,7 +55,7 @@ def issues_of(report: dict) -> list[ChunkTagIssue]:
     return [ChunkTagIssue(UUID(i["chunk_id"]), UUID(i["tag_id"]), i["ref"], i["kind"]) for i in report["issues"]]
 
 
-async def apply_report(client: WeaviateAsyncClient, names: schemas.CollectionNames, report: dict,
+async def apply_report(client: WeaviateAsyncClient, names: CollectionNames, report: dict,
                        *, remove_unbacked: bool, add_missing: bool) -> dict:
     done, failed = await apply_chunk_tag_fixes(client, names, issues_of(report),
                                                remove_unbacked=remove_unbacked, add_missing=add_missing)

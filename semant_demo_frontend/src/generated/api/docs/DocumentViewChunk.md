@@ -1,6 +1,7 @@
 
-# TextChunk
+# DocumentViewChunk
 
+A chunk of the document view. ``text`` is the canonical stored text that span offsets refer to (never display-normalized).
 
 ## Properties
 
@@ -23,11 +24,12 @@ Name | Type
 `nerI` | Array&lt;string&gt;
 `nerM` | Array&lt;string&gt;
 `nerO` | Array&lt;string&gt;
+`inUserCollection` | boolean
 
 ## Example
 
 ```typescript
-import type { TextChunk } from ''
+import type { DocumentViewChunk } from ''
 
 // TODO: Update the object below with actual values
 const example = {
@@ -48,7 +50,8 @@ const example = {
   "nerI": null,
   "nerM": null,
   "nerO": null,
-} satisfies TextChunk
+  "inUserCollection": null,
+} satisfies DocumentViewChunk
 
 console.log(example)
 
@@ -57,7 +60,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as TextChunk
+const exampleParsed = JSON.parse(exampleJSON) as DocumentViewChunk
 console.log(exampleParsed)
 ```
 

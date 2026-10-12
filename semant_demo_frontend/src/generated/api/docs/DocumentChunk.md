@@ -1,7 +1,7 @@
 
-# TextChunkWithDocument
+# DocumentChunk
 
-A search hit: the chunk, its document and optional generated summaries. ``text`` is display text (``service.display_text``: hyphenated line breaks joined), not the canonical stored text; span offsets do not apply to it. The document view reads canonical text (``DocumentDetail``).  ``metadata`` holds the chunk\'s stored classifications (``filters.TASK_CLASSES``) that have values: property name -> values, in ``TASK_CLASSES`` order.
+A chunk with its stored properties. ``text`` is the canonical stored text that span offsets refer to; the search hit (``SearchResultChunk``) extends it with display text.
 
 ## Properties
 
@@ -24,16 +24,11 @@ Name | Type
 `nerI` | Array&lt;string&gt;
 `nerM` | Array&lt;string&gt;
 `nerO` | Array&lt;string&gt;
-`queryTitle` | string
-`querySummary` | string
-`summary` | string
-`documentObject` | [Document](Document.md)
-`metadata` | { [key: string]: Array&lt;string&gt;; }
 
 ## Example
 
 ```typescript
-import type { TextChunkWithDocument } from ''
+import type { DocumentChunk } from ''
 
 // TODO: Update the object below with actual values
 const example = {
@@ -54,12 +49,7 @@ const example = {
   "nerI": null,
   "nerM": null,
   "nerO": null,
-  "queryTitle": null,
-  "querySummary": null,
-  "summary": null,
-  "documentObject": null,
-  "metadata": null,
-} satisfies TextChunkWithDocument
+} satisfies DocumentChunk
 
 console.log(example)
 
@@ -68,7 +58,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as TextChunkWithDocument
+const exampleParsed = JSON.parse(exampleJSON) as DocumentChunk
 console.log(exampleParsed)
 ```
 

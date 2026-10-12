@@ -14,8 +14,7 @@ from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.collections import access
 from semant_demo.features.collections.access import Principal
-from semant_demo.schema.chunks import TextChunk
-from semant_demo.schema.documents import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
+from semant_demo.features.documents.schemas import DocumentChunk, AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 
 Id = str | UUID
 
@@ -42,7 +41,7 @@ def _check_window_side(*sides: int) -> None:
         raise InvalidRequestError(f"before, after and limit must be between 0 and {MAX_WINDOW_SIDE}")
 
 
-async def _read_anchor(documents: DocumentRepository, document_id: Id, chunk_id: Id) -> TextChunk:
+async def _read_anchor(documents: DocumentRepository, document_id: Id, chunk_id: Id) -> DocumentChunk:
     """The chunk, which must belong to the document (otherwise "not found")."""
     doc_id = access.parse_id(document_id, "Document")
     anchor = await documents.read_chunk(access.parse_id(chunk_id, "Chunk"))
@@ -51,8 +50,8 @@ async def _read_anchor(documents: DocumentRepository, document_id: Id, chunk_id:
     return anchor
 
 
-async def _adjacent(documents: DocumentRepository, anchor: TextChunk, direction: str,
-                    count: int) -> tuple[list[TextChunk], bool]:
+async def _adjacent(documents: DocumentRepository, anchor: DocumentChunk, direction: str,
+                    count: int) -> tuple[list[DocumentChunk], bool]:
     """Up to ``count`` chunks next to the anchor (document order) and whether more follow."""
     if anchor.order is None:
         return [], False

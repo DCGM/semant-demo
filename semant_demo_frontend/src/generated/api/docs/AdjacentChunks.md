@@ -7,7 +7,7 @@ Chunks directly before or after a chunk of a corpus document, in document order,
 
 Name | Type
 ------------ | -------------
-`chunks` | [Array&lt;TextChunk&gt;](TextChunk.md)
+`chunks` | [Array&lt;DocumentChunk&gt;](DocumentChunk.md)
 `hasMore` | boolean
 
 ## Example

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from semant_demo import schemas
+from semant_demo.features.rag.schemas import ExplainRequest, FeedbackRequest, RagRequestMain, RagResponse, RagRouteConfig
 from semant_demo.adapters.sql.feedback import RagUserFeedback
 from semant_demo.features.search import service as search_service
 from semant_demo.features.search.service import SearchBackends
@@ -23,15 +23,15 @@ import logging
 exp_router = APIRouter()
 
 #routest
-@exp_router.get("/api/rag/configurations", response_model=list[schemas.RagRouteConfig])
+@exp_router.get("/api/rag/configurations", response_model=list[RagRouteConfig])
 async def get_avalaible_rag_configurations(current_user: User | None = Depends(current_active_optional_user),
                                            rag_registry: RagRegistry = Depends(get_rag_registry)):
     return rag_registry.get_all_configurations()
 
-@exp_router.post("/api/rag", response_model=schemas.RagResponse)
-async def rag(request: schemas.RagRequestMain, search_backends: SearchBackends = Depends(get_search_backends),
+@exp_router.post("/api/rag", response_model=RagResponse)
+async def rag(request: RagRequestMain, search_backends: SearchBackends = Depends(get_search_backends),
               current_user: User | None = Depends(current_active_optional_user),
-              rag_registry: RagRegistry = Depends(get_rag_registry)) -> schemas.RagResponse:
+              rag_registry: RagRegistry = Depends(get_rag_registry)) -> RagResponse:
     #find and check rag
     id = request.rag_id
     if id not in rag_registry.instances:
@@ -46,7 +46,7 @@ async def rag(request: schemas.RagRequestMain, search_backends: SearchBackends =
     return await rag_instance.rag_request(request=request.rag_request, retrieve=retrieve)
 
 @exp_router.post("/api/rag/explain")
-async def explain_selection(request: schemas.ExplainRequest,
+async def explain_selection(request: ExplainRequest,
                             current_user: User | None = Depends(current_active_optional_user),
                             rag_registry: RagRegistry = Depends(get_rag_registry)):
     id = request.rag_id
@@ -61,7 +61,7 @@ async def explain_selection(request: schemas.ExplainRequest,
 
 # endpoint of feedback - like/dislike
 @exp_router.post("/api/rag/feedback")
-async def save_feedback(request: schemas.FeedbackRequest, db: AsyncSession = Depends(get_async_session),
+async def save_feedback(request: FeedbackRequest, db: AsyncSession = Depends(get_async_session),
                         current_user: User | None = Depends(current_active_optional_user)):
     try:
         selser = select(RagUserFeedback).where(RagUserFeedback.response_id == request.response_id)

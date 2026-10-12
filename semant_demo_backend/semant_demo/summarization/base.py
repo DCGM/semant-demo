@@ -6,7 +6,7 @@ from classconfig.configurable import CreatableMixin
 
 from semant_demo.llm_api import APIAsync, OllamaAsyncAPI
 from semant_demo.features.search.schemas import SearchResponse, SummaryRequestBase
-from semant_demo.schema.chunks import TextChunk
+from semant_demo.features.documents.schemas import DocumentChunk
 
 
 class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
@@ -42,7 +42,7 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
                                                                      on_error=failures.append)
         return failures
 
-    async def gen_titles(self, query: str, results: list[TextChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_titles(self, query: str, results: list[DocumentChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
                          on_error: Optional[Callable[[str], None]] = None):
         """
         Creates titles for the search results in place.
@@ -59,7 +59,7 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
             res.query_title = await self.gen_title(query, res, prompt, model, brevity, on_error=on_error)
 
     @abstractmethod
-    async def gen_title(self, query: str, text: TextChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_title(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
                         on_error: Optional[Callable[[str], None]] = None) -> str:
         """
         Creates a title for a single text chunk.
@@ -74,7 +74,7 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
         ...
 
     @abstractmethod
-    async def gen_results_summary(self, query: str, results: Sequence[TextChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_results_summary(self, query: str, results: Sequence[DocumentChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
                                   on_error: Optional[Callable[[str], None]] = None) -> str:
         """
         Creates an overall summary for the search results.
@@ -88,7 +88,7 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
         """
         ...
 
-    async def gen_query_summary_for_text_chunks(self, query: str, text: list[TextChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_query_summary_for_text_chunks(self, query: str, text: list[DocumentChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
                                                 on_error: Optional[Callable[[str], None]] = None):
         """
         Creates a summary for a single text chunk.
@@ -106,7 +106,7 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
                                                                             on_error=on_error)
 
     @abstractmethod
-    async def gen_query_summary_for_text_chunk(self, query: str, text: TextChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_query_summary_for_text_chunk(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
                                                on_error: Optional[Callable[[str], None]] = None) -> str:
         """
         Creates a summary for a single text chunk.

@@ -49,7 +49,7 @@ When a user submits a search request to the POST `/api/search` endpoint, they in
    The adapter runs the `.bm25()`, `.near_vector()` or `.hybrid()` query with the combined filter, so restrictions apply during retrieval, not to the top-k hits afterwards. The query vector for vector/hybrid search is computed beforehand by the service through the injected embedding client.
 
 ## 5. Classifications on Search Hits
-Each search hit (`TextChunkWithDocument`) has an optional `metadata` field with the chunk's stored classifications: property name -> list of values, e.g. `{"communicative_mode": ["narration"], "style": ["formal", "literary"]}`.
+Each search hit (`SearchResultChunk`) has an optional `metadata` field with the chunk's stored classifications: property name -> list of values, e.g. `{"communicative_mode": ["narration"], "style": ["formal", "literary"]}`.
 
 - Only the classification properties named by `TASK_CLASSES` (`features/search/filters.py`) are included, in that order; other chunk or document properties are never copied. `ChunkSearchRepository.search` builds it with `classifications()` (`adapters/weaviate/search.py`).
 - Properties without values are left out, so an unclassified chunk has `{}`. A single string (older data) becomes a one-element list; empty and repeated values are dropped.

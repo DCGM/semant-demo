@@ -14,126 +14,120 @@
 
 import { mapValues } from '../runtime';
 /**
- * A chunk of the document view. ``text`` is the canonical stored text that span
- * offsets refer to (never display-normalized).
+ * A chunk with its stored properties. ``text`` is the canonical stored text that span
+ * offsets refer to; the search hit (``SearchResultChunk``) extends it with display text.
  * @export
- * @interface DocumentDetailTextChunkWithUserCollectionInfo
+ * @interface DocumentChunk
  */
-export interface DocumentDetailTextChunkWithUserCollectionInfo {
+export interface DocumentChunk {
     /**
      * 
      * @type {string}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     id: string;
     /**
      * 
      * @type {string}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     text: string;
     /**
      * 
      * @type {string}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     startPageId: string;
     /**
      * 
      * @type {number}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     fromPage: number;
     /**
      * 
      * @type {number}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     toPage: number;
     /**
      * 
      * @type {string}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     document: string;
     /**
      * 
      * @type {string}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     title?: string | null;
     /**
      * 
      * @type {boolean}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     endParagraph?: boolean;
     /**
      * 
      * @type {string}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     language?: string | null;
     /**
      * 
      * @type {number}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     order: number | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     nerP?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     nerT?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     nerA?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     nerG?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     nerI?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     nerM?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
+     * @memberof DocumentChunk
      */
     nerO?: Array<string> | null;
-    /**
-     * 
-     * @type {boolean}
-     * @memberof DocumentDetailTextChunkWithUserCollectionInfo
-     */
-    inUserCollection: boolean;
 }
 
 /**
- * Check if a given object implements the DocumentDetailTextChunkWithUserCollectionInfo interface.
+ * Check if a given object implements the DocumentChunk interface.
  */
-export function instanceOfDocumentDetailTextChunkWithUserCollectionInfo(value: object): value is DocumentDetailTextChunkWithUserCollectionInfo {
+export function instanceOfDocumentChunk(value: object): value is DocumentChunk {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('text' in value) || value['text'] === undefined) return false;
     if (!('startPageId' in value) || value['startPageId'] === undefined) return false;
@@ -141,15 +135,14 @@ export function instanceOfDocumentDetailTextChunkWithUserCollectionInfo(value: o
     if (!('toPage' in value) || value['toPage'] === undefined) return false;
     if (!('document' in value) || value['document'] === undefined) return false;
     if (!('order' in value) || value['order'] === undefined) return false;
-    if (!('inUserCollection' in value) || value['inUserCollection'] === undefined) return false;
     return true;
 }
 
-export function DocumentDetailTextChunkWithUserCollectionInfoFromJSON(json: any): DocumentDetailTextChunkWithUserCollectionInfo {
-    return DocumentDetailTextChunkWithUserCollectionInfoFromJSONTyped(json, false);
+export function DocumentChunkFromJSON(json: any): DocumentChunk {
+    return DocumentChunkFromJSONTyped(json, false);
 }
 
-export function DocumentDetailTextChunkWithUserCollectionInfoFromJSONTyped(json: any, ignoreDiscriminator: boolean): DocumentDetailTextChunkWithUserCollectionInfo {
+export function DocumentChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean): DocumentChunk {
     if (json == null) {
         return json;
     }
@@ -172,15 +165,14 @@ export function DocumentDetailTextChunkWithUserCollectionInfoFromJSONTyped(json:
         'nerI': json['ner_I'] == null ? undefined : json['ner_I'],
         'nerM': json['ner_M'] == null ? undefined : json['ner_M'],
         'nerO': json['ner_O'] == null ? undefined : json['ner_O'],
-        'inUserCollection': json['in_user_collection'],
     };
 }
 
-export function DocumentDetailTextChunkWithUserCollectionInfoToJSON(json: any): DocumentDetailTextChunkWithUserCollectionInfo {
-    return DocumentDetailTextChunkWithUserCollectionInfoToJSONTyped(json, false);
+export function DocumentChunkToJSON(json: any): DocumentChunk {
+    return DocumentChunkToJSONTyped(json, false);
 }
 
-export function DocumentDetailTextChunkWithUserCollectionInfoToJSONTyped(value?: DocumentDetailTextChunkWithUserCollectionInfo | null, ignoreDiscriminator: boolean = false): any {
+export function DocumentChunkToJSONTyped(value?: DocumentChunk | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -204,7 +196,6 @@ export function DocumentDetailTextChunkWithUserCollectionInfoToJSONTyped(value?:
         'ner_I': value['nerI'],
         'ner_M': value['nerM'],
         'ner_O': value['nerO'],
-        'in_user_collection': value['inUserCollection'],
     };
 }
 

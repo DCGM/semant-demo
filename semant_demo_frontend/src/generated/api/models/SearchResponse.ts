@@ -20,13 +20,13 @@ import {
     SearchRequestToJSON,
     SearchRequestToJSONTyped,
 } from './SearchRequest';
-import type { TextChunkWithDocument } from './TextChunkWithDocument';
+import type { SearchResultChunk } from './SearchResultChunk';
 import {
-    TextChunkWithDocumentFromJSON,
-    TextChunkWithDocumentFromJSONTyped,
-    TextChunkWithDocumentToJSON,
-    TextChunkWithDocumentToJSONTyped,
-} from './TextChunkWithDocument';
+    SearchResultChunkFromJSON,
+    SearchResultChunkFromJSONTyped,
+    SearchResultChunkToJSON,
+    SearchResultChunkToJSONTyped,
+} from './SearchResultChunk';
 
 /**
  * 
@@ -36,10 +36,10 @@ import {
 export interface SearchResponse {
     /**
      * 
-     * @type {Array<TextChunkWithDocument>}
+     * @type {Array<SearchResultChunk>}
      * @memberof SearchResponse
      */
-    results: Array<TextChunkWithDocument>;
+    results: Array<SearchResultChunk>;
     /**
      * 
      * @type {string}
@@ -93,7 +93,7 @@ export function SearchResponseFromJSONTyped(json: any, ignoreDiscriminator: bool
     }
     return {
         
-        'results': ((json['results'] as Array<any>).map(TextChunkWithDocumentFromJSON)),
+        'results': ((json['results'] as Array<any>).map(SearchResultChunkFromJSON)),
         'resultsSummary': json['results_summary'] == null ? undefined : json['results_summary'],
         'searchRequest': SearchRequestFromJSON(json['search_request']),
         'timeSpent': json['time_spent'],
@@ -113,7 +113,7 @@ export function SearchResponseToJSONTyped(value?: SearchResponse | null, ignoreD
 
     return {
         
-        'results': ((value['results'] as Array<any>).map(TextChunkWithDocumentToJSON)),
+        'results': ((value['results'] as Array<any>).map(SearchResultChunkToJSON)),
         'results_summary': value['resultsSummary'],
         'search_request': SearchRequestToJSON(value['searchRequest']),
         'time_spent': value['timeSpent'],

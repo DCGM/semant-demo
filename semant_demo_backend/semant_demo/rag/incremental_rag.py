@@ -20,17 +20,47 @@ import logging
 import re
 import json
 import asyncio
+from datetime import datetime
+from typing import Any, TypedDict
+
+from pydantic import BaseModel
 
 from semant_demo.rag.rag_factory import BaseRag, register_rag_class
 from semant_demo.config import Config
-from semant_demo.features.search.schemas import SearchResponse, SearchRequest, TextChunkWithDocument
-from semant_demo.schema.documents import Document
-from semant_demo.schemas import RagRequest, RagResponse, AdaptiveRagState, ExplainRequest
+from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchResultChunk
+from semant_demo.features.documents.schemas import Document
+from semant_demo.features.rag.schemas import RagRequest, RagResponse, ExplainRequest
 from semant_demo.features.search.service import Retriever
 #import prompts from prompt file
 from semant_demo.rag.incremental_rag_prompts import *
 
 DEBUG_PRINT = False
+
+# Internal state of the adaptive RAG graph.
+class ExtractedMetadata(BaseModel):
+    min_year: int | None = None
+    max_year: int | None = None
+    min_date: datetime | None = None
+    max_date: datetime | None = None
+    language: str | None = None
+
+
+class AdaptiveRagState(TypedDict):
+    language: str | None  # ces, des, eng, ...
+    question: str
+    original_question: str
+    queries: list[str]
+    context_sufficient: bool
+    history: list[Any]
+    documents: list[Any]
+    generation: str
+    metadata: ExtractedMetadata
+    metadata_extraction_allowed: bool
+    retrieval_iteration_counter: int
+    generation_iteration_counter: int
+    feedback: str
+    web_search_performed: bool
+
 
 @register_rag_class
 class IncrementalAdaptiveRagGenerator(BaseRag):
@@ -643,7 +673,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             # create hypothetical document which contations web search results
             # metavalues are dummies because they are not used anyway
             for result_text in search_result:
-                search_chunk = TextChunkWithDocument(
+                search_chunk = SearchResultChunk(
                     id=uuid_tmp,
                     title="DuckDuckGo Search",
                     start_page_id= uuid_tmp,

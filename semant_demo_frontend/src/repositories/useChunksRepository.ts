@@ -1,5 +1,5 @@
 import { useApi } from 'src/shared/api'
-import { Chunk, Chunks } from 'src/models/chunks'
+import { CollectionChunk, Chunks } from 'src/models/chunks'
 import { requireComplete } from 'src/utils/writeOutcome'
 
 export function useChunksRepository() {
@@ -33,7 +33,7 @@ export function useChunksRepository() {
       documentId: string,
       direction: 'prev' | 'next',
       boundaryOrder: number
-    ): Promise<Chunk | null> => {
+    ): Promise<CollectionChunk | null> => {
       return api.getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet({
         collectionId,
         documentId,
@@ -51,7 +51,7 @@ export function useChunksRepository() {
       documentId: string,
       orderGt?: number | null,
       orderLt?: number | null
-    ): Promise<import('src/generated/api').Chunk[]> => {
+    ): Promise<import('src/generated/api').CollectionChunk[]> => {
       const chunks = (await api.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet({
         collectionId,
         documentId,

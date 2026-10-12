@@ -1,5 +1,5 @@
 import { computed, getCurrentScope, onScopeDispose, ref, shallowRef } from 'vue'
-import type { Document, TextChunk } from 'src/generated/api'
+import type { Document, DocumentChunk } from 'src/generated/api'
 import { createContextGuard, errorStatus, isAbortError, useApi } from 'src/shared/api'
 
 /** The chunk a context view is about; documents and chunks are public corpus data. */
@@ -23,11 +23,11 @@ export type ContextDirection = 'before' | 'after'
  * the other end. Reports whether that end was trimmed.
  */
 export function mergeChunks (
-  loaded: readonly TextChunk[],
-  incoming: readonly TextChunk[],
+  loaded: readonly DocumentChunk[],
+  incoming: readonly DocumentChunk[],
   direction: ContextDirection,
   max = MAX_CONTEXT_CHUNKS
-): { chunks: TextChunk[], trimmed: boolean } {
+): { chunks: DocumentChunk[], trimmed: boolean } {
   const known = new Set(loaded.map(c => c.id))
   const added = incoming.filter(c => !known.has(c.id))
   const merged = direction === 'before' ? [...added, ...loaded] : [...loaded, ...added]
@@ -50,7 +50,7 @@ export function useChunkContext () {
   const api = useApi().default
   const target = shallowRef<ChunkContextTarget | null>(null)
   const document = shallowRef<Document | null>(null)
-  const chunks = shallowRef<TextChunk[]>([])
+  const chunks = shallowRef<DocumentChunk[]>([])
   const hasBefore = ref(false)
   const hasAfter = ref(false)
   const totalChunks = ref<number | null>(null)

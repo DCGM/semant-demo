@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 
-import type { SearchResponse, TextChunkWithDocument } from 'src/generated/api'
+import type { SearchResponse, SearchResultChunk } from 'src/generated/api'
 import { selectResults, type SearchResultsContext } from 'src/features/search/searchResults'
 import { parseSummaryTokens, useSearchSummary } from 'src/features/search/useSearchSummary'
 import { useSearchRequest } from 'src/features/search/useSearchRequest'
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-const hit = (id: string): TextChunkWithDocument => ({
+const hit = (id: string): SearchResultChunk => ({
   id,
   text: `text of ${id}`,
   startPageId: `page-${id}`,

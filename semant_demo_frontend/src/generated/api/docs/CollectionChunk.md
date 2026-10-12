@@ -1,6 +1,7 @@
 
-# Chunk
+# CollectionChunk
 
+A chunk listed for a collection (``in_collection``), without its document or entities.
 
 ## Properties
 
@@ -20,7 +21,7 @@ Name | Type
 ## Example
 
 ```typescript
-import type { Chunk } from ''
+import type { CollectionChunk } from ''
 
 // TODO: Update the object below with actual values
 const example = {
@@ -34,7 +35,7 @@ const example = {
   "language": null,
   "order": null,
   "inCollection": null,
-} satisfies Chunk
+} satisfies CollectionChunk
 
 console.log(example)
 
@@ -43,7 +44,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as Chunk
+const exampleParsed = JSON.parse(exampleJSON) as CollectionChunk
 console.log(exampleParsed)
 ```
 

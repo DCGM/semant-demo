@@ -42,3 +42,22 @@ class CollectionStats(BaseModel):
     annotations_count: int
     tags_count: int
 
+
+
+class CollectionChunk(BaseModel):
+    """A chunk listed for a collection (``in_collection``), without its document or entities."""
+    id: UUID
+    text: str
+    start_page_id: UUID
+    from_page: int
+    to_page: int
+    end_paragraph: bool = True
+    title: str | None = None
+    language: str | None = None
+    order: int
+    in_collection: bool = False
+
+
+class CreateResponse(BaseModel):
+    created: bool
+    message: str

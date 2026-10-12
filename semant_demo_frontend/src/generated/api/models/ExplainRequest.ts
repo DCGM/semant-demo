@@ -20,13 +20,13 @@ import {
     RagChatMessageToJSON,
     RagChatMessageToJSONTyped,
 } from './RagChatMessage';
-import type { TextChunkWithDocument } from './TextChunkWithDocument';
+import type { SearchResultChunk } from './SearchResultChunk';
 import {
-    TextChunkWithDocumentFromJSON,
-    TextChunkWithDocumentFromJSONTyped,
-    TextChunkWithDocumentToJSON,
-    TextChunkWithDocumentToJSONTyped,
-} from './TextChunkWithDocument';
+    SearchResultChunkFromJSON,
+    SearchResultChunkFromJSONTyped,
+    SearchResultChunkToJSON,
+    SearchResultChunkToJSONTyped,
+} from './SearchResultChunk';
 
 /**
  * 
@@ -60,10 +60,10 @@ export interface ExplainRequest {
     history?: Array<RagChatMessage> | null;
     /**
      * 
-     * @type {Array<TextChunkWithDocument>}
+     * @type {Array<SearchResultChunk>}
      * @memberof ExplainRequest
      */
-    sources: Array<TextChunkWithDocument>;
+    sources: Array<SearchResultChunk>;
 }
 
 /**
@@ -91,7 +91,7 @@ export function ExplainRequestFromJSONTyped(json: any, ignoreDiscriminator: bool
         'selectedText': json['selected_text'],
         'fullAnswer': json['full_answer'],
         'history': json['history'] == null ? undefined : ((json['history'] as Array<any>).map(RagChatMessageFromJSON)),
-        'sources': ((json['sources'] as Array<any>).map(TextChunkWithDocumentFromJSON)),
+        'sources': ((json['sources'] as Array<any>).map(SearchResultChunkFromJSON)),
     };
 }
 
@@ -110,7 +110,7 @@ export function ExplainRequestToJSONTyped(value?: ExplainRequest | null, ignoreD
         'selected_text': value['selectedText'],
         'full_answer': value['fullAnswer'],
         'history': value['history'] == null ? undefined : ((value['history'] as Array<any>).map(RagChatMessageToJSON)),
-        'sources': ((value['sources'] as Array<any>).map(TextChunkWithDocumentToJSON)),
+        'sources': ((value['sources'] as Array<any>).map(SearchResultChunkToJSON)),
     };
 }
 

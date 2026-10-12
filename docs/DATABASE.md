@@ -112,7 +112,7 @@ The property list in the diagram above is older than the local development snaps
 `seriesNumber` (`text`), `edition`, `illustrators`, `translators`, `redaktors` and has no
 `library`, `authors`, `subTitle`, `description`, `keywords`, `genre`, `placeTerm`,
 `section`, `region` or `id_code`. Deployed databases were not checked. The API reads every
-store through one model, `schema/documents.Document`: the snapshot's properties plus the
+store through one model, `features/documents/schemas.Document`: the snapshot's properties plus the
 older `library`, `description`, `keywords` (`text[]`), `genre` and `placeTerm`. Properties
 a store lacks are absent from the answer; stored properties the model does not name (e.g.
 `authors`, `subTitle`, `manufacturePublisher`) are not returned, as before #208.

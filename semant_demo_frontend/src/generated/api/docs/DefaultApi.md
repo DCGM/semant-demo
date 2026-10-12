@@ -1565,7 +1565,7 @@ This endpoint does not need any parameter.
 
 ## getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet
 
-> Array&lt;Chunk | null&gt; getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(collectionId, documentId, orderGt, orderLt)
+> Array&lt;CollectionChunk | null&gt; getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(collectionId, documentId, orderGt, orderLt)
 
 Get Chunks In Range
 
@@ -1623,7 +1623,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**Array&lt;Chunk | null&gt;**](Chunk.md)
+[**Array&lt;CollectionChunk | null&gt;**](CollectionChunk.md)
 
 ### Authorization
 
@@ -1646,7 +1646,7 @@ example().catch(console.error);
 
 ## getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet
 
-> Array&lt;Chunk&gt; getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(collectionId, documentId)
+> Array&lt;CollectionChunk&gt; getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(collectionId, documentId)
 
 Get Collection Document Chunks
 
@@ -1698,7 +1698,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**Array&lt;Chunk&gt;**](Chunk.md)
+[**Array&lt;CollectionChunk&gt;**](CollectionChunk.md)
 
 ### Authorization
 
@@ -2082,7 +2082,7 @@ example().catch(console.error);
 
 ## getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet
 
-> Chunk getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(collectionId, documentId, direction, boundaryOrder)
+> CollectionChunk getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(collectionId, documentId, direction, boundaryOrder)
 
 Get Neighbour Chunk
 
@@ -2140,7 +2140,7 @@ example().catch(console.error);
 
 ### Return type
 
-[**Chunk**](Chunk.md)
+[**CollectionChunk**](CollectionChunk.md)
 
 ### Authorization
 

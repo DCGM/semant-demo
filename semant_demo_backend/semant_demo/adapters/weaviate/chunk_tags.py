@@ -34,11 +34,11 @@ from uuid import UUID
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.features.annotations.schemas import SpanType
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import step_failure
-from semant_demo.schema.outcomes import StepFailure
+from semant_demo.core.outcomes import StepFailure
 
 REF_BY_TYPE: dict[str, str] = {
     SpanType.auto.value: "automaticTag",
@@ -69,7 +69,7 @@ def _ref_ids(obj, prop: str) -> list[UUID]:
     return [UUID(str(r.uuid)) for r in (block.objects if block else [])]
 
 
-async def required_refs(client: WeaviateAsyncClient, names: schemas.CollectionNames, pair: ChunkTag) -> set[str]:
+async def required_refs(client: WeaviateAsyncClient, names: CollectionNames, pair: ChunkTag) -> set[str]:
     """Reference properties the spans of ``pair`` require on its chunk."""
     spans = client.collections.get(names.span_collection_name)
     objs = await fetch_all(
@@ -81,7 +81,7 @@ async def required_refs(client: WeaviateAsyncClient, names: schemas.CollectionNa
     return {REF_BY_TYPE[o.properties.get("type")] for o in objs if o.properties.get("type") in REF_BY_TYPE}
 
 
-async def _chunk_refs(client: WeaviateAsyncClient, names: schemas.CollectionNames, chunk_id: UUID):
+async def _chunk_refs(client: WeaviateAsyncClient, names: CollectionNames, chunk_id: UUID):
     """The chunk object with its tag references, or ``None`` when the chunk does not exist."""
     return await client.collections.get(names.chunks_collection_name).query.fetch_object_by_id(
         chunk_id,
@@ -90,7 +90,7 @@ async def _chunk_refs(client: WeaviateAsyncClient, names: schemas.CollectionName
     )
 
 
-async def _sync_pair(client: WeaviateAsyncClient, names: schemas.CollectionNames, pair: ChunkTag,
+async def _sync_pair(client: WeaviateAsyncClient, names: CollectionNames, pair: ChunkTag,
                      *, add: bool, remove: bool) -> None:
     required = await required_refs(client, names, pair)
     chunk = await _chunk_refs(client, names, pair.chunk_id)
@@ -106,7 +106,7 @@ async def _sync_pair(client: WeaviateAsyncClient, names: schemas.CollectionNames
             await data.reference_delete(from_uuid=pair.chunk_id, from_property=prop, to=pair.tag_id)
 
 
-async def sync_chunk_tags(client: WeaviateAsyncClient, names: schemas.CollectionNames,
+async def sync_chunk_tags(client: WeaviateAsyncClient, names: CollectionNames,
                           pairs: Iterable[ChunkTag], *, add: bool = True, remove: bool = True,
                           lock_for: Callable[[ChunkTag], asyncio.Lock] | None = None,
                           ) -> tuple[list[ChunkTag], list[StepFailure]]:
@@ -145,7 +145,7 @@ async def sync_chunk_tags(client: WeaviateAsyncClient, names: schemas.Collection
 class ChunkTagRepository:
     """Chunk tag re-derivation for span writes, one pair at a time within the process."""
 
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
         # A lock exists while some sync holds or waits for it.
@@ -181,7 +181,7 @@ class ChunkTagIssue:
         return ChunkTag(self.chunk_id, self.tag_id)
 
 
-async def audit_chunk_tags(client: WeaviateAsyncClient, names: schemas.CollectionNames) -> list[ChunkTagIssue]:
+async def audit_chunk_tags(client: WeaviateAsyncClient, names: CollectionNames) -> list[ChunkTagIssue]:
     """Every chunk tag reference without a backing span and every span-required reference
     that is missing. Read-only. Reads all chunks and spans (iterator, no result limit)."""
     present: set[tuple[UUID, UUID, str]] = set()
@@ -212,7 +212,7 @@ async def audit_chunk_tags(client: WeaviateAsyncClient, names: schemas.Collectio
     return sorted(issues)
 
 
-async def apply_chunk_tag_fixes(client: WeaviateAsyncClient, names: schemas.CollectionNames,
+async def apply_chunk_tag_fixes(client: WeaviateAsyncClient, names: CollectionNames,
                                 issues: Iterable[ChunkTagIssue], *, remove_unbacked: bool, add_missing: bool,
                                 ) -> tuple[list[ChunkTag], list[StepFailure]]:
     """Re-check and correct the pairs of reported issues of the selected kinds.

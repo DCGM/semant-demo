@@ -69,23 +69,26 @@ semant_demo_backend/semant_demo/
   config.py               Config (read once from the environment or an explicit mapping)
   opentelemetry.py        OTLP logs/traces/metrics (off unless OTEL_ENABLED), request logging middleware
   core/errors.py          NotFoundError (404), InvalidRequestError (400), IncompleteWriteError (500)
+  core/outcomes.py        WriteResult, StepFailure, WriteOutcome (best-effort multi-write results, ADR 0002)
   features/
-    collections/          routes, service, access (rights checks, ADR 0007), schemas
-    documents/            routes, service: public corpus reads, collection-scoped document reads
-    annotations/          tags and spans (routes, service, offsets, schemas),
+    collections/          routes, service, access (rights checks, ADR 0007), schemas (incl. CollectionChunk)
+    documents/            routes, service, schemas (Document, DocumentChunk, DocumentViewChunk, ...):
+                          public corpus reads, collection-scoped document reads
+    annotations/          tags and spans (routes, service, offsets, schemas incl. internal AnnotationChunk),
                           AI suggestions (suggestions, suggestion_routes), span chat (span_chat, span_chat_routes)
-    search/               routes, service, filters, schemas
+    search/               routes, service, filters, schemas (incl. SearchResultChunk, Summary*)
+    rag/schemas.py        RAG HTTP models (the pipelines are still in top-level rag/)
+    feedback/schemas.py   app feedback HTTP model (the route is still in routes/)
   adapters/
     weaviate/             one repository per concern: collections, documents, tags, spans,
-                          chunk_tags, search; client, paging, writes (best-effort cascades)
+                          chunk_tags, search; client, paging, writes (best-effort cascades),
+                          names (CollectionNames: configured Weaviate collection names)
     sql/                  base (declarative Base), tables (create_tables), users (UserLookup), feedback
     embeddings/gemma.py   embedding service client
     topicer/client.py     Topicer client
     llm/responses.py      OpenAI-compatible Responses API streaming (span chat)
   routes/                 dependencies.py (DI from AppResources) and the routes not yet in a
                           feature: rag, summarizer, feedback, user search
-  schema/                 shared corpus models (documents, chunks) and write outcomes
-  schemas.py              RAG/feedback HTTP models, CollectionNames
   rag/, summarization/, llm_api/, ollama_proxy.py   RAG pipelines, search summaries, LLM clients
   users/                  FastAPI Users: model, manager, auth routers, schemas
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),

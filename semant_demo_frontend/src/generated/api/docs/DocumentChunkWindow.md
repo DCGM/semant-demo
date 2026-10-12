@@ -8,7 +8,7 @@ A bounded passage of a corpus document around one of its chunks (public): up to 
 Name | Type
 ------------ | -------------
 `document` | [Document](Document.md)
-`chunks` | [Array&lt;TextChunk&gt;](TextChunk.md)
+`chunks` | [Array&lt;DocumentChunk&gt;](DocumentChunk.md)
 `anchorChunkId` | string
 `hasBefore` | boolean
 `hasAfter` | boolean

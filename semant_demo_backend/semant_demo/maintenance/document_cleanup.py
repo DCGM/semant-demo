@@ -67,7 +67,7 @@ from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate import document_cleanup as store
 
 PAGE_SIZE = 100
@@ -125,7 +125,7 @@ def read_lines(path: Path) -> dict[str, dict[str, Any]]:
     return {line["id"]: line for line in lines}
 
 
-async def resolve_targets(client: WeaviateAsyncClient, names: schemas.CollectionNames
+async def resolve_targets(client: WeaviateAsyncClient, names: CollectionNames
                           ) -> tuple[Targets, dict[str, dict[str, list[str]]]]:
     """Raises ``LookupError`` if a collection is missing or ``Chunks.document`` / ``Documents.collection``
     do not target the expected collections."""
@@ -249,7 +249,7 @@ def audit_summary(state: dict[str, Any], checkpoint: Path) -> dict[str, Any]:
         "checkpoint": str(checkpoint), "candidates": str(candidates_path(checkpoint))}
 
 
-async def audit(client: WeaviateAsyncClient, names: schemas.CollectionNames, *, checkpoint: Path, endpoint: str,
+async def audit(client: WeaviateAsyncClient, names: CollectionNames, *, checkpoint: Path, endpoint: str,
                 min_age: timedelta = timedelta(hours=24), limit: int | None = None,
                 concurrency: int = CONCURRENCY, rate: float | None = None, progress=_progress) -> dict[str, Any]:
     """Classify every document (read-only), page by page; resumes an existing checkpoint.
@@ -424,7 +424,7 @@ def delete_summary(state: dict[str, Any], state_path: Path, log: Path) -> dict[s
         "affected_collections": len(state["memberships"]), "state": str(state_path), "log": str(log)}
 
 
-async def delete(client: WeaviateAsyncClient, names: schemas.CollectionNames, *, audit_checkpoint: Path,
+async def delete(client: WeaviateAsyncClient, names: CollectionNames, *, audit_checkpoint: Path,
                  endpoint: str, backup_id: str, limit: int | None = None, concurrency: int = CONCURRENCY,
                  rate: float | None = None, progress=_progress) -> dict[str, Any]:
     """Delete the audit's removable documents after rechecking each; resumable.

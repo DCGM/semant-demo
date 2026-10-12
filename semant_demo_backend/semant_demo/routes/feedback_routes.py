@@ -6,7 +6,7 @@ from urllib import request as urllib_request
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from semant_demo import schemas
+from semant_demo.features.feedback.schemas import AppFeedbackRequest
 from semant_demo.config import Config
 from semant_demo.routes.dependencies import get_config
 
@@ -36,7 +36,7 @@ def _send_feedback_webhook(config: Config, payload: dict) -> None:
 
 
 @exp_router.post('/api/v1/feedback')
-async def save_app_feedback(payload: schemas.AppFeedbackRequest, req: Request,
+async def save_app_feedback(payload: AppFeedbackRequest, req: Request,
                             config: Config = Depends(get_config)):
     if not payload.message or not payload.message.strip():
         raise HTTPException(status_code=400, detail='Message cannot be empty.')

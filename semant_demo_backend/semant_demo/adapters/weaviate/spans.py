@@ -12,7 +12,7 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import DataType, Property
 from weaviate.classes.query import Filter, QueryReference
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.features.annotations.schemas import PatchSpan, PostSpan, SpanType, TagSpan
@@ -49,7 +49,7 @@ def pairs_of(obj) -> set[ChunkTag]:
 
 
 class SpanRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
         # Whether ``reason``/``confidence`` were already ensured on the live collection.

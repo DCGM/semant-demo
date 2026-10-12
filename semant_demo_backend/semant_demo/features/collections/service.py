@@ -19,9 +19,9 @@ from semant_demo.features.collections.access import Principal
 from semant_demo.features.collections.schemas import (
     Collection, CollectionStats, PatchCollection, PostCollection,
 )
-from semant_demo.schema.chunks import Chunk
-from semant_demo.schema.documents import Document, DocumentStats
-from semant_demo.schema.outcomes import WriteResult
+from semant_demo.features.collections.schemas import CollectionChunk
+from semant_demo.features.documents.schemas import Document, DocumentStats
+from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag
 from semant_demo.users.schemas import UserSearchResult
 
@@ -150,7 +150,7 @@ async def get_document_stats(collections: UserCollectionRepository, user: Princi
 
 
 async def get_document_chunks(collections: UserCollectionRepository, user: Principal | None,
-                              collection_id: Id, document_id: Id) -> list[Chunk]:
+                              collection_id: Id, document_id: Id) -> list[CollectionChunk]:
     """The document's chunks that belong to the collection, in order."""
     grant = await access.require_collection_read(collections, user, collection_id)
     document = await access.require_document_in_collection(collections, document_id, grant.collection_id)
@@ -159,7 +159,7 @@ async def get_document_chunks(collections: UserCollectionRepository, user: Princ
 
 async def get_neighbour_chunk(collections: UserCollectionRepository, user: Principal | None,
                               collection_id: Id, document_id: Id, direction: str,
-                              boundary_order: int) -> Chunk | None:
+                              boundary_order: int) -> CollectionChunk | None:
     """The chunk before (``prev``) or after (``next``) ``boundary_order``, marked with membership."""
     grant = await access.require_collection_read(collections, user, collection_id)
     document = await access.require_document_in_collection(collections, document_id, grant.collection_id)
@@ -169,7 +169,7 @@ async def get_neighbour_chunk(collections: UserCollectionRepository, user: Princ
 
 async def get_chunks_in_range(collections: UserCollectionRepository, user: Principal | None,
                               collection_id: Id, document_id: Id,
-                              order_gt: int | None, order_lt: int | None) -> list[Chunk]:
+                              order_gt: int | None, order_lt: int | None) -> list[CollectionChunk]:
     """All chunks of the document strictly between the given orders, marked with membership."""
     grant = await access.require_collection_read(collections, user, collection_id)
     document = await access.require_document_in_collection(collections, document_id, grant.collection_id)

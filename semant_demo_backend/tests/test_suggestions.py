@@ -22,8 +22,8 @@ from semant_demo.features.annotations.schemas import (
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations.suggestion_routes import _RunResponse
 from semant_demo.features.collections.access import AuthenticationRequired
-from semant_demo.schema.chunks import ChunkText
-from semant_demo.schema.outcomes import StepFailure
+from semant_demo.features.annotations.schemas import AnnotationChunk
+from semant_demo.core.outcomes import StepFailure
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
 COLLECTION, OTHER_COLLECTION, DOCUMENT = uuid4(), uuid4(), uuid4()
@@ -94,11 +94,11 @@ class World:
     # documents
     async def read_chunk_text(self, chunk_id):
         c = self.by_id(chunk_id)
-        return ChunkText(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text) if c else None
+        return AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text) if c else None
 
     async def read_following_chunk_texts(self, document_id, after_order, limit):
         self.log.append(("read_following", after_order, limit))
-        return [ChunkText(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text)
+        return [AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text)
                 for c in self.chunks if c.order > after_order][:limit]
 
     def store(self) -> AnnotationStore:

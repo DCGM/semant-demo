@@ -8,7 +8,7 @@ A document with all its chunks, each marked with membership in one collection.
 Name | Type
 ------------ | -------------
 `document` | [Document](Document.md)
-`chunks` | [Array&lt;DocumentDetailTextChunkWithUserCollectionInfo&gt;](DocumentDetailTextChunkWithUserCollectionInfo.md)
+`chunks` | [Array&lt;DocumentViewChunk&gt;](DocumentViewChunk.md)
 
 ## Example
 

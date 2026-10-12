@@ -14,77 +14,77 @@
 
 import { mapValues } from '../runtime';
 /**
- * 
+ * A chunk listed for a collection (``in_collection``), without its document or entities.
  * @export
- * @interface Chunk
+ * @interface CollectionChunk
  */
-export interface Chunk {
+export interface CollectionChunk {
     /**
      * 
      * @type {string}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     id: string;
     /**
      * 
      * @type {string}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     text: string;
     /**
      * 
      * @type {string}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     startPageId: string;
     /**
      * 
      * @type {number}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     fromPage: number;
     /**
      * 
      * @type {number}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     toPage: number;
     /**
      * 
      * @type {boolean}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     endParagraph?: boolean;
     /**
      * 
      * @type {string}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     title?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     language?: string | null;
     /**
      * 
      * @type {number}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     order: number;
     /**
      * 
      * @type {boolean}
-     * @memberof Chunk
+     * @memberof CollectionChunk
      */
     inCollection?: boolean;
 }
 
 /**
- * Check if a given object implements the Chunk interface.
+ * Check if a given object implements the CollectionChunk interface.
  */
-export function instanceOfChunk(value: object): value is Chunk {
+export function instanceOfCollectionChunk(value: object): value is CollectionChunk {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('text' in value) || value['text'] === undefined) return false;
     if (!('startPageId' in value) || value['startPageId'] === undefined) return false;
@@ -94,11 +94,11 @@ export function instanceOfChunk(value: object): value is Chunk {
     return true;
 }
 
-export function ChunkFromJSON(json: any): Chunk {
-    return ChunkFromJSONTyped(json, false);
+export function CollectionChunkFromJSON(json: any): CollectionChunk {
+    return CollectionChunkFromJSONTyped(json, false);
 }
 
-export function ChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean): Chunk {
+export function CollectionChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean): CollectionChunk {
     if (json == null) {
         return json;
     }
@@ -117,11 +117,11 @@ export function ChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean): Chu
     };
 }
 
-export function ChunkToJSON(json: any): Chunk {
-    return ChunkToJSONTyped(json, false);
+export function CollectionChunkToJSON(json: any): CollectionChunk {
+    return CollectionChunkToJSONTyped(json, false);
 }
 
-export function ChunkToJSONTyped(value?: Chunk | null, ignoreDiscriminator: boolean = false): any {
+export function CollectionChunkToJSONTyped(value?: CollectionChunk | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
