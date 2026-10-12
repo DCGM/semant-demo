@@ -19,10 +19,13 @@
           clickable
           v-ripple
           :aria-label="panel.label"
+          :aria-current="panel.id === sidebar.activePanelId ? 'true' : undefined"
+          :aria-busy="panel.busy ? 'true' : undefined"
           @click="sidebar.activate(panel.id)"
         >
           <q-item-section class="avatar" avatar>
             <q-icon :name="panel.icon" />
+            <q-spinner v-if="panel.busy" class="rail-busy" color="primary" size="12px" />
           </q-item-section>
           <q-tooltip class="text-subtitle2" anchor="center left" self="center right">
             {{ panel.label }}
@@ -36,9 +39,8 @@
         <div class="text-subtitle1 text-weight-medium text-grey-9 q-px-md q-pt-md q-pb-sm" data-testid="right-sidebar-title">
           {{ sidebar.activePanel?.label }}
         </div>
-        <q-scroll-area class="col">
-          <div ref="target" class="q-px-md q-pb-md" />
-        </q-scroll-area>
+        <!-- A plain scroller (not q-scroll-area), so a panel with fill gets a definite height. -->
+        <div ref="target" class="col column no-wrap scroll q-px-md q-pb-md" />
       </div>
     </div>
 
@@ -74,6 +76,11 @@ watch(() => sidebar.hasPanels, (hasPanels) => {
   }
 }, { immediate: true })
 
+// The drawer re-creates its content when it switches between the pushing and the overlay
+// mode (e.g. on a narrow window right after load), so follow the element, not only the
+// first one.
+watch(target, (el) => { sidebar.targetEl = el }, { flush: 'post' })
+
 onMounted(() => {
   sidebar.targetEl = target.value
 })
@@ -98,11 +105,18 @@ onBeforeUnmount(() => {
   .avatar {
     min-width: 0;
     padding-right: 0;
+    position: relative;
 
     .q-icon {
       color: #5f6368;
     }
   }
+}
+
+.rail-busy {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
 }
 
 .rail-item--active {

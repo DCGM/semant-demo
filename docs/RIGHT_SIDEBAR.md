@@ -25,11 +25,8 @@ which tools (if any) it shows there.
   overlay on narrow screens (below 1024 px) and has a mini state that shows only the
   narrow (48 px) icon rail. The open and mini states are not remembered between pages.
 
-The document view (`/collections/:cid/documents/:did/v1`) still has its own right drawer
-inside its page layout (`features/documents/viewer/DocumentViewLayout.vue`). Its tools are
-already separate components (`annotations/DocumentTagsPanel`, `annotations/AiAssistPanel`,
-`documents/DocumentMetadataPanel`) that take the collection and document as props; moving
-them into sidebar panels is #230.
+The document view (`/collections/:cid/documents/:did/v1`) adds its tags, AI assist and
+document tools as panels (#230); see section 6.
 
 ## 1. Files
 
@@ -66,9 +63,13 @@ Notes on the implementation:
   be found (Vue 3.3 has no `<Teleport defer>`).
 - Inactive panels are hidden with `v-show`, not destroyed, so a tool keeps its state when
   the user switches to another one and back.
-- The sidebar does not scroll with the page; it has its own scroller (`q-scroll-area`),
-  like the left drawer. This requires the right drawer to be fixed in the layout, i.e. the
-  uppercase `R` in `<q-layout view="hHh LpR fff">` in `MainLayout.vue`.
+- The sidebar does not scroll with the page; the panels are in its own scroller. This
+  requires the right drawer to be fixed in the layout, i.e. the uppercase `R` in
+  `<q-layout view="hHh LpR fff">` in `MainLayout.vue`. The scroller is a plain scrolling
+  flex column, not `q-scroll-area`, so a `fill` panel gets exactly its height.
+- `q-drawer` re-creates its content when it switches between pushing the page and the
+  overlay mode (e.g. on a narrow window right after load). The shell therefore follows its
+  container element, and the teleported panels move to the new one with their state.
 - The drawer does not use the `mini` slot of `q-drawer`, as that would recreate the
   content and destroy the teleport target. The mini state is handled with `v-show`.
 
@@ -141,6 +142,10 @@ import NotesPanel from 'src/features/notes/NotesPanel.vue'
 | `label` | `string` | Title shown in the sidebar header and in the tooltip (and accessible name) of the rail icon. |
 | `icon` | `string` | Icon in the rail ([Material icon](https://fonts.google.com/icons) name). |
 | `order` | `number` | Optional, default `0`. Panels are sorted in ascending order. |
+| `busy` | `boolean` | Optional. Shows a small spinner (and `aria-busy`) on the rail icon while work of the tool is under way, so it is seen from other panels too. |
+| `fill` | `boolean` | Optional. The content gets exactly the sidebar's height and is not scrolled by the sidebar; for a tool that scrolls parts of itself (the document's AI assist keeps its controls in view and scrolls only the suggestion list). |
+
+`label`, `icon`, `order` and `busy` follow the props; `id` is fixed when the panel mounts.
 
 To show a tool only in some situations, use `v-if` on `RightSidebarPanel`. For example,
 the search page shows the summary only while there are results or a search is running:
@@ -174,9 +179,9 @@ rightSidebar.activate('search-summary')
 
 | Member | Description |
 |--------|-------------|
-| `sortedPanels` | Registered panels ordered by `order` (`id`, `label`, `icon`, `order`). |
+| `sortedPanels` | Registered panels ordered by `order` (`id`, `label`, `icon`, `order`, `busy`). |
 | `hasPanels` | Whether at least one panel is registered. Controls the visibility of the sidebar. |
-| `activePanelId`, `activePanel` | The currently shown panel. |
+| `activePanelId`, `activePanel` | The currently shown panel (its rail item has `aria-current="true"`). |
 | `open` | Whether the drawer is open (toggled by the button in the header). |
 | `miniState` | Whether only the icon rail is shown. |
 | `activate(id)` | Shows the given registered panel, opens the sidebar and leaves the mini state. |
@@ -205,6 +210,14 @@ the new request's loading state.
 |------|----------|-----------|-------------|
 | Search (`features/search/SearchPage.vue`) | `search-summary` | `features/search/SearchSummaryPanel.vue` | Summarization of the current search results (focused: first 3, broader: first 10, extensive: all, selected: the selected results). Citations move the user to the cited result. Logic in `features/search/useSearchSummary.ts`. |
 | Search (`features/search/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
+| Document view (`features/documents/viewer/DocumentViewLayout.vue`) | `document-tags` | `features/annotations/DocumentTagsPanel.vue` | The collection's tags: create/edit, show/hide, step through their annotations, manual order, search. Ctrl+F focuses the search while this is the active panel (it opens a closed sidebar); otherwise the browser's find is left alone. |
+| Document view | `document-ai` | `features/annotations/AiAssistPanel.vue` | AI annotation suggestions (`fill`, `busy` while a document or selection run is under way). Auto spans are shown in the text only while this is the active panel; suggestion cards and spans highlight each other. *Suggest tags* on a text selection activates it. Leaving the view cancels running requests; saved suggestions stay. |
+| Document view | `document-metadata` | `features/documents/DocumentMetadataPanel.vue` | Bibliographic fields of the document. |
+
+The ids of the document panels are in `features/documents/viewer/documentSidebar.ts`. The
+panels get the collection and document ids through props; the annotation, tag navigation
+and AI state they share with the reader stays in the annotation composables, not in the
+sidebar store.
 
 ### Document context (`features/documents/`)
 

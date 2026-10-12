@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { chunkText, deleteSuggestions, fixture, logIn, openDocument } from './support'
+import { chunkText, deleteSuggestions, fixture, logIn, openDocument, sidebarPanelButton } from './support'
 
 // Request-scoped AI suggestions in the document view (ADR 0003/0007). The fake Topicer
 // streams one chunk event, then waits FAKE_TOPICER_STREAM_DELAY (3 s) before the next, so
@@ -7,7 +7,7 @@ import { chunkText, deleteSuggestions, fixture, logIn, openDocument } from './su
 // the unresolved "person" suggestions it created (fixture spans have other tags or types).
 
 async function startPersonRun (page: Page) {
-  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await sidebarPanelButton(page, 'AI assist').click()
   await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
   await page.getByRole('button', { name: 'Run AI' }).click()
 }
@@ -29,14 +29,16 @@ test('suggestions appear while the run is under way and cancelling keeps them', 
   await expect(page.getByText('Processed 1 chunks', { exact: false })).toBeVisible()
   await expect(suggestionCards(page)).toHaveCount(1)
   await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+  await expect(sidebarPanelButton(page, 'AI assist')).toHaveAttribute('aria-busy', 'true') // the rail shows the run
 
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.getByText('Cancelled; saved suggestions are kept.')).toBeVisible()
+  await expect(sidebarPanelButton(page, 'AI assist')).not.toHaveAttribute('aria-busy', 'true')
   await expect(page.getByRole('button', { name: 'Run AI' })).toBeVisible()
 
   // Saved suggestions survive a reload; the cancelled rest of the run was never saved.
   await page.reload()
-  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await sidebarPanelButton(page, 'AI assist').click()
   await expect(chunkText(page, 'chronicle_1')).toBeVisible()
   await expect(suggestionCards(page)).toHaveCount(1)
 })
@@ -49,7 +51,7 @@ test('leaving the document during a run shows nothing of it in the next view', a
 
   // Same document in another collection, while the run still waits for its second chunk.
   await openDocument(page, 'newspapers', 'chronicle')
-  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await sidebarPanelButton(page, 'AI assist').click()
 
   await expect(page.getByRole('button', { name: 'Run AI' })).toBeVisible()
   await expect(page.getByText('Processed', { exact: false })).toHaveCount(0)
@@ -59,6 +61,6 @@ test('leaving the document during a run shows nothing of it in the next view', a
   // Back in the original collection: the suggestion saved before leaving is there; the
   // run ended with the request, so the second chunk got none.
   await openDocument(page, 'chronicles', 'chronicle')
-  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await sidebarPanelButton(page, 'AI assist').click()
   await expect(suggestionCards(page)).toHaveCount(1)
 })

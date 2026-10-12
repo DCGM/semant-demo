@@ -173,6 +173,7 @@
 import { storeToRefs } from 'pinia'
 import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useQuasar } from 'quasar'
+import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { SpanType } from 'src/generated/api'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import AnnotationGutter from 'src/features/annotations/AnnotationGutter.vue'
@@ -191,6 +192,7 @@ import { collectionRights } from 'src/features/user_collections/permissions'
 import useChunks from '../useChunks'
 import ChunkMembershipGutter from './ChunkMembershipGutter.vue'
 import ChunkSelectionBar from './ChunkSelectionBar.vue'
+import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import ReaderToolbar from './ReaderToolbar.vue'
 import { groupParagraphs, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText } from './readerOffsets'
 import { useChunkMembership } from './useChunkMembership'
@@ -220,7 +222,8 @@ const tagEditing = useTagEditing(() => props.collectionId)
 const tagNav = useTagNavigation()
 const tagSpans = useTagSpans()
 const aiAssist = useAiAssistance()
-const aiTabActive = computed(() => aiAssist.aiTabActive.value)
+const rightSidebar = useRightSidebarStore()
+const aiPanelActive = computed(() => aiAssist.aiPanelActive.value)
 const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.value)
 
 const documentTextRef = ref<HTMLElement | null>(null)
@@ -238,12 +241,12 @@ const membership = useChunkMembership(() => props.collectionId, chunkWindow, () 
 const annotations = useAnnotations(() => displayChunks.value, () => hiddenPreviewChunks.value)
 const paragraphs = computed(() => groupParagraphs(displayChunks.value))
 
-// Approved spans of visible tags; AI suggestions only while the AI assist tab is active.
+// Approved spans of visible tags; AI suggestions only while the AI assist panel is active.
 const gutters = useReaderGutters(
   documentTextRef, displayChunks, hiddenPreviewChunks,
   () => annotations.spansByChunkId.value,
   (span) => span.type !== SpanType.neg &&
-    (aiTabActive.value || span.type !== SpanType.auto) &&
+    (aiPanelActive.value || span.type !== SpanType.auto) &&
     tagNav.isTagVisible(span.tagId)
 )
 const relayout = () => gutters.relayout()
@@ -280,7 +283,7 @@ const visibleSpansByChunkId = computed<Record<string, ProjectedSpan[]>>(() => {
   const map: Record<string, ProjectedSpan[]> = {}
   for (const chunk of displayChunks.value) {
     map[chunk.id] = annotations.getProjectedSpans(chunk.id).filter(
-      (s) => tagNav.isTagVisible(s.tagId) && (aiTabActive.value || s.type !== SpanType.auto)
+      (s) => tagNav.isTagVisible(s.tagId) && (aiPanelActive.value || s.type !== SpanType.auto)
     )
   }
   return map
@@ -316,9 +319,9 @@ watch(gutters.spanMarkers, (markers) => {
 tagNav.onScroll((item) => scrollToSpan(item.chunkId, item.start, item.end))
 tagNav.onHighlight((spanId) => { hoveredSpanId.value = spanId })
 
-// Re-render gutter (and re-filter auto spans in text) when the AI tab is
-// toggled in the side panel.
-watch(aiTabActive, () => {
+// Re-render gutter (and re-filter auto spans in text) when the AI assist panel
+// becomes active or inactive in the sidebar.
+watch(aiPanelActive, () => {
   void nextTick(() => relayout())
 })
 
@@ -487,10 +490,9 @@ const onRunAiOnSelection = async (tagIds: string[]) => {
   const target = selectionInDisplayedChunks(sel, displayChunks.value, hiddenPreviewChunks.value)
   if (!target) return
 
-  // Switch the right drawer to the AI assist tab right away so the user
-  // sees the spinner and any incoming suggestions in context, then close
-  // the popover.
-  aiAssist.requestOpenAiPanel()
+  // Show the AI assist panel right away so the user sees the spinner and any
+  // incoming suggestions in context, then close the popover.
+  rightSidebar.activate(DOCUMENT_SIDEBAR_PANELS.ai)
   annotations.clearSelection()
 
   const created = await aiAssist.runOnSelection({

@@ -32,66 +32,27 @@
           <div class="text-caption text-grey-6">Collection</div>
           <div class="text-body1 text-weight-medium">{{ activeCollectionName }}</div>
         </div>
-
-        <q-separator vertical inset class="q-mx-sm" />
-
-        <q-btn
-          flat round
-          size="md"
-          icon="menu"
-          :color="drawerOpen ? undefined : 'primary'"
-          :aria-label="drawerOpen ? 'Hide panel' : 'Show panel'"
-          :aria-expanded="drawerOpen"
-          @click="drawerOpen = !drawerOpen"
-        >
-          <q-tooltip>{{ drawerOpen ? 'Hide panel' : 'Show panel' }}</q-tooltip>
-        </q-btn>
       </q-toolbar>
     </q-header>
-    <q-drawer
-      v-model="drawerOpen"
-      side="right"
-      :width="360"
-      :breakpoint="0"
-      bordered
-      class="doc-info-drawer"
+
+    <!-- The tools are panels of the app's right sidebar; they get the document's context through props. -->
+    <RightSidebarPanel :id="DOCUMENT_SIDEBAR_PANELS.tags" label="Tags" icon="sell" :order="0">
+      <DocumentTagsPanel ref="tagsPanelRef" :collection-id="collectionId" :document-id="documentId" />
+    </RightSidebarPanel>
+    <!-- fill: only the suggestion list scrolls, the run controls stay in view -->
+    <RightSidebarPanel
+      :id="DOCUMENT_SIDEBAR_PANELS.ai"
+      label="AI assist"
+      icon="auto_awesome"
+      :order="1"
+      :busy="aiAssist.isRunning.value || aiAssist.isSelectionRunning.value"
+      fill
     >
-      <div class="drawer-content">
-        <div class="tabs-wrapper q-mx-md q-mt-md">
-          <q-tabs v-model="drawerTab" dense align="justify" class="drawer-tabs" indicator-color="transparent">
-            <q-tab name="tags" label="Tags" />
-            <q-tab name="ai">
-              <div class="ai-tab-label">
-                <span>AI assist</span>
-                <q-spinner
-                  v-if="aiAssist.isRunning.value || aiAssist.isSelectionRunning.value"
-                  color="primary"
-                  size="1em"
-                  class="q-ml-xs"
-                />
-              </div>
-            </q-tab>
-            <q-tab name="document" label="Document" />
-          </q-tabs>
-        </div>
-
-        <!-- keep-alive: the panels keep their local state (tag order and search, AI tags,
-             mode and selection) while another tab is shown. -->
-        <q-tab-panels v-model="drawerTab" animated keep-alive>
-          <q-tab-panel name="tags" class="q-pa-md">
-            <DocumentTagsPanel ref="tagsPanelRef" :collection-id="collectionId" :document-id="documentId" />
-          </q-tab-panel>
-
-          <q-tab-panel name="ai" class="q-pa-md ai-panel">
-            <AiAssistPanel :collection-id="collectionId" :document-id="documentId" />
-          </q-tab-panel>
-
-          <q-tab-panel v-if="documentData" name="document" class="q-pa-md">
-            <DocumentMetadataPanel :document="documentData" />
-          </q-tab-panel>
-        </q-tab-panels>
-      </div>
-    </q-drawer>
+      <AiAssistPanel :collection-id="collectionId" :document-id="documentId" />
+    </RightSidebarPanel>
+    <RightSidebarPanel :id="DOCUMENT_SIDEBAR_PANELS.metadata" label="Document" icon="description" :order="2">
+      <DocumentMetadataPanel v-if="documentData" :document="documentData" />
+    </RightSidebarPanel>
 
     <q-page-container>
       <router-view />
@@ -103,6 +64,8 @@
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
+import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { Document } from 'src/generated/api'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import DocumentMetadataPanel from 'src/features/documents/DocumentMetadataPanel.vue'
@@ -112,9 +75,10 @@ import DocumentTagsPanel from 'src/features/annotations/DocumentTagsPanel.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import useTagSpans from 'src/features/annotations/useTagSpans'
+import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 
-// The document view: header, the side drawer with the tags, AI assist and document
-// tools, and the reader (child route). It loads the document, collection and tags and
+// The document view: header, the tags, AI assist and document tools as panels of the
+// app's right sidebar, and the reader (child route). It loads the document, collection and tags and
 // clears the annotation and AI state when the document or collection changes.
 interface Props {
   collectionId: string
@@ -123,8 +87,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const route = useRoute()
-const drawerOpen = ref(true)
-const drawerTab = ref('tags')
+const sidebar = useRightSidebarStore()
 const layoutRef = ref<unknown>(null)
 const layoutHeight = ref<string>('auto')
 const documentsStore = useDocumentsStore()
@@ -138,40 +101,28 @@ const aiAssist = useAiAssistance()
 const tagSpans = useTagSpans()
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
 
+// Ctrl+F searches the tags while the Tags panel is the sidebar's active panel (also when
+// the sidebar is closed or mini); otherwise the browser's own find is left alone.
 function onCtrlF(e: KeyboardEvent) {
   if (!e.ctrlKey) return
   if (e.key.toLowerCase() !== 'f') return
-  if (drawerTab.value !== 'tags') return
+  if (sidebar.activePanelId !== DOCUMENT_SIDEBAR_PANELS.tags) return
   e.preventDefault()
-  drawerOpen.value = true
+  sidebar.activate(DOCUMENT_SIDEBAR_PANELS.tags)
   void nextTick(() => tagsPanelRef.value?.focusSearch())
 }
 
-// Track which drawer tab is active so the document page can hide auto spans
-// outside of the AI assist tab.
-watch(drawerTab, (val) => {
-  aiAssist.aiTabActive.value = val === 'ai'
-  if (val !== 'ai') aiAssist.highlightedAutoSpanId.value = null
+// The document page shows auto spans only while the AI assist panel is the active one.
+watch(() => sidebar.activePanelId === DOCUMENT_SIDEBAR_PANELS.ai, (active) => {
+  aiAssist.aiPanelActive.value = active
+  if (!active) aiAssist.highlightedAutoSpanId.value = null
 }, { immediate: true })
-
-// External callers (e.g. the in-text selection popover's "Suggest tags"
-// button) can request that we switch to the AI assist tab via
-// ``aiAssist.requestOpenAiPanel()``. The composable bumps a nonce we watch
-// here so each call re-triggers, even if we're already on the tab.
-watch(
-  () => aiAssist.aiPanelRequestNonce.value,
-  (n, prev) => {
-    if (n === prev) return
-    drawerOpen.value = true
-    drawerTab.value = 'ai'
-  }
-)
 
 onBeforeUnmount(() => {
   // Leaving the document view aborts document-wide and selection runs; their late
   // events are ignored. Suggestions already saved stay saved.
   aiAssist.reset()
-  aiAssist.aiTabActive.value = false
+  aiAssist.aiPanelActive.value = false
   aiAssist.highlightedAutoSpanId.value = null
 })
 
@@ -292,64 +243,5 @@ onBeforeUnmount(() => {
 
 .doc-header :deep(.q-btn) {
   color: #334155;
-}
-
-.doc-info-drawer {
-  background: #f8fafc;
-  color: #1f2937;
-}
-
-.drawer-content {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.tabs-wrapper {
-  flex-shrink: 0;
-  background: rgba(15, 23, 42, 0.06);
-  border-radius: 10px;
-  padding: 4px;
-}
-
-.drawer-tabs {
-  border-radius: 8px;
-}
-
-.drawer-tabs :deep(.q-tab) {
-  border-radius: 7px;
-  min-height: 32px;
-}
-
-.drawer-tabs :deep(.q-tab--active) {
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
-}
-
-/* Make the q-tab-panels container fill the drawer's available height so the
-   AI tab can use a flex layout and never overflow. The other tabs (Tags,
-   Document) keep their natural height and scroll vertically when their
-   content exceeds the drawer. */
-.drawer-content :deep(.q-tab-panels) {
-  flex: 1 1 0;
-  min-height: 0;
-  background: transparent;
-  overflow: hidden;
-}
-.drawer-content :deep(.q-panel) {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-.drawer-content :deep(.q-tab-panel) {
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-}
-/* The AI panel manages its own internal scrolling (only the suggestions
-   list scrolls), so the panel itself must never scroll as a whole. */
-.drawer-content :deep(.q-tab-panel.ai-panel) {
-  overflow: hidden;
 }
 </style>

@@ -145,4 +145,26 @@ describe('RightSidebarPanel', () => {
     const panels = Array.from(target.querySelectorAll<HTMLElement>('[data-sidebar-panel]'))
     expect(panels.map((p) => [p.dataset.sidebarPanel, p.style.display])).toEqual([['a', 'none'], ['b', '']])
   })
+
+  it('follows the label and busy state of the page and lays out a fill panel', async () => {
+    const target = mountShell()
+    const busy = ref(false)
+    const Page = defineComponent({
+      setup: () => () => [
+        h(RightSidebarPanel, { id: 'a', label: 'A', icon: 'star', busy: busy.value, fill: true }, { default: () => h(Tool, { context: 'a' }) }),
+        h(RightSidebarPanel, { id: 'b', label: 'B', icon: 'star', order: 1 }, { default: () => h(Tool, { context: 'b' }) })
+      ]
+    })
+    mount(Page, { global: { plugins: [[Quasar, {}]] } })
+    await nextTick()
+    const sidebar = useRightSidebarStore()
+    expect(sidebar.sortedPanels.map((p) => p.busy)).toEqual([false, false])
+
+    busy.value = true
+    await nextTick()
+    expect(sidebar.sortedPanels.map((p) => p.busy)).toEqual([true, false])
+
+    const panels = Array.from(target.querySelectorAll<HTMLElement>('[data-sidebar-panel]'))
+    expect(panels.map((p) => p.classList.contains('sidebar-panel--fill'))).toEqual([true, false])
+  })
 })
