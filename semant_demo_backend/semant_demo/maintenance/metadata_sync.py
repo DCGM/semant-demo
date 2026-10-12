@@ -788,8 +788,10 @@ async def sync(client: WeaviateAsyncClient, names: schemas.CollectionNames, sour
                  f"unresolved {sum(counts['unresolved'].values())} failed {counts['failed']} "
                  f"to retry {len(state['retry'])} after {state['after']} ({examined / seconds:.1f}/s this run)")
 
-    for start in range(0, len(state["retry"]), PAGE_SIZE):
-        retried = state["retry"][start:start + PAGE_SIZE]
+    # paginate a snapshot: finish() rewrites state["retry"] after each batch
+    pending = list(state["retry"])
+    for start in range(0, len(pending), PAGE_SIZE):
+        retried = pending[start:start + PAGE_SIZE]
         ids = [UUID(i) for i in retried]
 
         async def read_retried(ids=ids):
