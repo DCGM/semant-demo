@@ -1,3 +1,8 @@
+"""RAG implementations and their configured instances.
+
+Pipelines (``pipelines/``) register their classes with :func:`register_rag_class`;
+:func:`rag_factory` instantiates one per YAML configuration in ``RAG_CONFIGS_PATH``.
+"""
 import os
 import yaml
 import logging
@@ -56,6 +61,8 @@ class RagRegistry:
 
 #load single rag configuration and return  id and frontend_config, instance of the class
 def rag_load_single_config(global_config, filepath: str, llm: LlmGateway | None = None):
+    # Importing the pipelines registers their classes.
+    from semant_demo.features.rag import pipelines  # noqa: F401
     try:
         #load rag config
         with open (filepath, "r", encoding="utf-8") as f:

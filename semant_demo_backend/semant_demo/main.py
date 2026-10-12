@@ -6,10 +6,11 @@ import logging
 from semant_demo.bootstrap import AppResources, WeaviateConnector
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
+from semant_demo.adapters.llm.gateway import limit_provider_sdk_logs
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired
-from semant_demo.opentelemetry import RequestTelemetryMiddleware, initialize_opentelemetry
-from semant_demo.rag.rag_factory import rag_factory
+from semant_demo.opentelemetry import RedactUserTextPaths, RequestTelemetryMiddleware, initialize_opentelemetry
+from semant_demo.features.rag.registry import rag_factory
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -20,6 +21,8 @@ from semant_demo.routes import export_router
 from semant_demo.users.auth import auth_router, register_router, users_router
 
 logging.basicConfig(level=config.LOG_LEVEL)
+limit_provider_sdk_logs()
+logging.getLogger("uvicorn.access").addFilter(RedactUserTextPaths())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

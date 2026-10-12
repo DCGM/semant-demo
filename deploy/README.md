@@ -95,7 +95,7 @@ cp .env.example .env
 | `GOOGLE_API_KEY` | _(empty)_ | Google Gemini key |
 | **Shared LLM** | | |
 | `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Model tier catalog: the provider and model of each tier (`tiny`/`small`/`medium`/`large`) and the tiers each feature may use. The only place models are chosen. |
-| `RAG_CONFIGS_PATH` | `rag/rag_configs/configs` | Directory with RAG YAML configs |
+| `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | Directory with RAG YAML configs |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summariser config path |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |

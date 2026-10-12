@@ -122,7 +122,7 @@ python run.py
 The server starts with `uvicorn` in reload mode on port 8000. On startup it:
 1. Creates missing SQL tables (`user`, `rag_user_feedback`); existing tables and rows are kept
 2. Connects to Weaviate (startup fails if it is not ready)
-3. Loads all RAG configurations from `rag/rag_configs/configs/*.yaml`
+3. Loads all RAG configurations from `RAG_CONFIGS_PATH` (default `configs/rag/demo_configs/*.yaml`)
 4. Mounts static files from `STATIC_PATH` if the directory exists
 
 ### 6. Frontend
@@ -179,7 +179,7 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 | `PORT` | `8000` | No | Backend listen port |
 | `PRODUCTION` | `false` | No | Production mode flag |
 | `STATIC_PATH` | `./static` | No | Built frontend assets path |
-| `RAG_CONFIGS_PATH` | `rag/rag_configs/configs` | No | Directory with RAG YAML configs |
+| `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | No | Directory with RAG YAML configs |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | No | Summariser config path |
 | `LANGCHAIN_API_KEY` | _(empty)_ | No | LangChain/LangSmith tracing key |
 | `EMBEDDING_SERVICE_HOST` | `embedding-service` | No | Embedding service hostname (used to build the internal URL) |

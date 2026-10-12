@@ -10,11 +10,13 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 import logging
 
-from semant_demo.rag.rag_factory import BaseRag, register_rag_class
+from semant_demo.features.rag.registry import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchType
 from semant_demo.features.rag.schemas import RagSearch, RagRequest, RagResponse
 from semant_demo.features.search.service import Retriever
+
+logger = logging.getLogger(__name__)
 
 # prompt
 answer_question_prompt_template = [
@@ -102,8 +104,6 @@ class RagGenerator(BaseRag):
             positive = False,
             automatic = False
         )
-        #TODO DEBUG
-        print(f"search_request: {search_request}")
         #call db search
         search_response = await self.retrieve(search_request)
         return search_response
@@ -116,9 +116,6 @@ class RagGenerator(BaseRag):
             "question_string" : question_string,
             "prompt_history" : prompt_history
         })
-
-        #TODO DEBUG
-        print(f"Refrased question: {correct_question}")
 
         return correct_question
 
@@ -152,9 +149,6 @@ class RagGenerator(BaseRag):
         
         chain = self._create_chain(model=model, prompt=self.main_prompt)
 
-        #TODO DEBUG
-        print(f"rag_config: {self.param_config}, rag_search: {rag_search} ")
-
         result = await chain.ainvoke({
             "context_string" : final_context,
             "question_string" : question_string,
@@ -187,10 +181,10 @@ class RagGenerator(BaseRag):
             time_spent = time() - t1
 
         except (openai.AuthenticationError, langchain_google_genai.chat_models.ChatGoogleGenerativeAIError) as e:
-            logging.warning(e)
+            logger.warning("RAG provider rejected the API key: %s", type(e).__name__)
             raise HTTPException(status_code=401, detail="Invalid API key.")
         except Exception as e:
-            logging.error(f"RAG error: calling the {self.param_config.get('tier') or 'default'} model tier: {type(e).__name__}")
+            logger.error(f"RAG error: calling the {self.param_config.get('tier') or 'default'} model tier: {type(e).__name__}")
             raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
         answer_id = str(uuid.uuid4())

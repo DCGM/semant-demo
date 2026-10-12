@@ -10,7 +10,8 @@ from uuid import UUID
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
-from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SummaryRequest, SearchResultChunk
+from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
+from semant_demo.features.summarization.schemas import SummaryRequest
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_documents
 from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse

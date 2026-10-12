@@ -1,5 +1,5 @@
 """RAG HTTP models. The internal state of the adaptive RAG lives with its implementation
-(``rag/incremental_rag.py``)."""
+(``pipelines/incremental_rag.py``)."""
 from datetime import datetime
 from typing import Literal
 

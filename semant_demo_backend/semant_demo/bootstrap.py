@@ -25,8 +25,8 @@ from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
-from semant_demo.rag.rag_factory import RagRegistry
-from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer, load_summarizer
+from semant_demo.features.rag.registry import RagRegistry
+from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer, load_summarizer
 
 logger = logging.getLogger(__name__)
 

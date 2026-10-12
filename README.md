@@ -57,8 +57,9 @@ semant-demo/
 │   │   │   ├── documents/         # public corpus reads, collection-scoped document reads
 │   │   │   ├── annotations/       # tags, spans, offsets, AI suggestions, span chat
 │   │   │   ├── search/            # search service, filters
-│   │   │   ├── rag/               # RAG HTTP schemas (pipelines still in rag/)
-│   │   │   └── feedback/          # app feedback HTTP schema
+│   │   │   ├── rag/               # RAG routes, service, registry (factory), pipelines/
+│   │   │   ├── summarization/     # search-result summariser (Jinja2 templates), question
+│   │   │   └── feedback/          # app feedback route and delivery
 │   │   ├── adapters/              # concrete storage and provider clients
 │   │   │   ├── weaviate/          # repositories (collections, documents, tags, spans,
 │   │   │   │                      # chunk_tags, search), client, paging, writes
@@ -66,11 +67,9 @@ semant-demo/
 │   │   │   ├── embeddings/        # embedding service client
 │   │   │   ├── topicer/           # Topicer span-proposal client
 │   │   │   └── llm/               # LLM gateway: model tiers, LangChain models, usage
-│   │   ├── routes/                # DI (dependencies.py) and routes outside features:
-│   │   │                          # rag, summarizer, feedback, user search
-│   │   ├── configs/               # YAML configs (LLM model tiers, summariser prompts, search filters)
-│   │   ├── rag/                   # RAG implementations + YAML configs
-│   │   ├── summarization/         # search-result summariser (Jinja2 templates)
+│   │   ├── routes/                # DI (dependencies.py), router registration, user search
+│   │   ├── configs/               # YAML configs (LLM model tiers, summariser prompts, search
+│   │   │                          # filters, rag/ RAG configurations)
 │   │   ├── maintenance/           # chunk tag audit (explicit, reviewed cleanup)
 │   │   ├── users/                 # FastAPI Users (auth model, manager, JWT)
 │   │   └── utils/                 # Jinja2 template helpers
@@ -202,7 +201,7 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `GOOGLE_API_KEY` | _(empty)_ | Google Gemini key |
 | **Shared LLM** | | |
 | `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Model tier catalog: the provider and model of each tier (`tiny`/`small`/`medium`/`large`) and the tiers each feature may use. The only place models are chosen. |
-| `RAG_CONFIGS_PATH` | `rag/rag_configs/configs` | Directory with RAG YAML configs |
+| `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | Directory with RAG YAML configs |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summariser config path |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |

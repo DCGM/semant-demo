@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock
 
-from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer, ModelOptions
+from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer, ModelOptions
 from semant_demo.utils.template import Template
 from tests.fakes import FakeLlm
 

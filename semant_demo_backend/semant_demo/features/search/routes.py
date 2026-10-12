@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
 from semant_demo.features.search.schemas import SearchFiltersResponse, SearchRequest, SearchResponse
-from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
 from semant_demo.features.search import service
 from semant_demo.features.search.service import SearchBackends
@@ -20,7 +19,7 @@ async def get_available_search_filters(
 
 @exp_router.post("/api/search", response_model=SearchResponse)
 async def search(req: SearchRequest, backends: SearchBackends = Depends(get_search_backends),
-                 summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
+                 summarizer: service.Summarizer = Depends(get_summarizer),
                  current_user: User | None = Depends(current_active_optional_user),
                  available_filters: SearchFiltersResponse = Depends(get_search_filters)) -> SearchResponse:
     return await service.search(backends, summarizer, current_user, req, available_filters)
