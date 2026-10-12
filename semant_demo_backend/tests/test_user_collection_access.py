@@ -1,11 +1,11 @@
-"""Collection access rules (features/collections/access.py), without a store."""
+"""Collection access rules (features/user_collections/access.py), without a store."""
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 
-from semant_demo.features.collections import access
-from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired, ResourceNotFound
+from semant_demo.features.user_collections import access
+from semant_demo.features.user_collections.access import AccessDenied, AuthenticationRequired, ResourceNotFound
 
 OWNER, SHARED, OTHER, ADMIN = (SimpleNamespace(id=uuid4(), is_superuser=su) for su in (False, False, False, True))
 COLLECTION, OTHER_COLLECTION = uuid4(), uuid4()

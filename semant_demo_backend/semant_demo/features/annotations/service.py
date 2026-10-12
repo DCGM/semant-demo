@@ -1,6 +1,6 @@
 """Annotation use cases: tag definitions and span annotations of a collection.
 
-Every public function checks access itself (``features/collections/access.py``, ADR 0007)
+Every public function checks access itself (``features/user_collections/access.py``, ADR 0007)
 before any other read or write, so callers outside HTTP get the same rules: reading
 needs collection read access, span writes need annotation-edit access, tag definition
 writes need tag-definition-edit access (owner and shared users for all three). Spans
@@ -24,7 +24,7 @@ from uuid import UUID
 
 from semant_demo.features.annotations.schemas import SpanType, TagSpan
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, ChunkTagRepository
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -34,8 +34,8 @@ from semant_demo.features.annotations.offsets import InvalidSpanRange, check_spa
 from semant_demo.features.annotations.schemas import (
     BulkUpdateSpansResponse, PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanWriteResult,
 )
-from semant_demo.features.collections import access
-from semant_demo.features.collections.access import Principal
+from semant_demo.features.user_collections import access
+from semant_demo.features.user_collections.access import Principal
 from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 
 Id = str | UUID

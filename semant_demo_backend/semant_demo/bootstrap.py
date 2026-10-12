@@ -19,7 +19,7 @@ from semant_demo.adapters.llm.usage import LlmMetrics
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.client import connect_weaviate
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
@@ -39,7 +39,7 @@ class WeaviateRepositories:
     client: WeaviateAsyncClient
     documents: DocumentRepository
     tags: TagRepository
-    collections: UserCollectionRepository
+    user_collections: UserCollectionRepository
     search: ChunkSearchRepository
     spans: SpanRepository
     chunk_tags: ChunkTagRepository
@@ -52,7 +52,7 @@ class WeaviateRepositories:
             client=client,
             documents=DocumentRepository(client, names),
             tags=TagRepository(client, names),
-            collections=UserCollectionRepository(client, names),
+            user_collections=UserCollectionRepository(client, names),
             search=ChunkSearchRepository(client, names),
             spans=SpanRepository(client, names),
             chunk_tags=ChunkTagRepository(client, names),

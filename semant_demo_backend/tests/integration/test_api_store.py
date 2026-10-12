@@ -40,7 +40,7 @@ async def test_document_view_data_for_collection(api_client, corpus):
     chunk = corpus.chunks["chronicle_1"]
 
     chunks = await api_client.get(
-        f"/api/collections/{collection_id}/documents/{corpus.documents['chronicle']['id']}", headers=headers)
+        f"/api/user_collections/{collection_id}/documents/{corpus.documents['chronicle']['id']}/chunks", headers=headers)
     spans = await api_client.post(
         "/api/tag_spans/batch", json={"chunk_ids": [chunk["id"]], "collection_id": collection_id}, headers=headers)
 
@@ -52,12 +52,12 @@ async def test_document_view_data_for_collection(api_client, corpus):
 
 
 async def test_document_detail_with_several_authors(api_client, corpus):
-    # #215: GET /api/documents/{d}/{c}/chunks answered 500 for documents with authors.
+    # #215: the collection's document view answered 500 for documents with authors.
     headers = await login_as(api_client, corpus, "annotator")
     letters = corpus.documents["letters"]
 
     response = await api_client.get(
-        f"/api/documents/{letters['id']}/{corpus.collections['chronicles']['id']}/chunks", headers=headers)
+        f"/api/user_collections/{corpus.collections['chronicles']['id']}/documents/{letters['id']}", headers=headers)
 
     assert response.status_code == 200, response.text
     body = response.json()

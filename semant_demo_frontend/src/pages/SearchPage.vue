@@ -656,7 +656,7 @@ async function addSelectedChunksToCollection () {
   let failedCount = 0
   for (const chunkId of selectedResults.value) {
     try {
-      const data = await api.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({ collectionId: targetCollectionId.value as string, chunkId })
+      const data = await api.addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost({ collectionId: targetCollectionId.value as string, chunkId })
       // Partial: the chunk may be linked while its document link failed.
       if (data.outcome === WriteOutcome.complete) successCount++
       else failedCount++

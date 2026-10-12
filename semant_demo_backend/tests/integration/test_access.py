@@ -17,15 +17,15 @@ NO_SUMMARY = {"search_title_generate": False, "search_summary_generate": False,
 
 READS = [
     ("GET", "/api/user_collections/{c}", None),
-    ("GET", "/api/user_collection/{c}/stats", None),
-    ("GET", "/api/user_collection/{c}/documents", None),
-    ("GET", "/api/collections/{c}/tags", None),
-    ("GET", "/api/collections/{c}/members", None),
-    ("GET", "/api/collections/{c}/documents/{d}", None),
-    ("GET", "/api/collections/{c}/documents/{d}/stats", None),
-    ("GET", "/api/collections/{c}/documents/{d}/chunks", None),
-    ("GET", "/api/collections/{c}/documents/{d}/neighbour?direction=next&boundary_order=0", None),
-    ("GET", "/api/documents/{d}/{c}/chunks", None),
+    ("GET", "/api/user_collections/{c}/stats", None),
+    ("GET", "/api/user_collections/{c}/documents", None),
+    ("GET", "/api/user_collections/{c}/tags", None),
+    ("GET", "/api/user_collections/{c}/members", None),
+    ("GET", "/api/user_collections/{c}/documents/{d}/chunks", None),
+    ("GET", "/api/user_collections/{c}/documents/{d}/stats", None),
+    ("GET", "/api/user_collections/{c}/documents/{d}/chunks/range", None),
+    ("GET", "/api/user_collections/{c}/documents/{d}/chunks/neighbour?direction=next&boundary_order=0", None),
+    ("GET", "/api/user_collections/{c}/documents/{d}", None),
     ("GET", "/api/documents/browse?collection_id={c}", None),
     ("GET", "/api/tag_spans?collection_id={c}", None),
     ("POST", "/api/tag_spans/batch", lambda i: {"chunk_ids": [i.chunk["chronicle_1"]], "collection_id": i.col["chronicles"]}),
@@ -87,10 +87,10 @@ async def test_membership_changes_are_owner_only(api_client, login, ids, store, 
     before = {k: await store.collections_of_chunk(v) for k, v in ids.chunk.items()}
 
     responses = [
-        await api_client.post(f"/api/collections/{c}/documents/{gazette}", headers=headers),
-        await api_client.delete(f"/api/collections/{c}/documents/{chronicle}", headers=headers),
-        await api_client.post(f"/api/user_collection/{c}/chunks/{ids.chunk['gazette_2']}", headers=headers),
-        await api_client.delete(f"/api/user_collection/{c}/chunks/{ids.chunk['chronicle_1']}", headers=headers),
+        await api_client.post(f"/api/user_collections/{c}/documents/{gazette}", headers=headers),
+        await api_client.delete(f"/api/user_collections/{c}/documents/{chronicle}", headers=headers),
+        await api_client.post(f"/api/user_collections/{c}/chunks/{ids.chunk['gazette_2']}", headers=headers),
+        await api_client.delete(f"/api/user_collections/{c}/chunks/{ids.chunk['chronicle_1']}", headers=headers),
     ]
 
     assert [r.status_code for r in responses] == [expected] * 4
@@ -101,7 +101,7 @@ async def test_owner_adds_and_removes_a_document(api_client, login, ids, store):
     headers = await login("owner")
     c, gazette = ids.col["chronicles"], ids.doc["gazette"]
 
-    added = await api_client.post(f"/api/collections/{c}/documents/{gazette}", headers=headers)
+    added = await api_client.post(f"/api/user_collections/{c}/documents/{gazette}", headers=headers)
 
     assert added.status_code == 200, added.text
     assert added.json()["outcome"] == "complete"
@@ -109,7 +109,7 @@ async def test_owner_adds_and_removes_a_document(api_client, login, ids, store):
     assert c in await store.collections_of_chunk(ids.chunk["gazette_2"])
     assert c in await store.collections_of_document(gazette)
 
-    removed = await api_client.delete(f"/api/collections/{c}/documents/{gazette}", headers=headers)
+    removed = await api_client.delete(f"/api/user_collections/{c}/documents/{gazette}", headers=headers)
 
     assert removed.json()["outcome"] == "complete"
     assert c not in await store.collections_of_chunk(ids.chunk["gazette_1"])
@@ -121,7 +121,7 @@ async def test_adding_a_document_twice_does_not_duplicate_links(api_client, logi
     c, chronicle = ids.col["newspapers"], ids.doc["chronicle"]
 
     for _ in range(2):
-        response = await api_client.post(f"/api/collections/{c}/documents/{chronicle}", headers=headers)
+        response = await api_client.post(f"/api/user_collections/{c}/documents/{chronicle}", headers=headers)
         assert response.json()["outcome"] == "complete"
 
     assert (await store.collections_of_document(chronicle)).count(c) == 1
@@ -130,7 +130,7 @@ async def test_adding_a_document_twice_does_not_duplicate_links(api_client, logi
 async def test_owner_adds_a_chunk_and_its_document(api_client, login, ids, store):
     c = ids.col["chronicles"]
 
-    response = await api_client.post(f"/api/user_collection/{c}/chunks/{ids.chunk['gazette_2']}",
+    response = await api_client.post(f"/api/user_collections/{c}/chunks/{ids.chunk['gazette_2']}",
                                      headers=await login("owner"))
 
     assert response.json() == {"outcome": "complete", "succeeded": [ids.chunk["gazette_2"], ids.doc["gazette"]],
@@ -231,9 +231,9 @@ async def test_metadata_deletion_and_sharing_are_owner_only(api_client, login, i
 
     responses = [
         await api_client.patch(f"/api/user_collections/{c}", headers=headers, json={"name": "Renamed"}),
-        await api_client.post(f"/api/collections/{c}/share", headers=headers, json={"user_id": ids.user["outsider"]}),
-        await api_client.delete(f"/api/collections/{c}/share/{ids.user['annotator']}", headers=headers),
-        await api_client.delete(f"/api/collections/{c}", headers=headers),
+        await api_client.post(f"/api/user_collections/{c}/share", headers=headers, json={"user_id": ids.user["outsider"]}),
+        await api_client.delete(f"/api/user_collections/{c}/share/{ids.user['annotator']}", headers=headers),
+        await api_client.delete(f"/api/user_collections/{c}", headers=headers),
     ]
 
     assert [r.status_code for r in responses] == [expected] * 4
@@ -243,7 +243,7 @@ async def test_metadata_deletion_and_sharing_are_owner_only(api_client, login, i
 async def test_owner_revokes_a_share(api_client, login, ids):
     c = ids.col["chronicles"]
 
-    revoked = await api_client.delete(f"/api/collections/{c}/share/{ids.user['annotator']}",
+    revoked = await api_client.delete(f"/api/user_collections/{c}/share/{ids.user['annotator']}",
                                       headers=await login("owner"))
     after = await api_client.get(f"/api/user_collections/{c}", headers=await login("annotator"))
 
@@ -255,8 +255,8 @@ async def test_admin_changes_owner_but_owner_cannot(api_client, login, ids, stor
     c = ids.col["newspapers"]
     body = {"user_id": ids.user["outsider"]}
 
-    by_owner = await api_client.patch(f"/api/collections/{c}/owner", headers=await login("owner"), json=body)
-    by_admin = await api_client.patch(f"/api/collections/{c}/owner", headers=await login("admin"), json=body)
+    by_owner = await api_client.patch(f"/api/user_collections/{c}/owner", headers=await login("owner"), json=body)
+    by_admin = await api_client.patch(f"/api/user_collections/{c}/owner", headers=await login("admin"), json=body)
 
     assert by_owner.status_code == 403
     assert by_admin.status_code == 200
@@ -322,7 +322,7 @@ async def test_shared_user_runs_ai_suggestions(api_client, login, ids, store, fa
 async def test_owner_removes_a_chunk(api_client, login, ids, store):
     c, chunk = ids.col["chronicles"], ids.chunk["chronicle_2"]
 
-    response = await api_client.delete(f"/api/user_collection/{c}/chunks/{chunk}", headers=await login("owner"))
+    response = await api_client.delete(f"/api/user_collections/{c}/chunks/{chunk}", headers=await login("owner"))
 
     assert response.status_code == 200, response.text
     assert c not in await store.collections_of_chunk(chunk)
@@ -340,12 +340,12 @@ async def test_document_of_another_collection_is_not_found(api_client, login, id
     scope = {"collection_id": c, "document_id": d}
 
     responses = {
-        "chunks": await api_client.get(f"/api/collections/{c}/documents/{d}", headers=headers),
-        "stats": await api_client.get(f"/api/collections/{c}/documents/{d}/stats", headers=headers),
-        "range": await api_client.get(f"/api/collections/{c}/documents/{d}/chunks", headers=headers),
+        "chunks": await api_client.get(f"/api/user_collections/{c}/documents/{d}", headers=headers),
+        "stats": await api_client.get(f"/api/user_collections/{c}/documents/{d}/stats", headers=headers),
+        "range": await api_client.get(f"/api/user_collections/{c}/documents/{d}/chunks", headers=headers),
         "neighbour": await api_client.get(
-            f"/api/collections/{c}/documents/{d}/neighbour?direction=next&boundary_order=0", headers=headers),
-        "document chunks": await api_client.get(f"/api/documents/{d}/{c}/chunks", headers=headers),
+            f"/api/user_collections/{c}/documents/{d}/chunks/neighbour?direction=next&boundary_order=0", headers=headers),
+        "document chunks": await api_client.get(f"/api/user_collections/{c}/documents/{d}", headers=headers),
         "delete annotations": await api_client.post(
             "/api/tag_spans/in_document/delete", headers=headers, json={**scope, "tag_ids": [ids.tag["person"]]}),
         "delete suggestions": await api_client.post(
@@ -375,6 +375,6 @@ async def test_optimized_ai_does_not_call_the_provider_for_another_collections_d
 async def test_shared_user_cannot_reach_documents_outside_the_shared_collection(api_client, login, ids):
     c, d = ids.col["chronicles"], ids.doc["gazette"]
 
-    response = await api_client.get(f"/api/collections/{c}/documents/{d}/chunks", headers=await login("annotator"))
+    response = await api_client.get(f"/api/user_collections/{c}/documents/{d}/chunks", headers=await login("annotator"))
 
     assert response.status_code == 404

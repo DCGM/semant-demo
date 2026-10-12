@@ -41,7 +41,7 @@ best-effort item. Do not fail open on permission-store errors.
 ## Decided for the implementation (#201, 2026-10-07)
 
 The rights left open above were decided by the maintainer and are implemented in
-`semant_demo/features/collections/access.py`:
+`semant_demo/features/user_collections/access.py`:
 
 | Operation | Owner | Shared user | Others / admin |
 | --- | --- | --- | --- |

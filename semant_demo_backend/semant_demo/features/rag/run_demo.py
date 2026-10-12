@@ -11,7 +11,7 @@ from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.weaviate.client import connect_weaviate
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.features.search.service import SearchBackends, public_retriever

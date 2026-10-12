@@ -15,7 +15,7 @@ export function useCollectionRepository() {
     },
 
     getStats: async (collectionId: string): Promise<CollectionStats> => {
-      return api.getCollectionStatsApiUserCollectionCollectionIdStatsGet({ collectionId })
+      return api.getCollectionStatsApiUserCollectionsCollectionIdStatsGet({ collectionId })
     },
 
     create: async (collectionData: PostCollection): Promise<Collection> => {
@@ -32,22 +32,22 @@ export function useCollectionRepository() {
     },
 
     remove: async (collectionId: string): Promise<void> => {
-      await api.deleteCollectionApiCollectionsCollectionIdDelete({ collectionId })
+      await api.deleteCollectionApiUserCollectionsCollectionIdDelete({ collectionId })
     },
 
     getMembers: async (collectionId: string): Promise<UserSearchResult[]> => {
-      return api.getCollectionMembersApiCollectionsCollectionIdMembersGet({ collectionId })
+      return api.getCollectionMembersApiUserCollectionsCollectionIdMembersGet({ collectionId })
     },
 
     share: async (collectionId: string, userId: string): Promise<Collection> => {
-      return api.shareCollectionApiCollectionsCollectionIdSharePost({
+      return api.shareCollectionApiUserCollectionsCollectionIdSharePost({
         collectionId,
         shareCollectionRequest: { userId }
       })
     },
 
     unshare: async (collectionId: string, userId: string): Promise<Collection> => {
-      return api.unshareCollectionApiCollectionsCollectionIdShareUserIdDelete({ collectionId, userId })
+      return api.unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete({ collectionId, userId })
     }
   }
 }

@@ -70,7 +70,7 @@ def test_chunk_projections_keep_their_names_and_wire_properties(tmp_path):
     assert _ref(components["DocumentDetail"]["properties"]["chunks"]["items"]) == "DocumentViewChunk"
     assert _ref(components["DocumentChunkWindow"]["properties"]["chunks"]["items"]) == "DocumentChunk"
     assert _ref(components["SearchResponse"]["properties"]["results"]["items"]) == "SearchResultChunk"
-    collection_chunks = schema["paths"]["/api/collections/{collection_id}/documents/{document_id}"]["get"]
+    collection_chunks = schema["paths"]["/api/user_collections/{collection_id}/documents/{document_id}/chunks"]["get"]
     assert _ref(collection_chunks["responses"]["200"]["content"]["application/json"]["schema"]["items"]) == "CollectionChunk"
 
 
@@ -89,6 +89,41 @@ class _Documents:
 
     async def read_adjacent_chunks(self, document_id, order, direction, limit):
         return []
+
+
+USER_COLLECTION_ROUTES = {
+    ("get", "/api/user_collections"),
+    ("post", "/api/user_collections"),
+    ("get", "/api/user_collections/{collection_id}"),
+    ("patch", "/api/user_collections/{collection_id}"),
+    ("delete", "/api/user_collections/{collection_id}"),
+    ("patch", "/api/user_collections/{collection_id}/owner"),
+    ("post", "/api/user_collections/{collection_id}/share"),
+    ("delete", "/api/user_collections/{collection_id}/share/{user_id}"),
+    ("get", "/api/user_collections/{collection_id}/members"),
+    ("get", "/api/user_collections/{collection_id}/stats"),
+    ("get", "/api/user_collections/{collection_id}/tags"),
+    ("post", "/api/user_collections/{collection_id}/chunks/{chunk_id}"),
+    ("delete", "/api/user_collections/{collection_id}/chunks/{chunk_id}"),
+    ("get", "/api/user_collections/{collection_id}/documents"),
+    ("get", "/api/user_collections/{collection_id}/documents/{document_id}"),
+    ("post", "/api/user_collections/{collection_id}/documents/{document_id}"),
+    ("delete", "/api/user_collections/{collection_id}/documents/{document_id}"),
+    ("get", "/api/user_collections/{collection_id}/documents/{document_id}/stats"),
+    ("get", "/api/user_collections/{collection_id}/documents/{document_id}/chunks"),
+    ("get", "/api/user_collections/{collection_id}/documents/{document_id}/chunks/range"),
+    ("get", "/api/user_collections/{collection_id}/documents/{document_id}/chunks/neighbour"),
+}
+
+
+def test_collection_routes_are_one_route_family(tmp_path):
+    """#287: collection-scoped routes live under /api/user_collections only; old aliases are gone."""
+    paths = create_app(make_test_config(tmp_path)).openapi()["paths"]
+    routes = {(method, path) for path, operations in paths.items() for method in operations}
+
+    assert {r for r in routes if r[1].startswith("/api/user_collections")} == USER_COLLECTION_ROUTES
+    assert [path for path in paths if "{collection_id}" in path and not path.startswith("/api/user_collections/")] == []
+    assert [path for path in paths if path.startswith(("/api/collections", "/api/user_collection/"))] == []
 
 
 def _hit_chunk() -> DocumentChunk:

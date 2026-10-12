@@ -8,7 +8,7 @@ export function useDocumentsRepository() {
 
   return {
     getAllByCollection: async (collectionId: string): Promise<Documents> => {
-      return api.getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet({ collectionId })
+      return api.getCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGet({ collectionId })
     },
 
     getById: async (documentId: string): Promise<Document> => {
@@ -22,7 +22,7 @@ export function useDocumentsRepository() {
     /** Throws IncompleteWriteError when some chunk/document links could not be written. */
     addToCollection: async (documentId: string, collectionId: string): Promise<WriteResult> => {
       return requireComplete(
-        await api.addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost({ collectionId, documentId }),
+        await api.addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost({ collectionId, documentId }),
         'Adding the document'
       )
     },
@@ -30,13 +30,13 @@ export function useDocumentsRepository() {
     /** Throws IncompleteWriteError when some links could not be removed (the document then stays). */
     removeFromCollection: async (documentId: string, collectionId: string): Promise<WriteResult> => {
       return requireComplete(
-        await api.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete({ collectionId, documentId }),
+        await api.removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete({ collectionId, documentId }),
         'Removing the document'
       )
     },
 
     getStats: async (collectionId: string, documentId: string): Promise<DocumentStats> => {
-      return api.getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet({ collectionId, documentId })
+      return api.getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet({ collectionId, documentId })
     }
   }
 }

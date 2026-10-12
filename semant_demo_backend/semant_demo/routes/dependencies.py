@@ -4,7 +4,7 @@ from starlette.requests import HTTPConnection
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway
 from semant_demo.adapters.topicer.client import TopicerClient
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.bootstrap import AppResources, WeaviateRepositories
@@ -51,17 +51,17 @@ async def get_documents(connection: HTTPConnection) -> DocumentRepository:
 async def get_tags(connection: HTTPConnection) -> TagRepository:
     return _weaviate(connection).tags
 
-async def get_collections(connection: HTTPConnection) -> UserCollectionRepository:
-    return _weaviate(connection).collections
+async def get_user_collections(connection: HTTPConnection) -> UserCollectionRepository:
+    return _weaviate(connection).user_collections
 
 async def get_annotation_store(connection: HTTPConnection) -> AnnotationStore:
     weaviate = _weaviate(connection)
-    return AnnotationStore(collections=weaviate.collections, tags=weaviate.tags, spans=weaviate.spans,
+    return AnnotationStore(collections=weaviate.user_collections, tags=weaviate.tags, spans=weaviate.spans,
                            chunk_tags=weaviate.chunk_tags, documents=weaviate.documents)
 
 async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
     weaviate = _weaviate(connection)
-    return SearchBackends(chunks=weaviate.search, collections=weaviate.collections, tags=weaviate.tags,
+    return SearchBackends(chunks=weaviate.search, collections=weaviate.user_collections, tags=weaviate.tags,
                           embeddings=get_resources(connection).embeddings)
 
 def get_topicer(connection: HTTPConnection) -> TopicerClient:

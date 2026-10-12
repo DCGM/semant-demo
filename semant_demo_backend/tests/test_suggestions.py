@@ -21,7 +21,7 @@ from semant_demo.features.annotations.schemas import (
 )
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations.suggestion_routes import _RunResponse
-from semant_demo.features.collections.access import AuthenticationRequired
+from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.features.annotations.schemas import AnnotationChunk
 from semant_demo.core.outcomes import StepFailure
 

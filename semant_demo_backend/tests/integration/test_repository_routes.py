@@ -34,7 +34,7 @@ async def test_removing_a_chunk_twice_succeeds(api_client, login, ids, store):
     c, chunk = ids.col["chronicles"], ids.chunk["chronicle_1"]
     headers = await login("owner")
 
-    responses = [await api_client.delete(f"/api/user_collection/{c}/chunks/{chunk}", headers=headers)
+    responses = [await api_client.delete(f"/api/user_collections/{c}/chunks/{chunk}", headers=headers)
                  for _ in range(2)]
 
     assert [r.status_code for r in responses] == [200, 200]
@@ -42,10 +42,10 @@ async def test_removing_a_chunk_twice_succeeds(api_client, login, ids, store):
 
 
 @pytest.mark.parametrize("method, path", [
-    ("DELETE", "/api/user_collection/{c}/chunks/{unknown}"),
-    ("POST", "/api/user_collection/{c}/chunks/{unknown}"),
-    ("POST", "/api/collections/{c}/documents/{unknown}"),
-    ("DELETE", "/api/collections/{c}/documents/{unknown}"),
+    ("DELETE", "/api/user_collections/{c}/chunks/{unknown}"),
+    ("POST", "/api/user_collections/{c}/chunks/{unknown}"),
+    ("POST", "/api/user_collections/{c}/documents/{unknown}"),
+    ("DELETE", "/api/user_collections/{c}/documents/{unknown}"),
     ("GET", "/api/document/{unknown}"),
     ("GET", "/api/document/not-a-uuid"),
     ("GET", "/api/documents/not-a-uuid/chunks/count"),
@@ -100,12 +100,12 @@ async def test_sharing_looks_up_users_in_sql(api_client, login, ids, corpus):
     c = ids.col["newspapers"]
     headers = await login("owner")
 
-    with_owner = await api_client.post(f"/api/collections/{c}/share", headers=headers,
+    with_owner = await api_client.post(f"/api/user_collections/{c}/share", headers=headers,
                                        json={"user_id": ids.user["owner"]})
-    with_unknown = await api_client.post(f"/api/collections/{c}/share", headers=headers, json={"user_id": UNKNOWN})
-    shared = await api_client.post(f"/api/collections/{c}/share", headers=headers,
+    with_unknown = await api_client.post(f"/api/user_collections/{c}/share", headers=headers, json={"user_id": UNKNOWN})
+    shared = await api_client.post(f"/api/user_collections/{c}/share", headers=headers,
                                    json={"user_id": ids.user["outsider"]})
-    members = await api_client.get(f"/api/collections/{c}/members", headers=headers)
+    members = await api_client.get(f"/api/user_collections/{c}/members", headers=headers)
 
     assert with_owner.status_code == 400
     assert with_unknown.status_code == 404
@@ -119,7 +119,7 @@ async def test_admin_owner_change_to_unknown_user_is_not_found(api_client, login
     c = ids.col["newspapers"]
     before = await store.collection(c)
 
-    response = await api_client.patch(f"/api/collections/{c}/owner", headers=await login("admin"),
+    response = await api_client.patch(f"/api/user_collections/{c}/owner", headers=await login("admin"),
                                       json={"user_id": UNKNOWN})
 
     assert response.status_code == 404

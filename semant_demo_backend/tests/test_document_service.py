@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
-from semant_demo.features.collections.access import AuthenticationRequired
+from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.features.documents import service
 from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse, DocumentDetail
 

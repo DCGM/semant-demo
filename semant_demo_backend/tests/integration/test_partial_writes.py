@@ -21,7 +21,7 @@ async def test_add_document_keeps_linked_chunks_when_one_link_fails(api_client, 
     c, gazette = ids.col["chronicles"], ids.doc["gazette"]
     fail_writes("reference_add", [ids.chunk["gazette_1"]])
 
-    response = await api_client.post(f"/api/collections/{c}/documents/{gazette}", headers=await login("owner"))
+    response = await api_client.post(f"/api/user_collections/{c}/documents/{gazette}", headers=await login("owner"))
 
     result = response.json()
     assert response.status_code == 200
@@ -39,7 +39,7 @@ async def test_add_document_fails_without_linking_the_document_when_no_chunk_lin
     c, gazette = ids.col["chronicles"], ids.doc["gazette"]
     fail_writes("reference_add", [ids.chunk["gazette_1"], ids.chunk["gazette_2"]])
 
-    result = (await api_client.post(f"/api/collections/{c}/documents/{gazette}", headers=await login("owner"))).json()
+    result = (await api_client.post(f"/api/user_collections/{c}/documents/{gazette}", headers=await login("owner"))).json()
 
     assert result["outcome"] == "failed"
     assert result["succeeded"] == []
@@ -51,7 +51,7 @@ async def test_timed_out_link_is_reported_as_uncertain(api_client, login, ids, f
     c, gazette = ids.col["chronicles"], ids.doc["gazette"]
     fail_writes("reference_add", [ids.chunk["gazette_1"]], error=WeaviateTimeoutError("timed out"))
 
-    result = (await api_client.post(f"/api/collections/{c}/documents/{gazette}", headers=await login("owner"))).json()
+    result = (await api_client.post(f"/api/user_collections/{c}/documents/{gazette}", headers=await login("owner"))).json()
 
     assert [(f["item_id"], f["uncertain"]) for f in result["failed"]] == [(ids.chunk["gazette_1"], True)]
 
@@ -60,7 +60,7 @@ async def test_remove_document_keeps_document_while_a_chunk_stays_linked(api_cli
     c, chronicle = ids.col["chronicles"], ids.doc["chronicle"]
     fail_writes("reference_delete", [ids.chunk["chronicle_2"]])
 
-    result = (await api_client.delete(f"/api/collections/{c}/documents/{chronicle}", headers=await login("owner"))).json()
+    result = (await api_client.delete(f"/api/user_collections/{c}/documents/{chronicle}", headers=await login("owner"))).json()
 
     assert result["outcome"] == "partial"
     assert result["succeeded"] == [ids.chunk["chronicle_1"]]
@@ -75,7 +75,7 @@ async def test_add_chunk_reports_failed_document_link(api_client, login, ids, st
     c, chunk = ids.col["chronicles"], ids.chunk["gazette_1"]
     fail_writes("reference_add", [ids.doc["gazette"]])
 
-    result = (await api_client.post(f"/api/user_collection/{c}/chunks/{chunk}", headers=await login("owner"))).json()
+    result = (await api_client.post(f"/api/user_collections/{c}/chunks/{chunk}", headers=await login("owner"))).json()
 
     assert result["outcome"] == "partial"
     assert result["succeeded"] == [chunk]

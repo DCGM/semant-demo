@@ -71,9 +71,11 @@ semant_demo_backend/semant_demo/
   core/errors.py          NotFoundError (404), InvalidRequestError (400), IncompleteWriteError (500)
   core/outcomes.py        WriteResult, StepFailure, WriteOutcome (best-effort multi-write results, ADR 0002)
   features/
-    collections/          routes, service, access (rights checks, ADR 0007), schemas (incl. CollectionChunk)
+    user_collections/     routes, service, access (rights checks, ADR 0007), schemas (incl. CollectionChunk);
+                          every collection-scoped route is under /api/user_collections/{collection_id}/...
     documents/            routes, service, schemas (Document, DocumentChunk, DocumentViewChunk, ...):
-                          public corpus reads, collection-scoped document reads
+                          public corpus reads (/api/document(s)/...) and the collection's
+                          document view (GET /api/user_collections/{collection_id}/documents/{document_id})
     annotations/          tags and spans (routes, service, offsets, schemas incl. internal AnnotationChunk),
                           AI suggestions (suggestions, suggestion_routes), span chat (span_chat, span_chat_routes)
     search/               routes, service, filters, schemas (incl. SearchResultChunk, SummaryRequestBase)
@@ -84,7 +86,7 @@ semant_demo_backend/semant_demo/
                           (search summarizer), schemas (SummaryResponse)
     feedback/             app feedback: routes, service (feedback log, webhook), schemas
   adapters/
-    weaviate/             one repository per concern: collections, documents, tags, spans,
+    weaviate/             one repository per concern: user_collections, documents, tags, spans,
                           chunk_tags, search; client, paging, writes (best-effort cascades),
                           names (CollectionNames: configured Weaviate collection names)
     sql/                  base (declarative Base), tables (create_tables), users (UserLookup), feedback
@@ -104,7 +106,7 @@ semant_demo_backend/semant_demo/
 ```mermaid
 flowchart LR
     Routes["features/*/routes.py<br/>routes/*.py"] --> Services["features/*/service.py<br/>suggestions.py, span_chat.py"]
-    Services --> Access["features/collections/access.py"]
+    Services --> Access["features/user_collections/access.py"]
     Services --> Adapters["adapters/weaviate, adapters/sql"]
     Services --> Providers["adapters/embeddings, topicer, llm"]
     RAG["features/rag"] --> Search["features/search/service.retrieve"]
@@ -113,7 +115,7 @@ flowchart LR
     Adapters --> Stores[("Weaviate, SQLite")]
 ```
 
-Dependencies are one-way: Documents, Search and Annotations use the Collections access
+Dependencies are one-way: Documents, Search and Annotations use the user collections access
 functions; RAG uses Search's authorized retrieval; nothing imports RAG. Summarization reads
 Search's schemas; Search calls the summarizer only through its `Summarizer` protocol, which
 the search route receives from `get_summarizer`. No service reaches
@@ -141,7 +143,7 @@ A `Config` class that reads settings once, at construction, from the process env
 | `get_config()` | The app's `Config` | App lifetime |
 | `get_async_session()` | Database sessions for individual requests | Per-request |
 | `get_user_lookup()` | SQL user lookups (`adapters/sql/users.UserLookup`) on a request session | Per-request |
-| `get_documents()`, `get_tags()`, `get_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
+| `get_documents()`, `get_tags()`, `get_user_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
 | `get_annotation_store()` | The repositories the Annotations service uses (collections, tags, spans, chunk tags, documents) | Startup → shutdown |
 | `get_search_backends()` | Search adapter, collection/tag repositories and the embedding client for the search service and RAG retrieval | Startup → shutdown |
 | `get_topicer()`, `get_span_chat()` | Topicer client; the span chat's `FeatureChat` | Startup → shutdown |
@@ -153,11 +155,11 @@ Requests that need these resources while the lifespan is not running get HTTP 50
 
 **Example** (the route only parses HTTP; the service checks access before any read):
 ```python
-@exp_router.get("/api/documents/{document_id}/{collection_id}/chunks", response_model=DocumentDetail)
-async def fetch_document_chunks(document_id: str, collection_id: str,
-                                documents: DocumentRepository = Depends(get_documents),
-                                collections: UserCollectionRepository = Depends(get_collections),
-                                current_user: User = Depends(current_active_user)) -> DocumentDetail:
+@exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}", response_model=DocumentDetail)
+async def fetch_collection_document(collection_id: str, document_id: str,
+                                    documents: DocumentRepository = Depends(get_documents),
+                                    collections: UserCollectionRepository = Depends(get_user_collections),
+                                    current_user: User = Depends(current_active_user)) -> DocumentDetail:
     return await service.read_chunks_in_collection(documents, collections, current_user, document_id, collection_id)
 ```
 
@@ -210,7 +212,7 @@ Routes authenticate; services authorize ([ADR 0007](adr/0007-access-and-collabor
 | `current_active_optional_user` | Optional — `None` when unauthenticated | Public corpus reads and search, RAG, summaries (these services refuse collection- or tag-scoped requests from anonymous users) |
 
 Resource rights (owner, shared user, admin) are checked by the feature services through
-`features/collections/access.py`: shared users may read and annotate (spans, tag definitions)
+`features/user_collections/access.py`: shared users may read and annotate (spans, tag definitions)
 but not change membership, metadata or sharing. Public corpus reads (`GET /api/document/{id}`,
 `/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`,
 `/api/documents/{id}/chunks/{chunk_id}/window` and `/adjacent` (a bounded passage around a

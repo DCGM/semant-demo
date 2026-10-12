@@ -4,16 +4,16 @@ Documents and their chunks are public corpus data: reading a document, browsing 
 whole corpus, counting a document's chunks and reading a bounded passage around a chunk
 (the search result context, #244) need no login. Reads limited to a
 collection, or marking chunk membership in one, need read access to that collection
-(``features/collections/access.py``), checked here before any other read. ``user`` is the
+(``features/user_collections/access.py``), checked here before any other read. ``user`` is the
 authenticated user or ``None``; malformed ids are "not found".
 """
 from uuid import UUID
 
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
-from semant_demo.features.collections import access
-from semant_demo.features.collections.access import Principal
+from semant_demo.features.user_collections import access
+from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.documents.schemas import DocumentChunk, AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 
 Id = str | UUID

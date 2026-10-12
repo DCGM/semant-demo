@@ -200,7 +200,7 @@ async def test_creating_the_tag_again_after_a_failed_link_succeeds(api_client, l
                                    json=NEW_TAG)
 
     assert (first.status_code, second.status_code) == (500, 201)
-    listed = await api_client.get(f"/api/collections/{ids.col['chronicles']}/tags", headers=owner)
+    listed = await api_client.get(f"/api/user_collections/{ids.col['chronicles']}/tags", headers=owner)
     assert [t["name"] for t in listed.json()].count("Instituce") == 1
 
 
@@ -237,7 +237,7 @@ async def test_collection_deletion_failing_part_way_keeps_completed_steps_and_ca
     fail_writes("delete_by_id", [event], collection=collection_names.tag_collection_name)
     owner = await login("owner")
 
-    response = await api_client.delete(f"/api/collections/{newspapers}", headers=owner)
+    response = await api_client.delete(f"/api/user_collections/{newspapers}", headers=owner)
 
     assert response.status_code == 500
     body = response.json()
@@ -248,7 +248,7 @@ async def test_collection_deletion_failing_part_way_keeps_completed_steps_and_ca
     assert await store.span(ids.span["pozar_manual"]) is None
 
     monkeypatch.undo()
-    retry = await api_client.delete(f"/api/collections/{newspapers}", headers=owner)
+    retry = await api_client.delete(f"/api/user_collections/{newspapers}", headers=owner)
 
     assert retry.status_code == 204
     assert await store.collection(newspapers) is None
