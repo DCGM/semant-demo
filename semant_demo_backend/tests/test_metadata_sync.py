@@ -647,6 +647,32 @@ async def test_sync_resumes_after_the_checkpoint_and_retries_failures_first(sour
     assert all(d["title"] == "New" for d in store.documents.values())
 
 
+async def test_sync_retries_every_failure_across_several_retry_batches(source, monkeypatch, tmp_path):
+    ids = [UUID(int=i) for i in range(1, 161)]
+    store = FakeDocuments({i: {"library": "mzk"} for i in ids}).install(monkeypatch)
+    add_rows(source, *({"id": i, "library": "mzk", "title": "New"} for i in ids))
+    assert metadata_sync.PAGE_SIZE == 100
+    failing = ids[:155]
+    store.fail.update(failing)
+
+    first = await sync_of(source, tmp_path)
+
+    assert first["to_retry"] == 155 and first["counts"]["failed"] == 155 and first["counts"]["updated"] == 5
+    store.fail.clear()
+    store.updates.clear()
+
+    second = await sync_of(source, tmp_path)
+
+    assert second["to_retry"] == 0 and sync_exit_code(second) == 0
+    assert sorted(d for d, _ in store.updates) == failing  # every failed id retried once
+    counts = second["counts"]
+    assert (counts["examined"], counts["updated"], counts["failed"]) == (160, 160, 0)
+    assert json.loads((tmp_path / "sync.json").read_text())["retry"] == []
+    retried = {line["id"] for line in manifest_of(tmp_path) if line["status"] == "verified_on_retry"}
+    assert retried == {str(i) for i in failing}
+    assert all(d["title"] == "New" for d in store.documents.values())
+
+
 async def test_sync_keeps_writes_that_do_not_read_back_for_retry(source, monkeypatch, tmp_path):
     store = FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
     add_rows(source, {"id": DOC, "library": "mzk", "title": "New"})
