@@ -146,3 +146,17 @@ async def test_inferred_libraries_are_applied_with_their_access(seeded_store, co
     inferred = tmp_path / "inferred.csv"
     assert write_inferred(inferred, report) == 3
     assert read_library_map(inferred) == {UUID(chronicle): "nkp", UUID(gazette): "mzk", UUID(letters): "mzk"}
+
+
+async def test_library_property_is_added_through_an_alias(seeded_store, collection_names):
+    # The deployment reaches Documents_test through the alias Documents; Weaviate does not
+    # resolve an alias for a schema update, so the property goes to the aliased collection.
+    alias = "MetadataSyncDocumentsAlias"
+    await seeded_store.alias.create(alias_name=alias, target_collection=collection_names.document_collection_name)
+    try:
+        through_alias = collection_names.model_copy(update={"document_collection_name": alias})
+        await add_text_property(seeded_store, through_alias, "library")
+        assert (await document_property_types(seeded_store, collection_names))["library"] == "text"
+        assert (await document_property_types(seeded_store, through_alias))["library"] == "text"
+    finally:
+        await seeded_store.alias.delete(alias_name=alias)
