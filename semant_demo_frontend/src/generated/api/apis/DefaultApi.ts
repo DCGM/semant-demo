@@ -734,7 +734,7 @@ export interface DefaultApiInterface {
     discussSpanApiAiDiscussSpanPostRequestOpts(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before streaming the reply from the span_chat feature\'s model tier.
      * @summary Discuss Span
      * @param {DiscussSpanRequest} discussSpanRequest 
      * @param {*} [options] Override http request option.
@@ -744,7 +744,7 @@ export interface DefaultApiInterface {
     discussSpanApiAiDiscussSpanPostRaw(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before streaming the reply from the span_chat feature\'s model tier.
      * Discuss Span
      */
     discussSpanApiAiDiscussSpanPost(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -2500,7 +2500,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before streaming the reply from the span_chat feature\'s model tier.
      * Discuss Span
      */
     async discussSpanApiAiDiscussSpanPostRaw(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -2511,7 +2511,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+     * Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before streaming the reply from the span_chat feature\'s model tier.
      * Discuss Span
      */
     async discussSpanApiAiDiscussSpanPost(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {

@@ -16,7 +16,7 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from semant_demo.adapters.llm.responses import ResponsesChat
+from semant_demo.adapters.llm.gateway import FeatureChat
 from semant_demo.config import Config
 from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanChatDelta
 from semant_demo.features.annotations.service import AnnotationStore
@@ -51,7 +51,7 @@ async def _stream(discussion: SpanDiscussion) -> AsyncGenerator[bytes, None]:
 async def discuss_span(
     body: DiscussSpanRequest,
     store: AnnotationStore = Depends(get_annotation_store),
-    provider: ResponsesChat = Depends(get_span_chat),
+    provider: FeatureChat = Depends(get_span_chat),
     config: Config = Depends(get_config),
     current_user: User = Depends(current_active_user),
 ):
@@ -60,7 +60,7 @@ async def discuss_span(
 
     The request body carries the full chat history; the backend resolves
     span / document / tag context and prepends it as a system message before
-    forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+    streaming the reply from the span_chat feature's model tier.
     """
     discussion = await prepare_discussion(store, current_user, body, provider,
                                           context_chars=config.SPAN_CHAT_CONTEXT_CHARS,

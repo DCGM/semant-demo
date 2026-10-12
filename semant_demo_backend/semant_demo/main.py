@@ -1,3 +1,4 @@
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import logging
@@ -23,14 +24,16 @@ logging.basicConfig(level=config.LOG_LEVEL)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app_config: Config = app.state.config
-    resources = AppResources.create(app_config)
+    resources = AppResources.create(app_config, llm_metrics=app.state.telemetry,
+                                    llm_transport=app.state.llm_transport)
     app.state.resources = resources
     try:
         await create_tables(resources.engine)
         # One Weaviate client for the application's lifetime; startup fails without it.
         await resources.connect_weaviate(app.state.weaviate_connector)
         #load rags configurations and create instances
-        resources.rag = rag_factory(global_config=app_config, configs_path=app_config.RAG_CONFIGS_PATH)
+        resources.rag = rag_factory(global_config=app_config, configs_path=app_config.RAG_CONFIGS_PATH,
+                                    llm=resources.llm)
 
         yield
     finally:
@@ -50,11 +53,13 @@ def _detail_handler(status_code: int):
     return handler
 
 
-def create_app(app_config: Config | None = None, *, weaviate_connector: WeaviateConnector | None = None) -> FastAPI:
+def create_app(app_config: Config | None = None, *, weaviate_connector: WeaviateConnector | None = None,
+               llm_transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     """Build the application. No external service is contacted before startup.
 
     ``weaviate_connector`` opens the Weaviate client at startup (default: the configured
-    instance); tests that do not use Weaviate pass a stand-in.
+    instance); tests that do not use Weaviate pass a stand-in. ``llm_transport`` replaces
+    the network of OpenAI-compatible and Ollama LLM providers (tests use a fake).
     """
     app_config = app_config if app_config is not None else Config()
     # Disabled by default (OTEL_ENABLED), so tests and local runs export nothing.
@@ -66,6 +71,7 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     app.state.resources = None
     app.state.telemetry = telemetry
     app.state.weaviate_connector = weaviate_connector or connect_weaviate
+    app.state.llm_transport = llm_transport
     # mount routes
     app.include_router(export_router)
     app.include_router(auth_router, prefix="/api/auth/jwt", tags=["auth"])

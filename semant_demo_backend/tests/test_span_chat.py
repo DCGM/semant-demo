@@ -8,7 +8,6 @@ from uuid import uuid4
 
 import pytest
 
-from semant_demo.adapters.llm.responses import ResponsesChat
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import span_chat
 from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanType, Tag, TagSpan, AnnotationChunk
@@ -156,13 +155,6 @@ async def test_span_deleted_after_the_check_fails_the_stream_without_a_provider_
     with pytest.raises(ValueError, match="not found"):
         [d async for d in discussion.deltas()]
     assert provider.calls == []
-
-
-async def test_missing_provider_key_is_reported_without_a_request():
-    chat = ResponsesChat(api_key="", base_url="http://unused.invalid", model="m", temperature=0.0, max_tokens=1)
-
-    with pytest.raises(ValueError, match="SPAN_CHAT_API_KEY"):
-        [d async for d in chat.stream("instructions", [])]
 
 
 # ── HTTP: NDJSON events ────────────────────────────────────────────────────

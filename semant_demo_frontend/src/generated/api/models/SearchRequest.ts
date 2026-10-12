@@ -48,12 +48,6 @@ export interface SearchRequest {
     searchTitlePrompt?: string | null;
     /**
      * 
-     * @type {string}
-     * @memberof SearchRequest
-     */
-    searchTitleModel?: string | null;
-    /**
-     * 
      * @type {number}
      * @memberof SearchRequest
      */
@@ -72,12 +66,6 @@ export interface SearchRequest {
     searchSummaryPrompt?: string | null;
     /**
      * 
-     * @type {string}
-     * @memberof SearchRequest
-     */
-    searchSummaryModel?: string | null;
-    /**
-     * 
      * @type {number}
      * @memberof SearchRequest
      */
@@ -94,12 +82,6 @@ export interface SearchRequest {
      * @memberof SearchRequest
      */
     searchResultsSummaryPrompt?: string | null;
-    /**
-     * 
-     * @type {string}
-     * @memberof SearchRequest
-     */
-    searchResultsSummaryModel?: string | null;
     /**
      * 
      * @type {number}
@@ -229,15 +211,12 @@ export function SearchRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
         
         'searchTitleGenerate': json['search_title_generate'] == null ? undefined : json['search_title_generate'],
         'searchTitlePrompt': json['search_title_prompt'] == null ? undefined : json['search_title_prompt'],
-        'searchTitleModel': json['search_title_model'] == null ? undefined : json['search_title_model'],
         'searchTitleBrevity': json['search_title_brevity'] == null ? undefined : json['search_title_brevity'],
         'searchSummaryGenerate': json['search_summary_generate'] == null ? undefined : json['search_summary_generate'],
         'searchSummaryPrompt': json['search_summary_prompt'] == null ? undefined : json['search_summary_prompt'],
-        'searchSummaryModel': json['search_summary_model'] == null ? undefined : json['search_summary_model'],
         'searchSummaryBrevity': json['search_summary_brevity'] == null ? undefined : json['search_summary_brevity'],
         'searchResultsSummaryGenerate': json['search_results_summary_generate'] == null ? undefined : json['search_results_summary_generate'],
         'searchResultsSummaryPrompt': json['search_results_summary_prompt'] == null ? undefined : json['search_results_summary_prompt'],
-        'searchResultsSummaryModel': json['search_results_summary_model'] == null ? undefined : json['search_results_summary_model'],
         'searchResultsSummaryBrevity': json['search_results_summary_brevity'] == null ? undefined : json['search_results_summary_brevity'],
         'query': json['query'],
         'limit': json['limit'] == null ? undefined : json['limit'],
@@ -271,15 +250,12 @@ export function SearchRequestToJSONTyped(value?: SearchRequest | null, ignoreDis
         
         'search_title_generate': value['searchTitleGenerate'],
         'search_title_prompt': value['searchTitlePrompt'],
-        'search_title_model': value['searchTitleModel'],
         'search_title_brevity': value['searchTitleBrevity'],
         'search_summary_generate': value['searchSummaryGenerate'],
         'search_summary_prompt': value['searchSummaryPrompt'],
-        'search_summary_model': value['searchSummaryModel'],
         'search_summary_brevity': value['searchSummaryBrevity'],
         'search_results_summary_generate': value['searchResultsSummaryGenerate'],
         'search_results_summary_prompt': value['searchResultsSummaryPrompt'],
-        'search_results_summary_model': value['searchResultsSummaryModel'],
         'search_results_summary_brevity': value['searchResultsSummaryBrevity'],
         'query': value['query'],
         'limit': value['limit'],

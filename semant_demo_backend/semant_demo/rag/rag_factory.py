@@ -3,12 +3,30 @@ import yaml
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, Type
+from semant_demo.adapters.llm.gateway import LlmGateway
+from semant_demo.adapters.llm.models import Capability
 from semant_demo.features.rag.schemas import RagRouteConfig, RagRequest, RagResponse, ExplainRequest
 
+# Model selection moved to server-side tiers (params.tier); these keys are rejected.
+RETIRED_MODEL_PARAMS = ("model_type", "model_name", "api_key")
+
 class BaseRag:
-   def __init__(self, global_config, param_config):
+   def __init__(self, global_config, param_config, llm: LlmGateway | None = None):
        self.global_config = global_config
        self.param_config = param_config
+       self.llm = llm
+
+   def chat_model(self, *, temperature: float | None = None, context_size: int | None = None,
+                  requires: tuple[Capability, ...] = ()):
+       """The metered chat model of this configuration's tier (``params.tier``, else the rag default)."""
+       retired = [key for key in RETIRED_MODEL_PARAMS if key in self.param_config]
+       if retired:
+           raise ValueError(f"RAG params {', '.join(retired)} are no longer supported; choose a model tier "
+                            f"with params.tier")
+       if self.llm is None:
+           raise ValueError("This RAG configuration needs an LLM gateway.")
+       return self.llm.chat_model("rag", tier=self.param_config.get("tier"), temperature=temperature,
+                                  context_size=context_size, requires=requires)
        
    async def rag_request(self, request: RagRequest, retrieve) -> RagResponse:
         raise NotImplementedError("Method \"rag_request\" is not implemented.")
@@ -37,7 +55,7 @@ class RagRegistry:
         return list(self.configs.values())
 
 #load single rag configuration and return  id and frontend_config, instance of the class
-def rag_load_single_config(global_config, filepath: str):
+def rag_load_single_config(global_config, filepath: str, llm: LlmGateway | None = None):
     try:
         #load rag config
         with open (filepath, "r", encoding="utf-8") as f:
@@ -61,7 +79,7 @@ def rag_load_single_config(global_config, filepath: str):
         RagClass = RAG_IMPLEMENTATIONS[class_name]
         
         #create an instance
-        instance = RagClass(global_config=global_config, param_config=params)
+        instance = RagClass(global_config=global_config, param_config=params, llm=llm)
         
         #create frontend config
         frontend_config = RagRouteConfig(id=id, name=name, description=desc)
@@ -71,7 +89,7 @@ def rag_load_single_config(global_config, filepath: str):
     except Exception as e:
         logging.error(f"Failed to load RAG configuration: {filepath}: {e}")
 
-def rag_factory(global_config, configs_path: str) -> RagRegistry:
+def rag_factory(global_config, configs_path: str, llm: LlmGateway | None = None) -> RagRegistry:
     registry = RagRegistry()
 
     if not os.path.exists(configs_path):
@@ -83,7 +101,7 @@ def rag_factory(global_config, configs_path: str) -> RagRegistry:
             filepath = os.path.join(configs_path, filename)
 
             #load single config
-            results = rag_load_single_config(global_config=global_config, filepath=filepath)
+            results = rag_load_single_config(global_config=global_config, filepath=filepath, llm=llm)
 
             if (results is None):
                 continue

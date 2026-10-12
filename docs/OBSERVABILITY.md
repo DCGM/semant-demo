@@ -10,6 +10,7 @@ This document is the developer handover for telemetry in semANT. It describes wh
 - [Runtime configuration](#runtime-configuration)
 - [Application logs in Grafana](#application-logs-in-grafana)
 - [Traces and metrics](#traces-and-metrics)
+- [LLM calls](#llm-calls) — tokens, estimated cost and outcome of backend model calls
 - [Extending telemetry](#extending-telemetry) — add a metric, trace/span, or structured log
   - [Add a metric](#add-a-metric)
   - [Add a trace/span](#add-a-tracespan)
@@ -65,6 +66,7 @@ Do not use a raw branch name, commit SHA, user name, URL, or random identifier a
 | Automatic metrics | FastAPI and `SystemMetricsInstrumentor` | Standard HTTP metrics plus process CPU time/utilization, memory usage and thread count | Prometheus-compatible metrics store |
 | Feature request counter | `record_feature_request()` | Completed RAG, search, summarization, AI-assistance and tagging actions; labels `feature`, `authentication`, `outcome` | Prometheus-compatible metrics store |
 | Feature duration histogram | `record_feature_request()` | Duration of those same completed user actions, with the same labels; supports p50/p95/p99 | Prometheus-compatible metrics store |
+| LLM calls | `UsageCallback` in `adapters/llm/usage.py`, `record_llm_call()` | One `LLM call finished` log and call/duration/token/cost metrics per backend model call; see [LLM calls](#llm-calls) | Loki, Prometheus-compatible metrics store |
 
 The feature metrics deliberately exclude `GET` endpoints, `/health`, static assets, and unclassified routes. `authentication="bearer_token"` means only that a request included a Bearer token; it is not a count of unique users and no user or token value is exported.
 
@@ -274,6 +276,37 @@ histogram_quantile(
 ```
 
 Name the query results `p50`, `p95`, and `p99`; display them in milliseconds with a minimum of zero. A point at 10:00 summarizes actions completed from 09:30 to 10:00. No completed classified action in that window means that a percentile is undefined: render it as a gap, never as zero milliseconds. p50 is typical latency, p95 is the slower tail, and p99 is the slowest one percent.
+
+## LLM calls
+
+Every backend-owned model call goes through the LLM gateway (`adapters/llm/`, see [ARCHITECTURE.md](ARCHITECTURE.md#llm-gateway-adaptersllm)), whose callback records it — also calls inside RAG chains and graphs, agent tool subcalls and streamed replies. Topicer runs its own models and is not included.
+
+Each finished call writes one structured log, `LLM call finished` (`INFO`; `WARNING` when it failed or was cancelled), with:
+
+- `llm.feature` (`search_summary`, `question`, `span_chat`, `rag`), `llm.tier`, `llm.provider`, `llm.model`;
+- `llm.outcome`: `success`, `error` or `cancelled` (a stream its client abandoned), plus `error.type` (the exception class only);
+- `llm.usage_source`: `provider` when the provider reported the tokens, `estimated` when it did not (or the call failed or was abandoned) and they were estimated from the text length (about 4 characters per token);
+- `llm.input_tokens`, `llm.output_tokens`, `llm.total_tokens`, `llm.estimated_cost_usd` (from the tier's configured prices; absent when a price is unknown), `llm.duration_ms`;
+- `request.id` of the HTTP request that made the call.
+
+Prompts, messages, generated text, document snippets and API keys are never recorded. A non-streamed call cancelled by a client disconnect is not recorded (LangChain reports no end for it).
+
+With telemetry enabled, the same calls are exported as metrics with the low-cardinality attributes `feature`, `tier`, `provider`, `model` (from the server-side catalog) and `usage_source`:
+
+| Metric (Prometheus name) | Extra attributes | Meaning |
+|---|---|---|
+| `semant_demo_llm_calls_total` | `outcome` | Finished calls |
+| `semant_demo_llm_call_duration_seconds_*` | `outcome` | Call duration histogram |
+| `semant_demo_llm_tokens_total` | `token_type` (`input`/`output`) | Tokens; filter `usage_source="provider"` for provider-reported counts only |
+| `semant_demo_llm_cost_USD_total` | — | Estimated cost in USD; only calls whose tier has prices |
+
+The exact normalized names depend on the metrics backend; locate them in the metric browser. For example, estimated cost per feature over a day:
+
+```promql
+sum by (feature) (increase(semant_demo_llm_cost_USD_total{service_name="semant-demo-app", deployment_environment_name=~"$environment"}[1d]))
+```
+
+These records are for monitoring; they do not enforce spending limits.
 
 ## Extending telemetry
 

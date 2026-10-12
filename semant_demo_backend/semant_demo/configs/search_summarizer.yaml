@@ -1,12 +1,4 @@
-api:  # API configuration.
-  cls: OllamaAsyncAPI  # name of class that is subclass of APIAsync
-  config: # configuration for defined class
-    api_key: OLLAMA # API key.
-    base_url: http://athena19.fit.vutbr.cz:11431 # Base URL for API.
-    pool_interval: 300 # Interval in seconds for checking status.
-    process_requests_interval: 1 # Interval in seconds between sending requests when processed synchronously.
-    concurrency: 10 # Maximum number of concurrent requests to the API. This is used with async processing.
-gen_title_model: qwen2.5:32b-instruct  # Model to use for title generation.
+# Search titles and summaries. The model is the search_summary feature's tier (LLM_MODELS_CONFIG).
 gen_title_model_options: # Model options for title generation.
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.
@@ -20,7 +12,6 @@ gen_title_prompt: |
   "{{ text.text }}"
   Nadpis by měl být relevantní k dotazu uživatele: "{{ query }}".
 # Prompt for title generation.
-gen_results_summary_model: qwen2.5:32b-instruct  # Model to use for search results summary generation.
 gen_results_summary_model_options: # Model options for search results summary generation.
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.
@@ -50,7 +41,6 @@ gen_results_summary_prompt: |
   [doc{{ loop.index }}] {{ result.text }}
   {% endfor %}
 # Prompt for search results summary generation.
-gen_query_summary_model: qwen2.5:32b-instruct  # Model to use for query summary generation.
 gen_query_summary_model_options: # Model options for query summary generation.
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.

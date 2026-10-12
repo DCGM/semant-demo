@@ -5,38 +5,23 @@ fast tests stay offline and produce the same result on every run.
 """
 import hashlib
 import math
-
-from ollama import ChatResponse, Message
-
-from semant_demo.llm_api import APIModelResponseOllama, APIOutput, APIRequest
+from collections.abc import Callable
 
 
-class FakeChatAPI:
-    """Replaces an ``APIAsync`` chat provider.
+class FakeLlm:
+    """Replaces ``adapters.llm.gateway.LlmGateway`` for callers of ``complete``.
 
-    Replies are looked up by request ``custom_id``; requests without a configured reply get
-    ``default_reply``. Every request is recorded in ``requests`` for assertions.
+    ``reply`` maps the request's messages to the reply text, or raises to simulate a
+    provider failure. Every call is recorded in ``calls`` as ``(feature, messages, options)``.
     """
 
-    def __init__(self, replies: dict[str, str] | None = None, default_reply: str = "fake reply"):
-        self.replies = dict(replies or {})
-        self.default_reply = default_reply
-        self.requests: list[APIRequest] = []
+    def __init__(self, reply: Callable[[list[dict[str, str]]], str] | str = "fake reply"):
+        self.reply = reply if callable(reply) else (lambda messages: reply)
+        self.calls: list[tuple[str, list[dict[str, str]], dict]] = []
 
-    async def process_single_request(self, request: APIRequest) -> APIOutput:
-        self.requests.append(request)
-        content = self.replies.get(request.custom_id, self.default_reply)
-        return APIOutput(
-            custom_id=request.custom_id,
-            response=APIModelResponseOllama(
-                body=ChatResponse(message=Message(role="assistant", content=content)),
-                structured=False,
-            ),
-        )
-
-    async def process_requests(self, requests):
-        for request in requests:
-            yield await self.process_single_request(request)
+    async def complete(self, feature: str, messages, **options) -> str:
+        self.calls.append((feature, list(messages), options))
+        return self.reply(list(messages))
 
 
 FAKE_EMBEDDING_DIM = 16
@@ -55,7 +40,7 @@ def fake_embedding(text: str, dim: int = FAKE_EMBEDDING_DIM) -> list[float]:
 
 
 class FakeStreamingChat:
-    """Replaces ``adapters.llm.responses.ResponsesChat``: yields ``deltas``, records calls.
+    """Replaces ``adapters.llm.gateway.FeatureChat``: yields ``deltas``, records calls.
 
     With ``error`` set, raises it after the deltas (a provider failing mid-stream).
     """

@@ -7,6 +7,8 @@ load_dotenv() #have to be called before config import
 
 from semant_demo.config import config
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
+from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
+from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
@@ -35,7 +37,8 @@ async def main():
         #path to configuration
         path = os.path.join(config.RAG_CONFIGS_PATH, "01_ollama_default_config .yaml")
         #load configuration (yaml format)
-        results = rag_load_single_config(config, path)
+        llm = LlmGateway(ModelCatalog.load(config.LLM_MODELS_CONFIG), ProviderSettings.from_config(config))
+        results = rag_load_single_config(config, path, llm)
         
         _, _, rag_generator = results
 

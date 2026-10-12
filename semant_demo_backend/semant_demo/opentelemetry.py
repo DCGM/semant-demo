@@ -28,6 +28,7 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from semant_demo.config import Config
+from semant_demo.core.request_context import current_request_id
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -104,6 +105,10 @@ class OpenTelemetry:
     logger: object
     feature_request_counter: object
     feature_request_duration_histogram: object
+    llm_call_counter: object
+    llm_call_duration_histogram: object
+    llm_token_counter: object
+    llm_cost_counter: object
     trace_provider: TracerProvider
     meter_provider: MeterProvider
     log_provider: LoggerProvider
@@ -135,6 +140,29 @@ class OpenTelemetry:
             duration_seconds,
             attributes=attributes,
         )
+
+    def record_llm_call(
+        self,
+        *,
+        attributes: dict[str, str],
+        outcome: str,
+        duration_seconds: float,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        cost_usd: float | None,
+    ) -> None:
+        """Record one finished LLM call. Unknown token counts and costs are not recorded.
+
+        ``attributes`` are the low-cardinality call labels: feature, tier, provider,
+        model and usage_source.
+        """
+        self.llm_call_counter.add(1, attributes={**attributes, "outcome": outcome})
+        self.llm_call_duration_histogram.record(duration_seconds, attributes={**attributes, "outcome": outcome})
+        for token_type, tokens in (("input", input_tokens), ("output", output_tokens)):
+            if tokens is not None:
+                self.llm_token_counter.add(tokens, attributes={**attributes, "token_type": token_type})
+        if cost_usd is not None:
+            self.llm_cost_counter.add(cost_usd, attributes=attributes)
 
     def instrument_app(self, app: FastAPI) -> None:
         self.fastapi_instrumentator.instrument_app(
@@ -233,12 +261,15 @@ class RequestTelemetryMiddleware:
                     duration_seconds=duration_seconds,
                 )
 
+        request_id_token = current_request_id.set(request_id)
         try:
             await self.app(scope, receive, send_with_request_id)
         except Exception:
             record(500, perf_counter() - started_at)
             logging.getLogger(__name__).exception("HTTP request failed", extra=attributes)
             raise
+        finally:
+            current_request_id.reset(request_id_token)
 
         record(status_code, perf_counter() - started_at)
         logging.getLogger(__name__).info("HTTP request completed", extra=attributes)
@@ -299,6 +330,26 @@ def initialize_opentelemetry(config: Config) -> OpenTelemetry | None:
         unit="s",
         description="Duration of completed user-initiated application feature requests.",
     )
+    llm_call_counter = meter.create_counter(
+        "semant_demo.llm.calls",
+        unit="{call}",
+        description="Finished LLM provider calls made by the backend.",
+    )
+    llm_call_duration_histogram = meter.create_histogram(
+        "semant_demo.llm.call.duration",
+        unit="s",
+        description="Duration of finished LLM provider calls.",
+    )
+    llm_token_counter = meter.create_counter(
+        "semant_demo.llm.tokens",
+        unit="{token}",
+        description="LLM tokens, provider-reported or estimated (see usage_source).",
+    )
+    llm_cost_counter = meter.create_counter(
+        "semant_demo.llm.cost",
+        unit="USD",
+        description="Estimated LLM cost from configured tier prices.",
+    )
 
     log_exporter = OTLPLogExporter(
         endpoint=urljoin(
@@ -342,6 +393,10 @@ def initialize_opentelemetry(config: Config) -> OpenTelemetry | None:
         logger=logger,
         feature_request_counter=feature_request_counter,
         feature_request_duration_histogram=feature_request_duration_histogram,
+        llm_call_counter=llm_call_counter,
+        llm_call_duration_histogram=llm_call_duration_histogram,
+        llm_token_counter=llm_token_counter,
+        llm_cost_counter=llm_cost_counter,
         trace_provider=trace_provider,
         meter_provider=meter_provider,
         log_provider=log_provider,

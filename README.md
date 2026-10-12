@@ -65,12 +65,10 @@ semant-demo/
 │   │   │   ├── sql/               # SQL Base, tables, user lookups, RAG feedback table
 │   │   │   ├── embeddings/        # embedding service client
 │   │   │   ├── topicer/           # Topicer span-proposal client
-│   │   │   └── llm/               # Responses API streaming (span chat)
+│   │   │   └── llm/               # LLM gateway: model tiers, LangChain models, usage
 │   │   ├── routes/                # DI (dependencies.py) and routes outside features:
 │   │   │                          # rag, summarizer, feedback, user search
-│   │   ├── ollama_proxy.py        # round-robin Ollama client
-│   │   ├── configs/               # YAML configs (summariser prompts, search filters)
-│   │   ├── llm_api/               # async LLM abstraction (OpenAI, Ollama)
+│   │   ├── configs/               # YAML configs (LLM model tiers, summariser prompts, search filters)
 │   │   ├── rag/                   # RAG implementations + YAML configs
 │   │   ├── summarization/         # search-result summariser (Jinja2 templates)
 │   │   ├── maintenance/           # chunk tag audit (explicit, reviewed cleanup)
@@ -196,19 +194,16 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `GEMMA_MODEL` | `BAAI/bge-multilingual-gemma2` | HuggingFace embedding model name |
 | `GPU_DEVICE` | `0` | GPU index visible to the container (`CUDA_VISIBLE_DEVICES`) |
 | **Ollama** | | |
-| `OLLAMA_URLS` | `http://localhost:11434` | Comma-separated Ollama endpoints |
-| `OLLAMA_MODEL` | `gemma3:12b` | Ollama model |
+| `OLLAMA_URLS` | `http://localhost:11434` | Default endpoint of Ollama model tiers (only the first URL is used) |
 | **OpenAI / OpenRouter** | | |
 | `OPENAI_API_KEY` | _(empty)_ | OpenAI API key (works with both OpenAI and OpenRouter endpoints) |
 | `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | API endpoint URL ( https://api.openai.com/v1 for OpenAI, https://openrouter.ai/api/v1 for OpenRouter) |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Default OpenAI model |
 | **Google** | | |
 | `GOOGLE_API_KEY` | _(empty)_ | Google Gemini key |
-| `GOOGLE_MODEL` | `gemini-2.5-pro` | Default Google model |
 | **Shared LLM** | | |
+| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Model tier catalog: the provider and model of each tier (`tiny`/`small`/`medium`/`large`) and the tiers each feature may use. The only place models are chosen. |
 | `RAG_CONFIGS_PATH` | `rag/rag_configs/configs` | Directory with RAG YAML configs |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summariser config path |
-| `MODEL_TEMPERATURE` | `0.0` | Default LLM temperature |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |
 | `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Directory for the SQLite `tasks.db` database with user accounts and RAG feedback (mounted into the container; the name is historical) |
@@ -221,9 +216,6 @@ For detailed setup instructions, advanced options, and data management, see [dep
 | `TOPICER_URL` | `http://semant.cz:8089` | Base URL of the external Topicer span-proposal service |
 | `TOPICER_CONFIG_NAME` | `openai` | Name of the Topicer-side LLM config to use |
 | `TOPICER_TIMEOUT` | `600.0` | HTTP timeout (seconds) for Topicer streaming calls |
-| `SPAN_CHAT_API_KEY` | _(falls back to `OPENAI_API_KEY`)_ | API key for the OpenAI-compatible endpoint used by the span discussion chat |
-| `SPAN_CHAT_API_URL` | _(falls back to `OPENAI_API_URL`)_ | Base URL of the chat endpoint (override for OpenRouter / local) |
-| `SPAN_CHAT_MODEL` | _(falls back to `OPENAI_MODEL`)_ | Chat model used to discuss individual spans |
 | `SPAN_CHAT_TEMPERATURE` | `0.4` | Sampling temperature for the span discussion chat |
 | `SPAN_CHAT_MAX_TOKENS` | `1024` | Max tokens generated per assistant reply |
 | `SPAN_CHAT_CONTEXT_CHARS` | `1500` | Characters of neighbour-chunk text included around the span |
@@ -231,7 +223,7 @@ For detailed setup instructions, advanced options, and data management, see [dep
 
 ---
 
-> **ℹ️ Universal Configuration:** Methods using the OpenAI Python package use `OPENAI_API_KEY` and `OPENAI_API_URL`. Set `OPENAI_API_URL=https://openrouter.ai/api/v1` to use OpenRouter, or the OpenAI endpoint to use OpenAI directly. Seamless integration via `ChatOpenAI` in LangChain.
+> **ℹ️ Models:** every backend LLM call uses a model tier from `LLM_MODELS_CONFIG`. Tiers with the `openai` provider use `OPENAI_API_KEY` and `OPENAI_API_URL` (`https://openrouter.ai/api/v1` for OpenRouter, the default, or the OpenAI endpoint; the catalog's model names must match the endpoint, e.g. `openai/gpt-4.1-mini` on OpenRouter). A tier whose provider has no key refuses calls without sending them.
 
 ## API Endpoints
 

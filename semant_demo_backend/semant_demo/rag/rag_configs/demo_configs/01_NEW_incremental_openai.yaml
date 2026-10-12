@@ -3,8 +3,7 @@ name: "Adaptive-RAG (GPT-5.1)"
 description: "Advanced adaptive RAG pipeline powered by OpenAI GPT-5.1 with an enhanced multi-query retrieval strategy and optional web search. Supports conversational context across messages. Optimized for fast responses. Answers in Czech. Supports an \"Explain\" feature."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
-  model_type: "OPENAI"
-  model_name: "gpt-5.1"
+  tier: "large"
   temperature: 0.0
   search_type : "hybrid"
   alpha: 0.5

@@ -87,19 +87,16 @@ cp .env.example .env
 | `GEMMA_MODEL` | `BAAI/bge-multilingual-gemma2` | HuggingFace embedding model name |
 | `GPU_DEVICE` | `0` | GPU index visible to the container (`CUDA_VISIBLE_DEVICES`) |
 | **Ollama** | | |
-| `OLLAMA_URLS` | `http://localhost:11434` | Comma-separated Ollama endpoints |
-| `OLLAMA_MODEL` | `gemma3:12b` | Ollama model |
+| `OLLAMA_URLS` | `http://localhost:11434` | Default endpoint of Ollama model tiers (only the first URL is used) |
 | **OpenAI / OpenRouter** | | |
 | `OPENAI_API_KEY` | _(empty)_ | OpenAI API key (works with both OpenAI and OpenRouter endpoints) |
 | `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | API endpoint URL ( https://api.openai.com/v1 for OpenAI, https://openrouter.ai/api/v1 for OpenRouter) |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Default OpenAI model |
 | **Google** | | |
 | `GOOGLE_API_KEY` | _(empty)_ | Google Gemini key |
-| `GOOGLE_MODEL` | `gemini-2.5-pro` | Default Google model |
 | **Shared LLM** | | |
+| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Model tier catalog: the provider and model of each tier (`tiny`/`small`/`medium`/`large`) and the tiers each feature may use. The only place models are chosen. |
 | `RAG_CONFIGS_PATH` | `rag/rag_configs/configs` | Directory with RAG YAML configs |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summariser config path |
-| `MODEL_TEMPERATURE` | `0.0` | Default LLM temperature |
 | `LANGCHAIN_API_KEY` | _(empty)_ | LangChain/LangSmith tracing key (optional) |
 | **Application** | | |
 | `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Directory for the SQLite `tasks.db` database (mounted into the container) |
@@ -121,7 +118,7 @@ See [Observability](../docs/OBSERVABILITY.md) for the telemetry architecture, si
 
 ---
 
-> **ℹ️ Universal Configuration:** Methods using the OpenAI Python package use `OPENAI_API_KEY` and `OPENAI_API_URL`. Set `OPENAI_API_URL=https://openrouter.ai/api/v1` to use OpenRouter, or the OpenAI endpoint to use OpenAI directly. Seamless integration via `ChatOpenAI` in LangChain.
+> **ℹ️ Models:** every backend LLM call uses a model tier from `LLM_MODELS_CONFIG`. Tiers with the `openai` provider use `OPENAI_API_KEY` and `OPENAI_API_URL` (`https://openrouter.ai/api/v1` for OpenRouter, the default, or the OpenAI endpoint; the catalog's model names must match the endpoint, e.g. `openai/gpt-4.1-mini` on OpenRouter). A tier whose provider has no key refuses calls without sending them.
 
 ## Commands
 

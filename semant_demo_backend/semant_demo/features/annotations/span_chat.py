@@ -8,7 +8,7 @@ re-sends the full history each turn, so nothing is stored.
 
 ``prepare_discussion`` validates the request and checks collection read access before
 anything is streamed, so a denied request makes no provider call. Context reads go
-through the repositories; the provider is injected (``adapters/llm/responses.py``).
+through the repositories; the provider is injected (``adapters/llm/gateway.FeatureChat``).
 """
 from __future__ import annotations
 

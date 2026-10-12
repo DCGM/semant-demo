@@ -2,12 +2,13 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-import ollama
-
 from semant_demo.adapters.topicer.client import TopicerClient, TopicerTag
 from semant_demo.config import Config
 from semant_demo.features.documents.schemas import DocumentChunk
-from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
+from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
+from semant_demo.adapters.llm.models import ModelCatalog
+from semant_demo.summarization.templated import load_summarizer
+from tests.app_support import write_offline_llm_catalog
 from tests.corpus import load_corpus
 from tests.fake_providers import FAKE_REASON, create_fake_provider_app
 from tests.fakes import FAKE_EMBEDDING_DIM, fake_embedding
@@ -71,10 +72,11 @@ async def test_unfaked_provider_routes_fail_visibly(fake_client):
     assert response.status_code == 501
 
 
-async def test_ollama_chat_summarizes_the_passages_it_was_sent(fake_app):
-    # The real summarizer (configured as deployed), talking to the fake over ASGI.
-    summarizer = TemplatedSearchResultsSummarizer.create(Config(environ={}).SEARCH_SUMMARIZER_CONFIG)
-    summarizer.api.client = ollama.AsyncClient(host="http://fake/ollama", transport=ASGITransport(app=fake_app))
+async def test_ollama_chat_summarizes_the_passages_it_was_sent(fake_app, tmp_path):
+    # The real summarizer and tier (configured as deployed), talking to the fake over ASGI.
+    llm = LlmGateway(ModelCatalog.load(write_offline_llm_catalog(tmp_path / "llm_models.yaml")),
+                     ProviderSettings(ollama_base_url="http://fake/ollama"), http_transport=ASGITransport(app=fake_app))
+    summarizer = load_summarizer(Config(environ={}).SEARCH_SUMMARIZER_CONFIG, llm)
     corpus = load_corpus()
     chunks = [
         DocumentChunk(id=c["id"], text=c["text"], start_page_id=c["id"], from_page=1, to_page=1,

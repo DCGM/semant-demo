@@ -8,8 +8,9 @@ test-owned Weaviate. It
 * resets the test store and seeds the fixture corpus (ownership verified first);
 * creates a temporary SQLite database with the corpus users;
 * serves the built frontend from the same origin as the API;
-* runs fake embedding/Topicer/Ollama providers on ``port + 1`` and points every AI
-  provider setting at them, with no API keys, so no live or paid provider can be reached.
+* runs fake embedding/Topicer/LLM providers on ``port + 1`` and points every AI
+  provider setting at them, with no API keys, so no live or paid provider can be reached
+  (tiers on keyed providers are refused before any request).
   The Topicer stream pauses ``FAKE_TOPICER_STREAM_DELAY`` seconds between chunks, so
   browser tests can cancel or navigate while a suggestion run is under way.
 
@@ -38,24 +39,26 @@ logger = logging.getLogger("e2e_server")
 
 E2E_JWT_SECRET = "e2e-only-secret-long-enough-for-hmac-sha256-32bytes"
 FAKE_TOPICER_STREAM_DELAY = 3.0
-DEFAULT_SUMMARIZER_CONFIG = Path(__file__).parents[1] / "semant_demo" / "configs" / "search_summarizer.yaml"
+# Read without importing semant_demo, whose settings must see the profile's environment.
+DEFAULT_LLM_MODELS_CONFIG = Path(__file__).parents[1] / "semant_demo" / "configs" / "llm_models.yaml"
 
 
 def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, fake_url: str, fake_port: int) -> dict[str, str]:
     rag_dir = work_dir / "rag_configs"
     rag_dir.mkdir()
-    # Same summarizer settings, but the API endpoint is the fake provider.
-    summarizer = yaml.safe_load(DEFAULT_SUMMARIZER_CONFIG.read_text())
-    summarizer["api"]["config"]["base_url"] = f"{fake_url}/ollama"
-    summarizer_path = work_dir / "search_summarizer.yaml"
-    summarizer_path.write_text(yaml.safe_dump(summarizer, allow_unicode=True))
+    # The default model tiers without per-tier endpoints: every tier uses the fake provider.
+    catalog = yaml.safe_load(DEFAULT_LLM_MODELS_CONFIG.read_text())
+    for tier in catalog["tiers"].values():
+        tier.pop("base_url", None)
+    llm_models_path = work_dir / "llm_models.yaml"
+    llm_models_path.write_text(yaml.safe_dump(catalog))
     return {
         **endpoint.app_environ(),
         "SQL_DB_URL": f"sqlite+aiosqlite:///{work_dir / 'e2e.db'}",
         "JWT_SECRET": E2E_JWT_SECRET,
         "STATIC_PATH": str(static_dir),
         "RAG_CONFIGS_PATH": str(rag_dir),
-        "SEARCH_SUMMARIZER_CONFIG": str(summarizer_path),
+        "LLM_MODELS_CONFIG": str(llm_models_path),
         "FEEDBACK_LOG_PATH": str(work_dir / "feedback.log.jsonl"),
         "FEEDBACK_WEBHOOK_URL": "",
         "EMBEDDING_SERVICE_HOST": "127.0.0.1",
@@ -65,8 +68,6 @@ def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, f
         "OLLAMA_URLS": f"{fake_url}/ollama",
         "OPENAI_API_KEY": "",
         "GOOGLE_API_KEY": "",
-        "LANGCHAIN_API_KEY": "",
-        "SPAN_CHAT_API_KEY": "",
         "PRODUCTION": "false",
     }
 

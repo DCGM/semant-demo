@@ -35,18 +35,15 @@ class Config:
         self.ALLOWED_ORIGIN = env.get("ALLOWED_ORIGIN", "http://localhost:9000")
         self.LOG_LEVEL = env.get("LOG_LEVEL", "INFO").upper()
 
+        # Only the first URL is used: the default endpoint of Ollama model tiers.
         self.OLLAMA_URLS = env.get("OLLAMA_URLS", "http://localhost:11434").split(",")
-        self.OLLAMA_MODEL = env.get("OLLAMA_MODEL", "gemma3:12b")
         self.SEARCH_SUMMARIZER_CONFIG = env.get("SEARCH_SUMMARIZER_CONFIG", str(SCRIPT_PATH / "configs" / "search_summarizer.yaml"))
         self.SEARCH_FILTERS_CONFIG = env.get("SEARCH_FILTERS_CONFIG", str(SCRIPT_PATH / "configs" / "search_filters.yaml"))
 
-        self.GOOGLE_MODEL = env.get("GOOGLE_MODEL", "gemini-2.5-pro")
-        self.OPENAI_MODEL = env.get("OPENAI_MODEL", "gpt-4o-mini")
-
         self.GOOGLE_API_KEY = env.get("GOOGLE_API_KEY", "")
-        self.LANGCHAIN_API_KEY = env.get("LANGCHAIN_API_KEY", "")
 
-        self.MODEL_TEMPERATURE = float(env.get("MODEL_TEMPERATURE", 0.0))
+        # Server-side model tiers and the tiers each feature may use (adapters/llm/models.py).
+        self.LLM_MODELS_CONFIG = env.get("LLM_MODELS_CONFIG", str(SCRIPT_PATH / "configs" / "llm_models.yaml"))
 
         # SQL db
         # Default is relative to the backend working directory.
@@ -64,12 +61,7 @@ class Config:
         self.TOPICER_CONFIG_NAME = env.get("TOPICER_CONFIG_NAME", "openai")
         self.TOPICER_TIMEOUT = float(env.get("TOPICER_TIMEOUT", 600.0))
 
-        # Span discussion chat (OpenAI-compatible endpoint).
-        # Defaults reuse the generic OPENAI_* settings so a single API key
-        # can drive both generic LLM use and the span chat unless overridden.
-        self.SPAN_CHAT_API_KEY = env.get("SPAN_CHAT_API_KEY", self.OPENAI_API_KEY)
-        self.SPAN_CHAT_API_URL = env.get("SPAN_CHAT_API_URL", self.OPENAI_API_URL)
-        self.SPAN_CHAT_MODEL = env.get("SPAN_CHAT_MODEL", self.OPENAI_MODEL)
+        # Span discussion chat; its model is the span_chat feature's tier (LLM_MODELS_CONFIG).
         self.SPAN_CHAT_TEMPERATURE = float(env.get("SPAN_CHAT_TEMPERATURE", 0.4))
         self.SPAN_CHAT_MAX_TOKENS = int(env.get("SPAN_CHAT_MAX_TOKENS", 1024))
         # Number of characters of surrounding chunk text to include before/after
