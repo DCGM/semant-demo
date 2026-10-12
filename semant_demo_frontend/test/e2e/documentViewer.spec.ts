@@ -173,3 +173,29 @@ test('on a narrow window the text, gutters and side panel stay usable', async ({
   await page.getByRole('button', { name: 'Show panel' }).click()
   await expect(page.locator('.tag-card').first()).toBeVisible()
 })
+
+test('the AI assist and tags panels keep their state across tab switches', async ({ page }) => {
+  await logIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  const tagNames = () => page.locator('.tag-card .tag-name').allTextContents()
+
+  // Manual tag order: drop Osoba on the top half of Místo.
+  expect(await tagNames()).toEqual([fixture.tag('place').name, fixture.tag('person').name])
+  const person = page.locator('.tag-card').filter({ hasText: fixture.tag('person').name })
+  const place = page.locator('.tag-card').filter({ hasText: fixture.tag('place').name })
+  await person.dragTo(place, { targetPosition: { x: 40, y: 5 } })
+  expect(await tagNames()).toEqual([fixture.tag('person').name, fixture.tag('place').name])
+
+  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
+  await page.getByRole('radio', { name: 'Thorough (every chunk in collection)' }).click()
+
+  await page.getByRole('tab', { name: 'Tags' }).click()
+  await expect(page.locator('.tag-card')).toHaveCount(2)
+  expect(await tagNames()).toEqual([fixture.tag('person').name, fixture.tag('place').name])
+
+  await page.getByRole('tab', { name: 'AI assist' }).click()
+  await expect(page.getByRole('radio', { name: 'Thorough (every chunk in collection)' })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('person').name })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('place').name })).toHaveAttribute('aria-checked', 'false')
+})

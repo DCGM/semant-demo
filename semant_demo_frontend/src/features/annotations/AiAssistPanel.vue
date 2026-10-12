@@ -566,14 +566,22 @@ function onEditEntryTag(entry: AutoSpanEntry) {
   tagEditing.editTag(entry.tag)
 }
 
-// The run state itself is reset by the document view; the panel drops its own selection
-// and status so nothing of the previous document is shown.
+// The panel stays alive across tab switches (keep-alive) and keeps its state there. The
+// run state itself is reset by the document view; the panel drops its own selection and
+// status when the document or collection changes, and the chosen tags (a collection's
+// tags) when the collection changes.
 watch(
-  () => props.documentId,
+  () => [props.collectionId, props.documentId],
   () => {
     selectedSuggestionIds.value = new Set()
     lastDeletedCount.value = null
     lastStatusKind.value = null
+  }
+)
+watch(
+  () => props.collectionId,
+  () => {
+    selectedAiTagIds.value = []
   }
 )
 </script>
