@@ -26,6 +26,9 @@ python db_insert_jsonl.py --source-dir /mnt/ssd2/weaviate_data/all.768/chunks.ve
 Load the metadata to weaviate: `update_metadata.py` was replaced by the reviewed
 report/apply command `python -m semant_demo.maintenance.metadata_sync` in
 `semant_demo_backend/` (#257); see `docs/DEVELOPMENT.md`, "Kramerius metadata sync".
+Documents without chunks: `scan_document_chunks.py` was replaced by
+`python -m semant_demo.maintenance.document_cleanup` (#281; audit, then gated delete); see
+`docs/DEVELOPMENT.md`, "Documents without chunks".
 ------
 ### Local
 Jus in step "Load chunks and document IDs to weaviate" load from local files:

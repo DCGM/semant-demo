@@ -315,6 +315,60 @@ configured endpoint, and it re-checks every listed (chunk, tag) pair against the
 stored at that moment. Never run `--apply` against a shared or production database
 without explicit authorization for that task.
 
+### Documents without chunks
+
+`python -m semant_demo.maintenance.document_cleanup` (run in `semant_demo_backend/`; it
+replaces `weaviate_utils/scan_document_chunks.py`, #281) finds documents that no chunk
+references. `--audit CHECKPOINT` only reads: it pages `Documents` by cursor (100 per page,
+ids, creation times and `collection` references only), checks each document with a
+one-object `Chunks.document` lookup confirmed by an aggregate count (a failed or
+disagreeing lookup is `unknown_or_error`, never "no chunks"), and first verifies the
+lookup on documents that a sample of chunks references. Categories: `has_chunks`,
+`no_chunks_unreferenced` and `no_chunks_collection_member` (both removable; collection
+membership does not protect a document), `unknown_or_error`, `excluded_recent` (created
+less than `--min-age-hours`, default 24, before the audit: possibly still being ingested)
+and `excluded_other_reference` (any other reference in the schema that targets documents).
+Aliases are resolved (`Documents` -> `Documents_test` on the production endpoint). The
+checkpoint is resumable; `CHECKPOINT.candidates.jsonl` lists every document without
+chunks with its category, creation time and collection ids, so a removed UUID can be
+reimported with the same identity. The total chunk count is read before and after;
+`--rate` and `--concurrency` limit the load. On the production endpoint 200 lookups took
+about 30 ms (2026-10-12).
+
+Deleting is a separate step:
+
+```bash
+python -m semant_demo.maintenance.document_cleanup --delete CHECKPOINT \
+  --confirm-endpoint HOST:PORT --backup-id BACKUP [--limit N] [--rate N]
+```
+
+It refuses to start unless the endpoint is confirmed, the audit finished on the same
+endpoint, collections and reference schema without a chunk-count change, the chunk count
+still equals the audit's (checked again before every batch: a change means ingestion is
+running), and `BACKUP` is a successful `backup-filesystem` backup holding documents, chunks
+and user collections. Each document is read again right before deletion: absent ones count
+as `already_absent`; it is skipped if it was created after the backup started, if a chunk
+or another reference now points to it, or if a lookup fails. After deletion it is read
+back. Deleting a document removes its own `collection` references, so it leaves the
+collections' document lists and counts; the collections, tags and spans are not touched.
+Progress (`CHECKPOINT.delete.json`) is resumable, failed and unverified ids are retried
+first, and `CHECKPOINT.delete.jsonl` has one line per document. At the end every affected
+collection is checked: no deleted document listed, document count equal to the count before
+minus the removed memberships. The check and the deletion are not atomic: a chunk inserted
+in between is reported (`chunk_appeared`), not undone; run it when no ingestion is running.
+To restore a removed document, import it again from its source JSON/JSONL
+(`weaviate_utils/db_insert_jsonl.py`) with the same UUID; collection memberships are not
+restored automatically (the manifest has the collection ids).
+
+#### Deployed test database (2026-10-12, #281)
+
+Audit of `localhost:8082`: 500 documents, 32 `has_chunks`, 428 `no_chunks_unreferenced`,
+40 `no_chunks_collection_member` (70 memberships in 9 user collections, 17 documents in
+several), 0 `unknown_or_error`, no other references to documents, chunk count 3,260 before
+and after. Backup `pre-document-cleanup-281-2026-10-12` was restored into a throwaway
+Weaviate (500 documents, 3,260 chunks, 77 collections, 64 tags, 613 spans). The deletion has
+not run yet; it needs explicit authorization.
+
 ### Kramerius metadata sync
 
 `python -m semant_demo.maintenance.metadata_sync` (run in `semant_demo_backend/`) copies
