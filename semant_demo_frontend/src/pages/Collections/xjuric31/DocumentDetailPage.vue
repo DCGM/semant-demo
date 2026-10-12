@@ -532,7 +532,7 @@ import useTagSpans from 'src/composables/useTagSpans'
 import useTagsDialog from 'src/composables/dialogs/useTagsDialog'
 import type { PostTag, PatchTag, Tag } from 'src/models/tags'
 import { SpanType } from 'src/generated/api'
-import type { Chunk } from 'src/generated/api'
+import type { CollectionChunk } from 'src/generated/api'
 import { useTagNavigation } from 'src/composables/useTagNavigation'
 import useAiAssistance from 'src/composables/useAiAssistance'
 import useSpanDiscussionDialog from 'src/composables/dialogs/useSpanDiscussionDialog'
@@ -593,7 +593,7 @@ const { tags, loadTagsByCollection, createTag, updateTag } = useTags()
 const { openTagsDialog } = useTagsDialog()
 
 // Local display chunks — a superset of collection chunks plus any expanded previews
-const displayChunks = ref<Chunk[]>([])
+const displayChunks = ref<CollectionChunk[]>([])
 
 // Whether neighbour chunks exist in the DB beyond what we're showing
 const hasPrev = ref(false)
@@ -608,7 +608,7 @@ const gapLoadingKey = ref<string | null>(null)
 const chunkLoadingId = ref<string | null>(null)
 
 // Hidden chunks needed for cross-gap span projection (e.g. a span bridging a removed chunk)
-const hiddenPreviewChunks = ref<Chunk[]>([])
+const hiddenPreviewChunks = ref<CollectionChunk[]>([])
 // Sync displayChunks from store when initial load completes (handled in watch below)
 const annotations = useAnnotations(() => displayChunks.value, () => hiddenPreviewChunks.value)
 const tagSpans = useTagSpans()
@@ -1192,8 +1192,8 @@ watch(editingAutoSpan, (span) => {
 
 /** Group chunks into paragraphs for rendering, but keep individual chunks accessible */
 const assembledParagraphs = computed(() => {
-  const paragraphs: { chunks: Chunk[]; gapAfter: number | null; gapBefore: number | null }[] = []
-  let currentGroup: Chunk[] = []
+  const paragraphs: { chunks: CollectionChunk[]; gapAfter: number | null; gapBefore: number | null }[] = []
+  let currentGroup: CollectionChunk[] = []
 
   for (let i = 0; i < displayChunks.value.length; i++) {
     const chunk = displayChunks.value[i]
@@ -1659,7 +1659,7 @@ async function loadGapAll(afterOrder: number, beforeOrder: number) {
 }
 
 // ── Add / remove chunk from collection ──
-async function onAddChunk(chunk: Chunk) {
+async function onAddChunk(chunk: CollectionChunk) {
   chunkLoadingId.value = chunk.id
   try {
     const [outcome] = await Promise.allSettled([addChunkToCollection(chunk.id, props.collectionId)])
@@ -1681,7 +1681,7 @@ async function onAddChunk(chunk: Chunk) {
   }
 }
 
-async function onRemoveChunk(chunk: Chunk) {
+async function onRemoveChunk(chunk: CollectionChunk) {
   chunkLoadingId.value = chunk.id
   try {
     const [outcome] = await Promise.allSettled([removeChunkFromCollection(chunk.id, props.collectionId)])

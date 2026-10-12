@@ -11,8 +11,7 @@ import pytest
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.collections.access import AuthenticationRequired
 from semant_demo.features.documents import service
-from semant_demo.schema.chunks import TextChunk
-from semant_demo.schema.documents import Document, DocumentBrowse, DocumentDetail
+from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse, DocumentDetail
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
 COLLECTION, DOCUMENT, OUTSIDE_DOCUMENT = uuid4(), uuid4(), uuid4()
@@ -99,7 +98,7 @@ async def test_document_outside_the_collection_is_not_read():
 #####################################
 
 def _chunk(order, document=DOCUMENT):
-    return TextChunk(id=uuid4(), text=f"Odstavec {order}", start_page_id=uuid4(), from_page=order, to_page=order,
+    return DocumentChunk(id=uuid4(), text=f"Odstavec {order}", start_page_id=uuid4(), from_page=order, to_page=order,
                      document=document, order=order)
 
 

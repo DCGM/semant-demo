@@ -259,7 +259,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, Notify, useQuasar } from 'quasar'
-import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type TextChunkWithDocument } from 'src/generated/api'
+import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type SearchResultChunk } from 'src/generated/api'
 import { useApi } from 'src/shared/api'
 import { useUserStore } from 'src/stores/user-store'
 import useCollections from 'src/composables/useCollections'
@@ -338,7 +338,7 @@ function intervalBounds (filter: SearchFilter): IntervalValue {
 // Results State: the current search context (results as retrieved)
 const searchRequest = useSearchRequest()
 const loading = searchRequest.loading
-const results = computed<TextChunkWithDocument[]>(() => searchRequest.context.value?.response.results ?? [])
+const results = computed<SearchResultChunk[]>(() => searchRequest.context.value?.response.results ?? [])
 const timeSpent = computed(() => searchRequest.context.value?.response.timeSpent ?? 0)
 const selectedResults = ref<string[]>([])
 const targetCollectionId = ref<string | null>(null)
@@ -410,7 +410,7 @@ const rightSidebar = useRightSidebarStore()
 const chunkContext = reactive(useChunkContext())
 const contextResultNumber = ref<number | null>(null)
 
-async function viewContext (chunk: TextChunkWithDocument, number: number) {
+async function viewContext (chunk: SearchResultChunk, number: number) {
   contextResultNumber.value = number
   const opening = chunkContext.open({ documentId: chunk.document, chunkId: chunk.id })
   await nextTick() // the panel registers when the first result is opened

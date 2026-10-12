@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
-from semant_demo.schema.outcomes import WriteOutcome, outcome_of
+from semant_demo.core.outcomes import WriteOutcome, outcome_of
 from semant_demo.adapters.weaviate.writes import PAGE_SIZE, NoProgressError, _Progress, _drain, guard_progress, step_failure
 
 

@@ -51,12 +51,14 @@ semant-demo/
 │   │   ├── main.py                # create_app, routers, lifespan, error mapping
 │   │   ├── bootstrap.py           # per-app resources: SQL engine, Weaviate repositories, providers
 │   │   ├── config.py              # Config (read once from the environment or a mapping)
-│   │   ├── core/errors.py         # NotFoundError, InvalidRequestError, IncompleteWriteError
+│   │   ├── core/                  # errors.py (NotFoundError, ...), outcomes.py (WriteResult)
 │   │   ├── features/              # one package per feature: routes.py, service.py, schemas.py
 │   │   │   ├── collections/       # collections, sharing, membership, access.py (rights checks)
 │   │   │   ├── documents/         # public corpus reads, collection-scoped document reads
 │   │   │   ├── annotations/       # tags, spans, offsets, AI suggestions, span chat
-│   │   │   └── search/            # search service, filters
+│   │   │   ├── search/            # search service, filters
+│   │   │   ├── rag/               # RAG HTTP schemas (pipelines still in rag/)
+│   │   │   └── feedback/          # app feedback HTTP schema
 │   │   ├── adapters/              # concrete storage and provider clients
 │   │   │   ├── weaviate/          # repositories (collections, documents, tags, spans,
 │   │   │   │                      # chunk_tags, search), client, paging, writes
@@ -66,8 +68,6 @@ semant-demo/
 │   │   │   └── llm/               # Responses API streaming (span chat)
 │   │   ├── routes/                # DI (dependencies.py) and routes outside features:
 │   │   │                          # rag, summarizer, feedback, user search
-│   │   ├── schema/                # shared corpus models (documents, chunks), write outcomes
-│   │   ├── schemas.py             # RAG/feedback HTTP models, CollectionNames
 │   │   ├── ollama_proxy.py        # round-robin Ollama client
 │   │   ├── configs/               # YAML configs (summariser prompts, search filters)
 │   │   ├── llm_api/               # async LLM abstraction (OpenAI, Ollama)
@@ -154,7 +154,7 @@ return `None` for a missing object on single reads and raise `core.errors.NotFou
 operation needs one. Feature services call them after checking access; SDK filters and objects do
 not leave `adapters/`.
 
-**Collection names** are centrally managed via the `CollectionNames` model (`schemas.py`) and
+**Collection names** are centrally managed via the `CollectionNames` model (`adapters/weaviate/names.py`) and
 initialized in `config.py` (`Chunks`, `Tag`, `UserCollection`, `Documents`, `Span`, reference
 names `userCollection` and `tagToUserCollection`); repositories receive them at construction.
 

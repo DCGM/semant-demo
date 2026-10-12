@@ -13,11 +13,11 @@ from semant_demo.features.collections.access import AuthenticationRequired
 from semant_demo.features.search import service
 from semant_demo.features.search.filters import InvalidSearchFilterError, generate_default_filters
 from semant_demo.features.search.schemas import (
-    ChunkQuery, FieldCondition, Op, SearchFilterInput, SearchRequest, SearchType, TagFilter, TextChunkWithDocument,
+    ChunkQuery, FieldCondition, Op, SearchFilterInput, SearchRequest, SearchType, TagFilter, SearchResultChunk,
 )
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.llm_api import APIOutput
-from semant_demo.schema.documents import Document
+from semant_demo.features.documents.schemas import Document
 from semant_demo.summarization.templated import ModelOptions, TemplatedSearchResultsSummarizer
 from tests.fakes import FakeChatAPI
 
@@ -88,9 +88,9 @@ class RecordingSummarizer:
         return self.failures
 
 
-def hit(text) -> TextChunkWithDocument:
+def hit(text) -> SearchResultChunk:
     doc = uuid4()
-    return TextChunkWithDocument(id=uuid4(), title="t", text=text, start_page_id=uuid4(), from_page=1, to_page=1,
+    return SearchResultChunk(id=uuid4(), title="t", text=text, start_page_id=uuid4(), from_page=1, to_page=1,
                                  order=0, language="ces", document=doc,
                                  document_object=Document(id=doc, library="mzk"))
 

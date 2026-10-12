@@ -31,7 +31,7 @@ from weaviate.classes.config import Configure, DataType, Property, ReferenceProp
 from weaviate.classes.query import Filter
 
 from semant_demo.features.search.filters import TASK_CLASSES
-from semant_demo.schemas import CollectionNames
+from semant_demo.adapters.weaviate.names import CollectionNames
 
 MARKER_COLLECTION = "SemantTestStoreMarker"
 MARKER_PURPOSE = "semant-automated-tests"

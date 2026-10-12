@@ -6,7 +6,7 @@ import ollama
 
 from semant_demo.adapters.topicer.client import TopicerClient, TopicerTag
 from semant_demo.config import Config
-from semant_demo.schema.chunks import TextChunk
+from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 from tests.corpus import load_corpus
 from tests.fake_providers import FAKE_REASON, create_fake_provider_app
@@ -77,7 +77,7 @@ async def test_ollama_chat_summarizes_the_passages_it_was_sent(fake_app):
     summarizer.api.client = ollama.AsyncClient(host="http://fake/ollama", transport=ASGITransport(app=fake_app))
     corpus = load_corpus()
     chunks = [
-        TextChunk(id=c["id"], text=c["text"], start_page_id=c["id"], from_page=1, to_page=1,
+        DocumentChunk(id=c["id"], text=c["text"], start_page_id=c["id"], from_page=1, to_page=1,
                   end_paragraph=False, document=corpus.documents["chronicle"]["id"], order=c["order"])
         for c in (corpus.chunks["chronicle_1"], corpus.chunks["chronicle_2"])
     ]

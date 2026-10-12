@@ -14,11 +14,10 @@ from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.offsets import InvalidSpanRange
-from semant_demo.features.annotations.schemas import PatchSpan, PatchTag, PostSpan, PostTag, SpanType, TagSpan
+from semant_demo.features.annotations.schemas import PatchSpan, PatchTag, PostSpan, PostTag, SpanType, TagSpan, AnnotationChunk
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.collections.access import AuthenticationRequired
-from semant_demo.schema.chunks import ChunkText
-from semant_demo.schema.outcomes import StepFailure
+from semant_demo.core.outcomes import StepFailure
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
 COLLECTION, DOCUMENT = uuid4(), uuid4()
@@ -127,11 +126,11 @@ class FakeDocuments:
     async def read_chunk_text(self, chunk_id):
         self.reads.append(("anchor", chunk_id))
         order, text = TEXTS[chunk_id]
-        return ChunkText(id=chunk_id, document_id=DOCUMENT, order=order, text=text)
+        return AnnotationChunk(id=chunk_id, document_id=DOCUMENT, order=order, text=text)
 
     async def read_following_chunk_texts(self, document_id, after_order, limit):
         self.reads.append(("following", after_order))
-        return [ChunkText(id=c, document_id=DOCUMENT, order=o, text=t)
+        return [AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t)
                 for c, (o, t) in TEXTS.items() if o > after_order][:limit]
 
 

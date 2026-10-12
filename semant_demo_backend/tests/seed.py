@@ -11,7 +11,7 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.data import DataObject
 
 from semant_demo.adapters.sql.tables import create_tables
-from semant_demo.schemas import CollectionNames
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.users.models import User
 from tests.corpus import Corpus
 from tests.fakes import fake_embedding

@@ -14,119 +14,126 @@
 
 import { mapValues } from '../runtime';
 /**
- * 
+ * A chunk of the document view. ``text`` is the canonical stored text that span
+ * offsets refer to (never display-normalized).
  * @export
- * @interface TextChunk
+ * @interface DocumentViewChunk
  */
-export interface TextChunk {
+export interface DocumentViewChunk {
     /**
      * 
      * @type {string}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     id: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     text: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     startPageId: string;
     /**
      * 
      * @type {number}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     fromPage: number;
     /**
      * 
      * @type {number}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     toPage: number;
     /**
      * 
      * @type {string}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     document: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     title?: string | null;
     /**
      * 
      * @type {boolean}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     endParagraph?: boolean;
     /**
      * 
      * @type {string}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     language?: string | null;
     /**
      * 
      * @type {number}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     order: number | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     nerP?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     nerT?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     nerA?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     nerG?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     nerI?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     nerM?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunk
+     * @memberof DocumentViewChunk
      */
     nerO?: Array<string> | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof DocumentViewChunk
+     */
+    inUserCollection: boolean;
 }
 
 /**
- * Check if a given object implements the TextChunk interface.
+ * Check if a given object implements the DocumentViewChunk interface.
  */
-export function instanceOfTextChunk(value: object): value is TextChunk {
+export function instanceOfDocumentViewChunk(value: object): value is DocumentViewChunk {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('text' in value) || value['text'] === undefined) return false;
     if (!('startPageId' in value) || value['startPageId'] === undefined) return false;
@@ -134,14 +141,15 @@ export function instanceOfTextChunk(value: object): value is TextChunk {
     if (!('toPage' in value) || value['toPage'] === undefined) return false;
     if (!('document' in value) || value['document'] === undefined) return false;
     if (!('order' in value) || value['order'] === undefined) return false;
+    if (!('inUserCollection' in value) || value['inUserCollection'] === undefined) return false;
     return true;
 }
 
-export function TextChunkFromJSON(json: any): TextChunk {
-    return TextChunkFromJSONTyped(json, false);
+export function DocumentViewChunkFromJSON(json: any): DocumentViewChunk {
+    return DocumentViewChunkFromJSONTyped(json, false);
 }
 
-export function TextChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean): TextChunk {
+export function DocumentViewChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean): DocumentViewChunk {
     if (json == null) {
         return json;
     }
@@ -164,14 +172,15 @@ export function TextChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'nerI': json['ner_I'] == null ? undefined : json['ner_I'],
         'nerM': json['ner_M'] == null ? undefined : json['ner_M'],
         'nerO': json['ner_O'] == null ? undefined : json['ner_O'],
+        'inUserCollection': json['in_user_collection'],
     };
 }
 
-export function TextChunkToJSON(json: any): TextChunk {
-    return TextChunkToJSONTyped(json, false);
+export function DocumentViewChunkToJSON(json: any): DocumentViewChunk {
+    return DocumentViewChunkToJSONTyped(json, false);
 }
 
-export function TextChunkToJSONTyped(value?: TextChunk | null, ignoreDiscriminator: boolean = false): any {
+export function DocumentViewChunkToJSONTyped(value?: DocumentViewChunk | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -195,6 +204,7 @@ export function TextChunkToJSONTyped(value?: TextChunk | null, ignoreDiscriminat
         'ner_I': value['nerI'],
         'ner_M': value['nerM'],
         'ner_O': value['nerO'],
+        'in_user_collection': value['inUserCollection'],
     };
 }
 

@@ -4,7 +4,7 @@ from uuid import UUID
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import delete_tag_cascade
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
@@ -35,7 +35,7 @@ def to_tag(obj) -> Tag:
 
 
 class TagRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: schemas.CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
 

@@ -106,7 +106,7 @@ from uuid import UUID
 from sqlalchemy.engine import Connection
 from weaviate import WeaviateAsyncClient
 
-import semant_demo.schemas as schemas
+from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.sql.kramerius_metadata import PageChain, read_ancestors, read_meta_records, read_page_chains
 from semant_demo.adapters.weaviate.document_metadata import (
     add_text_property, document_property_types, read_document_page, read_documents, read_start_pages,
@@ -366,7 +366,7 @@ def plan_document(document_id: UUID, stored: dict[str, Any], records: list[Sourc
     return entry
 
 
-async def _pages(client: WeaviateAsyncClient, names: schemas.CollectionNames, document_ids: list[UUID] | None,
+async def _pages(client: WeaviateAsyncClient, names: CollectionNames, document_ids: list[UUID] | None,
                  after: UUID | None, limit: int | None):
     """Pages of (id, stored properties or None if missing), at most ``limit`` documents."""
     remaining = limit
@@ -390,7 +390,7 @@ async def _pages(client: WeaviateAsyncClient, names: schemas.CollectionNames, do
             return
 
 
-async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection, *,
+async def build_report(client: WeaviateAsyncClient, names: CollectionNames, source: Connection, *,
                        endpoint: str, source_name: str, library_map: dict[UUID, str] | None = None,
                        library_override: dict[UUID, str] | None = None, distrusted: frozenset[str] = frozenset(),
                        infer_from_pages: bool = False, priority: tuple[str, ...] = (),
@@ -440,7 +440,7 @@ async def build_report(client: WeaviateAsyncClient, names: schemas.CollectionNam
     }
 
 
-async def _plan_page(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection,
+async def _plan_page(client: WeaviateAsyncClient, names: CollectionNames, source: Connection,
                      page: list[tuple[UUID, dict[str, Any] | None]], targets: dict[str, tuple[str, str]],
                      cache: dict[tuple[str, str], SourceRecord | None], *, library_map: dict[UUID, str],
                      library_override: dict[UUID, str], distrusted: frozenset[str], infer_from_pages: bool,
@@ -468,7 +468,7 @@ async def _plan_page(client: WeaviateAsyncClient, names: schemas.CollectionNames
     return entries
 
 
-async def _page_evidence(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection,
+async def _page_evidence(client: WeaviateAsyncClient, names: CollectionNames, source: Connection,
                          document_ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
     """``classify_pages`` of each document, from its chunks' start pages and the mirror."""
     limit = asyncio.Semaphore(CONCURRENT_CHUNK_READS)
@@ -537,7 +537,7 @@ def check_applicable(types: dict[str, str] | None, report: dict, *, accept_incom
                           "--accept-incomplete")
 
 
-async def apply_report(client: WeaviateAsyncClient, names: schemas.CollectionNames, report: dict,
+async def apply_report(client: WeaviateAsyncClient, names: CollectionNames, report: dict,
                        *, accept_incomplete: bool = False) -> dict:
     """Write the reviewed changes and read them back. Raises ``LookupError`` if the report
     must not be applied (see ``check_applicable``)."""
@@ -643,7 +643,7 @@ def _write_json(path: Path, data: Any) -> None:
     os.replace(temporary, path)
 
 
-async def _sync_batch(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection,
+async def _sync_batch(client: WeaviateAsyncClient, names: CollectionNames, source: Connection,
                       page: list[tuple[UUID, dict[str, Any] | None]], targets: dict[str, tuple[str, str]],
                       types: dict[str, str], cache: dict, plan_options: dict[str, Any]) -> dict[str, Any]:
     """Plan one page, write its changes and read the written documents back. Returns its counts,
@@ -703,7 +703,7 @@ def _merge_counts(total: dict[str, Any], batch: dict[str, Any]) -> None:
             total[key] += value
 
 
-async def sync(client: WeaviateAsyncClient, names: schemas.CollectionNames, source: Connection, *,
+async def sync(client: WeaviateAsyncClient, names: CollectionNames, source: Connection, *,
                checkpoint: Path, manifest: Path, endpoint: str, source_name: str,
                library_map: dict[UUID, str] | None = None, library_override: dict[UUID, str] | None = None,
                distrusted: frozenset[str] = frozenset(), infer_from_pages: bool = False,

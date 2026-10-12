@@ -95,12 +95,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { QBadge, QBtn, QCard, QCardSection, QCheckbox, QIcon, QSeparator, QTooltip } from 'quasar'
-import type { SearchFilter, TextChunkWithDocument } from 'src/generated/api'
+import type { SearchFilter, SearchResultChunk } from 'src/generated/api'
 import ResultClassifications from './ResultClassifications.vue'
 import { isConstrainedResultWidth } from './resultLayout'
 
 const props = withDefaults(defineProps<{
-  chunk: TextChunkWithDocument
+  chunk: SearchResultChunk
   /** 1-based position in the whole result list; citations refer to it. */
   number: number
   filters: readonly SearchFilter[]

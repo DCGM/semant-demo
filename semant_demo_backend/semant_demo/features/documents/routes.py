@@ -7,7 +7,7 @@ from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.features.documents import service
 from semant_demo.routes.dependencies import get_collections, get_documents
-from semant_demo.schema.documents import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
+from semant_demo.features.documents.schemas import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 from semant_demo.users.auth import current_active_optional_user, current_active_user
 from semant_demo.users.models import User
 

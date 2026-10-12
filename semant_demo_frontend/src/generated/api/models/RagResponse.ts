@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { TextChunkWithDocument } from './TextChunkWithDocument';
+import type { SearchResultChunk } from './SearchResultChunk';
 import {
-    TextChunkWithDocumentFromJSON,
-    TextChunkWithDocumentFromJSONTyped,
-    TextChunkWithDocumentToJSON,
-    TextChunkWithDocumentToJSONTyped,
-} from './TextChunkWithDocument';
+    SearchResultChunkFromJSON,
+    SearchResultChunkFromJSONTyped,
+    SearchResultChunkToJSON,
+    SearchResultChunkToJSONTyped,
+} from './SearchResultChunk';
 
 /**
  * 
@@ -47,10 +47,10 @@ export interface RagResponse {
     responseId: string;
     /**
      * 
-     * @type {Array<TextChunkWithDocument>}
+     * @type {Array<SearchResultChunk>}
      * @memberof RagResponse
      */
-    sources: Array<TextChunkWithDocument>;
+    sources: Array<SearchResultChunk>;
 }
 
 /**
@@ -77,7 +77,7 @@ export function RagResponseFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'ragAnswer': json['rag_answer'],
         'timeSpent': json['time_spent'],
         'responseId': json['response_id'],
-        'sources': ((json['sources'] as Array<any>).map(TextChunkWithDocumentFromJSON)),
+        'sources': ((json['sources'] as Array<any>).map(SearchResultChunkFromJSON)),
     };
 }
 
@@ -95,7 +95,7 @@ export function RagResponseToJSONTyped(value?: RagResponse | null, ignoreDiscrim
         'rag_answer': value['ragAnswer'],
         'time_spent': value['timeSpent'],
         'response_id': value['responseId'],
-        'sources': ((value['sources'] as Array<any>).map(TextChunkWithDocumentToJSON)),
+        'sources': ((value['sources'] as Array<any>).map(SearchResultChunkToJSON)),
     };
 }
 

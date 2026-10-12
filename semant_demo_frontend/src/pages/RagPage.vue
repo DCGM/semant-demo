@@ -214,12 +214,12 @@
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { marked } from 'marked'
 import { useQuasar } from 'quasar'
-import { SearchType, type RagChatMessage, type RagRouteConfig, type TextChunkWithDocument } from 'src/generated/api'
+import { SearchType, type RagChatMessage, type RagRouteConfig, type SearchResultChunk } from 'src/generated/api'
 import { errorStatus, useApi } from 'src/shared/api'
 const $q = useQuasar() // notifications
 const api = useApi().default
 // ---------------------------------------------------
-type Source = TextChunkWithDocument
+type Source = SearchResultChunk
 
 interface Message {
   sender: 'AI' | 'me';

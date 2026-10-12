@@ -8,8 +8,8 @@ docs/AuthApi.md
 docs/BearerResponse.md
 docs/BulkUpdateSpansRequest.md
 docs/BulkUpdateSpansResponse.md
-docs/Chunk.md
 docs/Collection.md
+docs/CollectionChunk.md
 docs/CollectionStats.md
 docs/CreateResponse.md
 docs/DefaultApi.md
@@ -21,10 +21,11 @@ docs/Detail.md
 docs/DiscussSpanRequest.md
 docs/Document.md
 docs/DocumentBrowse.md
+docs/DocumentChunk.md
 docs/DocumentChunkWindow.md
 docs/DocumentDetail.md
-docs/DocumentDetailTextChunkWithUserCollectionInfo.md
 docs/DocumentStats.md
+docs/DocumentViewChunk.md
 docs/ErrorModel.md
 docs/ExplainRequest.md
 docs/FeedbackRequest.md
@@ -55,6 +56,7 @@ docs/SearchFilterInput.md
 docs/SearchFiltersResponse.md
 docs/SearchRequest.md
 docs/SearchResponse.md
+docs/SearchResultChunk.md
 docs/SearchType.md
 docs/ShareCollectionRequest.md
 docs/SpanChatMessage.md
@@ -67,8 +69,6 @@ docs/Tag.md
 docs/TagSpan.md
 docs/TagSpanBatchRequest.md
 docs/TagSpanWriteResult.md
-docs/TextChunk.md
-docs/TextChunkWithDocument.md
 docs/Url.md
 docs/UserCreate.md
 docs/UserRead.md
@@ -86,8 +86,8 @@ models/AppFeedbackRequest.ts
 models/BearerResponse.ts
 models/BulkUpdateSpansRequest.ts
 models/BulkUpdateSpansResponse.ts
-models/Chunk.ts
 models/Collection.ts
+models/CollectionChunk.ts
 models/CollectionStats.ts
 models/CreateResponse.ts
 models/DeleteAutoSpansRequest.ts
@@ -98,10 +98,11 @@ models/Detail.ts
 models/DiscussSpanRequest.ts
 models/Document.ts
 models/DocumentBrowse.ts
+models/DocumentChunk.ts
 models/DocumentChunkWindow.ts
 models/DocumentDetail.ts
-models/DocumentDetailTextChunkWithUserCollectionInfo.ts
 models/DocumentStats.ts
+models/DocumentViewChunk.ts
 models/ErrorModel.ts
 models/ExplainRequest.ts
 models/FeedbackRequest.ts
@@ -132,6 +133,7 @@ models/SearchFilterInput.ts
 models/SearchFiltersResponse.ts
 models/SearchRequest.ts
 models/SearchResponse.ts
+models/SearchResultChunk.ts
 models/SearchType.ts
 models/ShareCollectionRequest.ts
 models/SpanChatMessage.ts
@@ -144,8 +146,6 @@ models/Tag.ts
 models/TagSpan.ts
 models/TagSpanBatchRequest.ts
 models/TagSpanWriteResult.ts
-models/TextChunk.ts
-models/TextChunkWithDocument.ts
 models/Url.ts
 models/UserCreate.ts
 models/UserRead.ts

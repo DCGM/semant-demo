@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 
-import type { TextChunkWithDocument } from 'src/generated/api'
+import type { SearchResultChunk } from 'src/generated/api'
 import SearchResultCard from 'src/features/search/SearchResultCard.vue'
 import { CONSTRAINED_RESULT_WIDTH, escapeClearsSelection, isConstrainedResultWidth } from 'src/features/search/resultLayout'
 
@@ -22,7 +22,7 @@ const chunk = {
     author: ['Jan Novák'],
     yearIssued: 1921
   }
-} as unknown as TextChunkWithDocument
+} as unknown as SearchResultChunk
 
 function mountCard (props: Record<string, unknown> = {}) {
   return mount(SearchResultCard, {

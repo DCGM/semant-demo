@@ -37,7 +37,7 @@ from uuid import UUID
 
 import anyio
 
-from semant_demo.features.annotations.schemas import SpanType, TagSpan
+from semant_demo.features.annotations.schemas import SpanType, TagSpan, AnnotationChunk
 from semant_demo.adapters.topicer.client import TopicerClient, TopicerError, TopicerTag
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
@@ -50,7 +50,7 @@ from semant_demo.features.annotations.schemas import (
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.collections import access
 from semant_demo.features.collections.access import Principal
-from semant_demo.schema.chunks import Chunk, ChunkText
+from semant_demo.features.collections.schemas import CollectionChunk
 
 logger = logging.getLogger(__name__)
 
@@ -319,7 +319,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
     description = f"{mode}, collection {collection_id}, document {document_id}"
 
     async def thorough(tally: _Tally) -> AsyncGenerator[SuggestSpansChunkResult, None]:
-        async def call(chunk: Chunk) -> list | TopicerError:
+        async def call(chunk: CollectionChunk) -> list | TopicerError:
             try:
                 return await provider.propose_for_text(chunk_id=str(chunk.id), text=chunk.text or "", tags=tags)
             except TopicerError as e:
@@ -396,7 +396,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
 @dataclass
 class _Selection:
     """The selected chunks, their texts concatenated, and the selected code point range."""
-    chunks: list[ChunkText]
+    chunks: list[AnnotationChunk]
     starts: list[int]
     """Code point offset of each chunk in the concatenation, plus the total length."""
     start: int
@@ -458,9 +458,9 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
     if selection.end <= selection.start:
         raise InvalidRequestError("The selection contains no text of the selected chunks")
     allowed = {t.id for t in tags}
-    by_order: dict[int, ChunkText] = {c.order: c for c in chunks}
+    by_order: dict[int, AnnotationChunk] = {c.order: c for c in chunks}
 
-    async def length_between(anchor: ChunkText, last: ChunkText) -> int | None:
+    async def length_between(anchor: AnnotationChunk, last: AnnotationChunk) -> int | None:
         """UTF-16 length of the document's chunks from ``anchor`` up to (not including) ``last``.
 
         None if their orders have a gap. Reads the chunks between that were not selected

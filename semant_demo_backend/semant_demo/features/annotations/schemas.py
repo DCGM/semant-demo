@@ -5,7 +5,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, model_validator
 
-from semant_demo.schema.outcomes import WriteResult
+from semant_demo.core.outcomes import WriteResult
+
+
+class AnnotationChunk(BaseModel):
+    """Internal, not an HTTP model: a chunk's position in its document and its canonical
+    text, for offset checks."""
+    id: UUID
+    document_id: UUID | None
+    order: int
+    text: str
+
 
 class Tag(BaseModel):
     id: UUID

@@ -3,7 +3,7 @@ import yaml
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, Type
-from semant_demo.schemas import RagRouteConfig, RagRequest, RagResponse, ExplainRequest
+from semant_demo.features.rag.schemas import RagRouteConfig, RagRequest, RagResponse, ExplainRequest
 
 class BaseRag:
    def __init__(self, global_config, param_config):

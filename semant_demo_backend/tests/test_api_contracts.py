@@ -10,11 +10,10 @@ from uuid import UUID
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
-from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SummaryRequest, TextChunkWithDocument
+from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SummaryRequest, SearchResultChunk
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_documents
-from semant_demo.schema.chunks import TextChunk
-from semant_demo.schema.documents import Document, DocumentBrowse
+from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse
 from tests.app_support import make_test_config, offline_weaviate
 
 DOC = UUID("5e3a0000-0000-4000-8000-00000000d002")
@@ -46,10 +45,32 @@ def test_every_document_read_uses_the_document_component(tmp_path):
 
     assert _ref(components["DocumentBrowse"]["properties"]["items"]["items"]) == "Document"
     assert _ref(components["DocumentDetail"]["properties"]["document"]) == "Document"
-    assert _ref(components["TextChunkWithDocument"]["properties"]["document_object"]) == "Document"
+    assert _ref(components["SearchResultChunk"]["properties"]["document_object"]) == "Document"
     response = schema["paths"]["/api/document/{document_id}"]["get"]["responses"]["200"]
     assert _ref(response["content"]["application/json"]["schema"]) == "Document"
     assert components["Document"]["properties"]["author"]["anyOf"][0] == {"type": "array", "items": {"type": "string"}}
+
+
+def test_chunk_projections_keep_their_names_and_wire_properties(tmp_path):
+    """#284: each chunk read has its own owner-named component; renaming kept the wire fields."""
+    schema = create_app(make_test_config(tmp_path)).openapi()
+    components = schema["components"]["schemas"]
+    stored = {"id", "text", "start_page_id", "from_page", "to_page", "document", "title", "end_paragraph",
+              "language", "order", "ner_P", "ner_T", "ner_A", "ner_G", "ner_I", "ner_M", "ner_O"}
+
+    assert {"TextChunk", "Chunk", "TextChunkWithDocument", "DocumentDetailTextChunkWithUserCollectionInfo"}.isdisjoint(components)
+    assert set(components["DocumentChunk"]["properties"]) == stored
+    assert set(components["DocumentViewChunk"]["properties"]) == stored | {"in_user_collection"}
+    assert set(components["SearchResultChunk"]["properties"]) == stored | {
+        "query_title", "query_summary", "summary", "document_object", "metadata"}
+    assert set(components["CollectionChunk"]["properties"]) == {
+        "id", "text", "start_page_id", "from_page", "to_page", "end_paragraph", "title", "language", "order",
+        "in_collection"}
+    assert _ref(components["DocumentDetail"]["properties"]["chunks"]["items"]) == "DocumentViewChunk"
+    assert _ref(components["DocumentChunkWindow"]["properties"]["chunks"]["items"]) == "DocumentChunk"
+    assert _ref(components["SearchResponse"]["properties"]["results"]["items"]) == "SearchResultChunk"
+    collection_chunks = schema["paths"]["/api/collections/{collection_id}/documents/{document_id}"]["get"]
+    assert _ref(collection_chunks["responses"]["200"]["content"]["application/json"]["schema"]["items"]) == "CollectionChunk"
 
 
 class _Documents:
@@ -69,8 +90,8 @@ class _Documents:
         return []
 
 
-def _hit_chunk() -> TextChunk:
-    return TextChunk(id=CHUNK, text="Milá Marie, píši Ti z Prahy.", start_page_id=PAGE, from_page=1, to_page=1,
+def _hit_chunk() -> DocumentChunk:
+    return DocumentChunk(id=CHUNK, text="Milá Marie, píši Ti z Prahy.", start_page_id=PAGE, from_page=1, to_page=1,
                      document=DOC, order=0)
 
 
@@ -153,7 +174,7 @@ async def test_adjacent_chunks_are_answered_anonymously_and_validated(tmp_path):
 
 def test_search_response_is_accepted_back_as_summary_input():
     # The search page posts a search response to /api/summarize; both directions are one model.
-    hit = TextChunkWithDocument(
+    hit = SearchResultChunk(
         id=CHUNK, text="Milá Marie, píši Ti z Prahy.", start_page_id=PAGE, from_page=1, to_page=1,
         document=DOC, order=0, document_object=Document(id=DOC, library="mzk", **STORED))
     response = SearchResponse(
@@ -168,16 +189,16 @@ def test_search_response_is_accepted_back_as_summary_input():
 
 
 def test_search_hit_classifications_are_optional_and_round_trip(tmp_path):
-    hit_schema = create_app(make_test_config(tmp_path)).openapi()["components"]["schemas"]["TextChunkWithDocument"]
+    hit_schema = create_app(make_test_config(tmp_path)).openapi()["components"]["schemas"]["SearchResultChunk"]
     assert "metadata" not in hit_schema.get("required", [])
     assert hit_schema["properties"]["metadata"]["additionalProperties"] == {"type": "array", "items": {"type": "string"}}
 
-    hit = TextChunkWithDocument(
+    hit = SearchResultChunk(
         id=CHUNK, text="Milá Marie.", start_page_id=PAGE, from_page=1, to_page=1, document=DOC, order=0,
         document_object=Document(id=DOC, **STORED), metadata={"style": ["informal", "literary"]})
     wire = hit.model_dump(mode="json")
-    assert TextChunkWithDocument.model_validate(wire).metadata == {"style": ["informal", "literary"]}
+    assert SearchResultChunk.model_validate(wire).metadata == {"style": ["informal", "literary"]}
 
     # A client that does not know the field (e.g. an older search page posting results back).
     del wire["metadata"]
-    assert TextChunkWithDocument.model_validate(wire).metadata == {}
+    assert SearchResultChunk.model_validate(wire).metadata == {}

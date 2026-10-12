@@ -3,16 +3,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status, Response, Query
 
-from semant_demo import schemas
+from semant_demo.features.collections.schemas import CreateResponse, Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest, CollectionChunk
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.features.collections import service
-from semant_demo.features.collections.schemas import Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest
 from semant_demo.routes.dependencies import get_collections, get_tags, get_user_lookup
-from semant_demo.schema.chunks import Chunk
-from semant_demo.schema.documents import Document, DocumentStats
-from semant_demo.schema.outcomes import WriteResult
+from semant_demo.features.documents.schemas import Document, DocumentStats
+from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag
 from semant_demo.users.auth import current_active_user, current_active_admin
 from semant_demo.users.models import User
@@ -90,13 +88,13 @@ async def add_chunk_to_collection(
     return await service.add_chunk(collections, current_user, collection_id, chunk_id)
 
 
-@exp_router.delete("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=schemas.CreateResponse)
+@exp_router.delete("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=CreateResponse)
 async def remove_chunk_from_collection(
     collection_id: str,
     chunk_id: str,
     collections: UserCollectionRepository = Depends(get_collections),
     current_user: User = Depends(current_active_user),
-) -> schemas.CreateResponse:
+) -> CreateResponse:
     """
     Removes a chunk from a user collection. Owner only. Removing a chunk that is not in
     the collection succeeds without a change; an unknown chunk is 404.
@@ -206,9 +204,9 @@ async def get_document_stats(collection_id: str, document_id: str, collections: 
     return await service.get_document_stats(collections, current_user, collection_id, document_id)
 
 
-@exp_router.get("/api/collections/{collection_id}/documents/{document_id}", response_model=list[Chunk], response_model_exclude_none=True)
+@exp_router.get("/api/collections/{collection_id}/documents/{document_id}", response_model=list[CollectionChunk], response_model_exclude_none=True)
 async def get_collection_document_chunks(collection_id: str, document_id: str, collections: UserCollectionRepository = Depends(get_collections),
-                                         current_user: User = Depends(current_active_user)) -> list[Chunk]:
+                                         current_user: User = Depends(current_active_user)) -> list[CollectionChunk]:
     """
     Returns chunks which belong to document and collection given by id
     """
@@ -217,7 +215,7 @@ async def get_collection_document_chunks(collection_id: str, document_id: str, c
 
 @exp_router.get(
     "/api/collections/{collection_id}/documents/{document_id}/neighbour",
-    response_model=Chunk | None,
+    response_model=CollectionChunk | None,
     response_model_exclude_none=False,
 )
 async def get_neighbour_chunk(
@@ -227,7 +225,7 @@ async def get_neighbour_chunk(
     boundary_order: int = Query(...),
     collections: UserCollectionRepository = Depends(get_collections),
     current_user: User = Depends(current_active_user),
-) -> Chunk | None:
+) -> CollectionChunk | None:
     """
     Returns the chunk immediately before (direction=prev) or after (direction=next)
     the given boundary_order within the document. Marks in_collection accordingly.
@@ -238,7 +236,7 @@ async def get_neighbour_chunk(
 
 @exp_router.get(
     "/api/collections/{collection_id}/documents/{document_id}/chunks",
-    response_model=list[Chunk],
+    response_model=list[CollectionChunk],
 )
 async def get_chunks_in_range(
     collection_id: str,
@@ -247,7 +245,7 @@ async def get_chunks_in_range(
     order_lt: int | None = Query(default=None),
     collections: UserCollectionRepository = Depends(get_collections),
     current_user: User = Depends(current_active_user),
-) -> list[Chunk]:
+) -> list[CollectionChunk]:
     """
     Returns all chunks of a document with order strictly greater than order_gt
     and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.

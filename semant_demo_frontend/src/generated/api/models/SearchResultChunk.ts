@@ -30,147 +30,147 @@ import {
  * ``metadata`` holds the chunk's stored classifications (``filters.TASK_CLASSES``) that
  * have values: property name -> values, in ``TASK_CLASSES`` order.
  * @export
- * @interface TextChunkWithDocument
+ * @interface SearchResultChunk
  */
-export interface TextChunkWithDocument {
+export interface SearchResultChunk {
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     id: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     text: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     startPageId: string;
     /**
      * 
      * @type {number}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     fromPage: number;
     /**
      * 
      * @type {number}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     toPage: number;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     document: string;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     title?: string | null;
     /**
      * 
      * @type {boolean}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     endParagraph?: boolean;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     language?: string | null;
     /**
      * 
      * @type {number}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     order: number | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     nerP?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     nerT?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     nerA?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     nerG?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     nerI?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     nerM?: Array<string> | null;
     /**
      * 
      * @type {Array<string>}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     nerO?: Array<string> | null;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     queryTitle?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     querySummary?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     summary?: string | null;
     /**
      * 
      * @type {Document}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     documentObject: Document;
     /**
      * 
      * @type {{ [key: string]: Array<string>; }}
-     * @memberof TextChunkWithDocument
+     * @memberof SearchResultChunk
      */
     metadata?: { [key: string]: Array<string>; };
 }
 
 /**
- * Check if a given object implements the TextChunkWithDocument interface.
+ * Check if a given object implements the SearchResultChunk interface.
  */
-export function instanceOfTextChunkWithDocument(value: object): value is TextChunkWithDocument {
+export function instanceOfSearchResultChunk(value: object): value is SearchResultChunk {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('text' in value) || value['text'] === undefined) return false;
     if (!('startPageId' in value) || value['startPageId'] === undefined) return false;
@@ -182,11 +182,11 @@ export function instanceOfTextChunkWithDocument(value: object): value is TextChu
     return true;
 }
 
-export function TextChunkWithDocumentFromJSON(json: any): TextChunkWithDocument {
-    return TextChunkWithDocumentFromJSONTyped(json, false);
+export function SearchResultChunkFromJSON(json: any): SearchResultChunk {
+    return SearchResultChunkFromJSONTyped(json, false);
 }
 
-export function TextChunkWithDocumentFromJSONTyped(json: any, ignoreDiscriminator: boolean): TextChunkWithDocument {
+export function SearchResultChunkFromJSONTyped(json: any, ignoreDiscriminator: boolean): SearchResultChunk {
     if (json == null) {
         return json;
     }
@@ -217,11 +217,11 @@ export function TextChunkWithDocumentFromJSONTyped(json: any, ignoreDiscriminato
     };
 }
 
-export function TextChunkWithDocumentToJSON(json: any): TextChunkWithDocument {
-    return TextChunkWithDocumentToJSONTyped(json, false);
+export function SearchResultChunkToJSON(json: any): SearchResultChunk {
+    return SearchResultChunkToJSONTyped(json, false);
 }
 
-export function TextChunkWithDocumentToJSONTyped(value?: TextChunkWithDocument | null, ignoreDiscriminator: boolean = false): any {
+export function SearchResultChunkToJSONTyped(value?: SearchResultChunk | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

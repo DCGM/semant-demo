@@ -85,7 +85,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { QBtn, QSpinner } from 'quasar'
-import type { Document, TextChunk } from 'src/generated/api'
+import type { Document, DocumentChunk } from 'src/generated/api'
 import type { ContextDirection } from './useChunkContext'
 
 const props = withDefaults(defineProps<{
@@ -93,7 +93,7 @@ const props = withDefaults(defineProps<{
   targetChunkId: string | null
   document: Document | null
   /** The loaded passage, in document order. */
-  chunks: TextChunk[]
+  chunks: DocumentChunk[]
   hasBefore?: boolean
   hasAfter?: boolean
   /** Changes with every request to show the target (also the same one again): it is

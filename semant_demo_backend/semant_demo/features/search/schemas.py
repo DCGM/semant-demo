@@ -11,8 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from semant_demo.schema.chunks import TextChunk
-from semant_demo.schema.documents import Document
+from semant_demo.features.documents.schemas import DocumentChunk, Document
 
 
 class SearchType(str, Enum):
@@ -96,7 +95,7 @@ class SearchRequest(SummaryRequestBase):
     is_hyde: bool = False  # variable which indicates if query is document
 
 
-class TextChunkWithDocument(TextChunk):
+class SearchResultChunk(DocumentChunk):
     """
     A search hit: the chunk, its document and optional generated summaries. ``text`` is
     display text (``service.display_text``: hyphenated line breaks joined), not the
@@ -114,7 +113,7 @@ class TextChunkWithDocument(TextChunk):
 
 
 class SearchResponse(BaseModel):
-    results: list[TextChunkWithDocument]
+    results: list[SearchResultChunk]
     # Optional overall query-based summary of the results
     results_summary: str | None = None
     search_request: SearchRequest

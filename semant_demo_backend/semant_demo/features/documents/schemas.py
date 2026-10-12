@@ -1,10 +1,15 @@
-"""Corpus document models: the document metadata and the document view."""
+"""Corpus document models: the document metadata, its chunks and the document view.
+
+Chunk projections are owned by the feature whose read they serve and are not
+interchangeable: :class:`DocumentChunk` and :class:`DocumentViewChunk` here,
+``features/search/schemas.SearchResultChunk`` (display text),
+``features/collections/schemas.CollectionChunk`` and the internal
+``features/annotations/schemas.AnnotationChunk``.
+"""
 from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
-
-from semant_demo.schema.chunks import TextChunk
 
 
 class Document(BaseModel):
@@ -47,6 +52,29 @@ class Document(BaseModel):
     seriesNumber: str | None = None
 
 
+class DocumentChunk(BaseModel):
+    """A chunk with its stored properties. ``text`` is the canonical stored text that span
+    offsets refer to; the search hit (``SearchResultChunk``) extends it with display text."""
+    id: UUID
+    text: str
+    start_page_id: UUID
+    from_page: int
+    to_page: int
+    document: UUID
+    title: str | None = None
+    end_paragraph: bool = True
+    language: str | None = None
+    order: int | None
+
+    ner_P: list[str] | None = None  # Person entities
+    ner_T: list[str] | None = None  # Temporal entities
+    ner_A: list[str] | None = None  # Address entities
+    ner_G: list[str] | None = None  # Geographical entities
+    ner_I: list[str] | None = None  # Institution entities
+    ner_M: list[str] | None = None  # Media entities
+    ner_O: list[str] | None = None  # Cultural artifacts
+
+
 class DocumentBrowse(BaseModel):
     items: list[Document]
     next_offset: int | None = None
@@ -63,7 +91,7 @@ class DocumentStats(BaseModel):
     distinct_tags_count: int
 
 
-class DocumentDetailTextChunkWithUserCollectionInfo(TextChunk):
+class DocumentViewChunk(DocumentChunk):
     """A chunk of the document view. ``text`` is the canonical stored text that span
     offsets refer to (never display-normalized)."""
     in_user_collection: bool
@@ -72,7 +100,7 @@ class DocumentDetailTextChunkWithUserCollectionInfo(TextChunk):
 class DocumentDetail(BaseModel):
     """A document with all its chunks, each marked with membership in one collection."""
     document: Document
-    chunks: list[DocumentDetailTextChunkWithUserCollectionInfo]
+    chunks: list[DocumentViewChunk]
 
 
 class DocumentChunkWindow(BaseModel):
@@ -83,7 +111,7 @@ class DocumentChunkWindow(BaseModel):
     tell whether the document continues beyond the returned chunks.
     """
     document: Document
-    chunks: list[TextChunk]
+    chunks: list[DocumentChunk]
     anchor_chunk_id: UUID
     has_before: bool
     has_after: bool
@@ -97,5 +125,5 @@ class AdjacentChunks(BaseModel):
     document metadata or chunk count again. ``has_more`` tells whether the document
     continues beyond them in that direction.
     """
-    chunks: list[TextChunk]
+    chunks: list[DocumentChunk]
     has_more: bool

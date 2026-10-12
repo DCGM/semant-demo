@@ -1,5 +1,5 @@
-import { Chunk } from 'src/generated/api'
+import { CollectionChunk } from 'src/generated/api'
 
-type Chunks = Chunk[]
+type Chunks = CollectionChunk[]
 
-export type { Chunk, Chunks }
+export type { CollectionChunk, Chunks }

@@ -13,13 +13,6 @@
  */
 
 import { mapValues } from '../runtime';
-import type { DocumentDetailTextChunkWithUserCollectionInfo } from './DocumentDetailTextChunkWithUserCollectionInfo';
-import {
-    DocumentDetailTextChunkWithUserCollectionInfoFromJSON,
-    DocumentDetailTextChunkWithUserCollectionInfoFromJSONTyped,
-    DocumentDetailTextChunkWithUserCollectionInfoToJSON,
-    DocumentDetailTextChunkWithUserCollectionInfoToJSONTyped,
-} from './DocumentDetailTextChunkWithUserCollectionInfo';
 import type { Document } from './Document';
 import {
     DocumentFromJSON,
@@ -27,6 +20,13 @@ import {
     DocumentToJSON,
     DocumentToJSONTyped,
 } from './Document';
+import type { DocumentViewChunk } from './DocumentViewChunk';
+import {
+    DocumentViewChunkFromJSON,
+    DocumentViewChunkFromJSONTyped,
+    DocumentViewChunkToJSON,
+    DocumentViewChunkToJSONTyped,
+} from './DocumentViewChunk';
 
 /**
  * A document with all its chunks, each marked with membership in one collection.
@@ -42,10 +42,10 @@ export interface DocumentDetail {
     document: Document;
     /**
      * 
-     * @type {Array<DocumentDetailTextChunkWithUserCollectionInfo>}
+     * @type {Array<DocumentViewChunk>}
      * @memberof DocumentDetail
      */
-    chunks: Array<DocumentDetailTextChunkWithUserCollectionInfo>;
+    chunks: Array<DocumentViewChunk>;
 }
 
 /**
@@ -68,7 +68,7 @@ export function DocumentDetailFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
         
         'document': DocumentFromJSON(json['document']),
-        'chunks': ((json['chunks'] as Array<any>).map(DocumentDetailTextChunkWithUserCollectionInfoFromJSON)),
+        'chunks': ((json['chunks'] as Array<any>).map(DocumentViewChunkFromJSON)),
     };
 }
 
@@ -84,7 +84,7 @@ export function DocumentDetailToJSONTyped(value?: DocumentDetail | null, ignoreD
     return {
         
         'document': DocumentToJSON(value['document']),
-        'chunks': ((value['chunks'] as Array<any>).map(DocumentDetailTextChunkWithUserCollectionInfoToJSON)),
+        'chunks': ((value['chunks'] as Array<any>).map(DocumentViewChunkToJSON)),
     };
 }
 

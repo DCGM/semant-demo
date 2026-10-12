@@ -13,7 +13,7 @@ from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.features.search.service import SearchBackends, public_retriever
 from semant_demo.rag.rag_factory import rag_load_single_config
-from semant_demo.schemas import RagRequest, RagSearch
+from semant_demo.features.rag.schemas import RagRequest, RagSearch
 
 
 warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed.*<socket.socket.*>")

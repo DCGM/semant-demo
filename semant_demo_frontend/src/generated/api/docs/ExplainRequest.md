@@ -10,7 +10,7 @@ Name | Type
 `selectedText` | string
 `fullAnswer` | string
 `history` | [Array&lt;RagChatMessage&gt;](RagChatMessage.md)
-`sources` | [Array&lt;TextChunkWithDocument&gt;](TextChunkWithDocument.md)
+`sources` | [Array&lt;SearchResultChunk&gt;](SearchResultChunk.md)
 
 ## Example
 

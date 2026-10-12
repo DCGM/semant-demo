@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { useTagSpansStore } from 'src/stores/tagSpansStore'
 import { SpanType } from 'src/generated/api'
 import type { TagSpan } from 'src/models/tagSpans'
-import type { Chunk } from 'src/models/chunks'
+import type { CollectionChunk } from 'src/models/chunks'
 import { localRange, offsetBetween } from 'src/utils/spanOffsets'
 
 // ── Types ──────────────────────────────────────────────
@@ -31,7 +31,7 @@ export type ProjectedSpan = TagSpan
 
 // ── Composable ─────────────────────────────────────────
 
-export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => Chunk[] = () => []) {
+export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksRef: () => CollectionChunk[] = () => []) {
   const store = useTagSpansStore()
 
   // ── State ──
@@ -55,7 +55,7 @@ export function useAnnotations(chunksRef: () => Chunk[], hiddenChunksRef: () => 
   // All known chunks: display chunks + hidden gap chunks, sorted by document order.
   // Used for cross-chunk span projection across gaps (e.g. a span spanning a removed chunk).
   const allKnownChunks = computed(() => {
-    const byId = new Map<string, Chunk>()
+    const byId = new Map<string, CollectionChunk>()
     for (const c of chunks.value) byId.set(c.id, c)
     for (const c of hiddenChunksRef()) if (!byId.has(c.id)) byId.set(c.id, c)
     return Array.from(byId.values()).sort((a, b) => a.order - b.order)

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import Mapping
-from semant_demo.schemas import CollectionNames
+from semant_demo.adapters.weaviate.names import CollectionNames
 
 
 TRUE_VALUES = {"true", "1"}

@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { TextChunk } from './TextChunk';
+import type { DocumentChunk } from './DocumentChunk';
 import {
-    TextChunkFromJSON,
-    TextChunkFromJSONTyped,
-    TextChunkToJSON,
-    TextChunkToJSONTyped,
-} from './TextChunk';
+    DocumentChunkFromJSON,
+    DocumentChunkFromJSONTyped,
+    DocumentChunkToJSON,
+    DocumentChunkToJSONTyped,
+} from './DocumentChunk';
 
 /**
  * Chunks directly before or after a chunk of a corpus document, in document order, without
@@ -32,10 +32,10 @@ import {
 export interface AdjacentChunks {
     /**
      * 
-     * @type {Array<TextChunk>}
+     * @type {Array<DocumentChunk>}
      * @memberof AdjacentChunks
      */
-    chunks: Array<TextChunk>;
+    chunks: Array<DocumentChunk>;
     /**
      * 
      * @type {boolean}
@@ -63,7 +63,7 @@ export function AdjacentChunksFromJSONTyped(json: any, ignoreDiscriminator: bool
     }
     return {
         
-        'chunks': ((json['chunks'] as Array<any>).map(TextChunkFromJSON)),
+        'chunks': ((json['chunks'] as Array<any>).map(DocumentChunkFromJSON)),
         'hasMore': json['has_more'],
     };
 }
@@ -79,7 +79,7 @@ export function AdjacentChunksToJSONTyped(value?: AdjacentChunks | null, ignoreD
 
     return {
         
-        'chunks': ((value['chunks'] as Array<any>).map(TextChunkToJSON)),
+        'chunks': ((value['chunks'] as Array<any>).map(DocumentChunkToJSON)),
         'has_more': value['hasMore'],
     };
 }

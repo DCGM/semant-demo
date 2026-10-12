@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { TextChunk } from './TextChunk';
+import type { DocumentChunk } from './DocumentChunk';
 import {
-    TextChunkFromJSON,
-    TextChunkFromJSONTyped,
-    TextChunkToJSON,
-    TextChunkToJSONTyped,
-} from './TextChunk';
+    DocumentChunkFromJSON,
+    DocumentChunkFromJSONTyped,
+    DocumentChunkToJSON,
+    DocumentChunkToJSONTyped,
+} from './DocumentChunk';
 import type { Document } from './Document';
 import {
     DocumentFromJSON,
@@ -45,10 +45,10 @@ export interface DocumentChunkWindow {
     document: Document;
     /**
      * 
-     * @type {Array<TextChunk>}
+     * @type {Array<DocumentChunk>}
      * @memberof DocumentChunkWindow
      */
-    chunks: Array<TextChunk>;
+    chunks: Array<DocumentChunk>;
     /**
      * 
      * @type {string}
@@ -99,7 +99,7 @@ export function DocumentChunkWindowFromJSONTyped(json: any, ignoreDiscriminator:
     return {
         
         'document': DocumentFromJSON(json['document']),
-        'chunks': ((json['chunks'] as Array<any>).map(TextChunkFromJSON)),
+        'chunks': ((json['chunks'] as Array<any>).map(DocumentChunkFromJSON)),
         'anchorChunkId': json['anchor_chunk_id'],
         'hasBefore': json['has_before'],
         'hasAfter': json['has_after'],
@@ -119,7 +119,7 @@ export function DocumentChunkWindowToJSONTyped(value?: DocumentChunkWindow | nul
     return {
         
         'document': DocumentToJSON(value['document']),
-        'chunks': ((value['chunks'] as Array<any>).map(TextChunkToJSON)),
+        'chunks': ((value['chunks'] as Array<any>).map(DocumentChunkToJSON)),
         'anchor_chunk_id': value['anchorChunkId'],
         'has_before': value['hasBefore'],
         'has_after': value['hasAfter'],

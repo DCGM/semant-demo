@@ -11,7 +11,7 @@ from classconfig import ConfigurableValue, ConfigurableFactory, ConfigurableMixi
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from semant_demo.llm_api import APIRequest
-from semant_demo.schema.chunks import TextChunk
+from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.summarization.base import SearchResultsSummarizer
 from semant_demo.utils.template import Template, TemplateTransformer
 
@@ -165,7 +165,7 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
 
         return prompt, model
 
-    async def gen_title(self, query: str, text: TextChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_title(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
                         on_error: Optional[Callable[[str], None]] = None) -> str:
         prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_title_model, self.gen_title_prompt)
 
@@ -186,7 +186,7 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
             return self.gen_title_error_title
         return output.response.get_raw_content().strip()
 
-    async def gen_results_summary(self, query: str, results: Sequence[TextChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_results_summary(self, query: str, results: Sequence[DocumentChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
                                   on_error: Optional[Callable[[str], None]] = None) -> str:
         prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_results_summary_model, self.gen_results_summary_prompt)
         request = APIRequest(
@@ -206,7 +206,7 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
             return self.gen_results_summary_error_summary
         return output.response.get_raw_content().strip()
 
-    async def gen_query_summary_for_text_chunk(self, query: str, text: TextChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_query_summary_for_text_chunk(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
                                                on_error: Optional[Callable[[str], None]] = None) -> str:
         prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_query_summary_model, self.gen_query_summary_prompt)
         request = APIRequest(
