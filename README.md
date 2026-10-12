@@ -81,8 +81,8 @@ semant-demo/
 │       ├── features/              # feature-owned pages, components, stores,
 │       │                          # composables and repository wrappers:
 │       │                          # search, rag, user_collections, documents,
-│       │                          # annotations, auth, feedback
-│       ├── pages/Collections/xjuric31/  # the document view (moves with #289)
+│       │                          # annotations, auth, feedback; the document
+│       │                          # view is in features/documents/viewer/
 │       ├── shared/api/            # API transport: backend URL, auth token, generated
 │       │                          # client, NDJSON streams, errors, context guards
 │       ├── shared/                # reusable UI pieces (ui/), notifications,

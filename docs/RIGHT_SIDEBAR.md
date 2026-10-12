@@ -26,7 +26,10 @@ which tools (if any) it shows there.
   narrow (48 px) icon rail. The open and mini states are not remembered between pages.
 
 The document view (`/collections/:cid/documents/:did/v1`) still has its own right drawer
-(tags, AI assist, document metadata) inside its page layout; it is not a sidebar panel yet.
+inside its page layout (`features/documents/viewer/DocumentViewLayout.vue`). Its tools are
+already separate components (`annotations/DocumentTagsPanel`, `annotations/AiAssistPanel`,
+`documents/DocumentMetadataPanel`) that take the collection and document as props; moving
+them into sidebar panels is #230.
 
 ## 1. Files
 

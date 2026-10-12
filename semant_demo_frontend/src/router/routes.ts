@@ -69,13 +69,13 @@ const routes: RouteRecordRaw[] = [
           {
             name: 'documentDetailLayoutV1',
             path: 'v1',
-            component: () => import('src/pages/Collections/xjuric31/DocumentDetailLayout.vue'),
+            component: () => import('src/features/documents/viewer/DocumentViewLayout.vue'),
             props: true,
             children: [
               {
                 name: 'documentDetailV1',
                 path: '',
-                component: () => import('src/pages/Collections/xjuric31/DocumentDetailPage.vue'),
+                component: () => import('src/features/documents/viewer/DocumentReaderPage.vue'),
                 props: true
               }
             ]

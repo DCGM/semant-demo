@@ -413,12 +413,19 @@ and `router/` the routes and sign-in guard.
 | `search` | search page, result cards, classifications, summary panel, request/summary state |
 | `rag` | RAG chat page |
 | `user_collections` | collection list, collection workspace and its tabs, collection/share dialogs, `userCollectionsStore`, `collectionStatsStore`, `permissions.ts` |
-| `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`) |
-| `annotations` | tags table and dialog, span discussion, annotation/AI-suggestion/tag-navigation composables, `tagsStore`, `tagSpansStore`, span offsets |
+| `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`), the document view (`viewer/`), document metadata panel |
+| `annotations` | tags table and dialog, span discussion, annotation/AI-suggestion/tag-navigation composables, `tagsStore`, `tagSpansStore`, span offsets; in the document view: the annotated chunk text, span gutter, selection popover, tags panel and AI assist panel |
 | `auth` | login/register/account dialogs, `userStore`, user search |
 | `feedback` | feedback page and its schema |
 
-The document view is still in `pages/Collections/xjuric31/`; #289 moves and splits it.
+The document view (`features/documents/viewer/`) is `DocumentViewLayout` (header, side
+drawer with the tags, AI assist and document panels; loads the document, collection and tags)
+around the reader page `DocumentReaderPage`. The reader composes the displayed chunks
+(`useChunkWindow`: collection chunks, previews and hidden gap chunks), chunk membership
+(`useChunkMembership`), gutter measurement (`useReaderGutters`), the offset helpers
+(`readerOffsets.ts`, on top of `annotations/spanOffsets.ts`), and the annotation components
+`ChunkAnnotator`, `AnnotationGutter` and `AnnotationPopover`. The panels and the reader share
+the annotation, tag navigation and AI suggestion state through their composables.
 Components use stores directly (`storeToRefs` for state); composables exist where they add
 behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 
@@ -432,7 +439,7 @@ behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 | `/collections/:cid/tags` | `user_collections/CollectionTagsPage` | Tags scoped to the collection |
 | `/collections/:cid/tagging_jobs` | `user_collections/CollectionTaggingJobsPage` | Placeholder page (no behavior; the old tagging jobs were removed) |
 | `/collections/:cid/members` | `user_collections/CollectionMembersPage` | Collection sharing / role management |
-| `/collections/:cid/documents/:did/v1` | `pages/Collections/xjuric31/DocumentDetailPage` | Document view (text, annotations, AI suggestions, span chat) |
+| `/collections/:cid/documents/:did/v1` | `documents/viewer/DocumentReaderPage` | Document view (text, annotations, AI suggestions, span chat) |
 | `/collections/:cid/documents/:did/v2` | — | Redirects to the document view (the retired V2 variant) |
 | `/feedback` | `feedback/FeedbackPage` | In-app feedback form |
 | `/about` | `app/AboutPage` | Project information |
