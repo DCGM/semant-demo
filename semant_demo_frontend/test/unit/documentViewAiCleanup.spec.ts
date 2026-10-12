@@ -3,7 +3,7 @@ import { shallowMount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
 
-import DocumentDetailLayout from 'src/pages/Collections/xjuric31/DocumentDetailLayout.vue'
+import DocumentViewLayout from 'src/features/documents/viewer/DocumentViewLayout.vue'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
 
@@ -44,7 +44,7 @@ const lateResult = (chunkId: string) => ({
   unsaved: 1
 })
 
-describe('DocumentDetailLayout AI cleanup', () => {
+describe('DocumentViewLayout AI cleanup', () => {
   let streams: ReturnType<typeof lateStream>[]
   const originalFetch = globalThis.fetch
 
@@ -63,7 +63,7 @@ describe('DocumentDetailLayout AI cleanup', () => {
   })
 
   it('aborts document-wide and selection runs on unmount and ignores their late events', async () => {
-    const wrapper = shallowMount(DocumentDetailLayout, {
+    const wrapper = shallowMount(DocumentViewLayout, {
       props: { collectionId: 'c', documentId: 'd' },
       global: { plugins: [[Quasar, {}]], stubs: { RouterView: true, 'router-view': true } }
     })
