@@ -366,8 +366,22 @@ Audit of `localhost:8082`: 500 documents, 32 `has_chunks`, 428 `no_chunks_unrefe
 40 `no_chunks_collection_member` (70 memberships in 9 user collections, 17 documents in
 several), 0 `unknown_or_error`, no other references to documents, chunk count 3,260 before
 and after. Backup `pre-document-cleanup-281-2026-10-12` was restored into a throwaway
-Weaviate (500 documents, 3,260 chunks, 77 collections, 64 tags, 613 spans). The deletion has
-not run yet; it needs explicit authorization.
+Weaviate (500 documents, 3,260 chunks, 77 collections, 64 tags, 613 spans). The deletion
+removed all 468 candidates (0 skipped or failed); 32 documents remain; chunks, collections,
+tags and spans are unchanged; the 9 affected collections no longer list the deleted
+documents and their counts dropped by the 70 removed memberships.
+
+#### Production (2026-10-12, #281)
+
+Audit of `localhost:8080` (`Documents_test` etc. through aliases) in 2.5 min: 484,336
+documents, 59,008 `has_chunks`, 425,318 `no_chunks_unreferenced`, 10
+`no_chunks_collection_member` (11 memberships in 6 user collections), 0 `unknown_or_error`,
+none excluded; 8,280,272 chunks before and after. The deletion (against backup
+`full_2026-09-21_utc_1790030115s`, which every candidate predates) removed all 425,328 in
+11 min, 0 skipped or failed; 59,008 documents remain, chunks (8,280,272), user collections
+(122), tags (11,287) and spans (12,661) are unchanged, and the 6 affected collections'
+lists and counts check out. Logs and the UUID manifest are on the server in
+`~/document_cleanup_281/prod/`.
 
 ### Kramerius metadata sync
 
