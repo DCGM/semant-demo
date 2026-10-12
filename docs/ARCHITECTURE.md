@@ -86,10 +86,12 @@ semant_demo_backend/semant_demo/
     sql/                  base (declarative Base), tables (create_tables), users (UserLookup), feedback
     embeddings/gemma.py   embedding service client
     topicer/client.py     Topicer client
-    llm/responses.py      OpenAI-compatible Responses API streaming (span chat)
+    llm/                  the one gateway for backend LLM calls: models (tier catalog and
+                          feature policy), gateway (metered LangChain chat models, complete,
+                          stream, FeatureChat), usage (token/cost records)
   routes/                 dependencies.py (DI from AppResources) and the routes not yet in a
                           feature: rag, summarizer, feedback, user search
-  rag/, summarization/, llm_api/, ollama_proxy.py   RAG pipelines, search summaries, LLM clients
+  rag/, summarization/    RAG pipelines and search summaries (models from adapters/llm)
   users/                  FastAPI Users: model, manager, auth routers, schemas
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks)
@@ -116,13 +118,13 @@ a raw Weaviate or OpenAI client: SDK objects stay inside `adapters/`.
 A `Config` class that reads settings once, at construction, from the process environment or from an explicit mapping (`Config(environ={...})`, used by tests). `create_app(config)` stores it on `app.state.config`; routes and bootstrap read it through the `get_config` dependency. The process-wide `config` instance is only the entry-point configuration: `semant_demo.main:app`, `run.py` and the standalone scripts (`create_default_configurations.py`, `rag/rag_runner_demo.py`) read it; application code uses the app's `Config`. Key groups:
 
 - **Weaviate connection** — host, REST port, gRPC port
-- **LLM endpoints** — Ollama URLs (comma-separated for load balancing), model names, API keys
+- **LLM providers** — `OPENAI_API_KEY` / `OPENAI_API_URL` (any OpenAI-compatible endpoint, OpenRouter by default), `OLLAMA_URLS` (only the first is used), `GOOGLE_API_KEY`, and `LLM_MODELS_CONFIG`, the tier catalog (see *LLM gateway* below). There are no per-feature model settings.
 - **Application** — port, CORS origin, static file path, `LOG_LEVEL`
 - **Observability** — `OTEL_ENABLED` (default off) and the `OTEL_*` / `DEPLOYMENT_ENVIRONMENT` export settings; see [OBSERVABILITY.md](OBSERVABILITY.md)
 - **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments mount it, so it is kept)
 - **Auth** — `JWT_SECRET` (override in production with a long random string), `JWT_LIFETIME_SECONDS`
 - **RAG** — config directory path
-- **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_*` group for the OpenAI-compatible "discuss this span" chat (`SPAN_CHAT_API_KEY`, `SPAN_CHAT_API_URL`, `SPAN_CHAT_MODEL` — all falling back to the corresponding `OPENAI_*` values — plus `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT`)
+- **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT` for the "discuss this span" chat (its model is the `span_chat` tier)
 
 #### Application resources (`bootstrap.py`, `routes/dependencies.py`)
 
@@ -136,7 +138,8 @@ A `Config` class that reads settings once, at construction, from the process env
 | `get_documents()`, `get_tags()`, `get_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
 | `get_annotation_store()` | The repositories the Annotations service uses (collections, tags, spans, chunk tags, documents) | Startup → shutdown |
 | `get_search_backends()` | Search adapter, collection/tag repositories and the embedding client for the search service and RAG retrieval | Startup → shutdown |
-| `get_topicer()`, `get_span_chat()` | Topicer client; Responses API client for span chat | Startup → shutdown |
+| `get_topicer()`, `get_span_chat()` | Topicer client; the span chat's `FeatureChat` | Startup → shutdown |
+| `get_llm()` | The `LlmGateway` (model tiers, metered chat models) | Startup → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
 | `get_rag_registry()` | Configured RAG instances | Startup → shutdown |
 
@@ -157,10 +160,10 @@ async def fetch_document_chunks(document_id: str, collection_id: str,
 The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
 
 1. **Startup** (`main.py` lifespan):
-   - Create `AppResources` (SQLAlchemy engine and session factory, provider clients; nothing external is contacted)
+   - Create `AppResources` (SQLAlchemy engine and session factory, provider clients and the LLM gateway; nothing external is contacted; an invalid tier catalog fails startup)
    - Create missing SQL tables (`user`, `rag_user_feedback`; `adapters/sql/tables.create_tables` never drops or alters existing tables)
    - Open the Weaviate client and build the repositories (startup fails if Weaviate is not ready)
-   - Load RAG configurations from YAML and instantiate RAG engines via `rag_factory()`
+   - Load RAG configurations from YAML and instantiate RAG engines via `rag_factory()` (each gets its chat models from the gateway; a configuration naming a model or an unpermitted tier is skipped with an error log)
 
 2. **Request handling** — dependency injection provides fresh database sessions and reuses long-lived connections (Weaviate, summarizer)
 
@@ -324,8 +327,8 @@ IncrementalAdaptiveRagGenerator is implemented as a `langgraph` state machine. T
 This incremental RAG process is more resilient than a single-pass pipeline: it adapts retrieval strategy based on result quality, tightens search with inferred metadata, and validates both retrieved evidence and the final answer before finishing.
 
 Configurable parameters per RAG config YAML include:
-- `model_type` — OLLAMA / OPENAI / GOOGLE
-- `api_key`, `model_name`, `temperature`
+- `tier` — a model tier the `rag` feature allows (default: the feature's default tier); the retired `model_type`, `model_name` and `api_key` are rejected
+- `temperature`
 - `chunk_limit`, `alpha`, `search_type`
 - `max_retries`, `web_search_enabled`, `metadata_extraction_allowed`
 
@@ -337,7 +340,15 @@ Uses Jinja2 templates for prompt construction. Three generation tasks per search
 2. **Query summary** — per-chunk summary of relevance to query
 3. **Results summary** — overall summary across all returned chunks
 
-Prompts are in Czech by default (application targets Czech heritage texts). All prompts and models are configurable via `configs/search_summarizer.yaml`.
+Prompts are in Czech by default (application targets Czech heritage texts). Prompts, fallback texts and per-task options (temperature, context size, maximum tokens) are configurable via `configs/search_summarizer.yaml`; the model is the `search_summary` tier. Clients may send prompts but never a model.
+
+#### LLM gateway (`adapters/llm/`)
+
+Every backend-owned LLM call goes through `LlmGateway` (built by bootstrap, `get_llm()`); Topicer calls its own models and is not metered here.
+
+- **Tiers** — `configs/llm_models.yaml` (`LLM_MODELS_CONFIG`) maps `tiny` / `small` / `medium` / `large` to a provider (`openai` — any OpenAI-compatible endpoint —, `ollama` or `google`), a model, an optional endpoint, capabilities (`tools`) and estimated prices. It also lists the tiers each feature may use and its default: `search_summary`, `question`, `span_chat`, `rag`. Keys and default endpoints come from the environment; the catalog holds no secrets. Clients never choose a model or tier; a RAG configuration chooses a permitted tier server-side.
+- **Construction** — `chat_model(feature, tier=..., temperature=..., ...)` returns a LangChain chat model (`ChatOpenAI`, `ChatOllama`, `ChatGoogleGenerativeAI`) for the permitted tier, shared by calls with the same options. RAG chains, the LangGraph pipeline and agent tool subcalls use these models unchanged; `complete()` and `stream()` serve the summaries, the question endpoint and span chat (`FeatureChat`). A provider without a key refuses the call before any request is sent (`LlmNotConfigured`).
+- **Usage** — a callback on every model records each call as a structured log line (`LLM call finished`) and, with telemetry, metrics: feature, tier, provider, model, outcome (`success`/`error`/`cancelled`), duration, input/output/total tokens, estimated cost and `request.id`. Tokens are provider-reported (`usage_source=provider`, also for streams) or, when the provider reports none and for failed or abandoned calls, estimated from text length (`estimated`); unknown usage is never reported as zero. Cost is always an estimate from the tier prices and absent when a price is unknown. Records never contain prompts, messages, generated text, snippets or keys. A non-streamed call cancelled by a client disconnect is not recorded. See [OBSERVABILITY.md](OBSERVABILITY.md#llm-calls).
 
 #### Tags and Tag Spans (`features/annotations/`, `adapters/weaviate/spans.py`, `adapters/weaviate/tags.py`)
 
@@ -376,15 +387,7 @@ Reviewers then approve (`pos`) or reject (`neg`) suggestions through the standar
 
 The frontend (`src/composables/useAiAssistance.ts`) reads the stream with `postNdjson` (`src/shared/api/ndjson.ts`), shows saved suggestions as they arrive and reports partial, failed and interrupted runs. Each run carries a token; changing document or collection aborts it and its late events no longer change the store, errors or loading state.
 
-**Span discussion chat.** `features/annotations/span_chat.py` checks collection read access for the span before the stream starts (a denied request reads no context and makes no provider call), then reads the context through the repositories and builds a system prompt around the span — tag definition + examples, host document metadata, the span's text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters from the same and neighbouring chunks of the document; a cross-chunk span is assembled from the following chunks) — and streams the reply from an OpenAI-compatible Responses API endpoint (`adapters/llm/responses.ResponsesChat`, built by bootstrap from the `SPAN_CHAT_*` settings). The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON lines ending with `{"done": true}`, or `{"error": ...}` when reading the context or the provider failed after the stream started. Nothing is stored; the client sends the whole history each turn (the last `SPAN_CHAT_HISTORY_LIMIT` messages are used).
-
-#### LLM API Abstraction (`llm_api/`)
-
-A `classconfig`-based abstraction supporting:
-- **OpenAsyncAPI** — async OpenAI-compatible client with rate-limit retry and concurrency semaphore
-- **OllamaAsyncAPI** — async Ollama client
-
-Both implement `process_single_request(APIRequest) → APIOutput`, which standardises model, messages, temperature and response format.
+**Span discussion chat.** `features/annotations/span_chat.py` checks collection read access for the span before the stream starts (a denied request reads no context and makes no provider call), then reads the context through the repositories and builds a system prompt around the span — tag definition + examples, host document metadata, the span's text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters from the same and neighbouring chunks of the document; a cross-chunk span is assembled from the following chunks) — and streams the reply from the `span_chat` model tier (`adapters/llm/gateway.FeatureChat`, built by bootstrap with `SPAN_CHAT_TEMPERATURE`/`SPAN_CHAT_MAX_TOKENS`). The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON lines ending with `{"done": true}`, or `{"error": ...}` when reading the context or the provider failed after the stream started. Nothing is stored; the client sends the whole history each turn (the last `SPAN_CHAT_HISTORY_LIMIT` messages are used).
 
 ### 3. Frontend (`semant_demo_frontend/`)
 

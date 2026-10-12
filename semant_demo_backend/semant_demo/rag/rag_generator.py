@@ -6,10 +6,7 @@ from time import time
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_ollama import OllamaLLM
 
 import logging
 
@@ -53,53 +50,19 @@ refrase_question_from_history_prompt_template = [
 
 @register_rag_class
 class RagGenerator(BaseRag):
-    def __init__(self, global_config: Config, param_config):
-        super().__init__(global_config, param_config)
+    def __init__(self, global_config: Config, param_config, llm=None):
+        super().__init__(global_config, param_config, llm)
         self.retrieve = None
         #this can be part of config in future
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
         self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
         self.output_parser = StrOutputParser()
         #create model instance
-        model_type = param_config.get("model_type")
-        self.model_type = model_type
-        api_key = param_config.get("api_key", None)
-        model_name = param_config.get("model_name", None)
-        temperature = param_config.get("temperature", None)
-        self.model = self._create_model(model_type, model_name, api_key, temperature)
+        self.model = self.chat_model(temperature=param_config.get("temperature") or 0.0)
         #search parameters
         self.chunk_limit = param_config.get("chunk_limit", 5)
         self.alpha = param_config.get("alpha", 0.5)
         self.search_type = param_config.get("search_type", "hybrid")
-
-    # initialize model
-    def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
-        if temperature:
-            temperature = temperature
-        else:
-            temperature = 0.0
-        if (temperature == None):
-            temperature = self.global_config.MODEL_TEMPERATURE
-        # select model
-        if (model_type == "GOOGLE"):
-            return ChatGoogleGenerativeAI(
-                model = model_name if model_name else self.global_config.GOOGLE_MODEL,
-                google_api_key = api_key if api_key else self.global_config.GOOGLE_API_KEY,
-                temperature = temperature
-            )
-        elif (model_type == "OLLAMA"):
-            return OllamaLLM(
-                model = model_name if model_name else self.global_config.OLLAMA_MODEL,
-                base_url = self.global_config.OLLAMA_URLS[0],
-                temperature = temperature
-            )
-        else:       #OPENAI / OPENROUTER
-            return ChatOpenAI(
-                model = model_name if model_name else self.global_config.OPENAI_MODEL,
-                api_key = api_key if api_key else self.global_config.OPENAI_API_KEY,
-                base_url = self.global_config.OPENAI_API_URL,
-                temperature = temperature
-            )
 
     # creation of the chain - will be complex in future
     def _create_chain(self, model, prompt):    
@@ -227,7 +190,7 @@ class RagGenerator(BaseRag):
             logging.warning(e)
             raise HTTPException(status_code=401, detail="Invalid API key.")
         except Exception as e:
-            logging.error(f"RAG error: calling model {self.model_type}: {e}")
+            logging.error(f"RAG error: calling the {self.param_config.get('tier') or 'default'} model tier: {type(e).__name__}")
             raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
         answer_id = str(uuid.uuid4())

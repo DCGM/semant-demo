@@ -5,10 +5,7 @@ from time import time
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_ollama import OllamaLLM
 
 #from langchain_community.tools import DuckDuckGoSearchRun   #Tavily can be used as well but it requires API key
 from ddgs import DDGS
@@ -64,8 +61,8 @@ class AdaptiveRagState(TypedDict):
 
 @register_rag_class
 class IncrementalAdaptiveRagGenerator(BaseRag):
-    def __init__(self, global_config: Config, param_config):
-        super().__init__(global_config, param_config)
+    def __init__(self, global_config: Config, param_config, llm=None):
+        super().__init__(global_config, param_config, llm)
         self.retrieve = None
 
         #multilanguage prompt
@@ -106,12 +103,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         self.output_parser = StrOutputParser()
         #create model instance (maybe create different model to different tasks in the future)
-        model_type = param_config.get("model_type")
-        self.model_type = model_type
-        api_key = param_config.get("api_key", None)
-        model_name = param_config.get("model_name", None)
-        temperature = param_config.get("temperature", None)
-        self.model = self._create_model(model_type, model_name, api_key, temperature)
+        # num_ctx applies to Ollama tiers only (as before).
+        self.model = self.chat_model(temperature=param_config.get("temperature") or 0.0, context_size=16384)
 
         #extract metadata model
         self.extract_model = self._create_extract_model()
@@ -131,36 +124,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         if (DEBUG_PRINT == True):
             print("Adaptive RAG version 25_5")
 
-    # initialize model
-    def _create_model(self, model_type: str, model_name: str, api_key: str, temperature: float):
-        if temperature:
-            temperature = temperature
-        else:
-            temperature = 0.0
-        if (temperature == None):
-            temperature = self.global_config.MODEL_TEMPERATURE
-        # select model
-        if (model_type == "GOOGLE"):
-            return ChatGoogleGenerativeAI(
-                model = model_name if model_name else self.global_config.GOOGLE_MODEL,
-                google_api_key = api_key if api_key else self.global_config.GOOGLE_API_KEY,
-                temperature = temperature
-            )
-        elif (model_type == "OLLAMA"):
-            return OllamaLLM(
-                model = model_name if model_name else self.global_config.OLLAMA_MODEL,
-                base_url = self.global_config.OLLAMA_URLS[0],
-                temperature = 0.0,
-                num_ctx = 16384
-            )
-        else:       #OPENAI / OPENROUTER
-            return ChatOpenAI(
-                model = model_name if model_name else self.global_config.OPENAI_MODEL,
-                api_key = api_key if api_key else self.global_config.OPENAI_API_KEY,
-                base_url = self.global_config.OPENAI_API_URL,
-                temperature = temperature
-            )
-    
     def _create_extract_model(self):
         return self.model
     
@@ -739,7 +702,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             logging.warning(e)
             raise HTTPException(status_code=401, detail="Invalid API key.")
         except Exception as e:
-            logging.error(f"RAG error: calling model {self.model_type}: {e}")
+            logging.error(f"RAG error: calling the {self.param_config.get('tier') or 'default'} model tier: {type(e).__name__}")
             raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
         answer_id = str(uuid.uuid4())

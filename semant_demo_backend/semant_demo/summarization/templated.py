@@ -10,7 +10,7 @@ from typing import Callable, Sequence, Optional
 from classconfig import ConfigurableValue, ConfigurableFactory, ConfigurableMixin
 from ruamel.yaml.scalarstring import LiteralScalarString
 
-from semant_demo.llm_api import APIRequest
+from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.summarization.base import SearchResultsSummarizer
 from semant_demo.utils.template import Template, TemplateTransformer
@@ -36,10 +36,6 @@ class ModelOptions(ConfigurableMixin):
 
 class TemplatedSearchResultsSummarizer(SearchResultsSummarizer):
 
-    gen_title_model: str = ConfigurableValue(
-        user_default="qwen2.5:32b-instruct",
-        desc="Model to use for title generation."
-    )
     gen_title_model_options: ModelOptions = ConfigurableFactory(
         ModelOptions,
         desc="Model options for title generation.",
@@ -62,10 +58,6 @@ Nadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".
         transform=TemplateTransformer()
     )
 
-    gen_results_summary_model: str = ConfigurableValue(
-        user_default="qwen2.5:32b-instruct",
-        desc="Model to use for search results summary generation."
-    )
     gen_results_summary_model_options: ModelOptions = ConfigurableFactory(
         ModelOptions,
         desc="Model options for search results summary generation."
@@ -105,10 +97,6 @@ Tento dotaz mu vrátil následující výsledky:
         transform=TemplateTransformer()
     )
 
-    gen_query_summary_model: str = ConfigurableValue(
-        user_default="qwen2.5:32b-instruct",
-        desc="Model to use for query summary generation."
-    )
     gen_query_summary_model_options: ModelOptions = ConfigurableFactory(
         ModelOptions,
         desc="Model options for query summary generation."
@@ -133,95 +121,67 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
         transform=TemplateTransformer()
     )
 
-    def handle_prompt_and_model(self, prompt: Optional[str], model: Optional[str], default_model: str = None, default_prompt: Template = None) -> tuple[Template, str]:
+    @staticmethod
+    def handle_prompt(prompt: Optional[str], default_prompt: Template) -> Template:
         """
-        Handles the prompt and model selection logic.
-        If a prompt or model is provided, it is used. Otherwise, the default values are used.
+        The provided prompt, or the default one when none is provided.
 
-        :param prompt: the provided prompt
-        :param model: the provided model
-        :param default_model: the default model to use if no model is provided
-        :param default_prompt: the default prompt to use if no prompt is provided
-        :return: a tuple of the selected prompt and model
-        :raises ValueError: if neither a prompt nor a default prompt is provided or the provided prompt or model is not str
+        :raises ValueError: if the provided prompt is not str
         """
+        if prompt is None:
+            return default_prompt
+        if not isinstance(prompt, str):
+            raise ValueError("Prompt must be a string.")
+        return Template(prompt)
 
-        if prompt is not None:
-            if not isinstance(prompt, str):
-                raise ValueError("Prompt must be a string.")
-            prompt = Template(prompt)
-        else:
-            if default_prompt is None:
-                raise ValueError("No prompt provided and no default prompt available.")
-            prompt = default_prompt
+    async def _generate(self, system_prompt: Template, prompt: Template, values: dict,
+                        options: ModelOptions) -> str:
+        """The generated text; raises when the model call fails."""
+        if self.llm is None:
+            raise RuntimeError("The summarizer has no LLM gateway.")
+        reply = await self.llm.complete(
+            "search_summary",
+            [{"role": "system", "content": system_prompt.render(values)},
+             {"role": "user", "content": prompt.render(values)}],
+            temperature=options.temperature, max_tokens=options.max_completion_tokens,
+            context_size=options.context_size)
+        return reply.strip()
 
-        if model is not None:
-            if not isinstance(model, str):
-                raise ValueError("Model must be a string.")
-        else:
-            if default_model is None:
-                raise ValueError("No model provided and no default model available.")
-            model = default_model
+    async def _generate_or_fallback(self, kind: str, fallback: str, on_error: Optional[Callable[[str], None]],
+                                    *args) -> str:
+        try:
+            return await self._generate(*args)
+        except Exception as e:
+            # Content-free: the provider error may quote the request.
+            logging.error("Search %s generation failed: %s", kind, type(e).__name__)
+            if on_error is not None:
+                on_error(kind)
+            return fallback
 
-        return prompt, model
-
-    async def gen_title(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_title(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, brevity: Optional[int] = None,
                         on_error: Optional[Callable[[str], None]] = None) -> str:
-        prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_title_model, self.gen_title_prompt)
+        return await self._generate_or_fallback(
+            "title", self.gen_title_error_title, on_error, self.gen_title_system_prompt,
+            self.handle_prompt(prompt, self.gen_title_prompt), {"text": text, "query": query, "brevity": brevity},
+            self.gen_title_model_options)
 
-        request = APIRequest(
-            custom_id="gen_title",
-            model=model,
-            messages=[
-                {"role": "system", "content": self.gen_title_system_prompt.render({"text": text, "query": query, "brevity": brevity})},
-                {"role": "user", "content": prompt.render({"text": text, "query": query, "brevity": brevity})},
-            ],
-        )
-        output = await self.api.process_single_request(request)
-        
-        if output.error is not None:
-            logging.error(output.error)
-            if on_error is not None:
-                on_error("title")
-            return self.gen_title_error_title
-        return output.response.get_raw_content().strip()
-
-    async def gen_results_summary(self, query: str, results: Sequence[DocumentChunk], prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_results_summary(self, query: str, results: Sequence[DocumentChunk], prompt: Optional[str] = None, brevity: Optional[int] = None,
                                   on_error: Optional[Callable[[str], None]] = None) -> str:
-        prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_results_summary_model, self.gen_results_summary_prompt)
-        request = APIRequest(
-            custom_id="gen_results_summary",
-            model=model,
-            messages=[
-                {"role": "system", "content": self.gen_results_summary_system_prompt.render({"results": results, "query": query, "brevity": brevity})},
-                {"role": "user", "content": prompt.render({"results": results, "query": query, "brevity": brevity})},
-            ],
-        )
-        output = await self.api.process_single_request(request)
-        
-        if output.error is not None:
-            logging.error(output.error)
-            if on_error is not None:
-                on_error("results_summary")
-            return self.gen_results_summary_error_summary
-        return output.response.get_raw_content().strip()
+        return await self._generate_or_fallback(
+            "results_summary", self.gen_results_summary_error_summary, on_error,
+            self.gen_results_summary_system_prompt, self.handle_prompt(prompt, self.gen_results_summary_prompt),
+            {"results": results, "query": query, "brevity": brevity}, self.gen_results_summary_model_options)
 
-    async def gen_query_summary_for_text_chunk(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, model: Optional[str] = None, brevity: Optional[int] = None,
+    async def gen_query_summary_for_text_chunk(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, brevity: Optional[int] = None,
                                                on_error: Optional[Callable[[str], None]] = None) -> str:
-        prompt, model = self.handle_prompt_and_model(prompt, model, self.gen_query_summary_model, self.gen_query_summary_prompt)
-        request = APIRequest(
-            custom_id="gen_query_summary",
-            model=model,
-            messages=[
-                {"role": "system", "content": self.gen_query_summary_system_prompt.render({"text": text, "query": query, "brevity": brevity})},
-                {"role": "user", "content": prompt.render({"text": text, "query": query, "brevity": brevity})},
-            ],
-        )
-        output = await self.api.process_single_request(request)
+        return await self._generate_or_fallback(
+            "query_summary", self.gen_query_summary_error_summary, on_error,
+            self.gen_query_summary_system_prompt, self.handle_prompt(prompt, self.gen_query_summary_prompt),
+            {"text": text, "query": query, "brevity": brevity}, self.gen_query_summary_model_options)
 
-        if output.error is not None:
-            logging.error(output.error)
-            if on_error is not None:
-                on_error("query_summary")
-            return self.gen_query_summary_error_summary
-        return output.response.get_raw_content().strip()
+
+def load_summarizer(path: str, llm: LlmGateway) -> TemplatedSearchResultsSummarizer:
+    """The summarizer configured in the YAML file at ``path``, generating with ``llm``."""
+    summarizer = TemplatedSearchResultsSummarizer.create(path)
+    summarizer.llm = llm
+    return summarizer

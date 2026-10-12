@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from weaviate.classes.query import QueryReference
 from weaviate.collections.data.async_ import _DataCollectionAsync
 
+from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
+from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
@@ -140,6 +142,25 @@ def use_topicer(api_app):
         api_app.dependency_overrides[get_topicer] = lambda: client
         return calls
     return install
+
+
+class RecordingLlmMetrics:
+    def __init__(self):
+        self.calls = []
+
+    def record_llm_call(self, **kwargs):
+        self.calls.append(kwargs)
+
+
+@pytest.fixture
+def fake_llm(api_app) -> LlmGateway:
+    """The app's model tiers with every LLM provider served by the fake; ``.recorder.metrics.calls``
+    holds the recorded calls. Install it by overriding the feature's dependency."""
+    config = api_app.state.config
+    settings = ProviderSettings(openai_api_key="test-key", openai_base_url="http://fake/openai/v1",
+                                ollama_base_url="http://fake/ollama")
+    return LlmGateway(ModelCatalog.load(config.LLM_MODELS_CONFIG), settings, RecordingLlmMetrics(),
+                      http_transport=ASGITransport(app=create_fake_provider_app(load_corpus())))
 
 
 @pytest.fixture

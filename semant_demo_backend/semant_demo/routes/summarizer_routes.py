@@ -1,25 +1,19 @@
 
-import openai
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from semant_demo.features.search.schemas import SearchResponse, SummaryResponse
-from semant_demo.config import Config
+from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
 #import dependencies
-from semant_demo.routes.dependencies import get_config, get_summarizer
+from semant_demo.routes.dependencies import get_llm, get_summarizer
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 import logging
-from openai import AsyncOpenAI
 
 
 exp_router = APIRouter()
-
-
-def get_openai_client(config: Config) -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
 @exp_router.post("/api/summarize/{summary_type}", response_model=SummaryResponse)
 async def summarize(search_response: SearchResponse, summary_type: str,
@@ -44,7 +38,7 @@ async def summarize(search_response: SearchResponse, summary_type: str,
 @exp_router.post("/api/question/{question_text}", response_model=SummaryResponse)
 async def question(search_response: SearchResponse, question_text: str,
                    current_user: User | None = Depends(current_active_optional_user),
-                   config: Config = Depends(get_config)) -> SummaryResponse:
+                   llm: LlmGateway = Depends(get_llm)) -> SummaryResponse:
     # build your snippets with IDs
     snippets = [
         f"[doc{i+1}]" + res.text.replace('\\n', ' ')
@@ -68,22 +62,14 @@ async def question(search_response: SearchResponse, question_text: str,
         {"role": "user", "content": user_prompt},
         {"role": "user", "content": question_text},
     ]
-    print(messages)
 
     try:
-        resp = await get_openai_client(config).chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=messages,
-            temperature=0.0,
-            max_tokens=300,
-        )
-    except openai.OpenAIError as e:
-        logging.error(e)
+        summary_text = await llm.complete("question", messages, temperature=0.0, max_tokens=300)
+    except Exception as e:
+        logging.error("Question answering failed: %s", type(e).__name__)
         raise HTTPException(status_code=502, detail=str(e))
 
-    summary_text = resp.choices[0].message.content.strip()
-
     return SummaryResponse(
-        summary=summary_text,
+        summary=summary_text.strip(),
         time_spent=search_response.time_spent,
     )

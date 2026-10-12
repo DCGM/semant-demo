@@ -3,8 +3,7 @@ name: "Adaptive-RAG (Gemma-3 12B)"
 description: "Advanced adaptive RAG powered by Gemma 3 12B with multi-query retrieval and web search support. Maintains conversational context across messages. Fast and suitable for Czech responses. Supports an \"Explain\" feature."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
-  model_type: "OPENAI"
-  model_name: "google/gemma-3-12b-it"
+  tier: "small"
   temperature: 0.0
   search_type : "hybrid"
   alpha: 0.5

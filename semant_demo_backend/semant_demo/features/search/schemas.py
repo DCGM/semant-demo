@@ -53,21 +53,19 @@ class SearchFiltersResponse(BaseModel):
 
 
 class SummaryRequestBase(BaseModel):
+    """Which summaries to generate. The server chooses the model (the search_summary tier)."""
     search_title_generate: bool = True
     search_title_prompt: str | None = None
-    search_title_model: str | None = None
     # upper bound on number of words in the title
     search_title_brevity: int | None = None
 
     search_summary_generate: bool = True
     search_summary_prompt: str | None = None
-    search_summary_model: str | None = None
     # upper bound on number of words in the summary
     search_summary_brevity: int | None = None
 
     search_results_summary_generate: bool = True
     search_results_summary_prompt: str | None = None
-    search_results_summary_model: str | None = None
     # upper bound on number of words in the summary
     search_results_summary_brevity: int | None = None
 

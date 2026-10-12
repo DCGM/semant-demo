@@ -170,14 +170,11 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 | `WEAVIATE_HOST` | `localhost` | No | Weaviate server hostname |
 | `WEAVIATE_REST_PORT` | `8080` | No | Weaviate HTTP port |
 | `WEAVIATE_GRPC_PORT` | `50051` | No | Weaviate gRPC port |
-| `OLLAMA_URLS` | `http://localhost:11434` | No | Comma-separated Ollama endpoints |
-| `OLLAMA_MODEL` | `gemma3:12b` | No | Default Ollama model |
-| `OPENAI_API_KEY` | _(empty)_ | If using OpenAI RAG | OpenAI API key |
-| `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | No | OpenAI-compatible endpoint for RAG/OpenAI requests (OpenAI or OpenRouter) |
-| `OPENAI_MODEL` | `gpt-4o-mini` | No | Default OpenAI model |
-| `GOOGLE_API_KEY` | _(empty)_ | If using Google RAG | Google Gemini key |
-| `GOOGLE_MODEL` | `gemini-2.5-pro` | No | Default Google model |
-| `MODEL_TEMPERATURE` | `0.0` | No | Default LLM temperature |
+| `OLLAMA_URLS` | `http://localhost:11434` | No | Default endpoint of Ollama model tiers (only the first URL is used) |
+| `OPENAI_API_KEY` | _(empty)_ | For `openai` model tiers | OpenAI / OpenRouter API key |
+| `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | No | Default endpoint of `openai` model tiers (OpenAI or OpenRouter) |
+| `GOOGLE_API_KEY` | _(empty)_ | For `google` model tiers | Google Gemini key |
+| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | No | Model tier catalog: provider, model and estimated price per tier, and the tiers each feature may use |
 | `ALLOWED_ORIGIN` | `http://localhost:9000` | No | CORS allowed origin |
 | `PORT` | `8000` | No | Backend listen port |
 | `PRODUCTION` | `false` | No | Production mode flag |

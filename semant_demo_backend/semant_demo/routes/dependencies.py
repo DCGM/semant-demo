@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
 from semant_demo.adapters.sql.users import UserLookup
-from semant_demo.adapters.llm.responses import ResponsesChat
+from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
@@ -67,8 +67,11 @@ async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
 def get_topicer(connection: HTTPConnection) -> TopicerClient:
     return get_resources(connection).topicer
 
-def get_span_chat(connection: HTTPConnection) -> ResponsesChat:
+def get_span_chat(connection: HTTPConnection) -> FeatureChat:
     return get_resources(connection).span_chat
+
+def get_llm(connection: HTTPConnection) -> LlmGateway:
+    return get_resources(connection).llm
 
 async def get_summarizer(connection: HTTPConnection) -> TemplatedSearchResultsSummarizer:
     return get_resources(connection).get_summarizer()

@@ -8,6 +8,16 @@ from semant_demo.config import SCRIPT_PATH, Config
 TEST_JWT_SECRET = "test-secret-key-long-enough-for-hmac-sha256-32bytes"
 
 
+def write_offline_llm_catalog(path: Path) -> Path:
+    """The default model tier catalog without per-tier endpoints, so every tier uses the
+    configured ``OPENAI_API_URL`` / ``OLLAMA_URLS`` (a fake or unreachable host)."""
+    catalog = yaml.safe_load((SCRIPT_PATH / "configs" / "llm_models.yaml").read_text())
+    for tier in catalog["tiers"].values():
+        tier.pop("base_url", None)
+    path.write_text(yaml.safe_dump(catalog))
+    return path
+
+
 def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
     """Settings isolated from the process environment and from live services.
 
@@ -16,11 +26,8 @@ def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
     """
     rag_dir = tmp_dir / "rag_configs"
     rag_dir.mkdir(exist_ok=True)
-    # The default summarizer config names an external Ollama host; use an unreachable one.
-    summarizer = yaml.safe_load((SCRIPT_PATH / "configs" / "search_summarizer.yaml").read_text())
-    summarizer["api"]["config"]["base_url"] = "http://ollama.invalid"
-    summarizer_path = tmp_dir / "search_summarizer.yaml"
-    summarizer_path.write_text(yaml.safe_dump(summarizer, allow_unicode=True))
+    # The default model catalog names an external Ollama host; use the unreachable OLLAMA_URLS.
+    llm_models_path = write_offline_llm_catalog(tmp_dir / "llm_models.yaml")
     environ = {
         "SQL_DB_URL": f"sqlite+aiosqlite:///{tmp_dir / 'test.db'}",
         "JWT_SECRET": TEST_JWT_SECRET,
@@ -30,7 +37,7 @@ def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
         "OPENAI_API_URL": "http://openai.invalid",
         "OLLAMA_URLS": "http://ollama.invalid",
         "RAG_CONFIGS_PATH": str(rag_dir),
-        "SEARCH_SUMMARIZER_CONFIG": str(summarizer_path),
+        "LLM_MODELS_CONFIG": str(llm_models_path),
         "STATIC_PATH": str(tmp_dir / "no_static"),
         "FEEDBACK_LOG_PATH": str(tmp_dir / "feedback.log.jsonl"),
     }

@@ -87,7 +87,11 @@ def test_environment_variable_sets_setting(env_name, raw_value, attribute, expec
     assert getattr(Config(environ={env_name: raw_value}), attribute) == expected
 
 
-def test_span_chat_falls_back_to_openai_settings():
-    config = Config(environ={"OPENAI_API_KEY": "k", "OPENAI_API_URL": "http://o", "OPENAI_MODEL": "m"})
+def test_model_choice_is_not_configured_per_feature():
+    # Models come only from the tier catalog (LLM_MODELS_CONFIG).
+    config = Config(environ={})
 
-    assert (config.SPAN_CHAT_API_KEY, config.SPAN_CHAT_API_URL, config.SPAN_CHAT_MODEL) == ("k", "http://o", "m")
+    assert config.LLM_MODELS_CONFIG.endswith("llm_models.yaml")
+    for retired in ("OPENAI_MODEL", "OLLAMA_MODEL", "GOOGLE_MODEL", "MODEL_TEMPERATURE",
+                    "SPAN_CHAT_API_KEY", "SPAN_CHAT_API_URL", "SPAN_CHAT_MODEL"):
+        assert not hasattr(config, retired)

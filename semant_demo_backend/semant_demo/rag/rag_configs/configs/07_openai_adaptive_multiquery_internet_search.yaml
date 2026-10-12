@@ -3,8 +3,7 @@ name: "Adaptive RAG using OpenAI GPT5.1 with multi query and web search."
 description: "Adaptive RAG with GPT5.1 model. It supports history between messages and internet/web search using DuckDuckGo."
 class_name: "AdaptiveRagGenerator"
 params:
-  model_type: "OPENAI"
-  model_name: "gpt-5.1"
+  tier: "large"
   temperature: 0.0
   search_type : "hybrid"
   alpha: 0.5

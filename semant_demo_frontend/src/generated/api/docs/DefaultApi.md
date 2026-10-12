@@ -1031,7 +1031,7 @@ example().catch(console.error);
 
 Discuss Span
 
-Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before forwarding to the configured OpenAI-compatible Chat Completions endpoint.
+Stream an assistant reply discussing whether the given span fits its tag.  The request body carries the full chat history; the backend resolves span / document / tag context and prepends it as a system message before streaming the reply from the span_chat feature\&#39;s model tier.
 
 ### Example
 

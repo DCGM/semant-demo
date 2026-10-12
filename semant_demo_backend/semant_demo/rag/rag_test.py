@@ -4,11 +4,9 @@ from semant_demo.config import Config
 from semant_demo.features.search.service import Retriever
 @register_rag_class
 class TestRag(BaseRag):
-    def __init__(self, global_config: Config, param_config):
-        super().__init__(global_config, param_config)
+    def __init__(self, global_config: Config, param_config, llm=None):
+        super().__init__(global_config, param_config, llm)
         self.retrieve = None
-        #get params from config
-        self.model_type = param_config.get("model_type")
     async def rag_request(self, request: RagRequest, retrieve: Retriever) -> RagResponse:
         self.retrieve = retrieve
         return RagResponse(

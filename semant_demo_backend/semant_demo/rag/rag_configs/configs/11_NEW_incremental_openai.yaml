@@ -3,8 +3,7 @@ name: "Incremental Adaptive RAG using OPENAI GPT 5.1 with multi query and web se
 description: "NEW Incremental Adaptive RAG Generator configuration using OPENAI with multi query strategy and web search enabled."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
-  model_type: "OPENAI"
-  model_name: "gpt-5.1"
+  tier: "large"
   temperature: 0.0
   search_type : "hybrid"
   alpha: 0.5

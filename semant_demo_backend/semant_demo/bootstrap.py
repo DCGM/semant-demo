@@ -8,11 +8,14 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
-from semant_demo.adapters.llm.responses import ResponsesChat
+from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway, ProviderSettings
+from semant_demo.adapters.llm.models import ModelCatalog
+from semant_demo.adapters.llm.usage import LlmMetrics
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.client import connect_weaviate
@@ -23,7 +26,7 @@ from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.rag.rag_factory import RagRegistry
-from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
+from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer, load_summarizer
 
 logger = logging.getLogger(__name__)
 
@@ -63,22 +66,29 @@ class AppResources:
     session_maker: async_sessionmaker
     embeddings: GemmaEmbeddings
     topicer: TopicerClient
-    span_chat: ResponsesChat
+    llm: LlmGateway
+    span_chat: FeatureChat
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
 
     @classmethod
-    def create(cls, config: Config) -> "AppResources":
-        """Construct resources without connecting to any external service."""
+    def create(cls, config: Config, llm_metrics: LlmMetrics | None = None,
+               llm_transport: httpx.AsyncBaseTransport | None = None) -> "AppResources":
+        """Construct resources without connecting to any external service.
+
+        Raises ``LlmConfigurationError`` when the model tier catalog is invalid.
+        """
+        llm = LlmGateway(ModelCatalog.load(config.LLM_MODELS_CONFIG), ProviderSettings.from_config(config),
+                         llm_metrics, http_transport=llm_transport)
         engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
         session_maker = async_sessionmaker(engine, autocommit=False, autoflush=True, expire_on_commit=False)
         return cls(config=config, engine=engine, session_maker=session_maker,
                    embeddings=GemmaEmbeddings(config.GEMMA_URL),
                    topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT),
-                   span_chat=ResponsesChat(api_key=config.SPAN_CHAT_API_KEY, base_url=config.SPAN_CHAT_API_URL,
-                                           model=config.SPAN_CHAT_MODEL, temperature=config.SPAN_CHAT_TEMPERATURE,
-                                           max_tokens=config.SPAN_CHAT_MAX_TOKENS))
+                   llm=llm,
+                   span_chat=FeatureChat(llm, "span_chat", temperature=config.SPAN_CHAT_TEMPERATURE,
+                                         max_tokens=config.SPAN_CHAT_MAX_TOKENS))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
         """Open the application's Weaviate client; raises if it cannot be connected."""
@@ -91,7 +101,7 @@ class AppResources:
 
     def get_summarizer(self) -> TemplatedSearchResultsSummarizer:
         if self._summarizer is None:
-            self._summarizer = TemplatedSearchResultsSummarizer.create(self.config.SEARCH_SUMMARIZER_CONFIG)
+            self._summarizer = load_summarizer(self.config.SEARCH_SUMMARIZER_CONFIG, self.llm)
         return self._summarizer
 
     async def close(self) -> None:

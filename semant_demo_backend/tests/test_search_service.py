@@ -16,10 +16,9 @@ from semant_demo.features.search.schemas import (
     ChunkQuery, FieldCondition, Op, SearchFilterInput, SearchRequest, SearchType, TagFilter, SearchResultChunk,
 )
 from semant_demo.features.search.service import SearchBackends
-from semant_demo.llm_api import APIOutput
 from semant_demo.features.documents.schemas import Document
 from semant_demo.summarization.templated import ModelOptions, TemplatedSearchResultsSummarizer
-from tests.fakes import FakeChatAPI
+from tests.fakes import FakeLlm
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), name=n, is_superuser=False) for n in ("Owner", "Shared", "Other"))
 COLLECTION, SECOND, FOREIGN = uuid4(), uuid4(), uuid4()
@@ -338,15 +337,15 @@ async def test_reported_summary_failures_keep_the_results_and_warn():
 
 
 async def test_provider_errors_in_the_templated_summarizer_are_reported():
-    class FailingTitles(FakeChatAPI):
-        async def process_single_request(self, request):
-            if request.custom_id == "gen_title":
-                return APIOutput(custom_id=request.custom_id, response=None, error="provider down")
-            return await super().process_single_request(request)
+    def failing_titles(messages):
+        if "nadpis" in messages[0]["content"]:   # the title system prompt
+            raise ConnectionError("provider down")
+        return "ok"
 
     summarizer = TemplatedSearchResultsSummarizer(
-        api=FailingTitles(default_reply="ok"), gen_title_model_options=ModelOptions(),
-        gen_results_summary_model_options=ModelOptions(), gen_query_summary_model_options=ModelOptions())
+        gen_title_model_options=ModelOptions(), gen_results_summary_model_options=ModelOptions(),
+        gen_query_summary_model_options=ModelOptions())
+    summarizer.llm = FakeLlm(failing_titles)
     chunks = FakeChunks(hits=[hit("a"), hit("b")])
 
     response = await service.search(backends(chunks), summarizer, OWNER, request())

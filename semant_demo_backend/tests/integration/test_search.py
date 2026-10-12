@@ -323,7 +323,7 @@ async def test_vector_search_uses_the_injected_embeddings(post_search, keys, mon
 async def test_summary_failure_returns_the_results_with_a_warning(post_search, keys, monkeypatch, corpus):
     from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
 
-    async def failing(self, query, text, prompt=None, model=None, brevity=None):
+    async def failing(self, *args, **kwargs):
         raise ConnectionError("summary provider down")
     monkeypatch.setattr(TemplatedSearchResultsSummarizer, "gen_title", failing)
 
@@ -332,6 +332,26 @@ async def test_summary_failure_returns_the_results_with_a_warning(post_search, k
     assert response.status_code == 200, response.text
     assert keys(response.json()["results"]) == set(corpus.chunks)
     assert response.json()["warnings"] == [service.SUMMARY_FAILED_WARNING]
+
+
+async def test_summaries_are_generated_with_the_search_summary_tier(api_app, post_search, fake_llm, corpus):
+    from semant_demo.routes.dependencies import get_summarizer
+    from semant_demo.summarization.templated import load_summarizer
+
+    summarizer = load_summarizer(api_app.state.config.SEARCH_SUMMARIZER_CONFIG, fake_llm)
+    api_app.dependency_overrides[get_summarizer] = lambda: summarizer
+
+    response = await post_search("owner", limit=2, search_title_generate=True, search_summary_generate=True,
+                                 search_results_summary_generate=True, search_title_model="evil-model")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["warnings"] == [] and body["results_summary"] == "Fake summary of 2 passage(s); last [doc2]."
+    assert all(r["query_title"] and r["query_summary"] for r in body["results"])
+    calls = fake_llm.recorder.metrics.calls
+    assert len(calls) == 2 * 2 + 1
+    # Every call used the tier's model; the client-sent model name was ignored.
+    assert {c["attributes"]["model"] for c in calls} == {fake_llm.tier_model("search_summary").model}
 
 
 async def test_classification_filter_and_hit_metadata(post_search, keys, corpus):

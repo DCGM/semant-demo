@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from semant_demo.adapters.llm.gateway import FeatureChat
 from semant_demo.routes.dependencies import get_span_chat
 from tests.fakes import FakeStreamingChat
 
@@ -35,6 +36,19 @@ async def test_shared_user_discusses_a_stored_span(api_client, login, ids, chat)
     # The default window is longer than the chunk: the following chunks are added.
     assert "[later in document" in instructions and "Kronikář zaznamenal" in instructions
     assert turns == [{"role": "user", "content": "Sedí to?"}]
+
+
+async def test_discussion_streams_through_the_span_chat_tier(api_app, api_client, login, ids, fake_llm):
+    api_app.dependency_overrides[get_span_chat] = lambda: FeatureChat(fake_llm, "span_chat", max_tokens=64)
+
+    response = await discuss(api_client, await login("annotator"), ids.span["novak_manual"])
+
+    assert response.status_code == 200, response.text
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1] == {"done": True}
+    assert "".join(e["delta"] for e in events[:-1]) == "Fake summary without passages."
+    [call] = fake_llm.recorder.metrics.calls
+    assert call["attributes"]["feature"] == "span_chat" and call["attributes"]["usage_source"] == "provider"
 
 
 async def test_cross_chunk_span_text_is_read_from_the_following_chunk(api_client, login, ids, corpus, chat):

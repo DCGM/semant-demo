@@ -15,6 +15,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from semant_demo.config import SCRIPT_PATH
+from semant_demo.core.request_context import current_request_id
 from semant_demo.main import create_app
 from semant_demo.opentelemetry import (
     OpenTelemetry,
@@ -73,6 +74,10 @@ def _recording_telemetry(counter=None, duration=None) -> OpenTelemetry:
         logger=None,
         feature_request_counter=counter or RecordingInstrument(),
         feature_request_duration_histogram=duration or RecordingInstrument(),
+        llm_call_counter=RecordingInstrument(),
+        llm_call_duration_histogram=RecordingInstrument(),
+        llm_token_counter=RecordingInstrument(),
+        llm_cost_counter=RecordingInstrument(),
         trace_provider=None,
         meter_provider=None,
         log_provider=None,
@@ -104,6 +109,23 @@ def test_feature_request_records_counter_and_duration_with_same_attributes():
     assert duration.calls == [(0.42, expected_attributes)]
 
 
+def test_llm_call_records_known_tokens_and_cost_only():
+    telemetry = _recording_telemetry()
+    attributes = {"feature": "rag", "tier": "large", "provider": "openai", "model": "m", "usage_source": "provider"}
+
+    telemetry.record_llm_call(attributes=attributes, outcome="success", duration_seconds=1.5,
+                              input_tokens=100, output_tokens=20, cost_usd=0.001)
+    telemetry.record_llm_call(attributes={**attributes, "usage_source": "estimated"}, outcome="error",
+                              duration_seconds=0.1, input_tokens=None, output_tokens=None, cost_usd=None)
+
+    assert telemetry.llm_call_counter.calls == [(1, {**attributes, "outcome": "success"}),
+                                                (1, {**attributes, "usage_source": "estimated", "outcome": "error"})]
+    assert [v for v, _ in telemetry.llm_call_duration_histogram.calls] == [1.5, 0.1]
+    assert telemetry.llm_token_counter.calls == [(100, {**attributes, "token_type": "input"}),
+                                                 (20, {**attributes, "token_type": "output"})]
+    assert telemetry.llm_cost_counter.calls == [(0.001, attributes)]
+
+
 def _middleware_app(telemetry: OpenTelemetry | None) -> RequestTelemetryMiddleware:
     async def search(request):
         return JSONResponse({"ok": True}, status_code=201)
@@ -120,6 +142,18 @@ def _middleware_app(telemetry: OpenTelemetry | None) -> RequestTelemetryMiddlewa
         Route("/health", search, methods=["GET"]),
     ])
     return RequestTelemetryMiddleware(app, telemetry=telemetry)
+
+
+async def test_request_id_is_available_while_the_request_is_served():
+    async def endpoint(request):
+        return JSONResponse({"request_id": current_request_id.get()})
+
+    app = RequestTelemetryMiddleware(Starlette(routes=[Route("/api/search", endpoint, methods=["POST"])]))
+    async with _client(app) as client:
+        response = await client.post("/api/search", headers={"X-Request-ID": "req-7"})
+
+    assert response.json() == {"request_id": "req-7"}
+    assert current_request_id.get() is None
 
 
 def _client(app) -> AsyncClient:
