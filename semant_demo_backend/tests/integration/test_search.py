@@ -321,7 +321,7 @@ async def test_vector_search_uses_the_injected_embeddings(post_search, keys, mon
 
 
 async def test_summary_failure_returns_the_results_with_a_warning(post_search, keys, monkeypatch, corpus):
-    from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
+    from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer
 
     async def failing(self, *args, **kwargs):
         raise ConnectionError("summary provider down")
@@ -336,7 +336,7 @@ async def test_summary_failure_returns_the_results_with_a_warning(post_search, k
 
 async def test_summaries_are_generated_with_the_search_summary_tier(api_app, post_search, fake_llm, corpus):
     from semant_demo.routes.dependencies import get_summarizer
-    from semant_demo.summarization.templated import load_summarizer
+    from semant_demo.features.summarization.templated import load_summarizer
 
     summarizer = load_summarizer(api_app.state.config.SEARCH_SUMMARIZER_CONFIG, fake_llm)
     api_app.dependency_overrides[get_summarizer] = lambda: summarizer

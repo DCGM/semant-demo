@@ -8,15 +8,18 @@ from langchain_core.language_models import BaseChatModel
 import time
 import json
 import uuid
+import logging
 
 
 from semant_demo.adapters.llm.gateway import message_text
 from semant_demo.adapters.llm.models import Capability
-from semant_demo.rag.rag_factory import BaseRag, register_rag_class
+from semant_demo.features.rag.registry import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.features.search.service import Retriever
 from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchType
 from semant_demo.features.rag.schemas import RagSearch, RagRequest, RagResponse
+
+logger = logging.getLogger(__name__)
 
 
 # Tools the agent model may call (OpenAI function format).
@@ -283,7 +286,8 @@ class xmartiAgentRag(BaseRag):
             agent_model = self.agent_model if i < iteration_limit - 1 else self.final_agent_model
 
             ai_msg = await agent_model.ainvoke(messages)
-            print(f"LLM response at iteration {i+1}:\nTool Calls: {ai_msg.tool_calls}\n{'-'*50}")
+            logger.debug("Agent iteration %d: tool calls %s", i + 1,
+                         [call["name"] for call in getattr(ai_msg, "tool_calls", None) or []])
 
             # 🔹 CASE 1 — model wants to call a tool
             if getattr(ai_msg, "tool_calls", None):
@@ -384,14 +388,10 @@ class xmartiAgentRag(BaseRag):
                             content=observation
                         )
                     )
-                # if tool_name != "weaviate_search":
-                #     print(f"Tool response for {tool_name}:\n{observation}\n{'-'*50}")
 
                 continue
 
             final_answer = message_text(ai_msg.content)
-
-            # print("Returning final answer normally:", final_answer)
 
             return RagResponse(
                 response_id = str(uuid.uuid4()),
@@ -414,7 +414,7 @@ class xmartiAgentRag(BaseRag):
                     retrieved_docs_text
                 )
 
-                print("Returning final answer after synthesis:", final_synthesis)
+                logger.debug("Agent answered by final synthesis")
                 return RagResponse(
                     response_id=str(uuid.uuid4()),
                     rag_answer=final_synthesis,
@@ -422,8 +422,7 @@ class xmartiAgentRag(BaseRag):
                     time_spent=time.perf_counter() - start_time
                 )
             except Exception as e:
-                pass
-                # print(f"Error during final synthesis: {e}")
+                logger.debug("Agent final synthesis failed: %s", type(e).__name__)
                 # Fall through to default response if synthesis fails
 
         # Fallback if loop ends without final answer AND no sources were retrieved

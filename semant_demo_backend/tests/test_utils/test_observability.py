@@ -276,3 +276,17 @@ async def test_server_span_does_not_contain_path_or_query_text(question):
     assert server_span.attributes["http.target"] == "/api/question/{question_text}"
     for span in spans.get_finished_spans():
         assert "Lhota" not in json.dumps(dict(span.attributes)) + span.name
+
+
+def test_uvicorn_access_log_shows_the_question_route_not_the_question(caplog):
+    # create_app's module attaches the filter to uvicorn's access logger.
+    caplog.set_level(logging.INFO, logger="uvicorn.access")
+    access = logging.getLogger("uvicorn.access")
+
+    for path in ("/api/question/Kdo%20byl%20tajn%C3%BD%3F?x=1", "/api/search"):
+        access.info('%s - "%s %s HTTP/%s" %d', "127.0.0.1:5000", "POST", path, "1.1", 200)
+
+    assert [r.getMessage() for r in caplog.records if r.name == "uvicorn.access"] == [
+        '127.0.0.1:5000 - "POST /api/question/{question_text} HTTP/1.1" 200',
+        '127.0.0.1:5000 - "POST /api/search HTTP/1.1" 200',
+    ]

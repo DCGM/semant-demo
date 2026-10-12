@@ -11,13 +11,13 @@ from semant_demo.bootstrap import AppResources, WeaviateRepositories
 from semant_demo.config import Config
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.search.service import SearchBackends
-from semant_demo.rag.rag_factory import RagRegistry
+from semant_demo.features.rag.registry import RagRegistry
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import AsyncGenerator
 
 #summarizer
-from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
+from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer
 
 
 def get_resources(connection: HTTPConnection) -> AppResources:

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from classconfig import Config
 
-from semant_demo.summarization.templated import TemplatedSearchResultsSummarizer
+from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer
 import asyncio
 import logging
 from semant_demo.adapters.weaviate.client import connect_weaviate

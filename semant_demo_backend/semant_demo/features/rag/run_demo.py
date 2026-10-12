@@ -1,11 +1,12 @@
-#this is showcase of how to use rag without starting whole aplication
+"""Runs one RAG configuration without starting the application (a developer demo that
+calls the configured providers): ``python -m semant_demo.features.rag.run_demo``."""
 import os
 import asyncio
 import warnings
 from dotenv import load_dotenv
 load_dotenv() #have to be called before config import
 
-from semant_demo.config import config
+from semant_demo.config import SCRIPT_PATH, config
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
@@ -14,7 +15,7 @@ from semant_demo.adapters.weaviate.collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.features.search.service import SearchBackends, public_retriever
-from semant_demo.rag.rag_factory import rag_load_single_config
+from semant_demo.features.rag.registry import rag_load_single_config
 from semant_demo.features.rag.schemas import RagRequest, RagSearch
 
 
@@ -35,15 +36,14 @@ async def main():
     print(f"Question: {question}\n")
     try:
         #path to configuration
-        path = os.path.join(config.RAG_CONFIGS_PATH, "01_ollama_default_config .yaml")
+        path = os.path.join(SCRIPT_PATH, "configs", "rag", "configs", "01_ollama_default_config .yaml")
         #load configuration (yaml format)
         llm = LlmGateway(ModelCatalog.load(config.LLM_MODELS_CONFIG), ProviderSettings.from_config(config))
         results = rag_load_single_config(config, path, llm)
-        
-        _, _, rag_generator = results
-
         if (results == None):
             return
+
+        _, _, rag_generator = results
 
         #create search
         rag_search = RagSearch(

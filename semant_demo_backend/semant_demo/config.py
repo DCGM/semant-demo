@@ -72,7 +72,7 @@ class Config:
         self.SPAN_CHAT_HISTORY_LIMIT = int(env.get("SPAN_CHAT_HISTORY_LIMIT", 20))
 
         # path to rag configs
-        default_config_path = SCRIPT_PATH / "rag" / "rag_configs" / "demo_configs"
+        default_config_path = SCRIPT_PATH / "configs" / "rag" / "demo_configs"
         self.RAG_CONFIGS_PATH = env.get("RAG_CONFIGS_PATH", str(default_config_path))
 
         # OpenTelemetry - disabled by default so local/test runs never try to reach a collector

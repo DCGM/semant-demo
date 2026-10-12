@@ -76,9 +76,13 @@ semant_demo_backend/semant_demo/
                           public corpus reads, collection-scoped document reads
     annotations/          tags and spans (routes, service, offsets, schemas incl. internal AnnotationChunk),
                           AI suggestions (suggestions, suggestion_routes), span chat (span_chat, span_chat_routes)
-    search/               routes, service, filters, schemas (incl. SearchResultChunk, Summary*)
-    rag/schemas.py        RAG HTTP models (the pipelines are still in top-level rag/)
-    feedback/schemas.py   app feedback HTTP model (the route is still in routes/)
+    search/               routes, service, filters, schemas (incl. SearchResultChunk, SummaryRequestBase)
+    rag/                  routes, service (answer, explain, answer feedback), registry (BaseRag,
+                          class registration, YAML factory), schemas, pipelines/ (RagGenerator,
+                          IncrementalAdaptiveRagGenerator, xmartiAgentRag, TestRag), run_demo
+    summarization/        routes, service (results summary, question), base and templated
+                          (search summarizer), schemas (SummaryResponse)
+    feedback/             app feedback: routes, service (feedback log, webhook), schemas
   adapters/
     weaviate/             one repository per concern: collections, documents, tags, spans,
                           chunk_tags, search; client, paging, writes (best-effort cascades),
@@ -89,9 +93,9 @@ semant_demo_backend/semant_demo/
     llm/                  the one gateway for backend LLM calls: models (tier catalog and
                           feature policy), gateway (metered LangChain chat models, complete,
                           stream, FeatureChat), usage (token/cost records)
-  routes/                 dependencies.py (DI from AppResources) and the routes not yet in a
-                          feature: rag, summarizer, feedback, user search
-  rag/, summarization/    RAG pipelines and search summaries (models from adapters/llm)
+  routes/                 dependencies.py (DI from AppResources), router registration and
+                          the user search route
+  configs/                YAML: llm_models, search_summarizer, search_filters, rag/ (RAG configurations)
   users/                  FastAPI Users: model, manager, auth routers, schemas
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks)
@@ -103,19 +107,21 @@ flowchart LR
     Services --> Access["features/collections/access.py"]
     Services --> Adapters["adapters/weaviate, adapters/sql"]
     Services --> Providers["adapters/embeddings, topicer, llm"]
-    RAG["rag/"] --> Search["features/search/service.retrieve"]
+    RAG["features/rag"] --> Search["features/search/service.retrieve"]
     Bootstrap["bootstrap.py"] -. builds .-> Adapters
     Bootstrap -. builds .-> Providers
     Adapters --> Stores[("Weaviate, SQLite")]
 ```
 
 Dependencies are one-way: Documents, Search and Annotations use the Collections access
-functions; RAG uses Search's authorized retrieval; nothing imports RAG. No service reaches
+functions; RAG uses Search's authorized retrieval; nothing imports RAG. Summarization reads
+Search's schemas; Search calls the summarizer only through its `Summarizer` protocol, which
+the search route receives from `get_summarizer`. No service reaches
 a raw Weaviate or OpenAI client: SDK objects stay inside `adapters/`.
 
 #### Configuration (`config.py`)
 
-A `Config` class that reads settings once, at construction, from the process environment or from an explicit mapping (`Config(environ={...})`, used by tests). `create_app(config)` stores it on `app.state.config`; routes and bootstrap read it through the `get_config` dependency. The process-wide `config` instance is only the entry-point configuration: `semant_demo.main:app`, `run.py` and the standalone scripts (`create_default_configurations.py`, `rag/rag_runner_demo.py`) read it; application code uses the app's `Config`. Key groups:
+A `Config` class that reads settings once, at construction, from the process environment or from an explicit mapping (`Config(environ={...})`, used by tests). `create_app(config)` stores it on `app.state.config`; routes and bootstrap read it through the `get_config` dependency. The process-wide `config` instance is only the entry-point configuration: `semant_demo.main:app`, `run.py` and the standalone scripts (`create_default_configurations.py`, `features/rag/run_demo.py`) read it; application code uses the app's `Config`. Key groups:
 
 - **Weaviate connection** — host, REST port, gRPC port
 - **LLM providers** — `OPENAI_API_KEY` / `OPENAI_API_URL` (any OpenAI-compatible endpoint, OpenRouter by default), `OLLAMA_URLS` (only the first is used), `GOOGLE_API_KEY`, and `LLM_MODELS_CONFIG`, the tier catalog (see *LLM gateway* below). There are no per-feature model settings.
@@ -252,35 +258,37 @@ Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`,
 
 #### RAG System
 
-RAG implementations are loaded dynamically from YAML config files via a factory pattern:
+RAG implementations are loaded dynamically from YAML config files via a factory pattern
+(`features/rag/registry.py`; the classes are in `features/rag/pipelines/` and register
+themselves when the factory imports them). The routes call `features/rag/service.py`, which
+picks the configuration (unknown id: 400), retrieves from the public corpus only and stores
+answer feedback through `adapters/sql/feedback.py`:
 
 ```mermaid
 flowchart TD
-    FACTORY[rag_factory.py] -->|loads YAML| CONFIGS[rag_configs/configs/*.yaml]
+    FACTORY["registry.py: rag_factory"] -->|loads YAML| CONFIGS["RAG_CONFIGS_PATH/*.yaml"]
     FACTORY -->|registers| REGISTRY["RAG_IMPLEMENTATIONS dict"]
     FACTORY -->|instantiates| INSTANCES["RagRegistry (per app)"]
 
     subgraph Implementations
         RG[RagGenerator] -->|extends| BASE[BaseRag]
-        ARG[AdaptiveRagGenerator] -->|extends| BASE
-        AOG[AdaptiveRagGeneratorOg] -->|extends| BASE
         IR[IncrementalAdaptiveRagGenerator] -->|extends| BASE
         AR[xmartiAgentRag] -->|extends| BASE
         TR[TestRag] -->|extends| BASE
     end
 
-    REGISTRY --- RG & ARG & AOG & IR & AR & TR
+    REGISTRY --- RG & IR & AR & TR
 ```
 
 **RagGenerator** — Simple single-pass RAG: reformulate question with history → search → generate answer with citations.
 
-**AdaptiveRagGenerator** — LangGraph-based stateful workflow with iterative retrieval and answer grading.
-
-**AdaptiveRagGeneratorOg** — Original AdaptiveRAG variant; stable base for experimentation.
-
 **IncrementalAdaptiveRagGenerator** — Current production-ready variant that incrementally expands retrieval, grades context and outputs, and uses fallback search strategies when the initial retrieval is insufficient.
 
 **xmartiAgentRag** — Agentic workflow with tool orchestration (query expansion, decomposition, retrieval quality assessment, evidence synthesis).
+
+**TestRag** — Returns a fixed answer without retrieval or model calls (route tests).
+
+The older `configs/rag/configs/` set still contains configurations of the removed `AdaptiveRagGenerator` and `AdaptiveRagGeneratorOg` classes; the factory skips them with an error log. The default `RAG_CONFIGS_PATH` is `configs/rag/demo_configs/`.
 
 #### Incremental RAG:
 ```mermaid
@@ -332,7 +340,7 @@ Configurable parameters per RAG config YAML include:
 - `chunk_limit`, `alpha`, `search_type`
 - `max_retries`, `web_search_enabled`, `metadata_extraction_allowed`
 
-#### Summarisation (`summarization/`)
+#### Summarisation (`features/summarization/`)
 
 Uses Jinja2 templates for prompt construction. Three generation tasks per search:
 

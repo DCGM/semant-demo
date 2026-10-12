@@ -7,7 +7,7 @@ from semant_demo.config import Config
 from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
-from semant_demo.summarization.templated import load_summarizer
+from semant_demo.features.summarization.templated import load_summarizer
 from tests.app_support import write_offline_llm_catalog
 from tests.corpus import load_corpus
 from tests.fake_providers import FAKE_REASON, create_fake_provider_app

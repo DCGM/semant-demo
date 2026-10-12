@@ -17,7 +17,7 @@ from semant_demo.features.search.schemas import (
 )
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.features.documents.schemas import Document
-from semant_demo.summarization.templated import ModelOptions, TemplatedSearchResultsSummarizer
+from semant_demo.features.summarization.templated import ModelOptions, TemplatedSearchResultsSummarizer
 from tests.fakes import FakeLlm
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), name=n, is_superuser=False) for n in ("Owner", "Shared", "Other"))

@@ -121,15 +121,6 @@ class SearchResponse(BaseModel):
     warnings: list[str] = []
 
 
-class SummaryRequest(SummaryRequestBase):
-    search_response: SearchResponse
-
-
-class SummaryResponse(BaseModel):
-    summary: str
-    time_spent: float
-
-
 #############################
 # Neutral retrieval inputs #
 #############################

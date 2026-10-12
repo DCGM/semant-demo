@@ -1,4 +1,4 @@
-from semant_demo.rag.rag_factory import BaseRag, register_rag_class
+from semant_demo.features.rag.registry import BaseRag, register_rag_class
 from semant_demo.features.rag.schemas import RagRequest, RagResponse
 from semant_demo.config import Config
 from semant_demo.features.search.service import Retriever
@@ -12,5 +12,6 @@ class TestRag(BaseRag):
         return RagResponse(
             rag_answer="Router is working",
             sources=[],
-            time_spent=0.1
+            time_spent=0.1,
+            response_id="test"
         )

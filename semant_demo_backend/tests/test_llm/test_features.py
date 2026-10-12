@@ -1,6 +1,7 @@
 """Complete requests of the LLM features through the real gateway and LangChain models,
 against fake HTTP providers: the RAG pipelines (incl. agent tool subcalls), the question
 endpoint and search summaries. Also: RAG configurations choose only permitted tiers."""
+import logging
 from pathlib import Path
 from uuid import uuid4
 
@@ -8,14 +9,14 @@ import pytest
 import yaml
 from httpx import ASGITransport, AsyncClient
 
-from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
+from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings, limit_provider_sdk_logs
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.config import SCRIPT_PATH, Config
 from semant_demo.features.documents.schemas import Document
 from semant_demo.features.rag.schemas import RagRequest, RagSearch
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
 from semant_demo.main import create_app
-from semant_demo.rag.rag_factory import rag_factory, rag_load_single_config
+from semant_demo.features.rag.registry import rag_factory, rag_load_single_config
 from tests.app_support import make_test_config, offline_weaviate, write_offline_llm_catalog
 from tests.corpus import load_corpus
 from tests.fake_providers import create_fake_provider_app
@@ -150,7 +151,7 @@ def test_agentic_rag_needs_a_tool_calling_tier(tmp_path, llm):
 
 @pytest.mark.parametrize("configs", ["demo_configs", "configs"])
 def test_shipped_rag_configurations_load_with_their_tiers(llm, configs):
-    directory = SCRIPT_PATH / "rag" / "rag_configs" / configs
+    directory = SCRIPT_PATH / "configs" / "rag" / configs
     registry = rag_factory(Config(environ={}), str(directory), llm)
 
     loadable = {yaml.safe_load(p.read_text())["id"] for p in directory.glob("*.yaml")
@@ -201,3 +202,29 @@ def test_clients_cannot_name_a_summary_model(tmp_path):
             assert not [p for p in schema[name]["properties"] if p.endswith("_model")]
     # A stale client sending one is ignored, not honoured.
     assert "search_title_model" not in search_request(search_title_model="evil").model_dump()
+
+
+@pytest.mark.parametrize(("class_name", "params"), [
+    ("RagGenerator", {}),
+    ("IncrementalAdaptiveRagGenerator", {"tier": "medium", "web_search_enabled": False, "max_retries": 1}),
+    ("xmartiAgentRag", {"alpha": 0.5, "chunk_limit": 5, "agent_iterations": 5, "prompts": {
+        "system_prompt_template": "Agent ({remaining_iterations} steps).",
+        **{name: name for name in ("assess_retrieval_quality_prompt", "expand_query_prompt",
+                                   "decompose_question_prompt", "synthesize_evidence_prompt")}}}),
+])
+async def test_rag_pipelines_neither_print_nor_log_questions_passages_or_answers(tmp_path, llm, class_name, params,
+                                                                              caplog, capsys):
+    # As deployed with LOG_LEVEL=DEBUG; provider SDK loggers included.
+    caplog.set_level(logging.DEBUG)
+    caplog.set_level(logging.NOTSET, logger="openai")
+    limit_provider_sdk_logs()
+    rag = load_rag(tmp_path, llm, class_name, **params)
+    request = RagRequest(question=QUESTION, rag_search=RagSearch(),
+                         history=[{"role": "user", "content": "Kronika Lhoty"},
+                                  {"role": "assistant", "content": "Kronika existuje."}])
+
+    response = await rag.rag_request(request, FakeRetriever())
+
+    logged = caplog.text + capsys.readouterr().out
+    for content in ("Novák", "Lhot", "Kronika", response.rag_answer):
+        assert content not in logged

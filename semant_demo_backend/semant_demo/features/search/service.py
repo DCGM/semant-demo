@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 from functools import partial
 from time import time
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Protocol
 
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.weaviate.collections import UserCollectionRepository
@@ -27,13 +27,19 @@ from semant_demo.features.search.filters import InvalidSearchFilterError, parse_
 from semant_demo.features.search.schemas import (
     ChunkQuery, FieldCondition, Op, SearchFiltersResponse, SearchRequest, SearchResponse, SearchType, TagFilter,
 )
-from semant_demo.summarization.base import SearchResultsSummarizer
 
 logger = logging.getLogger(__name__)
 
 SUMMARY_FAILED_WARNING = "Some titles or summaries could not be generated."
 
 Retriever = Callable[[SearchRequest], Awaitable[SearchResponse]]
+
+
+class Summarizer(Protocol):
+    """Adds the titles and summaries ``request`` asks for to ``response`` in place
+    (``features/summarization``); returns the kinds of the parts that failed."""
+
+    async def __call__(self, request: SearchRequest, response: SearchResponse) -> list[str]: ...
 
 
 @dataclass(frozen=True)
@@ -77,11 +83,12 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
 
     elapsed = time() - start
     log_entry = f"Top {len(hits)} results for “{request.query}”. Retrieved in {elapsed:.2f} seconds:"
-    logger.info(log_entry)
+    # Content-free: RAG retrieves with the user's (rephrased) question.
+    logger.info("Search returned %d results in %.2f s", len(hits), elapsed)
     return SearchResponse(results=hits, search_request=request, time_spent=elapsed, search_log=[log_entry])
 
 
-async def search(backends: SearchBackends, summarizer: SearchResultsSummarizer, user: Principal | None,
+async def search(backends: SearchBackends, summarizer: Summarizer, user: Principal | None,
                  request: SearchRequest, filter_definitions: SearchFiltersResponse | None = None) -> SearchResponse:
     """Retrieval plus the summaries the request asks for.
 

@@ -22,16 +22,17 @@ from typing import Any, TypedDict
 
 from pydantic import BaseModel
 
-from semant_demo.rag.rag_factory import BaseRag, register_rag_class
+from semant_demo.features.rag.registry import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchResultChunk
 from semant_demo.features.documents.schemas import Document
 from semant_demo.features.rag.schemas import RagRequest, RagResponse, ExplainRequest
 from semant_demo.features.search.service import Retriever
 #import prompts from prompt file
-from semant_demo.rag.incremental_rag_prompts import *
+from semant_demo.features.rag.pipelines.incremental_rag_prompts import *
 
-DEBUG_PRINT = False
+logger = logging.getLogger(__name__)
+
 
 # Internal state of the adaptive RAG graph.
 class ExtractedMetadata(BaseModel):
@@ -121,8 +122,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         self.workflow = self._build_rag()
         self.rag = self.workflow.compile()
 
-        if (DEBUG_PRINT == True):
-            print("Adaptive RAG version 25_5")
 
     def _create_extract_model(self):
         return self.model
@@ -257,8 +256,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 use_hyde_embedding = True
                 alpha = 0.9
 
-            if (DEBUG_PRINT):
-                print(f"Is used hyde embedding: {use_hyde_embedding}.")
+            logger.debug("HyDE embedding used: %s", use_hyde_embedding)
 
             #load all question variants
             queries = state.get("queries", [])
@@ -282,8 +280,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     automatic = False,
                     is_hyde = use_hyde_embedding
                 )
-                if (DEBUG_PRINT):
-                    print(f"search_request: {search_request}")
                 #call db search
                 return await self.retrieve(search_request)
 
@@ -309,7 +305,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     "retrieval_iteration_counter" : counter_value
                     }
         except Exception as e:
-            logging.error(f"RAG ERROR: retrieval: {str(e)}")
+            logger.error("RAG retrieval failed: %s", type(e).__name__)
             counter_value = state.get("retrieval_iteration_counter", 0) + 1
             return  {"documents" : [], 
                     "retrieval_iteration_counter" : counter_value
@@ -325,8 +321,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         try:
             graded_doc = json.loads(clean_result)
             language = graded_doc.get("language", "eng").lower()
-            if (DEBUG_PRINT):
-                print(f"Detected language: {language}")
+            logger.debug("Detected language: %s", language)
         except Exception:
             return {"language" : "eng"}
         return {"language" : language}
@@ -348,8 +343,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "prompt_history" : prompt_history
             })
 
-            if (DEBUG_PRINT):
-                print(f"Rephrased question: {correct_question}")
 
             return {"question" : correct_question}
         else:
@@ -365,7 +358,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "context_string" : context,
                 "question_string" : state["question"]
             })
-            print(f"Previous context grade result: {result}")
             if ("yes" in result.lower()):
                 return {"context_sufficient" : True}
 
@@ -374,12 +366,10 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     # function to decide after context check if we should start retrieval or we can skip it and generate answer right away
     def decide_after_check(self, state: AdaptiveRagState):
         if (state["context_sufficient"] == True):
-            if (DEBUG_PRINT):
-                print(f"Previous context is sufficient, skipping DB search.")
+            logger.debug("Previous context is sufficient, skipping DB search")
             return "sufficient"
         else:
-            if (DEBUG_PRINT):
-                print(f"Starting  DB search.")
+            logger.debug("Starting DB search")
             return "insufficient"
 
     # node to extract metadata from question
@@ -388,8 +378,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     async def node_extract_metadata(self, state: AdaptiveRagState):
         if state.get("retrieval_iteration_counter", 0) == 1:
             if (state["metadata_extraction_allowed"] == True):
-                if (DEBUG_PRINT): 
-                    print("Extrackting metadata in Multi-query iteration")
+                logger.debug("Extracting metadata for multi-query search")
                 language = state.get("language", "ces")
                 prompt = self._get_prompt_by_language("extract_metadata", language)
                 chain =  self._create_chain (model=self.extract_model, prompt=prompt)
@@ -402,8 +391,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                         "max_year" : (int(metadata.get("max_year")) + 5) if metadata.get("max_year") else None,
                         "language" : metadata.get("language")
                     }
-                    if (DEBUG_PRINT):
-                        print(f"metadata_structured: {metadata_structured}")
                     return {"metadata" : metadata_structured}
                 except Exception:
                     return {"metadata" : {}}
@@ -422,8 +409,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             return {"queries" : [state["question"]]}
         
         elif (iteration == 2): # hyde
-            if (DEBUG_PRINT):
-                print(f"HYDE MODE")
+            logger.debug("Retrieval mode: HyDE")
 
             prompt = self._get_prompt_by_language("hyde", language)
             chain = self._create_chain(model = self.model, prompt = prompt)
@@ -433,8 +419,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         else:
             #multiple query generation
-            if (DEBUG_PRINT):
-                print(f"MULTI QUERY MODE")
+            logger.debug("Retrieval mode: multi-query")
 
             prompt = self._get_prompt_by_language("multiquery", language)
             chain = self._create_chain(model = self.model, prompt = prompt)
@@ -456,8 +441,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         if (len(state["documents"]) <= 5 or state["retrieval_iteration_counter"] == 1):
             return {"documents": state["documents"]}
         
-        if (DEBUG_PRINT): 
-            print(f"GRADING RETRIEVED CONTEXT: ({len(state['documents'])} docs)")
+        logger.debug("Grading %d retrieved documents", len(state['documents']))
 
         language = state.get("language", "ces")
         prompt = self._get_prompt_by_language("grade_context", language)
@@ -489,8 +473,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         
 
         #if relevant return documents (in original textchunk format)
-        if (DEBUG_PRINT):
-            print(f"Relevant documents number: " + str(len(filtered_documents)), " original doc number: " + str(len(state["documents"])))
+        logger.debug("Relevant documents: %d of %d", len(filtered_documents), len(state["documents"]))
         
         filtered_documents = filtered_documents[:5]
         return {"documents" : filtered_documents}
@@ -502,8 +485,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         if (state["documents"] and len(state["documents"]) > 0):
             return "generate"
         
-        if (DEBUG_PRINT): 
-            print(f"ROUTER: 0 relevant documents in iteration {ret_count}")
+        logger.debug("Router: no relevant documents in iteration %s", ret_count)
 
         if ret_count < self.max_retries: 
             return "transform"
@@ -520,8 +502,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         
         #join snippets
         final_context = self._format_weaviate_context(state["documents"])
-        if (DEBUG_PRINT):
-            print(f"DEBUG: Context length (chars): {len(final_context)}")
+        logger.debug("Context length: %d chars", len(final_context))
 
         if (state["history"]):  #if there is history use different prompt which include history in the input
             prompt = self._get_prompt_by_language("generate_with_history", language)
@@ -543,8 +524,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "question_string" : state["question"]
             })
 
-        if (DEBUG_PRINT):
-            print(f"rag answer: {answer}")
 
         return {"generation": answer}
     
@@ -566,15 +545,13 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             decision = json.loads(clean_result)
             
             if decision.get("is_complete") == "no":
-                if (DEBUG_PRINT):
-                    print("GRADE GENERATION: Answer incomplete. Routing to Retry.")
+                logger.debug("Answer graded incomplete, retrying")
                 return {"feedback": "insufficient", "generation_iteration_counter": gen_value}
             else:
                 return {"feedback": "supported", "generation_iteration_counter": gen_value}
             
         except Exception as e:
-            if (DEBUG_PRINT): 
-                print(f"GRADER ERROR: {e}. Defaulting to finish.")
+            logger.debug("Answer grading failed (%s), finishing", type(e).__name__)
             return {"feedback": "supported", "generation_iteration_counter": gen_value}
 
     # decide where to go based on answer grading
@@ -582,12 +559,10 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         retrieval_count = state.get("retrieval_iteration_counter", 0)
         web_search_done = state.get("web_search_performed", False)
         if state["feedback"] == "supported":
-            if (DEBUG_PRINT): 
-                print("FINISHING: Answer satisfactory.")
+            logger.debug("Answer graded satisfactory")
             return "finish"
         if (retrieval_count < self.max_retries):    #max tries
-            if (DEBUG_PRINT): 
-                print("Retrying with multiquery or hyde.")
+            logger.debug("Retrying with multi-query or HyDE")
             return "retry"
         if (web_search_done == False and self.web_search_enabled == True): #web search fallback
             return "web_search"
@@ -597,8 +572,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     # internet fallback node
     # very helpful if database is lacking information about the question topic
     async def node_web_search (self, state: AdaptiveRagState):
-        if (DEBUG_PRINT):
-            print(f"Extracting keyword for the internet search.")
+        logger.debug("Extracting keywords for web search")
 
         # extract keywords from question to expand search
         try:
@@ -611,18 +585,15 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
             search_queries = [keywords, state["question"]]
         except Exception as e:
-            print(f"Rewriting web search queries, Error: {e}")
+            logger.warning("Rewriting web search queries failed: %s", type(e).__name__)
 
-        if (DEBUG_PRINT):
-            print(f"Trying to search web using DuckDuckGo")
+        logger.debug("Searching the web with DuckDuckGo")
 
         try:
             def ddg(queries):
                 all_results = []
                 with DDGS() as ddgs:
                     for q in queries:
-                        if (DEBUG_PRINT): 
-                            print(f"Searching web: {q}")
                         results = [r["body"] for r in ddgs.text(q, max_results = 8)]
                         all_results.extend(list(set(results)))
 
@@ -648,13 +619,11 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     document_object=Document(id=uuid_tmp, library="web_search", title="DuckDuckGo Search", yearIssued = 2026)
                 )
                 search_chunks.append(search_chunk)
-            if (DEBUG_PRINT):
-                print(f"Internet search result: {search_chunks}")
+            logger.debug("Web search returned %d results", len(search_chunks))
             return {"documents" : search_chunks, "web_search_performed" : True, "feedback" : "supported"}
                 
         except Exception as e:
-            if (DEBUG_PRINT):
-                print(f"Web search failed. Error: {e}")
+            logger.debug("Web search failed: %s", type(e).__name__)
             return {"web_search_performed" : True, "feedback" : "supported"}
 
 
@@ -672,7 +641,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
         else:
             history_preprocessed = []
 
-        print(previous_documents)
         # call rag graph
         try:
             t1 = time()
@@ -699,10 +667,10 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             time_spent = time() - t1
 
         except (openai.AuthenticationError, langchain_google_genai.chat_models.ChatGoogleGenerativeAIError) as e:
-            logging.warning(e)
+            logger.warning("RAG provider rejected the API key: %s", type(e).__name__)
             raise HTTPException(status_code=401, detail="Invalid API key.")
         except Exception as e:
-            logging.error(f"RAG error: calling the {self.param_config.get('tier') or 'default'} model tier: {type(e).__name__}")
+            logger.error(f"RAG error: calling the {self.param_config.get('tier') or 'default'} model tier: {type(e).__name__}")
             raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
         answer_id = str(uuid.uuid4())
@@ -734,8 +702,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             if (role == "user"):
                 history_preprocessed.pop() # remove last user message
 
-        if (DEBUG_PRINT):
-            print(f"EXPLAIN SELECTION: Full answer: {full_answer}, Selected text: {selected_text}")
 
         if (full_answer and sources_raw and selected_text):
             context = self._format_weaviate_context(sources_raw)
@@ -748,8 +714,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             try:
                 graded_doc = json.loads(clean_result)
                 language = graded_doc.get("language", "eng").lower()
-                if (DEBUG_PRINT):
-                    print(f"Detected language: {language}")
+                logger.debug("Detected language: %s", language)
             except Exception:
                 language = "eng"
 

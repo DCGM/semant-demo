@@ -12,7 +12,7 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 
 from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.features.documents.schemas import DocumentChunk
-from semant_demo.summarization.base import SearchResultsSummarizer
+from semant_demo.features.summarization.base import SearchResultsSummarizer
 from semant_demo.utils.template import Template, TemplateTransformer
 
 

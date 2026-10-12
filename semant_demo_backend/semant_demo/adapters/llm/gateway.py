@@ -12,6 +12,8 @@ from collections.abc import AsyncIterator, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+import logging
+
 import httpx
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
@@ -132,6 +134,16 @@ class LlmGateway:
         return ChatGoogleGenerativeAI(model=model.model,
                                       google_api_key=SecretStr(self.providers.google_api_key or _UNSET_KEY),
                                       temperature=temperature, max_output_tokens=max_tokens, callbacks=[usage])
+
+
+def limit_provider_sdk_logs() -> None:
+    """Keep provider SDK request logs from the application logs at ``LOG_LEVEL=DEBUG``.
+
+    The OpenAI SDK logs whole request bodies (prompts, retrieved text, questions) at
+    DEBUG; its INFO and higher records still pass the root level as before.
+    """
+    root_level = logging.getLogger().getEffectiveLevel()
+    logging.getLogger("openai").setLevel(max(logging.INFO, root_level))
 
 
 class FeatureChat:
