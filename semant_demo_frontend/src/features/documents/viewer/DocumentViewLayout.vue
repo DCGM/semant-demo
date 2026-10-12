@@ -75,7 +75,9 @@
           </q-tabs>
         </div>
 
-        <q-tab-panels v-model="drawerTab" animated>
+        <!-- keep-alive: the panels keep their local state (tag order and search, AI tags,
+             mode and selection) while another tab is shown. -->
+        <q-tab-panels v-model="drawerTab" animated keep-alive>
           <q-tab-panel name="tags" class="q-pa-md">
             <DocumentTagsPanel ref="tagsPanelRef" :collection-id="collectionId" :document-id="documentId" />
           </q-tab-panel>

@@ -214,6 +214,17 @@ watch(
   }
 )
 
+// The panel stays alive across tab switches (keep-alive) and keeps its order and search;
+// another collection has other tags, so both start over.
+watch(
+  () => props.collectionId,
+  () => {
+    tagOrder.value = []
+    orderSeeded.value = false
+    searchedTagName.value = ''
+  }
+)
+
 function onDragStart(tagId: string) {
   dragTagId.value = tagId
 }
