@@ -5,11 +5,11 @@ import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, effectScope, h } from 'vue'
 import { createMemoryHistory, createRouter, RouterView, type RouteRecordRaw } from 'vue-router'
 
-import { useUserStore } from 'src/stores/user-store'
+import { useUserStore } from 'src/features/auth/userStore'
 import { useSessionScope } from 'src/app/session'
 import { installAuthGuard } from 'src/router/authGuard'
 import { clearAuthToken, createApiClients, onUnauthorized, postNdjson, setAuthToken } from 'src/shared/api'
-import MainLayout from 'src/layouts/MainLayout.vue'
+import MainLayout from 'src/app/MainLayout.vue'
 
 const user = { id: 'u1', email: 'u1@example.com', username: 'u1', name: 'User One' }
 const Page = defineComponent({ render: () => h('div', 'page') })

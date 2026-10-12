@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { readNdjson } from 'src/shared/api'
-import useAiAssistance, { describeRunEnd } from 'src/composables/useAiAssistance'
-import { useTagSpansStore } from 'src/stores/tagSpansStore'
+import useAiAssistance, { describeRunEnd } from 'src/features/annotations/useAiAssistance'
+import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
 
-vi.mock('src/repositories/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
+vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
 
 const encoder = new TextEncoder()
 

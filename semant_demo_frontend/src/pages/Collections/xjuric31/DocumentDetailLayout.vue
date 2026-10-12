@@ -528,25 +528,23 @@
 </template>
 
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
-import useDocuments from 'src/composables/useDocuments'
-import type { Document } from 'src/models/documents'
+import { useDocumentsStore } from 'src/features/documents/documentsStore'
+import { Document, PostTag, PatchTag, Tag, TagSpan, SpanType, WriteOutcome } from 'src/generated/api'
 import { useRoute } from 'vue-router'
-import useCollections from 'src/composables/useCollections'
-import useTags from 'src/composables/useTags'
-import useTagsDialog from 'src/composables/dialogs/useTagsDialog'
-import type { PostTag, PatchTag, Tag } from 'src/models/tags'
-import TagExamples from 'src/components/TagExamples.vue'
-import { useTagNavigation } from 'src/composables/useTagNavigation'
-import useAiAssistance, { type AiAssistanceMode } from 'src/composables/useAiAssistance'
-import useTagSpans from 'src/composables/useTagSpans'
+import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
+import { useTagsStore } from 'src/features/annotations/tagsStore'
+import useTagsDialog from 'src/features/annotations/useTagsDialog'
+import TagExamples from 'src/features/annotations/TagExamples.vue'
+import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
+import useAiAssistance, { type AiAssistanceMode } from 'src/features/annotations/useAiAssistance'
+import useTagSpans from 'src/features/annotations/useTagSpans'
 import { useApi } from 'src/shared/api'
-import { SpanType, WriteOutcome } from 'src/generated/api'
-import { describeIncomplete } from 'src/utils/writeOutcome'
-import type { TagSpan } from 'src/models/tagSpans'
-import TagSearch from 'src/components/TagSearch.vue'
-import { useTagSearch } from 'src/composables/useTagSearch'
+import { describeIncomplete } from 'src/shared/writeOutcome'
+import TagSearch from 'src/features/annotations/TagSearch.vue'
+import { useTagSearch } from 'src/features/annotations/useTagSearch'
 
 interface Props {
   collectionId: string
@@ -559,9 +557,15 @@ const drawerOpen = ref(true)
 const drawerTab = ref('tags')
 const layoutRef = ref<unknown>(null)
 const layoutHeight = ref<string>('auto')
-const { activeDocument, loadDocument } = useDocuments()
-const { activeCollection, loadCollection } = useCollections()
-const { tags, loading: tagsLoading, loadTagsByCollection, createTag, updateTag } = useTags()
+const documentsStore = useDocumentsStore()
+const { activeDocument } = storeToRefs(documentsStore)
+const { fetchDocument } = documentsStore
+const collectionsStore = useUserCollectionsStore()
+const { activeCollection } = storeToRefs(collectionsStore)
+const { fetchCollection } = collectionsStore
+const tagsStore = useTagsStore()
+const { tags, loading: tagsLoading } = storeToRefs(tagsStore)
+const { fetchTagsByCollection, createTag, updateTag } = tagsStore
 const { openTagsDialog } = useTagsDialog()
 const $q = useQuasar()
 const deletingTagSpansId = ref<string | null>(null)
@@ -1032,14 +1036,14 @@ function onDeleteAllTagSpans(tag: Tag) {
 const handleCreateTag = () => {
   openTagsDialog({ dialogType: 'CREATE' }).onOk(async (tagData: PostTag) => {
     await createTag(props.collectionId, tagData)
-    await loadTagsByCollection(props.collectionId)
+    await fetchTagsByCollection(props.collectionId)
   })
 }
 
 const handleEditTag = (tag: Tag) => {
   openTagsDialog({ dialogType: 'EDIT', tag }).onOk(async (updatedData: PatchTag) => {
     await updateTag(tag.id, updatedData)
-    await loadTagsByCollection(props.collectionId)
+    await fetchTagsByCollection(props.collectionId)
   })
 }
 
@@ -1050,7 +1054,7 @@ function onEditEntryTag(entry: AutoSpanEntry) {
 
 const handleExamplesUpdate = async (tag: Tag, examples: string[]) => {
   await updateTag(tag.id, { examples })
-  await loadTagsByCollection(props.collectionId)
+  await fetchTagsByCollection(props.collectionId)
 }
 
 const documentData = computed<Document>(() => activeDocument.value!)
@@ -1116,7 +1120,7 @@ watch(
     lastDeletedCount.value = null
     lastStatusKind.value = null
     tagSpans.clearAll()
-    await loadDocument(documentId)
+    await fetchDocument(documentId)
   },
   { immediate: true }
 )
@@ -1128,8 +1132,8 @@ watch(
     // annotations (the same chunk can be in both) must not stay on screen.
     aiAssist.reset()
     tagSpans.clearAll()
-    await loadCollection(collectionId)
-    await loadTagsByCollection(collectionId)
+    await fetchCollection(collectionId)
+    await fetchTagsByCollection(collectionId)
   },
   { immediate: true }
 )

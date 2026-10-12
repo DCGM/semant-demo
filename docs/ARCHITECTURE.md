@@ -372,7 +372,7 @@ Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `tex
 
 The Annotations feature (`features/annotations/service.py`) owns tag and span use cases: access checks (read: collection read; spans: annotation edit; tags: tag-definition edit — owner and shared users), offset validation, the span write followed by the chunk tag re-derivation, and partial outcomes. Routes only parse HTTP; `adapters/weaviate/spans.py` and `tags.py` only read and write. AI suggestions (`suggestions.py`, below) save validated proposals and delete suggestions through the same service.
 
-Coordinates (`features/annotations/offsets.py`, frontend twin `src/utils/spanOffsets.ts`, shared cases in `semant_demo_backend/tests/fixtures/text_offsets.json`): a span is stored on the chunk where it starts; `start`/`end` are half-open UTF-16 code-unit offsets (the browser's `String.length`) from the start of that chunk's text. `end` may exceed the chunk: the span continues into the following chunks of the document while their `order` is consecutive, whether or not they are in the collection. Span creation and offset changes are rejected with 400 when `start` is negative or not inside the anchor chunk, the span is empty, it crosses a gap in chunk order, or it ends after the document's text. Changes that do not touch offsets (approve, reject, retag) do not re-check stored offsets.
+Coordinates (`features/annotations/offsets.py`, frontend twin `src/features/annotations/spanOffsets.ts`, shared cases in `semant_demo_backend/tests/fixtures/text_offsets.json`): a span is stored on the chunk where it starts; `start`/`end` are half-open UTF-16 code-unit offsets (the browser's `String.length`) from the start of that chunk's text. `end` may exceed the chunk: the span continues into the following chunks of the document while their `order` is consecutive, whether or not they are in the collection. Span creation and offset changes are rejected with 400 when `start` is negative or not inside the anchor chunk, the span is empty, it crosses a gap in chunk order, or it ends after the document's text. Changes that do not touch offsets (approve, reject, retag) do not re-check stored offsets.
 
 Tag creation inserts the tag and then links it to its collection; when the link fails the new tag is deleted again and the request fails with 500 (`step: link_collection`; if that deletion fails too, `step: delete_unlinked_tag` and the detail says an unreachable tag may remain). Tag and collection deletion keep 204 on success; when a step fails they answer 500 with `detail`, `step`, `completed` (counts of completed steps) and `uncertain`, keep the completed deletions, and deleting again continues.
 
@@ -395,32 +395,49 @@ External AI integrations that produce or critique spans. All streaming endpoints
 
 Reviewers then approve (`pos`) or reject (`neg`) suggestions through the standard span endpoints.
 
-The frontend (`src/composables/useAiAssistance.ts`) reads the stream with `postNdjson` (`src/shared/api/ndjson.ts`), shows saved suggestions as they arrive and reports partial, failed and interrupted runs. Each run carries a token; changing document or collection aborts it and its late events no longer change the store, errors or loading state.
+The frontend (`src/features/annotations/useAiAssistance.ts`) reads the stream with `postNdjson` (`src/shared/api/ndjson.ts`), shows saved suggestions as they arrive and reports partial, failed and interrupted runs. Each run carries a token; changing document or collection aborts it and its late events no longer change the store, errors or loading state.
 
 **Span discussion chat.** `features/annotations/span_chat.py` checks collection read access for the span before the stream starts (a denied request reads no context and makes no provider call), then reads the context through the repositories and builds a system prompt around the span — tag definition + examples, host document metadata, the span's text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters from the same and neighbouring chunks of the document; a cross-chunk span is assembled from the following chunks) — and streams the reply from the `span_chat` model tier (`adapters/llm/gateway.FeatureChat`, built by bootstrap with `SPAN_CHAT_TEMPERATURE`/`SPAN_CHAT_MAX_TOKENS`). The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON lines ending with `{"done": true}`, or `{"error": ...}` when reading the context or the provider failed after the stream started. Nothing is stored; the client sends the whole history each turn (the last `SPAN_CHAT_HISTORY_LIMIT` messages are used).
 
 ### 3. Frontend (`semant_demo_frontend/`)
 
-Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
+Vue 3 + Quasar 2 SPA with TypeScript. Code is grouped by feature under `src/features/`:
+each feature owns its pages, components, Pinia stores, composables and repository wrappers
+over the generated client. `app/` is the application shell (main layout, right sidebar, session
+scope, about and not-found pages), `shared/` holds code without a feature owner (`api/`,
+`ui/` buttons and error display, notifications, write outcomes, pagination, color picker),
+and `router/` the routes and sign-in guard.
+
+| Feature | Contents |
+|---|---|
+| `search` | search page, result cards, classifications, summary panel, request/summary state |
+| `rag` | RAG chat page |
+| `user_collections` | collection list, collection workspace and its tabs, collection/share dialogs, `userCollectionsStore`, `collectionStatsStore`, `permissions.ts` |
+| `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`) |
+| `annotations` | tags table and dialog, span discussion, annotation/AI-suggestion/tag-navigation composables, `tagsStore`, `tagSpansStore`, span offsets |
+| `auth` | login/register/account dialogs, `userStore`, user search |
+| `feedback` | feedback page and its schema |
+
+The document view is still in `pages/Collections/xjuric31/`; #289 moves and splits it.
+Components use stores directly (`storeToRefs` for state); composables exist where they add
+behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 
 | Route | Page | Description |
 |---|---|---|
-| `/search` | `SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
-| `/rag` | `RagPage` | Multi-turn RAG chat with source citations |
-| `/collections` | `Collections/UserCollectionsPage` | List user collections |
-| `/collections/:cid/overview` | `Collections/CollectionOverviewPage` | Collection summary & stats |
-| `/collections/:cid/documents` | `Collections/CollectionDocumentsPage` | Documents inside a collection |
-| `/collections/:cid/tags` | `Collections/CollectionTagsPage` | Tags scoped to the collection |
-| `/collections/:cid/tagging_jobs` | `Collections/CollectionTaggingJobsPage` | Placeholder page (no behavior; the old tagging jobs were removed) |
-| `/collections/:cid/members` | `Collections/CollectionMembersPage` | Collection sharing / role management |
-| `/collections/:cid/documents/:did/v1` | `Collections/xjuric31/DocumentDetailPage` | Document view (text, annotations, AI suggestions, span chat) |
+| `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
+| `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations |
+| `/collections` | `user_collections/UserCollectionsPage` | List user collections |
+| `/collections/:cid/overview` | `user_collections/CollectionOverviewPage` | Collection summary & stats |
+| `/collections/:cid/documents` | `user_collections/CollectionDocumentsPage` | Documents inside a collection |
+| `/collections/:cid/tags` | `user_collections/CollectionTagsPage` | Tags scoped to the collection |
+| `/collections/:cid/tagging_jobs` | `user_collections/CollectionTaggingJobsPage` | Placeholder page (no behavior; the old tagging jobs were removed) |
+| `/collections/:cid/members` | `user_collections/CollectionMembersPage` | Collection sharing / role management |
+| `/collections/:cid/documents/:did/v1` | `pages/Collections/xjuric31/DocumentDetailPage` | Document view (text, annotations, AI suggestions, span chat) |
 | `/collections/:cid/documents/:did/v2` | — | Redirects to the document view (the retired V2 variant) |
-| `/feedback` | `FeedbackPage` | In-app feedback form |
-| `/about` | `AboutPage` | Project information |
+| `/feedback` | `feedback/FeedbackPage` | In-app feedback form |
+| `/about` | `app/AboutPage` | Project information |
 
-State management via Pinia stores (`user-store`, `collectionsStore`, `collectionStatsStore`, `chunksStore`, `documentsStore`, `tagsStore`, `tagSpansStore`). Reusable streaming logic lives in `composables/` (e.g. `useSpanDiscussion` for the NDJSON span chat).
-
-All network calls go through `src/shared/api`: one backend origin (`BACKEND_URL`), one bearer-token source, the OpenAPI-generated TypeScript client (`src/generated/`, via `useApi()`, used directly or through `repositories/`) and `postNdjson()` for the NDJSON streams (span suggestions, span discussion), which sends the same token and turns a refused request into an `ApiError` with the backend's `detail`. There is no other HTTP client. State that belongs to a context (collection, document, search, conversation) drops answers that arrive after the context changed (`createContextGuard`/`createScope`); signing out clears user-scoped stores (`app/session.ts`), and a 401 answer to a request sent with the current token signs the user out locally (expired or revoked session). The `/collections` routes need a signed-in user (`meta.requiresAuth`, `router/authGuard.ts`): a direct link waits for a stored session to be restored, otherwise goes to search, and signing out on such a route leaves it. The navigation drawer follows the session (Collections, Settings — the account dialog — and Sign out when signed in; Log in and Register otherwise). Back arrows (collection workspace → collection list, document view → collection documents) link to a fixed parent route rather than browser history and never change drawer state; drawer collapse uses the separate neutral `MiniStateButton`. These are UI conveniences; the backend authorizes every request. The app-level right sidebar (`app/sidebar/`) hosts page tools such as the search summary and the document context of a search result; see [RIGHT_SIDEBAR.md](RIGHT_SIDEBAR.md). Owner-only collection controls are hidden for shared users (`features/collections/permissions.ts`, mirroring the backend rules).
+All network calls go through `src/shared/api`: one backend origin (`BACKEND_URL`), one bearer-token source, the OpenAPI-generated TypeScript client (`src/generated/`, via `useApi()`, used directly or through a feature's repository wrapper) and `postNdjson()` for the NDJSON streams (span suggestions, span discussion), which sends the same token and turns a refused request into an `ApiError` with the backend's `detail`. There is no other HTTP client. State that belongs to a context (collection, document, search, conversation) drops answers that arrive after the context changed (`createContextGuard`/`createScope`); signing out clears user-scoped stores (`app/session.ts`), and a 401 answer to a request sent with the current token signs the user out locally (expired or revoked session). The `/collections` routes need a signed-in user (`meta.requiresAuth`, `router/authGuard.ts`): a direct link waits for a stored session to be restored, otherwise goes to search, and signing out on such a route leaves it. The navigation drawer follows the session (Collections, Settings — the account dialog — and Sign out when signed in; Log in and Register otherwise). Back arrows (collection workspace → collection list, document view → collection documents) link to a fixed parent route rather than browser history and never change drawer state; drawer collapse uses the separate neutral `MiniStateButton`. These are UI conveniences; the backend authorizes every request. The app-level right sidebar (`app/sidebar/`) hosts page tools such as the search summary and the document context of a search result; see [RIGHT_SIDEBAR.md](RIGHT_SIDEBAR.md). Owner-only collection controls are hidden for shared users (`features/user_collections/permissions.ts`, mirroring the backend rules).
 
 ### 4. Weaviate + Utilities (repository root `weaviate_utils/`)
 

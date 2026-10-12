@@ -5,14 +5,14 @@ import { createPinia, setActivePinia } from 'pinia'
 import { routeLocationKey, routerKey } from 'vue-router'
 
 import type { Collection } from 'src/generated/api'
-import { collectionRights } from 'src/features/collections/permissions'
-import CollectionCard from 'src/components/custom/CollectionCard.vue'
-import CollectionMembersPage from 'src/pages/Collections/CollectionMembersPage.vue'
-import DocumentsTable from 'src/components/tables/DocumentsTable.vue'
-import { useCollectionsStore } from 'src/stores/collectionsStore'
-import * as notificationModule from 'src/utils/notification'
-import * as documentsRepositoryModule from 'src/repositories/useDocumentsRepository'
-import * as browseLibraryDialogModule from 'src/composables/dialogs/useBrowseLibraryDialog'
+import { collectionRights } from 'src/features/user_collections/permissions'
+import CollectionCard from 'src/features/user_collections/CollectionCard.vue'
+import CollectionMembersPage from 'src/features/user_collections/CollectionMembersPage.vue'
+import DocumentsTable from 'src/features/documents/DocumentsTable.vue'
+import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
+import * as notificationModule from 'src/shared/notification'
+import * as documentsRepositoryModule from 'src/features/documents/useDocumentsRepository'
+import * as browseLibraryDialogModule from 'src/features/documents/useBrowseLibraryDialog'
 
 type Spy = ReturnType<typeof vi.fn>
 const { notif } = notificationModule as unknown as { notif: { error: Spy } }
@@ -33,21 +33,21 @@ vi.mock('quasar', async () => {
 })
 
 // The mocked modules export their spies (`notif`, `repo`) for the assertions.
-vi.mock('src/utils/notification', () => {
+vi.mock('src/shared/notification', () => {
   const notif = { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() }
   return { ongoingNotification: () => notif, warningNotification: vi.fn(), notif }
 })
-vi.mock('src/repositories/useCollectionRepository', () => ({
-  useCollectionRepository: () => ({
+vi.mock('src/features/user_collections/useUserCollectionsRepository', () => ({
+  useUserCollectionsRepository: () => ({
     getMembers: async () => [{ id: 'u2', username: 'annotator', name: 'Ann Otator' }]
   })
 }))
-vi.mock('src/repositories/useUserRepository', () => ({ useUserRepository: () => ({ search: async () => [] }) }))
-vi.mock('src/composables/dialogs/useBrowseLibraryDialog', () => {
+vi.mock('src/features/auth/useUserRepository', () => ({ useUserRepository: () => ({ search: async () => [] }) }))
+vi.mock('src/features/documents/useBrowseLibraryDialog', () => {
   const openBrowseLibraryDialog = vi.fn()
   return { default: () => ({ openBrowseLibraryDialog }), openBrowseLibraryDialog }
 })
-vi.mock('src/repositories/useDocumentsRepository', () => {
+vi.mock('src/features/documents/useDocumentsRepository', () => {
   const repo = { removeFromCollection: vi.fn(), getAllByCollection: vi.fn(), getStats: async () => null }
   return { useDocumentsRepository: () => repo, repo }
 })
@@ -109,7 +109,7 @@ describe('CollectionCard', () => {
 
 describe('CollectionMembersPage', () => {
   async function mountFor (isSharedWithMe: boolean) {
-    useCollectionsStore().activeCollection = collection(isSharedWithMe)
+    useUserCollectionsStore().activeCollection = collection(isSharedWithMe)
     const wrapper = mount(CollectionMembersPage, { global: quasar })
     await flushPromises()
     return wrapper
@@ -136,7 +136,7 @@ describe('DocumentsTable', () => {
 
   async function mountFor (isSharedWithMe: boolean) {
     repo.getAllByCollection.mockResolvedValue(documents)
-    useCollectionsStore().activeCollection = collection(isSharedWithMe)
+    useUserCollectionsStore().activeCollection = collection(isSharedWithMe)
     const wrapper = mount(DocumentsTable, { global: quasar, attachTo: document.body })
     await flushPromises()
     return wrapper

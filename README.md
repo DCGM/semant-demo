@@ -76,22 +76,19 @@ semant-demo/
 │   └── tests/                     # fast tests; integration/ (real Weaviate, `make test-integration`)
 ├── semant_demo_frontend/          # Vue/Quasar SPA
 │   └── src/
-│       ├── pages/                 # SearchPage, RagPage, FeedbackPage, AboutPage,
-│       │                          # Collections/* (UserCollectionsPage,
-│       │                          #   CollectionOverviewPage, CollectionDocumentsPage,
-│       │                          #   CollectionTagsPage, CollectionMembersPage,
-│       │                          #   xjuric31/DocumentDetailPage: the document view)
-│       ├── app/                   # app shell: right sidebar, session scope
-│       ├── features/              # feature code moved so far (search, collections)
+│       ├── app/                   # app shell: main layout, right sidebar, session
+│       │                          # scope, about/not-found pages
+│       ├── features/              # feature-owned pages, components, stores,
+│       │                          # composables and repository wrappers:
+│       │                          # search, rag, user_collections, documents,
+│       │                          # annotations, auth, feedback
+│       ├── pages/Collections/xjuric31/  # the document view (moves with #289)
 │       ├── shared/api/            # API transport: backend URL, auth token, generated
 │       │                          # client, NDJSON streams, errors, context guards
-│       ├── stores/                # Pinia stores (user-store, collectionsStore,
-│       │                          # collectionStatsStore, chunksStore,
-│       │                          # documentsStore, tagsStore, tagSpansStore)
-│       ├── composables/           # reusable hooks (useSpanDiscussion, useTags, …)
-│       ├── repositories/          # thin wrappers over the generated API client
-│       ├── generated/             # OpenAPI-generated TS client (do not edit by hand)
-│       └── models.ts              # display types for annotation badges
+│       ├── shared/                # reusable UI pieces (ui/), notifications,
+│       │                          # write outcomes, pagination, color picker
+│       ├── router/                # routes and the sign-in guard
+│       └── generated/             # OpenAPI-generated TS client (do not edit by hand)
 └── weaviate_utils/                # DB bootstrap & inspection scripts
     ├── docker-compose.yml         # Weaviate container definition
     ├── build_db/                  # standalone schema + data bootstrap helpers

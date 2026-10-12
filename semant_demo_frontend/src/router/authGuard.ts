@@ -1,6 +1,6 @@
 import { watch } from 'vue'
 import type { RouteLocationNormalized, RouteLocationRaw, Router } from 'vue-router'
-import type { useUserStore } from 'src/stores/user-store'
+import type { useUserStore } from 'src/features/auth/userStore'
 
 declare module 'vue-router' {
   interface RouteMeta {

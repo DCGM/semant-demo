@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope } from 'vue'
 
-import { useTagSpansStore } from 'src/stores/tagSpansStore'
-import { useTagsStore } from 'src/stores/tagsStore'
-import { useCollectionsStore } from 'src/stores/collectionsStore'
-import { useDocumentsStore } from 'src/stores/documentsStore'
-import { useUserStore } from 'src/stores/user-store'
+import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
+import { useTagsStore } from 'src/features/annotations/tagsStore'
+import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
+import { useDocumentsStore } from 'src/features/documents/documentsStore'
+import { useUserStore } from 'src/features/auth/userStore'
 import { useSessionScope } from 'src/app/session'
 import { WriteOutcome } from 'src/generated/api'
-import * as notificationModule from 'src/utils/notification'
+import * as notificationModule from 'src/shared/notification'
 
 const { notif } = notificationModule as unknown as { notif: { error: ReturnType<typeof vi.fn> } }
 
@@ -45,7 +45,7 @@ function fail (key: string, error: unknown) {
   next(key).reject(error)
 }
 
-vi.mock('src/repositories/useTagSpansRepository', () => ({
+vi.mock('src/features/annotations/useTagSpansRepository', () => ({
   useTagSpansRepository: () => ({
     getByChunkIdsInCollection: (chunkIds: string[], collectionId: string) => request(`spans:${collectionId}`),
     getByChunkIdInCollection: (chunkId: string, collectionId: string) => request(`span:${collectionId}:${chunkId}`),
@@ -53,7 +53,7 @@ vi.mock('src/repositories/useTagSpansRepository', () => ({
     delete: () => request('delete')
   })
 }))
-vi.mock('src/repositories/useTagsRepository', () => ({
+vi.mock('src/features/annotations/useTagsRepository', () => ({
   useTagsRepository: () => ({
     getAllByCollection: (collectionId: string) => request(`tags:${collectionId}`),
     getById: (tagId: string) => request(`tag:${tagId}`),
@@ -62,8 +62,8 @@ vi.mock('src/repositories/useTagsRepository', () => ({
     delete: (tagId: string) => request(`deleteTag:${tagId}`)
   })
 }))
-vi.mock('src/repositories/useCollectionRepository', () => ({
-  useCollectionRepository: () => ({
+vi.mock('src/features/user_collections/useUserCollectionsRepository', () => ({
+  useUserCollectionsRepository: () => ({
     getAll: () => request('collections'),
     getById: (collectionId: string) => request(`collection:${collectionId}`),
     create: () => request('createCollection'),
@@ -71,19 +71,19 @@ vi.mock('src/repositories/useCollectionRepository', () => ({
     remove: (collectionId: string) => request(`removeCollection:${collectionId}`)
   })
 }))
-vi.mock('src/repositories/useDocumentsRepository', () => ({
+vi.mock('src/features/documents/useDocumentsRepository', () => ({
   useDocumentsRepository: () => ({
     getAllByCollection: (collectionId: string) => request(`documents:${collectionId}`),
     getById: (documentId: string) => request(`document:${documentId}`),
     removeFromCollection: (documentId: string) => request(`remove:${documentId}`)
   })
 }))
-vi.mock('src/utils/notification', () => {
+vi.mock('src/shared/notification', () => {
   const notif = { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() }
   return { ongoingNotification: () => notif, warningNotification: vi.fn(), notif }
 })
-vi.mock('src/utils/writeOutcome', async () => ({
-  ...(await vi.importActual<typeof import('src/utils/writeOutcome')>('src/utils/writeOutcome')),
+vi.mock('src/shared/writeOutcome', async () => ({
+  ...(await vi.importActual<typeof import('src/shared/writeOutcome')>('src/shared/writeOutcome')),
   incompleteWriteMessage: async (_err: unknown, fallback: string) => fallback
 }))
 
@@ -186,7 +186,7 @@ describe('tag created in another collection', () => {
 
 describe('open collection and document', () => {
   it('never shows the metadata or rights of the previously opened collection', async () => {
-    const store = useCollectionsStore()
+    const store = useUserCollectionsStore()
     const loadA = store.fetchCollection('A')
     answer('collection:A', { id: 'A', isSharedWithMe: false })
     await loadA
@@ -240,7 +240,7 @@ describe('session scope', () => {
     user.user = { id: 'u1', email: 'u1@example.com' }
     await flush()
 
-    const collections = useCollectionsStore()
+    const collections = useUserCollectionsStore()
     const tags = useTagsStore()
     const spans = useTagSpansStore()
     const listing = collections.fetchCollections()
@@ -262,7 +262,7 @@ describe('session scope', () => {
   it('keeps data loaded with the stored token while the session is being restored', async () => {
     const scope = effectScope()
     scope.run(useSessionScope)
-    const collections = useCollectionsStore()
+    const collections = useUserCollectionsStore()
     const listing = collections.fetchCollections()
     answer('collections', [{ id: 'A' }])
     await listing
@@ -294,7 +294,7 @@ describe('session scope of single reads and writes', () => {
 
   it('does not put a collection created by the previous user into the cleared list', async () => {
     const session = await signedIn()
-    const collections = useCollectionsStore()
+    const collections = useUserCollectionsStore()
     const creating = collections.createCollection({ name: 'Private of u1', color: '#000000' })
 
     await session.signOut()
@@ -307,7 +307,7 @@ describe('session scope of single reads and writes', () => {
 
   it('does not put the previous user\'s updated or failed collection back', async () => {
     const session = await signedIn()
-    const collections = useCollectionsStore()
+    const collections = useUserCollectionsStore()
     const loadingOne = collections.fetchCollection('A')
     answer('collection:A', { id: 'A', name: 'Old name' })
     await loadingOne
@@ -357,7 +357,7 @@ describe('session scope of single reads and writes', () => {
 
   it('lets a new sign-in load while a request of the old session is still running', async () => {
     const session = await signedIn()
-    const collections = useCollectionsStore()
+    const collections = useUserCollectionsStore()
     const creating = collections.createCollection({ name: 'Private of u1', color: '#000000' })
     await session.signOut()
 
