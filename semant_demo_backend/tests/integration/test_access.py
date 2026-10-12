@@ -340,9 +340,9 @@ async def test_document_of_another_collection_is_not_found(api_client, login, id
     scope = {"collection_id": c, "document_id": d}
 
     responses = {
-        "chunks": await api_client.get(f"/api/user_collections/{c}/documents/{d}", headers=headers),
+        "chunks": await api_client.get(f"/api/user_collections/{c}/documents/{d}/chunks", headers=headers),
         "stats": await api_client.get(f"/api/user_collections/{c}/documents/{d}/stats", headers=headers),
-        "range": await api_client.get(f"/api/user_collections/{c}/documents/{d}/chunks", headers=headers),
+        "range": await api_client.get(f"/api/user_collections/{c}/documents/{d}/chunks/range", headers=headers),
         "neighbour": await api_client.get(
             f"/api/user_collections/{c}/documents/{d}/chunks/neighbour?direction=next&boundary_order=0", headers=headers),
         "document chunks": await api_client.get(f"/api/user_collections/{c}/documents/{d}", headers=headers),
@@ -375,6 +375,6 @@ async def test_optimized_ai_does_not_call_the_provider_for_another_collections_d
 async def test_shared_user_cannot_reach_documents_outside_the_shared_collection(api_client, login, ids):
     c, d = ids.col["chronicles"], ids.doc["gazette"]
 
-    response = await api_client.get(f"/api/user_collections/{c}/documents/{d}/chunks", headers=await login("annotator"))
+    response = await api_client.get(f"/api/user_collections/{c}/documents/{d}/chunks/range", headers=await login("annotator"))
 
     assert response.status_code == 404
