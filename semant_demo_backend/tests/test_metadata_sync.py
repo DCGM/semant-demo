@@ -261,6 +261,38 @@ def test_mirror_inference_uses_the_unique_row_or_the_priority():
     assert plan({"library": "mzk"}, [MZK, NKP], infer_from_mirror=True, priority=("nkp",))["library"] == "mzk"
 
 
+NKP_WITHOUT_MODS = record("nkp", title="Fuller title", public=True)
+
+
+def test_metadata_preference_chooses_the_mirror_library_with_mods():
+    options = {"infer_from_mirror": True, "priority": ("nkp", "mzk")}
+    preferred = plan({}, [MZK, NKP_WITHOUT_MODS], prefer_metadata=True, **options)
+    assert (preferred["library"], preferred["library_from"], preferred["has_metadata"]) == (
+        "mzk", "mirror_metadata", True)
+    assert preferred["changes"]["publisher"]["new"] == "MZK publisher"
+    plain = plan({}, [MZK, NKP_WITHOUT_MODS], **options)
+    assert (plain["library"], plain["library_from"], plain["has_metadata"]) == ("nkp", "mirror_priority", False)
+
+    # Both or neither with metadata: the priority decides; nothing decides without one.
+    assert plan({}, [MZK, NKP], prefer_metadata=True, **options)["library_from"] == "mirror_priority"
+    neither = plan({}, [record("mzk"), NKP_WITHOUT_MODS], prefer_metadata=True, **options)
+    assert (neither["library"], neither["library_from"]) == ("nkp", "mirror_priority")
+    assert plan({}, [record("mzk"), NKP_WITHOUT_MODS], prefer_metadata=True,
+                infer_from_mirror=True)["kind"] == "multiple_libraries"
+    # Among several with metadata, the priority chooses only among those.
+    knav = record("knav", metadata_json={"Publisher": ["KNAV"]})
+    three = plan({}, [MZK, NKP_WITHOUT_MODS, knav], prefer_metadata=True, infer_from_mirror=True,
+                 priority=("nkp", "knav", "mzk"))
+    assert (three["library"], three["library_from"]) == ("knav", "mirror_priority")
+
+
+def test_metadata_preference_does_not_replace_a_stored_or_single_library():
+    stored = plan({"library": "nkp"}, [MZK, NKP_WITHOUT_MODS], prefer_metadata=True, infer_from_mirror=True)
+    assert (stored["library"], stored["library_from"]) == ("nkp", "stored")
+    unique = plan({}, [NKP_WITHOUT_MODS], prefer_metadata=True, infer_from_mirror=True)
+    assert (unique["library_from"], unique["has_metadata"]) == ("mirror_unique", False)
+
+
 def test_distrusted_stored_library_is_resolved_again():
     stored = {"library": "mzk"}
     assert plan(stored, [NKP], distrusted=frozenset({"mzk"}))["kind"] == "no_library"
@@ -559,6 +591,7 @@ async def test_sync_writes_page_by_page_and_reads_back_only_updated_documents(so
     assert (counts["examined"], counts["updated"], counts["unchanged"], counts["failed"]) == (3, 1, 1, 0)
     assert counts["unresolved"] == {"no_library": 1}
     assert counts["public"]["false_to_true"] == 1 and counts["changed_properties"] == {"public": 1, "title": 1}
+    assert counts["without_source_metadata"] == 2   # neither mirror row has metadata_json
     assert result["done"] and result["to_retry"] == 0 and sync_exit_code(result) == 0
     assert store.documents[DOC] == {"library": "mzk", "public": True, "title": "T"}
     assert reads == [[DOC], []]  # only written documents are read back
@@ -661,7 +694,8 @@ async def test_sync_retries_a_failing_batch(source, monkeypatch, tmp_path):
     assert (await sync_of(source, tmp_path))["counts"]["updated"] == 1
 
 
-@pytest.mark.parametrize("change", [{"overwrite": True}, {"priority": ("nkp",)}, {"library_override": {DOC: "nkp"}}])
+@pytest.mark.parametrize("change", [{"overwrite": True}, {"priority": ("nkp",)}, {"prefer_metadata": True},
+                                    {"library_override": {DOC: "nkp"}}])
 async def test_sync_refuses_a_checkpoint_with_other_options(source, monkeypatch, tmp_path, change):
     FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
     await sync_of(source, tmp_path, limit=1)
@@ -829,6 +863,19 @@ def test_ambiguous_page_evidence_uses_the_priority_or_stays_unresolved():
     # The priority chooses among the libraries the pages reach, not among all mirror rows.
     knav = record("knav")
     assert plan({}, [MZK, NKP, knav], pages=AMBIGUOUS, priority=("knav", "mzk"))["library"] == "mzk"
+
+
+def test_metadata_preference_chooses_among_the_libraries_the_pages_reach():
+    entry = plan({}, [MZK, NKP_WITHOUT_MODS], pages=AMBIGUOUS, priority=("nkp", "mzk"), prefer_metadata=True)
+    assert (entry["library"], entry["library_from"]) == ("mzk", "page_metadata")
+    # Pages reaching one library decide, with or without metadata.
+    single = plan({}, [MZK, NKP_WITHOUT_MODS], pages=HIGH_NKP, prefer_metadata=True)
+    assert (single["library"], single["library_from"]) == ("nkp", "page_ancestry")
+    # A library the pages do not reach is not chosen for its metadata.
+    knav = record("knav", metadata_json={"Publisher": ["KNAV"]})
+    only_knav = plan({}, [record("mzk"), NKP_WITHOUT_MODS, knav], pages=AMBIGUOUS, priority=("nkp",),
+                     prefer_metadata=True)
+    assert (only_knav["library"], only_knav["library_from"]) == ("nkp", "page_priority")
 
 
 def test_documents_without_page_evidence_use_the_other_rules():
