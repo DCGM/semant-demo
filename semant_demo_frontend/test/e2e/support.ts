@@ -76,3 +76,63 @@ export async function deleteSuggestions (
   })
   expect(response.ok()).toBe(true)
 }
+
+/**
+ * Selects text in the document view as a mouse drag would and releases the mouse.
+ * Offsets are within each chunk's own text; the end may lie in a later chunk.
+ */
+export async function selectText (
+  page: Page, startChunkKey: string, start: number, endChunkKey: string, end: number
+): Promise<void> {
+  const points = [
+    { chunkId: fixture.chunk(startChunkKey).id, offset: start },
+    { chunkId: fixture.chunk(endChunkKey).id, offset: end }
+  ]
+  await page.evaluate((points) => {
+    const locate = ({ chunkId, offset }: { chunkId: string, offset: number }) => {
+      const segments = document.querySelectorAll<HTMLElement>(`.chunk-annotator[data-chunk-id="${chunkId}"] .text-segment`)
+      for (const segment of Array.from(segments)) {
+        const segmentStart = Number(segment.dataset.start)
+        if (offset >= segmentStart && offset <= Number(segment.dataset.end)) {
+          const text = Array.from(segment.childNodes).find((n) => n.nodeType === Node.TEXT_NODE)!
+          return { node: text, offset: offset - segmentStart }
+        }
+      }
+      throw new Error(`offset ${offset} not rendered in chunk ${chunkId}`)
+    }
+    const from = locate(points[0])
+    const to = locate(points[1])
+    const range = document.createRange()
+    range.setStart(from.node, from.offset)
+    range.setEnd(to.node, to.offset)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    const rect = range.getBoundingClientRect()
+    document.querySelector('.document-text')!.dispatchEvent(
+      new MouseEvent('mouseup', { bubbles: true, clientX: rect.right, clientY: rect.bottom })
+    )
+  }, points)
+}
+
+/** Deletes the annotations of a collection that are not part of the fixture corpus. */
+export async function deleteAddedSpans (request: APIRequestContext, userKey: string, collectionKey: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${await apiToken(request, userKey)}` }
+  const fixtureIds = new Set(corpus.spans.map((s) => s.id))
+  const response = await request.get('/api/tag_spans', { headers, params: { collection_id: fixture.collection(collectionKey).id } })
+  expect(response.ok()).toBe(true)
+  for (const span of await response.json() as { id: string }[]) {
+    if (fixtureIds.has(span.id)) continue
+    expect((await request.delete(`/api/tag_spans/${span.id}`, { headers })).ok()).toBe(true)
+  }
+}
+
+/** Removes a chunk from a collection; does nothing when it is not a member. */
+export async function removeChunk (
+  request: APIRequestContext, userKey: string, collectionKey: string, chunkKey: string
+): Promise<void> {
+  await request.delete(
+    `/api/user_collections/${fixture.collection(collectionKey).id}/chunks/${fixture.chunk(chunkKey).id}`,
+    { headers: { Authorization: `Bearer ${await apiToken(request, userKey)}` } }
+  )
+}
