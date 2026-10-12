@@ -7,7 +7,7 @@ export function useChunksRepository() {
 
   return {
     getCollectionDocumentChunks: async (collectionId: string, documentId: string): Promise<Chunks> => {
-      return api.getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet({
+      return api.getCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGet({
         collectionId,
         documentId
       })
@@ -16,13 +16,13 @@ export function useChunksRepository() {
     /** Throws IncompleteWriteError when the chunk or its document could not be linked. */
     addChunkToCollection: async (chunkId: string, collectionId: string) => {
       return requireComplete(
-        await api.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost({ chunkId, collectionId }),
+        await api.addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost({ chunkId, collectionId }),
         'Adding the chunk'
       )
     },
 
     removeChunkFromCollection: async (chunkId: string, collectionId: string) => {
-      return api.removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete({
+      return api.removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete({
         chunkId,
         collectionId
       })
@@ -34,7 +34,7 @@ export function useChunksRepository() {
       direction: 'prev' | 'next',
       boundaryOrder: number
     ): Promise<CollectionChunk | null> => {
-      return api.getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet({
+      return api.getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet({
         collectionId,
         documentId,
         direction,
@@ -52,7 +52,7 @@ export function useChunksRepository() {
       orderGt?: number | null,
       orderLt?: number | null
     ): Promise<import('src/generated/api').CollectionChunk[]> => {
-      const chunks = (await api.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet({
+      const chunks = (await api.getChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGet({
         collectionId,
         documentId,
         orderGt,

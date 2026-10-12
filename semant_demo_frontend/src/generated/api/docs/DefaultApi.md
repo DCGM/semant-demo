@@ -4,8 +4,8 @@ All URIs are relative to *http://localhost*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost**](DefaultApi.md#addchunktocollectionapiusercollectioncollectionidchunkschunkidpost) | **POST** /api/user_collection/{collection_id}/chunks/{chunk_id} | Add Chunk To Collection |
-| [**addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapicollectionscollectioniddocumentsdocumentidpost) | **POST** /api/collections/{collection_id}/documents/{document_id} | Add Document To Collection |
+| [**addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost**](DefaultApi.md#addchunktocollectionapiusercollectionscollectionidchunkschunkidpost) | **POST** /api/user_collections/{collection_id}/chunks/{chunk_id} | Add Chunk To Collection |
+| [**addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapiusercollectionscollectioniddocumentsdocumentidpost) | **POST** /api/user_collections/{collection_id}/documents/{document_id} | Add Document To Collection |
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
 | [**countDocumentChunksApiDocumentsDocumentIdChunksCountGet**](DefaultApi.md#countdocumentchunksapidocumentsdocumentidchunkscountget) | **GET** /api/documents/{document_id}/chunks/count | Count Document Chunks |
@@ -13,26 +13,26 @@ All URIs are relative to *http://localhost*
 | [**createTagSpanApiTagSpansPost**](DefaultApi.md#createtagspanapitagspanspost) | **POST** /api/tag_spans | Create Tag Span |
 | [**createUserCollectionApiUserCollectionsPost**](DefaultApi.md#createusercollectionapiusercollectionspost) | **POST** /api/user_collections | Create User Collection |
 | [**deleteAutoSpansApiAiAutoSpansDeletePost**](DefaultApi.md#deleteautospansapiaiautospansdeletepost) | **POST** /api/ai/auto_spans/delete | Delete Auto Spans |
-| [**deleteCollectionApiCollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapicollectionscollectioniddelete) | **DELETE** /api/collections/{collection_id} | Delete Collection |
+| [**deleteCollectionApiUserCollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiusercollectionscollectioniddelete) | **DELETE** /api/user_collections/{collection_id} | Delete Collection |
 | [**deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost**](DefaultApi.md#deletespansfortagsindocumentapitagspansindocumentdeletepost) | **POST** /api/tag_spans/in_document/delete | Delete Spans For Tags In Document |
 | [**deleteTagApiTagsTagUuidDelete**](DefaultApi.md#deletetagapitagstaguuiddelete) | **DELETE** /api/tags/{tag_uuid} | Delete Tag |
 | [**deleteTagSpanApiTagSpansSpanIdDelete**](DefaultApi.md#deletetagspanapitagspansspaniddelete) | **DELETE** /api/tag_spans/{span_id} | Delete Tag Span |
 | [**discussSpanApiAiDiscussSpanPost**](DefaultApi.md#discussspanapiaidiscussspanpost) | **POST** /api/ai/discuss_span | Discuss Span |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
 | [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
+| [**fetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGet**](DefaultApi.md#fetchcollectiondocumentapiusercollectionscollectioniddocumentsdocumentidget) | **GET** /api/user_collections/{collection_id}/documents/{document_id} | Fetch Collection Document |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
 | [**fetchDocumentApiDocumentDocumentIdGet**](DefaultApi.md#fetchdocumentapidocumentdocumentidget) | **GET** /api/document/{document_id} | Fetch Document |
-| [**fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet**](DefaultApi.md#fetchdocumentchunksapidocumentsdocumentidcollectionidchunksget) | **GET** /api/documents/{document_id}/{collection_id}/chunks | Fetch Document Chunks |
 | [**getAvailableSearchFiltersApiSearchFiltersGet**](DefaultApi.md#getavailablesearchfiltersapisearchfiltersget) | **GET** /api/search/filters | Get Available Search Filters |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
-| [**getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet**](DefaultApi.md#getchunksinrangeapicollectionscollectioniddocumentsdocumentidchunksget) | **GET** /api/collections/{collection_id}/documents/{document_id}/chunks | Get Chunks In Range |
-| [**getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet**](DefaultApi.md#getcollectiondocumentchunksapicollectionscollectioniddocumentsdocumentidget) | **GET** /api/collections/{collection_id}/documents/{document_id} | Get Collection Document Chunks |
-| [**getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet**](DefaultApi.md#getcollectiondocumentsapiusercollectioncollectioniddocumentsget) | **GET** /api/user_collection/{collection_id}/documents | Get Collection Documents |
-| [**getCollectionMembersApiCollectionsCollectionIdMembersGet**](DefaultApi.md#getcollectionmembersapicollectionscollectionidmembersget) | **GET** /api/collections/{collection_id}/members | Get Collection Members |
-| [**getCollectionStatsApiUserCollectionCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiusercollectioncollectionidstatsget) | **GET** /api/user_collection/{collection_id}/stats | Get Collection Stats |
-| [**getCollectionTagsApiCollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapicollectionscollectionidtagsget) | **GET** /api/collections/{collection_id}/tags | Get Collection Tags |
-| [**getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet**](DefaultApi.md#getdocumentstatsapicollectionscollectioniddocumentsdocumentidstatsget) | **GET** /api/collections/{collection_id}/documents/{document_id}/stats | Get Document Stats |
-| [**getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet**](DefaultApi.md#getneighbourchunkapicollectionscollectioniddocumentsdocumentidneighbourget) | **GET** /api/collections/{collection_id}/documents/{document_id}/neighbour | Get Neighbour Chunk |
+| [**getChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGet**](DefaultApi.md#getchunksinrangeapiusercollectionscollectioniddocumentsdocumentidchunksrangeget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks/range | Get Chunks In Range |
+| [**getCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGet**](DefaultApi.md#getcollectiondocumentchunksapiusercollectionscollectioniddocumentsdocumentidchunksget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks | Get Collection Document Chunks |
+| [**getCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGet**](DefaultApi.md#getcollectiondocumentsapiusercollectionscollectioniddocumentsget) | **GET** /api/user_collections/{collection_id}/documents | Get Collection Documents |
+| [**getCollectionMembersApiUserCollectionsCollectionIdMembersGet**](DefaultApi.md#getcollectionmembersapiusercollectionscollectionidmembersget) | **GET** /api/user_collections/{collection_id}/members | Get Collection Members |
+| [**getCollectionStatsApiUserCollectionsCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiusercollectionscollectionidstatsget) | **GET** /api/user_collections/{collection_id}/stats | Get Collection Stats |
+| [**getCollectionTagsApiUserCollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapiusercollectionscollectionidtagsget) | **GET** /api/user_collections/{collection_id}/tags | Get Collection Tags |
+| [**getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet**](DefaultApi.md#getdocumentstatsapiusercollectionscollectioniddocumentsdocumentidstatsget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/stats | Get Document Stats |
+| [**getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet**](DefaultApi.md#getneighbourchunkapiusercollectionscollectioniddocumentsdocumentidchunksneighbourget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks/neighbour | Get Neighbour Chunk |
 | [**getTagApiTagsTagUuidGet**](DefaultApi.md#gettagapitagstaguuidget) | **GET** /api/tags/{tag_uuid} | Get Tag |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
 | [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
@@ -41,28 +41,28 @@ All URIs are relative to *http://localhost*
 | [**readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet**](DefaultApi.md#readdocumentchunkwindowapidocumentsdocumentidchunkschunkidwindowget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/window | Read Document Chunk Window |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
-| [**removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectioncollectionidchunkschunkiddelete) | **DELETE** /api/user_collection/{collection_id}/chunks/{chunk_id} | Remove Chunk From Collection |
-| [**removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapicollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
+| [**removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectionscollectionidchunkschunkiddelete) | **DELETE** /api/user_collections/{collection_id}/chunks/{chunk_id} | Remove Chunk From Collection |
+| [**removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapiusercollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/user_collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
 | [**searchUsersApiUsersSearchGet**](DefaultApi.md#searchusersapiuserssearchget) | **GET** /api/users/search | Search Users |
-| [**shareCollectionApiCollectionsCollectionIdSharePost**](DefaultApi.md#sharecollectionapicollectionscollectionidsharepost) | **POST** /api/collections/{collection_id}/share | Share Collection |
+| [**shareCollectionApiUserCollectionsCollectionIdSharePost**](DefaultApi.md#sharecollectionapiusercollectionscollectionidsharepost) | **POST** /api/user_collections/{collection_id}/share | Share Collection |
 | [**suggestSpansOptimizedApiAiSuggestSpansOptimizedPost**](DefaultApi.md#suggestspansoptimizedapiaisuggestspansoptimizedpost) | **POST** /api/ai/suggest_spans/optimized | Suggest Spans Optimized |
 | [**suggestSpansSelectionApiAiSuggestSpansSelectionPost**](DefaultApi.md#suggestspansselectionapiaisuggestspansselectionpost) | **POST** /api/ai/suggest_spans/selection | Suggest Spans Selection |
 | [**suggestSpansThoroughApiAiSuggestSpansThoroughPost**](DefaultApi.md#suggestspansthoroughapiaisuggestspansthoroughpost) | **POST** /api/ai/suggest_spans/thorough | Suggest Spans Thorough |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
-| [**unshareCollectionApiCollectionsCollectionIdShareUserIdDelete**](DefaultApi.md#unsharecollectionapicollectionscollectionidshareuseriddelete) | **DELETE** /api/collections/{collection_id}/share/{user_id} | Unshare Collection |
+| [**unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete**](DefaultApi.md#unsharecollectionapiusercollectionscollectionidshareuseriddelete) | **DELETE** /api/user_collections/{collection_id}/share/{user_id} | Unshare Collection |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
-| [**updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch**](DefaultApi.md#updatecollectionownerapicollectionscollectionidownerpatch) | **PATCH** /api/collections/{collection_id}/owner | Update Collection Owner |
+| [**updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch**](DefaultApi.md#updatecollectionownerapiusercollectionscollectionidownerpatch) | **PATCH** /api/user_collections/{collection_id}/owner | Update Collection Owner |
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
 | [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
 
 
 
-## addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost
+## addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost
 
-> WriteResult addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(collectionId, chunkId)
+> WriteResult addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost(collectionId, chunkId)
 
 Add Chunk To Collection
 
@@ -75,7 +75,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest } from '';
+import type { AddChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -90,10 +90,10 @@ async function example() {
     collectionId: collectionId_example,
     // string
     chunkId: chunkId_example,
-  } satisfies AddChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPostRequest;
+  } satisfies AddChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPostRequest;
 
   try {
-    const data = await api.addChunkToCollectionApiUserCollectionCollectionIdChunksChunkIdPost(body);
+    const data = await api.addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -135,9 +135,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost
+## addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost
 
-> WriteResult addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost(collectionId, documentId)
+> WriteResult addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost(collectionId, documentId)
 
 Add Document To Collection
 
@@ -150,7 +150,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest } from '';
+import type { AddDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -165,10 +165,10 @@ async function example() {
     collectionId: collectionId_example,
     // string
     documentId: documentId_example,
-  } satisfies AddDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPostRequest;
+  } satisfies AddDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPostRequest;
 
   try {
-    const data = await api.addDocumentToCollectionApiCollectionsCollectionIdDocumentsDocumentIdPost(body);
+    const data = await api.addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -737,9 +737,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## deleteCollectionApiCollectionsCollectionIdDelete
+## deleteCollectionApiUserCollectionsCollectionIdDelete
 
-> deleteCollectionApiCollectionsCollectionIdDelete(collectionId)
+> deleteCollectionApiUserCollectionsCollectionIdDelete(collectionId)
 
 Delete Collection
 
@@ -752,7 +752,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { DeleteCollectionApiCollectionsCollectionIdDeleteRequest } from '';
+import type { DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -765,10 +765,10 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-  } satisfies DeleteCollectionApiCollectionsCollectionIdDeleteRequest;
+  } satisfies DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest;
 
   try {
-    const data = await api.deleteCollectionApiCollectionsCollectionIdDelete(body);
+    const data = await api.deleteCollectionApiUserCollectionsCollectionIdDelete(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1239,6 +1239,81 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## fetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGet
+
+> DocumentDetail fetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGet(collectionId, documentId)
+
+Fetch Collection Document
+
+Retrieves the document with all its chunks and marks whether each chunk belongs to the collection. Collection-scoped (needs read access); corpus-only document reads stay under &#x60;&#x60;/api/documents&#x60;&#x60;.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { FetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    documentId: documentId_example,
+  } satisfies FetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGetRequest;
+
+  try {
+    const data = await api.fetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**DocumentDetail**](DocumentDetail.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## fetchCollectionsApiUserCollectionsGet
 
 > Array&lt;Collection&gt; fetchCollectionsApiUserCollectionsGet()
@@ -1354,81 +1429,6 @@ example().catch(console.error);
 ### Authorization
 
 No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet
-
-> DocumentDetail fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet(documentId, collectionId)
-
-Fetch Document Chunks
-
-Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // string
-    documentId: documentId_example,
-    // string
-    collectionId: collectionId_example,
-  } satisfies FetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGetRequest;
-
-  try {
-    const data = await api.fetchDocumentChunksApiDocumentsDocumentIdCollectionIdChunksGet(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **documentId** | `string` |  | [Defaults to `undefined`] |
-| **collectionId** | `string` |  | [Defaults to `undefined`] |
-
-### Return type
-
-[**DocumentDetail**](DocumentDetail.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -1563,13 +1563,13 @@ This endpoint does not need any parameter.
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet
+## getChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGet
 
-> Array&lt;CollectionChunk | null&gt; getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(collectionId, documentId, orderGt, orderLt)
+> Array&lt;CollectionChunk | null&gt; getChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGet(collectionId, documentId, orderGt, orderLt)
 
 Get Chunks In Range
 
-Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
+Returns all chunks of a document (also those outside the collection, marked by in_collection) with order strictly greater than order_gt and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
 
 ### Example
 
@@ -1578,7 +1578,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest } from '';
+import type { GetChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1597,10 +1597,10 @@ async function example() {
     orderGt: 56,
     // number (optional)
     orderLt: 56,
-  } satisfies GetChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest;
+  } satisfies GetChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGetRequest;
 
   try {
-    const data = await api.getChunksInRangeApiCollectionsCollectionIdDocumentsDocumentIdChunksGet(body);
+    const data = await api.getChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1644,13 +1644,13 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet
+## getCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGet
 
-> Array&lt;CollectionChunk&gt; getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(collectionId, documentId)
+> Array&lt;CollectionChunk&gt; getCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGet(collectionId, documentId)
 
 Get Collection Document Chunks
 
-Returns chunks which belong to document and collection given by id
+Returns the document\&#39;s chunks that belong to the collection, in order.
 
 ### Example
 
@@ -1659,7 +1659,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest } from '';
+import type { GetCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1674,10 +1674,10 @@ async function example() {
     collectionId: collectionId_example,
     // string
     documentId: documentId_example,
-  } satisfies GetCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGetRequest;
+  } satisfies GetCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGetRequest;
 
   try {
-    const data = await api.getCollectionDocumentChunksApiCollectionsCollectionIdDocumentsDocumentIdGet(body);
+    const data = await api.getCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1719,9 +1719,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet
+## getCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGet
 
-> Array&lt;Document&gt; getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(collectionId)
+> Array&lt;Document&gt; getCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGet(collectionId)
 
 Get Collection Documents
 
@@ -1734,7 +1734,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest } from '';
+import type { GetCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1747,10 +1747,10 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-  } satisfies GetCollectionDocumentsApiUserCollectionCollectionIdDocumentsGetRequest;
+  } satisfies GetCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGetRequest;
 
   try {
-    const data = await api.getCollectionDocumentsApiUserCollectionCollectionIdDocumentsGet(body);
+    const data = await api.getCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1791,9 +1791,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getCollectionMembersApiCollectionsCollectionIdMembersGet
+## getCollectionMembersApiUserCollectionsCollectionIdMembersGet
 
-> Array&lt;UserSearchResult&gt; getCollectionMembersApiCollectionsCollectionIdMembersGet(collectionId)
+> Array&lt;UserSearchResult&gt; getCollectionMembersApiUserCollectionsCollectionIdMembersGet(collectionId)
 
 Get Collection Members
 
@@ -1806,7 +1806,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest } from '';
+import type { GetCollectionMembersApiUserCollectionsCollectionIdMembersGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1819,10 +1819,10 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-  } satisfies GetCollectionMembersApiCollectionsCollectionIdMembersGetRequest;
+  } satisfies GetCollectionMembersApiUserCollectionsCollectionIdMembersGetRequest;
 
   try {
-    const data = await api.getCollectionMembersApiCollectionsCollectionIdMembersGet(body);
+    const data = await api.getCollectionMembersApiUserCollectionsCollectionIdMembersGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1863,9 +1863,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getCollectionStatsApiUserCollectionCollectionIdStatsGet
+## getCollectionStatsApiUserCollectionsCollectionIdStatsGet
 
-> CollectionStats getCollectionStatsApiUserCollectionCollectionIdStatsGet(collectionId)
+> CollectionStats getCollectionStatsApiUserCollectionsCollectionIdStatsGet(collectionId)
 
 Get Collection Stats
 
@@ -1876,7 +1876,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest } from '';
+import type { GetCollectionStatsApiUserCollectionsCollectionIdStatsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1889,10 +1889,10 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-  } satisfies GetCollectionStatsApiUserCollectionCollectionIdStatsGetRequest;
+  } satisfies GetCollectionStatsApiUserCollectionsCollectionIdStatsGetRequest;
 
   try {
-    const data = await api.getCollectionStatsApiUserCollectionCollectionIdStatsGet(body);
+    const data = await api.getCollectionStatsApiUserCollectionsCollectionIdStatsGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -1933,9 +1933,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getCollectionTagsApiCollectionsCollectionIdTagsGet
+## getCollectionTagsApiUserCollectionsCollectionIdTagsGet
 
-> Array&lt;Tag&gt; getCollectionTagsApiCollectionsCollectionIdTagsGet(collectionId)
+> Array&lt;Tag&gt; getCollectionTagsApiUserCollectionsCollectionIdTagsGet(collectionId)
 
 Get Collection Tags
 
@@ -1948,7 +1948,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest } from '';
+import type { GetCollectionTagsApiUserCollectionsCollectionIdTagsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -1961,10 +1961,10 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-  } satisfies GetCollectionTagsApiCollectionsCollectionIdTagsGetRequest;
+  } satisfies GetCollectionTagsApiUserCollectionsCollectionIdTagsGetRequest;
 
   try {
-    const data = await api.getCollectionTagsApiCollectionsCollectionIdTagsGet(body);
+    const data = await api.getCollectionTagsApiUserCollectionsCollectionIdTagsGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2005,9 +2005,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet
+## getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet
 
-> DocumentStats getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet(collectionId, documentId)
+> DocumentStats getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet(collectionId, documentId)
 
 Get Document Stats
 
@@ -2020,7 +2020,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest } from '';
+import type { GetDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -2035,10 +2035,10 @@ async function example() {
     collectionId: collectionId_example,
     // string
     documentId: documentId_example,
-  } satisfies GetDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest;
+  } satisfies GetDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest;
 
   try {
-    const data = await api.getDocumentStatsApiCollectionsCollectionIdDocumentsDocumentIdStatsGet(body);
+    const data = await api.getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2080,9 +2080,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet
+## getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet
 
-> CollectionChunk getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(collectionId, documentId, direction, boundaryOrder)
+> CollectionChunk getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet(collectionId, documentId, direction, boundaryOrder)
 
 Get Neighbour Chunk
 
@@ -2095,7 +2095,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest } from '';
+import type { GetNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -2114,10 +2114,10 @@ async function example() {
     direction: direction_example,
     // number
     boundaryOrder: 56,
-  } satisfies GetNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGetRequest;
+  } satisfies GetNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGetRequest;
 
   try {
-    const data = await api.getNeighbourChunkApiCollectionsCollectionIdDocumentsDocumentIdNeighbourGet(body);
+    const data = await api.getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2734,9 +2734,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete
+## removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete
 
-> CreateResponse removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(collectionId, chunkId)
+> CreateResponse removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete(collectionId, chunkId)
 
 Remove Chunk From Collection
 
@@ -2749,7 +2749,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest } from '';
+import type { RemoveChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -2764,10 +2764,10 @@ async function example() {
     collectionId: collectionId_example,
     // string
     chunkId: chunkId_example,
-  } satisfies RemoveChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDeleteRequest;
+  } satisfies RemoveChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDeleteRequest;
 
   try {
-    const data = await api.removeChunkFromCollectionApiUserCollectionCollectionIdChunksChunkIdDelete(body);
+    const data = await api.removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2809,9 +2809,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete
+## removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete
 
-> WriteResult removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(collectionId, documentId)
+> WriteResult removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete(collectionId, documentId)
 
 Remove Document From Collection
 
@@ -2824,7 +2824,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest } from '';
+import type { RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -2839,10 +2839,10 @@ async function example() {
     collectionId: collectionId_example,
     // string
     documentId: documentId_example,
-  } satisfies RemoveDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDeleteRequest;
+  } satisfies RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRequest;
 
   try {
-    const data = await api.removeDocumentFromCollectionApiCollectionsCollectionIdDocumentsDocumentIdDelete(body);
+    const data = await api.removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -3162,9 +3162,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## shareCollectionApiCollectionsCollectionIdSharePost
+## shareCollectionApiUserCollectionsCollectionIdSharePost
 
-> Collection shareCollectionApiCollectionsCollectionIdSharePost(collectionId, shareCollectionRequest)
+> Collection shareCollectionApiUserCollectionsCollectionIdSharePost(collectionId, shareCollectionRequest)
 
 Share Collection
 
@@ -3177,7 +3177,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { ShareCollectionApiCollectionsCollectionIdSharePostRequest } from '';
+import type { ShareCollectionApiUserCollectionsCollectionIdSharePostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -3192,10 +3192,10 @@ async function example() {
     collectionId: collectionId_example,
     // ShareCollectionRequest
     shareCollectionRequest: ...,
-  } satisfies ShareCollectionApiCollectionsCollectionIdSharePostRequest;
+  } satisfies ShareCollectionApiUserCollectionsCollectionIdSharePostRequest;
 
   try {
-    const data = await api.shareCollectionApiCollectionsCollectionIdSharePost(body);
+    const data = await api.shareCollectionApiUserCollectionsCollectionIdSharePost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -3526,9 +3526,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## unshareCollectionApiCollectionsCollectionIdShareUserIdDelete
+## unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete
 
-> Collection unshareCollectionApiCollectionsCollectionIdShareUserIdDelete(collectionId, userId)
+> Collection unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete(collectionId, userId)
 
 Unshare Collection
 
@@ -3541,7 +3541,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { UnshareCollectionApiCollectionsCollectionIdShareUserIdDeleteRequest } from '';
+import type { UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -3556,10 +3556,10 @@ async function example() {
     collectionId: collectionId_example,
     // string
     userId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
-  } satisfies UnshareCollectionApiCollectionsCollectionIdShareUserIdDeleteRequest;
+  } satisfies UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest;
 
   try {
-    const data = await api.unshareCollectionApiCollectionsCollectionIdShareUserIdDelete(body);
+    const data = await api.unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -3676,9 +3676,9 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch
+## updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch
 
-> Collection updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch(collectionId, patchCollectionOwner)
+> Collection updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch(collectionId, patchCollectionOwner)
 
 Update Collection Owner
 
@@ -3691,7 +3691,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest } from '';
+import type { UpdateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatchRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -3706,10 +3706,10 @@ async function example() {
     collectionId: collectionId_example,
     // PatchCollectionOwner
     patchCollectionOwner: ...,
-  } satisfies UpdateCollectionOwnerApiCollectionsCollectionIdOwnerPatchRequest;
+  } satisfies UpdateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatchRequest;
 
   try {
-    const data = await api.updateCollectionOwnerApiCollectionsCollectionIdOwnerPatch(body);
+    const data = await api.updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch(body);
     console.log(data);
   } catch (error) {
     console.error(error);

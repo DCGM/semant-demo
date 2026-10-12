@@ -11,7 +11,7 @@ import pytest
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import span_chat
 from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanType, Tag, TagSpan, AnnotationChunk
-from semant_demo.features.collections.access import AuthenticationRequired
+from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.features.documents.schemas import Document
 from tests.fakes import FakeStreamingChat
 

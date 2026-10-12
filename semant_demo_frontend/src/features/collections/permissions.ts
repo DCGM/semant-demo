@@ -2,7 +2,7 @@ import type { Collection } from 'src/generated/api'
 
 /**
  * What the signed-in user may do with a collection they can read, mirroring the backend
- * rules (ADR 0007, `features/collections/access.py`). The backend enforces them; the UI
+ * rules (ADR 0007, `features/user_collections/access.py`). The backend enforces them; the UI
  * uses this only to hide or disable controls that would be refused.
  */
 export interface CollectionRights {

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from semant_demo.features.annotations.routes import span_router, tag_router
-from semant_demo.features.collections.routes import exp_router as usr_collection_router
+from semant_demo.features.user_collections.routes import exp_router as usr_collection_router
 from semant_demo.features.rag.routes import exp_router as rag_router
 from semant_demo.features.feedback.routes import exp_router as feedback_router
 from semant_demo.features.summarization.routes import exp_router as summarizer_router

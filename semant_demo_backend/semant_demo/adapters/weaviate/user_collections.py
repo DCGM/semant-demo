@@ -15,7 +15,7 @@ from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import delete_collection_cascade, step_failure
 from semant_demo.core.errors import NotFoundError
-from semant_demo.features.collections.schemas import CollectionChunk, Collection, CollectionStats, PatchCollection, PostCollection
+from semant_demo.features.user_collections.schemas import CollectionChunk, Collection, CollectionStats, PatchCollection, PostCollection
 from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 from semant_demo.features.annotations.schemas import SpanType

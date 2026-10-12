@@ -11,15 +11,15 @@ Other features may call these functions instead of using the collection reposito
 from uuid import UUID
 
 from semant_demo.adapters.sql.users import UserLookup
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
-from semant_demo.features.collections import access
-from semant_demo.features.collections.access import Principal
-from semant_demo.features.collections.schemas import (
+from semant_demo.features.user_collections import access
+from semant_demo.features.user_collections.access import Principal
+from semant_demo.features.user_collections.schemas import (
     Collection, CollectionStats, PatchCollection, PostCollection,
 )
-from semant_demo.features.collections.schemas import CollectionChunk
+from semant_demo.features.user_collections.schemas import CollectionChunk
 from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag

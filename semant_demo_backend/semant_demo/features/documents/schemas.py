@@ -3,7 +3,7 @@
 Chunk projections are owned by the feature whose read they serve and are not
 interchangeable: :class:`DocumentChunk` and :class:`DocumentViewChunk` here,
 ``features/search/schemas.SearchResultChunk`` (display text),
-``features/collections/schemas.CollectionChunk`` and the internal
+``features/user_collections/schemas.CollectionChunk`` and the internal
 ``features/annotations/schemas.AnnotationChunk``.
 """
 from datetime import datetime

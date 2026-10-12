@@ -16,7 +16,7 @@ from semant_demo.features.annotations import service
 from semant_demo.features.annotations.offsets import InvalidSpanRange
 from semant_demo.features.annotations.schemas import PatchSpan, PatchTag, PostSpan, PostTag, SpanType, TagSpan, AnnotationChunk
 from semant_demo.features.annotations.service import AnnotationStore
-from semant_demo.features.collections.access import AuthenticationRequired
+from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.core.outcomes import StepFailure
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))

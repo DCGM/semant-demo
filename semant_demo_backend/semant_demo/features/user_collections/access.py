@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol
 from uuid import UUID
 
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.core.errors import NotFoundError

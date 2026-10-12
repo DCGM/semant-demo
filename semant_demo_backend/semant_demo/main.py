@@ -8,7 +8,7 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
 from semant_demo.adapters.llm.gateway import limit_provider_sdk_logs
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
-from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired
+from semant_demo.features.user_collections.access import AccessDenied, AuthenticationRequired
 from semant_demo.opentelemetry import RedactUserTextPaths, RequestTelemetryMiddleware, initialize_opentelemetry
 from semant_demo.features.rag.registry import rag_factory
 from fastapi.staticfiles import StaticFiles
@@ -85,7 +85,7 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     async def health():
         return {"status": "ok"}
 
-    # Raised by collection access checks (features/collections/access.py, its
+    # Raised by collection access checks (features/user_collections/access.py, its
     # ResourceNotFound is a NotFoundError) and by repositories/services (core/errors.py).
     for exc_type, status_code in ((AuthenticationRequired, 401), (NotFoundError, 404), (AccessDenied, 403),
                                   (InvalidRequestError, 400)):

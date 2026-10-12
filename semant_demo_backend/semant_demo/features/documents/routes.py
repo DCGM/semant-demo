@@ -3,10 +3,10 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.features.documents import service
-from semant_demo.routes.dependencies import get_collections, get_documents
+from semant_demo.routes.dependencies import get_user_collections, get_documents
 from semant_demo.features.documents.schemas import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 from semant_demo.users.auth import current_active_optional_user, current_active_user
 from semant_demo.users.models import User
@@ -32,7 +32,7 @@ async def browse_documents(collection_id: str | None = None,
                            publisher: str | None = None,
                            document_type: str | None = None,
                            documents: DocumentRepository = Depends(get_documents),
-                           collections: UserCollectionRepository = Depends(get_collections),
+                           collections: UserCollectionRepository = Depends(get_user_collections),
                            current_user: User | None = Depends(current_active_optional_user)) -> DocumentBrowse:
     """
         Browses the corpus with pagination, filtering and sorting options. With ``collection_id``
@@ -43,14 +43,15 @@ async def browse_documents(collection_id: str | None = None,
                                 title=title, author=author, publisher=publisher, document_type=document_type)
 
 
-@exp_router.get("/api/documents/{document_id}/{collection_id}/chunks", response_model=DocumentDetail, response_model_exclude_none=True)
-async def fetch_document_chunks(document_id: str,
-                                collection_id: str,
-                                documents: DocumentRepository = Depends(get_documents),
-                                collections: UserCollectionRepository = Depends(get_collections),
-                                current_user: User = Depends(current_active_user)) -> DocumentDetail:
+@exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}", response_model=DocumentDetail, response_model_exclude_none=True)
+async def fetch_collection_document(collection_id: str,
+                                    document_id: str,
+                                    documents: DocumentRepository = Depends(get_documents),
+                                    collections: UserCollectionRepository = Depends(get_user_collections),
+                                    current_user: User = Depends(current_active_user)) -> DocumentDetail:
     """
-    Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection.
+    Retrieves the document with all its chunks and marks whether each chunk belongs to the collection.
+    Collection-scoped (needs read access); corpus-only document reads stay under ``/api/documents``.
     """
     return await service.read_chunks_in_collection(documents, collections, current_user, document_id, collection_id)
 

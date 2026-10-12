@@ -6,7 +6,7 @@ export function useTagsRepository() {
 
   return {
     getAllByCollection: async (collectionId: string): Promise<Tags> => {
-      return api.getCollectionTagsApiCollectionsCollectionIdTagsGet({ collectionId })
+      return api.getCollectionTagsApiUserCollectionsCollectionIdTagsGet({ collectionId })
     },
     getById: async (tagUuid: string): Promise<Tag> => {
       return api.getTagApiTagsTagUuidGet({ tagUuid })

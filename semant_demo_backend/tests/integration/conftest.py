@@ -15,7 +15,7 @@ from weaviate.collections.data.async_ import _DataCollectionAsync
 from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.topicer.client import TopicerClient
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository

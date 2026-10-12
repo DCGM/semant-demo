@@ -48,9 +48,9 @@ from semant_demo.features.annotations.schemas import (
     SuggestSpansSelectionRequest,
 )
 from semant_demo.features.annotations.service import AnnotationStore
-from semant_demo.features.collections import access
-from semant_demo.features.collections.access import Principal
-from semant_demo.features.collections.schemas import CollectionChunk
+from semant_demo.features.user_collections import access
+from semant_demo.features.user_collections.access import Principal
+from semant_demo.features.user_collections.schemas import CollectionChunk
 
 logger = logging.getLogger(__name__)
 

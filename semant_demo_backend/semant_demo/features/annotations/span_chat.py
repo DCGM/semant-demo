@@ -21,8 +21,8 @@ from uuid import UUID
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanChatMessage, Tag, TagSpan, AnnotationChunk
 from semant_demo.features.annotations.service import AnnotationStore
-from semant_demo.features.collections import access
-from semant_demo.features.collections.access import Principal
+from semant_demo.features.user_collections import access
+from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.documents.schemas import Document
 
 logger = logging.getLogger(__name__)

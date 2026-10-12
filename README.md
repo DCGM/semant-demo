@@ -243,22 +243,23 @@ public corpus reads, search without a collection, RAG and summaries work anonymo
 | `POST` | `/api/user_collections` | Creates user collection in weaviate db, or not if the same user collection already exists |
 | `GET` | `/api/user_collections/{collection_id}` | Retrieves collection by its id |
 | `PATCH` | `/api/user_collections/{collection_id}` | Updates collection name/description/color. |
-| `PATCH` | `/api/collections/{collection_id}/owner` | Reassigns ownership of a collection to a different user. |
-| `POST` | `/api/user_collection/{collection_id}/chunks/{chunk_id}` | Connects chunk with user collection, and the chunk's document with the collection. |
-| `DELETE` | `/api/user_collection/{collection_id}/chunks/{chunk_id}` | Removes a chunk from a user collection. |
-| `POST` | `/api/collections/{collection_id}/share` | Shares a collection with another user. |
-| `DELETE` | `/api/collections/{collection_id}/share/{user_id}` | Revokes a collection share. |
-| `GET` | `/api/collections/{collection_id}/members` | Returns the users a collection is currently shared with. |
-| `GET` | `/api/user_collection/{collection_id}/stats` | Get Collection Stats |
-| `DELETE` | `/api/collections/{collection_id}` | Deletes a collection with its tags and annotations. |
-| `GET` | `/api/user_collection/{collection_id}/documents` | Returns documents which belong to collection given by id |
-| `POST` | `/api/collections/{collection_id}/documents/{document_id}` | Adds document to collection and also links all its chunks to that collection. |
-| `DELETE` | `/api/collections/{collection_id}/documents/{document_id}` | Removes a document and its chunks from a collection. |
-| `GET` | `/api/collections/{collection_id}/documents/{document_id}` | Returns chunks which belong to document and collection given by id |
-| `GET` | `/api/collections/{collection_id}/tags` | Returns tags which belong to collection given by id |
-| `GET` | `/api/collections/{collection_id}/documents/{document_id}/stats` | Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count. |
-| `GET` | `/api/collections/{collection_id}/documents/{document_id}/neighbour` | Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. |
-| `GET` | `/api/collections/{collection_id}/documents/{document_id}/chunks` | Returns all chunks of a document with order strictly greater than order_gt and/or strictly less than order_lt. |
+| `DELETE` | `/api/user_collections/{collection_id}` | Deletes a collection with its tags and annotations. |
+| `PATCH` | `/api/user_collections/{collection_id}/owner` | Reassigns ownership of a collection to a different user. |
+| `POST` | `/api/user_collections/{collection_id}/share` | Shares a collection with another user. |
+| `DELETE` | `/api/user_collections/{collection_id}/share/{user_id}` | Revokes a collection share. |
+| `GET` | `/api/user_collections/{collection_id}/members` | Returns the users a collection is currently shared with. |
+| `GET` | `/api/user_collections/{collection_id}/stats` | Collection statistics. |
+| `GET` | `/api/user_collections/{collection_id}/tags` | Returns tags which belong to collection given by id |
+| `POST` | `/api/user_collections/{collection_id}/chunks/{chunk_id}` | Connects chunk with user collection, and the chunk's document with the collection. |
+| `DELETE` | `/api/user_collections/{collection_id}/chunks/{chunk_id}` | Removes a chunk from a user collection. |
+| `GET` | `/api/user_collections/{collection_id}/documents` | Returns documents which belong to collection given by id |
+| `GET` | `/api/user_collections/{collection_id}/documents/{document_id}` | Retrieves the document with all its chunks and marks whether each chunk belongs to the collection. |
+| `POST` | `/api/user_collections/{collection_id}/documents/{document_id}` | Adds document to collection and also links all its chunks to that collection. |
+| `DELETE` | `/api/user_collections/{collection_id}/documents/{document_id}` | Removes a document and its chunks from a collection. |
+| `GET` | `/api/user_collections/{collection_id}/documents/{document_id}/stats` | Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count. |
+| `GET` | `/api/user_collections/{collection_id}/documents/{document_id}/chunks` | Returns the document's chunks that belong to the collection, in order. |
+| `GET` | `/api/user_collections/{collection_id}/documents/{document_id}/chunks/range` | Returns all chunks of a document (marked with collection membership) with order strictly greater than order_gt and/or strictly less than order_lt. |
+| `GET` | `/api/user_collections/{collection_id}/documents/{document_id}/chunks/neighbour` | Returns the chunk immediately before (direction=prev) or after (direction=next) the given boundary_order within the document. |
 | `GET` | `/api/rag/configurations` | Get Avalaible Rag Configurations |
 | `POST` | `/api/rag` | Rag |
 | `POST` | `/api/rag/explain` | Explain Selection |
@@ -268,7 +269,6 @@ public corpus reads, search without a collection, RAG and summaries work anonymo
 | `POST` | `/api/question/{question_text}` | Question |
 | `GET` | `/api/document/{document_id}` | Retrieves document by its id |
 | `GET` | `/api/documents/browse` | Browses the corpus with pagination, filtering and sorting options. |
-| `GET` | `/api/documents/{document_id}/{collection_id}/chunks` | Retrieves all chunks for one document and marks whether each chunk belongs to the selected collection. |
 | `GET` | `/api/documents/{document_id}/chunks/count` | Returns the total number of chunks in the given document (public corpus data). |
 | `POST` | `/api/tag_spans` | Adds new TagSpan and the matching chunk tag reference. |
 | `GET` | `/api/tag_spans` | Get stored TagSpans of a collection, optionally for one chunk. |

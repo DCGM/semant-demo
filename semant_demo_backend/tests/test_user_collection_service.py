@@ -1,4 +1,4 @@
-"""Collections service (features/collections/service.py) called directly, without HTTP or a store.
+"""Collections service (features/user_collections/service.py) called directly, without HTTP or a store.
 
 The service enforces access itself, so denied calls must not reach any repository write
 or user lookup.
@@ -10,9 +10,9 @@ from uuid import uuid4
 import pytest
 
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
-from semant_demo.features.collections import service
-from semant_demo.features.collections.access import AccessDenied, AuthenticationRequired
-from semant_demo.features.collections.schemas import Collection, PatchCollection, PostCollection
+from semant_demo.features.user_collections import service
+from semant_demo.features.user_collections.access import AccessDenied, AuthenticationRequired
+from semant_demo.features.user_collections.schemas import Collection, PatchCollection, PostCollection
 from semant_demo.users.schemas import UserSearchResult
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), name=n, is_superuser=False) for n in ("Owner", "Shared", "Other"))

@@ -1,14 +1,19 @@
-"""HTTP routes of the Collections feature; the rules live in ``service.py``."""
+"""HTTP routes of the user collections feature; the rules live in ``service.py``.
+
+All collection-scoped routes live under ``/api/user_collections/{collection_id}/...``;
+the collection's view of one document (``GET .../documents/{document_id}``) is served
+by the documents feature.
+"""
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status, Response, Query
 
-from semant_demo.features.collections.schemas import CreateResponse, Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest, CollectionChunk
+from semant_demo.features.user_collections.schemas import CreateResponse, Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest, CollectionChunk
 from semant_demo.adapters.sql.users import UserLookup
-from semant_demo.adapters.weaviate.collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
-from semant_demo.features.collections import service
-from semant_demo.routes.dependencies import get_collections, get_tags, get_user_lookup
+from semant_demo.features.user_collections import service
+from semant_demo.routes.dependencies import get_user_collections, get_tags, get_user_lookup
 from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag
@@ -18,7 +23,7 @@ from semant_demo.users.schemas import UserSearchResult
 
 exp_router = APIRouter()
 
-# The service functions check access (features/collections/access.py): reads need
+# The service functions check access (features/user_collections/access.py): reads need
 # owner/shared access, membership/metadata/sharing changes need the owner. Unknown
 # collections, documents, chunks and users are answered with 404 (NotFoundError, see
 # create_app).
@@ -26,7 +31,7 @@ exp_router = APIRouter()
 
 @exp_router.post("/api/user_collections", response_model=Collection, status_code=status.HTTP_201_CREATED)
 async def create_user_collection(collectionReq: PostCollection,
-                                 collections: UserCollectionRepository = Depends(get_collections),
+                                 collections: UserCollectionRepository = Depends(get_user_collections),
                                  current_user: User = Depends(current_active_user)) -> Collection:
     """
     Creates user collection in weaviate db, or not if the same user collection already exists
@@ -35,7 +40,7 @@ async def create_user_collection(collectionReq: PostCollection,
 
 
 @exp_router.get("/api/user_collections", response_model=list[Collection])
-async def fetch_collections(collections: UserCollectionRepository = Depends(get_collections),
+async def fetch_collections(collections: UserCollectionRepository = Depends(get_user_collections),
                             current_user: User = Depends(current_active_user)) -> list[Collection]:
     """
     Retrieves all collections for given user
@@ -45,7 +50,7 @@ async def fetch_collections(collections: UserCollectionRepository = Depends(get_
 
 @exp_router.get("/api/user_collections/{collection_id}", response_model=Collection)
 async def fetch_collection(collection_id: str,
-                           collections: UserCollectionRepository = Depends(get_collections),
+                           collections: UserCollectionRepository = Depends(get_user_collections),
                            current_user: User = Depends(current_active_user)) -> Collection:
     """
     Retrieves collection by its id
@@ -55,16 +60,16 @@ async def fetch_collection(collection_id: str,
 
 @exp_router.patch("/api/user_collections/{collection_id}", response_model=Collection)
 async def update_collection(collection_id: str, collectionReq: PatchCollection,
-                            collections: UserCollectionRepository = Depends(get_collections),
+                            collections: UserCollectionRepository = Depends(get_user_collections),
                             current_user: User = Depends(current_active_user)) -> Collection:
     """
     Updates collection name/description/color. Owner only.
     """
     return await service.update_collection(collections, current_user, collection_id, collectionReq)
 
-@exp_router.patch("/api/collections/{collection_id}/owner", response_model=Collection)
+@exp_router.patch("/api/user_collections/{collection_id}/owner", response_model=Collection)
 async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
-                                  collections: UserCollectionRepository = Depends(get_collections),
+                                  collections: UserCollectionRepository = Depends(get_user_collections),
                                   users: UserLookup = Depends(get_user_lookup),
                                   current_user: User = Depends(current_active_admin)) -> Collection:
     """
@@ -73,11 +78,11 @@ async def update_collection_owner(collection_id: str, req: PatchCollectionOwner,
     return await service.change_owner(collections, users, current_user, collection_id, req.user_id)
 
 
-@exp_router.post("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=WriteResult)
+@exp_router.post("/api/user_collections/{collection_id}/chunks/{chunk_id}", response_model=WriteResult)
 async def add_chunk_to_collection(
     collection_id: str,
     chunk_id: str,
-    collections: UserCollectionRepository = Depends(get_collections),
+    collections: UserCollectionRepository = Depends(get_user_collections),
     current_user: User = Depends(current_active_user),
 ) -> WriteResult:
     """
@@ -88,11 +93,11 @@ async def add_chunk_to_collection(
     return await service.add_chunk(collections, current_user, collection_id, chunk_id)
 
 
-@exp_router.delete("/api/user_collection/{collection_id}/chunks/{chunk_id}", response_model=CreateResponse)
+@exp_router.delete("/api/user_collections/{collection_id}/chunks/{chunk_id}", response_model=CreateResponse)
 async def remove_chunk_from_collection(
     collection_id: str,
     chunk_id: str,
-    collections: UserCollectionRepository = Depends(get_collections),
+    collections: UserCollectionRepository = Depends(get_user_collections),
     current_user: User = Depends(current_active_user),
 ) -> CreateResponse:
     """
@@ -103,9 +108,9 @@ async def remove_chunk_from_collection(
     return {"created": True, "message": "Chunk removed from collection"}
 
 
-@exp_router.post("/api/collections/{collection_id}/share", response_model=Collection)
+@exp_router.post("/api/user_collections/{collection_id}/share", response_model=Collection)
 async def share_collection(collection_id: str, req: ShareCollectionRequest,
-                           collections: UserCollectionRepository = Depends(get_collections),
+                           collections: UserCollectionRepository = Depends(get_user_collections),
                            users: UserLookup = Depends(get_user_lookup),
                            current_user: User = Depends(current_active_user)) -> Collection:
     """
@@ -114,9 +119,9 @@ async def share_collection(collection_id: str, req: ShareCollectionRequest,
     return await service.share_collection(collections, users, current_user, collection_id, req.user_id)
 
 
-@exp_router.delete("/api/collections/{collection_id}/share/{user_id}", response_model=Collection)
+@exp_router.delete("/api/user_collections/{collection_id}/share/{user_id}", response_model=Collection)
 async def unshare_collection(collection_id: str, user_id: UUID,
-                             collections: UserCollectionRepository = Depends(get_collections),
+                             collections: UserCollectionRepository = Depends(get_user_collections),
                              current_user: User = Depends(current_active_user)) -> Collection:
     """
     Revokes a collection share. Only the collection's owner may unshare it.
@@ -124,9 +129,9 @@ async def unshare_collection(collection_id: str, user_id: UUID,
     return await service.unshare_collection(collections, current_user, collection_id, user_id)
 
 
-@exp_router.get("/api/collections/{collection_id}/members", response_model=list[UserSearchResult])
+@exp_router.get("/api/user_collections/{collection_id}/members", response_model=list[UserSearchResult])
 async def get_collection_members(collection_id: str,
-                                 collections: UserCollectionRepository = Depends(get_collections),
+                                 collections: UserCollectionRepository = Depends(get_user_collections),
                                  users: UserLookup = Depends(get_user_lookup),
                                  current_user: User = Depends(current_active_user)) -> list[UserSearchResult]:
     """
@@ -135,14 +140,14 @@ async def get_collection_members(collection_id: str,
     return await service.list_members(collections, users, current_user, collection_id)
 
 
-@exp_router.get("/api/user_collection/{collection_id}/stats", response_model=CollectionStats)
-async def get_collection_stats(collection_id: str, collections: UserCollectionRepository = Depends(get_collections),
+@exp_router.get("/api/user_collections/{collection_id}/stats", response_model=CollectionStats)
+async def get_collection_stats(collection_id: str, collections: UserCollectionRepository = Depends(get_user_collections),
                                current_user: User = Depends(current_active_user)) -> CollectionStats:
     return await service.get_collection_stats(collections, current_user, collection_id)
 
 
-@exp_router.delete("/api/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_collection(collection_id: str, collections: UserCollectionRepository = Depends(get_collections),
+@exp_router.delete("/api/user_collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_collection(collection_id: str, collections: UserCollectionRepository = Depends(get_user_collections),
                             current_user: User = Depends(current_active_user)) -> Response:
     """
     Deletes a collection with its tags and annotations. Owner only. If a step fails, the
@@ -152,17 +157,17 @@ async def delete_collection(collection_id: str, collections: UserCollectionRepos
     await service.delete_collection(collections, current_user, collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-@exp_router.get("/api/user_collection/{collection_id}/documents", response_model=list[Document], response_model_exclude_none=True)
-async def get_collection_documents(collection_id: str, collections: UserCollectionRepository = Depends(get_collections),
+@exp_router.get("/api/user_collections/{collection_id}/documents", response_model=list[Document], response_model_exclude_none=True)
+async def get_collection_documents(collection_id: str, collections: UserCollectionRepository = Depends(get_user_collections),
                                    current_user: User = Depends(current_active_user)) -> list[Document]:
     """
     Returns documents which belong to collection given by id
     """
     return await service.list_documents(collections, current_user, collection_id)
 
-@exp_router.post("/api/collections/{collection_id}/documents/{document_id}", response_model=WriteResult)
+@exp_router.post("/api/user_collections/{collection_id}/documents/{document_id}", response_model=WriteResult)
 async def add_document_to_collection(collection_id: str, document_id: str,
-                                     collections: UserCollectionRepository = Depends(get_collections),
+                                     collections: UserCollectionRepository = Depends(get_user_collections),
                                      current_user: User = Depends(current_active_user)) -> WriteResult:
     """
     Adds document to collection and also links all its chunks to that collection. Owner only.
@@ -171,11 +176,11 @@ async def add_document_to_collection(collection_id: str, document_id: str,
     """
     return await service.add_document(collections, current_user, collection_id, document_id)
 
-@exp_router.delete("/api/collections/{collection_id}/documents/{document_id}", response_model=WriteResult)
+@exp_router.delete("/api/user_collections/{collection_id}/documents/{document_id}", response_model=WriteResult)
 async def remove_document_from_collection(
     collection_id: str,
     document_id: str,
-    collections: UserCollectionRepository = Depends(get_collections),
+    collections: UserCollectionRepository = Depends(get_user_collections),
     current_user: User = Depends(current_active_user),
 ) -> WriteResult:
     """
@@ -185,8 +190,8 @@ async def remove_document_from_collection(
     """
     return await service.remove_document(collections, current_user, collection_id, document_id)
 
-@exp_router.get("/api/collections/{collection_id}/tags", response_model=list[Tag])
-async def get_collection_tags(collection_id: str, collections: UserCollectionRepository = Depends(get_collections),
+@exp_router.get("/api/user_collections/{collection_id}/tags", response_model=list[Tag])
+async def get_collection_tags(collection_id: str, collections: UserCollectionRepository = Depends(get_user_collections),
                               tags: TagRepository = Depends(get_tags),
                               current_user: User = Depends(current_active_user)) -> list[Tag]:
     """
@@ -194,8 +199,8 @@ async def get_collection_tags(collection_id: str, collections: UserCollectionRep
     """
     return await service.list_tags(collections, tags, current_user, collection_id)
 
-@exp_router.get("/api/collections/{collection_id}/documents/{document_id}/stats", response_model=DocumentStats)
-async def get_document_stats(collection_id: str, document_id: str, collections: UserCollectionRepository = Depends(get_collections),
+@exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}/stats", response_model=DocumentStats)
+async def get_document_stats(collection_id: str, document_id: str, collections: UserCollectionRepository = Depends(get_user_collections),
                              current_user: User = Depends(current_active_user)) -> DocumentStats:
     """
     Returns per-document statistics within the given collection:
@@ -204,17 +209,17 @@ async def get_document_stats(collection_id: str, document_id: str, collections: 
     return await service.get_document_stats(collections, current_user, collection_id, document_id)
 
 
-@exp_router.get("/api/collections/{collection_id}/documents/{document_id}", response_model=list[CollectionChunk], response_model_exclude_none=True)
-async def get_collection_document_chunks(collection_id: str, document_id: str, collections: UserCollectionRepository = Depends(get_collections),
+@exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}/chunks", response_model=list[CollectionChunk], response_model_exclude_none=True)
+async def get_collection_document_chunks(collection_id: str, document_id: str, collections: UserCollectionRepository = Depends(get_user_collections),
                                          current_user: User = Depends(current_active_user)) -> list[CollectionChunk]:
     """
-    Returns chunks which belong to document and collection given by id
+    Returns the document's chunks that belong to the collection, in order.
     """
     return await service.get_document_chunks(collections, current_user, collection_id, document_id)
 
 
 @exp_router.get(
-    "/api/collections/{collection_id}/documents/{document_id}/neighbour",
+    "/api/user_collections/{collection_id}/documents/{document_id}/chunks/neighbour",
     response_model=CollectionChunk | None,
     response_model_exclude_none=False,
 )
@@ -223,7 +228,7 @@ async def get_neighbour_chunk(
     document_id: str,
     direction: str = Query(..., pattern="^(prev|next)$"),
     boundary_order: int = Query(...),
-    collections: UserCollectionRepository = Depends(get_collections),
+    collections: UserCollectionRepository = Depends(get_user_collections),
     current_user: User = Depends(current_active_user),
 ) -> CollectionChunk | None:
     """
@@ -235,7 +240,7 @@ async def get_neighbour_chunk(
 
 
 @exp_router.get(
-    "/api/collections/{collection_id}/documents/{document_id}/chunks",
+    "/api/user_collections/{collection_id}/documents/{document_id}/chunks/range",
     response_model=list[CollectionChunk],
 )
 async def get_chunks_in_range(
@@ -243,12 +248,13 @@ async def get_chunks_in_range(
     document_id: str,
     order_gt: int | None = Query(default=None),
     order_lt: int | None = Query(default=None),
-    collections: UserCollectionRepository = Depends(get_collections),
+    collections: UserCollectionRepository = Depends(get_user_collections),
     current_user: User = Depends(current_active_user),
 ) -> list[CollectionChunk]:
     """
-    Returns all chunks of a document with order strictly greater than order_gt
-    and/or strictly less than order_lt. Used for bulk loading gaps and neighbours.
+    Returns all chunks of a document (also those outside the collection, marked by
+    in_collection) with order strictly greater than order_gt and/or strictly less than
+    order_lt. Used for bulk loading gaps and neighbours.
     """
     return await service.get_chunks_in_range(collections, current_user, collection_id, document_id,
                                              order_gt, order_lt)
