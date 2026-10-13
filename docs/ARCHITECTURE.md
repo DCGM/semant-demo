@@ -219,7 +219,7 @@ but not change membership, metadata or sharing. Public corpus reads (`GET /api/d
 `/api/documents/{id}/chunks/{chunk_id}/window` and `/adjacent` (a bounded passage around a
 chunk and its extension), search
 without collection and tags) need no login. RAG, `/api/summarize/results` and
-`/api/question/{text}` are public too and call LLM providers with client-supplied text;
+`/api/question` are public too and call LLM providers with client-supplied text;
 this existing product behavior is tracked for an access/cost decision in [#234](https://github.com/DCGM/semant-demo/issues/234).
 
 The JWT secret is configured via the `JWT_SECRET` environment variable (default is a placeholder — **must be overridden in production**).
@@ -353,7 +353,7 @@ Uses Jinja2 templates for prompt construction. Three generation tasks per search
 
 Prompts are in Czech by default (application targets Czech heritage texts). Prompts, fallback texts and per-task options (temperature, context size, maximum tokens) are configurable via `configs/search_summarizer.yaml`; the model is the `search_summary` tier. Clients may send prompts but never a model. A failed summary keeps the results and adds a warning.
 
-`POST /api/question/{question_text}` answers the question from the snippets of the results sent with it (the `question` tier). A failed model call answers 502 with a fixed message, or with the name of the missing provider setting (`LlmNotConfigured`); the provider's exception text, which may echo the request or endpoint, is neither returned nor logged.
+`POST /api/question` answers `question_text` from the snippets of `search_response`, both sent in the JSON body (`QuestionRequest`), so the question never appears in a URL that a proxy or access log records (the `question` tier). A failed model call answers 502 with a fixed message, or with the name of the missing provider setting (`LlmNotConfigured`); the provider's exception text, which may echo the request or endpoint, is neither returned nor logged.
 
 #### LLM gateway (`adapters/llm/`)
 

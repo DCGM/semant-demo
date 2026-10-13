@@ -41,6 +41,7 @@ export * from './PatchTag';
 export * from './PostCollection';
 export * from './PostSpan';
 export * from './PostTag';
+export * from './QuestionRequest';
 export * from './RagChatMessage';
 export * from './RagRequest';
 export * from './RagRequestMain';

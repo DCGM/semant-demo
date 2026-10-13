@@ -43,6 +43,7 @@ import type {
   PostCollection,
   PostSpan,
   PostTag,
+  QuestionRequest,
   RagRequestMain,
   RagResponse,
   RagRouteConfig,
@@ -117,6 +118,8 @@ import {
     PostSpanToJSON,
     PostTagFromJSON,
     PostTagToJSON,
+    QuestionRequestFromJSON,
+    QuestionRequestToJSON,
     RagRequestMainFromJSON,
     RagRequestMainToJSON,
     RagResponseFromJSON,
@@ -279,9 +282,8 @@ export interface GetTagApiTagsTagUuidGetRequest {
     tagUuid: string;
 }
 
-export interface QuestionApiQuestionQuestionTextPostRequest {
-    questionText: string;
-    searchResponse: SearchResponse;
+export interface QuestionApiQuestionPostRequest {
+    questionRequest: QuestionRequest;
 }
 
 export interface RagApiRagPostRequest {
@@ -1163,29 +1165,27 @@ export interface DefaultApiInterface {
     healthHealthGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
 
     /**
-     * Creates request options for questionApiQuestionQuestionTextPost without sending the request
-     * @param {string} questionText 
-     * @param {SearchResponse} searchResponse 
+     * Creates request options for questionApiQuestionPost without sending the request
+     * @param {QuestionRequest} questionRequest 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    questionApiQuestionQuestionTextPostRequestOpts(requestParameters: QuestionApiQuestionQuestionTextPostRequest): Promise<runtime.RequestOpts>;
+    questionApiQuestionPostRequestOpts(requestParameters: QuestionApiQuestionPostRequest): Promise<runtime.RequestOpts>;
 
     /**
      * 
      * @summary Question
-     * @param {string} questionText 
-     * @param {SearchResponse} searchResponse 
+     * @param {QuestionRequest} questionRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
-    questionApiQuestionQuestionTextPostRaw(requestParameters: QuestionApiQuestionQuestionTextPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SummaryResponse>>;
+    questionApiQuestionPostRaw(requestParameters: QuestionApiQuestionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SummaryResponse>>;
 
     /**
      * Question
      */
-    questionApiQuestionQuestionTextPost(requestParameters: QuestionApiQuestionQuestionTextPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse>;
+    questionApiQuestionPost(requestParameters: QuestionApiQuestionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse>;
 
     /**
      * Creates request options for ragApiRagPost without sending the request
@@ -3426,20 +3426,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for questionApiQuestionQuestionTextPost without sending the request
+     * Creates request options for questionApiQuestionPost without sending the request
      */
-    async questionApiQuestionQuestionTextPostRequestOpts(requestParameters: QuestionApiQuestionQuestionTextPostRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['questionText'] == null) {
+    async questionApiQuestionPostRequestOpts(requestParameters: QuestionApiQuestionPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['questionRequest'] == null) {
             throw new runtime.RequiredError(
-                'questionText',
-                'Required parameter "questionText" was null or undefined when calling questionApiQuestionQuestionTextPost().'
-            );
-        }
-
-        if (requestParameters['searchResponse'] == null) {
-            throw new runtime.RequiredError(
-                'searchResponse',
-                'Required parameter "searchResponse" was null or undefined when calling questionApiQuestionQuestionTextPost().'
+                'questionRequest',
+                'Required parameter "questionRequest" was null or undefined when calling questionApiQuestionPost().'
             );
         }
 
@@ -3455,23 +3448,22 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         }
 
 
-        let urlPath = `/api/question/{question_text}`;
-        urlPath = urlPath.replace(`{${"question_text"}}`, encodeURIComponent(String(requestParameters['questionText'])));
+        let urlPath = `/api/question`;
 
         return {
             path: urlPath,
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: SearchResponseToJSON(requestParameters['searchResponse']),
+            body: QuestionRequestToJSON(requestParameters['questionRequest']),
         };
     }
 
     /**
      * Question
      */
-    async questionApiQuestionQuestionTextPostRaw(requestParameters: QuestionApiQuestionQuestionTextPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SummaryResponse>> {
-        const requestOptions = await this.questionApiQuestionQuestionTextPostRequestOpts(requestParameters);
+    async questionApiQuestionPostRaw(requestParameters: QuestionApiQuestionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SummaryResponse>> {
+        const requestOptions = await this.questionApiQuestionPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => SummaryResponseFromJSON(jsonValue));
@@ -3480,8 +3472,8 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     /**
      * Question
      */
-    async questionApiQuestionQuestionTextPost(requestParameters: QuestionApiQuestionQuestionTextPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse> {
-        const response = await this.questionApiQuestionQuestionTextPostRaw(requestParameters, initOverrides);
+    async questionApiQuestionPost(requestParameters: QuestionApiQuestionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse> {
+        const response = await this.questionApiQuestionPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

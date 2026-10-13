@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.features.search.schemas import SearchResponse
 from semant_demo.features.summarization import service
-from semant_demo.features.summarization.schemas import SummaryResponse
+from semant_demo.features.summarization.schemas import QuestionRequest, SummaryResponse
 from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.routes.dependencies import get_llm, get_summarizer
 from semant_demo.users.auth import current_active_optional_user
@@ -20,11 +20,11 @@ async def summarize(search_response: SearchResponse, summary_type: str,
     return await service.summarize(summarizer, summary_type, search_response)
 
 
-@exp_router.post("/api/question/{question_text}", response_model=SummaryResponse)
-async def question(search_response: SearchResponse, question_text: str,
+@exp_router.post("/api/question", response_model=SummaryResponse)
+async def question(request: QuestionRequest,
                    current_user: User | None = Depends(current_active_optional_user),
                    llm: LlmGateway = Depends(get_llm)) -> SummaryResponse:
     try:
-        return await service.answer_question(llm, question_text, search_response)
+        return await service.answer_question(llm, request.question_text, request.search_response)
     except service.QuestionFailed as e:
         raise HTTPException(status_code=502, detail=str(e))

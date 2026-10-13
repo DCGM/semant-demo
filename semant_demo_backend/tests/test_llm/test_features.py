@@ -162,6 +162,10 @@ def test_shipped_rag_configurations_load_with_their_tiers(llm, configs):
 
 # ── question endpoint ──────────────────────────────────────────────────────
 
+def question_body(question: str, search_response: SearchResponse) -> dict:
+    return {"question_text": question, "search_response": search_response.model_dump(mode="json")}
+
+
 async def test_question_endpoint_answers_with_the_question_tier(tmp_path, metrics):
     fake = create_fake_provider_app(load_corpus())
     config = make_test_config(tmp_path, OPENAI_API_KEY="test-key", OPENAI_API_URL="http://fake/openai/v1")
@@ -172,7 +176,7 @@ async def test_question_endpoint_answers_with_the_question_tier(tmp_path, metric
     async with app.router.lifespan_context(app):
         app.state.resources.llm.recorder.metrics = metrics
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.post(f"/api/question/{QUESTION}", json=body.model_dump(mode="json"))
+            response = await client.post("/api/question", json=question_body(QUESTION, body))
 
     assert response.status_code == 200
     # The fake answers the last user turn, which is the question.
@@ -188,7 +192,7 @@ async def test_question_without_a_provider_key_is_a_bad_gateway(tmp_path):
 
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.post("/api/question/q", json=body.model_dump(mode="json"))
+            response = await client.post("/api/question", json=question_body("q", body))
 
     assert response.status_code == 502
     assert response.json()["detail"] == "OPENAI_API_KEY is not configured on the server"
@@ -208,12 +212,32 @@ async def test_question_provider_failure_returns_a_fixed_error_without_content(t
     with caplog.at_level(logging.DEBUG):
         async with app.router.lifespan_context(app):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.post(f"/api/question/{QUESTION}", json=body.model_dump(mode="json"))
+                response = await client.post("/api/question", json=question_body(QUESTION, body))
 
     assert response.status_code == 502
     assert response.json() == {"detail": "The language model could not answer the question."}
     for leaked in (secret, "kronikář", "Novák"):
         assert leaked not in response.text and leaked not in caplog.text
+
+
+@pytest.mark.parametrize("path, body, status", [
+    ("/api/question", lambda results: {"question_text": "", "search_response": results}, 422),
+    ("/api/question", lambda results: {"question_text": QUESTION}, 422),
+    # The question is no longer accepted in the URL.
+    (f"/api/question/{QUESTION}", lambda results: results, 404),
+], ids=["empty-question", "no-search-response", "legacy-path"])
+async def test_invalid_question_requests_never_reach_the_model(tmp_path, path, body, status):
+    calls = []
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_llm] = lambda: FakeLlm(lambda messages: calls.append(messages) or "answer")
+    results = SearchResponse(results=[], search_request=search_request(), time_spent=0.0, search_log=[])
+
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(path, json=body(results.model_dump(mode="json")))
+
+    assert response.status_code == status
+    assert calls == []
 
 
 def test_clients_cannot_name_a_summary_model(tmp_path):
