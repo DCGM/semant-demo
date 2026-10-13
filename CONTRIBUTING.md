@@ -3,6 +3,7 @@
 The **`main` branch is the canonical base and pull-request target** for routine
 development. These guidelines apply to human- and agent-authored changes. [ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the implementation;
 [TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md) records continuing design constraints.
+New contributors can begin with [START_HERE.md](docs/START_HERE.md).
 
 ## 1. Working on a change
 
@@ -146,8 +147,9 @@ including loopback. Use `tests/fakes.py` for AI providers. Frontend unit/compone
 use Vitest and Vue Test Utils under `semant_demo_frontend/test/unit`.
 
 Real-store tests live in `semant_demo_backend/tests/integration` (marked `integration`)
-and use a test-owned Weaviate seeded with the synthetic corpus in
-`tests/fixtures/corpus.json`, reset for every test. The Playwright smoke suite in
+and use a throwaway Weaviate with synthetic data from
+`tests/fixtures/corpus.json`. Tests clear and reseed application data; the schema is
+recreated only when necessary. The Playwright smoke suite in
 `semant_demo_frontend/test/e2e` reads the same corpus. See
 [DEVELOPMENT.md](docs/DEVELOPMENT.md#11-testing-versus-development-data) for the store
 ownership rules. Detailed fixtures, regression cases, async guidance, and evaluation rules
@@ -208,7 +210,8 @@ Open pull requests **into `main`**.
 Run fast checks for code PRs, relevant real-store tests for adapter/schema/search changes,
 and browser tests for affected critical flows. Run the full isolated integration/smoke
 suite before release. Documentation-only changes need link/format checks, not application
-or provider runs. Required CI failures block merge/deploy; no blanket `continue-on-error`.
+or provider runs. Required CI failures block merging; PR previews intentionally deploy even
+when checks fail for manual diagnosis ([deploy/README.md](deploy/README.md#pr-preview-credentials)).
 
 PRs state the purpose, behavior/API/schema changes, actual checks/results, unavailable
 checks, and compatibility/migration notes. Add screenshots or a recording for meaningful

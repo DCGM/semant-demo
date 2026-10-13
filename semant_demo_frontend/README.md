@@ -30,7 +30,7 @@ npm run test:e2e    # Playwright smoke suite; use `make test-e2e` from the root 
 
 ### Build the app for production
 ```bash
-quasar build
+npx quasar build
 ```
 
 ### Customize the configuration
@@ -43,6 +43,7 @@ All requests go through `src/shared/api` (one backend URL, the signed-in user's 
 common error handling); do not create another HTTP client.
 
 ```ts
+import { ref } from 'vue'
 import { apiErrorMessage, useApi } from 'src/shared/api'
 import type { Collection } from 'src/generated/api'
 
