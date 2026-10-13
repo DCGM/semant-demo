@@ -24,7 +24,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 ## Deployment, security and tests
 
 - [#234](https://github.com/DCGM/semant-demo/issues/234) — anonymous RAG, summary and question endpoints call paid providers; decide login/rate/cost limits.
-- [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI; one document-view test is flaky ([#302](https://github.com/DCGM/semant-demo/issues/302)).
+- [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI.
 - [#299](https://github.com/DCGM/semant-demo/issues/299) — Topicer compose files lack their Dockerfile; Topicer is deployed manually, not by CI/CD.
 - [#300](https://github.com/DCGM/semant-demo/issues/300) — an empty `FEEDBACK_LOG_PATH` (as in the `.env` templates) makes app feedback fail.
 - [#301](https://github.com/DCGM/semant-demo/issues/301) — unhandled-error tracebacks, storage write failures and Topicer errors still log exception text.
