@@ -34,6 +34,7 @@ only for regenerating the API client. From the repository root:
 | `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. |
 | `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. |
 | `make test-e2e` | Build the frontend and run the Playwright smoke suite against the deterministic backend profile (throwaway Weaviate, fixture corpus, fake AI providers). Needs Docker; installs Playwright's Chromium on first use. |
+| `make e2e-dev-start` / `e2e-dev-test ARGS=...` / `e2e-dev-stop` | Optional fast loop for browser-test work: keep one seeded profile running and rerun selected specs against it (`scripts/e2e-dev.sh`, see [DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop)). Not a substitute for `make test-e2e` before a PR. |
 
 Set `PYTHON=...` to use another interpreter. Without Make, run the same commands:
 
@@ -57,7 +58,7 @@ scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/pyth
 
 # make test-e2e
 (cd semant_demo_frontend && npx playwright install --only-shell chromium)
-scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && PYTHON=../.venv/bin/python npm run test:e2e'
+scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON=../.venv/bin/python npm run test:e2e'
 ```
 
 Backend dependencies (`semant_demo_backend/`, target CPython 3.12 on Linux x86_64):

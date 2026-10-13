@@ -7,7 +7,8 @@ PYTHON ?= $(VENV)/bin/python
 PY := $(if $(findstring /,$(PYTHON)),$(abspath $(PYTHON)),$(PYTHON))
 FAST_TESTS := not integration and not live and not benchmark
 
-.PHONY: setup check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e
+.PHONY: setup check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e \
+	e2e-dev-start e2e-dev-test e2e-dev-capture e2e-dev-rebuild e2e-dev-restart e2e-dev-stop e2e-dev-status
 
 ## Install pinned development dependencies (backend venv and frontend node_modules).
 setup:
@@ -34,9 +35,37 @@ test-integration:
 
 ## Browser smoke tests: build the frontend and run it against the deterministic backend
 ## profile (test-owned Weaviate, fixture corpus, fake AI providers). Needs Docker.
+## Headless Chromium needs no display; with a forwarded one (ssh -X) it stalls ~25 s.
 test-e2e:
 	cd semant_demo_frontend && npx playwright install --only-shell chromium
-	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && PYTHON="$(PY)" npm run test:e2e'
+	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON="$(PY)" npm run test:e2e'
+
+## Fast local browser-test loop (scripts/e2e-dev.sh; docs/DEVELOPMENT.md). Not a substitute
+## for `make test-e2e` before a PR. Start once, run selected specs repeatedly, then stop:
+##   make e2e-dev-start
+##   make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts --grep phone"
+##   make e2e-dev-stop
+e2e-dev-start:
+	cd semant_demo_frontend && npx playwright install --only-shell chromium
+	PYTHON="$(PY)" scripts/e2e-dev.sh start
+
+e2e-dev-test:
+	scripts/e2e-dev.sh test $(ARGS)
+
+e2e-dev-capture:
+	scripts/e2e-dev.sh capture $(ARGS)
+
+e2e-dev-rebuild:
+	scripts/e2e-dev.sh rebuild
+
+e2e-dev-restart:
+	PYTHON="$(PY)" scripts/e2e-dev.sh restart
+
+e2e-dev-stop:
+	scripts/e2e-dev.sh stop
+
+e2e-dev-status:
+	scripts/e2e-dev.sh status
 
 ## Regenerate the TypeScript client from the backend schema (needs Java 11+).
 api-generate:
