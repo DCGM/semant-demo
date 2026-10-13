@@ -28,7 +28,8 @@ updates only the chunks whose year differs (a merge: text, vectors, references a
 properties are kept) and reads each page's written chunks back. The checkpoint (JSON,
 replaced atomically after each page) holds the endpoint, the resolved collections, the
 cursor, the counts, the year histogram and the ids whose write failed or did not read back;
-running the same command again resumes it, retrying those ids first. Every reported chunk gets
+running the same command again resumes it, retrying those ids first. A finished checkpoint
+(complete pass, nothing to retry) is refused: a new check or write needs a new file name. Every reported chunk gets
 a line in ``CHECKPOINT.manifest.jsonl``. Counts are planned actions: ``consistent``,
 ``no_year`` (neither has a year), ``set``, ``change`` and ``clear`` (to write);
 ``no_document``, ``missing_document``, ``several_documents``, ``invalid_year`` (reported).
@@ -42,10 +43,14 @@ common year. A fresh ``--check`` after writing must report nothing to write and 
 ranges. The summary also lists other chunk properties named like a year (e.g. an unused
 ``documentYearIssued``); they are neither read nor changed.
 
-Exit code 1 when a check finds chunks to write or a range mismatch, or a write leaves ids
-to retry or a mismatch; 2 when refused. Run while nothing else writes chunks or document
-years. A chunk ingested later, or a corrected document year, is reconciled by running the
-command again.
+A declared ``Chunks.yearIssued`` without a range index is refused by ``--write`` (and fails
+``--check``): index settings of a declared property cannot be changed, so it needs a separate,
+reviewed schema or collection migration.
+
+Exit code 1 when a check finds chunks to write, a range mismatch or no range index, or a
+write leaves ids to retry or a mismatch; 2 when refused. Run while nothing else writes chunks
+or document years. A chunk ingested later, or a corrected document year, is reconciled by
+running the command again (with a new checkpoint).
 
 The Weaviate endpoint comes from ``WEAVIATE_HOST`` / ``WEAVIATE_REST_PORT`` /
 ``WEAVIATE_GRPC_PORT``.
@@ -245,6 +250,10 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, *, checkpoint
     if prop is not None and (prop.data_type not in YEAR_TYPES or not prop.filterable):
         raise LookupError(f"{chunks}.{store.YEAR} is declared as {prop.data_type} (filterable: {prop.filterable}); "
                           f"expected a filterable {' or '.join(YEAR_TYPES)}")
+    if write and prop is not None and not prop.range_index:
+        raise LookupError(f"{chunks}.{store.YEAR} is declared without a range index (indexRangeFilters). Index "
+                          "settings of a declared property cannot be changed: adding it needs a separate, reviewed "
+                          "schema or collection migration. Nothing was written")
 
     identity = {"endpoint": endpoint, "chunks": chunks, "documents": documents, "mode": "write" if write else "check"}
     if checkpoint.exists():
@@ -253,6 +262,9 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, *, checkpoint
         if differing:
             raise LookupError(f"The checkpoint {checkpoint} has a different {', '.join(differing)}; "
                               "use a new checkpoint")
+        if state["done"] and not state["retry"]:
+            raise LookupError(f"The checkpoint {checkpoint} belongs to a finished run; give a new checkpoint "
+                              "file name to check or write again")
         progress(f"Resuming {checkpoint}: after {state['after']}, {len(state['retry'])} to retry")
     else:
         state = {**identity, "started": _now(), "after": None, "done": False, "retry": [],
@@ -350,10 +362,12 @@ def summary(state: dict[str, Any], checkpoint: Path, prop: store.YearProperty | 
 
 
 def exit_code(result: dict[str, Any]) -> int:
-    """0 only for a complete pass with matching ranges and, when checking, nothing to write;
-    when writing, nothing left to retry."""
+    """0 only for a complete pass with matching ranges on a range-indexed property and, when
+    checking, nothing to write; when writing, nothing left to retry."""
     counts = result["counts"]
     if not result["done"] or result["to_retry"] or result["ranges"] is None:
+        return 1
+    if not (result["year_property"] or {}).get("range_index"):
         return 1
     if any(not r["match"] for r in result["ranges"]):
         return 1

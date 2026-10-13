@@ -70,8 +70,9 @@ def test_check_ranges_cover_whole_issue_quarter_and_common_ranges():
     assert (1940, 1952) not in check_ranges({1850: 1})
 
 
-def result(mode="check", done=True, to_retry=0, ranges=(), **counts):
+def result(mode="check", done=True, to_retry=0, ranges=(), range_index=True, **counts):
     return {"mode": mode, "done": done, "to_retry": to_retry, "ranges": list(ranges),
+            "year_property": {"data_type": "int", "range_index": range_index},
             "counts": {"set": 0, "change": 0, "clear": 0, **counts}}
 
 
@@ -84,3 +85,4 @@ def test_exit_code():
     assert exit_code(result(mode="write", to_retry=1, ranges=[match])) == 1
     assert exit_code(result(done=False, ranges=[match])) == 1
     assert exit_code({**result(), "ranges": None}) == 1               # the property is not declared
+    assert exit_code(result(ranges=[match], range_index=False)) == 1  # declared without a range index

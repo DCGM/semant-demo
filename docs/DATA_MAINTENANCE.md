@@ -123,8 +123,11 @@ python -m semant_demo.maintenance.chunk_year --check check_after.json       # ex
 
 `--write` first declares `Chunks.yearIssued` (`int`, range index) when the collection lacks
 it, an additive schema change through the alias's collection, then writes only differing
-chunks and reads every page's writes back. Both modes are checkpointed and resumable (writes
-that failed or did not read back are retried first). A complete pass compares the chunk counts
+chunks and reads every page's writes back. An existing `yearIssued` without a range index is
+refused before any write: its index settings cannot be changed in place, so it needs a separate,
+reviewed schema or collection migration. Both modes are checkpointed and resumable (writes
+that failed or did not read back are retried first); a finished checkpoint is refused, so every
+new check or write takes a new checkpoint file name. A complete pass compares the chunk counts
 that the search predicates find for several year ranges with those expected from the
 documents; a check exits 0 only when nothing is left to write and every range matches.
 

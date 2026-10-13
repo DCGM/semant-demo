@@ -83,6 +83,10 @@ async def test_check_write_and_check_again(seeded_store, collection_names, corpu
     assert after.properties == {**before.properties, "yearIssued": 1903}
     assert after.vector == before.vector
     assert [o.uuid for o in after.references["document"].objects] == [UUID(d["letters"])]
+    for path, write in (("write.json", True), ("check.json", False)):
+        with pytest.raises(LookupError, match="finished run"):  # a finished checkpoint never reports success again
+            await chunk_year.run(seeded_store, names, checkpoint=tmp_path / path, endpoint="test", write=write,
+                                 progress=quiet)
     untouched = await store.read_chunks(seeded_store, names.chunks_collection_name, [ORPHAN, TWO_DOCUMENTS])
     assert (untouched[ORPHAN].year, untouched[TWO_DOCUMENTS].year) == (1700, None)
 
@@ -121,6 +125,8 @@ async def test_failed_writes_are_retried_by_resuming(seeded_store, collection_na
     assert all(r["match"] for r in resumed["ranges"]) and chunk_year.exit_code(resumed) == 0
     lines = [json.loads(line) for line in (tmp_path / "write.json.manifest.jsonl").read_text().splitlines()]
     assert [(m["id"], m["status"]) for m in lines] == [(str(failing), "failed"), (str(failing), "verified_on_retry")]
+    with pytest.raises(LookupError, match="finished run"):
+        await chunk_year.run(seeded_store, names, checkpoint=checkpoint, endpoint="test", write=True, progress=quiet)
 
 
 async def test_write_declares_the_property_through_an_alias(weaviate_client, store_token, collection_names,
@@ -158,5 +164,37 @@ async def test_write_declares_the_property_through_an_alias(weaviate_client, sto
         assert written["counts"]["written"] == 2 and chunk_year.exit_code(written) == 0
         assert written["ranges"] == [{"first": 1941, "last": 1941, "expected": 2, "found": 2, "match": True},
                                      {"first": 1940, "last": 1952, "expected": 2, "found": 2, "match": True}]
+    finally:
+        await drop()
+
+
+async def test_a_year_property_without_range_index_is_refused_before_writing(weaviate_client, collection_names,
+                                                                             tmp_path):
+    client, docs, chunks = weaviate_client, "YearDocuments", "YearChunks"
+    names = collection_names.model_copy(update={"document_collection_name": docs, "chunks_collection_name": chunks})
+    chunk_id = UUID(int=10)
+
+    async def drop():
+        for name in (chunks, docs):
+            await client.collections.delete(name)
+    await drop()
+    try:
+        await client.collections.create(docs, properties=[Property(name="yearIssued", data_type=DataType.INT)])
+        await client.collections.create(
+            chunks, properties=[Property(name="yearIssued", data_type=DataType.INT, index_range_filters=False)],
+            references=[ReferenceProperty(name="document", target_collection=docs)])
+        await client.collections.get(docs).data.insert(uuid=UUID(int=1), properties={"yearIssued": 1941})
+        await client.collections.get(chunks).data.insert(uuid=chunk_id, properties={},
+                                                         references={"document": UUID(int=1)})
+
+        with pytest.raises(LookupError, match="range index"):
+            await chunk_year.run(client, names, checkpoint=tmp_path / "write.json", endpoint="test", write=True,
+                                 progress=quiet)
+        assert (await store.read_chunks(client, chunks, [chunk_id]))[chunk_id].year is None  # nothing written
+
+        check = await chunk_year.run(client, names, checkpoint=tmp_path / "check.json", endpoint="test",
+                                     write=False, progress=quiet)
+        assert check["year_property"] == {"data_type": "int", "range_index": False}
+        assert check["counts"]["set"] == 1 and chunk_year.exit_code(check) == 1
     finally:
         await drop()
