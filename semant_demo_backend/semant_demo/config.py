@@ -51,7 +51,8 @@ class Config:
 
         # app feedback delivery
         self.FEEDBACK_WEBHOOK_URL = env.get("FEEDBACK_WEBHOOK_URL", "")
-        self.FEEDBACK_LOG_PATH = env.get("FEEDBACK_LOG_PATH", str(SCRIPT_PATH / "feedback.log.jsonl"))
+        # An empty value (as in the deploy .env templates) means the default path.
+        self.FEEDBACK_LOG_PATH = env.get("FEEDBACK_LOG_PATH") or str(SCRIPT_PATH / "feedback.log.jsonl")
 
         # Auth – override JWT_SECRET in production with a strong random value
         self.JWT_SECRET = env.get("JWT_SECRET", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_SECRET")

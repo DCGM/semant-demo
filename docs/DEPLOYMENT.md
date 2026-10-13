@@ -170,7 +170,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service |
 | `SPAN_CHAT_TEMPERATURE` / `SPAN_CHAT_MAX_TOKENS` | `0.4` / `1024` | Span discussion replies (`span_chat` tier) |
 | `SPAN_CHAT_CONTEXT_CHARS` / `SPAN_CHAT_HISTORY_LIMIT` | `1500` / `20` | Context window around the span; chat messages forwarded |
-| `FEEDBACK_LOG_PATH` | `semant_demo/feedback.log.jsonl` | JSONL file receiving in-app feedback. An empty value (as in the `.env` templates) is used as is, not replaced by the default, and makes feedback delivery fail ([#300](https://github.com/DCGM/semant-demo/issues/300)) |
+| `FEEDBACK_LOG_PATH` | `semant_demo/feedback.log.jsonl` | JSONL file receiving in-app feedback. An empty value means the default. Deployed instances use `/app/feedback/feedback.log.jsonl`, a host directory mounted from the instance data ([deploy/README](../deploy/README.md#in-app-feedback-storage)) |
 | `FEEDBACK_WEBHOOK_URL` | empty | Optional webhook that also receives in-app feedback |
 | `OTEL_ENABLED`, `OTEL_*`, `DEPLOYMENT_ENVIRONMENT` | off | Telemetry export; see [OBSERVABILITY.md](OBSERVABILITY.md#runtime-configuration) |
 

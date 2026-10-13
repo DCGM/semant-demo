@@ -3,6 +3,7 @@ import ast
 import inspect
 import textwrap
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
@@ -95,3 +96,15 @@ def test_model_choice_is_not_configured_per_feature():
     for retired in ("OPENAI_MODEL", "OLLAMA_MODEL", "GOOGLE_MODEL", "MODEL_TEMPERATURE",
                     "SPAN_CHAT_API_KEY", "SPAN_CHAT_API_URL", "SPAN_CHAT_MODEL"):
         assert not hasattr(config, retired)
+
+
+@pytest.mark.parametrize("environ", [{}, {"FEEDBACK_LOG_PATH": ""}])
+def test_unset_or_empty_feedback_log_path_uses_the_default(environ):
+    config = Config(environ=environ)
+
+    assert config.FEEDBACK_LOG_PATH.endswith("feedback.log.jsonl")
+    assert Path(config.FEEDBACK_LOG_PATH).is_absolute()
+
+
+def test_feedback_log_path_is_read_from_the_environment():
+    assert Config(environ={"FEEDBACK_LOG_PATH": "/data/feedback.jsonl"}).FEEDBACK_LOG_PATH == "/data/feedback.jsonl"

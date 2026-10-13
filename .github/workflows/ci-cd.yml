@@ -361,6 +361,8 @@ jobs:
           else
             echo "Using existing SQLite database"
           fi
+          # Mounted at /app/feedback: the in-app feedback log (FEEDBACK_LOG_PATH).
+          mkdir -p "$SQL_DB_PATH/feedback"
 
       - name: Build and start
         id: build
@@ -527,6 +529,8 @@ jobs:
           else
             echo "Using existing SQLite database"
           fi
+          # Mounted at /app/feedback: the in-app feedback log (FEEDBACK_LOG_PATH).
+          mkdir -p "$SQL_DB_PATH/feedback"
 
       - name: Build and start
         run: |
@@ -696,6 +700,8 @@ jobs:
           else
             echo "Using existing SQLite database"
           fi
+          # Mounted at /app/feedback: the in-app feedback log (FEEDBACK_LOG_PATH).
+          mkdir -p "$SQL_DB_PATH/feedback"
 
       - name: Build and start
         run: |
