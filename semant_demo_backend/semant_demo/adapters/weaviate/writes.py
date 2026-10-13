@@ -21,8 +21,8 @@ class NoProgressError(RuntimeError):
 
 
 def step_failure(step: str, item_id, exc: Exception) -> StepFailure:
-    """Failure record for one write. Details stay in the log, not in the response."""
-    logger.warning("Write step %s failed for %s: %s", step, item_id, exc)
+    """Failure record for one write. The log and the response name only the exception class."""
+    logger.warning("Write step %s failed for %s: %s", step, item_id, type(exc).__name__)
     return StepFailure(
         item_id=str(item_id) if item_id is not None else None,
         step=step,
@@ -108,7 +108,8 @@ async def _tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, tag_
 
 
 def _incomplete(what: str, progress: _Progress, exc: Exception) -> IncompleteWriteError:
-    logger.warning("Deleting %s stopped at step %s after %s: %r", what, progress.step, progress.completed, exc)
+    logger.warning("Deleting %s stopped at step %s after %s: %s", what, progress.step, progress.completed,
+                   type(exc).__name__)
     done = ", ".join(f"{n} x {step}" for step, n in progress.completed.items()) or "nothing"
     cause = ("a deletion reported success without taking effect" if isinstance(exc, NoProgressError)
              else f"{type(exc).__name__}: storage write failed")

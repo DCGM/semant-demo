@@ -10,7 +10,7 @@ This folder holds the Docker Compose files, Dockerfiles and environment template
 | `docker-compose.app-test.yml` | Test app for `test-main` and PR previews (CI/CD managed) |
 | `docker-compose.database.yml` / `docker-compose.database-test.yml` | Weaviate for production / for all test instances |
 | `docker-compose.embedder.yml` | GPU embedding service |
-| `docker-compose.topcier.yml` / `docker-compose.topicer-test.yml` | Topicer service; they build from a `Dockerfile.topicer` that is not in this repository, and `update.sh` expects the first file as `docker-compose.topicer.yml` ([#299](https://github.com/DCGM/semant-demo/issues/299)) |
+| `docker-compose.topicer.yml` / `docker-compose.topicer-test.yml` | Topicer service, started manually with `update.sh` (CI/CD does not deploy it, but the app compose files require its external networks). They build from a `Dockerfile.topicer` that is not in this repository ([#299](https://github.com/DCGM/semant-demo/issues/299)) |
 | `Dockerfile` | Multi-stage build of backend + frontend (`npm ci` and the committed generated API client, not regenerated) |
 | `Dockerfile.embedder` | Build of the embedding service |
 | `update.sh` | Named shortcuts for the `docker compose` commands below |

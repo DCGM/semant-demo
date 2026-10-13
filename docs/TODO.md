@@ -24,9 +24,8 @@ for the 2026 refactor, in the [archive](archive/README.md).
 ## Deployment, security and tests
 
 - [#234](https://github.com/DCGM/semant-demo/issues/234) — anonymous RAG, summary and question endpoints call paid providers; decide login/rate/cost limits.
-- [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI; one document-view test is flaky ([#302](https://github.com/DCGM/semant-demo/issues/302)).
-- [#299](https://github.com/DCGM/semant-demo/issues/299) — Topicer compose files do not match `update.sh` and lack their Dockerfile.
-- [#301](https://github.com/DCGM/semant-demo/issues/301) — unhandled-error tracebacks, storage write failures and Topicer errors still log exception text.
+- [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI.
+- [#299](https://github.com/DCGM/semant-demo/issues/299) — Topicer compose files lack their Dockerfile; Topicer is deployed manually, not by CI/CD.
 - [#261](https://github.com/DCGM/semant-demo/issues/261) — reproducibility of the production frontend build. The backend Python packages are locked; the base images and the embedding service requirements are not ([DEPLOYMENT.md](DEPLOYMENT.md#docker--production-deployment)).
 - PR previews share the server and Docker daemon with CI and the other deployments; separate preview credentials limit, but do not isolate, them ([deploy/README](../deploy/README.md#pr-preview-credentials)). Host separation is out of scope.
 

@@ -17,15 +17,18 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from semant_demo.config import SCRIPT_PATH
 from semant_demo.core.request_context import current_request_id
 from semant_demo.main import create_app
+from semant_demo.routes.dependencies import get_llm
 from semant_demo.opentelemetry import (
     OpenTelemetry,
     UNMATCHED_ROUTE,
     RequestTelemetryMiddleware,
+    UnhandledRequestError,
     feature_for_request,
     request_authentication,
     request_outcome,
 )
-from tests.app_support import make_test_config
+from tests.app_support import make_test_config, offline_weaviate
+from tests.fakes import FakeLlm
 
 
 class RecordingInstrument:
@@ -43,12 +46,14 @@ def test_feature_for_request_tracks_user_actions_only():
     assert feature_for_request("/api/rag", "POST") == "rag"
     assert feature_for_request("/api/search", "POST") == "search"
     assert feature_for_request("/api/ai/suggest_spans/optimized", "POST") == "ai_assistance"
+    assert feature_for_request("/api/question", "POST") == "summarize"
     assert feature_for_request("/api/tags", "POST") == "tagging"
     assert feature_for_request("/api/tag_spans", "POST") == "tagging"
     assert feature_for_request("/api/tag_spans/bulk_update", "POST") == "tagging"
 
     assert feature_for_request("/api/rag/configurations", "GET") is None
     assert feature_for_request("/health", "GET") is None
+    assert feature_for_request("/api/question/no-longer-a-route", "POST") is None
 
 
 def test_usage_metric_attributes_are_low_cardinality():
@@ -199,12 +204,12 @@ QUESTION = "Who owned the mill in Lhota?"
 QUESTION_IN_URL = "Who%20owned%20the%20mill%20in%20Lhota%3F"
 
 
-def _question_app() -> FastAPI:
+def _path_text_app() -> FastAPI:
     app = FastAPI()
 
-    @app.post("/api/question/{question_text}")
-    async def question(question_text: str):
-        if question_text.startswith("fail"):
+    @app.post("/api/echo/{text}")
+    async def echo(text: str):
+        if text.startswith("fail"):
             raise RuntimeError("endpoint failed")
         return {"ok": True}
 
@@ -222,34 +227,34 @@ def _exported_values(record: logging.LogRecord) -> str:
 
 async def test_completed_request_is_logged_at_info_with_route_template(caplog):
     caplog.set_level(logging.INFO, logger="semant_demo.opentelemetry")
-    async with _client(_question_app()) as client:
-        response = await client.post(f"/api/question/{QUESTION_IN_URL}?context={QUESTION_IN_URL}")
+    async with _client(_path_text_app()) as client:
+        response = await client.post(f"/api/echo/{QUESTION_IN_URL}?context={QUESTION_IN_URL}")
 
     assert response.status_code == 200
     [record] = _request_records(caplog)
     assert record.levelno == logging.INFO
     assert record.getMessage() == "HTTP request completed"
-    assert record.__dict__["http.route"] == "/api/question/{question_text}"
+    assert record.__dict__["http.route"] == "/api/echo/{text}"
     assert record.__dict__["http.response.status_code"] == 200
     assert "Lhota" not in _exported_values(record)
 
 
 async def test_failed_request_log_does_not_contain_path_text(caplog):
     caplog.set_level(logging.INFO, logger="semant_demo.opentelemetry")
-    transport = ASGITransport(app=_question_app(), raise_app_exceptions=False)
+    transport = ASGITransport(app=_path_text_app(), raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/api/question/fail%20secret%20Lhota")
+        response = await client.post("/api/echo/fail%20secret%20Lhota")
 
     assert response.status_code == 500
     [record] = _request_records(caplog)
-    assert record.getMessage() == "HTTP request failed"
-    assert record.__dict__["http.route"] == "/api/question/{question_text}"
+    assert record.getMessage().startswith("HTTP request failed: RuntimeError\n")
+    assert record.__dict__["http.route"] == "/api/echo/{text}"
     assert "Lhota" not in _exported_values(record)
 
 
 async def test_unmatched_path_is_logged_as_placeholder(caplog):
     caplog.set_level(logging.INFO, logger="semant_demo.opentelemetry")
-    async with _client(_question_app()) as client:
+    async with _client(_path_text_app()) as client:
         response = await client.get("/no/such/Lhota")
 
     assert response.status_code == 404
@@ -263,30 +268,100 @@ async def test_server_span_does_not_contain_path_or_query_text(question):
     spans = InMemorySpanExporter()
     tracer_provider = TracerProvider()
     tracer_provider.add_span_processor(SimpleSpanProcessor(spans))
-    app = _question_app()
+    app = _path_text_app()
     FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider, meter_provider=MeterProvider())
     try:
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            await client.post(f"/api/question/{question}?context={QUESTION_IN_URL}")
+            await client.post(f"/api/echo/{question}?context={QUESTION_IN_URL}")
     finally:
         FastAPIInstrumentor.uninstrument_app(app)
 
     [server_span] = [span for span in spans.get_finished_spans() if span.kind.name == "SERVER"]
-    assert server_span.attributes["http.target"] == "/api/question/{question_text}"
+    assert server_span.attributes["http.target"] == "/api/echo/{text}"
     for span in spans.get_finished_spans():
         assert "Lhota" not in json.dumps(dict(span.attributes)) + span.name
 
 
-def test_uvicorn_access_log_shows_the_question_route_not_the_question(caplog):
-    # create_app's module attaches the filter to uvicorn's access logger.
-    caplog.set_level(logging.INFO, logger="uvicorn.access")
-    access = logging.getLogger("uvicorn.access")
+async def test_question_text_is_in_neither_the_url_nor_request_logs_nor_server_span(tmp_path, caplog):
+    private_question = "Kdo byl tajný kronikář v Lhotě?"
+    spans = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(spans))
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_llm] = lambda: FakeLlm(lambda messages: "Nevím [doc1].")
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider, meter_provider=MeterProvider())
+    search_request = {"query": "kronika", "tag_uuids": [], "positive": False, "automatic": False}
+    search_response = {"results": [], "search_request": search_request, "time_spent": 0.1, "search_log": []}
+    caplog.set_level(logging.DEBUG)
+    try:
+        async with app.router.lifespan_context(app):
+            async with _client(app) as client:
+                response = await client.post("/api/question", json={
+                    "question_text": private_question, "search_response": search_response})
+    finally:
+        FastAPIInstrumentor.uninstrument_app(app)
 
-    for path in ("/api/question/Kdo%20byl%20tajn%C3%BD%3F?x=1", "/api/search"):
-        access.info('%s - "%s %s HTTP/%s" %d', "127.0.0.1:5000", "POST", path, "1.1", 200)
+    assert response.status_code == 200 and response.json()["summary"] == "Nevím [doc1]."
+    # The request target, which proxies and uvicorn's access log record, carries no text.
+    assert str(response.request.url) == "http://test/api/question"
+    [record] = _request_records(caplog)
+    assert record.__dict__["http.route"] == "/api/question"
+    assert "Lhot" not in caplog.text and "kronikář" not in caplog.text
+    [server_span] = [span for span in spans.get_finished_spans() if span.kind.name == "SERVER"]
+    assert server_span.attributes["http.target"] == "/api/question"
+    for span in spans.get_finished_spans():
+        assert "Lhot" not in json.dumps(dict(span.attributes)) + span.name
 
-    assert [r.getMessage() for r in caplog.records if r.name == "uvicorn.access"] == [
-        '127.0.0.1:5000 - "POST /api/question/{question_text} HTTP/1.1" 200',
-        '127.0.0.1:5000 - "POST /api/search HTTP/1.1" 200',
-    ]
+
+SECRET_ERROR_TEXT = "SECRET-MARKER provider body"
+
+
+def _failing_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.post("/api/fail")
+    async def fail():
+        try:
+            raise ValueError(SECRET_ERROR_TEXT)
+        except ValueError as e:
+            raise RuntimeError(SECRET_ERROR_TEXT) from e
+
+    app.add_middleware(RequestTelemetryMiddleware)
+    return app
+
+
+async def test_unhandled_error_is_logged_with_its_stack_but_no_exception_text(caplog):
+    caplog.set_level(logging.INFO, logger="semant_demo.opentelemetry")
+    async with _client(_failing_app()) as client:
+        with pytest.raises(UnhandledRequestError) as raised:
+            await client.post("/api/fail")
+
+    [record] = _request_records(caplog)
+    assert record.levelno == logging.ERROR and record.exc_info is None
+    assert record.__dict__["error.type"] == "RuntimeError"
+    message = record.getMessage()
+    assert "in fail" in message and "RuntimeError (message omitted)" in message
+    assert "ValueError (message omitted)" in message
+    assert "SECRET-MARKER" not in _exported_values(record)
+    # What the server and the server span see: the class name only, no chained original.
+    assert str(raised.value) == "RuntimeError" and raised.value.__suppress_context__
+
+
+async def test_server_span_records_no_exception_text():
+    spans = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(spans))
+    app = _failing_app()
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider, meter_provider=MeterProvider())
+    try:
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post("/api/fail")
+    finally:
+        FastAPIInstrumentor.uninstrument_app(app)
+
+    assert response.status_code == 500
+    events = [event for span in spans.get_finished_spans() for event in span.events]
+    assert [event.attributes["exception.type"] for event in events if event.name == "exception"]
+    assert "SECRET-MARKER" not in json.dumps([dict(event.attributes) for event in events])

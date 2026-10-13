@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import traceback
 from dataclasses import dataclass
 from time import perf_counter
 from typing import TYPE_CHECKING
@@ -64,7 +65,7 @@ def feature_for_request(path: str, method: str) -> str | None:
         return "rag"
     if path == "/api/search":
         return "search"
-    if path.startswith("/api/summarize/") or path.startswith("/api/question/"):
+    if path.startswith("/api/summarize/") or path == "/api/question":
         return "summarize"
     if path.startswith("/api/ai/"):
         return "ai_assistance"
@@ -190,27 +191,8 @@ UNMATCHED_ROUTE = "<unmatched>"
 _RAW_URL_SPAN_ATTRIBUTES = ("http.target", "http.url", "url.path", "url.full", "url.query")
 
 
-# Route prefixes whose path parameters carry user text, with their template.
-_USER_TEXT_PATHS = {"/api/question/": "/api/question/{question_text}"}
-
-
-class RedactUserTextPaths(logging.Filter):
-    """Replaces paths carrying user text in uvicorn access logs with their route template.
-
-    Uvicorn logs ``'%s - "%s %s HTTP/%s" %d'`` with the raw path (and query) third.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        args = record.args
-        if isinstance(args, tuple) and len(args) == 5 and isinstance(args[2], str):
-            for prefix, template in _USER_TEXT_PATHS.items():
-                if args[2].startswith(prefix):
-                    record.args = (args[0], args[1], template, *args[3:])
-        return True
-
-
 def route_template(scope: Scope) -> str:
-    """The matched route's path template, e.g. ``/api/question/{question_text}``.
+    """The matched route's path template, e.g. ``/api/summarize/{summary_type}``.
 
     Never the raw path: path parameters can carry user text (a question, a search).
     """
@@ -228,6 +210,27 @@ def _redact_server_span(route: str) -> None:
             span.set_attribute(key, "" if key == "url.query" else route)
 
 
+class UnhandledRequestError(Exception):
+    """Replaces an exception no handler caught, naming only its class.
+
+    The original message can carry provider or storage responses, endpoints or user text;
+    the server span and the server's own error log record this replacement instead.
+    """
+
+
+def stack_without_messages(exc: BaseException) -> str:
+    """The traceback of ``exc`` and its causes with exception classes but no messages."""
+    parts = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        frames = "".join(traceback.format_tb(current.__traceback__))
+        parts.append(f"Traceback (most recent call last):\n{frames}{type(current).__qualname__} (message omitted)")
+        current = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
+    return "\n\nRaised while handling:\n".join(parts)
+
+
 class RequestTelemetryMiddleware:
     """Create one structured ``INFO`` log record for every completed HTTP request.
 
@@ -235,6 +238,9 @@ class RequestTelemetryMiddleware:
     span carry the route template, not the raw URL. It is a plain ASGI middleware so a
     streamed response is timed until its end and a client disconnect still reaches the
     endpoint, which cancels its remaining work.
+
+    An exception no handler caught is logged with its stack but without exception messages
+    and re-raised as ``UnhandledRequestError`` (#301).
     """
 
     def __init__(self, app: ASGIApp, telemetry: OpenTelemetry | None = None):
@@ -283,10 +289,13 @@ class RequestTelemetryMiddleware:
         request_id_token = current_request_id.set(request_id)
         try:
             await self.app(scope, receive, send_with_request_id)
-        except Exception:
+        except Exception as exc:
             record(500, perf_counter() - started_at)
-            logging.getLogger(__name__).exception("HTTP request failed", extra=attributes)
-            raise
+            error_type = type(exc).__qualname__
+            logging.getLogger(__name__).error(
+                "HTTP request failed: %s\n%s", error_type, stack_without_messages(exc),
+                extra={**attributes, "error.type": error_type})
+            raise UnhandledRequestError(error_type) from None
         finally:
             current_request_id.reset(request_id_token)
 

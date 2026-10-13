@@ -35,7 +35,7 @@ All URIs are relative to *http://localhost*
 | [**getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet**](DefaultApi.md#getneighbourchunkapiusercollectionscollectioniddocumentsdocumentidchunksneighbourget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks/neighbour | Get Neighbour Chunk |
 | [**getTagApiTagsTagUuidGet**](DefaultApi.md#gettagapitagstaguuidget) | **GET** /api/tags/{tag_uuid} | Get Tag |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
-| [**questionApiQuestionQuestionTextPost**](DefaultApi.md#questionapiquestionquestiontextpost) | **POST** /api/question/{question_text} | Question |
+| [**questionApiQuestionPost**](DefaultApi.md#questionapiquestionpost) | **POST** /api/question | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
 | [**readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet**](DefaultApi.md#readdocumentadjacentchunksapidocumentsdocumentidchunkschunkidadjacentget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/adjacent | Read Document Adjacent Chunks |
 | [**readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet**](DefaultApi.md#readdocumentchunkwindowapidocumentsdocumentidchunkschunkidwindowget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/window | Read Document Chunk Window |
@@ -2290,9 +2290,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## questionApiQuestionQuestionTextPost
+## questionApiQuestionPost
 
-> SummaryResponse questionApiQuestionQuestionTextPost(questionText, searchResponse)
+> SummaryResponse questionApiQuestionPost(questionRequest)
 
 Question
 
@@ -2303,7 +2303,7 @@ import {
   Configuration,
   DefaultApi,
 } from '';
-import type { QuestionApiQuestionQuestionTextPostRequest } from '';
+import type { QuestionApiQuestionPostRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -2314,14 +2314,12 @@ async function example() {
   const api = new DefaultApi(config);
 
   const body = {
-    // string
-    questionText: questionText_example,
-    // SearchResponse
-    searchResponse: ...,
-  } satisfies QuestionApiQuestionQuestionTextPostRequest;
+    // QuestionRequest
+    questionRequest: ...,
+  } satisfies QuestionApiQuestionPostRequest;
 
   try {
-    const data = await api.questionApiQuestionQuestionTextPost(body);
+    const data = await api.questionApiQuestionPost(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -2337,8 +2335,7 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **questionText** | `string` |  | [Defaults to `undefined`] |
-| **searchResponse** | [SearchResponse](SearchResponse.md) |  | |
+| **questionRequest** | [QuestionRequest](QuestionRequest.md) |  | |
 
 ### Return type
 
