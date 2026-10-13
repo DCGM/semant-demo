@@ -156,10 +156,8 @@ def test_shipped_rag_configurations_load_with_their_tiers(llm, configs):
     directory = SCRIPT_PATH / "configs" / "rag" / configs
     registry = rag_factory(Config(environ={}), str(directory), llm)
 
-    loadable = {yaml.safe_load(p.read_text())["id"] for p in directory.glob("*.yaml")
-                if yaml.safe_load(p.read_text())["class_name"] in {"RagGenerator", "IncrementalAdaptiveRagGenerator",
-                                                                   "xmartiAgentRag"}}
-    assert set(registry.instances) == loadable
+    # Every shipped configuration names an existing class and a permitted tier.
+    assert set(registry.instances) == {yaml.safe_load(p.read_text())["id"] for p in directory.glob("*.yaml")}
 
 
 # ── question endpoint ──────────────────────────────────────────────────────
