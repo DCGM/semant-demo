@@ -3,7 +3,7 @@
 The mirror is an in-memory SQLite ``meta_records`` table. The fixture store, like the local
 snapshot, declares no ``library`` property: it is added (``add_text_property``) and the
 source library comes from a library map. Applied metadata is read back through the document
-repository and the search adapter's year filter.
+repository and, after copying the year to the chunks, the search adapter's year filter.
 """
 import json
 from datetime import datetime, timezone
@@ -17,6 +17,7 @@ from semant_demo.adapters.weaviate.document_metadata import add_text_property, d
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType
+from semant_demo.maintenance import chunk_year
 from semant_demo.maintenance.metadata_sync import (
     apply_exit_code, apply_report, build_report, read_library_map, write_inferred)
 
@@ -39,7 +40,7 @@ def row(document_id: str, library: str, **values) -> dict:
             "metadata_json": None, **values}
 
 
-async def test_report_apply_and_read_back(seeded_store, collection_names, corpus, source):
+async def test_report_apply_and_read_back(seeded_store, collection_names, corpus, source, tmp_path):
     gazette, chronicle, letters = (corpus.documents[k]["id"] for k in ("gazette", "chronicle", "letters"))
     source.execute(insert(META_RECORDS), [
         row(gazette, "mzk", date="12.5.1899", public=True,
@@ -85,11 +86,16 @@ async def test_report_apply_and_read_back(seeded_store, collection_names, corpus
     assert document.author is None and document.public is True
     assert document.title == corpus.documents["gazette"]["properties"]["title"]
 
-    hits = await ChunkSearchRepository(seeded_store, collection_names).search(ChunkQuery(
-        text="Slavia trh", mode=SearchType.text, limit=10,
-        conditions=(FieldCondition("yearIssued", Op.greater_or_equal, 1890),
-                    FieldCondition("yearIssued", Op.less_or_equal, 1900))))
-    assert {str(h.document) for h in hits} == {gazette}
+    in_1890s = ChunkQuery(text="Slavia trh", mode=SearchType.text, limit=10,
+                          conditions=(FieldCondition("yearIssued", Op.greater_or_equal, 1890),
+                                      FieldCondition("yearIssued", Op.less_or_equal, 1900)))
+    search = ChunkSearchRepository(seeded_store, collection_names)
+    # year filters use the chunks' copy of the year, reconciled by chunk_year (#153)
+    assert await search.search(in_1890s) == []
+    reconciled = await chunk_year.run(seeded_store, collection_names, checkpoint=tmp_path / "years.json",
+                                      endpoint="test", write=True, progress=lambda line: None)
+    assert reconciled["counts"]["set"] == 2 and chunk_year.exit_code(reconciled) == 0
+    assert {str(h.document) for h in await search.search(in_1890s)} == {gazette}
 
     again = await apply_report(seeded_store, collection_names, report, accept_incomplete=True)
     assert again["already_applied"] == 1 and apply_exit_code(again) == 0

@@ -52,6 +52,7 @@ erDiagram
         int to_page
         bool end_paragraph
         text language
+        int yearIssued "copy of the document's"
         text_array ner_P "Person"
         text_array ner_T "Temporal"
         text_array ner_A "Address"
@@ -119,7 +120,8 @@ a store lacks are absent from the answer; stored properties the model does not n
 
 Key fields:
 - `library` — source digital library identifier (e.g. `"mzk"`)
-- `yearIssued` / `dateIssued` — used for temporal filtering
+- `yearIssued` / `dateIssued` — publication year and date; the search filters years on the
+  chunks' copy (`Chunks.yearIssued`, below)
 - `authors` — array of author names
 - `documentType`, `genre`, `keywords` — categorical metadata
 - `url` — in the local snapshot (`uuid`) the Kramerius record UUID, equal to the document
@@ -173,6 +175,14 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 - `start_page_id` — UUID of the first page
 - `ner_*` — named entity arrays extracted by NER (Persons, Temporal, Address, Geographical, Institution, Media, Cultural artifacts)
 - classifications (`text[]`, e.g. `communicative_mode`, `style`, `subject_domain`) — written by `data_tools/meta_data_enrichment`; the properties named in `features/search/filters.py::TASK_CLASSES` are search filters and are returned as a hit's `metadata` ([SEARCH_FILTERS](SEARCH_FILTERS.md#5-classifications-on-search-hits))
+- `yearIssued` (`int`, filterable with a range index) — a copy of the referenced document's
+  `yearIssued`, absent when the document has none; the search's year filters use it, not the
+  document reference (#153). It is not maintained by document writes or chunk ingestion:
+  `python -m semant_demo.maintenance.chunk_year` declares it, copies the years and checks them
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)); keeping it
+  current at ingestion is [#313](https://github.com/DCGM/semant-demo/issues/313). The test
+  store's `documentYearIssued` (an earlier copy that a declared property cannot be removed from)
+  is not used.
 
 #### References from Chunks
 

@@ -98,6 +98,19 @@ async def test_document_and_chunk_conditions(chunks, keys, condition, expected):
     assert keys(await chunks.search(query(conditions=(condition,)))) == expected
 
 
+@pytest.mark.parametrize("first, last, expected", [
+    (1850, 1910, {"chronicle_1", "chronicle_2", "chronicle_3", "letters_1", "letters_2"}),
+    (1851, 1851, {"chronicle_1", "chronicle_2", "chronicle_3"}),   # both bounds inclusive
+    (1900, 1902, {"letters_1", "letters_2"}),
+    (1852, 1901, set()),
+])
+async def test_year_range_with_both_bounds(chunks, keys, first, last, expected):
+    # Both bounds through the document reference found nothing (#153); gazette has no year.
+    found = await chunks.search(query(conditions=(FieldCondition("yearIssued", Op.greater_or_equal, first),
+                                                  FieldCondition("yearIssued", Op.less_or_equal, last))))
+    assert keys(found) == expected
+
+
 async def test_collection_tag_and_metadata_filters_compose(chunks, keys, ids):
     combined = query(
         collection_id=ids.col["chronicles"],

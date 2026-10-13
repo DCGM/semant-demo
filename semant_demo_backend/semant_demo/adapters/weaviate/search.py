@@ -19,8 +19,10 @@ from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, 
 from semant_demo.features.documents.schemas import Document
 
 # Fields stored on the chunk's document, not on the chunk; filtered through the reference.
+# ``yearIssued`` is not among them: the chunks store a copy (maintenance/chunk_year.py),
+# because range predicates through the reference give wrong results (#153).
 DOCUMENT_FIELDS = {
-    "yearIssued", "dateIssued", "documentType", "publisher", "placeTerm",
+    "dateIssued", "documentType", "publisher", "placeTerm",
     "genre", "public", "url", "library", "title", "subTitle", "partNumber",
     "partName", "authors", "description", "keywords", "section", "region", "id_code"
 }
