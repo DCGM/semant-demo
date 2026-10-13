@@ -215,8 +215,38 @@ or provider runs. Required CI failures block merging; PR previews intentionally 
 when checks fail for manual diagnosis ([deploy/README.md](deploy/README.md#pr-preview-credentials)).
 
 PRs state the purpose, behavior/API/schema changes, actual checks/results, unavailable
-checks, and compatibility/migration notes. Add screenshots or a recording for meaningful
-UI changes. Agent-authored implementation must be reviewed before merge, preferably by a
+checks, and compatibility/migration notes. Meaningful UI changes follow the
+[UI change checklist](#ui-change-checklist). Agent-authored implementation must be reviewed before merge, preferably by a
 separate reviewer from the implementing agent. Access-control changes, destructive
 data changes, deployment changes, and other high-risk changes require explicit
 human review. Keep CI execution isolated from production credentials and deploy the tested artifact.
+
+### UI change checklist
+
+Applies to a **meaningful UI change**: new or changed layout, components, responsive
+behavior, interaction or visible states. Backend-only and non-visual PRs, documentation, and tiny
+cosmetic edits (a label, a colour token) need none of it; say so in the PR if a reviewer
+might expect screenshots.
+
+1. **Look before the first review/push** at the three viewing contexts: wide desktop,
+   constrained desktop (both sidebars open where the view has them) and phone.
+   `make e2e-dev-capture` renders them repeatably against the deterministic profile
+   (1920×1000, 1280×900, 390×844); pass your spec to capture the state you changed
+   ([DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop)).
+2. **Attach evidence to the PR:** before/after or final screenshots, or a short recording,
+   of the changed state (e.g. selected, expanded, empty, signed out), not only the default
+   view. If a context or state could not be captured, say which and why; do not imply it
+   was.
+3. **Review what applies:** card/title/metadata alignment, text overflow and wrapping
+   (long titles, narrow toolbars), selected/hover/focus states, controls gated by
+   authorization or ownership, keyboard and touch interaction, and direct links/reloads
+   into the view. Write a browser test only where the [testing contract](#4-testing-contract)
+   calls for one; the checklist is a review aid, not a test requirement.
+4. **Report checks honestly:** the commands run and their results, and any full
+   `make test-e2e` run still outstanding. Targeted specs are for iteration; full
+   validation is still due under the normal merge rules above.
+
+For a new UI issue, the [UI change template](.github/ISSUE_TEMPLATE/ui-change.md) asks for
+the requested behavior, expected appearance and target widths, a reference image if one
+exists, and non-goals. Describe appearance in words or with a rough sketch; pixel-perfect
+mockups are not required, and non-visual bugs need none of this.
