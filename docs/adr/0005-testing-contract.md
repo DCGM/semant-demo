@@ -7,7 +7,7 @@ guide short. Confirmed product rules are reflected in the cases below.
 ## Purpose and tools
 
 The pinned review found order-dependent auth tests, placeholder frontend tests, and
-non-blocking CI. See [review evidence](REVIEW_NOTES.md). Manual checks complement, but
+non-blocking CI. See [review evidence](../archive/refactor-2026/REVIEW_NOTES.md) (historical). Manual checks complement, but
 do not replace, repeatable regression tests.
 
 [CONTRIBUTING.md](../../CONTRIBUTING.md#4-testing-contract) is the concise policy and

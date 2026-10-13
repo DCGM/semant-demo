@@ -119,6 +119,6 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     return app
 
 
-# Production entry point (`uvicorn semant_demo.main:app`). It shares the process-wide
-# `config` with modules that still read it directly (see docs/REFACTOR_STATUS.md).
+# Production entry point (`uvicorn semant_demo.main:app`), built from the process-wide
+# `config`, which also sets the log level above. Application code reads the app's Config.
 app = create_app(config)

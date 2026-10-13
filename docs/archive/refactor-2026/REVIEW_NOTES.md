@@ -2,9 +2,9 @@
 
 > **Historical snapshot (2026-10-07).** These observations predate the completed
 > #197 refactor and must not be presented as current defects. Use
-> [ARCHITECTURE.md](../ARCHITECTURE.md), [TODO.md](../TODO.md) and open GitHub issues
+> [ARCHITECTURE.md](../../ARCHITECTURE.md), [TODO.md](../../TODO.md) and open GitHub issues
 > for current behavior. The full #197 delivery log is
-> [archived](../archive/refactor-2026/REFACTOR_STATUS.md).
+> [archived](REFACTOR_STATUS.md).
 
 Date: 2026-10-07.
 Baseline: `main` commit `375caa5f7f68defba25a56cccbb7dbc7fdf99a13`.
@@ -70,7 +70,7 @@ repair subsystem. They justify explicit contracts and focused tests.
 
 ## Clarified product decisions and remaining implementation work
 
-[Q1-Q5 are confirmed](README.md#confirmed-decisions), not open refactor blockers:
+[Q1-Q5 are confirmed](../../adr/README.md#confirmed-decisions), not open refactor blockers:
 shared users edit annotations but not membership; search uses chunk tag attributes;
 search chat uses retrieved results or a selected subset; local real-time means streamed
 AI annotations displayed in Document view; line-level alignment is planned and may use

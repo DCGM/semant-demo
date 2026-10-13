@@ -7,7 +7,7 @@ Date: 2026-10-07. Q1/Q4 clarification supersedes the earlier read-only-share pro
 ## Permission boundary
 
 Authenticate at the HTTP boundary; enforce resource-specific authorization in service
-functions, including non-HTTP callers. Small functions in `collections/access.py` are
+functions, including non-HTTP callers. Small functions in `user_collections/access.py` are
 enough. Do not introduce a generalized authorization engine.
 
 Shared users can read a collection and **edit its annotations**, but **cannot change

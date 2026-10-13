@@ -99,8 +99,8 @@ async def serve(port: int, static_dir: Path) -> None:
     fake_url = f"http://127.0.0.1:{fake_port}"
     work_dir = Path(tempfile.mkdtemp(prefix="semant-e2e-"))
     try:
-        # Set before importing the application: some provider modules still read the
-        # process-wide `config` (docs/REFACTOR_STATUS.md, temporary exceptions).
+        # Set before importing the application: importing `semant_demo.main` builds the
+        # process-wide `config` (log level, the production `app`) from the environment.
         assert "semant_demo.config" not in sys.modules, "process-wide config created too early"
         os.environ.update(profile_environ(endpoint, work_dir, static_dir, fake_url, fake_port))
         from semant_demo.config import Config, config as process_config

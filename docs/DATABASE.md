@@ -3,7 +3,7 @@
 The application uses two databases:
 
 1. **Weaviate** — primary vector + document store (collections, references, HNSW index)
-2. **SQLite** — lightweight task-tracking for async tagging jobs
+2. **SQLite** (any SQLAlchemy async URL) — user accounts and RAG answer feedback
 
 ---
 
@@ -128,7 +128,7 @@ Key fields:
 
 #### Document metadata from the Kramerius mirror
 
-`python -m semant_demo.maintenance.metadata_sync` ([DEVELOPMENT](DEVELOPMENT.md#kramerius-metadata-sync))
+`python -m semant_demo.maintenance.metadata_sync` ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#kramerius-metadata-sync-metadata_sync-257))
 fills these properties from the `meta_records` row of the document's source library
 (`semant_demo/maintenance/kramerius_mapping.py`). MODS values (`metadata_json`) list the
 record's own values before its ancestors'; "first" is the first non-empty one, "all" every
@@ -153,7 +153,7 @@ otherwise the report lists it as undeclared or skipped.
 | manufacturePublisher, manufacturePlaceTerm | first `ManufacturePublisher`, `ManufacturePlaceTerm` | same | no (stored only) |
 | documentType | `record_type` | `documentType` | yes |
 | public | `public` of the selected row, always (access matches the source library's record) | `public` | yes |
-| library | the selected library (see the source library rule in DEVELOPMENT) | `library` (`text`, field tokenization; added by `--add-library-property`) | yes |
+| library | the selected library (see the source library rule in DATA_MAINTENANCE) | `library` (`text`, field tokenization; added by `--add-library-property`) | yes |
 
 `url` and chunk `language` are not written. `in_library` of the selected row is shown in the
 report but does not change anything (the mirror sets it on rows added or updated since the
@@ -161,7 +161,7 @@ column was introduced; `false` is not an access or deletion signal). The local s
 declares no `library`; applying needs it declared first. In the snapshot (checked
 2026-10-10 against the mirror) 237 of 500 documents have mirror rows in one library and
 263 in several (207 of them `mzk` + `nkp`); for these the library comes from page evidence, the library
-whose row has MODS metadata (`--prefer-library-with-metadata`) or `--library-priority` (DEVELOPMENT).
+whose row has MODS metadata (`--prefer-library-with-metadata`) or `--library-priority` (DATA_MAINTENANCE).
 
 ### Collection: `Chunks`
 

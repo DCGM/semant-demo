@@ -1,15 +1,16 @@
 # Deployment & Configuration
 
-This document describes deployment and server configuration.
-
-For normal local development, including the local Weaviate and SQLite database snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
+This document is the backend configuration reference and describes a manual standalone setup.
+The Docker Compose stacks, CI/CD, previews and server setup are documented in
+[deploy/README.md](../deploy/README.md). For local development, including the local Weaviate
+and SQLite snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Prerequisites
 
 | Component | Version | Notes |
 |---|---|---|
 | Python | ≥ 3.12 | Backend and embedding service |
-| Node.js | 14.19+ / 16+ / 18+ | Frontend build |
+| Node.js | 22 | Frontend build (`package.json` engines) |
 | Docker + Docker Compose | Latest | Weaviate container |
 | GPU (optional) | CUDA-capable | Recommended for embedding service |
 | Ollama | Latest | If using local LLM models |
@@ -29,11 +30,7 @@ For normal local development, including the local Weaviate and SQLite database s
 
 ## Docker / Production Deployment
 
-For server deployments, use the compose files in `deploy/` instead of the manual steps below. A full description of the Docker stack, environment variables, and CI/CD automation is in [deploy/README.md](../deploy/README.md).
-
-The CI/CD pipeline (GitHub Actions; tests on the self-hosted `semant-ci` runners, deployments on `semant-server`, see [deploy/README.md](../deploy/README.md#runners)) handles:
-- **Production** — triggered by a `v*.*.*` tag pushed from `main`
-- **Test previews** — one persistent instance for `main`, plus ephemeral per-PR instances that are automatically torn down when the PR closes. PR previews use dedicated preview credentials and deploy even when checks fail, for manual diagnosis; see [PR preview credentials](../deploy/README.md#pr-preview-credentials)
+For server deployments, use the compose files in `deploy/` instead of the manual steps below; see [deploy/README.md](../deploy/README.md). CI/CD deploys production from a `v*.*.*` tag on `main`, a persistent `test-main` instance from `main`, and an ephemeral preview per PR (deployed even when checks fail, with separate preview credentials).
 
 The backend image installs `semant_demo_backend/requirements-runtime.lock` with `--require-hashes`: the same Python package versions that CI tests, with no resolution at build time (see [CONTRIBUTING.md](../CONTRIBUTING.md) for updating the locks). To audit a running instance, run `docker compose -p <project> -f <compose file> exec app python -m pip freeze --user` and compare it with the lock. The lock does not freeze the floating `python:3.12` / `python:3.12-slim` base images (OS packages and patch release), nor the separate embedding service image (`deploy/Dockerfile.embedder`), which still installs unpinned requirements.
 
@@ -56,7 +53,7 @@ cd weaviate_utils
 docker compose up -d
 ```
 
-Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures HNSW indexing. Weaviate version: **1.34.4**.
+Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures HNSW indexing. It pins Weaviate **1.30.2**; the deployments and test stores use **1.34.4**.
 
 To verify:
 
@@ -68,26 +65,10 @@ Do not use this empty standalone database when the realistic `local_data/weaviat
 
 ### 2. Data Ingestion
 
-Prepare input data:
-- `*.json` — one file per document containing bibliographic metadata
-- `*.jsonl` — one file per document, each line is a chunk with `text`, `from_page`, `to_page`, NER fields, etc.
-- `*_embeddings.npy` — numpy arrays of shape `(n_chunks, embedding_dim)` matching the JSONL files
-
-```bash
-cd weaviate_utils
-pip install -r requirements.txt
-
-python db_insert_jsonl.py \
-    --source-dir /path/to/prepared_data \
-    --delete-old
-```
-
-> `--delete-old` is destructive. Verify that the configured Weaviate endpoint is a local development instance before using it.
-
-Options:
-- `--delete-old` — drop and recreate all collections
-- `--document-collection` / `--chunk-collection` / `--tag-collection` / `--usercollection-collection` — customise collection names
-- `--vector-file-suffix` — change the embedding file suffix (default: `_embeddings.npy`)
+Load documents and chunks with `weaviate_utils/db_insert_jsonl.py`; the input format and
+options are in [DATABASE.md](DATABASE.md#data-ingestion). The script connects to
+`localhost:8080`, and `--delete-old` drops and recreates the collections: verify the endpoint
+first.
 
 ### 3. Embedding Service
 
@@ -109,7 +90,7 @@ ollama pull gemma3:12b
 ollama serve
 ```
 
-Multiple Ollama instances can be load-balanced by setting `OLLAMA_URLS` to a comma-separated list.
+`OLLAMA_URLS` accepts a comma-separated list, but only the first URL is used; a tier in `configs/llm_models.yaml` may also set its own endpoint.
 
 ### 5. Backend
 
@@ -119,7 +100,7 @@ pip install --require-hashes -r requirements-runtime.lock
 python run.py
 ```
 
-The server starts with `uvicorn` in reload mode on port 8000. On startup it:
+`run.py` starts `uvicorn` in reload mode on `PORT` (8000); the Docker image uses the same entry point. On startup the application:
 1. Creates missing SQL tables (`user`, `rag_user_feedback`); existing tables and rows are kept
 2. Connects to Weaviate (startup fails if it is not ready)
 3. Loads all RAG configurations from `RAG_CONFIGS_PATH` (default `configs/rag/demo_configs/*.yaml`)
@@ -157,7 +138,7 @@ Set `BACKEND_URL` environment variable before building to point to your backend:
 BACKEND_URL=https://your-server.example.com npx quasar build
 ```
 
-If unset, `quasar.config.js` sets `http://localhost:8000` — a development-machine-specific URL that should be overridden. Every API request (generated client and NDJSON streams) uses this one origin (`src/shared/api/config.ts`).
+If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits local development. Every API request (generated client and NDJSON streams) goes to `BACKEND_URL` + `/api/...` (`src/shared/api/config.ts`).
 
 ---
 
@@ -165,30 +146,39 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 
 ### Backend (`semant_demo_backend`)
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `WEAVIATE_HOST` | `localhost` | No | Weaviate server hostname |
-| `WEAVIATE_REST_PORT` | `8080` | No | Weaviate HTTP port |
-| `WEAVIATE_GRPC_PORT` | `50051` | No | Weaviate gRPC port |
-| `OLLAMA_URLS` | `http://localhost:11434` | No | Default endpoint of Ollama model tiers (only the first URL is used) |
-| `OPENAI_API_KEY` | _(empty)_ | For `openai` model tiers | OpenAI / OpenRouter API key |
-| `OPENAI_API_URL` | `https://openrouter.ai/api/v1` | No | Default endpoint of `openai` model tiers (OpenAI or OpenRouter) |
-| `GOOGLE_API_KEY` | _(empty)_ | For `google` model tiers | Google Gemini key |
-| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | No | Model tier catalog: provider, model and estimated price per tier, and the tiers each feature may use |
-| `ALLOWED_ORIGIN` | `http://localhost:9000` | No | CORS allowed origin |
-| `PORT` | `8000` | No | Backend listen port |
-| `PRODUCTION` | `false` | No | Production mode flag |
-| `STATIC_PATH` | `./static` | No | Built frontend assets path |
-| `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | No | Directory with RAG YAML configs |
-| `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | No | Summariser config path |
-| `LANGCHAIN_API_KEY` | _(empty)_ | No | LangChain/LangSmith tracing key |
-| `EMBEDDING_SERVICE_HOST` | `embedding-service` | No | Embedding service hostname (used to build the internal URL) |
-| `EMBEDDING_SERVICE_PORT` | `8001` | No | Embedding service port |
-| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | No | SQLAlchemy URL of the user accounts / RAG feedback database; the default is `tasks.db` in the backend working directory |
-| `SQL_DB_PATH` | _(none)_ | No | Used by Docker Compose for the `tasks.db` bind mount, not read by the backend itself. With the default `SQL_DB_URL`, set `SQL_DB_PATH` and ensure the target `tasks.db` file already exists |
-| `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION_…` | **Yes (prod)** | JWT signing secret — must be overridden in production with a long random string |
-| `FEEDBACK_WEBHOOK_URL` | _(empty)_ | No | Webhook URL for RAG feedback delivery |
-| `FEEDBACK_LOG_PATH` | `feedback.log.jsonl` | No | Path for writing feedback logs |
+`semant_demo/config.py` reads these once at startup. Paths default to files inside the
+`semant_demo` package. Docker deployments set them in `deploy/.env` (templates:
+`deploy/.env.example`, `deploy/.env.test.example`).
+
+| Variable | Default | Description |
+|---|---|---|
+| `WEAVIATE_HOST` / `WEAVIATE_REST_PORT` / `WEAVIATE_GRPC_PORT` | `localhost` / `8080` / `50051` | Weaviate endpoint |
+| `EMBEDDING_SERVICE_HOST` / `EMBEDDING_SERVICE_PORT` | `embedding-service` / `8001` | Embedding service endpoint |
+| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | User accounts and RAG answer feedback; the default is `tasks.db` in the working directory (the name is historical) |
+| `JWT_SECRET` | placeholder | **Must be overridden** with a long random string outside local development; tokens are valid for 7 days |
+| `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin of the frontend |
+| `PORT` | `8000` | Listen port used by `run.py` (the Docker entry point) |
+| `STATIC_PATH` | `./static` | Built frontend served by the backend when the directory exists |
+| `LOG_LEVEL` | `INFO` | Python and OTLP log level |
+| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Model tier catalog: provider, model and estimated prices per tier, and the tiers each feature may use; the only place models are chosen |
+| `OPENAI_API_KEY` / `OPENAI_API_URL` | empty / `https://openrouter.ai/api/v1` | Key and default endpoint of `openai` tiers (any OpenAI-compatible API; model names must match the endpoint) |
+| `OLLAMA_URLS` | `http://localhost:11434` | Default endpoint of `ollama` tiers (only the first URL is used) |
+| `GOOGLE_API_KEY` | empty | Key of `google` tiers |
+| `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | Directory of the RAG configurations offered to users |
+| `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summary prompts, fallbacks and options |
+| `SEARCH_FILTERS_CONFIG` | `configs/search_filters.yaml` | Search filters ([SEARCH_FILTERS.md](SEARCH_FILTERS.md)) |
+| `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service |
+| `SPAN_CHAT_TEMPERATURE` / `SPAN_CHAT_MAX_TOKENS` | `0.4` / `1024` | Span discussion replies (`span_chat` tier) |
+| `SPAN_CHAT_CONTEXT_CHARS` / `SPAN_CHAT_HISTORY_LIMIT` | `1500` / `20` | Context window around the span; chat messages forwarded |
+| `FEEDBACK_LOG_PATH` | `semant_demo/feedback.log.jsonl` | JSONL file receiving in-app feedback. An empty value (as in the `.env` templates) is used as is, not replaced by the default, and makes feedback delivery fail ([#300](https://github.com/DCGM/semant-demo/issues/300)) |
+| `FEEDBACK_WEBHOOK_URL` | empty | Optional webhook that also receives in-app feedback |
+| `OTEL_ENABLED`, `OTEL_*`, `DEPLOYMENT_ENVIRONMENT` | off | Telemetry export; see [OBSERVABILITY.md](OBSERVABILITY.md#runtime-configuration) |
+
+A tier whose provider has no key refuses calls before sending them. `PRODUCTION` is read but
+not used. `LANGCHAIN_API_KEY` in the `.env` templates is not read by the application; LangChain
+uses it only if LangSmith tracing is enabled (`LANGCHAIN_TRACING_V2`), which would send
+prompts and texts to LangSmith. `SQL_DB_PATH` and the build arguments are used by Docker
+Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 
 ### Embedding Service
 
@@ -204,7 +194,7 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 
 - Run with `uvicorn` reload mode (default in `run.py`): changes auto-reload
 - FastAPI auto-generates interactive docs at `http://localhost:8000/docs` (Swagger) and `http://localhost:8000/redoc`
-- Enable debug logging: `logging.basicConfig(level=logging.DEBUG)` in `main.py`
+- Enable debug logging with `LOG_LEVEL=DEBUG` (RAG pipeline progress is logged at `DEBUG`)
 - Check Weaviate connectivity: `curl http://localhost:8080/v1/.well-known/ready`
 - Inspect DB state: `python weaviate_utils/inspect_chunks.py` / `inspect_documents.py`
 
@@ -216,9 +206,9 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 
 ### RAG Debugging
 
-- `adaptive_rag.py` includes `DEBUG_PRINT = True` — set to see LangGraph node transitions in stdout
 - Each RAG config can be tested independently by sending requests to `POST /api/rag` with the config's `id`
-- Test RAG routing with the `TestRag` class (returns a static response)
+- `python -m semant_demo.features.rag.run_demo` runs one configuration without the application (it calls the configured Weaviate, embedding service and providers)
+- Route tests use the `TestRag` class (a fixed answer, no retrieval or model calls)
 
 ### AI Suggestion Debugging
 
@@ -229,10 +219,9 @@ If unset, `quasar.config.js` sets `http://localhost:8000` — a development-mach
 
 ## Production Considerations
 
-1. **Disable reload mode** — change `run.py` to set `reload=False` or use `gunicorn` with `uvicorn.workers.UvicornWorker`
-2. **Set `PRODUCTION=true`** — currently only checked in config but can be used for conditional logging
-3. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
-4. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
-5. **SQLite limitations** — the database holds only user accounts and RAG feedback; consider PostgreSQL (untested) for many concurrent writers. Run one backend process for now: chunk-tag synchronization is serialized only within one process (see [TODO.md](TODO.md#known-correctness-and-behavior-limitations) and #206)
-6. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
-7. **Embedding service scaling** — can run multiple instances behind a load balancer. The endpoint is built from `EMBEDDING_SERVICE_HOST` (default `embedding-service` in Docker, `localhost` outside) and `EMBEDDING_SERVICE_PORT` (default `8001`); point both at your load balancer to scale.
+1. **Reload mode** — `run.py`, also the Docker image's entry point, runs uvicorn with `reload=True`; outside Docker run `uvicorn semant_demo.main:app` instead ([#298](https://github.com/DCGM/semant-demo/issues/298))
+2. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
+3. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
+4. **One backend process** — chunk tag synchronization is serialized only within one process ([TODO.md](TODO.md#correctness-and-behavior)); SQLite holds only user accounts and RAG feedback
+5. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
+6. **Embedding service scaling** — can run multiple instances behind a load balancer. The endpoint is built from `EMBEDDING_SERVICE_HOST` (default `embedding-service` in Docker, `localhost` outside) and `EMBEDDING_SERVICE_PORT` (default `8001`); point both at your load balancer to scale.

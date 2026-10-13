@@ -3,7 +3,8 @@
 These records capture agreed behavior and constraints for the current application.
 The core decisions are implemented; future proposals are clearly identified.
 Current code is described in [ARCHITECTURE.md](../ARCHITECTURE.md), ongoing
-work in [TODO.md](../TODO.md), and historical design evidence in the
+work in [TODO.md](../TODO.md), and historical design evidence, including the pre-refactor
+[review notes](../archive/refactor-2026/REVIEW_NOTES.md), in the
 [archive](../archive/refactor-2026/README.md).
 
 | Record | Status |
@@ -15,7 +16,6 @@ work in [TODO.md](../TODO.md), and historical design evidence in the
 | [0005 - Testing contract](0005-testing-contract.md) | Implemented baseline; detailed test guidance supporting CONTRIBUTING. |
 | [0006 - Context and text](0006-context-and-text.md) | Search context/line-level roadmap agreed; mapping implementation left open. |
 | [0007 - Access and collaboration](0007-access-and-collaboration.md) | Implemented shared annotation editing, owner-only membership and local progressive UI. |
-| [Review notes](REVIEW_NOTES.md) | **Historical** pre-refactor findings and pinned code evidence (not a current defects list). |
 
 ## Confirmed decisions
 

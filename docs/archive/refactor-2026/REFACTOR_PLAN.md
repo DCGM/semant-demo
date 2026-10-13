@@ -21,7 +21,7 @@ Do not include a SQL migration of collaboration data, a durable queue, automatic
 new microservices, a universal repository hierarchy, a new tag-search representation,
 mandatory geometry/provenance fields, or the entire feature backlog.
 
-[Review notes](../../adr/REVIEW_NOTES.md) contain pinned evidence and confidence limits.
+[Review notes](REVIEW_NOTES.md) contain pinned evidence and confidence limits.
 [Confirmed decisions](../../adr/README.md#confirmed-decisions) settle Q1-Q5: shared annotation
 editing without membership editing; chunk-attribute tag search; retrieved-result search
 chat; local progressive annotation UI; and line-level mapping as future viewer work.

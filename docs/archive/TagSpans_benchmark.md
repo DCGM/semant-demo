@@ -2,7 +2,7 @@
 
 > **Historical.** Measurements taken while choosing the span storage (before the 2026
 > architecture refactor). Spans are stored in the separate `Span` collection; this file is
-> not a description of current behavior or performance. See [ARCHITECTURE.md](ARCHITECTURE.md).
+> not a description of current behavior or performance. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Variants
 
