@@ -182,22 +182,25 @@ test('on a narrow window the text, gutters and side panel stay usable', async ({
 test('the AI assist and tags panels keep their state across panel switches', async ({ page }) => {
   await logIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  const tagNames = () => page.locator('.tag-card .tag-name').allTextContents()
+  // Retrying assertions: tags load asynchronously after the view opens.
+  const tagNames = page.locator('.tag-card .tag-name')
+  // The panel re-sorts its tags by span count when the spans arrive (until the user reorders),
+  // so wait for them before dragging; otherwise the list can change under the drag (#302).
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
 
   // Manual tag order: drop Osoba on the top half of Místo.
-  expect(await tagNames()).toEqual([fixture.tag('place').name, fixture.tag('person').name])
+  await expect(tagNames).toHaveText([fixture.tag('place').name, fixture.tag('person').name])
   const person = page.locator('.tag-card').filter({ hasText: fixture.tag('person').name })
   const place = page.locator('.tag-card').filter({ hasText: fixture.tag('place').name })
   await person.dragTo(place, { targetPosition: { x: 40, y: 5 } })
-  expect(await tagNames()).toEqual([fixture.tag('person').name, fixture.tag('place').name])
+  await expect(tagNames).toHaveText([fixture.tag('person').name, fixture.tag('place').name])
 
   await sidebarPanelButton(page, 'AI assist').click()
   await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
   await page.getByRole('radio', { name: 'Thorough (every chunk in collection)' }).click()
 
   await sidebarPanelButton(page, 'Tags').click()
-  await expect(page.locator('.tag-card')).toHaveCount(2)
-  expect(await tagNames()).toEqual([fixture.tag('person').name, fixture.tag('place').name])
+  await expect(tagNames).toHaveText([fixture.tag('person').name, fixture.tag('place').name])
 
   await sidebarPanelButton(page, 'AI assist').click()
   await expect(page.getByRole('radio', { name: 'Thorough (every chunk in collection)' })).toHaveAttribute('aria-checked', 'true')
