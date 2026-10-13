@@ -356,17 +356,78 @@ They never use the development container or `local_data/`:
   and fake embedding/Topicer providers on the next port. All AI provider URLs point at the
   fakes and no API keys are set; unfaked provider routes answer 501.
 
-To iterate on browser tests, run the profile yourself and let Playwright reuse it:
-
-```bash
-(cd semant_demo_frontend && QUASAR_DIST_DIR=dist/e2e BACKEND_URL=http://127.0.0.1:8765 npx quasar build)
-scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/python -m tests.e2e_server --static ../semant_demo_frontend/dist/e2e'
-# in another terminal:
-cd semant_demo_frontend && E2E_REUSE_SERVER=1 npx playwright test
-```
-
 The profile serves at `http://127.0.0.1:8765`; log in with a corpus user, e.g. `owner` /
 `owner-password-1`.
+
+### Fast browser-test loop
+
+`make test-e2e` rebuilds the frontend, starts a new Weaviate and reseeds for every run. While
+working on one spec or one UI change, keep a profile running instead
+(`scripts/e2e-dev.sh`, opt-in; CI does not use it). Prerequisites are those of
+`make test-e2e`: Docker, `make setup` (`.venv`, `node_modules`) and Playwright's Chromium,
+which `make e2e-dev-start` installs.
+
+```bash
+make e2e-dev-start      # build into dist/e2e-dev, start an owned Weaviate + e2e_server on :8775
+make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts --grep phone"
+make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts --grep phone"   # again, ~3 s
+make e2e-dev-stop       # stop the server, remove its Weaviate container and temporary files
+```
+
+The Make targets call `scripts/e2e-dev.sh start|test|capture|rebuild|restart|status|logs|stop`;
+`scripts/e2e-dev.sh test <playwright args>` forwards spec paths, `--grep`, `--headed`,
+`--trace on` etc. unchanged. Behaviour:
+
+- **Ownership.** The Weaviate comes from `scripts/with-test-weaviate.sh` (own container, no
+  volume, fresh ownership token); nothing touches `local_data/` or the development container.
+  The profile runs in the background in its own process group; `stop` ends that group
+  (also a server left behind by a killed wrapper) and removes only the container recorded in
+  `.e2e-dev/server.log`. State (pid, logs, build fingerprints) is in `.e2e-dev/`, ignored by
+  git. The port is `E2E_DEV_PORT` (default 8775, fake providers on 8776), so the loop does
+  not collide with `make test-e2e` on 8765.
+- **No silent widening.** `test` without arguments fails (use `test --all` for the whole
+  suite); a named `*.spec.ts` that does not exist fails; a filter that matches nothing fails
+  with Playwright's "No tests found". Playwright never starts its own server in this mode:
+  if the profile is not running or does not answer `/health`, `test` fails.
+- **Stale code is refused.** `start` and `rebuild` record a fingerprint of the frontend
+  sources (tracked and untracked, excluding `test/` and the Playwright config); `start`
+  records one of the backend package and test-profile code/fixtures. `test` refuses to run
+  when the frontend changed since the served build (`make e2e-dev-rebuild`, ~15 s, keeps the
+  server and its data) or the backend changed since start (`make e2e-dev-restart`, ~13 s,
+  fresh Weaviate and seed). Editing a spec needs neither. The served build is not
+  hot-reloaded; only a build made after the edit is tested.
+- **Data.** Specs clean up what they create, so one seeded profile serves many runs. If a
+  test fails half-way (or you click around in the profile) and leaves data behind,
+  `make e2e-dev-restart` reseeds the fixture corpus.
+- **Display.** The script runs headless Chromium without `DISPLAY` (unless `--headed`,
+  `--debug` or `--ui` is passed): with a forwarded X display (`ssh -X`) Chromium otherwise
+  waits ~25 s for its first frame at every browser launch. `make test-e2e` keeps the caller's
+  environment; prefix it with `env -u DISPLAY` over such a connection.
+
+**UI captures.** `make e2e-dev-capture` runs `semant_demo_frontend/test/capture/views.spec.ts`
+in three projects, wide desktop (1920×1000), narrow desktop with both sidebars open
+(1280×900, asserted) and phone (390×844), and saves real rendered views as
+`semant_demo_frontend/test-results/ui-capture/<view>-<wide|narrow|phone>.png`. Every test in
+these projects also keeps its end-of-test screenshot and trace in
+`test-results/<test>-<project>/` (`npx playwright show-trace .../trace.zip`). Pass a spec to
+run it in these projects instead of the view captures, e.g.
+`make e2e-dev-capture ARGS="test/e2e/sidebar.spec.ts --project=narrow"`; specs that set their
+own viewport keep it. `test-results/` is ignored by git and emptied on every Playwright run.
+Captures are for reviewing UI changes; nonvisual work does not need them, and
+`make test-e2e` never runs `test/capture`.
+
+Measured on a workstation for `searchResultCards.spec.ts --grep phone` (one test):
+
+| | setup (once) | each run |
+| --- | --- | --- |
+| before: `make test-e2e`-style run of one spec | — | 53 s (30 s without the `DISPLAY` stall) |
+| fast loop | 27 s `start` with build, 13 s without | 3.4 s |
+
+The whole suite through the loop (`test --all`) took 78 s versus 132 s for `make test-e2e`
+(which includes the build, the seed and one `DISPLAY` stall).
+The loop is for iteration only: run `make test-e2e` (fresh build, store and seed) before
+asking for a PR merge. Without the script, `E2E_REUSE_SERVER=1 npx playwright test` still
+reuses a profile you started by hand on port 8765 (built with that `BACKEND_URL`).
 
 ## 12. Normal local startup sequence
 

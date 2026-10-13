@@ -9,6 +9,17 @@ const port = Number(process.env.E2E_PORT || 8765)
 const baseURL = `http://127.0.0.1:${port}`
 // Resolved from semant_demo_backend; the Makefile passes an absolute path.
 const python = process.env.PYTHON || '../.venv/bin/python'
+// scripts/e2e-dev.sh: the profile already runs; never start (build, seed) another one.
+const externalServer = process.env.E2E_EXTERNAL_SERVER === '1'
+// scripts/e2e-dev.sh capture: screenshots and traces at the three layouts reviewed for UI work.
+const capture = process.env.E2E_CAPTURE === '1'
+// They run the selected browser specs plus the view captures in test/capture (not test/unit).
+const captureProject = (name: string, width: number, height: number) => ({
+  name,
+  testDir: './test',
+  testIgnore: 'unit/**',
+  use: { ...devices['Desktop Chrome'], viewport: { width, height }, screenshot: 'on', trace: 'on' } as const
+})
 
 export default defineConfig({
   testDir: './test/e2e',
@@ -22,10 +33,12 @@ export default defineConfig({
     baseURL,
     trace: 'retain-on-failure'
   },
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } }
-  ],
-  webServer: {
+  projects: capture
+    ? [captureProject('wide', 1920, 1000), captureProject('narrow', 1280, 900), captureProject('phone', 390, 844)]
+    : [
+        { name: 'chromium', use: { ...devices['Desktop Chrome'] } }
+      ],
+  webServer: externalServer ? undefined : {
     command: [
       'npx quasar build',
       `cd ../semant_demo_backend && ${python} -m tests.e2e_server --port ${port} --static ../semant_demo_frontend/dist/e2e`
