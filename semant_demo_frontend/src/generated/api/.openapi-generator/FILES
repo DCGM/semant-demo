@@ -45,6 +45,7 @@ docs/PatchTag.md
 docs/PostCollection.md
 docs/PostSpan.md
 docs/PostTag.md
+docs/QuestionRequest.md
 docs/RagChatMessage.md
 docs/RagRequest.md
 docs/RagRequestMain.md
@@ -122,6 +123,7 @@ models/PatchTag.ts
 models/PostCollection.ts
 models/PostSpan.ts
 models/PostTag.ts
+models/QuestionRequest.ts
 models/RagChatMessage.ts
 models/RagRequest.ts
 models/RagRequestMain.ts

@@ -64,7 +64,7 @@ def feature_for_request(path: str, method: str) -> str | None:
         return "rag"
     if path == "/api/search":
         return "search"
-    if path.startswith("/api/summarize/") or path.startswith("/api/question/"):
+    if path.startswith("/api/summarize/") or path == "/api/question":
         return "summarize"
     if path.startswith("/api/ai/"):
         return "ai_assistance"
@@ -190,27 +190,8 @@ UNMATCHED_ROUTE = "<unmatched>"
 _RAW_URL_SPAN_ATTRIBUTES = ("http.target", "http.url", "url.path", "url.full", "url.query")
 
 
-# Route prefixes whose path parameters carry user text, with their template.
-_USER_TEXT_PATHS = {"/api/question/": "/api/question/{question_text}"}
-
-
-class RedactUserTextPaths(logging.Filter):
-    """Replaces paths carrying user text in uvicorn access logs with their route template.
-
-    Uvicorn logs ``'%s - "%s %s HTTP/%s" %d'`` with the raw path (and query) third.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        args = record.args
-        if isinstance(args, tuple) and len(args) == 5 and isinstance(args[2], str):
-            for prefix, template in _USER_TEXT_PATHS.items():
-                if args[2].startswith(prefix):
-                    record.args = (args[0], args[1], template, *args[3:])
-        return True
-
-
 def route_template(scope: Scope) -> str:
-    """The matched route's path template, e.g. ``/api/question/{question_text}``.
+    """The matched route's path template, e.g. ``/api/summarize/{summary_type}``.
 
     Never the raw path: path parameters can carry user text (a question, a search).
     """
