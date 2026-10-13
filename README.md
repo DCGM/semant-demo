@@ -100,6 +100,8 @@ behavior and Weaviate/SQL access.
 
 ## Getting Started
 
+New to the repository? [Start here](docs/START_HERE.md) explains how the parts fit together, which files to read and how to run tests without project data.
+
 - **Local development** (local Weaviate snapshot, backend, frontend):
   [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). `make setup` installs the pinned dependencies.
 - **Checks** (see [CONTRIBUTING.md](CONTRIBUTING.md#2-setup-and-commands)):
@@ -129,6 +131,7 @@ behavior and Weaviate/SQL access.
 | [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema, SQL tables, data ingestion |
 | [docs/SEARCH_FILTERS.md](docs/SEARCH_FILTERS.md) | Configurable search filters |
 | [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and adding page tools to it |
+| [docs/START_HERE.md](docs/START_HERE.md) | First steps, code navigation and testing without project data |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development environment and test stores |
 | [docs/DATA_MAINTENANCE.md](docs/DATA_MAINTENANCE.md) | Reviewed data audits and repairs |
 | [deploy/README.md](deploy/README.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker deployment and CI/CD; configuration reference |

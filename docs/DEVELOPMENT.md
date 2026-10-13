@@ -5,6 +5,15 @@ This document describes the standard local development environment for SemANT.
 Normal development should use local database state under `local_data/`. Shared server test databases and production databases are not normal development targets.
 
 For deployment and server configuration, see [DEPLOYMENT.md](DEPLOYMENT.md).
+If you are new to the project, start with [START_HERE.md](START_HERE.md).
+
+**A database snapshot is not required to contribute or run tests.** With Python 3.12,
+Node.js 22 and Make, run `make setup` and `make check` from the repository root.
+Integration and browser tests use disposable, synthetic data (Docker required; see
+[section 11](#11-testing-versus-development-data)). To use the interactive application
+with realistic documents, obtain an authorized, consistent **development** snapshot,
+then place it under `local_data/` as shown below. Never use the shared server test store
+or production data for ordinary development.
 
 ## 1. Local database layout
 

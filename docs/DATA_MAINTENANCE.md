@@ -39,9 +39,10 @@ tag-filtered search).
 ```bash
 python -m semant_demo.maintenance.chunk_tag_audit --report chunk_tags.json   # read-only
 python -m semant_demo.maintenance.chunk_tag_audit --apply chunk_tags.json \
-  --remove-unbacked [--add-missing] --confirm-endpoint localhost:8080
+  --remove-unbacked --confirm-endpoint localhost:8080
 ```
 
+Add `--add-missing` only when the reviewed repair also needs to create absent references.
 Applying re-derives every listed (chunk, tag) pair from the spans stored at that moment.
 
 ## Documents without chunks (`document_cleanup`, #281)
@@ -55,9 +56,11 @@ incoming references are never candidates.
 ```bash
 python -m semant_demo.maintenance.document_cleanup --audit audit.json
 python -m semant_demo.maintenance.document_cleanup --delete audit.json \
-  --confirm-endpoint HOST:PORT --backup-id BACKUP [--limit N] [--rate N]
+  --confirm-endpoint HOST:PORT --backup-id BACKUP
 ```
 
+Set the actual endpoint and verified backup id before running; optional `--limit N` and
+`--rate N` control the scope and load.
 Deleting refuses to start unless the audit finished on the same endpoint and schema, the total
 chunk count is unchanged (checked again before every batch) and `BACKUP` holds documents,
 chunks and user collections. Each document is re-checked before deletion and read back after;
@@ -97,9 +100,8 @@ application dependency) and `KRAMERIUS_METADATA_DSN`, a SQLAlchemy URL such as
 tunnel you are authorized to use. Keep passwords out of command lines and the repository; the
 command only reads the mirror and never prints the password.
 
-Known data limits are tracked on [#259](https://github.com/DCGM/semant-demo/issues/259)
-(for example mirror rows without MODS give no author or publisher) and
-[#255](https://github.com/DCGM/semant-demo/issues/255).
+Known metadata limitations, including mirror rows without MODS metadata, are tracked
+on [#259](https://github.com/DCGM/semant-demo/issues/259).
 
 ## Practising on a copy of the development snapshot
 
@@ -111,7 +113,7 @@ Never run a writing step against the only copy of `local_data/weaviate_semant_te
    are owned by the container's root user):
 
    ```bash
-   mkdir "$COPY"
+   COPY=$(mktemp -d "$(pwd)/local_data/maintenance-copy-XXXXXX")
    docker run --rm --entrypoint sh \
      --mount type=bind,source="$(pwd)/local_data/weaviate_semant_test",target=/src,readonly \
      --mount type=bind,source="$COPY",target=/dst \

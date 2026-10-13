@@ -18,7 +18,6 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 - [#259](https://github.com/DCGM/semant-demo/issues/259) — Kramerius metadata import: unresolved libraries and mirror rows without MODS (no author/publisher).
 - [#281](https://github.com/DCGM/semant-demo/issues/281) — documents without text chunks: audit and gated removal ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#documents-without-chunks-document_cleanup-281)).
-- [#255](https://github.com/DCGM/semant-demo/issues/255) — the `"mzk"` default for documents without a library in search and the document view.
 - [#279](https://github.com/DCGM/semant-demo/issues/279) — corpus document public-access policy.
 - When deploying against an existing Weaviate store, compare property types (especially document metadata) and review the chunk tag audit; never silently rewrite or reset shared data.
 
@@ -35,6 +34,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Product work (when scoped)
 
+- [#255](https://github.com/DCGM/semant-demo/issues/255) — link search results, chat citations and document views to their original digitized sources.
 - [#43](https://github.com/DCGM/semant-demo/issues/43) — optional durable bulk tagging jobs; the `Tagging Jobs` tab is a placeholder.
 - Page-specific sidebar tools and chat: [#243](https://github.com/DCGM/semant-demo/issues/243) and its linked issues.
 
