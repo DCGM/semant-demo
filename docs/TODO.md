@@ -25,7 +25,6 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 - [#234](https://github.com/DCGM/semant-demo/issues/234) — anonymous RAG, summary and question endpoints call paid providers; decide login/rate/cost limits.
 - [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI; one document-view test is flaky ([#302](https://github.com/DCGM/semant-demo/issues/302)).
-- [#298](https://github.com/DCGM/semant-demo/issues/298) — the backend image runs uvicorn in reload mode (`run.py`).
 - [#299](https://github.com/DCGM/semant-demo/issues/299) — Topicer compose files do not match `update.sh` and lack their Dockerfile.
 - [#300](https://github.com/DCGM/semant-demo/issues/300) — an empty `FEEDBACK_LOG_PATH` (as in the `.env` templates) makes app feedback fail.
 - [#301](https://github.com/DCGM/semant-demo/issues/301) — unhandled-error tracebacks, storage write failures and Topicer errors still log exception text.
