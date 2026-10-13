@@ -52,4 +52,5 @@ ENV PATH=/root/.local/bin:$PATH
 COPY --from=git /tmp/repo/semant_demo_backend /app
 COPY --from=node-build /repo/semant_demo_frontend/dist/spa /app/static
 WORKDIR /app
-ENTRYPOINT ["python", "run.py"]
+# Production server without the reloader (#298); run.py is the local development entry point.
+ENTRYPOINT ["sh", "-c", "exec python -m uvicorn semant_demo.main:app --host 0.0.0.0 --port \"${PORT:-8000}\""]
