@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+from semant_demo.adapters.llm.usage import LlmNotConfigured
 from semant_demo.config import SCRIPT_PATH
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.documents.schemas import Document
@@ -56,12 +57,23 @@ async def test_question_is_answered_from_numbered_snippets_with_the_search_time(
     assert messages[2]["content"] == QUESTION
 
 
-async def test_failed_question_keeps_the_error_for_the_client_but_not_the_content_in_logs(caplog):
+async def test_failed_question_hides_the_provider_error_from_the_client_and_logs(caplog):
+    secret = "sk-SECRET-MARKER-7f3a"
+
     def failing(messages):
-        raise RuntimeError(f"provider refused: {messages[-1]['content']}")
+        raise RuntimeError(f"provider refused key={secret} prompt={messages[-1]['content']}")
 
     with pytest.raises(service.QuestionFailed) as failure:
         await service.answer_question(FakeLlm(failing), QUESTION, results("Jan Novák."))
 
-    assert str(failure.value) == f"provider refused: {QUESTION}"
-    assert "Question answering failed: RuntimeError" in caplog.text and "tajný" not in caplog.text
+    assert str(failure.value) == service.QUESTION_FAILED_MESSAGE
+    assert "Question answering failed: RuntimeError" in caplog.text
+    assert secret not in caplog.text and "tajný" not in caplog.text and "Novák" not in caplog.text
+
+
+async def test_unconfigured_provider_names_the_missing_setting():
+    def failing(messages):
+        raise LlmNotConfigured("OPENAI_API_KEY is not configured on the server")
+
+    with pytest.raises(service.QuestionFailed, match="^OPENAI_API_KEY is not configured on the server$"):
+        await service.answer_question(FakeLlm(failing), QUESTION, results("Jan Novák."))

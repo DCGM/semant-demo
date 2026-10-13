@@ -16,10 +16,12 @@ from semant_demo.features.documents.schemas import Document
 from semant_demo.features.rag.schemas import RagRequest, RagSearch
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
 from semant_demo.main import create_app
+from semant_demo.routes.dependencies import get_llm
 from semant_demo.features.rag.registry import rag_factory, rag_load_single_config
 from tests.app_support import make_test_config, offline_weaviate, write_offline_llm_catalog
 from tests.corpus import load_corpus
 from tests.fake_providers import create_fake_provider_app
+from tests.fakes import FakeLlm
 from tests.test_llm.test_gateway import RecordingMetrics
 
 QUESTION = "Kdo byl Jan Novák?"
@@ -192,6 +194,28 @@ async def test_question_without_a_provider_key_is_a_bad_gateway(tmp_path):
 
     assert response.status_code == 502
     assert response.json()["detail"] == "OPENAI_API_KEY is not configured on the server"
+
+
+async def test_question_provider_failure_returns_a_fixed_error_without_content(tmp_path, caplog):
+    secret = "sk-SECRET-MARKER-7f3a"
+
+    def failing(messages):
+        raise RuntimeError(f"401 at http://provider/v1?key={secret}: {messages[1]['content']}")
+
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_llm] = lambda: FakeLlm(failing)
+    body = SearchResponse(results=[hit(t) for t in PASSAGES], search_request=search_request(), time_spent=0.5,
+                          search_log=[])
+
+    with caplog.at_level(logging.DEBUG):
+        async with app.router.lifespan_context(app):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(f"/api/question/{QUESTION}", json=body.model_dump(mode="json"))
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "The language model could not answer the question."}
+    for leaked in (secret, "kronikář", "Novák"):
+        assert leaked not in response.text and leaked not in caplog.text
 
 
 def test_clients_cannot_name_a_summary_model(tmp_path):

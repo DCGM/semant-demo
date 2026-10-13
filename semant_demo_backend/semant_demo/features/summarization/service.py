@@ -9,6 +9,7 @@ import logging
 import time
 
 from semant_demo.adapters.llm.gateway import LlmGateway
+from semant_demo.adapters.llm.usage import LlmNotConfigured
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.search.schemas import SearchResponse
 from semant_demo.features.summarization.base import SearchResultsSummarizer
@@ -24,8 +25,15 @@ QUESTION_SYSTEM_PROMPT = "\n".join([
 ])
 
 
+QUESTION_FAILED_MESSAGE = "The language model could not answer the question."
+
+
 class QuestionFailed(Exception):
-    """The model did not answer; carries the error message shown to the client."""
+    """The model did not answer; carries the safe error message shown to the client.
+
+    Provider exception messages may echo the request, endpoints or credentials, so only a
+    fixed message, or the server-authored :class:`LlmNotConfigured` one, is passed on.
+    """
 
 
 async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
@@ -56,5 +64,5 @@ async def answer_question(llm: LlmGateway, question: str, search_response: Searc
         summary_text = await llm.complete("question", messages, temperature=0.0, max_tokens=300)
     except Exception as e:
         logger.error("Question answering failed: %s", type(e).__name__)
-        raise QuestionFailed(str(e)) from e
+        raise QuestionFailed(str(e) if isinstance(e, LlmNotConfigured) else QUESTION_FAILED_MESSAGE) from e
     return SummaryResponse(summary=summary_text.strip(), time_spent=search_response.time_spent)

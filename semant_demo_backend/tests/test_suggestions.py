@@ -394,10 +394,10 @@ async def test_provider_calls_are_bounded_and_started_as_others_finish():
     assert len(results) == 25 and end.saved == 25
 
 
-async def test_unexpected_error_ends_the_run_with_an_error_and_stops_other_calls():
+async def test_unexpected_error_ends_the_run_with_an_error_and_stops_other_calls(caplog):
     world = World("ok", "boom", "slow")
     never, after_ok = asyncio.Event(), asyncio.Event()
-    provider = FakeProvider(world, {"ok": [proposal(PERSON, 0, 2)], "boom": (after_ok, ValueError("bug")),
+    provider = FakeProvider(world, {"ok": [proposal(PERSON, 0, 2)], "boom": (after_ok, ValueError("bug SECRET-MARKER")),
                                     "slow": (never, [])})
     events = (await thorough(world, provider)).events()
 
@@ -408,6 +408,7 @@ async def test_unexpected_error_ends_the_run_with_an_error_and_stops_other_calls
     assert len(first.spans) == 1 and [e.event for e in rest] == ["end"]
     end = rest[0]
     assert end.outcome.value == "partial" and end.saved == 1 and "unexpected error" in end.error
+    assert "ValueError" in caplog.text and "SECRET-MARKER" not in caplog.text
     assert provider.cancelled == ["slow"] and provider.running == 0
 
 

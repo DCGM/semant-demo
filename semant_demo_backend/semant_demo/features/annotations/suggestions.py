@@ -144,8 +144,8 @@ class SuggestionRun:
             self.summary = self._tally.summary().model_copy(update={"outcome": SuggestionRunOutcome.cancelled})
             logger.info("AI suggestions cancelled (%s): %s", self._description, self.summary.model_dump_json())
             raise
-        except Exception:
-            logger.exception("AI suggestions failed (%s)", self._description)
+        except Exception as e:
+            logger.error("AI suggestions failed (%s): %s", self._description, type(e).__name__)
             self._tally.error = "AI suggestions stopped by an unexpected error; saved suggestions are kept."
         self.summary = self._tally.summary()
         yield self.summary
@@ -175,7 +175,7 @@ async def _uninterrupted(write: Awaitable[T]) -> T:
         with anyio.CancelScope(shield=True):
             await asyncio.wait([task])
         if not task.cancelled() and task.exception() is not None:
-            logger.warning("A span write finished during cancellation failed: %s", task.exception())
+            logger.warning("A span write finished during cancellation failed: %s", type(task.exception()).__name__)
         raise
 
 

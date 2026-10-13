@@ -100,8 +100,8 @@ async def search(backends: SearchBackends, summarizer: Summarizer, user: Princip
     response = await retrieve(backends, user, request, filter_definitions)
     try:
         failed = await summarizer(request, response)
-    except Exception:
-        logger.exception("Search summary generation failed")
+    except Exception as e:
+        logger.error("Search summary generation failed: %s", type(e).__name__)
         failed = ["summarizer"]
     if failed:
         logger.warning("Search summaries failed: %s", ", ".join(sorted(set(failed))))

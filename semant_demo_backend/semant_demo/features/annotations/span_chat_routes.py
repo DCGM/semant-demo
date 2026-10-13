@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 exp_router = APIRouter()
 
 _NDJSON_MEDIA_TYPE = "application/x-ndjson"
+STREAM_FAILED_MESSAGE = "The assistant reply failed."
 
 
 def _ndjson(event: SpanChatDelta) -> bytes:
@@ -41,8 +42,9 @@ async def _stream(discussion: SpanDiscussion) -> AsyncGenerator[bytes, None]:
         async for delta in discussion.deltas():
             yield _ndjson(SpanChatDelta(delta=delta))
     except Exception as e:
-        logger.exception("span discussion stream failed: %s", e)
-        yield _ndjson(SpanChatDelta(error=str(e)))
+        # Provider and storage errors may echo the conversation or credentials.
+        logger.error("Span discussion stream failed: %s", type(e).__name__)
+        yield _ndjson(SpanChatDelta(error=STREAM_FAILED_MESSAGE))
         return
     yield _ndjson(SpanChatDelta(done=True))
 
