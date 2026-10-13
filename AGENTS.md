@@ -79,6 +79,14 @@ or add blanket skips merely to produce a green result. A placeholder `npm test` 
 a test pass. `make setup`, `make check`, `make api-generate`, `make test-integration` and
 `make test-e2e` exist (the last two need Docker); `make dev` does not.
 
+When iterating on browser tests or UI, do not rerun `make test-e2e` for each change: start
+the profile once with `make e2e-dev-start`, run the affected spec with
+`make e2e-dev-test ARGS="<spec path> [--grep ...]"` (after a frontend edit,
+`make e2e-dev-rebuild`), review layouts with `make e2e-dev-capture` (PNGs in
+`semant_demo_frontend/test-results/ui-capture/`), and `make e2e-dev-stop` when done. See
+[DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop). Run the full `make test-e2e`
+once before handoff.
+
 For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
 
 Do not connect to or modify shared server Weaviate, shared preview databases, or production databases unless explicitly instructed for the current task.

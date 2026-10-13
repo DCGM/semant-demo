@@ -380,17 +380,21 @@ The Make targets call `scripts/e2e-dev.sh start|test|capture|rebuild|restart|sta
 
 - **Ownership.** The Weaviate comes from `scripts/with-test-weaviate.sh` (own container, no
   volume, fresh ownership token); nothing touches `local_data/` or the development container.
-  The profile runs in the background in its own process group; `stop` ends that group
+  `start` and `restart` refuse an inherited `SEMANT_TEST_WEAVIATE_HOST` (with it set, the
+  helper would use that external store instead of a disposable one). The profile runs in the background in its own process group; `stop` ends that group
   (also a server left behind by a killed wrapper) and removes only the container recorded in
   `.e2e-dev/server.log`. State (pid, logs, build fingerprints) is in `.e2e-dev/`, ignored by
   git. The port is `E2E_DEV_PORT` (default 8775, fake providers on 8776), so the loop does
-  not collide with `make test-e2e` on 8765.
-- **No silent widening.** `test` without arguments fails (use `test --all` for the whole
-  suite); a named `*.spec.ts` that does not exist fails; a filter that matches nothing fails
+  not collide with `make test-e2e` on 8765. A running profile keeps the port it was started
+  on; commands with a different `E2E_DEV_PORT` are refused until `stop`.
+- **No silent widening.** `test` needs a selection, a spec or directory path or `--grep`;
+  options alone (`--headed`, `--project=...`) fail, and only `test --all` runs the whole
+  suite. A named `*.spec.ts` that does not exist fails; a filter that matches nothing fails
   with Playwright's "No tests found". Playwright never starts its own server in this mode:
   if the profile is not running or does not answer `/health`, `test` fails.
 - **Stale code is refused.** `start` and `rebuild` record a fingerprint of the frontend
-  sources (tracked and untracked, excluding `test/` and the Playwright config); `start`
+  sources (tracked and untracked, excluding `test/` and the Playwright config) together
+  with the port, since `BACKEND_URL` is compiled into the build; `start`
   records one of the backend package and test-profile code/fixtures. `test` refuses to run
   when the frontend changed since the served build (`make e2e-dev-rebuild`, ~15 s, keeps the
   server and its data) or the backend changed since start (`make e2e-dev-restart`, ~13 s,
@@ -401,8 +405,7 @@ The Make targets call `scripts/e2e-dev.sh start|test|capture|rebuild|restart|sta
   `make e2e-dev-restart` reseeds the fixture corpus.
 - **Display.** The script runs headless Chromium without `DISPLAY` (unless `--headed`,
   `--debug` or `--ui` is passed): with a forwarded X display (`ssh -X`) Chromium otherwise
-  waits ~25 s for its first frame at every browser launch. `make test-e2e` keeps the caller's
-  environment; prefix it with `env -u DISPLAY` over such a connection.
+  waits ~25 s for its first frame at every browser launch. `make test-e2e` unsets it too.
 
 **UI captures.** `make e2e-dev-capture` runs `semant_demo_frontend/test/capture/views.spec.ts`
 in three projects, wide desktop (1920×1000), narrow desktop with both sidebars open
@@ -424,7 +427,7 @@ Measured on a workstation for `searchResultCards.spec.ts --grep phone` (one test
 | fast loop | 27 s `start` with build, 13 s without | 3.4 s |
 
 The whole suite through the loop (`test --all`) took 78 s versus 132 s for `make test-e2e`
-(which includes the build, the seed and one `DISPLAY` stall).
+before it unset `DISPLAY` and 107 s after (both include the build and the seed).
 The loop is for iteration only: run `make test-e2e` (fresh build, store and seed) before
 asking for a PR merge. Without the script, `E2E_REUSE_SERVER=1 npx playwright test` still
 reuses a profile you started by hand on port 8765 (built with that `BACKEND_URL`).

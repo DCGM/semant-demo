@@ -35,9 +35,10 @@ test-integration:
 
 ## Browser smoke tests: build the frontend and run it against the deterministic backend
 ## profile (test-owned Weaviate, fixture corpus, fake AI providers). Needs Docker.
+## Headless Chromium needs no display; with a forwarded one (ssh -X) it stalls ~25 s.
 test-e2e:
 	cd semant_demo_frontend && npx playwright install --only-shell chromium
-	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && PYTHON="$(PY)" npm run test:e2e'
+	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON="$(PY)" npm run test:e2e'
 
 ## Fast local browser-test loop (scripts/e2e-dev.sh; docs/DEVELOPMENT.md). Not a substitute
 ## for `make test-e2e` before a PR. Start once, run selected specs repeatedly, then stop:

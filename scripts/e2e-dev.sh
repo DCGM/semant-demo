@@ -6,9 +6,10 @@
 #   scripts/e2e-dev.sh start              build the frontend (unless the build is current), start
 #                                         a throwaway Weaviate and the seeded e2e_server in the
 #                                         background
-#   scripts/e2e-dev.sh test <args...>     run Playwright against it, e.g.
+#   scripts/e2e-dev.sh test <args...>     run Playwright against it; select a spec path and/or
+#                                         --grep, e.g.
 #                                         test test/e2e/searchResultCards.spec.ts --grep phone
-#   scripts/e2e-dev.sh test --all         run the whole suite against it
+#   scripts/e2e-dev.sh test --all [...]   run the whole suite against it
 #   scripts/e2e-dev.sh capture [args...]  screenshots at wide desktop, narrow desktop with both
 #                                         sidebars and phone (test/capture + selected specs)
 #   scripts/e2e-dev.sh rebuild            rebuild the frontend into the served directory
@@ -17,8 +18,10 @@
 #
 # The Weaviate container comes from scripts/with-test-weaviate.sh (own name, no volume, fresh
 # ownership token) and is removed on `stop`; it never touches local_data/ or the development
-# container. The profile listens on E2E_DEV_PORT (default 8775, fake providers on the next
-# port), so it does not collide with `make test-e2e` on 8765.
+# container, and `start` refuses an inherited SEMANT_TEST_WEAVIATE_HOST (an external store).
+# The profile listens on E2E_DEV_PORT (default 8775, fake providers on the next port), so it
+# does not collide with `make test-e2e` on 8765. A running profile keeps its port; a
+# different E2E_DEV_PORT is refused until `stop`.
 #
 # `test` refuses to run when the frontend sources changed since the served build (run
 # `rebuild`) or the backend sources/fixtures changed since start (run `restart`): a stale
@@ -29,7 +32,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND="$ROOT/semant_demo_frontend"
 BACKEND="$ROOT/semant_demo_backend"
-STATE="$ROOT/.e2e-dev"
+STATE="${E2E_DEV_STATE:-$ROOT/.e2e-dev}"
 PORT="${E2E_DEV_PORT:-8775}"
 DIST="dist/e2e-dev"
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
@@ -48,23 +51,49 @@ fingerprint() {
     | xargs -0 sha256sum 2>&1 | sha256sum | cut -c1-16)
 }
 
+# BACKEND_URL is compiled into the build, so the port is part of what a build was made for.
+frontend_stamp() { echo "port=$PORT $(fingerprint "${FRONTEND_PATHS[@]}")"; }
+
 server_pid() { cat "$STATE/server.pid" 2>/dev/null || true; }
 server_alive() { local pid; pid="$(server_pid)"; [[ -n "$pid" ]] && kill -0 -- "-$pid" 2>/dev/null; }
 healthy() { curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; }
 # The container name with-test-weaviate.sh printed for this server.
-container_name() { sed -n 's/^Test Weaviate \(semant-weaviate-test-[0-9-]*\):.*/\1/p' "$STATE/server.log" 2>/dev/null | head -n1; }
+container_name() {
+  [[ -f "$STATE/server.log" ]] || return 0
+  sed -n 's/^Test Weaviate \(semant-weaviate-test-[0-9-]*\):.*/\1/p' "$STATE/server.log" | head -n1
+}
 
 build() {
   echo "e2e-dev: building the frontend into semant_demo_frontend/$DIST (BACKEND_URL :$PORT)" >&2
   local stamp
-  stamp="$(fingerprint "${FRONTEND_PATHS[@]}")"
+  stamp="$(frontend_stamp)"
   (cd "$FRONTEND" && QUASAR_DIST_DIR="$DIST" BACKEND_URL="http://127.0.0.1:${PORT}" npx quasar build >"$STATE/build.log" 2>&1) \
     || { tail -n 40 "$STATE/build.log" >&2; die "frontend build failed (full log: .e2e-dev/build.log)"; }
   # The fingerprint from before the build: an edit during the build counts as stale.
   echo "$stamp" >"$STATE/frontend.stamp"
 }
 
+# A running profile was built and started for its own port; adopt it, and refuse another.
+use_session_port() {
+  local session
+  server_alive || return 0
+  session="$(cat "$STATE/server.port" 2>/dev/null || true)"
+  [[ -n "$session" ]] || return 0
+  if [[ -n "${E2E_DEV_PORT:-}" && "$E2E_DEV_PORT" != "$session" ]]; then
+    die "the running profile uses port $session, not E2E_DEV_PORT=$E2E_DEV_PORT; stop it first"
+  fi
+  PORT="$session"
+}
+
+# with-test-weaviate.sh would use that store instead of starting a disposable one.
+refuse_external_store() {
+  if [[ -n "${SEMANT_TEST_WEAVIATE_HOST:-}" ]]; then
+    die "SEMANT_TEST_WEAVIATE_HOST is set; the fast loop always starts its own throwaway Weaviate, unset it"
+  fi
+}
+
 cmd_start() {
+  refuse_external_store
   mkdir -p "$STATE"
   if server_alive; then
     die "already running (pid $(server_pid), http://127.0.0.1:$PORT); use restart or stop"
@@ -74,11 +103,11 @@ cmd_start() {
   fi
   [[ -x "$PYTHON" ]] || die "no Python at $PYTHON (make setup, or set PYTHON)"
   command -v docker >/dev/null || die "docker is required"
-  rm -f "$STATE/server.pid" "$STATE/backend.stamp"
+  rm -f "$STATE/server.pid" "$STATE/server.port" "$STATE/backend.stamp"
 
   local started=$SECONDS
   if [[ -f "$FRONTEND/$DIST/index.html" \
-        && "$(cat "$STATE/frontend.stamp" 2>/dev/null)" == "$(fingerprint "${FRONTEND_PATHS[@]}")" ]]; then
+        && "$(cat "$STATE/frontend.stamp" 2>/dev/null)" == "$(frontend_stamp)" ]]; then
     echo "e2e-dev: frontend build is current, not rebuilding" >&2
   else
     build
@@ -93,6 +122,7 @@ cmd_start() {
     e2e-dev "$BACKEND" "$PYTHON" "$PORT" "$FRONTEND/$DIST" \
     >"$STATE/server.log" 2>&1 </dev/null &
   echo $! >"$STATE/server.pid"
+  echo "$PORT" >"$STATE/server.port"
 
   for _ in $(seq 1 480); do
     healthy && break
@@ -124,15 +154,15 @@ cmd_stop() {
   if [[ -n "$name" ]] && docker inspect "$name" >/dev/null 2>&1; then
     docker rm -f "$name" >/dev/null
   fi
-  rm -f "$STATE/server.pid" "$STATE/backend.stamp"
+  rm -f "$STATE/server.pid" "$STATE/server.port" "$STATE/backend.stamp"
   echo "e2e-dev: stopped" >&2
 }
 
 check_current() {
   server_alive || die "not running; start it with: scripts/e2e-dev.sh start"
   healthy || die "running (pid $(server_pid)) but http://127.0.0.1:$PORT/health does not answer; see scripts/e2e-dev.sh logs, or restart"
-  [[ "$(cat "$STATE/frontend.stamp" 2>/dev/null)" == "$(fingerprint "${FRONTEND_PATHS[@]}")" ]] \
-    || die "frontend sources changed since the served build; run: scripts/e2e-dev.sh rebuild"
+  [[ "$(cat "$STATE/frontend.stamp" 2>/dev/null)" == "$(frontend_stamp)" ]] \
+    || die "the served build is not from the current frontend sources for port $PORT; run: scripts/e2e-dev.sh rebuild"
   [[ "$(cat "$STATE/backend.stamp" 2>/dev/null)" == "$(fingerprint "${BACKEND_PATHS[@]}")" ]] \
     || die "backend sources or fixtures changed since start; run: scripts/e2e-dev.sh restart"
 }
@@ -149,8 +179,8 @@ check_args() {
 }
 
 playwright() {
-  check_current
   check_args "$@"
+  check_current
   cd "$FRONTEND"
   # Headless Chromium stalls ~25 s on its first frame when DISPLAY points at a forwarded
   # X server (ssh -X); it does not need a display unless a window is requested.
@@ -160,12 +190,27 @@ playwright() {
   E2E_PORT="$PORT" E2E_EXTERNAL_SERVER=1 exec npx playwright test "$@"
 }
 
+# Only `--all` runs the whole suite: other options alone (--headed, --project=...) must
+# select something, a spec/directory path or a --grep.
+has_selection() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --grep|--grep=*|-g) return 0 ;;
+      -*) ;;
+      */*|*.ts) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 cmd_test() {
-  case "${1:-}" in
-    "") die "name a spec or filter (e.g. test test/e2e/smoke.spec.ts --grep login), or pass --all" ;;
-    --all) shift; playwright "$@" ;;
-    *) playwright "$@" ;;
-  esac
+  if [[ "${1:-}" == "--all" ]]; then
+    shift
+  elif ! has_selection "$@"; then
+    die "select a spec path or --grep (e.g. test test/e2e/smoke.spec.ts --grep login), or pass --all for the whole suite"
+  fi
+  playwright "$@"
 }
 
 cmd_capture() {
@@ -198,8 +243,8 @@ cmd_status() {
     echo "not running"
   fi
   if [[ -f "$STATE/frontend.stamp" ]]; then
-    [[ "$(cat "$STATE/frontend.stamp")" == "$(fingerprint "${FRONTEND_PATHS[@]}")" ]] \
-      && echo "frontend build: current" || echo "frontend build: stale (rebuild)"
+    [[ "$(cat "$STATE/frontend.stamp")" == "$(frontend_stamp)" ]] \
+      && echo "frontend build: current for port $PORT" || echo "frontend build: stale for port $PORT (rebuild)"
   fi
   if [[ -f "$STATE/backend.stamp" ]]; then
     [[ "$(cat "$STATE/backend.stamp")" == "$(fingerprint "${BACKEND_PATHS[@]}")" ]] \
@@ -210,13 +255,13 @@ cmd_status() {
 command="${1:-}"
 shift || true
 case "$command" in
-  start) cmd_start "$@" ;;
+  start) use_session_port; cmd_start "$@" ;;
   stop) cmd_stop ;;
-  restart) cmd_stop; cmd_start ;;
-  rebuild) cmd_rebuild ;;
-  test) cmd_test "$@" ;;
-  capture) cmd_capture "$@" ;;
-  status) cmd_status ;;
+  restart) use_session_port; refuse_external_store; cmd_stop; cmd_start ;;
+  rebuild) use_session_port; cmd_rebuild ;;
+  test) use_session_port; cmd_test "$@" ;;
+  capture) use_session_port; cmd_capture "$@" ;;
+  status) use_session_port; cmd_status ;;
   logs) exec cat "$STATE/server.log" ;;
-  *) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,/^set /p' "$0" | sed -n 's/^# \{0,1\}//p' >&2; exit 2 ;;
 esac
