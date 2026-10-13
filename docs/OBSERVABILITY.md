@@ -118,13 +118,15 @@ DEPLOYMENT_ENVIRONMENT=production
 
 The hostname `lgtm` works because both containers are attached to the external Docker network `web`. When the backend runs directly on the SemAnT PC rather than in Docker, use `http://localhost:4318` instead and explicitly set `OTEL_ENABLED=true` for that run.
 
-Every HTTP request produces one structured log at `INFO` level (`HTTP request completed`, or `HTTP request failed` with the exception at `ERROR`), so it is exported with the deployed `LOG_LEVEL=INFO`. Attributes:
+Every HTTP request produces one structured log at `INFO` level (`HTTP request completed`, or `HTTP request failed` at `ERROR` for an exception no handler caught), so it is exported with the deployed `LOG_LEVEL=INFO`. Attributes:
 
 - `request.id`: incoming `X-Request-ID` or a newly generated ID;
 - `http.request.method`;
 - `http.route`: the matched route **template**, e.g. `/api/summarize/{summary_type}`, or `<unmatched>` when no route matched. The raw path, query parameters and request bodies are deliberately omitted, because path parameters and queries can carry user text. The question of `POST /api/question` travels in the request body, so proxies and uvicorn's access log do not see it either;
 - `http.response.status_code`;
 - `http.server.request.duration_ms`.
+
+`HTTP request failed` also carries `error.type` (the exception class), and its message contains the traceback with exception classes but no exception messages, which can contain provider or storage responses, endpoints or user text. The middleware then re-raises the error as `UnhandledRequestError`, whose message is only the class name, so the exception event on the server span and the server's own `Exception in ASGI application` log contain no exception text either.
 
 For the same reason, the middleware replaces the raw URL attributes that `FastAPIInstrumentor` puts on the server span (`http.target`, `http.url`, and `url.path`/`url.full`/`url.query` when the new semantic conventions are enabled) with the route template before the span ends. HTTP metrics already use the route template.
 
@@ -291,7 +293,7 @@ Each finished call writes one structured log, `LLM call finished` (`INFO`; `WARN
 
 Prompts, messages, generated text, document snippets and API keys are never recorded. A non-streamed call cancelled by a client disconnect is not recorded (LangChain reports no end for it).
 
-The RAG, search summary, question, span chat, AI suggestion and feedback code logs only configuration ids, counts, modes and exception classes, never questions, answers, retrieved or span text, provider exception messages or webhook URLs; pipeline progress is at `DEBUG`. Errors returned to clients by the question endpoint and the span chat stream are fixed messages for the same reason. An exception that no handler catches is still logged with its traceback (`HTTP request failed` and the server's own error log); see [#301](https://github.com/DCGM/semant-demo/issues/301). The OpenAI SDK's `openai` logger, which logs whole request bodies at `DEBUG`, is held at `INFO` or above at startup (`main.py`, `limit_provider_sdk_logs`).
+The RAG, search summary, question, span chat, AI suggestion and feedback code logs only configuration ids, counts, modes and exception classes, never questions, answers, retrieved or span text, provider exception messages or webhook URLs; pipeline progress is at `DEBUG`. Errors returned to clients by the question endpoint and the span chat stream are fixed messages for the same reason. An exception that no handler catches is logged with its class and a message-free traceback (see above). Weaviate write failures (`Write step ... failed`, `Deleting ... stopped at step ...`) and Topicer failures log the exception class, the step or Topicer path and object IDs; a Topicer error that reaches a suggestion `error` event names only the class or HTTP status, and an invalid Topicer stream line is logged by length. httpx's own `INFO` request log (`HTTP Request: POST <url> ...`) still shows the configured service URLs of outgoing calls. The OpenAI SDK's `openai` logger, which logs whole request bodies at `DEBUG`, is held at `INFO` or above at startup (`main.py`, `limit_provider_sdk_logs`).
 
 With telemetry enabled, the same calls are exported as metrics with the low-cardinality attributes `feature`, `tier`, `provider`, `model` (from the server-side catalog) and `usage_source`:
 

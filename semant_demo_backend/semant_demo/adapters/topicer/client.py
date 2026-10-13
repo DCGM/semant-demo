@@ -37,7 +37,14 @@ class TopicerTag:
 
 
 class TopicerError(RuntimeError):
-    pass
+    """A failed Topicer call. The message is safe for logs and suggestion events: the error
+    class and HTTP status only, never Topicer's URL, its response or the request text."""
+
+
+def _failure(e: Exception) -> str:
+    if isinstance(e, httpx.HTTPStatusError):
+        return f"HTTP {e.response.status_code}"
+    return type(e).__name__
 
 
 class TopicerClient:
@@ -76,9 +83,8 @@ class TopicerClient:
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Topicer POST %s%s failed for chunk %s: %s (%s)",
-                           self.base_url, path, chunk_id, e, type(e).__name__)
-            raise TopicerError(str(e)) from e
+            logger.warning("Topicer POST %s failed for chunk %s: %s", path, chunk_id, _failure(e))
+            raise TopicerError(_failure(e)) from e
         proposals = data.get("tag_span_proposals") if isinstance(data, dict) else None
         if proposals is None:
             return []
@@ -114,10 +120,10 @@ class TopicerClient:
                         except json.JSONDecodeError:
                             event = None
                         if not isinstance(event, dict):
-                            logger.warning("Topicer stream produced a line that is not a JSON object: %r", line)
+                            logger.warning("Topicer stream produced a line that is not a JSON object "
+                                           "(%d characters)", len(line))
                             continue
                         yield event
         except httpx.HTTPError as e:
-            logger.warning("Topicer POST %s%s failed (tag=%s, doc=%s): %s (%s)",
-                           self.base_url, path, tag.id, document_id, e, type(e).__name__)
-            raise TopicerError(str(e)) from e
+            logger.warning("Topicer POST %s failed (tag=%s, doc=%s): %s", path, tag.id, document_id, _failure(e))
+            raise TopicerError(_failure(e)) from e
