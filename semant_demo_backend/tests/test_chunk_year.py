@@ -6,6 +6,8 @@ import pytest
 from semant_demo.adapters.weaviate.chunk_year import ChunkYear
 from semant_demo.adapters.weaviate.search import _condition
 from semant_demo.features.search.schemas import FieldCondition, Op
+from semant_demo.adapters.weaviate import chunk_year as store
+from semant_demo.maintenance import chunk_year
 from semant_demo.maintenance.chunk_year import canonical_year, check_ranges, exit_code, expected_year, plan
 
 DOC, OTHER, CHUNK = (UUID(f"5e3a0000-0000-4000-8000-00000000c00{n}") for n in range(1, 4))
@@ -86,3 +88,19 @@ def test_exit_code():
     assert exit_code(result(done=False, ranges=[match])) == 1
     assert exit_code({**result(), "ranges": None}) == 1               # the property is not declared
     assert exit_code(result(ranges=[match], range_index=False)) == 1  # declared without a range index
+
+
+async def test_a_failing_range_count_is_a_reported_mismatch(monkeypatch):
+    async def count(client, collection, first, last):
+        if (first, last) == (1850, 1950):
+            raise TimeoutError("Deadline Exceeded")
+        return 10 if first == last == 1850 else 0
+    monkeypatch.setattr(store, "count_in_range", count)
+    monkeypatch.setattr(chunk_year, "BACKOFF", 0)
+
+    ranges = await chunk_year.compare_ranges(None, "Chunks", {1850: 10, 1950: 0})
+
+    assert ranges[0] == {"first": 1850, "last": 1950, "expected": 10, "found": None, "match": False,
+                         "error": "TimeoutError: Deadline Exceeded"}
+    assert {"first": 1850, "last": 1850, "expected": 10, "found": 10, "match": True} in ranges
+    assert exit_code(result(ranges=ranges)) == 1

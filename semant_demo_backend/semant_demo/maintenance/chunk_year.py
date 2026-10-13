@@ -81,6 +81,8 @@ WRITES = ("set", "change", "clear")
 REPORTED = ("no_document", "missing_document", "several_documents", "invalid_year")
 ACTIONS = ("consistent", "no_year", *WRITES, *REPORTED)
 YEAR_TYPES = ("int", "number")
+QUERY_TIMEOUT = 600
+"""Seconds per query: counting a range of 8 million chunks takes about 40 s on production."""
 ISSUE_RANGE = (1940, 1952)
 """The range that found no chunks through the document reference (#153)."""
 
@@ -195,11 +197,17 @@ def check_ranges(histogram: dict[int, int]) -> list[tuple[int, int]]:
 
 
 async def compare_ranges(client: WeaviateAsyncClient, chunks: str, histogram: dict[int, int]) -> list[dict[str, Any]]:
-    """Chunks the search predicates find per range against the expected count."""
+    """Chunks the search predicates find per range against the expected count; a count that
+    fails is reported as a mismatch with its error."""
     result = []
     for first, last in check_ranges(histogram):
         expected = sum(n for year, n in histogram.items() if first <= year <= last)
-        found = await _retrying(lambda: store.count_in_range(client, chunks, first, last))
+        try:
+            found = await _retrying(lambda: store.count_in_range(client, chunks, first, last))
+        except Exception as e:
+            result.append({"first": first, "last": last, "expected": expected, "found": None, "match": False,
+                           "error": f"{type(e).__name__}: {e}"})
+            continue
         result.append({"first": first, "last": last, "expected": expected, "found": found, "match": expected == found})
     return result
 
@@ -401,7 +409,7 @@ async def _main(argv: list[str]) -> int:
               file=sys.stderr)
         return 2
     print(f"Weaviate endpoint: {endpoint}", file=sys.stderr)
-    client = await connect_weaviate(config)
+    client = await connect_weaviate(config, query_timeout=QUERY_TIMEOUT)
     try:
         result = await run(client, config.collectionNames, checkpoint=args.write or args.check, endpoint=endpoint,
                            write=bool(args.write), limit=args.limit, concurrency=args.concurrency)
