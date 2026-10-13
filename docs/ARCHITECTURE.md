@@ -95,17 +95,16 @@ semant_demo_backend/semant_demo/
     llm/                  the one gateway for backend LLM calls: models (tier catalog and
                           feature policy), gateway (metered LangChain chat models, complete,
                           stream, FeatureChat), usage (token/cost records)
-  routes/                 dependencies.py (DI from AppResources), router registration and
-                          the user search route
+  routes/                 dependencies.py (DI from AppResources), router registration
   configs/                YAML: llm_models, search_summarizer, search_filters, rag/ (RAG configurations)
-  users/                  FastAPI Users: model, manager, auth routers, schemas
+  users/                  FastAPI Users: model, manager, auth routers, schemas; routes (user search)
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks)
 ```
 
 ```mermaid
 flowchart LR
-    Routes["features/*/routes.py<br/>routes/*.py"] --> Services["features/*/service.py<br/>suggestions.py, span_chat.py"]
+    Routes["features/*/routes.py<br/>users/routes.py"] --> Services["features/*/service.py<br/>suggestions.py, span_chat.py"]
     Services --> Access["features/user_collections/access.py"]
     Services --> Adapters["adapters/weaviate, adapters/sql"]
     Services --> Providers["adapters/embeddings, topicer, llm"]
@@ -130,7 +129,7 @@ A `Config` class that reads settings once, at construction, from the process env
 - **Application** — port, CORS origin, static file path, `LOG_LEVEL`
 - **Observability** — `OTEL_ENABLED` (default off) and the `OTEL_*` / `DEPLOYMENT_ENVIRONMENT` export settings; see [OBSERVABILITY.md](OBSERVABILITY.md)
 - **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments mount it, so it is kept)
-- **Auth** — `JWT_SECRET` (override in production with a long random string), `JWT_LIFETIME_SECONDS`
+- **Auth** — `JWT_SECRET` (override in production with a long random string); tokens are valid for 7 days (`users/auth.py`)
 - **RAG** — config directory path
 - **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT` for the "discuss this span" chat (its model is the `span_chat` tier)
 
@@ -191,6 +190,7 @@ User accounts are managed with [FastAPI Users](https://fastapi-users.github.io/f
 | `users/schemas.py` | Pydantic `UserRead` / `UserCreate` / `UserUpdate` schemas (all include the extra fields as optional) |
 | `users/manager.py` | `UserManager` — overrides `authenticate()` to accept **email or username** at login; lifecycle hooks (`on_after_register`, etc.) |
 | `users/auth.py` | JWT strategy, `FastAPIUsers` instance, exported routers; exports `current_active_user` (mandatory) and `current_active_optional_user` (optional) dependency shortcuts |
+| `users/routes.py` | `GET /api/users/search` (signed-in users; username substring of at least 3 characters, at most 4 matches) through `adapters/sql/users.UserLookup` |
 
 **API endpoints:**
 
@@ -201,6 +201,7 @@ User accounts are managed with [FastAPI Users](https://fastapi-users.github.io/f
 | `POST` | `/api/auth/jwt/logout` | Logout (client discards token) |
 | `GET` | `/api/users/me` | Current user info (requires Bearer token) |
 | `PATCH` | `/api/users/me` | Update current user (email / password / name / institution) |
+| `GET` | `/api/users/search?q=` | Find users by username substring (for sharing a collection) |
 
 **Route-level authentication:**
 
@@ -290,7 +291,7 @@ flowchart TD
 
 **TestRag** — Returns a fixed answer without retrieval or model calls (route tests).
 
-The older `configs/rag/configs/` set still contains configurations of the removed `AdaptiveRagGenerator` and `AdaptiveRagGeneratorOg` classes; the factory skips them with an error log. The default `RAG_CONFIGS_PATH` is `configs/rag/demo_configs/`.
+The default `RAG_CONFIGS_PATH` is `configs/rag/demo_configs/` (the configurations offered in the deployed demo). `configs/rag/configs/` holds further loadable variants of the same classes for development and `run_demo`; a test loads both sets, so every shipped configuration names an existing class and a permitted tier.
 
 #### Incremental RAG:
 ```mermaid
@@ -350,7 +351,9 @@ Uses Jinja2 templates for prompt construction. Three generation tasks per search
 2. **Query summary** — per-chunk summary of relevance to query
 3. **Results summary** — overall summary across all returned chunks
 
-Prompts are in Czech by default (application targets Czech heritage texts). Prompts, fallback texts and per-task options (temperature, context size, maximum tokens) are configurable via `configs/search_summarizer.yaml`; the model is the `search_summary` tier. Clients may send prompts but never a model.
+Prompts are in Czech by default (application targets Czech heritage texts). Prompts, fallback texts and per-task options (temperature, context size, maximum tokens) are configurable via `configs/search_summarizer.yaml`; the model is the `search_summary` tier. Clients may send prompts but never a model. A failed summary keeps the results and adds a warning.
+
+`POST /api/question/{question_text}` answers the question from the snippets of the results sent with it (the `question` tier). A failed model call answers 502 with a fixed message, or with the name of the missing provider setting (`LlmNotConfigured`); the provider's exception text, which may echo the request or endpoint, is neither returned nor logged.
 
 #### LLM gateway (`adapters/llm/`)
 
@@ -378,7 +381,7 @@ Tag creation inserts the tag and then links it to its collection; when the link 
 
 REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/collection), `POST /batch`, `PATCH /{id}`, `DELETE /{id}`, `POST /bulk_update`, `POST /in_document/delete` (delete spans for given tags inside a single document).
 
-Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans: a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk; indexing following chunks is deferred to [#224](https://github.com/DCGM/semant-demo/issues/224)). The lists follow the spans' current type: `automaticTag` holds tags with unresolved AI suggestions, so approving a suggestion moves the tag from the chunk's `automaticTag` list to its `positiveTag` list unless another `auto` span of that tag remains. Every span create, update (also offset-only, so saving again retries) and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). Within one process the re-derivation of a pair runs one at a time (`ChunkTagRepository`), so concurrent writes on the same pair end consistent; with several worker processes they can still leave it stale. That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see DEVELOPMENT.md).
+Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans: a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk; indexing following chunks is deferred to [#224](https://github.com/DCGM/semant-demo/issues/224)). The lists follow the spans' current type: `automaticTag` holds tags with unresolved AI suggestions, so approving a suggestion moves the tag from the chunk's `automaticTag` list to its `positiveTag` list unless another `auto` span of that tag remains. Every span create, update (also offset-only, so saving again retries) and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). Within one process the re-derivation of a pair runs one at a time (`ChunkTagRepository`), so concurrent writes on the same pair end consistent; with several worker processes they can still leave it stale. That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md)).
 
 #### AI Assistance (`features/annotations/suggestions.py`, `suggestion_routes.py`, `span_chat.py`, `span_chat_routes.py`, `adapters/topicer/`, `adapters/llm/`)
 
@@ -397,7 +400,7 @@ Reviewers then approve (`pos`) or reject (`neg`) suggestions through the standar
 
 The frontend (`src/features/annotations/useAiAssistance.ts`) reads the stream with `postNdjson` (`src/shared/api/ndjson.ts`), shows saved suggestions as they arrive and reports partial, failed and interrupted runs. Each run carries a token; changing document or collection aborts it and its late events no longer change the store, errors or loading state.
 
-**Span discussion chat.** `features/annotations/span_chat.py` checks collection read access for the span before the stream starts (a denied request reads no context and makes no provider call), then reads the context through the repositories and builds a system prompt around the span — tag definition + examples, host document metadata, the span's text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters from the same and neighbouring chunks of the document; a cross-chunk span is assembled from the following chunks) — and streams the reply from the `span_chat` model tier (`adapters/llm/gateway.FeatureChat`, built by bootstrap with `SPAN_CHAT_TEMPERATURE`/`SPAN_CHAT_MAX_TOKENS`). The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON lines ending with `{"done": true}`, or `{"error": ...}` when reading the context or the provider failed after the stream started. Nothing is stored; the client sends the whole history each turn (the last `SPAN_CHAT_HISTORY_LIMIT` messages are used).
+**Span discussion chat.** `features/annotations/span_chat.py` checks collection read access for the span before the stream starts (a denied request reads no context and makes no provider call), then reads the context through the repositories and builds a system prompt around the span — tag definition + examples, host document metadata, the span's text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters from the same and neighbouring chunks of the document; a cross-chunk span is assembled from the following chunks) — and streams the reply from the `span_chat` model tier (`adapters/llm/gateway.FeatureChat`, built by bootstrap with `SPAN_CHAT_TEMPERATURE`/`SPAN_CHAT_MAX_TOKENS`). The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON lines ending with `{"done": true}`, or with `{"error": "The assistant reply failed."}` when reading the context or the provider failed after the stream started (only the exception class is logged). Optional context that cannot be read (tag, document, neighbouring chunks) is left out of the prompt. Nothing is stored; the client sends the whole history each turn (the last `SPAN_CHAT_HISTORY_LIMIT` messages are used).
 
 ### 3. Frontend (`semant_demo_frontend/`)
 
@@ -450,7 +453,7 @@ All network calls go through `src/shared/api`: one backend origin (`BACKEND_URL`
 
 Weaviate runs via Docker Compose with persistent storage. Standalone maintenance scripts (not
 part of the backend package; several delete or rewrite data — check the endpoint first, see
-DEVELOPMENT.md):
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md)):
 
 | Script | Purpose |
 |---|---|
@@ -461,13 +464,14 @@ DEVELOPMENT.md):
 
 Document metadata from the Kramerius PostgreSQL mirror is synchronized by the backend
 command `python -m semant_demo.maintenance.metadata_sync` (read-only report, then explicit
-apply, or a checkpointed single-pass `--sync`; source library only — see DEVELOPMENT.md and DATABASE.md).
-Documents without chunks are audited, and on explicit request deleted, by
-`python -m semant_demo.maintenance.document_cleanup` (#281; see DEVELOPMENT.md).
+apply, or a checkpointed single-pass `--sync`; source library only — see
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) and [DATABASE.md](DATABASE.md)). Documents without
+chunks are audited, and on explicit request deleted, by
+`python -m semant_demo.maintenance.document_cleanup` (#281).
 
 ## Historical material
 
 The old SQL-tracked background tagging tasks (`tagging/`, `Task` model, `/api/tag/task*`
 polling) are retired; AI suggestions are request-scoped
-([ADR 0003](adr/0003-request-scoped-ai.md)). [TagSpans_benchmark.md](TagSpans_benchmark.md) and
-`weaviate_benchmarks/` are historical measurements, not a description of current behavior.
+([ADR 0003](adr/0003-request-scoped-ai.md)). The [span storage benchmark](archive/TagSpans_benchmark.md)
+and `weaviate_benchmarks/` are historical measurements, not a description of current behavior.

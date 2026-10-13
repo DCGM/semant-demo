@@ -1,0 +1,327 @@
+# Data maintenance notes and run records (2026)
+
+> **Historical record (as of 2026-10-12).** This is the detailed data-maintenance section
+> formerly in `docs/DEVELOPMENT.md`, preserved verbatim with its dated local, test and
+> production run results for the chunk tag audit (#204), the Kramerius metadata sync
+> (#257, #259, PR #258) and the removal of documents without chunks (#281). Counts, backups
+> and timings describe those runs only. For the current procedures and safety rules use
+> [DATA_MAINTENANCE.md](../../DATA_MAINTENANCE.md) and each command's `--help`; open work is
+> tracked on the GitHub issues.
+
+## Chunk tag audit and cleanup
+
+`python -m semant_demo.maintenance.chunk_tag_audit` (run in `semant_demo_backend/`)
+compares the chunk `automaticTag` / `positiveTag` / `negativeTag` references with the spans
+(ADR 0004). Without options it only reads and prints counts; `--report FILE` also writes
+the list of `unbacked` references (no matching span) and `missing` references (a span
+exists, the chunk lacks the reference). It uses the `WEAVIATE_*` settings.
+
+Correcting data is a separate, reviewed step: review the report, back up the data, then
+
+```bash
+python -m semant_demo.maintenance.chunk_tag_audit --apply FILE \
+  --remove-unbacked [--add-missing] --confirm-endpoint localhost:8080
+```
+
+It refuses to run unless `--confirm-endpoint` and the report's endpoint equal the
+configured endpoint, and it re-checks every listed (chunk, tag) pair against the spans
+stored at that moment. Never run `--apply` against a shared or production database
+without explicit authorization for that task.
+
+## Documents without chunks
+
+`python -m semant_demo.maintenance.document_cleanup` (run in `semant_demo_backend/`; it
+replaces `weaviate_utils/scan_document_chunks.py`, #281) finds documents that no chunk
+references. `--audit CHECKPOINT` only reads: it pages `Documents` by cursor (100 per page,
+ids, creation times and `collection` references only), checks each document with a
+one-object `Chunks.document` lookup confirmed by an aggregate count (a failed or
+disagreeing lookup is `unknown_or_error`, never "no chunks"), and first verifies the
+lookup on documents that a sample of chunks references. Categories: `has_chunks`,
+`no_chunks_unreferenced` and `no_chunks_collection_member` (both removable; collection
+membership does not protect a document), `unknown_or_error`, `excluded_recent` (created
+less than `--min-age-hours`, default 24, before the audit: possibly still being ingested)
+and `excluded_other_reference` (any other reference in the schema that targets documents).
+Aliases are resolved (`Documents` -> `Documents_test` on the production endpoint). The
+checkpoint is resumable; `CHECKPOINT.candidates.jsonl` lists every document without
+chunks with its category, creation time and collection ids, so a removed UUID can be
+reimported with the same identity. The total chunk count is read before and after;
+`--rate` and `--concurrency` limit the load. On the production endpoint 200 lookups took
+about 30 ms (2026-10-12).
+
+Deleting is a separate step:
+
+```bash
+python -m semant_demo.maintenance.document_cleanup --delete CHECKPOINT \
+  --confirm-endpoint HOST:PORT --backup-id BACKUP [--limit N] [--rate N]
+```
+
+It refuses to start unless the endpoint is confirmed, the audit finished on the same
+endpoint, collections and reference schema without a chunk-count change, the chunk count
+still equals the audit's (checked again before every batch: a change means ingestion is
+running), and `BACKUP` is a successful `backup-filesystem` backup holding documents, chunks
+and user collections. Each document is read again right before deletion: absent ones count
+as `already_absent`; it is skipped if it was created after the backup started, if a chunk
+or another reference now points to it, or if a lookup fails. After deletion it is read
+back. Deleting a document removes its own `collection` references, so it leaves the
+collections' document lists and counts; the collections, tags and spans are not touched.
+Progress (`CHECKPOINT.delete.json`) is resumable, failed and unverified ids are retried
+first, and `CHECKPOINT.delete.jsonl` has one line per document. At the end every affected
+collection is checked: no deleted document listed, document count equal to the count before
+minus the removed memberships. The check and the deletion are not atomic: a chunk inserted
+in between is reported (`chunk_appeared`), not undone; run it when no ingestion is running.
+To restore a removed document, import it again from its source JSON/JSONL
+(`weaviate_utils/db_insert_jsonl.py`) with the same UUID; collection memberships are not
+restored automatically (the manifest has the collection ids).
+
+### Deployed test database (2026-10-12, #281)
+
+Audit of `localhost:8082`: 500 documents, 32 `has_chunks`, 428 `no_chunks_unreferenced`,
+40 `no_chunks_collection_member` (70 memberships in 9 user collections, 17 documents in
+several), 0 `unknown_or_error`, no other references to documents, chunk count 3,260 before
+and after. Backup `pre-document-cleanup-281-2026-10-12` was restored into a throwaway
+Weaviate (500 documents, 3,260 chunks, 77 collections, 64 tags, 613 spans). The deletion
+removed all 468 candidates (0 skipped or failed); 32 documents remain; chunks, collections,
+tags and spans are unchanged; the 9 affected collections no longer list the deleted
+documents and their counts dropped by the 70 removed memberships.
+
+### Production (2026-10-12, #281)
+
+Audit of `localhost:8080` (`Documents_test` etc. through aliases) in 2.5 min: 484,336
+documents, 59,008 `has_chunks`, 425,318 `no_chunks_unreferenced`, 10
+`no_chunks_collection_member` (11 memberships in 6 user collections), 0 `unknown_or_error`,
+none excluded; 8,280,272 chunks before and after. The deletion (against backup
+`full_2026-09-21_utc_1790030115s`, which every candidate predates) removed all 425,328 in
+11 min, 0 skipped or failed; 59,008 documents remain, chunks (8,280,272), user collections
+(122), tags (11,287) and spans (12,661) are unchanged, and the 6 affected collections'
+lists and counts check out. Logs and the UUID manifest are on the server in
+`~/document_cleanup_281/prod/`.
+
+## Kramerius metadata sync
+
+`python -m semant_demo.maintenance.metadata_sync` (run in `semant_demo_backend/`) copies
+document metadata from the Kramerius PostgreSQL mirror (`meta_records`, maintained by the
+`librarymetadata` project) to the `Documents` collection (#257). The field mapping is in
+[DATABASE.md](../../DATABASE.md#document-metadata-from-the-kramerius-mirror); all options are in
+the module docstring (`--help`). Writing to the deployed test or production stores is a
+separately authorized operation (#259); this section covers the local check.
+
+**Source library rule.** Each document uses only the mirror row of its own source library,
+`(id, library)`; values that row lacks are never taken from another library, and the "most
+complete" row is never chosen. The library is, in order:
+
+1. an approved correction (`--library-override FILE`);
+2. a verified map (`--library-map FILE`; a different stored library is a `library_conflict`);
+3. page evidence (`--infer-library-from-pages`, below); it replaces a stored library it
+   contradicts;
+4. the stored `library`, unless listed by `--distrust-stored` (e.g. `mzk`, which older code
+   wrote as a default and the API still shows for documents without one);
+5. with `--infer-library-from-mirror`, for documents without page evidence (no chunks, or no
+   page reaching the document): the mirror's only library for the id (`mirror_unique`),
+   else the choice among the mirror's libraries (`mirror_metadata` / `mirror_priority`).
+
+**Choosing among several libraries** (the pages reach several, or rule 5): with
+`--prefer-library-with-metadata`, the only one whose mirror row has bibliographic metadata
+(MODS in `metadata_json`; `page_metadata` / `mirror_metadata`); otherwise, among those that
+have it (or all if none has), the first in `--library-priority` (`page_priority` /
+`mirror_priority`). The mirror downloaded MODS (with the images) only for part of the
+documents, so a library row without it gives no author or publisher; a stored library and
+pages reaching a single library are kept even without metadata. Report and sync counts
+include `without_source_metadata` (resolved documents whose selected row has none).
+
+`--library-priority LIB,LIB,...` (highest first) encodes which libraries hold partial copies
+of others; it chooses only among libraries that have the document (that its pages reach, or,
+in 5, that have a row). Inferred libraries (3 and 5) are applied like the others; each entry
+records `library_from` and its evidence, and `--inferred FILE` writes them (document,
+library, method, confidence, verified pages, stored library) as a CSV for sampling. A wrong
+line can be corrected and passed back with `--library-override`. Documents with no library,
+a conflict, several mirror libraries none of which is in the priority list, or no row for
+their library are `unresolved`. Map files are CSV `document_id,library` (further columns are
+ignored).
+
+**Page evidence** (`--infer-library-from-pages`). For each document the command reads the
+distinct `Chunks.start_page_id` values of up to 1000 of its chunks (one query per document,
+16 at a time; no text or vectors), looks the page UUIDs up in `meta_records` in all
+libraries, and walks each page row up `(parent_id, parent_library)` within its own library
+(batched, max depth 16) until it reaches the document's id. A page UUID match alone proves
+nothing: only chains that reach the document count. Distinct start pages are the evidence
+unit (several chunks on one page count once).
+
+| Evidence | Report | Library |
+|---|---|---|
+| 2+ distinct pages reach the document, all in one library | `page_evidence.confidence: high` | that library (`library_from: page_ancestry`), replacing a different stored library |
+| exactly one such page | `low` | the same |
+| chains reach the document in several libraries (mirrored page UUIDs, or different pages in different libraries) | `ambiguous` | a stored library among them, else the choice among them (`page_metadata` / `page_priority`, above), else `unresolved: page_evidence_ambiguous` |
+| a `--library-map` / `--library-override` library the chains do not reach | | the explicit library; `page_evidence_disagrees: true` for review |
+| no chunks, no valid start page, no page in the mirror, or no chain reaches the document | `no_chunks` / `none` | the stored library, else rule 5 |
+
+Each entry's `page_evidence` lists chunks read (`truncated` beyond 1000), distinct valid
+start pages, invalid or missing `start_page_id` values, pages not in the mirror, verified
+pages per library, the statuses of chains that did not reach the document
+(`other_document`, `cross_library`, `broken`, `cycle`, `too_deep`) and up to three sample
+paths (UUIDs only). Failure modes: a store without `start_page_id` gives `none`; a mirror
+missing one library's page rows makes the other library look unique (two libraries with
+their own, differently identified pages are separate digitizations; the text came from the
+one whose pages match).
+
+**Update rule.** `library` and `public` always follow the selected row, so a document's
+access matches its record in the source library (this can make a document public or
+private; the report's `changed_properties.public` counts them). `title` is composed from the
+row and its ancestors in the same library (periodical, volume, issue; see
+[DATABASE.md](../../DATABASE.md#document-metadata-from-the-kramerius-mirror)). Other empty
+properties are filled; replacing a differing value needs `--overwrite`, otherwise the change
+is `held`. Values are never cleared (`stale` lists stored values the source row lacks). Only
+declared properties are written, in their declared type; the schema changes only through
+`--add-library-property`, which adds a text `library` (whole-value tokenization) so the
+source library is stored. Applying requires it. `in_library` is reported only: the mirror
+sets it on rows added or updated since the column was introduced, so `false` may just mean
+"not reprocessed".
+
+**Apply rule.** `--apply REPORT --confirm-endpoint HOST:PORT` refuses to run unless the
+endpoint and collection equal the report's, the declared types are unchanged and include
+`library`, and, without `--accept-incomplete`, the report has no unresolved documents. Per
+document it writes only if the stored library and every changed property still equal the
+report's old values, then reads the values back. The check and the write are not atomic, so
+apply while nothing else edits document metadata. Running it again skips finished
+documents. Exit code 1: nothing was eligible, or an eligible document was not written or
+not verified (listed with the reason).
+
+**Single-pass sync** (#259). `--sync --confirm-endpoint HOST:PORT --checkpoint FILE` plus the
+report's library options plans and writes the corpus one page (100 documents) at a time
+without a report: each page is planned from the values just read, its changes are written at
+once and only the written documents are read back; nothing is reread afterwards. It refuses
+to start unless the endpoint is confirmed and `library` is declared as text (declare it first
+with `--add-library-property`). The checkpoint (JSON, replaced atomically after each page)
+holds the endpoint, collection, declared types, options, the last finished id, the running
+counts (examined, updated, unchanged, unresolved kinds, failed, `library_from`, `public`
+transitions such as `true_to_false`) and the ids whose write failed or did not read back.
+Running the same command again resumes it: those ids are planned again first, then the pass
+continues after the last finished id; a page interrupted before its checkpoint is redone, and
+replanning makes that safe (written documents are then `unchanged`). A checkpoint with a
+different endpoint, collection, schema or options is refused; use a new checkpoint per
+environment. The manifest (`--manifest`, default `CHECKPOINT.manifest.jsonl`) lists unresolved
+and failed ids with the reason, not metadata. A failing page is retried twice with a pause
+before the run stops (resumable). Progress goes to stderr, the summary to stdout; the mirror
+password is never printed. Exit code 1 while failed ids remain. Run it while nothing else
+edits document metadata.
+
+### Local check on a copy of the development snapshot
+
+Never run this against the only copy of `local_data/weaviate_semant_test/`, a shared
+database or production. `make test-integration` does not use `local_data/`.
+
+1. **Copy the snapshot offline.** Stop the development Weaviate (`docker stop
+   semant-weaviate-dev`) so the files are consistent, check free space (the snapshot is
+   ~110 MB; Weaviate turns read-only above `DISK_USE_READONLY_PERCENTAGE` of its disk),
+   and copy it to an empty directory, e.g. `$COPY`. Some files are owned by the container's
+   root user, so copy (and optionally checksum) through a container:
+
+   ```bash
+   mkdir "$COPY"
+   docker run --rm --entrypoint sh \
+     --mount type=bind,source="$(pwd)/local_data/weaviate_semant_test",target=/src,readonly \
+     --mount type=bind,source="$COPY",target=/dst \
+     cr.weaviate.io/semitechnologies/weaviate:1.34.4 -c 'cp -a /src/. /dst/'
+   ```
+
+   Restart the development Weaviate (section 3), then start the copy as a second instance
+   with the section 3 command, changing only the name, ports and mount source:
+   `--name semant-weaviate-metadata-test -p 127.0.0.1:18080:8080 -p 127.0.0.1:15051:50051
+   --mount type=bind,source="$COPY",target=/var/lib/weaviate`. Check
+   `curl localhost:18080/v1/.well-known/ready`, `/v1/schema/Documents` and the object counts.
+
+2. **Point the command at the copy and the mirror.** In `semant_demo_backend/`:
+
+   ```bash
+   export WEAVIATE_HOST=localhost WEAVIATE_REST_PORT=18080 WEAVIATE_GRPC_PORT=15051
+   ../.venv/bin/pip install "psycopg[binary]"     # driver, not an app dependency
+   export KRAMERIUS_METADATA_DSN="postgresql+psycopg://librarymetadata_all@127.0.0.1:5888/librarymetadata_all"
+   ```
+
+   The DSN assumes an SSH tunnel to the mirror on port 5888 that you are authorized to
+   use; keep passwords out of the command line and the repository. The command only reads
+   the mirror.
+
+3. **Read-only inventory.** `python -m semant_demo.maintenance.metadata_sync --report
+   r1.json --infer-library-from-pages --library-priority LIB,LIB,...
+   --prefer-library-with-metadata --infer-library-from-mirror --distrust-stored mzk --inferred inferred.csv --overwrite`
+   (add `--limit N` / `--document-ids FILE` to narrow it). Check `counts`:
+   `mirror_libraries` (none / one / several), `page_evidence`, `library_from`,
+   `library_replaced`, `unresolved` kinds, `changed_properties` (especially `public` and
+   `title`) and `held_properties`, and sample `changes` and `page_evidence` per library.
+
+4. **Sample libraries.** Check a sample of `inferred.csv` per method (especially `low` and
+   `page_priority`/`mirror_priority`); put corrections in an override file.
+
+5. **Declare `library` on the copy:** `--add-library-property --confirm-endpoint localhost:18080`.
+
+6. **Report for applying:** the step 3 options (plus `--library-override corrections.csv`)
+   with `--report r2.json`. Sample replacements (`old` -> `new`) and review the unresolved
+   list.
+
+7. **Apply to the copy:** `--apply r2.json --confirm-endpoint localhost:18080
+   [--accept-incomplete]`. Check `eligible`, `applied`, `verified`, `not_applied`, `failed`.
+
+8. **Read back** through the application (`DocumentRepository.read` / `read_chunks`, a
+   search with a `yearIssued` filter, the `library` of hits), then run step 7 again
+   (expect `already_applied`) and a fresh report (expect `eligible: 0` apart from
+   documents edited meanwhile).
+
+9. **Clean up.** `docker stop semant-weaviate-metadata-test`; delete `$COPY` when done.
+   Confirm the development snapshot was not modified (counts, no `library` property).
+
+### Results of the local check (2026-10-10)
+
+Copy of the 500-document snapshot (3,260 chunks in 32 documents) and the real mirror:
+237 documents have mirror rows in one library, 263 in several. Page evidence: 468
+documents have no chunks; 23 got a library from their pages (20 `high`, 3 `low`; of the 263
+with several libraries, 4 resolved to `mzk`, where both libraries hold the same number of
+pages but only `mzk`'s page UUIDs match the chunks), and 9 are `ambiguous` (the same page
+UUIDs reach the document in two libraries). All 14 single-library documents with chunks got
+the same library from their pages as their single mirror row.
+
+With the example priority `nkp,mzk` and `--infer-library-from-mirror` (2.2 s for the 500):
+23 `page_ancestry`, 9 `page_priority`, 218 `mirror_unique`, 249 `mirror_priority`, 1
+unresolved (`eod` + `knav`, neither in the list). The order matters: with `mzk,nkp`, 215
+documents get `mzk` instead of `nkp`. `--overwrite` changes 360
+titles, mostly issue numbers becoming full titles ("284" -> "Tagesbote. 76. 284"; "Právo
+lidu. 183" -> "Právo lidu: časopis hájící zájmy… . 20. 183"). `mzk` issue rows without a
+title or part number give only the periodical title ("Národní listy. 241" -> "Národní
+listy"). 21 documents become non-public (the selected row's `public` is `false`), none
+become public. Applying wrote and verified 499/499; applying again and a fresh report found
+nothing to do; a stored library planted wrong was replaced from `high` page evidence and
+verified. Details are on PR #258.
+
+### Deployed test database (2026-10-11, #259)
+
+`localhost:8082` (test-main and PR previews; the same 500 documents, 3,260 chunks) on the
+server, mirror `librarymetadata_all` on `127.0.0.1:5888` (library ids `nkp`, `mzk`; no `ndk`).
+After a Weaviate filesystem backup (`pre-metadata-sync-259-2026-10-11`) and
+`--add-library-property --confirm-endpoint localhost:8082`, `--sync` with
+`--infer-library-from-pages --infer-library-from-mirror --distrust-stored mzk
+--library-priority nkp,mzk --overwrite` ran 20 documents (`--limit 20`), then resumed to the
+end in 13 s: 500 examined, 499 updated and verified, 0 failed, 1 unresolved (`eod` + `knav`),
+21 `public` true→false, none false→true; counts as in the local check above. A run with a new
+checkpoint updated nothing. 24 of the 95 monographs have no author or publisher: every
+mirror row of each has `metadata_json` NULL and `mods_path = not_found` (in the whole mirror
+83% of `nkp` and 36% of `mzk` monograph rows), so the sync cannot fill them until the mirror
+re-downloads those MODS records.
+
+The 2026-10-12 rerun added `--prefer-library-with-metadata` (decision on #259: the mirror
+downloaded MODS only for part of the documents, so the library whose row has them is the
+most useful choice among several). After a new backup (`pre-metadata-sync-259-metadata-2026-10-12`),
+`--sync` with the options above plus `--prefer-library-with-metadata` and, for this rerun
+only, `--distrust-stored nkp` (so the libraries stored by the first run were chosen again):
+500 examined, 79 updated and verified (`nkp` -> `mzk` 60, -> `kvkli` 13, -> `zmp` 3, `nacr`,
+`nfa`; the earlier unresolved `eod` + `knav` document -> `knav`), 0 failed, 0 unresolved, 19
+`public` false→true (the chosen row is public), 48 titles, 5 author lists. Library origins:
+133 `mirror_metadata`, 1 `page_metadata`, 117 `mirror_priority` (72 of them both libraries
+with metadata, 45 neither). Documents whose selected row has no metadata fell from 193 to 115;
+the 24 monographs without author or publisher remain (none of their rows has metadata). 2
+documents whose pages reach only another library keep it although `nkp` has metadata. A run
+with the production options (`--distrust-stored mzk` only) and a new checkpoint updated
+nothing. Production (`localhost:8080`, 484,336 documents, `yearIssued` of
+type `int`; `Documents` is an alias of `Documents_test`, which `--add-library-property`
+resolves) ran on 2026-10-12 with the production options above, without a backup (by
+decision): 484,282 of 484,336 updated and verified in 56 min, 0 failed, 54 unresolved
+(libraries outside `nkp,mzk`, mostly `cuni_fsv` + `svkhk`), `public` true→false 1,833 and
+false→true 1,020, 60,835 documents whose selected row has no metadata (#259).
