@@ -5,7 +5,8 @@ import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.core.outcomes import WriteOutcome, outcome_of
-from semant_demo.adapters.weaviate.writes import PAGE_SIZE, NoProgressError, _Progress, _drain, guard_progress, step_failure
+from semant_demo.adapters.weaviate.writes import (
+    PAGE_SIZE, NoProgressError, _incomplete, _Progress, _drain, guard_progress, step_failure)
 
 
 @pytest.mark.parametrize("succeeded, failed, unattempted, expected", [
@@ -29,6 +30,16 @@ def test_failure_message_does_not_expose_error_details():
     failure = step_failure("link_chunk", "a", RuntimeError("secret internal detail"))
 
     assert "secret" not in failure.message
+
+
+def test_failed_writes_log_only_the_error_class(caplog):
+    progress = _Progress()
+    progress.at("unlink_chunks")
+    step_failure("link_chunk", "a", RuntimeError("SECRET-MARKER storage body"))
+    error = _incomplete("tag", progress, RuntimeError("SECRET-MARKER storage body"))
+
+    assert [r.getMessage().rsplit(": ", 1)[1] for r in caplog.records] == ["RuntimeError"] * 2
+    assert "SECRET-MARKER" not in caplog.text and "SECRET-MARKER" not in str(error)
 
 
 def test_guard_allows_new_pages_and_stops_on_a_repeated_object():

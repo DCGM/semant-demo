@@ -21,6 +21,7 @@ from semant_demo.opentelemetry import (
     OpenTelemetry,
     UNMATCHED_ROUTE,
     RequestTelemetryMiddleware,
+    UnhandledRequestError,
     feature_for_request,
     request_authentication,
     request_outcome,
@@ -242,7 +243,7 @@ async def test_failed_request_log_does_not_contain_path_text(caplog):
 
     assert response.status_code == 500
     [record] = _request_records(caplog)
-    assert record.getMessage() == "HTTP request failed"
+    assert record.getMessage().startswith("HTTP request failed: RuntimeError\n")
     assert record.__dict__["http.route"] == "/api/question/{question_text}"
     assert "Lhota" not in _exported_values(record)
 
@@ -290,3 +291,56 @@ def test_uvicorn_access_log_shows_the_question_route_not_the_question(caplog):
         '127.0.0.1:5000 - "POST /api/question/{question_text} HTTP/1.1" 200',
         '127.0.0.1:5000 - "POST /api/search HTTP/1.1" 200',
     ]
+
+
+SECRET_ERROR_TEXT = "SECRET-MARKER provider body"
+
+
+def _failing_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.post("/api/fail")
+    async def fail():
+        try:
+            raise ValueError(SECRET_ERROR_TEXT)
+        except ValueError as e:
+            raise RuntimeError(SECRET_ERROR_TEXT) from e
+
+    app.add_middleware(RequestTelemetryMiddleware)
+    return app
+
+
+async def test_unhandled_error_is_logged_with_its_stack_but_no_exception_text(caplog):
+    caplog.set_level(logging.INFO, logger="semant_demo.opentelemetry")
+    async with _client(_failing_app()) as client:
+        with pytest.raises(UnhandledRequestError) as raised:
+            await client.post("/api/fail")
+
+    [record] = _request_records(caplog)
+    assert record.levelno == logging.ERROR and record.exc_info is None
+    assert record.__dict__["error.type"] == "RuntimeError"
+    message = record.getMessage()
+    assert "in fail" in message and "RuntimeError (message omitted)" in message
+    assert "ValueError (message omitted)" in message
+    assert "SECRET-MARKER" not in _exported_values(record)
+    # What the server and the server span see: the class name only, no chained original.
+    assert str(raised.value) == "RuntimeError" and raised.value.__suppress_context__
+
+
+async def test_server_span_records_no_exception_text():
+    spans = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(spans))
+    app = _failing_app()
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider, meter_provider=MeterProvider())
+    try:
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post("/api/fail")
+    finally:
+        FastAPIInstrumentor.uninstrument_app(app)
+
+    assert response.status_code == 500
+    events = [event for span in spans.get_finished_spans() for event in span.events]
+    assert [event.attributes["exception.type"] for event in events if event.name == "exception"]
+    assert "SECRET-MARKER" not in json.dumps([dict(event.attributes) for event in events])
