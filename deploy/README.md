@@ -25,10 +25,10 @@ The stack is split across several compose files that are started independently a
 | `docker-compose.database.yml` | `weaviate` | `semant_demo_database` | Production Weaviate (REST :8080, gRPC :50051) |
 | `docker-compose.database-test.yml` | `weaviate` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
 | `docker-compose.embedder.yml` | `embedding-service` | `semant_demo_embedder` | Single GPU embedder shared by **production and all test instances** (port 8001) |
-| `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder`, `semant_demo_topicer` | Production app instance; own `tasks.db` mounted via `$SQL_DB_PATH` |
-| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_test_topicer` | One container per test instance (CI/CD managed); each has its own `tasks.db` mounted via `$SQL_DB_PATH` |
+| `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder`, `semant_demo_topicer` | Production app instance; own `tasks.db` and `feedback/` mounted via `$SQL_DB_PATH` |
+| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_test_topicer` | One container per test instance (CI/CD managed); each has its own `tasks.db` and `feedback/` mounted via `$SQL_DB_PATH` |
 
-**`SQL_DB_PATH`** (set by `.github/workflows/ci-cd.yml`; the `tasks.db` file must exist):
+**`SQL_DB_PATH`** (set by `.github/workflows/ci-cd.yml`; the `tasks.db` file and the `feedback/` directory must exist, see [In-app feedback storage](#in-app-feedback-storage)):
 - **Production:** `$SQL_DB_DIR` from the GitHub variables
 - **Test:** a unique subdirectory per instance under `$SQL_DB_DIR_TEST`:
   - `test-main`: `${SQL_DB_DIR_TEST}/test-main`
@@ -61,7 +61,8 @@ deployment-only values:
 | `COMMIT` | _(empty)_ | Full commit SHA to build. CI sets it to the commit the deploy run is for and copies the Dockerfile, Compose file and `.env` template from that same commit, so a later push cannot change the deployed source. Production: the tagged commit; test-main: the pushed `main` commit (both after the required checks pass on it). PR previews: the PR head, while the PR checks run on GitHub's merge commit. Empty builds the current tip of `BRANCH` |
 | `BACKEND_URL` | `https://demo.semant.cz` | Public backend URL baked into the frontend bundle at build time |
 | `DOMAIN` | `demo.semant.cz` | Traefik Host rule |
-| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Host directory whose `tasks.db` is mounted into the container |
+| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Host directory whose `tasks.db` and `feedback/` are mounted into the container |
+| `FEEDBACK_LOG_PATH` | `/app/feedback/feedback.log.jsonl` | In-app feedback log inside the mounted `feedback/` directory; keep this template value |
 | `GEMMA_MODEL`, `GPU_DEVICE` | `BAAI/bge-multilingual-gemma2`, `0` | Embedding service model and GPU |
 | `OTEL_ENABLED`, `OTEL_SERVICE_NAME`, `DEPLOYMENT_ENVIRONMENT` | `true`, `semant-demo-app`, `production` | Telemetry of the deployed instances; CI sets the environment per instance ([OBSERVABILITY.md](../docs/OBSERVABILITY.md#runtime-configuration)) |
 
@@ -86,6 +87,41 @@ Other operations use `docker compose` with the same project and file, for exampl
 ```bash
 docker compose -p semant-demo -f docker-compose.app.yaml logs -f app
 docker compose -p semant-demo -f docker-compose.app.yaml ps
+```
+
+### In-app feedback storage
+
+In-app feedback (`POST /api/v1/feedback`) is appended to `FEEDBACK_LOG_PATH`. The `.env`
+templates set it to `/app/feedback/feedback.log.jsonl`, and both app Compose files mount the
+host directory `${SQL_DB_PATH}/feedback` at `/app/feedback`, so the log survives container
+recreation and redeploys. Without the mount, the log would live inside the container and be
+lost when it is recreated; `FEEDBACK_WEBHOOK_URL` is only an optional extra copy.
+
+- **Provisioning.** The mount uses `create_host_path: false`, so the directory must exist
+  before `docker compose up`. CI creates it in each deploy job (`mkdir -p
+  "$SQL_DB_PATH/feedback"`, as the `runner` user). For a manually managed instance, create it
+  yourself next to `tasks.db`.
+- **Permissions.** The backend runs as root in the container, so the log file is owned by
+  root on the host. Because `runner` owns the `feedback/` directory, it can still remove the
+  file (PR teardown deletes the whole `SQL_DB_PATH`). Reading it on the host needs `sudo`
+  or root-readable permissions.
+- **Retention.** Production and `test-main` keep the log indefinitely; it is not rotated.
+  A PR preview's log is deleted with its instance when the PR closes. Feedback may contain
+  personal data (message text, optional e-mail, IP address, user agent); prune or archive
+  it by hand under your data policy.
+- **Migration.** CI recreates `.env` from the template on every deploy, so CI-managed
+  instances pick up the new value on their next deploy. A manually maintained `.env` with an
+  empty `FEEDBACK_LOG_PATH=` must be changed to `/app/feedback/feedback.log.jsonl` and the
+  directory created; an empty value otherwise falls back to the in-container default path.
+  Before this change, an empty value made feedback fail, so there is no earlier log to move.
+
+Smoke test after a deploy (writes one feedback entry; use a test instance where possible):
+
+```bash
+curl -fsS -X POST "https://<host>/api/v1/feedback" -H 'Content-Type: application/json' \
+  -d '{"type":"other","subject":"smoke test","message":"feedback persistence check"}'
+docker compose -p <project> -f <compose file> up -d --force-recreate app
+sudo tail -n 1 "$SQL_DB_PATH/feedback/feedback.log.jsonl"   # still shows the entry
 ```
 
 ### Recovering / Rebuilding the Weaviate database

@@ -19,6 +19,12 @@ services:
         target: /app/tasks.db
         bind:
           create_host_path: false
+      # In-app feedback log (FEEDBACK_LOG_PATH in the .env template), kept across container recreation.
+      - type: bind
+        source: ${SQL_DB_PATH}/feedback
+        target: /app/feedback
+        bind:
+          create_host_path: false
     networks:
       - web
       - semant_demo_test_database
