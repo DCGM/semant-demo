@@ -1,3 +1,4 @@
+"""Local development server with auto-reload; the Docker image runs uvicorn without it."""
 from semant_demo.config import config
 
 if __name__ == "__main__":

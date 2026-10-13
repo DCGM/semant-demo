@@ -100,7 +100,7 @@ pip install --require-hashes -r requirements-runtime.lock
 python run.py
 ```
 
-`run.py` starts `uvicorn` in reload mode on `PORT` (8000); the Docker image uses the same entry point. On startup the application:
+`run.py` starts `uvicorn` in reload mode on `PORT` (8000) for local development. The Docker image runs `python -m uvicorn semant_demo.main:app --host 0.0.0.0 --port $PORT` without the reloader. On startup the application:
 1. Creates missing SQL tables (`user`, `rag_user_feedback`); existing tables and rows are kept
 2. Connects to Weaviate (startup fails if it is not ready)
 3. Loads all RAG configurations from `RAG_CONFIGS_PATH` (default `configs/rag/demo_configs/*.yaml`)
@@ -157,7 +157,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | User accounts and RAG answer feedback; the default is `tasks.db` in the working directory (the name is historical) |
 | `JWT_SECRET` | placeholder | **Must be overridden** with a long random string outside local development; tokens are valid for 7 days |
 | `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin of the frontend |
-| `PORT` | `8000` | Listen port used by `run.py` (the Docker entry point) |
+| `PORT` | `8000` | Listen port of `run.py` and of the Docker image's uvicorn |
 | `STATIC_PATH` | `./static` | Built frontend served by the backend when the directory exists |
 | `LOG_LEVEL` | `INFO` | Python and OTLP log level |
 | `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Model tier catalog: provider, model and estimated prices per tier, and the tiers each feature may use; the only place models are chosen |
@@ -192,7 +192,7 @@ Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 
 ### Backend
 
-- Run with `uvicorn` reload mode (default in `run.py`): changes auto-reload
+- Run with `uvicorn` reload mode (default in `run.py`, not used by the Docker image): changes auto-reload
 - FastAPI auto-generates interactive docs at `http://localhost:8000/docs` (Swagger) and `http://localhost:8000/redoc`
 - Enable debug logging with `LOG_LEVEL=DEBUG` (RAG pipeline progress is logged at `DEBUG`)
 - Check Weaviate connectivity: `curl http://localhost:8080/v1/.well-known/ready`
@@ -219,7 +219,7 @@ Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 
 ## Production Considerations
 
-1. **Reload mode** — `run.py`, also the Docker image's entry point, runs uvicorn with `reload=True`; outside Docker run `uvicorn semant_demo.main:app` instead ([#298](https://github.com/DCGM/semant-demo/issues/298))
+1. **No reload mode** — `run.py` runs uvicorn with `reload=True` for development; outside Docker run `uvicorn semant_demo.main:app` instead, as the image does
 2. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
 3. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
 4. **One backend process** — chunk tag synchronization is serialized only within one process ([TODO.md](TODO.md#correctness-and-behavior)); SQLite holds only user accounts and RAG feedback
