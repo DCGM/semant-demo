@@ -286,6 +286,8 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
             Property(name="from_page", data_type=integer),
             Property(name="to_page", data_type=integer),
             Property(name="end_paragraph", data_type=DataType.BOOL),
+            # the document's year, for year filters (#153)
+            Property(name="yearIssued", data_type=integer, index_range_filters=True),
             *(Property(name=name, data_type=text_array) for name in TASK_CLASSES),
         ],
         references=[

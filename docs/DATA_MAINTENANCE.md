@@ -94,6 +94,8 @@ Modes:
 - `--sync --confirm-endpoint HOST:PORT --checkpoint FILE`: plans and writes one page of 100
   documents at a time, resumable, with a manifest of unresolved and failed ids (#259).
 
+A changed `yearIssued` reaches the search only after `chunk_year --write` (below).
+
 Prerequisites: the PostgreSQL driver (`../.venv/bin/pip install "psycopg[binary]"`, not an
 application dependency) and `KRAMERIUS_METADATA_DSN`, a SQLAlchemy URL such as
 `postgresql+psycopg://librarymetadata_all@127.0.0.1:5888/librarymetadata_all` through an SSH
@@ -102,6 +104,34 @@ command only reads the mirror and never prints the password.
 
 Known metadata limitations, including mirror rows without MODS metadata, are tracked
 on [#259](https://github.com/DCGM/semant-demo/issues/259).
+
+## Document year on chunks (`chunk_year`, #153)
+
+The search filters years on `Chunks.yearIssued`, a copy of the referenced document's
+`yearIssued` ([SEARCH_FILTERS](SEARCH_FILTERS.md#4-applying-filters-in-search)). This command
+keeps the copy equal to the document's: it sets missing years, replaces differing ones and
+removes a chunk's year when its document has none. Chunks without exactly one existing
+document and document years that are not whole numbers are listed in the manifest and left
+unchanged. It reads only ids, years and the document reference; a write is a merge that keeps
+text, vectors, references and other properties.
+
+```bash
+python -m semant_demo.maintenance.chunk_year --check check.json             # read-only
+python -m semant_demo.maintenance.chunk_year --write write.json --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.chunk_year --check check_after.json       # expect exit 0
+```
+
+`--write` first declares `Chunks.yearIssued` (`int`, range index) when the collection lacks
+it, an additive schema change through the alias's collection, then writes only differing
+chunks and reads every page's writes back. Both modes are checkpointed and resumable (writes
+that failed or did not read back are retried first). A complete pass compares the chunk counts
+that the search predicates find for several year ranges with those expected from the
+documents; a check exits 0 only when nothing is left to write and every range matches.
+
+Run it on every store before deploying the chunk-year search (a store without the property
+answers year-filtered searches with an error), and again after ingesting chunks or changing
+document years (for example after `metadata_sync`) until ingestion keeps the copy itself
+([#313](https://github.com/DCGM/semant-demo/issues/313)).
 
 ## Practising on a copy of the development snapshot
 

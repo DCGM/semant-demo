@@ -154,9 +154,9 @@ def generate_default_filters(
             name="Year range",
             type=FilterType.interval,
             description=(
-                "It is filter for text chunks stored in Chunks collection, "
-                "which are associated with document having yearIssued property value "
-                "belonging to the given interval."
+                "Selects text chunks whose yearIssued (the publication year of their document, "
+                "copied to the chunk) lies in the given interval, bounds included. Chunks of "
+                "documents without a year are left out."
             ),
             target_property="yearIssued",
             min_value=min_year,

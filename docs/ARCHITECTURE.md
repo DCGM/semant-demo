@@ -257,7 +257,7 @@ Search supports three modes:
 
 Optional HyDE (Hypothetical Document Embedding): when `is_hyde=true`, the query is embedded as a document rather than a query, which can improve recall for some use cases.
 
-Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
+Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
 
 #### RAG System
 
@@ -467,7 +467,9 @@ command `python -m semant_demo.maintenance.metadata_sync` (read-only report, the
 apply, or a checkpointed single-pass `--sync`; source library only — see
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) and [DATABASE.md](DATABASE.md)). Documents without
 chunks are audited, and on explicit request deleted, by
-`python -m semant_demo.maintenance.document_cleanup` (#281).
+`python -m semant_demo.maintenance.document_cleanup` (#281). The document year that the
+search filters on is copied to the chunks, and checked, by
+`python -m semant_demo.maintenance.chunk_year` (#153).
 
 ## Historical material
 

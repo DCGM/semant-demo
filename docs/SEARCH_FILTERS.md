@@ -22,7 +22,7 @@ This file is automatically loaded at runtime. It represents a `SearchFiltersResp
 ## 2. Default Configuration Generation
 To avoid hardcoding dynamic data like the absolute maximum and minimum document years or available languages, the configuration can be generated programmatically using `create_default_configurations.py`.
 
-Under the hood, the script connects to Weaviate and calls `generate_default_filters_async(chunks)` (in `features/search/filters.py`), which reads the `min` and `max` `yearIssued` and the top occurring `language` codes through `ChunkSearchRepository.document_filter_stats()` (`adapters/weaviate/search.py`). If the database cannot be read, the static defaults are used.
+Under the hood, the script connects to Weaviate and calls `generate_default_filters_async(chunks)` (in `features/search/filters.py`), which reads the `min` and `max` document `yearIssued` and the top occurring `language` codes through `ChunkSearchRepository.document_filter_stats()` (`adapters/weaviate/search.py`). If the database cannot be read, the static defaults are used.
 The script then writes these dynamically discovered values, along with static classification tasks (like `communicative_mode`, `complexity`), into the `search_filters.yaml` file.
 
 *If the YAML file is missing at runtime, `load_search_filters_config()` writes and returns the static defaults (`generate_default_filters()`); it does not query the database.*
@@ -43,7 +43,9 @@ When a user submits a search request to the POST `/api/search` endpoint, they in
    Valid filters become neutral `FieldCondition`s (`features/search/schemas.py`): a field name, an operation and a value. When the request has no `filters`, the legacy `min_year`, `max_year` and `language` fields are turned into conditions instead (RAG uses these).
 
 2. **Weaviate Query Construction (`adapters/weaviate/search.py`)**:
-   The search adapter translates the conditions into Weaviate `Filter` objects. Depending on whether the field belongs to the `Document` collection (e.g., `yearIssued`, `genre`) or the `Chunk` collection itself, it applies the correct reference linkage (`Filter.by_ref(link_on="document")`). It combines them (AND) with the collection scope and the tag filter.
+   The search adapter translates the conditions into Weaviate `Filter` objects. Fields of the `Document` collection (`DOCUMENT_FIELDS`, e.g. `genre`, `dateIssued`) are filtered through the reference (`Filter.by_ref(link_on="document")`), chunk fields directly. It combines them (AND) with the collection scope and the tag filter.
+
+   **Years are filtered on the chunk** (#153): `yearIssued` conditions, from the `year_range` filter and the legacy `min_year`/`max_year` fields (RAG), use the chunk's own `Chunks.yearIssued`, a copy of its document's `yearIssued`. Combining a lower and an upper bound through the `document` reference gave wrong, often empty, results in Weaviate 1.34. Both bounds are inclusive; chunks without a year (their document has none) never match a year condition. The copy is written and checked by `python -m semant_demo.maintenance.chunk_year` ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)); a store whose `Chunks` lacks `yearIssued` answers year-filtered searches with an error, so run it before deploying this code against a store, and again after ingesting chunks or changing document years.
 
 3. **Database Execution (`ChunkSearchRepository.search`)**:
    The adapter runs the `.bm25()`, `.near_vector()` or `.hybrid()` query with the combined filter, so restrictions apply during retrieval, not to the top-k hits afterwards. The query vector for vector/hybrid search is computed beforehand by the service through the injected embedding client.

@@ -71,6 +71,7 @@ async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, cor
     chunk_tags = {entry["chunk"]: entry for entry in corpus.chunk_tags}
     chunk_objects = []
     for key, chunk in chunks.items():
+        year = corpus.documents[chunk["document"]]["properties"].get("yearIssued")
         references = {
             "document": corpus.documents[chunk["document"]]["id"],
             names.user_collection_link_name: [collections[c]["id"] for c in chunk["collections"]],
@@ -90,6 +91,7 @@ async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, cor
                 "from_page": chunk["from_page"],
                 "to_page": chunk["to_page"],
                 "end_paragraph": True,
+                **({"yearIssued": year} if year is not None else {}),
                 **corpus.chunk_classifications.get(key, {}),
             },
             references=references,
