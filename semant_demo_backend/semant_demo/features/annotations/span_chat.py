@@ -152,7 +152,7 @@ async def build_context_message(store: AnnotationStore, *, span: TagSpan, contex
         try:
             tag = await store.tags.read(UUID(span.tagId))
         except Exception as e:
-            logger.warning("Failed to load tag %s: %s", span.tagId, e)
+            logger.warning("Failed to load tag %s: %s", span.tagId, type(e).__name__)
 
     chunk = await store.documents.read_chunk_text(UUID(span.chunkId))
     document_id = chunk.document_id if chunk is not None else None
@@ -164,7 +164,7 @@ async def build_context_message(store: AnnotationStore, *, span: TagSpan, contex
         try:
             document = await store.documents.read(document_id)
         except Exception as e:
-            logger.warning("Failed to load document %s: %s", document_id, e)
+            logger.warning("Failed to load document %s: %s", document_id, type(e).__name__)
 
     assembled_text, consumed_orders = await _assemble_chunks_covering_span(
         store,
@@ -193,7 +193,7 @@ async def build_context_message(store: AnnotationStore, *, span: TagSpan, contex
             consumed_set = set(consumed_orders)
             neighbours = [c for c in chunks if c.order not in consumed_set]
         except Exception as e:
-            logger.warning("Failed to fetch neighbour chunks: %s", e)
+            logger.warning("Failed to fetch neighbour chunks: %s", type(e).__name__)
 
     prev_text = " ".join(
         n.text for n in neighbours if n.order < chunk_order

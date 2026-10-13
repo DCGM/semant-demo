@@ -136,7 +136,7 @@ async def fetch_db_filter_stats(chunks: "ChunkSearchRepository") -> tuple[int | 
     try:
         return await chunks.document_filter_stats()
     except Exception as e:
-        logging.warning(f"Could not fetch filter stats from DB: {e}")
+        logging.warning("Could not fetch filter stats from DB: %s", type(e).__name__)
         return None, None, None
 
 

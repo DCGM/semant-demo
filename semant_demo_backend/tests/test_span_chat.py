@@ -177,4 +177,30 @@ async def test_stream_ends_with_done():
 async def test_provider_failure_mid_stream_ends_with_an_error_event():
     events = await _events(FakeStore(span(0, 3)), FakeStreamingChat(["a"], error=RuntimeError("quota")))
 
-    assert events == [{"delta": "a"}, {"error": "quota"}]
+    assert events == [{"delta": "a"}, {"error": "The assistant reply failed."}]
+
+
+SECRET = "sk-SECRET-MARKER-7f3a"
+
+
+async def test_provider_error_text_reaches_neither_the_client_nor_the_log(caplog):
+    error = RuntimeError(f"401 key={SECRET} prompt=Jan Novák")
+
+    events = await _events(FakeStore(span(0, 3)), FakeStreamingChat(["a"], error=error))
+
+    assert events[-1] == {"error": "The assistant reply failed."}
+    assert "Span discussion stream failed: RuntimeError" in caplog.text
+    assert SECRET not in caplog.text and "Novák" not in caplog.text and caplog.records[-1].exc_info is None
+
+
+async def test_failed_context_reads_log_only_the_error_class(caplog):
+    async def failing(*args):
+        raise RuntimeError(f"weaviate echoed key={SECRET} text=Jan Novák")
+
+    store, provider = FakeStore(span(0, 3)), FakeStreamingChat(["ok"])
+    store.tags.read = store.documents.read = store.documents.read_following_chunk_texts = failing
+
+    assert await run(store, provider) == ["ok"]
+
+    assert [r.getMessage().rsplit(": ", 1)[1] for r in caplog.records] == ["RuntimeError"] * 3
+    assert SECRET not in caplog.text and "Novák" not in caplog.text

@@ -318,7 +318,7 @@ async def test_search_adds_requested_summaries():
     assert summarizer.calls == 1 and response.results_summary == "summary" and response.warnings == []
 
 
-async def test_summary_failure_keeps_the_results_and_warns():
+async def test_summary_failure_keeps_the_results_and_warns(caplog):
     chunks = FakeChunks(hits=[hit("a"), hit("b")])
 
     response = await service.search(backends(chunks), FailingSummarizer(titles_done=1), OWNER, request())
@@ -326,6 +326,8 @@ async def test_summary_failure_keeps_the_results_and_warns():
     assert [r.text for r in response.results] == ["a", "b"]
     assert [r.query_title for r in response.results] == ["title", None]
     assert response.warnings == [service.SUMMARY_FAILED_WARNING]
+    # Only the error class is logged; provider messages may echo the prompt.
+    assert "Search summary generation failed: RuntimeError" in caplog.text and "provider down" not in caplog.text
 
 
 async def test_reported_summary_failures_keep_the_results_and_warn():
