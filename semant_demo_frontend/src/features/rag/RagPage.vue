@@ -199,7 +199,7 @@
           </div>
           <div
             v-else
-            v-html="convertToMarkdown(convertLinks(explanationDialog.text, messages[selectionData.msgIndex].sources, selectionData.msgIndex))"
+            v-html="convertToMarkdown(convertLinks(explanationDialog.text, messages[selectionData.msgIndex]?.sources, selectionData.msgIndex))"
             class="markdown-body"
             @click.capture="singleSourceClicks">
           </div>
@@ -215,7 +215,8 @@ import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { marked } from 'marked'
 import { useQuasar } from 'quasar'
 import { SearchType, type RagChatMessage, type RagRouteConfig, type SearchResultChunk } from 'src/generated/api'
-import { errorStatus, useApi } from 'src/shared/api'
+import { createContextGuard, errorStatus, useApi } from 'src/shared/api'
+import { useUserStore } from 'src/features/auth/userStore'
 const $q = useQuasar() // notifications
 const api = useApi().default
 // ---------------------------------------------------
@@ -293,11 +294,23 @@ onUnmounted(() => {
 })
 // ----------------------Main chat-----------------------------
 
+// The conversation: resetting it starts a new one, and answers (RAG, explanations) still
+// on their way for the old one are dropped.
+const conversation = createContextGuard()
+
 // reset chat when change RAG configuration
-watch(selectedRAG, (_, oldVal) => {
-  if (oldVal) {
+watch(() => selectedRAG.value?.id, (_, oldId) => {
+  if (oldId) {
     resetChat()
   }
+})
+
+// The questions and answers belong to whoever asked them: signing out, an expired session
+// or another account (also from another tab) starts a new conversation. Signing in keeps
+// a conversation started signed out.
+const userStore = useUserStore()
+watch(() => userStore.getUserId, (userId, previousUserId) => {
+  if (previousUserId && userId !== previousUserId) resetChat()
 })
 
 const scrollToBottom = () => {
@@ -321,6 +334,7 @@ const sendMessage = async () => {
 
   // waiting
   isAiThinking.value = true
+  const isCurrent = conversation.capture()
 
   try {
     // get history
@@ -350,6 +364,7 @@ const sendMessage = async () => {
         }
       }
     })
+    if (!isCurrent()) return
     const ragAnswer = ragResponse.ragAnswer
     const sources = ragResponse.sources
 
@@ -374,6 +389,7 @@ const sendMessage = async () => {
       responseId: ragResponse.responseId
     })
   } catch (error) {
+    if (!isCurrent()) return
     console.error('RAG error:', error)
     if (errorStatus(error) === 401) {
       messages.value.push({ sender: 'AI', text: 'You have entered invalid API key.' })
@@ -381,8 +397,10 @@ const sendMessage = async () => {
       messages.value.push({ sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
     }
   } finally {
-    isAiThinking.value = false
-    scrollToBottom()
+    if (isCurrent()) {
+      isAiThinking.value = false
+      scrollToBottom()
+    }
   }
 }
 
@@ -443,13 +461,23 @@ const singleSourceClicks = (event: Event) => {
   }
 }
 
-// put chat into starting state
+// put chat into starting state: no messages, sources, explanation or feedback of the old
+// conversation stay open, and its pending answers are ignored
 const resetChat = () => {
+  conversation.enter()
   messages.value = [
     { sender: 'AI', text: 'Ahoj, máte na mě nějakou otázku?\n\n**Tip:** Označte část odpovědi a klikněte na **Explain** pro ověření tvrzení.' }
   ]
   newMessage.value = ''
   isAiThinking.value = false
+  showSourcesDialog.value = false
+  currentSources.value = []
+  selectionData.value = { show: false, x: 0, y: 0, text: '', msgIndex: -1 }
+  explanationDialog.value = { show: false, text: '', loading: false }
+  showFeedbackDialog.value = false
+  feedbackComment.value = ''
+  selectedErrorTypes.value = []
+  currentFeedbackIndex.value = -1
 }
 
 // hide explain button if clicked elsewhere
@@ -502,6 +530,7 @@ const explainSelection = async () => {
   explanationDialog.value.loading = true
   explanationDialog.value.text = ''
   selectionData.value.show = false
+  const isCurrent = conversation.capture()
 
   try {
     const response = await api.explainSelectionApiRagExplainPost({
@@ -513,11 +542,11 @@ const explainSelection = async () => {
         fullAnswer: aiMsg.text
       }
     }) as { explanation?: string }
-    explanationDialog.value.text = response.explanation ?? ''
+    if (isCurrent()) explanationDialog.value.text = response.explanation ?? ''
   } catch (error) {
-    explanationDialog.value.text = 'Sorry, this part can not be explained.'
+    if (isCurrent()) explanationDialog.value.text = 'Sorry, this part can not be explained.'
   } finally {
-    explanationDialog.value.loading = false
+    if (isCurrent()) explanationDialog.value.loading = false
   }
 }
 

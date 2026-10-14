@@ -91,6 +91,7 @@ import { ref, watch } from 'vue'
 import type { QForm } from 'quasar'
 import { useUserStore } from './userStore'
 import { storeToRefs } from 'pinia'
+import { createContextGuard } from 'src/shared/api'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits(['update:modelValue'])
@@ -106,20 +107,25 @@ const profileLoading = ref(false)
 const profileErrorMsg = ref('')
 const profileSuccessMsg = ref('')
 
-// Sync fields when dialog opens
-watch(() => props.modelValue, (open) => {
-  if (open) {
-    editName.value = user.value?.name ?? ''
-    editInstitution.value = user.value?.institution ?? ''
-    profileFormRef.value?.resetValidation()
-    passwordFormRef.value?.resetValidation()
-    newPassword.value = ''
-    confirmPassword.value = ''
-    profileErrorMsg.value = ''
-    profileSuccessMsg.value = ''
-    passwordErrorMsg.value = ''
-    passwordSuccessMsg.value = ''
-  }
+// Fresh fields each time the dialog opens or closes (also when the session ends), so no
+// draft, password or message outlives the dialog or the user it was typed for. A save
+// still running from before cannot report into the fresh dialog.
+const opening = createContextGuard()
+watch(() => props.modelValue, () => {
+  opening.enter()
+  profileLoading.value = false
+  passwordLoading.value = false
+  editName.value = user.value?.name ?? ''
+  editInstitution.value = user.value?.institution ?? ''
+  profileFormRef.value?.resetValidation()
+  passwordFormRef.value?.resetValidation()
+  newPassword.value = ''
+  confirmPassword.value = ''
+  showPassword.value = false
+  profileErrorMsg.value = ''
+  profileSuccessMsg.value = ''
+  passwordErrorMsg.value = ''
+  passwordSuccessMsg.value = ''
 })
 
 async function saveProfile() {
@@ -128,13 +134,14 @@ async function saveProfile() {
   profileErrorMsg.value = ''
   profileSuccessMsg.value = ''
   profileLoading.value = true
+  const isCurrent = opening.capture()
   try {
     await userStore.updateUser({ name: editName.value, institution: editInstitution.value || null })
-    profileSuccessMsg.value = 'Profile updated successfully.'
+    if (isCurrent()) profileSuccessMsg.value = 'Profile updated successfully.'
   } catch {
-    profileErrorMsg.value = 'Failed to update profile.'
+    if (isCurrent()) profileErrorMsg.value = 'Failed to update profile.'
   } finally {
-    profileLoading.value = false
+    if (isCurrent()) profileLoading.value = false
   }
 }
 
@@ -153,16 +160,18 @@ async function changePassword() {
   passwordErrorMsg.value = ''
   passwordSuccessMsg.value = ''
   passwordLoading.value = true
+  const isCurrent = opening.capture()
   try {
     await userStore.updateUser({ password: newPassword.value })
+    if (!isCurrent()) return
     passwordSuccessMsg.value = 'Password updated successfully.'
     newPassword.value = ''
     confirmPassword.value = ''
     passwordFormRef.value?.resetValidation()
   } catch {
-    passwordErrorMsg.value = 'Failed to update password.'
+    if (isCurrent()) passwordErrorMsg.value = 'Failed to update password.'
   } finally {
-    passwordLoading.value = false
+    if (isCurrent()) passwordLoading.value = false
   }
 }
 </script>

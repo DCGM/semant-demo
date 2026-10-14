@@ -106,7 +106,9 @@ export async function ensureLoggedIn (page: Page, userKey: string): Promise<void
   await page.getByLabel('Email or Username').fill(user.username)
   await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Log In' }).click()
-  await expect(page.getByText(`Welcome, ${user.name}!`)).toBeVisible()
+  // The dialog closes once signed in; a welcome notice may still be left from an earlier login.
+  await expect(page.getByLabel('Email or Username'), 'the login dialog did not close').toHaveCount(0)
+  await expect(page.getByText(`Welcome, ${user.name}!`).first()).toBeVisible()
   expect((await storedUser(page))?.username, 'signed in as another user').toBe(user.username)
 }
 
