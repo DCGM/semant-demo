@@ -97,10 +97,28 @@ test('a failed server logout still signs out here and says so', async ({ page })
 
   await drawerItem(page, 'Sign out').click()
 
-  await expect(page.getByText('You have been logged out on this device, but the server could not confirm the sign-out.')).toBeVisible()
+  await expect(page.getByText('The server could not confirm the sign-out. You remain logged out on this device.')).toBeVisible()
   await expect(drawerItem(page, 'Log in')).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('auth_token'))).toBeNull()
   expect(pageErrors).toEqual([])
+})
+
+test('signing out ends the session at once while the server logout never answers', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await drawerItem(page, 'Collections').click()
+  await expect(page.getByText(ownCollection, { exact: true })).toBeVisible()
+  const logoutRequests: string[] = []
+  await page.route('**/api/auth/jwt/logout', (route) => { logoutRequests.push(route.request().headers().authorization ?? '') }) // held forever
+
+  await drawerItem(page, 'Sign out').click()
+
+  await expect(page.getByText('You have been logged out.')).toBeVisible()
+  await expect(page).toHaveURL(/#\/search/)
+  await expect(drawerItem(page, 'Log in')).toBeVisible()
+  await expect(drawerItem(page, 'Collections')).toHaveCount(0)
+  await expect(page.getByText(ownCollection, { exact: true })).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem('auth_token'))).toBeNull()
+  expect(logoutRequests).toEqual([expect.stringMatching(/^Bearer .+/)])
 })
 
 test('signing out in another tab while an explanation is open closes it without errors', async ({ page }) => {

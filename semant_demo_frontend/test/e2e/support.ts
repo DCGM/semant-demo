@@ -120,6 +120,8 @@ export async function logOut (page: Page): Promise<void> {
     await userMenu(page).click()
     await page.locator('.q-menu').getByText('Log Out', { exact: true }).click()
     await expect(page.getByText('You have been logged out.')).toBeVisible()
+    // The menu closes too; signing out is immediate, so it is not left open showing Log In.
+    await expect(page.locator('.q-menu')).toHaveCount(0)
   }
   await expectSignedIn(page, false)
 }
