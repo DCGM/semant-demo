@@ -22,6 +22,7 @@ import type {
   Collection,
   CollectionChunk,
   CollectionStats,
+  CorpusOverview,
   CreateResponse,
   DeleteAutoSpansRequest,
   DeleteAutoSpansResponse,
@@ -76,6 +77,8 @@ import {
     CollectionChunkToJSON,
     CollectionStatsFromJSON,
     CollectionStatsToJSON,
+    CorpusOverviewFromJSON,
+    CorpusOverviewToJSON,
     CreateResponseFromJSON,
     CreateResponseToJSON,
     DeleteAutoSpansRequestFromJSON,
@@ -508,6 +511,28 @@ export interface DefaultApiInterface {
      * Bulk Update Tag Spans
      */
     bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse>;
+
+    /**
+     * Creates request options for corpusOverviewApiAnalyticsCorpusOverviewGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    corpusOverviewApiAnalyticsCorpusOverviewGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * Document counts of the searchable corpus (public): the total and the documents by publication decade, source library and document language, with unknown values and unavailable properties stated explicitly. A recent result may be served again (``data_source``, ``computed_at``).
+     * @summary Corpus Overview
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    corpusOverviewApiAnalyticsCorpusOverviewGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusOverview>>;
+
+    /**
+     * Document counts of the searchable corpus (public): the total and the documents by publication decade, source library and document language, with unknown values and unavailable properties stated explicitly. A recent result may be served again (``data_source``, ``computed_at``).
+     * Corpus Overview
+     */
+    corpusOverviewApiAnalyticsCorpusOverviewGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusOverview>;
 
     /**
      * Creates request options for countDocumentChunksApiDocumentsDocumentIdChunksCountGet without sending the request
@@ -1976,6 +2001,45 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse> {
         const response = await this.bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for corpusOverviewApiAnalyticsCorpusOverviewGet without sending the request
+     */
+    async corpusOverviewApiAnalyticsCorpusOverviewGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/analytics/corpus/overview`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Document counts of the searchable corpus (public): the total and the documents by publication decade, source library and document language, with unknown values and unavailable properties stated explicitly. A recent result may be served again (``data_source``, ``computed_at``).
+     * Corpus Overview
+     */
+    async corpusOverviewApiAnalyticsCorpusOverviewGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusOverview>> {
+        const requestOptions = await this.corpusOverviewApiAnalyticsCorpusOverviewGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CorpusOverviewFromJSON(jsonValue));
+    }
+
+    /**
+     * Document counts of the searchable corpus (public): the total and the documents by publication decade, source library and document language, with unknown values and unavailable properties stated explicitly. A recent result may be served again (``data_source``, ``computed_at``).
+     * Corpus Overview
+     */
+    async corpusOverviewApiAnalyticsCorpusOverviewGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusOverview> {
+        const response = await this.corpusOverviewApiAnalyticsCorpusOverviewGetRaw(initOverrides);
         return await response.value();
     }
 

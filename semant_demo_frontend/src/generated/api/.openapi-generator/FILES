@@ -8,9 +8,12 @@ docs/AuthApi.md
 docs/BearerResponse.md
 docs/BulkUpdateSpansRequest.md
 docs/BulkUpdateSpansResponse.md
+docs/CategoryCount.md
+docs/CategoryDistribution.md
 docs/Collection.md
 docs/CollectionChunk.md
 docs/CollectionStats.md
+docs/CorpusOverview.md
 docs/CreateResponse.md
 docs/DefaultApi.md
 docs/DeleteAutoSpansRequest.md
@@ -45,6 +48,7 @@ docs/PatchTag.md
 docs/PostCollection.md
 docs/PostSpan.md
 docs/PostTag.md
+docs/PublicationYearDistribution.md
 docs/QuestionRequest.md
 docs/RagChatMessage.md
 docs/RagRequest.md
@@ -81,15 +85,19 @@ docs/Values.md
 docs/ValuesAnyOfInner.md
 docs/WriteOutcome.md
 docs/WriteResult.md
+docs/YearBin.md
 index.ts
 models/AdjacentChunks.ts
 models/AppFeedbackRequest.ts
 models/BearerResponse.ts
 models/BulkUpdateSpansRequest.ts
 models/BulkUpdateSpansResponse.ts
+models/CategoryCount.ts
+models/CategoryDistribution.ts
 models/Collection.ts
 models/CollectionChunk.ts
 models/CollectionStats.ts
+models/CorpusOverview.ts
 models/CreateResponse.ts
 models/DeleteAutoSpansRequest.ts
 models/DeleteAutoSpansResponse.ts
@@ -123,6 +131,7 @@ models/PatchTag.ts
 models/PostCollection.ts
 models/PostSpan.ts
 models/PostTag.ts
+models/PublicationYearDistribution.ts
 models/QuestionRequest.ts
 models/RagChatMessage.ts
 models/RagRequest.ts
@@ -158,5 +167,6 @@ models/Values.ts
 models/ValuesAnyOfInner.ts
 models/WriteOutcome.ts
 models/WriteResult.ts
+models/YearBin.ts
 models/index.ts
 runtime.ts

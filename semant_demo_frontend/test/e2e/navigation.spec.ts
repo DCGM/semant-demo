@@ -31,7 +31,7 @@ test('a signed-out user sees Log in and Register, also in the collapsed drawer',
 
   await drawer(page).getByRole('button', { name: 'Collapse navigation' }).click()
   await expect(drawer(page)).toHaveClass(/q-drawer--mini/)
-  await expect(drawer(page).locator('.drawer-item')).toHaveCount(5) // search, chat, about, log in, register
+  await expect(drawer(page).locator('.drawer-item')).toHaveCount(6) // search, chat, corpus, about, log in, register
   await expect(drawer(page).getByText('folder', { exact: true })).toHaveCount(0) // no Collections icon
 
   await drawerItem(page, 'Log in').click()

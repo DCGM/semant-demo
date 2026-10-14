@@ -72,6 +72,9 @@ class Config:
         # (system + context + last N exchanges).
         self.SPAN_CHAT_HISTORY_LIMIT = int(env.get("SPAN_CHAT_HISTORY_LIMIT", 20))
 
+        # Corpus overview (#254): seconds a computed overview is served before it is computed again.
+        self.CORPUS_OVERVIEW_MAX_AGE = float(env.get("CORPUS_OVERVIEW_MAX_AGE", 600.0))
+
         # path to rag configs
         default_config_path = SCRIPT_PATH / "configs" / "rag" / "demo_configs"
         self.RAG_CONFIGS_PATH = env.get("RAG_CONFIGS_PATH", str(default_config_path))

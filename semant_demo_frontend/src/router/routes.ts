@@ -18,6 +18,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('src/features/rag/RagPage.vue')
       },
       {
+        // Document counts of the whole public corpus; no sign-in needed (#254).
+        name: 'corpus',
+        path: '/corpus',
+        component: () => import('src/features/analytics/CorpusOverviewPage.vue')
+      },
+      {
         // A protected link waiting for a stored session to be verified (router/authGuard.ts).
         name: 'sessionPending',
         path: '/session-pending',

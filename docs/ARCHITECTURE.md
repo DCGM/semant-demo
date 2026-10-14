@@ -85,9 +85,10 @@ semant_demo_backend/semant_demo/
     summarization/        routes, service (results summary, question), base and templated
                           (search summarizer), schemas (SummaryResponse)
     feedback/             app feedback: routes, service (feedback log, webhook), schemas
+    analytics/            corpus overview: routes, service (counting rules, overview cache), schemas
   adapters/
     weaviate/             one repository per concern: user_collections, documents, tags, spans,
-                          chunk_tags, search; client, paging, writes (best-effort cascades),
+                          chunk_tags, search, analytics (document aggregates); client, paging, writes (best-effort cascades),
                           names (CollectionNames: configured Weaviate collection names)
     sql/                  base (declarative Base), tables (create_tables), users (UserLookup), feedback
     embeddings/gemma.py   embedding service client
@@ -144,6 +145,7 @@ A `Config` class that reads settings once, at construction, from the process env
 | `get_user_lookup()` | SQL user lookups (`adapters/sql/users.UserLookup`) on a request session | Per-request |
 | `get_documents()`, `get_tags()`, `get_user_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
 | `get_annotation_store()` | The repositories the Annotations service uses (collections, tags, spans, chunk tags, documents) | Startup → shutdown |
+| `get_corpus_analytics()`, `get_corpus_overview_cache()` | Document aggregates (`adapters/weaviate/analytics.py`); the app's last corpus overview | Startup → shutdown |
 | `get_search_backends()` | Search adapter, collection/tag repositories and the embedding client for the search service and RAG retrieval | Startup → shutdown |
 | `get_topicer()`, `get_span_chat()` | Topicer client; the span chat's `FeatureChat` | Startup → shutdown |
 | `get_llm()` | The `LlmGateway` (model tiers, metered chat models) | Startup → shutdown |
@@ -218,7 +220,7 @@ but not change membership, metadata or sharing. Public corpus reads (`GET /api/d
 `/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`,
 `/api/documents/{id}/chunks/{chunk_id}/window` and `/adjacent` (a bounded passage around a
 chunk and its extension), search
-without collection and tags) need no login. RAG, `/api/summarize/results` and
+without collection and tags, the corpus overview `/api/analytics/corpus/overview`) need no login. RAG, `/api/summarize/results` and
 `/api/question` are public too and call LLM providers with client-supplied text;
 this existing product behavior is tracked for an access/cost decision in [#234](https://github.com/DCGM/semant-demo/issues/234).
 
@@ -258,6 +260,43 @@ Search supports three modes:
 Optional HyDE (Hypothetical Document Embedding): when `is_hyde=true`, the query is embedded as a document rather than a query, which can improve recall for some use cases.
 
 Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
+
+#### Corpus overview (`features/analytics/`, `adapters/weaviate/analytics.py`)
+
+`GET /api/analytics/corpus/overview` (public, #254) counts the documents of the searchable
+corpus: the total, documents per publication decade (`Documents.yearIssued`), per source
+library (`Documents.library`) and per bibliographic language (`Documents.language`, not the
+chunks' language). The response states its `scope` (`searchable_corpus`), `unit`
+(`documents`), `computed_at` and `data_source`; it carries counts, not chart specifications.
+
+- **Population.** Every object of `Documents`, as Search covers the whole public corpus;
+  `Documents.public` is not used (#279). A future public-read policy must restrict the
+  counting query itself, and the cache below must then be kept per scope. Documents without
+  chunks are not checked per request: their absence is a maintenance invariant (#281, #313).
+- **Counting.** Native aggregates over `Documents` only (never through chunks, never
+  objects or vectors): one aggregate reads the total and, per property, the number of
+  documents with a value; one grouped aggregate per property reads documents per value (at
+  most 10,000 values). Missing values are `total - known` (the deployed collections do not
+  index null state, so `is_none` filters fail), and empty or blank values count as unknown.
+  Decades are `[start, start + 10)` and run without gaps from the earliest to the latest;
+  years that are not whole numbers from 1 to 9999 are unknown. Libraries and languages list
+  at most 50 values, with the remaining documents in `other_count`; stored values are
+  returned unchanged (the page adds names but keeps the codes). For each available
+  dimension, listed counts + `other_count` + `unknown_count` = `total_documents`; counts that
+  do not add up (the corpus changed between the queries, or more than 10,000 years) fail
+  the request rather than misreport.
+- **Unavailable properties.** A property the collection does not declare
+  (`missing_property`, e.g. `library` before `metadata_sync`) or that is not a single value
+  of the expected type (`unsupported_type`) is `available: false` with `null` counts, never
+  zeros; the rest of the overview is still returned.
+- **Load and freshness.** Measured on Weaviate 1.34.4 (local Docker, 12 cores): 15 ms for the
+  500-document development snapshot; about 1.9 s for 300,000 synthetic documents (the grouped
+  aggregates take 0.8–0.9 s each; 20 concurrent computations took 26 s). The app therefore
+  keeps its last overview for `CORPUS_OVERVIEW_MAX_AGE` seconds (default 600) and serves it
+  again with `data_source: "cached_aggregation"` and the original `computed_at`; concurrent
+  requests wait for one computation. Each backend process has its own cache; nothing is
+  precomputed or stored, and a failure is not cached (an error response, never an empty
+  overview).
 
 #### RAG System
 
@@ -408,7 +447,9 @@ Vue 3 + Quasar 2 SPA with TypeScript. Code is grouped by feature under `src/feat
 each feature owns its pages, components, Pinia stores, composables and repository wrappers
 over the generated client. `app/` is the application shell (main layout, right sidebar, session
 scope, about and not-found pages), `shared/` holds code without a feature owner (`api/`,
-`ui/` buttons and error display, notifications, write outcomes, pagination, color picker),
+`ui/` buttons and error display, notifications, write outcomes, pagination, color picker,
+`visualization/VegaChart.vue`: draws a Vega-Lite or Vega specification with vega-embed,
+loaded on demand, fitted to its container width and disposed of on unmount),
 and `router/` the routes and sign-in guard.
 
 | Feature | Contents |
@@ -420,6 +461,7 @@ and `router/` the routes and sign-in guard.
 | `annotations` | tags table and dialog, span discussion, annotation/AI-suggestion/tag-navigation composables, `tagsStore`, `tagSpansStore`, span offsets; in the document view: the annotated chunk text, span gutter, selection popover, tags panel and AI assist panel |
 | `auth` | login/register/account dialogs, `userStore`, user search |
 | `feedback` | feedback page and its schema |
+| `analytics` | corpus overview page, its request (`useCorpusOverview`: abort on leave, retry, slow notice), rows/labels/chart specifications (`corpusOverview.ts`) |
 
 The document view (`features/documents/viewer/`) is `DocumentViewLayout` (header; the tags,
 AI assist and document tools as panels of the app's right sidebar; loads the document,
@@ -436,6 +478,7 @@ behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 |---|---|---|
 | `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
 | `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations |
+| `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication decade, library and language, with tables and unknown/unavailable values (no sign-in) |
 | `/collections` | `user_collections/UserCollectionsPage` | List user collections |
 | `/collections/:cid/overview` | `user_collections/CollectionOverviewPage` | Collection summary & stats |
 | `/collections/:cid/documents` | `user_collections/CollectionDocumentsPage` | Documents inside a collection |

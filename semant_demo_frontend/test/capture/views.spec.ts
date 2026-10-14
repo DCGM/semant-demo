@@ -38,3 +38,25 @@ test('document view', async ({ page }, testInfo) => {
   await expectSidebarsOpen(page, testInfo)
   await save(page, testInfo, 'document-view')
 })
+
+test('corpus overview', async ({ page }, testInfo) => {
+  // A synced store has libraries; the fixture store has none (shown as unavailable).
+  await page.route('**/api/analytics/corpus/overview', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.libraries = { available: true, values: [{ value: 'mzk', count: 2 }], other_count: 0, unknown_count: 1 }
+    await route.fulfill({ response, json: body })
+  })
+  await page.goto('/#/corpus')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('corpus-libraries').locator('svg').first()).toBeVisible()
+  await save(page, testInfo, 'corpus-overview')
+})
+
+test('corpus overview without libraries', async ({ page }, testInfo) => {
+  await page.goto('/#/corpus')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
+  await page.getByTestId('corpus-libraries').scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'corpus-overview-unavailable')
+})

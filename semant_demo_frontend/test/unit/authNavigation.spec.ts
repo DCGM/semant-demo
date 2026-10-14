@@ -221,7 +221,7 @@ describe('MainLayout navigation', () => {
     const { wrapper } = await mountLayout()
 
     const labels = drawerLabels(wrapper)
-    expect(labels).toEqual(expect.arrayContaining(['Document search', 'Chat Assistant', 'About', 'Log in', 'Register']))
+    expect(labels).toEqual(expect.arrayContaining(['Document search', 'Chat Assistant', 'Corpus', 'About', 'Log in', 'Register']))
     expect(labels.filter((l) => ['Collections', 'Settings', 'Sign out'].includes(l))).toEqual([])
   })
 

@@ -17,6 +17,7 @@ from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway, ProviderSe
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.llm.usage import LlmMetrics
 from semant_demo.adapters.topicer.client import TopicerClient
+from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
@@ -25,6 +26,7 @@ from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
+from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.rag.registry import RagRegistry
 from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer, load_summarizer
 
@@ -44,6 +46,7 @@ class WeaviateRepositories:
     spans: SpanRepository
     chunk_tags: ChunkTagRepository
     """Chunk tag re-derivation; its per-pair locks are shared by all requests of the application."""
+    analytics: CorpusAnalyticsRepository
 
     @classmethod
     def create(cls, client: WeaviateAsyncClient, config: Config) -> "WeaviateRepositories":
@@ -56,6 +59,7 @@ class WeaviateRepositories:
             search=ChunkSearchRepository(client, names),
             spans=SpanRepository(client, names),
             chunk_tags=ChunkTagRepository(client, names),
+            analytics=CorpusAnalyticsRepository(client, names),
         )
 
 
@@ -68,6 +72,7 @@ class AppResources:
     topicer: TopicerClient
     llm: LlmGateway
     span_chat: FeatureChat
+    corpus_overview: OverviewCache
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
@@ -88,7 +93,8 @@ class AppResources:
                    topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT),
                    llm=llm,
                    span_chat=FeatureChat(llm, "span_chat", temperature=config.SPAN_CHAT_TEMPERATURE,
-                                         max_tokens=config.SPAN_CHAT_MAX_TOKENS))
+                                         max_tokens=config.SPAN_CHAT_MAX_TOKENS),
+                   corpus_overview=OverviewCache(config.CORPUS_OVERVIEW_MAX_AGE))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
         """Open the application's Weaviate client; raises if it cannot be connected."""
