@@ -95,15 +95,19 @@ of the changed states to the PR, and name any relevant context or state not capt
 not present screenshots you did not take or checks you did not run.
 
 GitHub has no API for uploading images to a PR, so attach screenshots through a secret
-gist. Create it with a short `README.md` (`gh gist create --desc "<repo> PR #N UI evidence"`),
-clone `git@gist.github.com:<id>.git`, add the PNGs and push. Then embed them in the PR
-description with revision-pinned raw URLs
+gist. Creating a gist needs gist write access for the `gh` token (fine-grained PAT owned by
+the user's personal account: account permission "Gists: Read and write"; classic token:
+`gist` scope). A token owned by the organization cannot get it. In that case ask the user
+to create a secret gist at gist.github.com with a short `README.md` and share its URL;
+do not host the images elsewhere. Otherwise create it with
+`gh gist create --desc "<repo> PR #N UI evidence" README.md`. Adding files needs only git:
+clone `git@gist.github.com:<id>.git`, add the PNGs and push (verify the
+`gist.github.com` host key against `gh api meta` if SSH does not know it yet). Embed the
+images in the PR description with revision-pinned raw URLs
 (`https://gist.githubusercontent.com/<user>/<id>/raw/<sha>/<file>.png`). A secret gist is
 unlisted, not private, so upload only synthetic/fixture data; never real user text,
 credentials or production content. Deleting a file keeps it in gist history and pinned
-links working; only deleting the whole gist removes the images. The token needs gist
-write access (fine-grained PAT: account permission "Gists: Read and write"; classic
-token: `gist` scope). If that is missing, ask the user instead of using another host.
+links working; only deleting the whole gist removes the images.
 
 For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
 
