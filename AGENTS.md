@@ -94,24 +94,17 @@ changes; only relevant contexts for localized changes), attach representative ev
 of the changed states to the PR, and name any relevant context or state not captured. Do
 not present screenshots you did not take or checks you did not run.
 
-GitHub has no API for uploading images to a PR, so attach screenshots through a secret
-gist owned by the user. Reuse their standing evidence gist when this clone names one
-(`git config --get semant.evidenceGist`, value `<user>/<id>`; local config, never
-committed); name files `pr<N>-<state>-<viewport>.png` because a gist has no folders. Only
-without one, set one up: ask the user to create a secret gist at gist.github.com with a
-short `README.md` (or run `gh gist create --desc "<repo> PR UI evidence" README.md` when
-the `gh` token has gist write access: fine-grained PAT owned by the personal account with
-"Gists: Read and write", or the classic `gist` scope; organization-owned tokens cannot
-get it), then offer to record it with `git config --local semant.evidenceGist <user>/<id>`.
-Never host the images elsewhere. Adding files needs only git: clone
-`git@gist.github.com:<id>.git`, pull, add the PNGs and push (verify the `gist.github.com`
-host key against `gh api meta` if SSH does not know it yet). Embed the images in the PR
-description with revision-pinned raw URLs
-(`https://gist.githubusercontent.com/<user>/<id>/raw/<sha>/<file>.png`), so later pushes
-to the gist never break them. A secret gist is unlisted, not private, and everyone with
-its URL sees all PRs' images, so upload only synthetic/fixture data; never real user
-text, credentials or production content. Deleting a file keeps it in gist history and
-pinned links working; only deleting the whole gist removes the images.
+Attach screenshots with GitHub CLI's native upload (`gh` 2.99 or newer): `gh pr edit <N>
+--attach './shot.png#What the screenshot shows'` appends them to the PR description, and
+`gh pr comment <N> --attach ...` adds them in a comment; repeat `--attach` for several
+files. To place images (e.g. in a table), reference them in the body file as
+`![alt](./shot.png)` and pass `-F body.md --attach ./shot.png`; the references are
+rewritten to the uploaded assets. Check `gh --version` and `gh auth status` first; if the
+flag is missing, ask the user to update `gh` instead of working around it. Attach only
+synthetic/fixture screenshots, give each a descriptive alt text after `#`, and verify the
+PR renders them (`gh pr view <N> --json body` shows `github.com/user-attachments/...`
+URLs). If the upload is unavailable or fails, report the blocker and ask the user to
+upload in the browser; do not set up external hosting such as gists.
 
 For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
 
