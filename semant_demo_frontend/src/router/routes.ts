@@ -18,6 +18,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('src/features/rag/RagPage.vue')
       },
       {
+        // A protected link waiting for a stored session to be verified (router/authGuard.ts).
+        name: 'sessionPending',
+        path: '/session-pending',
+        component: () => import('src/features/auth/SessionPendingPage.vue')
+      },
+      {
         name: 'collections',
         meta: { requiresAuth: true },
         path: '/collections',

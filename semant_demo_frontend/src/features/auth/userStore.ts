@@ -20,10 +20,16 @@ export const useUserStore = defineStore('user', {
   }),
 
   getters: {
+    /** A verified session: the user's account was read with the current token. */
     isLoggedIn: (state) => !!state.token && !!state.user,
     /**
-     * The stored session could not be confirmed (offline, server error): the token is
-     * kept and the user is not signed in until a later restore reads their account.
+     * A session whose token is stored but not verified yet (restore under way or failed).
+     * Neither signed in nor signed out: user data stays hidden, Sign out stays available.
+     */
+    awaitingVerification: (state) => !!state.token && !state.user,
+    /**
+     * The stored session could not be verified (offline, server error): the token is kept
+     * and the session awaits verification until a retry reads the user's account.
      */
     restoreFailed: (state) => !!state.token && !state.user && state.unconfirmedToken === state.token,
     getUserId: (state) => state.user?.id,
@@ -58,9 +64,14 @@ export const useUserStore = defineStore('user', {
     /**
      * Ends this session, also when the server request fails. If the session changed while
      * the request was pending (another tab signed in or out), that newer session stays.
+     * A session awaiting verification ends here at once, without asking the server.
      */
     async logout (): Promise<void> {
       const token = this.token
+      if (!this.user) {
+        this.forgetSession()
+        return
+      }
       try {
         if (token) await useApi().auth.authJwtLogoutApiAuthJwtLogoutPost()
       } finally {
@@ -92,14 +103,14 @@ export const useUserStore = defineStore('user', {
     /**
      * Reads the user of the current token. Only a 401 (expired, revoked or otherwise invalid
      * token) ends the session; a network or server failure keeps the token for a later
-     * restore (`restoreFailed`). The answer (or failure) applies only while that token is
-     * still the session's: a late answer after sign-out or a switch to another account
-     * neither restores the old user nor ends the new session.
+     * restore (`restoreFailed`, which stays set while a retry is under way). The answer (or
+     * failure) applies only while that token is still the session's: a late answer after
+     * sign-out or a switch to another account neither restores the old user nor ends the
+     * new session.
      */
     async fetchCurrentUser (): Promise<void> {
       const token = this.token
       if (!token) return
-      this.unconfirmedToken = null // a retry that fails again is reported again
       try {
         // Sent with this token explicitly, so the answer belongs to the token checked below.
         const user = await useApi().users.usersCurrentUserApiUsersMeGet({ headers: { Authorization: `Bearer ${token}` } })

@@ -25,11 +25,18 @@
         <q-btn flat round dense aria-label="User menu">
           <q-avatar size="36px" :color="userStore.isLoggedIn ? undefined : 'grey-5'" text-color="primary">
             <img v-if="userStore.isLoggedIn" src="/boy-avatar2.png" style="border-radius:50%;width:100%;height:100%;object-fit:cover;" />
+            <q-icon v-else-if="userStore.restoreFailed" name="cloud_off" />
             <q-icon v-else name="person_outline" />
           </q-avatar>
           <q-menu>
             <q-list style="min-width: 180px">
-              <template v-if="!userStore.isLoggedIn">
+              <template v-if="userStore.awaitingVerification">
+                <q-item clickable v-close-popup @click="handleLogout">
+                  <q-item-section avatar><q-icon name="logout" /></q-item-section>
+                  <q-item-section>Log Out</q-item-section>
+                </q-item>
+              </template>
+              <template v-else-if="!userStore.isLoggedIn">
                 <q-item clickable v-close-popup @click="showLogin = true">
                   <q-item-section avatar><q-icon name="login" /></q-item-section>
                   <q-item-section>Log In</q-item-section>
@@ -187,6 +194,15 @@
     </q-drawer>
     <RightSidebar />
     <q-page-container>
+      <q-banner v-if="showSessionBanner" class="session-banner bg-amber-1 text-grey-9" role="status">
+        <template #avatar><q-icon name="cloud_off" color="amber-9" /></template>
+        Your session could not be verified: the server is unreachable or failing. You are still
+        signed in on this device; your data appears once the session is verified.
+        <template #action>
+          <q-btn flat color="primary" label="Retry" :loading="retryingSession" @click="retrySession" />
+          <q-btn flat color="primary" label="Sign out" @click="handleLogout" />
+        </template>
+      </q-banner>
       <router-view />
     </q-page-container>
 
@@ -252,7 +268,8 @@ const drawerLinks3 = [
   { label: 'Send feedback', icon: '', to: { name: 'feedback' } }
 ]
 
-const drawerLinks4 = computed<DrawerAction[]>(() => userStore.isLoggedIn
+// A session awaiting verification is not signed out: Sign out, no Log in / Register.
+const drawerLinks4 = computed<DrawerAction[]>(() => userStore.isLoggedIn || userStore.awaitingVerification
   ? [{ label: 'Sign out', icon: 'logout', action: handleLogout }]
   : [
       { label: 'Log in', icon: 'login', action: () => { showLogin.value = true } },
@@ -273,6 +290,20 @@ watch(() => userStore.isLoggedIn, (loggedIn) => {
   showLogin.value = false
   showRegister.value = false
 })
+
+// A stored session the server could not verify (offline, server error) is neither signed in
+// nor out: the banner says so and offers Retry and Sign out until it is verified or ends.
+const retryingSession = ref(false)
+const showSessionBanner = computed(() => userStore.awaitingVerification && (userStore.restoreFailed || retryingSession.value))
+
+async function retrySession () {
+  retryingSession.value = true
+  try {
+    await userStore.restoreSession({ retry: true })
+  } finally {
+    retryingSession.value = false
+  }
+}
 
 // Signing out always ends the session here (userStore.logout). The backend's JWT logout
 // revokes nothing; when it fails (offline, server error) the user is told this device
