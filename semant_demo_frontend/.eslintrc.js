@@ -102,5 +102,26 @@ module.exports = {
     'space-before-function-paren': 'off',
     curly: 'off', // turns off requiring braces for if/else
     '@typescript-eslint/no-non-null-assertion': 'off'
-  }
+  },
+
+  overrides: [
+    {
+      // Core 'no-undef' does not know TypeScript type names (e.g. KeyboardEventInit) and
+      // reports them as undefined variables. `npm run typecheck` reports undefined names in
+      // TypeScript and Vue files, so 'no-undef' stays on for JavaScript only.
+      // https://typescript-eslint.io/troubleshooting/faqs/eslint#i-get-errors-from-the-no-undef-rule-about-global-variables-not-being-defined-even-though-there-are-no-typescript-errors
+      files: ['*.ts', '*.tsx', '*.vue'],
+      rules: {
+        'no-undef': 'off'
+      }
+    },
+    {
+      // Components must use <script lang="ts">: plain JavaScript in a component would be
+      // checked by neither 'no-undef' (off above) nor the type check.
+      files: ['*.vue'],
+      rules: {
+        'vue/block-lang': ['error', { script: { lang: 'ts' } }]
+      }
+    }
+  ]
 }
