@@ -34,6 +34,8 @@ export function clearUserScopedState (): void {
  * Signing in, out or into another account in another browser tab is followed here too:
  * the old user's data is cleared and protected routes are left (`router/authGuard.ts`);
  * a new token of the same user (signed in again or renewed) keeps the session.
+ * A stored session that could not be confirmed (offline, server error) is kept, not ended:
+ * the user is told so, can retry, and it is retried when the browser comes back online.
  */
 export function useSessionScope (): void {
   const userStore = useUserStore()
@@ -55,9 +57,30 @@ export function useSessionScope (): void {
       })
     }
   })
+  let dismissRestoreNotice: (() => void) | null = null
+  const retryRestore = () => { if (userStore.restoreFailed) void userStore.restoreSession({ retry: true }) }
+  const stopRestoreNotice = watch(() => userStore.restoreFailed, (failed) => {
+    dismissRestoreNotice?.()
+    dismissRestoreNotice = failed
+      ? Notify.create({
+        type: 'warning',
+        position: 'top',
+        timeout: 0,
+        message: 'Could not restore your session: the server is unreachable or failing. Your sign-in is kept on this device.',
+        actions: [
+          { label: 'Retry', color: 'white', handler: retryRestore },
+          { icon: 'close', color: 'white', round: true }
+        ]
+      })
+      : null
+  })
+  if (typeof window !== 'undefined') window.addEventListener('online', retryRestore)
   onScopeDispose(() => {
     stopUnauthorized()
     stopTokenSync()
+    stopRestoreNotice()
+    dismissRestoreNotice?.()
+    if (typeof window !== 'undefined') window.removeEventListener('online', retryRestore)
   })
   watch(() => userStore.getUserId, (userId, previousUserId) => {
     if (previousUserId && userId !== previousUserId) clearUserScopedState()
