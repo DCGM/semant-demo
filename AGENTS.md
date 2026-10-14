@@ -94,6 +94,18 @@ changes; only relevant contexts for localized changes), attach representative ev
 of the changed states to the PR, and name any relevant context or state not captured. Do
 not present screenshots you did not take or checks you did not run.
 
+Attach screenshots with GitHub CLI's native upload (`gh` 2.99 or newer): `gh pr edit <N>
+--attach './shot.png#What the screenshot shows'` appends them to the PR description, and
+`gh pr comment <N> --attach ...` adds them in a comment; repeat `--attach` for several
+files. To place images (e.g. in a table), reference them in the body file as
+`![alt](./shot.png)` and pass `-F body.md --attach ./shot.png`; the references are
+rewritten to the uploaded assets. Check `gh --version` and `gh auth status` first; if the
+flag is missing, ask the user to update `gh` instead of working around it. Attach only
+synthetic/fixture screenshots, give each a descriptive alt text after `#`, and verify the
+PR renders them (`gh pr view <N> --json body` shows `github.com/user-attachments/...`
+URLs). If the upload is unavailable or fails, report the blocker and ask the user to
+upload in the browser; do not set up external hosting such as gists.
+
 For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
 
 Do not connect to or modify shared server Weaviate, shared preview databases, or production databases unless explicitly instructed for the current task.
