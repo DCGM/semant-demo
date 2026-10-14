@@ -31,7 +31,7 @@ only for regenerating the API client. From the repository root:
 | `make setup` | Create `.venv` if missing, install `semant_demo_backend/requirements-dev.lock` and the backend package, run `npm ci`. |
 | `make check` | Fast offline checks: backend Ruff and fast pytest suite, frontend ESLint, Vue type check and Vitest, generated-client drift. No keys, GPU, Weaviate or AI services. |
 | `make lock` / `make lock-check` | Regenerate the backend Python locks / fail if either is stale for its requirements (pip-tools, needs network). |
-| `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. |
+| `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. `make api-check` fails if the committed client differs from a fresh generation. |
 | `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. |
 | `make test-e2e` | Build the frontend and run the Playwright smoke suite against the deterministic backend profile (throwaway Weaviate, fixture corpus, fake AI providers). Needs Docker; installs Playwright's Chromium on first use. |
 | `make e2e-dev-start` / `e2e-dev-test ARGS=...` / `e2e-dev-stop` | Optional fast loop for browser-test work: keep one seeded profile running and rerun selected specs against it (`scripts/e2e-dev.sh`, see [DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop)). Not a substitute for `make test-e2e` before a PR. |
@@ -48,10 +48,10 @@ python3.12 -m venv .venv
 (cd semant_demo_backend && ../.venv/bin/python -m ruff check .)
 (cd semant_demo_backend && ../.venv/bin/python -m pytest -m "not integration and not live and not benchmark")
 (cd semant_demo_frontend && npm run lint && npm run typecheck && npm test)
-(cd semant_demo_frontend && PYTHON=../.venv/bin/python npm run api-check)
+(cd semant_demo_frontend && npm run api-check)
 
 # make api-generate
-(cd semant_demo_frontend && PYTHON=../.venv/bin/python npm run api-generate)
+(cd semant_demo_frontend && npm run api-generate)
 
 # make test-integration
 scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/python -m pytest -m integration'
@@ -120,6 +120,20 @@ requires it.
 - Type changed public inputs/outputs. Use `UUID` internally and existing naming conventions.
   Preserve wire fields, nullability, operation IDs, canonical text, and stored offsets
   during moves. See the target architecture for feature ownership and roadmap contracts.
+
+`npm run api-check` / `api-generate` and `make api-check` / `api-generate` are the same
+check: without `PYTHON`, `scripts/api-client.sh` uses the repository's `.venv/bin/python`
+from any directory and stops with instructions when it is missing or lacks the backend
+packages, rather than running another `python` from `PATH`. A relative `PYTHON` path is
+resolved from the directory the script starts in (`semant_demo_frontend` under `npm run`).
+The pinned generator (`openapitools.json`, run through `npx --no-install
+openapi-generator-cli`) needs Java 11+ on `PATH`; CI sets `OPENAPI_GENERATOR` to the same
+version's jar instead.
+
+ESLint's core `no-undef` checks JavaScript only, because it misreads TypeScript type names;
+`npm run typecheck` reports undefined names in TypeScript and Vue files, so components must
+use `<script lang="ts">` (enforced by lint). `test/unit/devTooling.spec.ts` covers both
+defaults.
 
 Never hand-edit `src/generated/api/`. Regenerate it with `make api-generate`, which
 generates into an empty directory so stale files are removed; `make check` fails when the
