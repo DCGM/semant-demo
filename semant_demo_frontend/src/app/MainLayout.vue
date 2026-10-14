@@ -278,26 +278,28 @@ watch(() => userStore.isLoggedIn, (loggedIn) => {
 // revokes nothing; when it fails (offline, server error) the user is told this device
 // is signed out but the server did not confirm it, without an unhandled rejection.
 async function handleLogout () {
+  let unconfirmed = false
   try {
     await userStore.logout()
   } catch (error) {
     // 401: the server no longer accepted the token, so nothing is left to confirm.
-    if (errorStatus(error) !== 401) {
-      $q.notify({
+    unconfirmed = errorStatus(error) !== 401
+  }
+  // Another tab signed in meanwhile and this tab follows that session; it says so itself.
+  if (userStore.token) return
+  $q.notify(unconfirmed
+    ? {
         type: 'warning',
         message: 'You have been logged out on this device, but the server could not confirm the sign-out.',
         position: 'top',
         timeout: 5000
+      }
+    : {
+        type: 'info',
+        message: 'You have been logged out.',
+        position: 'top',
+        timeout: 3000
       })
-      return
-    }
-  }
-  $q.notify({
-    type: 'info',
-    message: 'You have been logged out.',
-    position: 'top',
-    timeout: 3000
-  })
 }
 const miniStateClick = () => {
   drawerMiniState.value = !drawerMiniState.value

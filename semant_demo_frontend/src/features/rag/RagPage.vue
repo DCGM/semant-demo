@@ -199,7 +199,7 @@
           </div>
           <div
             v-else
-            v-html="convertToMarkdown(convertLinks(explanationDialog.text, messages[selectionData.msgIndex].sources, selectionData.msgIndex))"
+            v-html="convertToMarkdown(convertLinks(explanationDialog.text, messages[selectionData.msgIndex]?.sources, selectionData.msgIndex))"
             class="markdown-body"
             @click.capture="singleSourceClicks">
           </div>

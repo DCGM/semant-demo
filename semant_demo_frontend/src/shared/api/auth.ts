@@ -20,8 +20,15 @@ export function setAuthToken (token: string): void {
   storage()?.setItem(TOKEN_KEY, token)
 }
 
-export function clearAuthToken (): void {
-  storage()?.removeItem(TOKEN_KEY)
+/**
+ * Removes the stored token. With `token`, only while that token is still the stored one:
+ * another tab may have stored a newer session meanwhile, which must survive.
+ */
+export function clearAuthToken (token?: string): void {
+  const store = storage()
+  if (!store) return
+  if (token !== undefined && store.getItem(TOKEN_KEY) !== token) return
+  store.removeItem(TOKEN_KEY)
 }
 
 /**

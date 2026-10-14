@@ -9,7 +9,7 @@ import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useSessionScope } from 'src/app/session'
 import { installAuthGuard } from 'src/router/authGuard'
-import { clearAuthToken, getAuthToken, setAuthToken, tokenSubject } from 'src/shared/api'
+import { getAuthToken, setAuthToken, tokenSubject } from 'src/shared/api'
 import MainLayout from 'src/app/MainLayout.vue'
 import RagPage from 'src/features/rag/RagPage.vue'
 
@@ -32,11 +32,21 @@ function stubNotify () {
   return { create, messages: () => create.mock.calls.map(([options]) => options.message), restore: () => { Notify.create = original } }
 }
 
+/**
+ * Another tab writes the shared token now; this tab hears of it (the storage event, a
+ * separate task) only when `deliver` is called.
+ */
+function otherTabWrites (token: string | null) {
+  if (token) localStorage.setItem('auth_token', token)
+  else localStorage.removeItem('auth_token')
+  return () => { window.dispatchEvent(new StorageEvent('storage', { key: 'auth_token', newValue: token, storageArea: localStorage })) }
+}
+
 /** What the browser does in this tab when another tab changes localStorage. */
 function otherTabStores (token: string | null, key = 'auth_token', storageArea: Storage = localStorage) {
   if (key === 'auth_token' && storageArea === localStorage) {
-    if (token) setAuthToken(token)
-    else clearAuthToken()
+    otherTabWrites(token)()
+    return
   }
   window.dispatchEvent(new StorageEvent('storage', { key, newValue: token, storageArea }))
 }
@@ -238,6 +248,81 @@ describe('late account answers', () => {
   })
 })
 
+describe('a newer session stored by another tab', () => {
+  // This tab is signed in as A; `useSessionScope` follows the other tab.
+  function signedInAsA () {
+    const notify = stubNotify()
+    const scope = effectScope()
+    scope.run(useSessionScope)
+    const store = useUserStore()
+    setAuthToken(jwt('uA'))
+    store.token = jwt('uA')
+    store.user = userA as never
+    return { notify, scope, store, stop: () => { notify.restore(); scope.stop() } }
+  }
+
+  function holdLogout () {
+    let release!: () => void
+    answers['/api/auth/jwt/logout'] = () => new Promise((resolve) => { release = () => resolve(new Response(null, { status: 204 })) })
+    return () => release()
+  }
+
+  it('survives a logout that was pending here, before this tab heard of it', async () => {
+    const { store, stop } = signedInAsA()
+    const releaseLogout = holdLogout()
+    answers['/api/users/me'] = () => json(userB)
+
+    const logout = store.logout()
+    await flushPromises()
+    const deliver = otherTabWrites(jwt('uB')) // the other tab signs in as B
+    releaseLogout()
+    await logout
+
+    expect([store.token, getAuthToken()]).toEqual([null, jwt('uB')]) // A ended here, B's token kept
+    deliver()
+    await flushPromises()
+    expect([store.user?.id, getAuthToken()]).toEqual(['uB', jwt('uB')])
+    stop()
+  })
+
+  it('survives a logout that was pending here, after this tab followed it', async () => {
+    const { store, stop } = signedInAsA()
+    const releaseLogout = holdLogout()
+    answers['/api/users/me'] = () => json(userB)
+
+    const logout = store.logout()
+    await flushPromises()
+    otherTabStores(jwt('uB'))
+    await flushPromises()
+    releaseLogout()
+    await logout
+
+    expect([store.token, store.user?.id, getAuthToken()]).toEqual([jwt('uB'), 'uB', jwt('uB')])
+    stop()
+  })
+
+  it('survives a 401 for the old token answered before this tab heard of it', async () => {
+    const { store, stop } = signedInAsA()
+    let reject!: () => void
+    answers['/api/user_collections'] = () => new Promise((resolve) => { reject = () => resolve(json({ detail: 'Unauthorized' }, 401)) })
+    answers['/api/users/me'] = () => json(userB)
+
+    const listing = useUserCollectionsStore().fetchCollections() // sent with A's token
+    await flushPromises()
+    const deliver = otherTabWrites(jwt('uB'))
+    reject() // A's token is rejected (expired) while B's is already stored
+    await listing
+    await flushPromises()
+
+    expect(sent.find((r) => r.path === '/api/user_collections')?.token).toBe(jwt('uA'))
+    expect([store.isLoggedIn, getAuthToken()]).toEqual([false, jwt('uB')])
+    deliver()
+    await flushPromises()
+    expect([store.user?.id, getAuthToken()]).toEqual(['uB', jwt('uB')])
+    stop()
+  })
+})
+
 describe('MainLayout session teardown', () => {
   async function mountLayout () {
     const pinia = createPinia()
@@ -327,7 +412,7 @@ describe('MainLayout session teardown', () => {
 describe('Chat Assistant on sign-out', () => {
   const source = { id: 'ch1', text: 'Source text of the old conversation', document: 'd1', document_object: { id: 'd1' } }
 
-  async function mountRag () {
+  async function mountRag (onError?: (err: unknown) => void) {
     answers['/api/rag/configurations'] = () => json([{ id: 'r1', name: 'RAG', description: '' }])
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -336,7 +421,10 @@ describe('Chat Assistant on sign-out', () => {
     store.token = jwt('uA')
     store.user = userA as never
     const InLayout = defineComponent({ render: () => h(QLayout, () => h(QPageContainer, () => h(RagPage))) })
-    const layout = mount(InLayout, { attachTo: document.body, global: { plugins: [[Quasar, { plugins: { Notify } }], pinia] } })
+    const layout = mount(InLayout, {
+      attachTo: document.body,
+      global: { plugins: [[Quasar, { plugins: { Notify } }], pinia], config: onError ? { errorHandler: onError } : {} }
+    })
     await flushPromises()
     return { wrapper: layout.findComponent(RagPage), store, unmount: () => layout.unmount() }
   }
@@ -384,6 +472,34 @@ describe('Chat Assistant on sign-out', () => {
 
     expect(document.body.textContent).not.toContain(source.text)
     expect(wrapper.text()).not.toContain('Answer')
+    unmount()
+  })
+
+  it('ends the session while the explanation dialog is open without a render error', async () => {
+    const errors: unknown[] = []
+    const { wrapper, store, unmount } = await mountRag((err) => { errors.push(err) })
+    answers['/api/rag'] = () => json({ rag_answer: 'Answer that can be explained [doc 1]', sources: [source], response_id: 'x', time_spent: 1 })
+    answers['/api/rag/explain'] = () => json({ explanation: 'Because of [doc 1]' })
+    await ask(wrapper, 'Question')
+
+    // Select the answer's text and ask for an explanation, as a user does.
+    const answerText = wrapper.findAll('.markdown-body').at(-1)!
+    const range = document.createRange()
+    range.selectNodeContents(answerText.element)
+    range.getClientRects = () => [{ right: 10, bottom: 10 }] as unknown as DOMRectList // jsdom has no layout
+    window.getSelection()!.removeAllRanges()
+    window.getSelection()!.addRange(range)
+    await answerText.trigger('mouseup')
+    await wrapper.findAll('button').find((b) => b.text() === 'Explain')!.trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('Because of')
+
+    store.forgetSession()
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 400)) // dialog leave transition
+
+    expect(errors).toEqual([])
+    expect(document.body.textContent).not.toContain('Because of')
     unmount()
   })
 

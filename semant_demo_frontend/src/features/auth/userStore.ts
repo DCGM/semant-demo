@@ -37,11 +37,16 @@ export const useUserStore = defineStore('user', {
       await this.fetchCurrentUser()
     },
 
+    /**
+     * Ends this session, also when the server request fails. If the session changed while
+     * the request was pending (another tab signed in or out), that newer session stays.
+     */
     async logout (): Promise<void> {
+      const token = this.token
       try {
-        if (this.token) await useApi().auth.authJwtLogoutApiAuthJwtLogoutPost()
+        if (token) await useApi().auth.authJwtLogoutApiAuthJwtLogoutPost()
       } finally {
-        this.forgetSession()
+        if (this.token === token) this.forgetSession()
       }
     },
 
@@ -111,10 +116,16 @@ export const useUserStore = defineStore('user', {
       await this.restoreSession()
     },
 
+    /**
+     * Ends this tab's session. The stored token is removed only while it is still this
+     * session's: a newer token another tab stored meanwhile (sign-in, account switch) is
+     * kept, and this tab adopts it when the storage event arrives.
+     */
     forgetSession (): void {
+      const token = this.token
       this.token = null
       this.user = null
-      clearAuthToken()
+      if (token) clearAuthToken(token)
     }
   }
 })

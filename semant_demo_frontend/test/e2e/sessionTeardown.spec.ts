@@ -102,3 +102,38 @@ test('a failed server logout still signs out here and says so', async ({ page })
   expect(await page.evaluate(() => localStorage.getItem('auth_token'))).toBeNull()
   expect(pageErrors).toEqual([])
 })
+
+test('signing out in another tab while an explanation is open closes it without errors', async ({ page }) => {
+  const pageErrors: Error[] = []
+  page.on('pageerror', (error) => pageErrors.push(error))
+  await ensureLoggedIn(page, 'owner')
+  await page.route('**/api/rag', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      rag_answer: 'An answer worth explaining in detail [doc 1].',
+      sources: [{ id: 'c1', text: 'Source text', start_page_id: 'p1', from_page: 1, to_page: 1, document: 'd1', order: 0, document_object: { id: 'd1' } }],
+      response_id: 'r1',
+      time_spent: 1
+    })
+  }))
+  await page.route('**/api/rag/explain', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ explanation: 'The explanation of the claim.' })
+  }))
+  await page.goto('/#/rag')
+  await page.getByPlaceholder('Vaše otázka?').fill('Question')
+  await page.getByPlaceholder('Vaše otázka?').press('Enter')
+  const answer = page.locator('.markdown-body').filter({ hasText: 'An answer worth explaining' })
+  await answer.selectText()
+  await answer.dispatchEvent('mouseup')
+  await page.getByRole('button', { name: 'Explain' }).click()
+  await expect(page.getByText('The explanation of the claim.')).toBeVisible()
+
+  const other = await page.context().newPage()
+  await other.goto('/#/search')
+  await logOut(other)
+
+  await expect(page.getByText('The explanation of the claim.')).toHaveCount(0)
+  await expect(page.getByText('An answer worth explaining')).toHaveCount(0)
+  expect(pageErrors).toEqual([])
+})
