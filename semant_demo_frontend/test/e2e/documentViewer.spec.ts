@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import {
-  annotation, chunkText, deleteAddedSpans, deleteSuggestions, fixture, logIn, openDocument, removeChunk, selectText,
+  annotation, chunkText, deleteAddedSpans, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk, selectText,
   sidebarPanelButton
 } from './support'
 
@@ -32,7 +32,7 @@ async function tallestMarker (page: Page): Promise<Locator> {
 }
 
 test('a selection across two chunks is tagged, marked in the gutter and deleted again', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   // Approved fixture spans only: the AI suggestion is hidden outside the AI assist panel.
   await expect(page.locator('.gutter-item')).toHaveCount(2)
@@ -56,7 +56,7 @@ test('a selection across two chunks is tagged, marked in the gutter and deleted 
 })
 
 test('a clicked marker quick-tags the next selection until Escape', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
 
   // The Jan Novák marker in the first chunk: its tag becomes the quick tag.
@@ -77,7 +77,7 @@ test('a clicked marker quick-tags the next selection until Escape', async ({ pag
 })
 
 test('the tags panel hides tags, steps through their annotations and is searched with Ctrl+F', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   const personCard = page.locator('.tag-card').filter({ hasText: fixture.tag('person').name })
 
@@ -100,7 +100,7 @@ test('the tags panel hides tags, steps through their annotations and is searched
 })
 
 test('AI suggestions show only with the AI assist panel and highlight between card and gutter', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await expect(annotation(page, 'novak_manual')).toBeVisible()
   await expect(annotation(page, 'lhota_automatic')).toHaveCount(0)
@@ -119,7 +119,7 @@ test('AI suggestions show only with the AI assist panel and highlight between ca
 })
 
 test('Suggest tags on a selection runs in the AI assist panel', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
 
   await selectText(page, 'chronicle_1', 0, 'chronicle_1', 43)
@@ -135,7 +135,7 @@ test('Suggest tags on a selection runs in the AI assist panel', async ({ page })
 })
 
 test('the owner adds a preview chunk to the collection and removes it with the bulk bar', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'newspapers', 'chronicle')
   await expect(chunkText(page, 'chronicle_3')).toBeVisible()
   await expect(chunkText(page, 'chronicle_2')).toHaveCount(0)
@@ -162,7 +162,7 @@ test('the owner adds a preview chunk to the collection and removes it with the b
 })
 
 test('on a narrow window the text, gutters and side panel stay usable', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await page.setViewportSize({ width: 900, height: 800 })
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
 
@@ -180,7 +180,7 @@ test('on a narrow window the text, gutters and side panel stay usable', async ({
 })
 
 test('the AI assist and tags panels keep their state across panel switches', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   // Retrying assertions: tags load asynchronously after the view opens.
   const tagNames = page.locator('.tag-card .tag-name')

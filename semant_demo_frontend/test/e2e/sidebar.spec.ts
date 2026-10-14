@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { logIn } from './support'
+import { ensureLoggedIn, search } from './support'
 
 // App-level right sidebar with the search-summary panel. The e2e profile's fake Ollama
 // answers "Fake summary of N passage(s); last [docN]." for the passages it was sent, so the
@@ -32,10 +32,8 @@ test('search summary in the sidebar works on the selected results only', async (
 })
 
 test('the sidebar goes away with the page that registered its panel', async ({ page }) => {
-  await logIn(page, 'owner') // Collections is in the navigation of signed-in users only
-  await page.goto('/#/search')
-  await page.getByRole('textbox').first().fill('Lhota')
-  await page.keyboard.press('Enter')
+  await ensureLoggedIn(page, 'owner') // Collections is in the navigation of signed-in users only
+  await search(page, 'Lhota')
   await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toBeVisible()
 
   await page.locator('.q-drawer').getByText('Collections', { exact: true }).click()

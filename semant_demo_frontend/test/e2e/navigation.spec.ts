@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { fixture, logIn } from './support'
+import { ensureLoggedIn, fixture, useViewport } from './support'
 
 // Navigation follows the session (#251): Collections, Settings and Sign out for signed-in
 // users, Log in and Register otherwise. The backend authorizes requests either way.
@@ -39,7 +39,7 @@ test('a signed-out user sees Log in and Register, also in the collapsed drawer',
 })
 
 test('logging in and signing out switch the menu without a reload', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await expectSignedInMenu(page)
 
   await drawerItem(page, 'Settings').click()
@@ -65,7 +65,7 @@ test('a signed-out direct link to a collection page goes to search', async ({ pa
 })
 
 test('a restored session opens a direct link to a collection page', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
 
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/overview`)
   await page.reload()
@@ -76,7 +76,7 @@ test('a restored session opens a direct link to a collection page', async ({ pag
 })
 
 test('an expired session on a collection page switches to the signed-out menu', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   // The backend rejects the token from now on, as it does once a token expires.
   await page.route('**/api/user_collections', (route) => route.fulfill({
     status: 401, contentType: 'application/json', body: '{"detail":"Unauthorized"}'
@@ -90,7 +90,7 @@ test('an expired session on a collection page switches to the signed-out menu', 
 })
 
 test('a stored session that is no longer valid restores as signed out', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await page.route('**/api/users/me', (route) => route.fulfill({
     status: 401, contentType: 'application/json', body: '{"detail":"Unauthorized"}'
   }))
@@ -105,7 +105,7 @@ test('a stored session that is no longer valid restores as signed out', async ({
 test('back arrows go to the parent page without changing the navigation drawer', async ({ page }) => {
   const collection = fixture.collection('chronicles')
   const document = fixture.document('chronicle')
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
 
   await drawer(page).getByRole('button', { name: 'Collapse navigation' }).click()
   await expect(drawer(page)).toHaveClass(/q-drawer--mini/)
@@ -132,8 +132,8 @@ test('back arrows go to the parent page without changing the navigation drawer',
 
 test('on a phone, back arrows navigate and leave the overlay navigation closed', async ({ page }) => {
   const collection = fixture.collection('chronicles')
-  await logIn(page, 'owner')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await ensureLoggedIn(page, 'owner')
+  await useViewport(page, 'phone')
 
   await page.goto(`/#/collections/${collection.id}/documents/${fixture.document('chronicle').id}`)
   await expect(page.getByText('Document detail')).toBeVisible()

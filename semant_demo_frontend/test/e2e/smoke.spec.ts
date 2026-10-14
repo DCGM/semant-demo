@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { annotation, chunkText, fixture, logIn, openDocument } from './support'
+import { annotation, chunkText, ensureLoggedIn, fixture, openDocument } from './support'
 
 // Small browser smoke suite on the seeded fixture corpus. Tests only read data, so they
 // share one backend; a test that mutates data must create and remove its own.
@@ -18,7 +18,7 @@ test('app is branded semANT demo with the semANT logo', async ({ page }) => {
 })
 
 test('logged-in user stays authenticated across a reload', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
 
   await page.reload()
   await page.getByRole('button', { name: 'User menu' }).click()
@@ -28,7 +28,7 @@ test('logged-in user stays authenticated across a reload', async ({ page }) => {
 })
 
 test('shared user sees the shared collection and opens its document', async ({ page }) => {
-  await logIn(page, 'annotator')
+  await ensureLoggedIn(page, 'annotator')
 
   await openDocument(page, 'chronicles', 'chronicle')
 
@@ -38,7 +38,7 @@ test('shared user sees the shared collection and opens its document', async ({ p
 })
 
 test('document view renders approved annotations at their offsets', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
 
   await openDocument(page, 'chronicles', 'chronicle')
 
@@ -47,7 +47,7 @@ test('document view renders approved annotations at their offsets', async ({ pag
 })
 
 test('switching collection replaces the document view without stale chunks or annotations', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await expect(annotation(page, 'novak_manual')).toBeVisible()
 
@@ -61,7 +61,7 @@ test('switching collection replaces the document view without stale chunks or an
 })
 
 test('a link to the retired V2 document view opens the document view', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
 
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}/v2`)
 

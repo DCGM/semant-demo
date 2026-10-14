@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { viewports, type ViewportName } from './test/e2e/viewports'
 
 // Browser smoke tests (`make test-e2e`). The web server builds the frontend into
 // dist/e2e and starts the deterministic backend profile (semant_demo_backend/tests/e2e_server.py),
@@ -14,11 +15,11 @@ const externalServer = process.env.E2E_EXTERNAL_SERVER === '1'
 // scripts/e2e-dev.sh capture: screenshots and traces at the three layouts reviewed for UI work.
 const capture = process.env.E2E_CAPTURE === '1'
 // They run the selected browser specs plus the view captures in test/capture (not test/unit).
-const captureProject = (name: string, width: number, height: number) => ({
+const captureProject = (name: ViewportName) => ({
   name,
   testDir: './test',
   testIgnore: 'unit/**',
-  use: { ...devices['Desktop Chrome'], viewport: { width, height }, screenshot: 'on', trace: 'on' } as const
+  use: { ...devices['Desktop Chrome'], viewport: viewports[name], screenshot: 'on', trace: 'on' } as const
 })
 
 export default defineConfig({
@@ -34,7 +35,7 @@ export default defineConfig({
     trace: 'retain-on-failure'
   },
   projects: capture
-    ? [captureProject('wide', 1920, 1000), captureProject('narrow', 1280, 900), captureProject('phone', 390, 844)]
+    ? [captureProject('wide'), captureProject('narrow'), captureProject('phone')]
     : [
         { name: 'chromium', use: { ...devices['Desktop Chrome'] } }
       ],

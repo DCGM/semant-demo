@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { fixture } from './support'
+import { fixture, search } from './support'
 
 // Stored chunk classifications (fixture corpus `chunk_classifications`) on Search results:
 // one line of value badges, expandable when they need more.
@@ -8,9 +8,7 @@ import { fixture } from './support'
 test('search results show classification badges on one expandable line', async ({ page }) => {
   // Narrow result column (sidebar open): chronicle_1's five badges need two lines, letters_1's two fit.
   await page.setViewportSize({ width: 1100, height: 900 })
-  await page.goto('/#/search')
-  await page.getByRole('textbox').first().fill('Lhota')
-  await page.keyboard.press('Enter')
+  await search(page, 'Lhota')
 
   const chronicle = page.locator('.q-card', { hasText: fixture.chunk('chronicle_1').text })
   const letter = page.locator('.q-card', { hasText: fixture.chunk('letters_1').text })
