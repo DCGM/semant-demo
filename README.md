@@ -126,6 +126,7 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 | Document | Topic |
 |---|---|
 | [docs/VISION.md](docs/VISION.md) | Project vision, users and roadmap |
+| [docs/COLLECTION_ANNOTATION_WORKSPACE_VISION.md](docs/COLLECTION_ANNOTATION_WORKSPACE_VISION.md) | Proposed researcher-facing collection annotation and analysis workspace; early feedback draft |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | What runs today: modules, access rules, search, RAG, annotations, frontend |
 | [docs/adr/](docs/adr/README.md), [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md) | Agreed decisions and ongoing design principles |
 | [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema, SQL tables, data ingestion |
