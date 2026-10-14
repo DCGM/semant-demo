@@ -71,8 +71,14 @@ test('the document view links the original document', async ({ page }) => {
 
 test('Chat Assistant sources link their originals', async ({ page }) => {
   const source = (id: string, library: string | null) => ({
-    id: `${id}c`, text: `Source ${id}`, start_page_id: chronicle1.start_page_id, from_page: 1, to_page: 1,
-    document: chronicle.id, order: 0, document_object: { id: chronicle.id, library, title: `Title ${id}` }
+    id: `${id}c`,
+    text: `Source ${id}`,
+    start_page_id: chronicle1.start_page_id,
+    from_page: 1,
+    to_page: 1,
+    document: chronicle.id,
+    order: 0,
+    document_object: { id: chronicle.id, library, title: `Title ${id}` }
   })
   await page.route('**/api/rag', (route) => route.fulfill({
     status: 200,

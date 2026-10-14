@@ -126,8 +126,14 @@ const emit = defineEmits<{
 }>()
 
 const targetLoaded = computed(() => props.chunks.some(c => c.id === props.targetChunkId))
-// The original opens at the matched passage's first page.
-const targetPageId = computed(() => props.chunks.find(c => c.id === props.targetChunkId)?.startPageId ?? null)
+// The original opens at the matched passage's first page. Remembered once the target is
+// loaded: extending the passage can trim the target chunk away, not the page it is on.
+const targetPageId = ref<string | null>(null)
+watch(() => props.targetChunkId, () => { targetPageId.value = null })
+watch(() => [props.targetChunkId, props.chunks] as const, ([id, chunks]) => {
+  const page = chunks.find(c => c.id === id)?.startPageId
+  if (page) targetPageId.value = page
+}, { immediate: true })
 
 const documentTitle = computed(() => {
   const d = props.document

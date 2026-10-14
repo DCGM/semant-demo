@@ -126,6 +126,26 @@ describe('views linking to the original', () => {
     expect(link(panel).attributes('href')).toBe(`${VIEW}?page=uuid:${PAGE}`)
   })
 
+  it('the context view keeps the matched page when extending trims the target, and forgets it for a new target', async () => {
+    const chunk = (n: number, page: string): DocumentChunk => ({
+      id: `c${n}`, text: `Text ${n}`, startPageId: page, fromPage: n, toPage: n, document: DOC, order: n
+    } as DocumentChunk)
+    const laterPage = '00000000-0000-4000-8000-000000000003'
+    const newPage = '00000000-0000-4000-8000-000000000009'
+    const document = { id: DOC, library: 'mzk', title: 'Rovnost' }
+    const panel = mountWith(ChunkContextPanel, { targetChunkId: 'c2', document, chunks: [chunk(1, PAGE), chunk(2, PAGE)] })
+
+    // Extending later text keeps at most a bounded window: the target chunk is dropped.
+    await panel.setProps({ chunks: [chunk(3, laterPage), chunk(4, laterPage)] })
+    expect(link(panel).attributes('href')).toBe(`${VIEW}?page=uuid:${PAGE}`)
+
+    // Another target: no page until it is loaded, then its own.
+    await panel.setProps({ targetChunkId: 'c9', chunks: [] })
+    expect(link(panel).attributes('href')).toBe(VIEW)
+    await panel.setProps({ chunks: [chunk(9, newPage)] })
+    expect(link(panel).attributes('href')).toBe(`${VIEW}?page=uuid:${newPage}`)
+  })
+
   it('the document metadata panel links to the document, or says the original is not available', () => {
     const linked = mountWith(DocumentMetadataPanel, { document: { id: DOC, library: 'mzk' } })
     expect(link(linked).attributes('href')).toBe(VIEW)
