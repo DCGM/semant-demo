@@ -10,6 +10,7 @@
         <div v-if="document" class="chunk-context__document">
           <div class="text-subtitle2 text-weight-medium chunk-context__title">{{ documentTitle }}</div>
           <div class="text-caption text-grey-8">{{ document.yearIssued || 'Year N/A' }}</div>
+          <OriginalSourceLink :document="document" :page-id="targetPageId" class="text-caption" />
         </div>
         <q-btn
           v-if="returnLabel"
@@ -86,6 +87,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { QBtn, QSpinner } from 'quasar'
 import type { Document, DocumentChunk } from 'src/generated/api'
+import OriginalSourceLink from './OriginalSourceLink.vue'
 import type { ContextDirection } from './useChunkContext'
 
 const props = withDefaults(defineProps<{
@@ -124,6 +126,8 @@ const emit = defineEmits<{
 }>()
 
 const targetLoaded = computed(() => props.chunks.some(c => c.id === props.targetChunkId))
+// The original opens at the matched passage's first page.
+const targetPageId = computed(() => props.chunks.find(c => c.id === props.targetChunkId)?.startPageId ?? null)
 
 const documentTitle = computed(() => {
   const d = props.document

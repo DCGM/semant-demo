@@ -4,15 +4,27 @@
       <div class="meta-label">{{ field.label }}</div>
       <div class="meta-value">{{ field.value }}</div>
     </div>
+    <div class="meta-row">
+      <div class="meta-label">Original</div>
+      <div class="meta-value">
+        <OriginalSourceLink v-if="hasOriginal" :document="document" />
+        <span v-else class="text-grey-7">Not available</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Document } from 'src/generated/api'
+import OriginalSourceLink from './OriginalSourceLink.vue'
+import { originalSourceUrl } from './originalSource'
 
-// Bibliographic fields of a document; a missing value shows as "-".
+// Bibliographic fields of a document; a missing value shows as "-". The original is the
+// digitized document in its digital library, when a trustworthy link exists (#255).
 const props = defineProps<{ document: Document }>()
+
+const hasOriginal = computed(() => originalSourceUrl(props.document) !== null)
 
 const fields = computed(() => {
   const d = props.document

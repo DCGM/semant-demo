@@ -24,6 +24,7 @@
           <div v-if="documentData.subtitle" class="text-body2 text-grey-7 q-mt-xs">
             {{ documentData.subtitle }}
           </div>
+          <OriginalSourceLink :document="documentData" class="text-body2 q-mt-xs" />
         </div>
 
         <q-space />
@@ -69,6 +70,7 @@ import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { Document } from 'src/generated/api'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import DocumentMetadataPanel from 'src/features/documents/DocumentMetadataPanel.vue'
+import OriginalSourceLink from 'src/features/documents/OriginalSourceLink.vue'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import AiAssistPanel from 'src/features/annotations/AiAssistPanel.vue'
 import DocumentTagsPanel from 'src/features/annotations/DocumentTagsPanel.vue'

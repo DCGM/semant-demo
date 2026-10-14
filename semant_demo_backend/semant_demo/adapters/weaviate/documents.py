@@ -50,10 +50,7 @@ class DocumentRepository:
         if document_response is None:
             return None
 
-        doc_props = document_response.properties
-        if "library" not in doc_props or not doc_props["library"]:
-            doc_props["library"] = "mzk"
-        document = Document(id=document_response.uuid, **doc_props)
+        document = Document(id=document_response.uuid, **document_response.properties)
 
         link = self.collectionNames.user_collection_link_name
         chunk_objects = await fetch_all(

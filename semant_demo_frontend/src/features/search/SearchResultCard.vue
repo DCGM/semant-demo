@@ -41,8 +41,9 @@
         <div><q-icon name="language" class="q-mr-xs"/>{{ chunk.language || 'N/A' }}</div>
         <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.fromPage }}–{{ chunk.toPage }}</div>
       </div>
-      <div class="search-result__source text-caption text-grey-8" v-if="chunk.documentObject.title">
-        <strong>Source:</strong> {{ chunk.documentObject.title }}
+      <div class="search-result__source text-caption text-grey-8" v-if="chunk.documentObject.title || sourceUrl">
+        <span v-if="chunk.documentObject.title"><strong>Source:</strong> {{ chunk.documentObject.title }}</span>
+        <OriginalSourceLink :document="chunk.documentObject" :page-id="chunk.startPageId" />
       </div>
       <ResultClassifications :metadata="chunk.metadata" :filters="filters" />
     </q-card-section>
@@ -97,6 +98,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { QBadge, QBtn, QCard, QCardSection, QCheckbox, QIcon, QSeparator, QTooltip } from 'quasar'
 import type { SearchFilter, SearchResultChunk } from 'src/generated/api'
 import ResultClassifications from './ResultClassifications.vue'
+import OriginalSourceLink from 'src/features/documents/OriginalSourceLink.vue'
+import { originalSourceUrl } from 'src/features/documents/originalSource'
 import { isConstrainedResultWidth } from './resultLayout'
 
 const props = withDefaults(defineProps<{
@@ -124,6 +127,7 @@ function onDoubleClick (event: MouseEvent) {
 }
 
 const title = computed(() => props.chunk.queryTitle || props.chunk.title || 'N/A')
+const sourceUrl = computed(() => originalSourceUrl(props.chunk.documentObject, props.chunk.startPageId))
 const textId = computed(() => `result-text-${props.chunk.id}`)
 
 // A narrow card (narrow window, or both sidebars open) previews the passage; wide cards
@@ -200,6 +204,10 @@ onBeforeUnmount(() => observer?.disconnect())
 }
 
 .search-result__source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
   margin-top: 2px;
   overflow-wrap: anywhere;
 }

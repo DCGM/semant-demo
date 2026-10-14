@@ -154,9 +154,13 @@
                     <span v-if="currentSources.length > 1">Doc: {{ index + 1 }}</span>
                     <span v-else>Source of this information:</span>
                   </q-item-label>
+                  <q-item-label v-if="source.documentObject?.title" class="text-weight-medium">
+                    {{ source.documentObject.title }}
+                  </q-item-label>
                   <q-item-label caption>
                     <div v-html="convertToMarkdown(source.text)" class="markdown-body"></div>
                   </q-item-label>
+                  <OriginalSourceLink :document="source.documentObject" :page-id="source.startPageId" class="text-caption q-mt-xs" />
                 </q-item-section>
               </q-item>
             </q-list>
@@ -217,6 +221,7 @@ import { useQuasar } from 'quasar'
 import { SearchType, type RagChatMessage, type RagRouteConfig, type SearchResultChunk } from 'src/generated/api'
 import { createContextGuard, errorStatus, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
+import OriginalSourceLink from 'src/features/documents/OriginalSourceLink.vue'
 const $q = useQuasar() // notifications
 const api = useApi().default
 // ---------------------------------------------------

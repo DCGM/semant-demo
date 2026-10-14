@@ -152,8 +152,8 @@ async def test_document_chunks_map_stored_document_metadata(documents, corpus, k
 
     detail = await documents.read_chunks(doc(corpus, key), col(corpus, "chronicles"))
 
-    assert detail.document.model_dump(exclude_none=True, exclude={"id", "library"}) == stored["properties"]
-    assert detail.document.library == "mzk"  # missing library defaults as before
+    assert detail.document.model_dump(exclude_none=True, exclude={"id"}) == stored["properties"]
+    assert detail.document.library is None  # never guessed: it would link to a wrong library (#255)
     assert {(str(c.id), c.text) for c in detail.chunks} == {(c["id"], c["text"]) for c in stored["chunks"]}
 
 

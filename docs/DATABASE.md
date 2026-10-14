@@ -119,13 +119,18 @@ a store lacks are absent from the answer; stored properties the model does not n
 `authors`, `subTitle`, `manufacturePublisher`) are not returned, as before #208.
 
 Key fields:
-- `library` — source digital library identifier (e.g. `"mzk"`)
+- `library` — source digital library code (e.g. `"mzk"`, `"nkp"`), as in the Kramerius
+  metadata mirror; the API returns it only when stored (no default). With the document id
+  (the Kramerius record UUID) and a chunk's `start_page_id` (its first page's UUID) it forms
+  the link to the original, `https://www.digitalniknihovna.cz/<library>/view/uuid:<document>?page=uuid:<page>`,
+  built in the frontend (`features/documents/originalSource.ts`) only for library codes that
+  digitalniknihovna.cz serves (#255)
 - `yearIssued` / `dateIssued` — publication year and date; the search filters years on the
   chunks' copy (`Chunks.yearIssued`, below)
 - `authors` — array of author names
 - `documentType`, `genre`, `keywords` — categorical metadata
 - `url` — in the local snapshot (`uuid`) the Kramerius record UUID, equal to the document
-  id, not a link; resolving library-specific source links is [#255](https://github.com/DCGM/semant-demo/issues/255)
+  id, not a link; source links are built from `library` and the id (above)
 - `public` — whether the document is publicly accessible
 
 #### Document metadata from the Kramerius mirror
