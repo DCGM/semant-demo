@@ -224,19 +224,25 @@ human review. Keep CI execution isolated from production credentials and deploy 
 ### UI change checklist
 
 Applies to a **meaningful UI change**: new or changed layout, components, responsive
-behavior, interaction or visible states. Backend-only and non-visual PRs, documentation, and tiny
-cosmetic edits (a label, a colour token) need none of it; say so in the PR if a reviewer
-might expect screenshots.
+behavior, interaction or visible states. Match verification effort to what the change
+could reasonably affect; not every UI change needs all three widths. Backend-only and
+non-visual PRs, documentation, and trivial cosmetic edits (a label, a colour token) need
+no checklist. A small, localized styling change generally needs only a spot-check of
+the affected component; note omitted evidence if a reviewer might expect it.
 
-1. **Look before the first review/push** at the three viewing contexts: wide desktop,
-   constrained desktop (both sidebars open where the view has them) and phone.
-   `make e2e-dev-capture` renders them repeatably against the deterministic profile
-   (1920×1000, 1280×900, 390×844); pass your spec to capture the state you changed
+1. **Inspect relevant contexts before the first review/push.** For new views, shared
+   layouts or responsive changes, check wide desktop, constrained desktop (both sidebars
+   open where present) and phone. For local interaction changes, check the affected
+   states and viewports; for isolated styling, check the relevant component and context.
+   Do not inspect unaffected widths merely to complete the checklist.
+   `make e2e-dev-capture` can render the three widths against the deterministic profile
+   (1920×1000, 1280×900, 390×844); pass your spec to capture the changed state
    ([DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop)).
-2. **Attach evidence to the PR:** before/after or final screenshots, or a short recording,
-   of the changed state (e.g. selected, expanded, empty, signed out), not only the default
-   view. If a context or state could not be captured, say which and why; do not imply it
-   was.
+2. **Attach proportionate evidence to the PR:** before/after or final screenshots, or
+   a short recording, showing the changed state (e.g. selected, expanded, empty, signed
+   out) at relevant widths, not just the default view. Unaffected widths need no
+   screenshots. If a relevant context or state could not be captured, say which and
+   why; do not imply it was.
 3. **Review what applies:** card/title/metadata alignment, text overflow and wrapping
    (long titles, narrow toolbars), selected/hover/focus states, controls gated by
    authorization or ownership, keyboard and touch interaction, and direct links/reloads
