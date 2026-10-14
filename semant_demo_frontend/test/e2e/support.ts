@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { viewports, type ViewportName } from './viewports'
 // Same synthetic corpus the backend profile seeds (single source, shared with pytest).
 import corpus from '../../../semant_demo_backend/tests/fixtures/corpus.json'
 
@@ -19,15 +20,153 @@ export const fixture = {
   tag: (key: string) => byKey(corpus.tags, key)
 }
 
-export async function logIn (page: Page, userKey: string): Promise<void> {
+// Conventions for the helpers below:
+// - Every test sets up its own state (viewport, session, search); none relies on another
+//   test or on test order. Helpers are idempotent: call them from any starting state.
+// - They act through the UI as a user would and wait on visible state, never on sleeps,
+//   retries or `force` clicks; a missing control fails with a message naming it.
+// - Use them for setup. Keep the behavior a test is about spelled out in the test.
+//
+//   await useViewport(page, 'phone')
+//   await ensureLoggedIn(page, 'annotator')   // signed out, already annotator, or owner
+//   await search(page, 'Lhota')
+//   await goToResultsPage(page, 2)
+
+export { viewports, type ViewportName } from './viewports'
+
+/** Resizes the page to one of the reviewed layouts; call it before `page.goto` or a helper. */
+export async function useViewport (page: Page, name: ViewportName): Promise<void> {
+  await page.setViewportSize(viewports[name])
+}
+
+const userMenu = (page: Page) => page.getByRole('button', { name: 'User menu' })
+
+/** Opens the app unless the page already shows it, and waits for the layout. */
+async function openApp (page: Page): Promise<void> {
+  if (!page.url().startsWith('http')) await page.goto('/')
+  await expect(userMenu(page), 'the app layout (User menu) did not render').toBeVisible()
+  await closePhoneNavigation(page)
+}
+
+/**
+ * Workaround for #271 in one place; delete it with the fix. On a phone the navigation
+ * drawer opens as an overlay when the app loads (a route change closes it) and covers the
+ * header. Taps beside it, as a user would. The drawer state is set when the layout mounts,
+ * so after the User menu has rendered it is known.
+ */
+export async function closePhoneNavigation (page: Page): Promise<void> {
+  const viewport = page.viewportSize()
+  await expect(userMenu(page)).toBeVisible()
+  if (!viewport || viewport.width >= 1024) return // drawers are overlays below Quasar's breakpoint
+  const backdrop = page.locator('.q-drawer__backdrop:not(.hidden)')
+  if (await backdrop.count() === 0) return
+  await backdrop.first().click({ position: { x: viewport.width - 20, y: viewport.height / 2 } })
+  await expect(backdrop).toHaveCount(0)
+  await expect(page.locator('.q-drawer--left')).not.toBeInViewport() // slid out, not mid-animation
+}
+
+/** The user of the token the page stores, or null when it stores none or a rejected one. */
+async function storedUser (page: Page): Promise<{ username: string } | null> {
+  const token = await page.evaluate(() => localStorage.getItem('auth_token'))
+  if (!token) return null
+  const response = await page.request.get('/api/users/me', { headers: { Authorization: `Bearer ${token}` } })
+  if (response.status() === 401) return null
+  expect(response.ok(), `/api/users/me answered ${response.status()}`).toBe(true)
+  return await response.json()
+}
+
+/** Waits until the header shows a signed-in user, or no session at all. */
+async function expectSignedIn (page: Page, signedIn: boolean): Promise<void> {
+  const avatar = userMenu(page).locator('img')
+  if (signedIn) {
+    await expect(avatar, 'the header does not show a signed-in user').toBeVisible()
+  } else {
+    await expect(avatar, 'the header still shows a signed-in user').toHaveCount(0)
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('auth_token')), { message: 'a session token is still stored' }).toBeNull()
+  }
+}
+
+/**
+ * Makes `userKey` the signed-in user from any start: a fresh page, signed out, already
+ * that user (nothing to do), or another user (signs that one out first). Verifies the
+ * resulting identity with the backend. Stays on the current page unless the page is blank.
+ */
+export async function ensureLoggedIn (page: Page, userKey: string): Promise<void> {
   const user = fixture.user(userKey)
-  await page.goto('/')
-  await page.getByRole('button', { name: 'User menu' }).click()
+  await openApp(page)
+  const current = await storedUser(page)
+  if (current?.username === user.username) {
+    await expectSignedIn(page, true)
+    return
+  }
+  if (current) await logOut(page)
+  await expectSignedIn(page, false) // a rejected stored token is forgotten on restore
+  await userMenu(page).click()
   await page.locator('.q-menu').getByText('Log In', { exact: true }).click()
   await page.getByLabel('Email or Username').fill(user.username)
   await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Log In' }).click()
   await expect(page.getByText(`Welcome, ${user.name}!`)).toBeVisible()
+  expect((await storedUser(page))?.username, 'signed in as another user').toBe(user.username)
+}
+
+/** Signs out through the user menu when signed in; on a fresh or signed-out page, only verifies. */
+export async function logOut (page: Page): Promise<void> {
+  await openApp(page)
+  if (await storedUser(page)) {
+    await expectSignedIn(page, true)
+    await userMenu(page).click()
+    await page.locator('.q-menu').getByText('Log Out', { exact: true }).click()
+    await expect(page.getByText('You have been logged out.')).toBeVisible()
+  }
+  await expectSignedIn(page, false)
+}
+
+/**
+ * Opens the Search page (keeping the session), runs `query` and waits for the first result.
+ */
+export async function search (page: Page, query: string): Promise<void> {
+  await page.goto('/#/search')
+  await closePhoneNavigation(page)
+  // The query field is the only textbox in the search form (it has no label).
+  await page.getByRole('textbox').first().fill(query)
+  await page.keyboard.press('Enter')
+  await expect(page.locator('#result-1'), `no results for "${query}"`).toBeVisible()
+}
+
+/** Goes to page `n` of the search results with its page number below them. */
+export async function goToResultsPage (page: Page, n: number): Promise<void> {
+  // The number buttons only: Quasar names the previous/next arrows after their target page too.
+  const button = page.locator('.q-pagination__middle').getByRole('button', { name: String(n), exact: true })
+  await expect(button, `no results page ${n}`).toHaveCount(1)
+  await button.click()
+  await expect(page.locator(`#result-${(n - 1) * 10 + 1}`)).toBeVisible()
+}
+
+export type SearchResponse = { results: { id: string, text: string }[] }
+
+/**
+ * Changes the `/api/search` answers of this page only, for deterministic edge cases the
+ * fixture corpus lacks (long passages, many pages). Call before searching; the real
+ * response is fetched and passed to `edit`.
+ *
+ *   await editSearchResults(page, (body) => appendResultCopies(body, 2))
+ */
+export async function editSearchResults (page: Page, edit: (body: SearchResponse) => void): Promise<void> {
+  await page.route('**/api/search', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json() as SearchResponse
+    edit(body)
+    await route.fulfill({ response, json: body })
+  })
+}
+
+/** Appends `copies` copies of the results (for pagination). Copies get ids of no stored chunk. */
+export function appendResultCopies (body: SearchResponse, copies: number): void {
+  const original = body.results
+  for (let copy = 1; copy <= copies; copy++) {
+    body.results = body.results.concat(original.map(r => ({ ...r, id: `${r.id.slice(0, -4)}${copy}fff` })))
+  }
 }
 
 /** The rail icon of a right sidebar panel; clicking it shows the panel. */

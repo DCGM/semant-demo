@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { chunkText, deleteSuggestions, fixture, logIn, openDocument, sidebarPanelButton } from './support'
+import { chunkText, deleteSuggestions, ensureLoggedIn, fixture, openDocument, sidebarPanelButton } from './support'
 
 // Request-scoped AI suggestions in the document view (ADR 0003/0007). The fake Topicer
 // streams one chunk event, then waits FAKE_TOPICER_STREAM_DELAY (3 s) before the next, so
@@ -21,7 +21,7 @@ test.afterEach(async ({ request }) => {
 })
 
 test('suggestions appear while the run is under way and cancelling keeps them', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await startPersonRun(page)
 
@@ -44,7 +44,7 @@ test('suggestions appear while the run is under way and cancelling keeps them', 
 })
 
 test('leaving the document during a run shows nothing of it in the next view', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await startPersonRun(page)
   await expect(suggestionCards(page)).toHaveCount(1)

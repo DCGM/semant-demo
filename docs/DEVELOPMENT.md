@@ -359,6 +359,12 @@ They never use the development container or `local_data/`:
 The profile serves at `http://127.0.0.1:8765`; log in with a corpus user, e.g. `owner` /
 `owner-password-1`.
 
+Browser specs set up their state with the shared helpers in
+`semant_demo_frontend/test/e2e/support.ts` (conventions and examples at their code):
+`useViewport` (wide / narrow / phone, as in the UI captures), `ensureLoggedIn` / `logOut`
+from any session state, `search`, `goToResultsPage` and `editSearchResults` for edge cases
+the corpus lacks. Every test sets up its own state and passes alone or in any order.
+
 ### Fast browser-test loop
 
 `make test-e2e` rebuilds the frontend, starts a new Weaviate and reseeds for every run. While

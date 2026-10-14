@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
-import { fixture, logIn } from './support'
+import { appendResultCopies, editSearchResults, ensureLoggedIn, fixture, goToResultsPage, search, useViewport } from './support'
 
 // Search result cards (#256): checkbox left of the title only, an understated selected
 // state, passage previews in narrow result columns, the selection toolbar and Escape.
@@ -10,37 +10,13 @@ const chronicle = fixture.chunk('chronicle_1')
 const longText = [chronicle.text, ...Array.from({ length: 12 }, (_, i) =>
   `Odstavec ${i + 1}: kronikář pečlivě zapsal, kdo do obce přijel, kde se ubytoval a co se ten den v hostinci U Lípy projednávalo.`)].join('\n')
 
-type SearchResponse = { results: { id: string, text: string }[] }
-
 /** Lengthens chronicle_1 and, with `copies`, appends copies of the results (for pagination). */
-async function patchSearch (page: Page, copies = 0) {
-  await page.route('**/api/search', async (route) => {
-    const response = await route.fetch()
-    const body = await response.json() as SearchResponse
-    for (const result of body.results) {
-      if (result.text === chronicle.text) result.text = longText
-    }
-    const original = body.results
-    for (let copy = 1; copy <= copies; copy++) {
-      body.results = body.results.concat(original.map(r => ({ ...r, id: `${r.id}-copy-${copy}` })))
-    }
-    await route.fulfill({ response, json: body })
-  })
-}
-
-async function search (page: Page, query = 'Lhota') {
-  await page.goto('/#/search')
-  await page.getByRole('textbox').first().fill(query)
-  await page.keyboard.press('Enter')
-  await expect(page.locator('#result-1')).toBeVisible()
-  // On a phone the navigation starts open as an overlay; tap beside it to close it.
-  const viewport = page.viewportSize()
-  if (viewport && viewport.width < 600) {
-    const backdrop = page.locator('.q-drawer__backdrop:not(.hidden)')
-    await backdrop.first().click({ position: { x: viewport.width - 20, y: viewport.height / 2 } })
-    await expect(backdrop).toHaveCount(0)
+const patchSearch = (page: Page, copies = 0) => editSearchResults(page, (body) => {
+  for (const result of body.results) {
+    if (result.text === chronicle.text) result.text = longText
   }
-}
+  appendResultCopies(body, copies)
+})
 
 async function box (locator: Locator) {
   const b = await locator.boundingBox()
@@ -52,15 +28,15 @@ const card = (page: Page, text = chronicle.text) => page.locator('.search-result
 const clipped = (text: Locator) => text.evaluate(el => el.scrollHeight > el.clientHeight + 1)
 const toolbar = (page: Page) => page.locator('.selection-toolbar')
 
-for (const { name, width, height, constrained } of [
-  { name: 'wide desktop', width: 1920, height: 1000, constrained: false },
-  { name: 'narrow desktop with both sidebars', width: 1280, height: 900, constrained: true },
-  { name: 'phone', width: 390, height: 844, constrained: true }
-]) {
+for (const { name, viewport, constrained } of [
+  { name: 'wide desktop', viewport: 'wide', constrained: false },
+  { name: 'narrow desktop with both sidebars', viewport: 'narrow', constrained: true },
+  { name: 'phone', viewport: 'phone', constrained: true }
+] as const) {
   test(`result cards on ${name}: alignment, passage and keyboard selection`, async ({ page }) => {
-    await page.setViewportSize({ width, height })
+    await useViewport(page, viewport)
     await patchSearch(page)
-    await search(page)
+    await search(page, 'Lhota')
 
     if (name.includes('sidebars')) {
       await expect(page.locator('.q-drawer--left')).toBeVisible()
@@ -129,8 +105,8 @@ for (const { name, width, height, constrained } of [
 }
 
 test('a signed-in user without membership rights gets no collection actions', async ({ page }) => {
-  await logIn(page, 'annotator') // only a shared collection
-  await search(page)
+  await ensureLoggedIn(page, 'annotator') // only a shared collection
+  await search(page, 'Lhota')
   await card(page).getByRole('checkbox').click()
   await expect(toolbar(page)).toContainText('1 item(s) selected')
   await expect(toolbar(page).getByRole('button', { name: 'Clear selection' })).toBeVisible()
@@ -140,8 +116,8 @@ test('a signed-in user without membership rights gets no collection actions', as
 })
 
 test('the collection owner gets the collection actions', async ({ page }) => {
-  await logIn(page, 'owner')
-  await search(page)
+  await ensureLoggedIn(page, 'owner')
+  await search(page, 'Lhota')
   await card(page).getByRole('checkbox').click()
   await expect(toolbar(page).getByLabel('Select Collection')).toBeVisible()
   await expect(toolbar(page).getByRole('button', { name: 'Add Chunks' })).toBeVisible()
@@ -151,14 +127,13 @@ test('the collection owner gets the collection actions', async ({ page }) => {
 })
 
 test('Escape clears the selection on all pages, but not inside a field or menu', async ({ page }) => {
-  await logIn(page, 'owner')
+  await ensureLoggedIn(page, 'owner')
   await patchSearch(page, 2) // more than one page of results
-  await search(page)
+  await search(page, 'Lhota')
   const selected = page.locator('.search-result--selected')
 
   await page.locator('#result-1').getByRole('checkbox').click()
-  const pageButton = (n: number) => page.locator('.q-pagination button').filter({ hasText: new RegExp(`^${n}$`) })
-  await pageButton(2).click()
+  await goToResultsPage(page, 2)
   await page.locator('#result-11').getByRole('checkbox').click()
   await expect(toolbar(page)).toContainText('2 item(s) selected')
 
@@ -179,6 +154,6 @@ test('Escape clears the selection on all pages, but not inside a field or menu',
   await page.keyboard.press('Escape')
   await expect(toolbar(page)).toBeHidden()
   await expect(selected).toHaveCount(0)
-  await pageButton(1).click()
+  await goToResultsPage(page, 1)
   await expect(selected).toHaveCount(0)
 })
