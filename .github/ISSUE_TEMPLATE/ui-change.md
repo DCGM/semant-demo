@@ -13,8 +13,10 @@ pixel-perfect mockups are not expected. Non-visual bugs do not need this templat
 
 ## Expected appearance
 
-<!-- Where elements sit and how they align, what collapses or wraps, and which states
-look different (selected, expanded, empty, signed out, not the owner). -->
+<!-- Describe relevant widths only; delete unused lines. New/shared layouts or
+responsive changes generally need all three, but local changes may need only one.
+Include alignment, wrapping and relevant states (selected, expanded, empty,
+signed out, not the owner) as appropriate. -->
 
 - **Wide desktop:**
 - **Constrained desktop (both sidebars open):**
