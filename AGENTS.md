@@ -94,6 +94,17 @@ changes; only relevant contexts for localized changes), attach representative ev
 of the changed states to the PR, and name any relevant context or state not captured. Do
 not present screenshots you did not take or checks you did not run.
 
+GitHub has no API for uploading images to a PR, so attach screenshots through a secret
+gist. Create it with a short `README.md` (`gh gist create --desc "<repo> PR #N UI evidence"`),
+clone `git@gist.github.com:<id>.git`, add the PNGs and push. Then embed them in the PR
+description with revision-pinned raw URLs
+(`https://gist.githubusercontent.com/<user>/<id>/raw/<sha>/<file>.png`). A secret gist is
+unlisted, not private, so upload only synthetic/fixture data; never real user text,
+credentials or production content. Deleting a file keeps it in gist history and pinned
+links working; only deleting the whole gist removes the images. The token needs gist
+write access (fine-grained PAT: account permission "Gists: Read and write"; classic
+token: `gist` scope). If that is missing, ask the user instead of using another host.
+
 For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
 
 Do not connect to or modify shared server Weaviate, shared preview databases, or production databases unless explicitly instructed for the current task.
