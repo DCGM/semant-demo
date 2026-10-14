@@ -87,6 +87,13 @@ the profile once with `make e2e-dev-start`, run the affected spec with
 [DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop). Run the full `make test-e2e`
 once before handoff.
 
+For a meaningful UI change, follow the
+[UI change checklist](CONTRIBUTING.md#ui-change-checklist) before the first push: inspect
+the affected states and viewports (all three widths for new/shared layouts or responsive
+changes; only relevant contexts for localized changes), attach representative evidence
+of the changed states to the PR, and name any relevant context or state not captured. Do
+not present screenshots you did not take or checks you did not run.
+
 For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
 
 Do not connect to or modify shared server Weaviate, shared preview databases, or production databases unless explicitly instructed for the current task.

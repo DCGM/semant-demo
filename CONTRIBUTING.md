@@ -215,8 +215,44 @@ or provider runs. Required CI failures block merging; PR previews intentionally 
 when checks fail for manual diagnosis ([deploy/README.md](deploy/README.md#pr-preview-credentials)).
 
 PRs state the purpose, behavior/API/schema changes, actual checks/results, unavailable
-checks, and compatibility/migration notes. Add screenshots or a recording for meaningful
-UI changes. Agent-authored implementation must be reviewed before merge, preferably by a
+checks, and compatibility/migration notes. Meaningful UI changes follow the
+[UI change checklist](#ui-change-checklist). Agent-authored implementation must be reviewed before merge, preferably by a
 separate reviewer from the implementing agent. Access-control changes, destructive
 data changes, deployment changes, and other high-risk changes require explicit
 human review. Keep CI execution isolated from production credentials and deploy the tested artifact.
+
+### UI change checklist
+
+Applies to a **meaningful UI change**: new or changed layout, components, responsive
+behavior, interaction or visible states. Match verification effort to what the change
+could reasonably affect; not every UI change needs all three widths. Backend-only and
+non-visual PRs, documentation, and trivial cosmetic edits (a label, a colour token) need
+no checklist. A small, localized styling change generally needs only a spot-check of
+the affected component; note omitted evidence if a reviewer might expect it.
+
+1. **Inspect relevant contexts before the first review/push.** For new views, shared
+   layouts or responsive changes, check wide desktop, constrained desktop (both sidebars
+   open where present) and phone. For local interaction changes, check the affected
+   states and viewports; for isolated styling, check the relevant component and context.
+   Do not inspect unaffected widths merely to complete the checklist.
+   `make e2e-dev-capture` can render the three widths against the deterministic profile
+   (1920×1000, 1280×900, 390×844); pass your spec to capture the changed state
+   ([DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop)).
+2. **Attach proportionate evidence to the PR:** before/after or final screenshots, or
+   a short recording, showing the changed state (e.g. selected, expanded, empty, signed
+   out) at relevant widths, not just the default view. Unaffected widths need no
+   screenshots. If a relevant context or state could not be captured, say which and
+   why; do not imply it was.
+3. **Review what applies:** card/title/metadata alignment, text overflow and wrapping
+   (long titles, narrow toolbars), selected/hover/focus states, controls gated by
+   authorization or ownership, keyboard and touch interaction, and direct links/reloads
+   into the view. Write a browser test only where the [testing contract](#4-testing-contract)
+   calls for one; the checklist is a review aid, not a test requirement.
+4. **Report checks honestly:** the commands run and their results, and any full
+   `make test-e2e` run still outstanding. Targeted specs are for iteration; full
+   validation is still due under the normal merge rules above.
+
+For a new UI issue, the [UI change template](.github/ISSUE_TEMPLATE/ui-change.md) asks for
+the requested behavior, expected appearance and target widths, a reference image if one
+exists, and non-goals. Describe appearance in words or with a rough sketch; pixel-perfect
+mockups are not required, and non-visual bugs need none of this.

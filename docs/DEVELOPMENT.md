@@ -416,8 +416,8 @@ these projects also keeps its end-of-test screenshot and trace in
 run it in these projects instead of the view captures, e.g.
 `make e2e-dev-capture ARGS="test/e2e/sidebar.spec.ts --project=narrow"`; specs that set their
 own viewport keep it. `test-results/` is ignored by git and emptied on every Playwright run.
-Captures are for reviewing UI changes; nonvisual work does not need them, and
-`make test-e2e` never runs `test/capture`.
+Captures are for reviewing UI changes ([UI change checklist](../CONTRIBUTING.md#ui-change-checklist));
+nonvisual work does not need them, and `make test-e2e` never runs `test/capture`.
 
 Measured on a workstation for `searchResultCards.spec.ts --grep phone` (one test):
 
