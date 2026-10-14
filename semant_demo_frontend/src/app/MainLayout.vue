@@ -257,6 +257,7 @@ interface DrawerAction {
 const drawerLinks1 = computed(() => [
   { label: 'Document search', icon: 'search', to: { name: 'search' } },
   { label: 'Chat Assistant', icon: 'chat', to: { name: 'rag' } },
+  { label: 'Corpus', icon: 'insights', to: { name: 'corpus' } },
   ...(userStore.isLoggedIn ? [{ label: 'Collections', icon: 'folder', to: { name: 'collections' } }] : []),
   { label: 'About', icon: 'info', to: { name: 'about' } }
 ])
