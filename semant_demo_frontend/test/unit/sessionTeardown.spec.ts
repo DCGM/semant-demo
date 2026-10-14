@@ -301,6 +301,25 @@ describe('a newer session stored by another tab', () => {
     stop()
   })
 
+  it('keeps a newer account\'s session when the old sign-out is rejected late', async () => {
+    const { store, stop } = signedInAsA()
+    let reject!: () => void
+    answers['/api/auth/jwt/logout'] = () => new Promise((resolve) => { reject = () => resolve(json({ detail: 'Unauthorized' }, 401)) })
+    answers['/api/users/me'] = () => json(userB)
+
+    const logout = store.logout()
+    expect([store.token, getAuthToken()]).toEqual([null, null]) // ended here before any answer
+    otherTabStores(jwt('uB'))
+    await flushPromises()
+    reject()
+    await expect(logout).rejects.toThrow()
+    await flushPromises()
+
+    expect(sent.find((r) => r.path === '/api/auth/jwt/logout')?.token).toBe(jwt('uA'))
+    expect([store.token, store.user?.id, getAuthToken()]).toEqual([jwt('uB'), 'uB', jwt('uB')])
+    stop()
+  })
+
   it('survives a 401 for the old token answered before this tab heard of it', async () => {
     const { store, stop } = signedInAsA()
     let reject!: () => void
@@ -356,8 +375,30 @@ describe('MainLayout session teardown', () => {
     await flushPromises()
 
     expect([store.isLoggedIn, getAuthToken()]).toEqual([false, null])
-    expect(document.body.textContent).toContain('You have been logged out on this device, but the server could not confirm the sign-out.')
+    expect(document.body.textContent).toContain('The server could not confirm the sign-out. You remain logged out on this device.')
     expect(localStorage.getItem('collections.viewMode')).toBe('grid')
+  })
+
+  it('signs out at once and clears user data while the server logout never answers', async () => {
+    const { wrapper, store } = await mountLayout()
+    const scope = effectScope()
+    scope.run(useSessionScope) // the app's session wiring, on the layout's store
+    const collections = useUserCollectionsStore()
+    answers['/api/user_collections'] = () => json([{ id: 'c1', name: 'A private collection', userId: 'uA' }])
+    await collections.fetchCollections()
+    expect(collections.collections).toHaveLength(1)
+    // '/api/auth/jwt/logout' has no answer: the request stays pending for the whole test.
+
+    await drawerItem(wrapper, 'Sign out')?.trigger('click')
+    await flushPromises()
+
+    expect(sent.find((r) => r.path === '/api/auth/jwt/logout')?.token).toBe(jwt('uA'))
+    expect([store.isLoggedIn, store.awaitingVerification, store.token, getAuthToken()]).toEqual([false, false, null, null])
+    expect(collections.collections).toEqual([])
+    expect(drawerItem(wrapper, 'Log in')).toBeDefined()
+    expect(drawerItem(wrapper, 'Sign out')).toBeUndefined()
+    expect(document.body.textContent).toContain('You have been logged out.')
+    scope.stop()
   })
 
   it('reports a plain sign-out when the server answers it', async () => {

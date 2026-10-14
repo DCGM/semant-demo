@@ -3,8 +3,8 @@
     <q-icon name="cloud_off" size="56px" color="grey-6" />
     <div class="text-h6 q-mt-md">Waiting to verify your session</div>
     <div class="text-body2 text-grey-8 q-mt-sm session-pending-text">
-      This page needs your account. It opens as soon as the server confirms your session;
-      you are not signed out.
+      This page needs your account. It opens as soon as the server verifies your stored
+      sign-in.
     </div>
   </q-page>
 </template>

@@ -62,21 +62,20 @@ export const useUserStore = defineStore('user', {
     },
 
     /**
-     * Ends this session, also when the server request fails. If the session changed while
-     * the request was pending (another tab signed in or out), that newer session stays.
-     * A session awaiting verification ends here at once, without asking the server.
+     * Ends this session here at once, before and whatever the server answers: the token and
+     * the user are forgotten synchronously, so a hanging or failing request never keeps the
+     * old session (or its data) on screen. The server logout of a verified session is then
+     * sent best effort with the old token named explicitly (never the current token, which
+     * may already be another account's); the returned promise reports only that request.
+     * A session awaiting verification ends without asking the server.
      */
-    async logout (): Promise<void> {
+    logout (): Promise<void> {
       const token = this.token
-      if (!this.user) {
-        this.forgetSession()
-        return
-      }
-      try {
-        if (token) await useApi().auth.authJwtLogoutApiAuthJwtLogoutPost()
-      } finally {
-        if (this.token === token) this.forgetSession()
-      }
+      const verified = !!this.user
+      this.forgetSession()
+      if (!token || !verified) return Promise.resolve()
+      return useApi().auth.authJwtLogoutApiAuthJwtLogoutPost({ headers: { Authorization: `Bearer ${token}` } })
+        .then(() => undefined)
     },
 
     /**

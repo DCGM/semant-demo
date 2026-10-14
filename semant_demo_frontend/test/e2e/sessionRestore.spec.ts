@@ -12,7 +12,7 @@ const storedToken = (page: Page) => page.evaluate(() => localStorage.getItem('au
 
 /** Neither signed in nor signed out: Sign out only, no user pages, no Log in / Register. */
 async function expectAwaitingVerification (page: Page): Promise<void> {
-  await expect(banner(page)).toContainText('Your session could not be verified')
+  await expect(banner(page)).toContainText('Your previous sign-in is stored on this device')
   await expect(drawerItem(page, 'Sign out')).toBeVisible()
   for (const label of ['Log in', 'Register', 'Collections', 'Settings']) await expect(drawerItem(page, label)).toHaveCount(0)
 }

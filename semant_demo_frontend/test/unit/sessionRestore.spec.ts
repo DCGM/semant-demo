@@ -362,7 +362,7 @@ describe('MainLayout while the session awaits verification', () => {
     answers['/api/users/me'] = [serverError]
     const { wrapper } = await mountLayout()
 
-    expect(banner(wrapper).text()).toContain('Your session could not be verified')
+    expect(banner(wrapper).text()).toContain('Your previous sign-in is stored on this device')
     expect(drawerLabels(wrapper)).toContain('Sign out')
     expect(drawerLabels(wrapper).filter((label) => ['Log in', 'Register', 'Collections', 'Settings'].includes(label))).toEqual([])
   })

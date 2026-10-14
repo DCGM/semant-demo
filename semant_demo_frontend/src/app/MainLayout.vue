@@ -28,7 +28,7 @@
             <q-icon v-else-if="userStore.restoreFailed" name="cloud_off" />
             <q-icon v-else name="person_outline" />
           </q-avatar>
-          <q-menu>
+          <q-menu v-model="userMenuOpen">
             <q-list style="min-width: 180px">
               <template v-if="userStore.awaitingVerification">
                 <q-item clickable v-close-popup @click="handleLogout">
@@ -196,8 +196,8 @@
     <q-page-container>
       <q-banner v-if="showSessionBanner" class="session-banner bg-amber-1 text-grey-9" role="status">
         <template #avatar><q-icon name="cloud_off" color="amber-9" /></template>
-        Your session could not be verified: the server is unreachable or failing. You are still
-        signed in on this device; your data appears once the session is verified.
+        Your previous sign-in is stored on this device, but the session cannot currently be
+        verified: the server is unreachable or failing. Your data appears once it is verified.
         <template #action>
           <q-btn flat color="primary" label="Retry" :loading="retryingSession" @click="retrySession" />
           <q-btn flat color="primary" label="Sign out" @click="handleLogout" />
@@ -238,6 +238,8 @@ const showLogin = ref(false)
 const showRegister = ref(false)
 const showUserInfo = ref(false)
 const showAbout = ref(false)
+// Signing out replaces the menu's items at once, before v-close-popup can close it.
+const userMenuOpen = ref(false)
 
 onMounted(async () => {
   // Restore session if a token exists in localStorage
@@ -305,32 +307,25 @@ async function retrySession () {
   }
 }
 
-// Signing out always ends the session here (userStore.logout). The backend's JWT logout
-// revokes nothing; when it fails (offline, server error) the user is told this device
-// is signed out but the server did not confirm it, without an unhandled rejection.
-async function handleLogout () {
-  let unconfirmed = false
-  try {
-    await userStore.logout()
-  } catch (error) {
-    // 401: the server no longer accepted the token, so nothing is left to confirm.
-    unconfirmed = errorStatus(error) !== 401
-  }
-  // Another tab signed in meanwhile and this tab follows that session; it says so itself.
-  if (userStore.token) return
-  $q.notify(unconfirmed
-    ? {
-        type: 'warning',
-        message: 'You have been logged out on this device, but the server could not confirm the sign-out.',
-        position: 'top',
-        timeout: 5000
-      }
-    : {
-        type: 'info',
-        message: 'You have been logged out.',
-        position: 'top',
-        timeout: 3000
-      })
+// Signing out ends the session here at once (userStore.logout), so the signed-out UI never
+// waits for the server. The backend's JWT logout revokes nothing; when it fails (offline,
+// server error) the user is also told the server did not confirm it, without an unhandled
+// rejection. A request that never answers simply never adds that warning.
+function handleLogout () {
+  userMenuOpen.value = false
+  const confirmation = userStore.logout()
+  $q.notify({ type: 'info', message: 'You have been logged out.', position: 'top', timeout: 3000 })
+  confirmation.catch((error: unknown) => {
+    // 401: the server no longer accepted the token, so nothing is left to confirm. A session
+    // signed in meanwhile (here or in another tab) is not the one this warning is about.
+    if (errorStatus(error) === 401 || userStore.token) return
+    $q.notify({
+      type: 'warning',
+      message: 'The server could not confirm the sign-out. You remain logged out on this device.',
+      position: 'top',
+      timeout: 5000
+    })
+  })
 }
 const miniStateClick = () => {
   drawerMiniState.value = !drawerMiniState.value
