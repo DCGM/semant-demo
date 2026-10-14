@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { UserRead } from 'src/generated/api'
-import { clearAuthToken, getAuthToken, setAuthToken, tokenSubject, useApi } from 'src/shared/api'
+import { clearAuthToken, errorStatus, getAuthToken, setAuthToken, tokenSubject, useApi } from 'src/shared/api'
 
 // The restore of a stored token in flight, shared by everyone who waits for that token.
 let restoring: { token: string, promise: Promise<void> } | null = null
@@ -8,16 +8,24 @@ let restoring: { token: string, promise: Promise<void> } | null = null
 interface UserStoreState {
   user: UserRead | null
   token: string | null
+  /** The token whose user could not be read for another reason than a rejected token. */
+  unconfirmedToken: string | null
 }
 
 export const useUserStore = defineStore('user', {
   state: (): UserStoreState => ({
     user: null,
-    token: getAuthToken()
+    token: getAuthToken(),
+    unconfirmedToken: null
   }),
 
   getters: {
     isLoggedIn: (state) => !!state.token && !!state.user,
+    /**
+     * The stored session could not be confirmed (offline, server error): the token is
+     * kept and the user is not signed in until a later restore reads their account.
+     */
+    restoreFailed: (state) => !!state.token && !state.user && state.unconfirmedToken === state.token,
     getUserId: (state) => state.user?.id,
     getEmail: (state) => state.user?.email,
     getDisplayName: (state) => state.user?.name || state.user?.username || state.user?.email || ''
@@ -30,11 +38,21 @@ export const useUserStore = defineStore('user', {
       })
     },
 
+    /**
+     * Rejects also when the new session's account cannot be read afterwards (offline, server
+     * error); that session is dropped again, so the user simply signs in once more.
+     */
     async login (email: string, password: string): Promise<void> {
       const { accessToken } = await useApi().auth.authJwtLoginApiAuthJwtLoginPost({ username: email, password })
       this.token = accessToken
       setAuthToken(accessToken)
-      await this.fetchCurrentUser()
+      try {
+        const user = await useApi().users.usersCurrentUserApiUsersMeGet({ headers: { Authorization: `Bearer ${accessToken}` } })
+        if (this.token === accessToken) this.user = user
+      } catch (error) {
+        if (this.token === accessToken) this.forgetSession()
+        throw error
+      }
     },
 
     /**
@@ -54,10 +72,11 @@ export const useUserStore = defineStore('user', {
      * Restores the session of a stored token once (layout start-up and the first guarded
      * navigation share one request). Resolves at once without a token or when already done.
      * A restore for another token (after sign-out or a new sign-in) never reuses an older one.
+     * After a failed restore (`restoreFailed`) only an explicit `retry` asks the server again.
      */
-    restoreSession (): Promise<void> {
+    restoreSession ({ retry = false }: { retry?: boolean } = {}): Promise<void> {
       const token = this.token
-      if (!token || this.user) return Promise.resolve()
+      if (!token || this.user || (this.restoreFailed && !retry)) return Promise.resolve()
       if (restoring?.token !== token) {
         const entry = {
           token,
@@ -71,20 +90,26 @@ export const useUserStore = defineStore('user', {
     },
 
     /**
-     * Reads the user of the current token. The answer (or failure) applies only while that
-     * token is still the session's: a late answer after sign-out or a switch to another
-     * account neither restores the old user nor ends the new session.
+     * Reads the user of the current token. Only a 401 (expired, revoked or otherwise invalid
+     * token) ends the session; a network or server failure keeps the token for a later
+     * restore (`restoreFailed`). The answer (or failure) applies only while that token is
+     * still the session's: a late answer after sign-out or a switch to another account
+     * neither restores the old user nor ends the new session.
      */
     async fetchCurrentUser (): Promise<void> {
       const token = this.token
       if (!token) return
+      this.unconfirmedToken = null // a retry that fails again is reported again
       try {
         // Sent with this token explicitly, so the answer belongs to the token checked below.
         const user = await useApi().users.usersCurrentUserApiUsersMeGet({ headers: { Authorization: `Bearer ${token}` } })
-        if (this.token === token) this.user = user
-      } catch {
-        // Token invalid or expired
-        if (this.token === token) this.forgetSession()
+        if (this.token !== token) return
+        this.user = user
+        this.unconfirmedToken = null
+      } catch (error) {
+        if (this.token !== token) return
+        if (errorStatus(error) === 401) this.forgetSession()
+        else this.unconfirmedToken = token
       }
     },
 
@@ -125,6 +150,7 @@ export const useUserStore = defineStore('user', {
       const token = this.token
       this.token = null
       this.user = null
+      this.unconfirmedToken = null
       if (token) clearAuthToken(token)
     }
   }

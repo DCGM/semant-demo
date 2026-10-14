@@ -49,6 +49,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useQuasar } from 'quasar'
+import { errorStatus } from 'src/shared/api'
 import { useUserStore } from './userStore'
 
 const props = defineProps<{ modelValue: boolean }>()
@@ -80,7 +81,11 @@ async function submit() {
       timeout: 3000
     })
   } catch (e: unknown) {
-    errorMsg.value = 'Invalid email or password.'
+    // 4xx: rejected credentials; offline or a server error is not the user's typo.
+    const status = errorStatus(e)
+    errorMsg.value = status !== null && status < 500
+      ? 'Invalid email or password.'
+      : 'Could not sign in: the server is unreachable or failing. Please try again.'
   } finally {
     loading.value = false
   }

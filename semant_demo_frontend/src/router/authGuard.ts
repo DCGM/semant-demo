@@ -20,7 +20,8 @@ export function requiresAuth (route: RouteLocationNormalized): boolean {
  * Keeps signed-out users off `requiresAuth` routes: a direct link waits for a stored
  * session to be restored, then opens the route or goes to {@link SIGNED_OUT_ROUTE}; signing
  * out (or an expired session) on such a route leaves it. `onDenied` tells a user sent away
- * from a direct link why; whoever ends a session reports that themselves.
+ * from a direct link why; whoever ends a session reports that themselves, and a session
+ * that could not be confirmed (server unreachable) is reported by the session scope.
  * The backend still authorizes every request; this only avoids showing pages that cannot work.
  */
 export function installAuthGuard (
@@ -32,7 +33,7 @@ export function installAuthGuard (
     if (!requiresAuth(to)) return true
     await userStore.restoreSession()
     if (userStore.isLoggedIn) return true
-    onDenied()
+    if (!userStore.restoreFailed) onDenied()
     return SIGNED_OUT_ROUTE
   })
 
