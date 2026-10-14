@@ -33,7 +33,6 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Product work (when scoped)
 
-- [#255](https://github.com/DCGM/semant-demo/issues/255) — link search results, chat citations and document views to their original digitized sources.
 - [#43](https://github.com/DCGM/semant-demo/issues/43) — optional durable bulk tagging jobs; the `Tagging Jobs` tab is a placeholder.
 - Page-specific sidebar tools and chat: [#243](https://github.com/DCGM/semant-demo/issues/243) and its linked issues.
 

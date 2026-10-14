@@ -67,13 +67,10 @@ class ChunkSearchRepository:
             if not doc_objs:
                 continue
             first_doc = doc_objs[0]
-            doc_props = dict(first_doc.properties)
-            if not doc_props.get("library"):
-                doc_props["library"] = "mzk"
             results.append(SearchResultChunk(
                 id=obj.uuid,
                 **obj.properties,
-                document_object=Document(id=first_doc.uuid, **doc_props),
+                document_object=Document(id=first_doc.uuid, **first_doc.properties),
                 document=first_doc.uuid,
                 metadata=classifications(obj.properties),
             ))

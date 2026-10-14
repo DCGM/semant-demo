@@ -22,8 +22,8 @@ class Document(BaseModel):
     """
     id: UUID
     library: str | None = None
-    """Source digital library. Document view and search answers fill in ``"mzk"`` when the
-    store has none; other reads leave it absent."""
+    """Source digital library code (e.g. ``"mzk"``), absent when the store has none. Never
+    guessed: links to the original digitized document are built from it (#255)."""
     title: str | None = None
     subtitle: str | None = None
     # A string in the stored schema, a number in some older data.

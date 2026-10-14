@@ -147,7 +147,7 @@ async def test_results_map_chunk_and_document(chunks, corpus):
     assert hit.text == corpus.chunks["gazette_1"]["text"]
     assert str(hit.document) == gazette["id"] == str(hit.document_object.id)
     assert hit.document_object.title == gazette["properties"]["title"]
-    assert hit.document_object.library == "mzk"  # missing library defaults as before
+    assert hit.document_object.library is None  # never guessed: it would link to a wrong library (#255)
 
 
 async def test_results_map_document_authors(chunks, corpus):
