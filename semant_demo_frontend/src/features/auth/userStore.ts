@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { UserRead } from 'src/generated/api'
-import { clearAuthToken, getAuthToken, setAuthToken, useApi } from 'src/shared/api'
+import { clearAuthToken, getAuthToken, setAuthToken, tokenSubject, useApi } from 'src/shared/api'
 
 // The restore of a stored token in flight, shared by everyone who waits for that token.
 let restoring: { token: string, promise: Promise<void> } | null = null
@@ -84,8 +84,31 @@ export const useUserStore = defineStore('user', {
     },
 
     async updateUser (data: { email?: string; password?: string; name?: string; institution?: string | null }): Promise<void> {
-      if (!this.token) throw new Error('Not authenticated')
-      this.user = await useApi().users.usersPatchCurrentUserApiUsersMePatch({ userUpdate: data })
+      const token = this.token
+      if (!token) throw new Error('Not authenticated')
+      const user = await useApi().users.usersPatchCurrentUserApiUsersMePatch({ userUpdate: data })
+      // A late answer after sign-out or an account switch must not bring the old user back.
+      if (this.token === token) this.user = user
+    },
+
+    /**
+     * Follows a sign-in, sign-out or account switch made in another browser tab: the stored
+     * token is already the new one, so it is adopted, not written back. A new token of the
+     * signed-in user (signed in again, or renewed) keeps the session and its data. Any
+     * other token, or one whose user cannot be read, ends the old session first (clearing
+     * its data) before the new token's user is restored.
+     */
+    async adoptStoredToken (token: string | null): Promise<void> {
+      if (token === this.token) return
+      if (token && this.user && tokenSubject(token) === this.user.id) {
+        this.token = token
+        return
+      }
+      this.token = null
+      this.user = null
+      if (!token) return
+      this.token = token
+      await this.restoreSession()
     },
 
     forgetSession (): void {

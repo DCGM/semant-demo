@@ -261,7 +261,7 @@ import { storeToRefs } from 'pinia'
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, Notify, useQuasar } from 'quasar'
 import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type SearchResultChunk } from 'src/generated/api'
-import { useApi } from 'src/shared/api'
+import { captureSession, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
@@ -655,11 +655,16 @@ async function addSelectedChunksToCollection () {
     return
   }
 
+  // Signing out (or another account) stops the remaining adds; completed ones are kept,
+  // and the old session's outcome is no longer reported.
+  const inSession = captureSession()
+  const collectionId = targetCollectionId.value
   let successCount = 0
   let failedCount = 0
-  for (const chunkId of selectedResults.value) {
+  for (const chunkId of [...selectedResults.value]) {
+    if (!inSession()) return
     try {
-      const data = await api.addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost({ collectionId: targetCollectionId.value as string, chunkId })
+      const data = await api.addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost({ collectionId, chunkId })
       // Partial: the chunk may be linked while its document link failed.
       if (data.outcome === WriteOutcome.complete) successCount++
       else failedCount++
@@ -668,6 +673,7 @@ async function addSelectedChunksToCollection () {
       console.error(e)
     }
   }
+  if (!inSession()) return
   Notify.create({ message: `Added ${successCount} chunk(s) to collection`, position: 'top', color: 'positive' })
   if (failedCount) {
     Notify.create({ message: `${failedCount} chunk(s) could not be fully added; completed links were kept.`, position: 'top', color: 'negative' })
@@ -692,10 +698,14 @@ async function addSelectedDocumentsToCollection () {
       .filter(id => id !== undefined)
   )
 
+  const inSession = captureSession()
+  const collectionId = targetCollectionId.value
   for (const documentId of docIds) {
+    if (!inSession()) return // signed out meanwhile: stop, keep what was added
     // The store reports failures itself and returns true only for a complete add.
-    if (await documentsStore.addToCollection(documentId, targetCollectionId.value)) successCount++
+    if (await documentsStore.addToCollection(documentId, collectionId)) successCount++
   }
+  if (!inSession()) return
   Notify.create({ message: `Added ${successCount} document(s) to collection`, position: 'top', color: 'positive' })
 }
 

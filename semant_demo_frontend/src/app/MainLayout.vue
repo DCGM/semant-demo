@@ -200,7 +200,7 @@
 <script setup lang="ts">
 import MiniStateButton from './MiniStateButton.vue'
 import semantLogo from 'src/assets/semant-logo.png'
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
@@ -209,6 +209,7 @@ import LoginDialog from 'src/features/auth/LoginDialog.vue'
 import RegisterDialog from 'src/features/auth/RegisterDialog.vue'
 import UserInfoDialog from 'src/features/auth/UserInfoDialog.vue'
 import AboutAppDialog from './AboutAppDialog.vue'
+import { errorStatus } from 'src/shared/api'
 
 const drawerMiniState = ref(false)
 
@@ -262,8 +263,35 @@ function toggleLeftDrawer () {
   leftDrawerOpen.value = !leftDrawerOpen.value
 }
 
+// Account dialogs belong to one session: signing out, an expired session or another
+// account (also from another tab) closes them; a sign-in elsewhere closes Log in / Register.
+watch(() => userStore.getUserId, (userId, previousUserId) => {
+  if (previousUserId && userId !== previousUserId) showUserInfo.value = false
+})
+watch(() => userStore.isLoggedIn, (loggedIn) => {
+  if (!loggedIn) return
+  showLogin.value = false
+  showRegister.value = false
+})
+
+// Signing out always ends the session here (userStore.logout). The backend's JWT logout
+// revokes nothing; when it fails (offline, server error) the user is told this device
+// is signed out but the server did not confirm it, without an unhandled rejection.
 async function handleLogout () {
-  await userStore.logout()
+  try {
+    await userStore.logout()
+  } catch (error) {
+    // 401: the server no longer accepted the token, so nothing is left to confirm.
+    if (errorStatus(error) !== 401) {
+      $q.notify({
+        type: 'warning',
+        message: 'You have been logged out on this device, but the server could not confirm the sign-out.',
+        position: 'top',
+        timeout: 5000
+      })
+      return
+    }
+  }
   $q.notify({
     type: 'info',
     message: 'You have been logged out.',

@@ -24,6 +24,40 @@ export function clearAuthToken (): void {
   storage()?.removeItem(TOKEN_KEY)
 }
 
+/**
+ * The user id a token was issued for (the JWT `sub` claim), or null when it cannot be read.
+ * Not verified (the backend does that); only tells a renewed token of the same user from
+ * another account's token.
+ */
+export function tokenSubject (token: string): string | null {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return null
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '='))
+    const sub = (JSON.parse(json) as { sub?: unknown }).sub
+    return typeof sub === 'string' ? sub : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Calls `listener` with the stored token (or null) whenever another browser tab signs in,
+ * signs out or switches accounts. The browser reports only changes made by other tabs, so
+ * this tab's own writes never come back here. Returns a function that unsubscribes.
+ */
+export function onStoredTokenChange (listener: (token: string | null) => void): () => void {
+  if (typeof window === 'undefined') return () => undefined
+  const handler = (event: StorageEvent) => {
+    // key null: the other tab cleared the whole storage
+    if (event.key !== null && event.key !== TOKEN_KEY) return
+    if (event.storageArea !== null && event.storageArea !== storage()) return
+    listener(getAuthToken())
+  }
+  window.addEventListener('storage', handler)
+  return () => { window.removeEventListener('storage', handler) }
+}
+
 /** `Authorization` header for hand-written requests; empty when signed out. */
 export function authHeaders (): Record<string, string> {
   const token = getAuthToken()
