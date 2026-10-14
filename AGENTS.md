@@ -89,9 +89,10 @@ once before handoff.
 
 For a meaningful UI change, follow the
 [UI change checklist](CONTRIBUTING.md#ui-change-checklist) before the first push: inspect
-wide desktop, constrained desktop with both sidebars and phone, attach screenshots of the
-changed states to the PR, and name any context or state you could not capture. Do not
-present screenshots you did not take or checks you did not run.
+the affected states and viewports (all three widths for new/shared layouts or responsive
+changes; only relevant contexts for localized changes), attach representative evidence
+of the changed states to the PR, and name any relevant context or state not captured. Do
+not present screenshots you did not take or checks you did not run.
 
 For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
 
