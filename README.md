@@ -118,8 +118,10 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
   `make api-generate` regenerates the frontend client). Public corpus reads, search without a
   collection, RAG, summaries and questions work anonymously; collection, annotation, AI
   suggestion and span chat routes need a login, and services check resource rights.
-- **Models:** every backend LLM call uses a model tier from `configs/llm_models.yaml`
-  (`LLM_MODELS_CONFIG`); clients never choose a model.
+- **Models:** every backend LLM call uses a server-owned tier from `configs/llm_models.yaml`
+  (`LLM_MODELS_CONFIG`); the shipped tiers use **OpenRouter** and clients never choose a model. See
+  [October 2026 model selection](docs/LLM_MODEL_SELECTION_2026-10.md) for prices, expected speed/quality,
+  reasoning profiles and current limitations.
 
 ## Documentation Map
 
