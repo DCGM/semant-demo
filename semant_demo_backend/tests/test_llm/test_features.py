@@ -132,7 +132,7 @@ async def test_agentic_rag_meters_the_agent_and_its_tool_subcalls(tmp_path, llm,
     assert response.rag_answer == "Fake summary of 2 passage(s); last [doc2]."
     assert [s.text for s in response.sources] == PASSAGES
     # agent → tool call, agent → tool call (+ synthesize subcall), agent → answer
-    assert rag_calls(metrics) == [("rag", "large", "provider", "success")] * 4
+    assert rag_calls(metrics) == [("rag", "medium", "provider", "success")] * 4
 
 
 @pytest.mark.parametrize(("params", "reason"), [
