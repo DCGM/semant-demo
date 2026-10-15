@@ -34,6 +34,7 @@ import type {
   DocumentChunkWindow,
   DocumentDetail,
   DocumentStats,
+  DocumentSummaryResponse,
   ExplainRequest,
   FeedbackRequest,
   HTTPValidationError,
@@ -101,6 +102,8 @@ import {
     DocumentDetailToJSON,
     DocumentStatsFromJSON,
     DocumentStatsToJSON,
+    DocumentSummaryResponseFromJSON,
+    DocumentSummaryResponseToJSON,
     ExplainRequestFromJSON,
     ExplainRequestToJSON,
     FeedbackRequestFromJSON,
@@ -362,6 +365,11 @@ export interface SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest {
 export interface SummarizeApiSummarizeSummaryTypePostRequest {
     summaryType: string;
     searchResponse: SearchResponse;
+}
+
+export interface SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest {
+    collectionId: string;
+    documentId: string;
 }
 
 export interface UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest {
@@ -1612,6 +1620,32 @@ export interface DefaultApiInterface {
      * Summarize
      */
     summarizeApiSummarizeSummaryTypePost(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse>;
+
+    /**
+     * Creates request options for summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost without sending the request
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequestOpts(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection.
+     * @summary Summarize Document
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRaw(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentSummaryResponse>>;
+
+    /**
+     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection.
+     * Summarize Document
+     */
+    summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse>;
 
     /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
@@ -4451,6 +4485,66 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async summarizeApiSummarizeSummaryTypePost(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse> {
         const response = await this.summarizeApiSummarizeSummaryTypePostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost without sending the request
+     */
+    async summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequestOpts(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost().'
+            );
+        }
+
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/documents/{document_id}/summary`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection.
+     * Summarize Document
+     */
+    async summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRaw(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentSummaryResponse>> {
+        const requestOptions = await this.summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentSummaryResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection.
+     * Summarize Document
+     */
+    async summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse> {
+        const response = await this.summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

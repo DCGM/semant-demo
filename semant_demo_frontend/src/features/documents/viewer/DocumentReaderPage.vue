@@ -189,6 +189,7 @@ import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
 import useTagSpans from 'src/features/annotations/useTagSpans'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
+import useDocumentSummary from 'src/features/documents/useDocumentSummary'
 import useChunks from '../useChunks'
 import ChunkMembershipGutter from './ChunkMembershipGutter.vue'
 import ChunkSelectionBar from './ChunkSelectionBar.vue'
@@ -222,6 +223,7 @@ const tagEditing = useTagEditing(() => props.collectionId)
 const tagNav = useTagNavigation()
 const tagSpans = useTagSpans()
 const aiAssist = useAiAssistance()
+const documentSummary = useDocumentSummary()
 const rightSidebar = useRightSidebarStore()
 const aiPanelActive = computed(() => aiAssist.aiPanelActive.value)
 const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.value)
@@ -306,6 +308,16 @@ function scrollToSpan(chunkId: string, start: number, end: number) {
   }
 }
 
+// A document-summary citation (#249) is whole-chunk granularity, with no offset within the
+// chunk to find a text segment for, so this scrolls to the chunk itself rather than reusing
+// scrollToSpan's per-segment lookup. A cited chunk outside the reader's currently displayed
+// window (useChunkWindow loads a bounded window, not necessarily every chunk) is a known,
+// documented no-op: the query simply finds nothing.
+function scrollToChunk(chunkId: string) {
+  documentTextRef.value?.querySelector<HTMLElement>(`[data-chunk-id="${chunkId}"]`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
 // ── Per-tag navigation (shared with the tags panel via composable) ──
 watch(gutters.spanMarkers, (markers) => {
   tagNav.setItems(markers.map(i => ({
@@ -334,6 +346,16 @@ watch(highlightedAutoSpanId, (spanId) => {
     scrollToSpan(chunkId, span.start, span.end)
     return
   }
+})
+
+// A clicked citation in the document summary panel (a sibling of this route inside
+// DocumentViewLayout) scrolls the reader to the cited chunk. This is an orthogonal,
+// read-only navigation action: it must not touch annotations/tagEditing/quickTagId state
+// (no selection clearing, no popover changes, no span highlight changes) or navigate, only
+// scroll — so tag-editing state in progress is left exactly as it was.
+watch(() => documentSummary.requestedCitation.value, (citation) => {
+  if (!citation) return
+  scrollToChunk(citation.chunkId)
 })
 
 // ── Annotation editing ──

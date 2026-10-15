@@ -51,6 +51,25 @@
     >
       <AiAssistPanel :collection-id="collectionId" :document-id="documentId" />
     </RightSidebarPanel>
+    <!-- fill: the rendered summary scrolls on its own; the Summarize/Cancel controls stay in view -->
+    <RightSidebarPanel
+      :id="DOCUMENT_SIDEBAR_PANELS.summary"
+      label="Summary"
+      icon="auto_awesome"
+      :order="1.5"
+      :busy="documentSummary.summarizing.value"
+      fill
+    >
+      <DocumentSummaryPanel
+        :tokens="documentSummary.tokens.value"
+        :time-spent="documentSummary.timeSpent.value"
+        :error="documentSummary.error.value"
+        :loading="documentSummary.summarizing.value"
+        @summarize="onSummarizeDocument"
+        @cancel="documentSummary.cancel"
+        @cite="documentSummary.cite"
+      />
+    </RightSidebarPanel>
     <RightSidebarPanel :id="DOCUMENT_SIDEBAR_PANELS.metadata" label="Document" icon="description" :order="2">
       <DocumentMetadataPanel v-if="documentData" :document="documentData" />
     </RightSidebarPanel>
@@ -77,6 +96,8 @@ import DocumentTagsPanel from 'src/features/annotations/DocumentTagsPanel.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import useTagSpans from 'src/features/annotations/useTagSpans'
+import DocumentSummaryPanel from 'src/features/documents/DocumentSummaryPanel.vue'
+import useDocumentSummary from 'src/features/documents/useDocumentSummary'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 
 // The document view: header, the tags, AI assist and document tools as panels of the
@@ -101,7 +122,12 @@ const { fetchCollection } = collectionsStore
 const { fetchTagsByCollection } = useTagsStore()
 const aiAssist = useAiAssistance()
 const tagSpans = useTagSpans()
+const documentSummary = useDocumentSummary()
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
+
+function onSummarizeDocument() {
+  void documentSummary.summarize(props.collectionId, props.documentId)
+}
 
 // Ctrl+F searches the tags while the Tags panel is the sidebar's active panel (also when
 // the sidebar is closed or mini); otherwise the browser's own find is left alone.
@@ -126,6 +152,8 @@ onBeforeUnmount(() => {
   aiAssist.reset()
   aiAssist.aiPanelActive.value = false
   aiAssist.highlightedAutoSpanId.value = null
+  // A summary in flight is dropped too; it is not persisted, unlike AI suggestions.
+  documentSummary.reset()
 })
 
 const documentData = computed<Document>(() => activeDocument.value!)
@@ -188,6 +216,7 @@ watch(
     // suggestions from the previous document don't leak into the new one.
     aiAssist.reset()
     tagSpans.clearAll()
+    documentSummary.reset() // a stale/in-flight summary of the previous document is dropped
     await fetchDocument(documentId)
   },
   { immediate: true }
@@ -200,6 +229,7 @@ watch(
     // annotations (the same chunk can be in both) must not stay on screen.
     aiAssist.reset()
     tagSpans.clearAll()
+    documentSummary.reset() // a stale/in-flight summary of the previous collection is dropped
     await fetchCollection(collectionId)
     await fetchTagsByCollection(collectionId)
   },

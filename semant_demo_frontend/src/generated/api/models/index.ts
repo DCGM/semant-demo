@@ -24,6 +24,8 @@ export * from './DocumentChunk';
 export * from './DocumentChunkWindow';
 export * from './DocumentDetail';
 export * from './DocumentStats';
+export * from './DocumentSummaryCitation';
+export * from './DocumentSummaryResponse';
 export * from './DocumentViewChunk';
 export * from './ErrorModel';
 export * from './ExplainRequest';

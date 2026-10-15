@@ -42,6 +42,9 @@ features:
   search_summary:   # result titles, per-result and overall search summaries
     default: tiny
     allowed: [tiny]
+  document_summary: # POST /api/user_collections/{collection_id}/documents/{document_id}/summary
+    default: tiny
+    allowed: [tiny]
   question:         # POST /api/question
     default: medium
     allowed: [medium]

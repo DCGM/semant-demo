@@ -28,6 +28,7 @@ from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.rag.registry import RagRegistry
+from semant_demo.features.summarization.document import TemplatedDocumentSummarizer, load_document_summarizer
 from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer, load_summarizer
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ class AppResources:
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
+    _document_summarizer: TemplatedDocumentSummarizer | None = None
 
     @classmethod
     def create(cls, config: Config, llm_metrics: LlmMetrics | None = None,
@@ -110,10 +112,16 @@ class AppResources:
             self._summarizer = load_summarizer(self.config.SEARCH_SUMMARIZER_CONFIG, self.llm)
         return self._summarizer
 
+    def get_document_summarizer(self) -> TemplatedDocumentSummarizer:
+        if self._document_summarizer is None:
+            self._document_summarizer = load_document_summarizer(self.config.DOCUMENT_SUMMARIZER_CONFIG, self.llm)
+        return self._document_summarizer
+
     async def close(self) -> None:
         """Release everything this instance opened; safe after partial startup."""
         weaviate, self.weaviate = self.weaviate, None
         self._summarizer = None
+        self._document_summarizer = None
         self.rag = RagRegistry()
         try:
             if weaviate is not None:

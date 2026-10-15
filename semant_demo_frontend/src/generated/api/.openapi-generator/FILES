@@ -28,6 +28,8 @@ docs/DocumentChunk.md
 docs/DocumentChunkWindow.md
 docs/DocumentDetail.md
 docs/DocumentStats.md
+docs/DocumentSummaryCitation.md
+docs/DocumentSummaryResponse.md
 docs/DocumentViewChunk.md
 docs/ErrorModel.md
 docs/ExplainRequest.md
@@ -111,6 +113,8 @@ models/DocumentChunk.ts
 models/DocumentChunkWindow.ts
 models/DocumentDetail.ts
 models/DocumentStats.ts
+models/DocumentSummaryCitation.ts
+models/DocumentSummaryResponse.ts
 models/DocumentViewChunk.ts
 models/ErrorModel.ts
 models/ExplainRequest.ts

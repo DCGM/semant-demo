@@ -212,12 +212,28 @@ the new request's loading state.
 | Search (`features/search/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
 | Document view (`features/documents/viewer/DocumentViewLayout.vue`) | `document-tags` | `features/annotations/DocumentTagsPanel.vue` | The collection's tags: create/edit, show/hide, step through their annotations, manual order, search. Ctrl+F focuses the search while this is the active panel (it opens a closed sidebar); otherwise the browser's find is left alone. |
 | Document view | `document-ai` | `features/annotations/AiAssistPanel.vue` | AI annotation suggestions (`fill`, `busy` while a document or selection run is under way). Auto spans are shown in the text only while this is the active panel; suggestion cards and spans highlight each other. *Suggest tags* on a text selection activates it. Leaving the view cancels running requests; saved suggestions stay. |
+| Document view | `document-summary` | `features/documents/DocumentSummaryPanel.vue` | Summary of the current document (#249; `fill`, `busy` while a summary request is under way): a *Summarize Document* / *Cancel* control, the fallback or generated text with `[docN]`-style citations, each a link to its source chunk. Logic in `features/documents/useDocumentSummary.ts`, a module-scope singleton like `useAiAssistance` (see below), since a citation click must reach the document reader, a sibling route. The summary is not persisted: changing document/collection or leaving the view drops it, the same `reset()` wiring `AiAssistPanel` uses. |
 | Document view | `document-metadata` | `features/documents/DocumentMetadataPanel.vue` | Bibliographic fields of the document. |
 
 The ids of the document panels are in `features/documents/viewer/documentSidebar.ts`. The
 panels get the collection and document ids through props; the annotation, tag navigation
 and AI state they share with the reader stays in the annotation composables, not in the
 sidebar store.
+
+#### Summary citation → reader navigation (#249)
+
+`DocumentViewLayout` (the page, not the panel) owns `useDocumentSummary()` and wires the
+panel's `summarize`/`cancel`/`cite` events to it, following the usual page→tool props /
+tool→page events convention; `cite(chunkId)` sets the composable's module-scope
+`requestedCitation` ref (`{ chunkId, token }`, the counter so clicking the same citation
+twice still re-triggers). `DocumentReaderPage.vue`, a sibling route with no prop/event path
+to the panel, watches that same singleton ref (the same cross-component pattern
+`useAiAssistance().highlightedAutoSpanId` uses for span highlighting) and calls its own
+`scrollToChunk(chunkId)` — a whole-chunk sibling of `scrollToSpan` that only scrolls, never
+touches `annotations`/`tagEditing`/`quickTagId` state, so in-progress tag editing is left
+exactly as it was. A citation to a chunk outside the reader's currently displayed window
+(`useChunkWindow` loads a bounded window, not necessarily every chunk of the document) is a
+documented no-op: the `[data-chunk-id]` query simply finds nothing.
 
 ### Document context (`features/documents/`)
 
