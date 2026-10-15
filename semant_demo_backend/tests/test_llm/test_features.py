@@ -182,8 +182,8 @@ async def test_question_endpoint_answers_with_the_question_tier(tmp_path, metric
     # The fake answers the last user turn, which is the question.
     assert response.json() == {"summary": "Fake summary without passages.", "time_spent": 0.5}
     [call] = metrics.calls
-    assert call["attributes"] == {"feature": "question", "tier": "medium", "provider": "openai",
-                                  "model": "google/gemini-3.8-flash", "usage_source": "provider"}
+    assert call["attributes"] == {"feature": "question", "tier": "small", "provider": "openai",
+                                  "model": "anthropic/claude-haiku-5.5", "usage_source": "provider"}
 
 
 async def test_question_without_a_provider_key_is_a_bad_gateway(tmp_path):
