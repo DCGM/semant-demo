@@ -1,6 +1,6 @@
 id: "xandry12_RagGenerator_ollama_default"
-name: "Gemma 3 12B Rag with history"
-description: "RAG using Gemma 3 12B. It supports history between messages."
+name: "Basic RAG (Claude Haiku 5.5)"
+description: "Economical RAG using Claude Haiku 5.5 via OpenRouter, with conversation history."
 class_name: "RagGenerator"
 params:
   tier: "small"
