@@ -1,6 +1,6 @@
 # semANT OpenRouter model selection — 16 October 2026
 
-**Status:** configuration decision from public provider information and code inspection; **no live provider runs or task-specific quality evaluation**. The table is a dated snapshot, not a continuously updated benchmark. Implementation PR: #372.
+**Status:** configuration decision from public provider information and code inspection; **no live provider runs or task-specific quality evaluation**. The table is a dated snapshot, not a continuously updated benchmark. Tracked by issue #372.
 
 ## 1. What the app actually needs
 
@@ -48,15 +48,15 @@ Pricing caveats:
 | Tier | Model | Reasoning sent via OpenRouter | Temperature | Intended use | Configured price in / out |
 | --- | --- | --- | --- | --- | ---: |
 | **tiny** | `anthropic/claude-haiku-5.5` | `reasoning.enabled: false` | **Omit** | Frequent search titles, per-hit and overall summaries | $0.10 / $0.50 |
-| **small** | `anthropic/claude-haiku-5.5` | `reasoning.effort: low; exclude: true` | **Omit** | Economical basic/adaptive RAG | $0.10 / $0.50 |
-| **medium** | `google/gemini-3.8-flash` | `reasoning.effort: low; exclude: true` | Allowed as requested by features | Questions, streamed span discussion, default RAG, agentic RAG | $1.50 / $7.50 (undiscounted conservative) |
+| **small** | `anthropic/claude-haiku-5.5` | `reasoning.effort: low; exclude: true` | **Omit** | Snippet-grounded questions, economical basic/adaptive RAG | $0.10 / $0.50 |
+| **medium** | `google/gemini-3.8-flash` | `reasoning.effort: low; exclude: true` | Allowed as requested by features | Streamed span discussion, default RAG, agentic RAG | $1.50 / $7.50 (undiscounted conservative) |
 | **large** | `anthropic/claude-sonnet-5.5` | `reasoning.effort: low; exclude: true` | **Omit** | Optional premium adaptive RAG | $2.00 / $10.00 |
 
 **Why the same Haiku model for tiny and small?** They represent **different execution profiles**. For abundant short summaries, turn off thinking entirely. For inexpensive RAG, allow modest internal reasoning. Different cost/behavior profiles are useful even where the nominal model price is identical.
 
 **OpenRouter protocol:** all active tiers use `provider: openai` (this means the existing **OpenAI-compatible adapter**), routed to `OPENAI_API_URL`, default `https://openrouter.ai/api/v1`. `reasoning` is passed via LangChain ChatOpenAI `extra_body`; the per-tier `supports_temperature: false` causes the gateway to omit legacy feature-requested temperatures for Claude. This is necessary because [Claude Haiku 5.5 rejects non-default sampling temperatures](https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide). The original feature parameters remain for Gemini and other capable models.
 
-OpenRouter [normalizes reasoning controls](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens). Reasoning tokens **are billed** and generally **consume the response's `max_tokens`** even with `exclude: true`; exclusion only hides returned reasoning. `question` has `max_tokens=300`, so we intentionally use *low* effort instead of `medium` or `high`. Higher effort could improve sophisticated tasks but costs more and risks a truncated/empty answer. Do not claim the public high-effort benchmark scores apply to our low-effort profiles.
+OpenRouter [normalizes reasoning controls](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens). Reasoning tokens **are billed** and generally **consume the response's `max_tokens`** even with `exclude: true`; exclusion only hides returned reasoning. `question` has `max_tokens=300` and uses the small Haiku low-effort tier rather than a costlier general-chat tier. Its thinking still consumes part of the 300-token cap. Higher effort could improve sophisticated tasks but costs more and risks a truncated/empty answer. Do not claim the public high-effort benchmark scores apply to our low-effort profiles.
 
 ## 4. RAG configuration and UX changes
 
