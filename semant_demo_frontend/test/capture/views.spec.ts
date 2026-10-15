@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { annotation, closePhoneNavigation, ensureLoggedIn, fixture, search } from '../e2e/support'
+import { annotation, answerChat, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search } from '../e2e/support'
 
 // UI review captures (`scripts/e2e-dev.sh capture`), not part of `make test-e2e`. The
 // capture projects in playwright.config.ts run this file at wide desktop, narrow desktop
@@ -10,6 +10,15 @@ async function save (page: Page, testInfo: TestInfo, view: string) {
   const file = `${testInfo.project.outputDir}/ui-capture/${view}-${testInfo.project.name}.png`
   // The viewport as a user sees it (a full-page shot cuts the fixed sidebars off).
   await page.screenshot({ path: file })
+}
+
+/** Waits until the right sidebar has slid in completely (it is animated). */
+async function expectRightSidebarIn (page: Page) {
+  const width = page.viewportSize()?.width ?? 0
+  await expect.poll(async () => {
+    const box = await page.locator('.q-drawer--right').boundingBox()
+    return box ? Math.round(box.x + box.width) : -1
+  }).toBe(width)
 }
 
 async function expectSidebarsOpen (page: Page, testInfo: TestInfo) {
@@ -59,4 +68,26 @@ test('corpus overview without libraries', async ({ page }, testInfo) => {
   await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
   await page.getByTestId('corpus-libraries').scrollIntoViewIfNeeded()
   await save(page, testInfo, 'corpus-overview-unavailable')
+})
+
+test('chat sources', async ({ page }, testInfo) => {
+  await answerChat(page, [{
+    rag_answer: 'The chronicle describes the arrival of the governor [doc 1] and a fire [doc 2].',
+    sources: [chatSource('chronicle_1'), chatSource('chronicle_3'), chatSource('gazette_1')]
+  }])
+  await page.goto('/#/rag')
+  await closePhoneNavigation(page)
+  await askChat(page, 'What happened in Lhota?')
+  await page.locator('.message-bubble', { hasText: 'The chronicle describes' }).getByText('Sources', { exact: true }).click()
+  await expect(page.getByTestId('chat-sources').getByRole('listitem')).toHaveCount(3)
+  await expectSidebarsOpen(page, testInfo)
+  await expectRightSidebarIn(page)
+  await save(page, testInfo, 'chat-sources')
+
+  // On a phone the sources cover the chat.
+  if (testInfo.project.name === 'phone') await page.getByRole('button', { name: 'Close sidebar' }).click()
+  await page.getByRole('link', { name: '[doc 2]' }).click()
+  await expect(page.getByTestId('chunk-context').locator('[aria-current="true"]')).toBeInViewport()
+  await expectRightSidebarIn(page)
+  await save(page, testInfo, 'chat-source-document')
 })

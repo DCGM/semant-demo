@@ -39,8 +39,8 @@ export function mergeChunks (
 }
 
 /**
- * A bounded, navigable passage of a document around one chunk (a search hit now, a RAG
- * source later). `open()` starts a new context: earlier requests are aborted and their
+ * A bounded, navigable passage of a document around one chunk (a search hit or a chat
+ * assistant's source). `open()` starts a new context: earlier requests are aborted and their
  * late answers dropped, so the view never shows another target's text. The passage can
  * be extended in both directions (reading only the neighbouring chunks, not the document
  * again); at most {@link MAX_CONTEXT_CHUNKS} chunks are kept. Every `open()`, also of the
@@ -133,6 +133,16 @@ export function useChunkContext () {
   }
 
   /**
+   * Brings the target into view again (after the user scrolled the passage): reloads the
+   * passage around it when extending has dropped it, otherwise only scrolls to it.
+   */
+  async function focus () {
+    if (!target.value) return
+    focusRequest.value++
+    if (!containsTarget.value && !loading.value) await load()
+  }
+
+  /**
    * Reads up to {@link CONTEXT_STEP} more chunks before or after the shown passage: only
    * the neighbours of its edge chunk, not the document metadata or chunk count again.
    */
@@ -187,6 +197,7 @@ export function useChunkContext () {
     containsTarget,
     open,
     load,
+    focus,
     extend,
     clear
   }

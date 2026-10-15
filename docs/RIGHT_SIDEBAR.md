@@ -24,6 +24,9 @@ which tools (if any) it shows there.
 - **Behaves like the left drawer.** It pushes the page content on wide screens, becomes an
   overlay on narrow screens (below 1024 px) and has a mini state that shows only the
   narrow (48 px) icon rail. The open and mini states are not remembered between pages.
+  It is 420 px wide, or the screen width on a narrower phone. As an overlay it covers the
+  header's toggle on a phone, so it then has its own *Close sidebar* button next to the
+  panel title.
 
 The document view (`/collections/:cid/documents/:did/v1`) adds its tags, AI assist and
 document tools as panels (#230); see section 6.
@@ -212,6 +215,8 @@ the new request's loading state.
 | Search (`features/search/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
 | Document view (`features/documents/viewer/DocumentViewLayout.vue`) | `document-tags` | `features/annotations/DocumentTagsPanel.vue` | The collection's tags: create/edit, show/hide, step through their annotations, manual order, search. Ctrl+F focuses the search while this is the active panel (it opens a closed sidebar); otherwise the browser's find is left alone. |
 | Document view | `document-ai` | `features/annotations/AiAssistPanel.vue` | AI annotation suggestions (`fill`, `busy` while a document or selection run is under way). Auto spans are shown in the text only while this is the active panel; suggestion cards and spans highlight each other. *Suggest tags* on a text selection activates it. Leaving the view cancels running requests; saved suggestions stay. |
+| Chat assistant (`features/rag/RagPage.vue`) | `chat-sources` | `features/rag/ChatSourcesPanel.vue` | The sources of one answer (#246), opened by its *Sources* link or a `[doc N]` citation: numbered as the citations, with the question answered, title, year, pages, excerpt, *View in document* and the link to the original. Always the clicked answer's sources, never implicitly the latest; opening them does not scroll the conversation, and the answer (and its cited link) is marked. Registered only while an answer's sources are shown. |
+| Chat assistant | `chat-source-context` | `features/documents/ChunkContextPanel.vue` | One source highlighted in its document, the same viewer as `search-context`. Opened by a citation (also in an explanation, which then closes) or *View in document*; *Focus on source* brings the cited passage back into view (reloading it if extending dropped it). Showing another answer's sources, resetting the conversation or another account closes it. Selection state in `features/rag/useChatSources.ts` (by message id). |
 | Document view | `document-metadata` | `features/documents/DocumentMetadataPanel.vue` | Bibliographic fields of the document. |
 
 The ids of the document panels are in `features/documents/viewer/documentSidebar.ts`. The
@@ -232,6 +237,7 @@ document (404 otherwise) and read at most 50 chunks per side. At most 60 chunks 
 extending past that drops the other end. Opening another target, `clear()` or unmounting
 aborts running requests and drops their late answers. A missing chunk or document is
 reported in the panel with *Retry*; no other text is shown. The panel takes everything
-through props and reports `extend`, `reload` and `return` events, so it can also show other
-sources (e.g. RAG citations, #243). Text is the canonical stored chunk text. Whether these
+through props and reports `extend`, `reload` and `return` events, so it also shows the chat
+assistant's sources (#246). `focus()` brings the target back into view after the user
+scrolled the passage (and reloads it when extending dropped it). Text is the canonical stored chunk text. Whether these
 public reads should consider document access metadata is tracked in #279.
