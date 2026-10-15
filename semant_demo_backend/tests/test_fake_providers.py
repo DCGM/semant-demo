@@ -72,10 +72,11 @@ async def test_unfaked_provider_routes_fail_visibly(fake_client):
     assert response.status_code == 501
 
 
-async def test_ollama_chat_summarizes_the_passages_it_was_sent(fake_app, tmp_path):
+async def test_configured_openrouter_chat_summarizes_the_passages_it_was_sent(fake_app, tmp_path):
     # The real summarizer and tier (configured as deployed), talking to the fake over ASGI.
     llm = LlmGateway(ModelCatalog.load(write_offline_llm_catalog(tmp_path / "llm_models.yaml")),
-                     ProviderSettings(ollama_base_url="http://fake/ollama"), http_transport=ASGITransport(app=fake_app))
+                     ProviderSettings(openai_api_key="test-key", openai_base_url="http://fake/openai/v1"),
+                     http_transport=ASGITransport(app=fake_app))
     summarizer = load_summarizer(Config(environ={}).SEARCH_SUMMARIZER_CONFIG, llm)
     corpus = load_corpus()
     chunks = [
