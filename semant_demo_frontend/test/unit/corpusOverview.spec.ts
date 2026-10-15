@@ -13,19 +13,33 @@ import { loadEmbed } from 'src/shared/visualization/loadEmbed'
 
 vi.mock('src/shared/visualization/loadEmbed', () => ({ loadEmbed: vi.fn() }))
 
-/** Drawings made through the mocked vega-embed; `fail` makes the next ones fail. */
+/**
+ * Drawings made through the mocked vega-embed; `fail` makes the next ones fail. With `held`,
+ * a drawing finishes only when its `finish` is called, so drawings can finish in any order.
+ */
 const embedded = {
-  calls: [] as { element: HTMLElement, spec: Record<string, unknown>, options: unknown, finalize: ReturnType<typeof vi.fn> }[],
-  fail: false
+  calls: [] as {
+    element: HTMLElement, spec: Record<string, unknown>, options: unknown,
+    finalize: ReturnType<typeof vi.fn>, finish: () => void
+  }[],
+  fail: false,
+  held: false
 }
 
 function resetEmbed () {
   embedded.calls = []
   embedded.fail = false
+  embedded.held = false
   vi.mocked(loadEmbed).mockResolvedValue(async (element, spec, options) => {
     if (embedded.fail) throw new Error('cannot draw')
+    const el = element as HTMLElement
     const finalize = vi.fn()
-    embedded.calls.push({ element: element as HTMLElement, spec: spec as Record<string, unknown>, options, finalize })
+    let finish = () => undefined as void
+    const finished = new Promise<void>((resolve) => { finish = resolve })
+    embedded.calls.push({ element: el, spec: spec as Record<string, unknown>, options, finalize, finish })
+    if (embedded.held) await finished
+    // vega-embed clears and fills the element it is given.
+    el.innerHTML = `<svg data-mark="${String((spec as { mark?: unknown }).mark)}"></svg>`
     return { finalize }
   })
 }
@@ -111,13 +125,81 @@ describe('VegaChart', () => {
 
     expect(embedded.calls).toHaveLength(1)
     const [call] = embedded.calls
-    expect(call.element.getAttribute('aria-label')).toBe('Chart of documents')
-    expect(call.element.getAttribute('role')).toBe('img')
+    const canvas = wrapper.get('.vega-chart__canvas')
+    expect(canvas.attributes('aria-label')).toBe('Chart of documents')
+    expect(canvas.attributes('role')).toBe('img')
+    expect(call.element.parentElement).toBe(canvas.element)
     expect(call.spec).toMatchObject({ mark: 'bar', width: 400, autosize: { type: 'fit-x' } })
     expect(call.options).toMatchObject({ actions: false, renderer: 'svg' })
 
     wrapper.unmount()
     expect(call.finalize).toHaveBeenCalledTimes(1)
+  })
+
+  const drawnMarks = (wrapper: ReturnType<typeof mountChart>) =>
+    wrapper.findAll('.vega-chart__canvas svg').map(svg => svg.attributes('data-mark'))
+
+  it('shows only the newest drawing when overlapping drawings finish out of order', async () => {
+    embedded.held = true
+    const wrapper = mountChart({ mark: 'bar' })
+    await flush()
+    await wrapper.setProps({ spec: { mark: 'line' } })
+    await flush()
+    expect(embedded.calls.map(c => c.spec.mark)).toEqual(['bar', 'line'])
+    // Each drawing gets its own element; neither is shown before it finishes.
+    expect(embedded.calls[0].element).not.toBe(embedded.calls[1].element)
+    expect(drawnMarks(wrapper)).toEqual([])
+
+    embedded.calls[1].finish()
+    await flush()
+    expect(drawnMarks(wrapper)).toEqual(['line'])
+
+    // The older drawing finishes late: finalized, never shown, the newer one untouched.
+    embedded.calls[0].finish()
+    await flush()
+    expect(embedded.calls[0].finalize).toHaveBeenCalledTimes(1)
+    expect(embedded.calls[0].element.isConnected).toBe(false)
+    expect(drawnMarks(wrapper)).toEqual(['line'])
+    expect(embedded.calls[1].finalize).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+    expect(embedded.calls[1].finalize).toHaveBeenCalledTimes(1)
+  })
+
+  it('draws again at a new width and keeps the newest drawing when a resize overlaps a spec change', async () => {
+    let resized: () => void = () => undefined
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver')
+    vi.stubGlobal('ResizeObserver', class {
+      constructor (callback: () => void) { resized = callback }
+      observe () { /* the test calls `resized` */ }
+      disconnect () { /* nothing to release */ }
+    })
+    let width = 300
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => width)
+    try {
+      embedded.held = true
+      const wrapper = mountChart({ mark: 'bar' })
+      await flush()
+      width = 500
+      resized()
+      await flush()
+      await wrapper.setProps({ spec: { mark: 'line' } })
+      await flush()
+      expect(embedded.calls.map(c => [c.spec.mark, c.spec.width])).toEqual([['bar', 300], ['bar', 500], ['line', 500]])
+
+      // Finish newest first, then the stale ones in reverse order.
+      for (const i of [2, 0, 1]) {
+        embedded.calls[i].finish()
+        await flush()
+      }
+      expect(drawnMarks(wrapper)).toEqual(['line'])
+      expect(embedded.calls.map(c => c.finalize.mock.calls.length)).toEqual([1, 1, 0])
+      expect(wrapper.get('.vega-chart__canvas').element.children).toHaveLength(1)
+    } finally {
+      clientWidth.mockRestore()
+      if (original) Object.defineProperty(globalThis, 'ResizeObserver', original)
+      else delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver
+    }
   })
 
   it('draws a changed spec again and disposes of the previous drawing', async () => {
@@ -192,6 +274,8 @@ describe('CorpusOverviewPage', () => {
 
     expect(wrapper.get('[data-testid="corpus-total"]').text()).toBe('10')
     expect(wrapper.get('[data-testid="corpus-freshness"]').text()).toContain('counted now')
+    // The corpus is effectively static: no refresh control next to the count time.
+    expect(wrapper.findAll('button').map(b => b.text())).not.toContain(expect.stringContaining('Reload'))
     const years = wrapper.get('[data-testid="corpus-years"]')
     expect(years.text()).toContain('7 of 10 documents (70 %) have a publication year; 3 unknown.')
     expect(tableText(wrapper, 'corpus-years')).toEqual([['1900–1909', '4'], ['1910–1919', '3'], ['Unknown year', '3']])
@@ -201,7 +285,7 @@ describe('CorpusOverviewPage', () => {
       ['Czech (ces)', 'ces', '5'], ['Czech (cze)', 'cze', '2'], ['Other values', '—', '1'], ['Unknown', '—', '2']
     ])
     // Two charts: years and languages; the library is unavailable.
-    expect(embedded.calls.map(c => c.element.getAttribute('aria-label'))).toEqual([
+    expect(wrapper.findAll('.vega-chart__canvas').map(c => c.attributes('aria-label'))).toEqual([
       expect.stringContaining('per publication decade'), expect.stringContaining('per language')
     ])
   })
