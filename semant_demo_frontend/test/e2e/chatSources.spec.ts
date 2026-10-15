@@ -2,102 +2,183 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { answerChat, askChat, chatSource, closePhoneNavigation, fixture, sidebarPanelButton, useViewport } from './support'
 
-// The chat assistant's sources in the right sidebar (#246): the Sources panel lists the
-// sources of the clicked answer, the Document panel shows one of them highlighted in its
+// The chat assistant's sources in the right sidebar (#246): the Sources panel lists every
+// source chunk of the conversation once, labelled S1, S2... as the citations in the answers;
+// one click selects (and expands) a source, a double click opens it highlighted in its
 // document (the same viewer as a search result's context, #244).
 
 const chronicle = fixture.document('chronicle')
 const gazette = fixture.document('gazette')
+const text = (key: string) => fixture.chunk(key).text
 
 const sourcesPanel = (page: Page) => page.getByTestId('chat-sources')
+const sourceItem = (page: Page, label: string) => sourcesPanel(page).getByRole('listitem', { name: `Source ${label}`, exact: true })
+const sourceSummary = (page: Page, label: string) => sourceItem(page, label).locator('.chat-sources__summary')
 const documentPanel = (page: Page) => page.getByTestId('chunk-context')
 const match = (page: Page) => documentPanel(page).locator('[aria-current="true"]')
 const title = (page: Page) => page.getByTestId('right-sidebar-title')
-const answer = (page: Page, text: string) => page.locator('.message-bubble', { hasText: text })
+const answer = (page: Page, start: string) => page.locator('.message-bubble', { hasText: start })
+const citations = (page: Page, label: string) => page.locator('.message-bubble').getByRole('link', { name: `[${label}]`, exact: true })
+const selectedCitations = (page: Page) => page.locator('.message-bubble a.source-link[aria-current="true"]')
+const scrollY = (page: Page) => page.evaluate(() => window.scrollY)
 
 async function openChat (page: Page) {
   await page.goto('/#/rag')
   await closePhoneNavigation(page)
 }
 
-const twoAnswers = [
-  { rag_answer: 'The chronicle tells of a fire [doc 2].', sources: [chatSource('chronicle_1'), chatSource('chronicle_3')] },
-  { rag_answer: 'The gazette describes a café [doc 1] and a market [doc 2].', sources: [chatSource('gazette_1'), chatSource('gazette_2')] }
+// Answer 1 cites its doc 2 twice; answer 2 cites the same chunk (its own doc 2) again and a
+// doc 7 it has no source for.
+const answers = [
+  {
+    rag_answer: 'A fire [doc 2] after the arrival [doc 1]; the fire again [doc 2].',
+    sources: [chatSource('chronicle_1'), chatSource('chronicle_3')]
+  },
+  {
+    rag_answer: 'The gazette has a café [doc 1], the same fire [doc 2] and more [doc 7].',
+    sources: [chatSource('gazette_1'), chatSource('chronicle_3')]
+  }
 ]
 
-test("each answer's sources and citations show that answer's sources", async ({ page }) => {
+async function askBoth (page: Page) {
+  await answerChat(page, answers)
+  await openChat(page)
+  await askChat(page, 'What happened in Lhota?')
+  await askChat(page, 'What is in the gazette?')
+}
+
+test('the sources of the whole conversation are listed once, with stable labels', async ({ page }) => {
   await useViewport(page, 'narrow')
-  await answerChat(page, twoAnswers)
+  await answerChat(page, answers)
   await openChat(page)
   // No sources, no sidebar.
   await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toHaveCount(0)
   await askChat(page, 'What happened in Lhota?')
-  await askChat(page, 'What is in the gazette?')
-  const scrollBefore = await page.evaluate(() => window.scrollY)
+  await expect(citations(page, 'S2')).toHaveCount(2)
+  await expect(citations(page, 'S1')).toHaveCount(1)
 
-  // The first (not the latest) answer's sources.
-  await answer(page, 'The chronicle tells').getByText('Sources', { exact: true }).click()
+  await askChat(page, 'What is in the gazette?')
+  // The chunk cited again keeps S2; the new one is S3; doc 7 has no source and stays as written.
+  await expect(answer(page, 'The gazette has')).toContainText('a café [S3], the same fire [S2] and more [doc 7].')
+  await expect(answer(page, 'The gazette has').locator('.markdown-body').getByRole('link')).toHaveCount(2)
+  await expect(citations(page, 'S2')).toHaveCount(3)
+  await expect(answer(page, 'A fire')).toContainText('A fire [S2] after the arrival [S1]; the fire again [S2].')
+
   await expect(title(page)).toHaveText('Sources')
-  await expect(sourcesPanel(page)).toContainText('What happened in Lhota?')
-  const items = sourcesPanel(page).getByRole('listitem')
-  await expect(items).toHaveCount(2)
-  await expect(items.nth(0)).toContainText(fixture.chunk('chronicle_1').text)
-  await expect(items.nth(1)).toContainText(fixture.chunk('chronicle_3').text)
-  await expect(items.nth(0)).toContainText(chronicle.properties.title)
-  await expect(sidebarPanelButton(page, 'Document')).toHaveCount(0)
+  await expect(sourcesPanel(page).getByRole('listitem')).toHaveText([
+    new RegExp(`^S1.*${chronicle.properties.title}.*${text('chronicle_1')}`),
+    new RegExp(`^S2.*${chronicle.properties.title}.*${text('chronicle_3')}`),
+    new RegExp(`^S3.*${gazette.properties.title}.*${text('gazette_1')}`)
+  ])
   // Beside the chat, not over it: no close button of the overlay.
   await expect(page.getByRole('button', { name: 'Close sidebar' })).toHaveCount(0)
-
-  // A source opens highlighted in its document.
-  await items.nth(1).getByRole('button', { name: 'View source doc 2 in its document' }).click()
-  await expect(title(page)).toHaveText('Document')
-  await expect(match(page)).toHaveText(fixture.chunk('chronicle_3').text)
-  await expect(documentPanel(page).getByTestId('chunk-context-header')).toContainText(chronicle.properties.title)
-  await expect(documentPanel(page).locator('.chunk-context__chunk')).toHaveCount(3)
-
-  // A citation of the second answer switches to that answer's sources; nothing of the
-  // first answer stays.
-  await answer(page, 'The gazette describes').getByRole('link', { name: '[doc 2]' }).click()
-  await expect(title(page)).toHaveText('Document')
-  await expect(match(page)).toHaveText(fixture.chunk('gazette_2').text)
-  await expect(documentPanel(page)).not.toContainText(chronicle.properties.title)
-  await expect(answer(page, 'The gazette describes').getByRole('link', { name: '[doc 2]' })).toHaveAttribute('aria-current', 'true')
-  await sidebarPanelButton(page, 'Sources').click()
-  await expect(sourcesPanel(page)).toContainText('What is in the gazette?')
-  await expect(items.nth(0)).toContainText(fixture.chunk('gazette_1').text)
-  await expect(items.nth(1)).toHaveAttribute('aria-current', 'true')
-
-  // Showing another answer's sources closes the open source of the previous one.
-  await answer(page, 'The chronicle tells').getByText('Sources', { exact: true }).click()
-  await expect(sourcesPanel(page)).toContainText('What happened in Lhota?')
-  await expect(sidebarPanelButton(page, 'Document')).toHaveCount(0)
-
-  // The conversation did not move.
-  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore)
 })
 
-test('Focus on source brings the cited passage back; resetting the chat closes the sources', async ({ page }) => {
+test('one click selects a source from either surface and marks all its citations', async ({ page }) => {
   await useViewport(page, 'narrow')
-  await answerChat(page, twoAnswers)
-  await openChat(page)
-  await askChat(page, 'What happened in Lhota?')
+  await askBoth(page)
+  const scrollBefore = await scrollY(page)
 
-  await answer(page, 'The chronicle tells').getByRole('link', { name: '[doc 2]' }).click()
-  await expect(match(page)).toHaveText(fixture.chunk('chronicle_3').text)
+  // A citation in the second answer selects S2 and expands it in the list.
+  await answer(page, 'The gazette has').getByRole('link', { name: '[S2]' }).click()
+  await expect(title(page)).toHaveText('Sources')
+  await expect(sourceItem(page, 'S2')).toHaveAttribute('aria-current', 'true')
+  await expect(sourceSummary(page, 'S2')).toHaveAttribute('aria-expanded', 'true')
+  await expect(sourceSummary(page, 'S1')).toHaveAttribute('aria-expanded', 'false')
+  await expect(sourceItem(page, 'S2')).toBeInViewport()
+  // Every citation of S2, in both answers, and nothing else.
+  await expect(selectedCitations(page)).toHaveText(['[S2]', '[S2]', '[S2]'])
+
+  // Selecting in the list moves the marks; the previous source collapses.
+  await sourceSummary(page, 'S1').click()
+  await expect(sourceSummary(page, 'S1')).toHaveAttribute('aria-expanded', 'true')
+  await expect(sourceSummary(page, 'S2')).toHaveAttribute('aria-expanded', 'false')
+  await expect(selectedCitations(page)).toHaveText(['[S1]'])
+  // Clicking the active source keeps it expanded.
+  await sourceSummary(page, 'S1').click()
+  await expect(sourceSummary(page, 'S1')).toHaveAttribute('aria-expanded', 'true')
+
+  // The conversation did not move.
+  expect(await scrollY(page)).toBe(scrollBefore)
+})
+
+test('the selected source shows its full stored text', async ({ page }) => {
+  await useViewport(page, 'narrow')
+  const long = Array.from({ length: 40 }, (_, i) => `Sentence ${i + 1} of a long passage.`).join(' ')
+  await answerChat(page, [{ rag_answer: 'Long [doc 1], short [doc 2].', sources: [{ ...chatSource('chronicle_1'), text: long }, chatSource('chronicle_3')] }])
+  await openChat(page)
+  await askChat(page, 'Question')
+
+  const fullText = sourceItem(page, 'S1').getByTestId('chat-source-text')
+  await expect(fullText).toBeVisible()
+  const collapsed = (await fullText.boundingBox())!.height
+  await citations(page, 'S1').click()
+  await expect(sourceSummary(page, 'S1')).toHaveAttribute('aria-expanded', 'true')
+  await expect.poll(async () => (await fullText.boundingBox())!.height).toBeGreaterThan(collapsed * 3)
+  await expect(fullText).toHaveText(long)
+
+  await citations(page, 'S2').click()
+  await expect.poll(async () => (await fullText.boundingBox())!.height).toBe(collapsed)
+})
+
+test('a double click opens the source in its document; its selection and marks stay', async ({ page }) => {
+  await useViewport(page, 'narrow')
+  await askBoth(page)
+  const scrollBefore = await scrollY(page)
+
+  await answer(page, 'A fire').getByRole('link', { name: '[S2]' }).first().dblclick()
+  await expect(title(page)).toHaveText('Document')
+  await expect(match(page)).toContainText(text('chronicle_3'))
+  await expect(match(page).getByTestId('chunk-context-target-label')).toHaveText('S2')
+  await expect(match(page)).toHaveAttribute('aria-label', 'Cited passage S2')
+  await expect(documentPanel(page).getByTestId('chunk-context-header')).toContainText(chronicle.properties.title)
+  await expect(selectedCitations(page)).toHaveCount(3)
+
+  // Navigating the document and the panels keeps the selection.
   await documentPanel(page).locator('.chunk-context__chunk').first().scrollIntoViewIfNeeded()
-  await documentPanel(page).getByRole('button', { name: 'Focus on source' }).click()
+  await documentPanel(page).getByRole('button', { name: 'Return to cited passage' }).click()
   await expect(match(page)).toBeInViewport()
+  await sidebarPanelButton(page, 'Sources').click()
+  await expect(sourceSummary(page, 'S2')).toHaveAttribute('aria-expanded', 'true')
+  await sidebarPanelButton(page, 'Document').click()
+  await expect(match(page)).toContainText(text('chronicle_3'))
+  await expect(selectedCitations(page)).toHaveCount(3)
+
+  // From the list: a double click on a source, or View document.
+  await sidebarPanelButton(page, 'Sources').click()
+  await sourceSummary(page, 'S3').dblclick()
+  await expect(title(page)).toHaveText('Document')
+  await expect(match(page)).toContainText(text('gazette_1'))
+  await expect(match(page).getByTestId('chunk-context-target-label')).toHaveText('S3')
+  await expect(documentPanel(page)).not.toContainText(chronicle.properties.title)
+  await sidebarPanelButton(page, 'Sources').click()
+  await sourceSummary(page, 'S1').click()
+  // Another selection closes the previous source's document.
+  await expect(sidebarPanelButton(page, 'Document')).toHaveCount(0)
+  await sourceItem(page, 'S1').getByRole('button', { name: 'View source S1 in its document' }).click()
+  await expect(match(page)).toContainText(text('chronicle_1'))
+  await expect(match(page).getByTestId('chunk-context-target-label')).toHaveText('S1')
+
+  expect(await scrollY(page)).toBe(scrollBefore)
+})
+
+test('resetting the chat closes the sources; the next conversation starts at S1', async ({ page }) => {
+  await useViewport(page, 'narrow')
+  await askBoth(page)
+  await citations(page, 'S2').first().dblclick()
+  await expect(match(page)).toContainText(text('chronicle_3'))
 
   await page.getByTitle('Reset chat').click()
   await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toHaveCount(0)
   await expect(page.locator('.q-drawer--right')).toBeHidden()
-  await expect(answer(page, 'The chronicle tells')).toHaveCount(0)
+  await expect(answer(page, 'A fire')).toHaveCount(0)
 
-  // A new conversation starts without sources; its answers show their own.
+  await page.unroute('**/api/rag')
+  await answerChat(page, [answers[1]])
   await askChat(page, 'What is in the gazette?')
-  await answer(page, 'The gazette describes').getByRole('link', { name: '[doc 1]' }).click()
-  await expect(match(page)).toHaveText(fixture.chunk('gazette_1').text)
-  await expect(documentPanel(page)).toContainText(gazette.properties.title)
+  await expect(answer(page, 'The gazette has')).toContainText('a café [S1], the same fire [S2]')
+  await expect(sourcesPanel(page).getByRole('listitem')).toHaveCount(2)
+  await expect(selectedCitations(page)).toHaveCount(0)
 })
 
 test('a source that is no longer stored is reported, not replaced', async ({ page }) => {
@@ -107,47 +188,53 @@ test('a source that is no longer stored is reported, not replaced', async ({ pag
   await openChat(page)
   await askChat(page, 'Question')
 
-  await answer(page, 'An answer from a removed').getByRole('link', { name: '[doc 1]' }).click()
+  await citations(page, 'S1').dblclick()
   await expect(documentPanel(page).getByRole('alert')).toContainText('no longer available')
   await expect(documentPanel(page).locator('.chunk-context__chunk')).toHaveCount(0)
-  // The source's own excerpt stays available.
+  // The source's own text stays available.
   await sidebarPanelButton(page, 'Sources').click()
-  await expect(sourcesPanel(page)).toContainText(fixture.chunk('chronicle_2').text)
+  await expect(sourceItem(page, 'S1')).toContainText(text('chronicle_2'))
 })
 
-test('a citation in an explanation opens the source beside the chat', async ({ page }) => {
+test('a citation in an explanation selects the source beside the chat', async ({ page }) => {
   await useViewport(page, 'narrow')
-  await answerChat(page, [twoAnswers[0]])
+  // The explanation cites the explained answer's own doc 1.
   await page.route('**/api/rag/explain', (route) => route.fulfill({ json: { explanation: 'It is stated in [doc 1].' } }))
-  await openChat(page)
-  await askChat(page, 'What happened in Lhota?')
+  await askBoth(page)
 
-  const text = answer(page, 'The chronicle tells').locator('.markdown-body')
-  await text.selectText()
-  await text.dispatchEvent('mouseup')
+  const answerText = answer(page, 'The gazette has').locator('.markdown-body')
+  await answerText.selectText()
+  await answerText.dispatchEvent('mouseup')
   await page.getByRole('button', { name: 'Explain' }).click()
   const dialog = page.getByRole('dialog')
-  await dialog.getByRole('link', { name: '[doc 1]' }).click()
+  await expect(dialog).toContainText('It is stated in [S3].')
+  await dialog.getByRole('link', { name: '[S3]' }).click()
 
   await expect(dialog).toHaveCount(0)
-  await expect(match(page)).toHaveText(fixture.chunk('chronicle_1').text)
+  await expect(title(page)).toHaveText('Sources')
+  await expect(sourceSummary(page, 'S3')).toHaveAttribute('aria-expanded', 'true')
+  await expect(selectedCitations(page)).toHaveText(['[S3]'])
 })
 
 test('on a phone the sources are an overlay over the chat', async ({ page }) => {
   await useViewport(page, 'phone')
-  await answerChat(page, [twoAnswers[0]])
-  await openChat(page)
-  await askChat(page, 'What happened in Lhota?')
+  await askBoth(page)
+  // The sidebar does not cover the chat by itself.
+  await expect(page.locator('.q-drawer--right')).toBeHidden()
 
-  await answer(page, 'The chronicle tells').getByRole('link', { name: '[doc 2]' }).click()
-  await expect(match(page)).toBeInViewport()
-  // The source fits the phone without horizontal scrolling.
+  await answer(page, 'The gazette has').getByRole('link', { name: '[S3]' }).click()
+  await expect(sourceSummary(page, 'S3')).toHaveAttribute('aria-expanded', 'true')
+  await expect(sourceItem(page, 'S3')).toBeInViewport()
+  // The list fits the phone without horizontal scrolling.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 
-  await sidebarPanelButton(page, 'Sources').click()
-  await expect(sourcesPanel(page).getByRole('listitem').first()).toBeInViewport()
-  // The overlay covers the header's toggle; its own button returns to the chat.
+  await sourceSummary(page, 'S3').dblclick()
+  await expect(match(page)).toBeInViewport()
+  await expect(match(page).getByTestId('chunk-context-target-label')).toHaveText('S3')
+
+  // The overlay covers the header's toggle; its own button returns to the chat with the marks.
   await page.getByRole('button', { name: 'Close sidebar' }).click()
   await expect(page.locator('.q-drawer--right')).toBeHidden()
-  await expect(answer(page, 'The chronicle tells')).toBeInViewport()
+  await expect(answer(page, 'The gazette has')).toBeInViewport()
+  await expect(selectedCitations(page)).toHaveText(['[S3]'])
 })
