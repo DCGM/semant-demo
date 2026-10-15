@@ -51,6 +51,10 @@ class TierModel:
     """Estimated USD per million input tokens; ``None`` when unknown."""
     output_price: float | None = None
     """Estimated USD per million output tokens; ``None`` when unknown."""
+    reasoning: dict[str, str | bool] | None = None
+    """Optional OpenRouter ``reasoning`` payload, fixed server-side per tier."""
+    supports_temperature: bool = True
+    """Some current models reject non-default sampling temperatures altogether."""
 
     def estimated_cost(self, input_tokens: int, output_tokens: int) -> float | None:
         if self.input_price is None or self.output_price is None:
@@ -117,14 +121,35 @@ def _tiers(names: Iterable[str]) -> list[ModelTier]:
 
 
 def _tier(tier: ModelTier, spec: dict[str, Any]) -> TierModel:
+    reasoning = spec.get("reasoning")
+    provider = Provider(spec["provider"])
+    if reasoning is not None:
+        if provider != Provider.openai or not isinstance(reasoning, dict) or not reasoning:
+            raise ValueError("reasoning requires a non-empty OpenAI-compatible tier mapping")
+        if set(reasoning) - {"enabled", "effort", "exclude"}:
+            raise ValueError("Unsupported reasoning options")
+        if "effort" in reasoning and reasoning["effort"] not in {
+            "none", "minimal", "low", "medium", "high", "xhigh", "max"
+        }:
+            raise ValueError("Unsupported reasoning effort")
+        for flag in ("enabled", "exclude"):
+            if flag in reasoning and not isinstance(reasoning[flag], bool):
+                raise ValueError(f"reasoning.{flag} must be a boolean")
+        if reasoning.get("enabled") is False and "effort" in reasoning:
+            raise ValueError("Disabled reasoning cannot have an effort")
+    supports_temperature = spec.get("supports_temperature", True)
+    if not isinstance(supports_temperature, bool):
+        raise ValueError("supports_temperature must be a boolean")
     return TierModel(
         tier=tier,
-        provider=Provider(spec["provider"]),
+        provider=provider,
         model=str(spec["model"]),
         base_url=spec.get("base_url") or None,
         capabilities=frozenset(Capability(c) for c in spec.get("capabilities") or []),
         input_price=_price(spec.get("input_price")),
         output_price=_price(spec.get("output_price")),
+        reasoning=reasoning,
+        supports_temperature=supports_temperature,
     )
 
 
