@@ -12,6 +12,7 @@ import { installAuthGuard } from 'src/router/authGuard'
 import { getAuthToken, setAuthToken, tokenSubject } from 'src/shared/api'
 import MainLayout from 'src/app/MainLayout.vue'
 import RagPage from 'src/features/rag/RagPage.vue'
+import RightSidebar from 'src/app/sidebar/RightSidebar.vue'
 
 // #267: session teardown on sign-out, expiry and account switch, also from another tab.
 
@@ -461,7 +462,8 @@ describe('Chat Assistant on sign-out', () => {
     setAuthToken(jwt('uA'))
     store.token = jwt('uA')
     store.user = userA as never
-    const InLayout = defineComponent({ render: () => h(QLayout, () => h(QPageContainer, () => h(RagPage))) })
+    // With the right sidebar the page shows an answer's sources in.
+    const InLayout = defineComponent({ render: () => h(QLayout, () => [h(RightSidebar), h(QPageContainer, () => h(RagPage))]) })
     const layout = mount(InLayout, {
       attachTo: document.body,
       global: { plugins: [[Quasar, { plugins: { Notify } }], pinia], config: onError ? { errorHandler: onError } : {} }
@@ -498,7 +500,7 @@ describe('Chat Assistant on sign-out', () => {
     unmount()
   })
 
-  it('closes an open sources dialog of the old conversation', async () => {
+  it('closes the open sources of the old conversation', async () => {
     const { wrapper, store, unmount } = await mountRag()
     answers['/api/rag'] = () => json({ rag_answer: 'Answer', sources: [source], response_id: 'x', time_spent: 1 })
     await ask(wrapper, 'Question')
@@ -509,7 +511,6 @@ describe('Chat Assistant on sign-out', () => {
     store.token = jwt('uB')
     store.user = userB as never // another account
     await flushPromises()
-    await new Promise((resolve) => setTimeout(resolve, 400)) // dialog leave transition
 
     expect(document.body.textContent).not.toContain(source.text)
     expect(wrapper.text()).not.toContain('Answer')

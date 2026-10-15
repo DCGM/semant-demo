@@ -173,6 +173,58 @@ export function appendResultCopies (body: SearchResponse, copies: number): void 
   }
 }
 
+/** A chat assistant answer as `/api/rag` sends it (snake_case). */
+export type ChatAnswer = { rag_answer: string, sources: Record<string, unknown>[] }
+
+/**
+ * A chat assistant source for a fixture chunk, as the RAG endpoint returns it. The fake
+ * profile has no RAG pipeline, so specs answer `/api/rag` themselves (`answerChat`).
+ */
+export function chatSource (chunkKey: string): Record<string, unknown> {
+  const document = fixtureDocumentOf(chunkKey)
+  const chunk = fixture.chunk(chunkKey)
+  return {
+    id: chunk.id,
+    text: chunk.text,
+    start_page_id: chunk.start_page_id,
+    from_page: chunk.from_page,
+    to_page: chunk.to_page,
+    document: document.id,
+    order: chunk.order,
+    document_object: { id: document.id, ...document.properties }
+  }
+}
+
+function fixtureDocumentOf (chunkKey: string) {
+  const document = corpus.documents.find((d) => d.chunks.some((c) => c.key === chunkKey))
+  if (!document) throw new Error(`fixture ${chunkKey} not found`)
+  return document
+}
+
+/**
+ * Answers the questions of this page's chat assistant with `answers`, in order (call
+ * before asking). Fails the request when there is no answer left.
+ */
+export async function answerChat (page: Page, answers: ChatAnswer[]): Promise<void> {
+  const queue = [...answers]
+  await page.route('**/api/rag', async (route) => {
+    const answer = queue.shift()
+    if (!answer) return route.fulfill({ status: 500, json: { detail: 'No answer prepared' } })
+    await route.fulfill({ json: { ...answer, response_id: crypto.randomUUID(), time_spent: 1 } })
+  })
+}
+
+/** Asks the chat assistant `question` and waits until its answer is shown. */
+export async function askChat (page: Page, question: string): Promise<void> {
+  const input = page.getByPlaceholder('Vaše otázka?')
+  const answers = page.locator('.message-bubble')
+  const before = await answers.count()
+  await input.fill(question)
+  await input.press('Enter')
+  await expect(answers, `no answer to "${question}"`).toHaveCount(before + 2)
+  await expect(input).toBeEnabled()
+}
+
 /** The rail icon of a right sidebar panel; clicking it shows the panel. */
 export function sidebarPanelButton (page: Page, label: string): Locator {
   return page.locator('.q-drawer--right').getByRole('listitem', { name: label, exact: true })

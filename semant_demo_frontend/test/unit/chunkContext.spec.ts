@@ -138,6 +138,27 @@ describe('useChunkContext', () => {
     expect(context.focusRequest.value).toBe(2)
   })
 
+  it('focuses the target again, reloading it only when extending dropped it', async () => {
+    const context = useChunkContext()
+    const opening = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11]))
+    await opening
+
+    await context.focus()
+    expect([context.focusRequest.value, calls.length]).toEqual([2, 1])
+
+    // As if extending had trimmed the target away.
+    context.chunks.value = [chunk(40), chunk(41)]
+    const focusing = context.focus()
+    await flush()
+    expect(context.focusRequest.value).toBe(3)
+    expect(calls[1].url.pathname).toBe('/api/documents/doc-1/chunks/doc-1-c10/window')
+    calls[1].answer(windowBody(10, [9, 10, 11]))
+    await focusing
+    expect(context.containsTarget.value).toBe(true)
+  })
+
   it('drops the answer for an earlier target', async () => {
     const context = useChunkContext()
     const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c1' })
