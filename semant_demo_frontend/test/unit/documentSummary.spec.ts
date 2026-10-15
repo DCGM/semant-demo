@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ResponseError } from 'src/generated/api'
 import type { DocumentSummaryCitation, DocumentSummaryResponse } from 'src/generated/api'
 import { parseDocumentSummaryTokens, useDocumentSummary } from 'src/features/documents/useDocumentSummary'
 
@@ -37,8 +38,17 @@ const citation = (chunkId: string, order: number): DocumentSummaryCitation => ({
   chunkId, order, fromPage: order + 1, toPage: order + 1
 })
 
-const response = (summary: string, citations: DocumentSummaryCitation[]): DocumentSummaryResponse => ({
-  documentId: 'd1', summary, citations, timeSpent: 1.5
+const response = (
+  summary: string, citations: DocumentSummaryCitation[], overrides: Partial<DocumentSummaryResponse> = {}
+): DocumentSummaryResponse => ({
+  documentId: 'd1',
+  summary,
+  citations,
+  timeSpent: 1.5,
+  totalChunks: citations.length,
+  summarizedChunks: citations.length,
+  truncated: false,
+  ...overrides
 })
 
 describe('parseDocumentSummaryTokens', () => {
@@ -48,9 +58,9 @@ describe('parseDocumentSummaryTokens', () => {
 
     expect(tokens).toEqual([
       { type: 'text', value: 'Text ' },
-      { type: 'citation', chunkId: 'chunk-b', number: 2 },
+      { type: 'citation', chunkId: 'chunk-b', number: 2, order: 1 },
       { type: 'text', value: ' more ' },
-      { type: 'citation', chunkId: 'chunk-a', number: 1 },
+      { type: 'citation', chunkId: 'chunk-a', number: 1, order: 0 },
       { type: 'text', value: '.' }
     ])
   })
@@ -84,11 +94,22 @@ describe('useDocumentSummary', () => {
     expect(summary.citations.value).toEqual([citation('chunk-a', 0)])
     expect(summary.tokens.value).toEqual([
       { type: 'text', value: 'Shrnutí ' },
-      { type: 'citation', chunkId: 'chunk-a', number: 1 },
+      { type: 'citation', chunkId: 'chunk-a', number: 1, order: 0 },
       { type: 'text', value: '.' }
     ])
     expect(summary.timeSpent.value).toBe(1.5)
     expect(summary.error.value).toBeNull()
+    expect([summary.totalChunks.value, summary.summarizedChunks.value, summary.truncated.value]).toEqual([1, 1, false])
+  })
+
+  it('exposes a truncation notice for a partial summary', async () => {
+    const summary = useDocumentSummary()
+
+    const request = summary.summarize('c1', 'd1')
+    calls[0].resolve(response('Shrnutí [doc1].', [citation('chunk-a', 0)], { totalChunks: 500, summarizedChunks: 1, truncated: true }))
+    await request
+
+    expect([summary.totalChunks.value, summary.summarizedChunks.value, summary.truncated.value]).toEqual([500, 1, true])
   })
 
   it('a second summarize() call while one is in flight is a no-op (no duplicate request)', async () => {
@@ -155,7 +176,7 @@ describe('useDocumentSummary', () => {
     expect(summary.error.value).toBeNull()
   })
 
-  it('a provider failure sets a generic error, not the raw exception', async () => {
+  it('a plain network failure sets a generic error, not the raw exception', async () => {
     const summary = useDocumentSummary()
 
     const request = summary.summarize('c1', 'd1')
@@ -166,14 +187,26 @@ describe('useDocumentSummary', () => {
     expect(summary.error.value).toBe('Failed to summarize the document.')
   })
 
-  it('cite() bumps requestedCitation so clicking the same citation twice still re-triggers', () => {
+  it('a backend generation failure (502) shows its safe detail message, not a generic one', async () => {
+    const summary = useDocumentSummary()
+    const backendResponse = new Response(JSON.stringify({ detail: 'The document could not be summarized.' }), { status: 502 })
+
+    const request = summary.summarize('c1', 'd1')
+    calls[0].reject(new ResponseError(backendResponse))
+    await request
+
+    expect(summary.summarizing.value).toBe(false)
+    expect(summary.error.value).toBe('The document could not be summarized.')
+  })
+
+  it('cite() bumps requestedCitation so clicking the same citation twice still re-triggers, and carries the order', () => {
     const summary = useDocumentSummary()
 
-    summary.cite('chunk-a')
+    summary.cite('chunk-a', 3)
     const firstToken = summary.requestedCitation.value?.token
-    summary.cite('chunk-a')
+    summary.cite('chunk-a', 3)
 
-    expect(summary.requestedCitation.value?.chunkId).toBe('chunk-a')
+    expect(summary.requestedCitation.value).toMatchObject({ chunkId: 'chunk-a', order: 3 })
     expect(summary.requestedCitation.value?.token).not.toBe(firstToken)
   })
 })

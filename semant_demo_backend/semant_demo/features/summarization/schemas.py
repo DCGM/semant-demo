@@ -37,8 +37,19 @@ class DocumentSummaryResponse(BaseModel):
     A summary of one document (#249). Self-contained (text, citations and the document id)
     rather than nested inside a search-specific type, so it stays reusable as Document Chat
     context once #243 defines a shared transcript, without a second incompatible summary shape.
+
+    ``summarized_chunks``/``total_chunks``/``truncated`` (#358 review) let the client show a
+    "partial summary" notice rather than silently presenting a summary of only the first
+    ``chunk_limit`` chunks of a long document as if it covered the whole thing.
     """
     document_id: UUID
     summary: str
     citations: list[DocumentSummaryCitation]
     time_spent: float
+    total_chunks: int
+    """Total chunks in the document, before truncation to the configured ``chunk_limit``."""
+    summarized_chunks: int
+    """Chunks actually sent to the model (``len(citations)``, kept separately for clarity)."""
+    truncated: bool
+    """Whether ``total_chunks`` exceeded ``chunk_limit``, so the summary covers only the
+    document's first ``summarized_chunks`` chunks rather than all of it."""

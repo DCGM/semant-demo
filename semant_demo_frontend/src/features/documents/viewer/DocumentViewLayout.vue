@@ -63,6 +63,9 @@
       <DocumentSummaryPanel
         :tokens="documentSummary.tokens.value"
         :time-spent="documentSummary.timeSpent.value"
+        :truncated="documentSummary.truncated.value"
+        :summarized-chunks="documentSummary.summarizedChunks.value"
+        :total-chunks="documentSummary.totalChunks.value"
         :error="documentSummary.error.value"
         :loading="documentSummary.summarizing.value"
         @summarize="onSummarizeDocument"

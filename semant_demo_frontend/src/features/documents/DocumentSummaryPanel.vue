@@ -26,6 +26,15 @@
     <q-card v-if="tokens.length" flat bordered class="bg-blue-grey-1" data-testid="document-summary">
       <q-card-section>
         <div class="text-caption text-grey q-mb-sm">Time spent: {{ timeSpent.toFixed(2) }}s</div>
+        <div
+          v-if="truncated"
+          class="text-caption text-warning q-mb-sm"
+          role="status"
+          data-testid="document-summary-truncated"
+        >
+          <q-icon name="warning" size="16px" class="q-mr-xs" />
+          Partial summary — first {{ summarizedChunks }} of {{ totalChunks }} chunks.
+        </div>
         <div class="text-body2" style="white-space: pre-wrap;">
           <template v-for="(token, idx) in tokens" :key="idx">
             <span v-if="token.type === 'text'">{{ token.value }}</span>
@@ -33,8 +42,7 @@
               v-else
               href="#"
               class="citation-link"
-              @mousedown.stop
-              @click.prevent="emit('cite', token.chunkId)"
+              @click.prevent="emit('cite', token.chunkId, token.order)"
             >[{{ token.number }}]</a>
           </template>
         </div>
@@ -55,14 +63,17 @@ import type { SummaryToken } from './useDocumentSummary'
 withDefaults(defineProps<{
   tokens: SummaryToken[]
   timeSpent: number
+  truncated?: boolean
+  summarizedChunks?: number
+  totalChunks?: number
   error?: string | null
   loading?: boolean
-}>(), { error: null, loading: false })
+}>(), { truncated: false, summarizedChunks: 0, totalChunks: 0, error: null, loading: false })
 
 const emit = defineEmits<{
   summarize: []
   cancel: []
-  cite: [chunkId: string]
+  cite: [chunkId: string, order: number | null]
 }>()
 </script>
 

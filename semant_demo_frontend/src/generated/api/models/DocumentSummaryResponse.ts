@@ -25,6 +25,10 @@ import {
  * A summary of one document (#249). Self-contained (text, citations and the document id)
  * rather than nested inside a search-specific type, so it stays reusable as Document Chat
  * context once #243 defines a shared transcript, without a second incompatible summary shape.
+ * 
+ * ``summarized_chunks``/``total_chunks``/``truncated`` (#358 review) let the client show a
+ * "partial summary" notice rather than silently presenting a summary of only the first
+ * ``chunk_limit`` chunks of a long document as if it covered the whole thing.
  * @export
  * @interface DocumentSummaryResponse
  */
@@ -53,6 +57,24 @@ export interface DocumentSummaryResponse {
      * @memberof DocumentSummaryResponse
      */
     timeSpent: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof DocumentSummaryResponse
+     */
+    totalChunks: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof DocumentSummaryResponse
+     */
+    summarizedChunks: number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof DocumentSummaryResponse
+     */
+    truncated: boolean;
 }
 
 /**
@@ -63,6 +85,9 @@ export function instanceOfDocumentSummaryResponse(value: object): value is Docum
     if (!('summary' in value) || value['summary'] === undefined) return false;
     if (!('citations' in value) || value['citations'] === undefined) return false;
     if (!('timeSpent' in value) || value['timeSpent'] === undefined) return false;
+    if (!('totalChunks' in value) || value['totalChunks'] === undefined) return false;
+    if (!('summarizedChunks' in value) || value['summarizedChunks'] === undefined) return false;
+    if (!('truncated' in value) || value['truncated'] === undefined) return false;
     return true;
 }
 
@@ -80,6 +105,9 @@ export function DocumentSummaryResponseFromJSONTyped(json: any, ignoreDiscrimina
         'summary': json['summary'],
         'citations': ((json['citations'] as Array<any>).map(DocumentSummaryCitationFromJSON)),
         'timeSpent': json['time_spent'],
+        'totalChunks': json['total_chunks'],
+        'summarizedChunks': json['summarized_chunks'],
+        'truncated': json['truncated'],
     };
 }
 
@@ -98,6 +126,9 @@ export function DocumentSummaryResponseToJSONTyped(value?: DocumentSummaryRespon
         'summary': value['summary'],
         'citations': ((value['citations'] as Array<any>).map(DocumentSummaryCitationToJSON)),
         'time_spent': value['timeSpent'],
+        'total_chunks': value['totalChunks'],
+        'summarized_chunks': value['summarizedChunks'],
+        'truncated': value['truncated'],
     };
 }
 

@@ -37,10 +37,15 @@ async def summarize_document(collection_id: str, document_id: str,
     Summarizes the current document of a collection (#249), with citations to the chunks the
     summary was built from. Collection-scoped (needs read access, as the matching
     ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the
-    document must belong to the collection.
+    document must belong to the collection. A generation failure answers 502, the same
+    convention ``POST /api/question`` uses, rather than a 200 whose ``summary`` is quietly
+    the configured fallback text.
     """
-    return await service.summarize_document(documents, collections, document_summarizer, current_user, document_id,
-                                             collection_id)
+    try:
+        return await service.summarize_document(documents, collections, document_summarizer, current_user,
+                                                 document_id, collection_id)
+    except service.DocumentSummaryFailed as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @exp_router.post("/api/question", response_model=SummaryResponse)

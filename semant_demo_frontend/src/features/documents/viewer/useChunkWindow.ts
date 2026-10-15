@@ -221,6 +221,46 @@ export function useChunkWindow (
     }
   }
 
+  // ── Load exactly the chunks between the window and a target order (#249) ──
+  // Used to jump to a document-summary citation whose chunk isn't displayed yet: unlike
+  // loadAllNeighbours/loadAllChunks, this loads only up to targetOrder (bounded by how far it
+  // is from the current window), not the rest of the document in that direction. A target
+  // order that falls *inside* the displayed range (a partial-membership gap) delegates to the
+  // existing loadGapAll between the two chunks straddling it.
+  async function loadUntil (targetOrder: number): Promise<void> {
+    if (!displayChunks.value.length) return
+    const orders = displayChunks.value.map(c => c.order).sort((a, b) => a - b)
+    const minOrder = orders[0]
+    const maxOrder = orders[orders.length - 1]
+    if (targetOrder > maxOrder) {
+      loadingNext.value = true
+      try {
+        const chunks = await repository.getChunksInRange(collectionId(), documentId(), maxOrder, targetOrder + 1)
+        if (chunks.length) displayChunks.value = [...displayChunks.value, ...chunks]
+      } finally {
+        loadingNext.value = false
+      }
+      await relayoutAfterRender()
+      await checkNeighbours()
+    } else if (targetOrder < minOrder) {
+      loadingPrev.value = true
+      try {
+        const chunks = await repository.getChunksInRange(collectionId(), documentId(), targetOrder - 1, minOrder)
+        if (chunks.length) displayChunks.value = [...chunks, ...displayChunks.value]
+      } finally {
+        loadingPrev.value = false
+      }
+      await relayoutAfterRender()
+      await checkNeighbours()
+    } else if (!displayChunks.value.some(c => c.order === targetOrder)) {
+      // Inside the displayed range but missing: a gap from non-contiguous collection
+      // membership. orders is sorted and targetOrder is strictly between its ends, so there
+      // is always a next-greater entry here.
+      const afterIdx = orders.findIndex(o => o > targetOrder) - 1
+      await loadGapAll(orders[afterIdx], orders[afterIdx + 1])
+    }
+  }
+
   /** Stops showing a chunk; a preview chunk is kept hidden for offset math. */
   function hideChunk (chunkId: string) {
     const chunk = findChunk(chunkId)
@@ -269,6 +309,7 @@ export function useChunkWindow (
     loadGapPrev,
     loadGapAll,
     loadAllChunks,
+    loadUntil,
     hideChunk,
     hideAllPreviews,
     setInCollection

@@ -3590,7 +3590,7 @@ example().catch(console.error);
 
 Summarize Document
 
-Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching &#x60;&#x60;GET /api/user_collections/{collection_id}/documents/{document_id}&#x60;&#x60; route does); the document must belong to the collection.
+Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching &#x60;&#x60;GET /api/user_collections/{collection_id}/documents/{document_id}&#x60;&#x60; route does); the document must belong to the collection. A generation failure answers 502, the same convention &#x60;&#x60;POST /api/question&#x60;&#x60; uses, rather than a 200 whose &#x60;&#x60;summary&#x60;&#x60; is quietly the configured fallback text.
 
 ### Example
 

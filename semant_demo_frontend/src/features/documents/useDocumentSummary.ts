@@ -1,10 +1,12 @@
 import { computed, ref } from 'vue'
 import type { DocumentSummaryCitation } from 'src/generated/api'
-import { createContextGuard, isAbortError, useApi } from 'src/shared/api'
+import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
+
+const SUMMARY_FAILED_FALLBACK = 'Failed to summarize the document.'
 
 export type SummaryToken =
   | { type: 'text'; value: string }
-  | { type: 'citation'; chunkId: string; number: number }
+  | { type: 'citation'; chunkId: string; number: number; order: number | null }
 
 /**
  * Splits a document summary into text and citation tokens. Unlike the search summary
@@ -27,7 +29,9 @@ export function parseDocumentSummaryTokens (text: string, citations: DocumentSum
       tokens.push({ type: 'text', value: text.slice(lastIndex, index) })
     }
     const citation = citations[number - 1]
-    tokens.push(citation ? { type: 'citation', chunkId: citation.chunkId, number } : { type: 'text', value: matchText })
+    tokens.push(citation
+      ? { type: 'citation', chunkId: citation.chunkId, number, order: citation.order ?? null }
+      : { type: 'text', value: matchText })
 
     lastIndex = index + matchText.length
   }
@@ -41,6 +45,9 @@ export function parseDocumentSummaryTokens (text: string, citations: DocumentSum
 
 export interface RequestedCitation {
   chunkId: string
+  /** The cited chunk's position in the document, when known; lets the reader load it into
+   * the displayed window on demand (useChunkWindow.loadUntil) if it isn't shown yet. */
+  order: number | null
   /** Bumped on every request, so clicking the same citation again still re-triggers the scroll. */
   token: number
 }
@@ -54,6 +61,9 @@ const summary = ref('')
 const citations = ref<DocumentSummaryCitation[]>([])
 const error = ref<string | null>(null)
 const timeSpent = ref(0)
+const totalChunks = ref(0)
+const summarizedChunks = ref(0)
+const truncated = ref(false)
 const requestedCitation = ref<RequestedCitation | null>(null)
 let citationToken = 0
 let abort: AbortController | null = null
@@ -81,6 +91,9 @@ export function useDocumentSummary () {
     citations.value = []
     error.value = null
     timeSpent.value = 0
+    totalChunks.value = 0
+    summarizedChunks.value = 0
+    truncated.value = false
   }
 
   async function summarize (collectionId: string, documentId: string) {
@@ -99,10 +112,17 @@ export function useDocumentSummary () {
       summary.value = data.summary
       citations.value = data.citations
       timeSpent.value = data.timeSpent
+      totalChunks.value = data.totalChunks
+      summarizedChunks.value = data.summarizedChunks
+      truncated.value = data.truncated
     } catch (e) {
       if (!isCurrent() || isAbortError(e)) return
       console.error('Document summarization failed', e)
-      error.value = 'Failed to summarize the document.'
+      // The backend answers 502 with a safe, pre-sanitized detail on generation failure
+      // (never provider internals) — show it directly, same as other composables do.
+      const message = await apiErrorMessage(e, SUMMARY_FAILED_FALLBACK)
+      if (!isCurrent()) return
+      error.value = message
     } finally {
       if (isCurrent()) {
         summarizing.value = false
@@ -115,9 +135,10 @@ export function useDocumentSummary () {
   // the same as resetting (unlike AI assist, there are no incremental results to retain).
   const cancel = reset
 
-  /** Called from the summary panel's `cite` event; the reader page watches this to scroll. */
-  function cite (chunkId: string) {
-    requestedCitation.value = { chunkId, token: ++citationToken }
+  /** Called from the summary panel's `cite` event; the reader page watches this to scroll
+   * (loading the chunk into its window first if it isn't displayed yet). */
+  function cite (chunkId: string, order: number | null) {
+    requestedCitation.value = { chunkId, order, token: ++citationToken }
   }
 
   return {
@@ -126,6 +147,9 @@ export function useDocumentSummary () {
     citations: computed(() => citations.value),
     error: computed(() => error.value),
     timeSpent: computed(() => timeSpent.value),
+    totalChunks: computed(() => totalChunks.value),
+    summarizedChunks: computed(() => summarizedChunks.value),
+    truncated: computed(() => truncated.value),
     tokens,
     summarize,
     cancel,

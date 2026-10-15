@@ -96,20 +96,28 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
             context_size=options.context_size)
         return reply.strip()
 
-    async def _generate_or_fallback(self, kind: str, fallback: str, on_error: Optional[Callable[[str], None]],
-                                    *args) -> str:
+    async def _generate_or_fallback(self, kind: str, fallback: str,
+                                    on_error: Optional[Callable[[str, Exception], None]], *args) -> str:
         try:
             return await self._generate(*args)
         except Exception as e:
             # Content-free: the provider error may quote the request (chunk text/prompts).
             logging.error("Document %s generation failed: %s", kind, type(e).__name__)
             if on_error is not None:
-                on_error(kind)
+                # The caller decides what a failure means for its API contract (#358 review):
+                # the search summarizer's callers keep partial results with a warning, but a
+                # document summary has only this one generated part, so its caller
+                # (features.summarization.service.summarize_document) turns this into a
+                # failed request rather than returning the fallback text as if it were a
+                # successful summary. The exception itself, not just its kind, is passed
+                # through so the caller can keep a safe, server-authored LlmNotConfigured
+                # message (as answer_question does) instead of a generic one.
+                on_error(kind, e)
             return fallback
 
     async def gen_document_summary(self, chunks: Sequence[DocumentChunk], document_title: Optional[str] = None,
                                    prompt: Optional[str] = None,
-                                   on_error: Optional[Callable[[str], None]] = None) -> str:
+                                   on_error: Optional[Callable[[str, Exception], None]] = None) -> str:
         """
         Creates an overall summary of a document from ``chunks`` (already truncated by the
         caller to ``chunk_limit``, in document order).
@@ -118,7 +126,7 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
             ``[docN]`` (1-based) in the prompt
         :param document_title: optional document title given to the model for context
         :param prompt: optional prompt to use instead of the default one
-        :param on_error: called with "summary" if generation fails
+        :param on_error: called with ("summary", the exception) if generation fails
         :return: the generated summary, or the configured fallback text on failure
         """
         return await self._generate_or_fallback(

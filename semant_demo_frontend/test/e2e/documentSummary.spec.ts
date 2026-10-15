@@ -12,41 +12,45 @@ import { apiToken, chunkText, ensureLoggedIn, fixture, openDocument, sidebarPane
 
 const summary = (page: import('@playwright/test').Page) => page.getByTestId('document-summary')
 
-test('summarizing shows citations, and a citation to a displayed chunk scrolls to it, preserving an open annotation popover', async ({ page }) => {
+test('summarizing shows citations, and interacting with the summary sidebar (switching to it, Summarize, a citation) never discards an open annotation popover', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   // chronicle_3 (order 2, the last of the 3 chunks) is the only member of "newspapers",
   // so it is the chunk already displayed and also the one the fake always cites last.
   await openDocument(page, 'newspapers', 'chronicle')
   await expect(chunkText(page, 'chronicle_3')).toBeVisible()
 
-  // Switch to the Summary panel and generate the summary *before* opening the popover:
-  // switching sidebar panels is itself an "outside click" that already ends any in-progress
-  // quick-tagging (pre-existing, general behavior — not special-cased for this panel), so the
-  // popover must be opened while the Summary panel is already the active one for this test to
-  // isolate what the citation click itself does.
-  await sidebarPanelButton(page, 'Summary').click()
-  await page.getByRole('button', { name: 'Summarize Document' }).click()
-  await expect(summary(page)).toContainText('Fake summary of 3 passage(s); last [3].')
-
-  // Open the annotation popover of the fixture span on this chunk.
+  // Open the annotation popover of the fixture span on this chunk *before* touching the
+  // Summary panel at all, mirroring review feedback: switching to the Summary panel,
+  // clicking Summarize, and clicking a citation must each leave an open popover (and any
+  // in-progress quick-tag selection) alone — none of them are "outside" the editing
+  // context, even though the document-level click-outside handler would otherwise treat
+  // them that way (DocumentReaderPage.vue's onClickOutside exempts the whole right sidebar).
   await page.locator('.gutter-item').first().click()
   const popover = page.locator('.annotation-popover')
+  await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
+
+  await sidebarPanelButton(page, 'Summary').click()
+  await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Summarize Document' }).click()
+  await expect(summary(page)).toContainText('Fake summary of 3 passage(s); last [3].')
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 
   await summary(page).getByRole('link', { name: '[3]' }).click()
 
   // A read-only navigation action: the chunk is (still) in view and the popover opened
-  // before the click is untouched — no selection clearing, no popover changes.
+  // before any of this is still untouched — no selection clearing, no popover changes.
   await expect(chunkText(page, 'chronicle_3')).toBeInViewport()
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 })
 
-test('a citation to a chunk outside the displayed window is a documented no-op', async ({ page }) => {
+test('a citation to a chunk outside the displayed window loads it on demand and scrolls to it', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   // In "chronicles", only chronicle_1 and chronicle_2 (order 0, 1) are members and
   // displayed by default; chronicle_3 (order 2) is not loaded. The summary still covers
   // all 3 chunks of the document, so its last citation ([doc3]) targets a chunk the reader
-  // is not currently showing.
+  // is not currently showing — useChunkWindow.loadUntil must load it (#358 review) rather
+  // than leaving the citation a silent dead link.
   await openDocument(page, 'chronicles', 'chronicle')
   await expect(chunkText(page, 'chronicle_1')).toBeVisible()
   await expect(chunkText(page, 'chronicle_3')).toHaveCount(0)
@@ -57,10 +61,34 @@ test('a citation to a chunk outside the displayed window is a documented no-op',
 
   await summary(page).getByRole('link', { name: '[3]' }).click()
 
-  // No crash, no chunk fetched into view: the reader's displayed window is unchanged.
+  // The previously-unloaded chunk is now displayed and scrolled into view; the chunks
+  // already shown are unaffected.
   await expect(chunkText(page, 'chronicle_1')).toBeVisible()
   await expect(chunkText(page, 'chronicle_2')).toBeVisible()
-  await expect(chunkText(page, 'chronicle_3')).toHaveCount(0)
+  await expect(chunkText(page, 'chronicle_3')).toBeVisible()
+  await expect(chunkText(page, 'chronicle_3')).toBeInViewport()
+})
+
+test('a generation failure shows an error, not a summary that quietly used the fallback text', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'Summary').click()
+
+  // The real backend only fails like this when the LLM provider is unreachable/misconfigured
+  // (not reproducible against the deterministic fake); simulate the 502 contract at the
+  // network layer to verify the panel shows it as an error, not a successful summary card.
+  await page.route('**/documents/*/summary', (route) => route.fulfill({
+    status: 502,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: 'The document could not be summarized.' })
+  }))
+
+  await page.getByRole('button', { name: 'Summarize Document' }).click()
+
+  // Scoped to the panel: the sign-in notification is also role="alert".
+  await expect(page.locator('.document-summary-panel').getByRole('alert')).toHaveText('The document could not be summarized.')
+  await expect(summary(page)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Summarize Document' })).toBeVisible()
 })
 
 test('switching documents drops a summary of the previous one', async ({ page }) => {

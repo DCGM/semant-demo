@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pytest
 
+from semant_demo.adapters.llm.usage import LlmNotConfigured
 from semant_demo.config import SCRIPT_PATH
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.documents.schemas import Document, DocumentDetail, DocumentViewChunk
@@ -74,6 +75,7 @@ async def test_owner_and_shared_user_get_a_summary_citing_only_this_document():
         assert [c.chunk_id for c in response.citations] == [c.id for c in chunks]
         assert [(c.order, c.from_page, c.to_page) for c in response.citations] == \
                [(c.order, c.from_page, c.to_page) for c in chunks]
+        assert (response.total_chunks, response.summarized_chunks, response.truncated) == (2, 2, False)
     # The prompt labelled chunks [docN] in document order, same convention the search summarizer uses.
     [(feature, messages, _), *_] = llm.calls
     assert feature == "document_summary"
@@ -115,6 +117,7 @@ async def test_long_documents_are_truncated_to_the_configured_chunk_limit():
     assert [c.chunk_id for c in response.citations] == [c.id for c in chunks[:3]]
     assert "[doc3] Odstavec 2" in response.summary
     assert "Odstavec 3" not in response.summary and "Odstavec 4" not in response.summary
+    assert (response.total_chunks, response.summarized_chunks, response.truncated) == (5, 3, True)
 
 
 async def test_chunks_are_summarized_in_document_order_even_when_returned_unordered():
@@ -130,17 +133,31 @@ async def test_chunks_are_summarized_in_document_order_even_when_returned_unorde
         response.summary.index("Odstavec 2")
 
 
-async def test_provider_failure_falls_back_without_leaking_the_error_or_chunk_text(caplog):
+async def test_provider_failure_is_reported_as_failed_not_as_a_fallback_summary(caplog):
+    # #358 review: a document summary has nothing else to fall back on, unlike the
+    # search-results summarizer, so a failed generation must not look like a successful
+    # response whose summary happens to be the configured fallback text ("N/A").
     secret_text = "TOP SECRET CHRONICLE TEXT sk-SECRET-MARKER"
     documents = FakeDocuments([chunk(0, text=secret_text)])
 
     def failing(messages):
         raise RuntimeError(f"provider refused prompt={messages[-1]['content']}")
 
-    response = await service.summarize_document(documents, FakeCollections(), summarizer(FakeLlm(failing)), OWNER,
-                                                 DOCUMENT, COLLECTION)
+    with pytest.raises(service.DocumentSummaryFailed) as failure:
+        await service.summarize_document(documents, FakeCollections(), summarizer(FakeLlm(failing)), OWNER,
+                                         DOCUMENT, COLLECTION)
 
-    assert response.summary == "N/A"  # the configured fallback (configs/document_summarizer.yaml)
-    assert len(response.citations) == 1  # citations are still reported even though generation failed
+    assert str(failure.value) == service.DOCUMENT_SUMMARY_FAILED_MESSAGE
     assert "Document summary generation failed: RuntimeError" in caplog.text
     assert secret_text not in caplog.text and "provider refused" not in caplog.text
+
+
+async def test_unconfigured_provider_names_the_missing_setting():
+    def failing(messages):
+        raise LlmNotConfigured("OPENAI_API_KEY is not configured on the server")
+
+    documents = FakeDocuments([chunk(0)])
+
+    with pytest.raises(service.DocumentSummaryFailed, match="^OPENAI_API_KEY is not configured on the server$"):
+        await service.summarize_document(documents, FakeCollections(), summarizer(FakeLlm(failing)), OWNER,
+                                         DOCUMENT, COLLECTION)

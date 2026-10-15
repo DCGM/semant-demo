@@ -1631,7 +1631,7 @@ export interface DefaultApiInterface {
     summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequestOpts(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection.
+     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection. A generation failure answers 502, the same convention ``POST /api/question`` uses, rather than a 200 whose ``summary`` is quietly the configured fallback text.
      * @summary Summarize Document
      * @param {string} collectionId 
      * @param {string} documentId 
@@ -1642,7 +1642,7 @@ export interface DefaultApiInterface {
     summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRaw(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentSummaryResponse>>;
 
     /**
-     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection.
+     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection. A generation failure answers 502, the same convention ``POST /api/question`` uses, rather than a 200 whose ``summary`` is quietly the configured fallback text.
      * Summarize Document
      */
     summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse>;
@@ -4529,7 +4529,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection.
+     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection. A generation failure answers 502, the same convention ``POST /api/question`` uses, rather than a 200 whose ``summary`` is quietly the configured fallback text.
      * Summarize Document
      */
     async summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRaw(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentSummaryResponse>> {
@@ -4540,7 +4540,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection.
+     * Summarizes the current document of a collection (#249), with citations to the chunks the summary was built from. Collection-scoped (needs read access, as the matching ``GET /api/user_collections/{collection_id}/documents/{document_id}`` route does); the document must belong to the collection. A generation failure answers 502, the same convention ``POST /api/question`` uses, rather than a 200 whose ``summary`` is quietly the configured fallback text.
      * Summarize Document
      */
     async summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse> {

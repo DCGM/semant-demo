@@ -45,6 +45,20 @@ class QuestionFailed(Exception):
     """
 
 
+DOCUMENT_SUMMARY_FAILED_MESSAGE = "The document could not be summarized."
+
+
+class DocumentSummaryFailed(Exception):
+    """The model did not produce a document summary; carries the safe error message shown to
+    the client (same reasoning as :class:`QuestionFailed`: provider exception text may echo
+    the request or credentials, so only a fixed message, or the server-authored
+    :class:`LlmNotConfigured` one, is passed on). A generation failure is reported as a
+    failed request rather than a 200 whose ``summary`` is quietly the configured fallback
+    text (#358 review) — unlike the search-results summarizer, a document summary has no
+    other content to fall back on, so there is nothing useful to keep.
+    """
+
+
 async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
                     search_response: SearchResponse) -> SummaryResponse:
     """The summary of ``summary_type`` of the results; only ``results`` is supported.
@@ -90,19 +104,32 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
     request never reaches the summarizer. Chunks are sorted by their document ``order``
     (chunks without one sort last) and truncated to the summarizer's configured
     ``chunk_limit`` (first N chunks in document order); the citations list exactly the
-    chunks sent to the model, so a generation failure still returns accurate (if partial)
-    citations alongside the configured fallback summary text.
+    chunks sent to the model, and ``truncated``/``total_chunks``/``summarized_chunks`` let the
+    client show a "partial summary" notice for a long document rather than presenting a
+    summary of its first ``chunk_limit`` chunks as if it covered the whole thing.
+
+    Raises :class:`DocumentSummaryFailed` when generation fails, instead of returning the
+    configured fallback text as a successful response: unlike the search-results summarizer
+    (which keeps other, successfully-generated results and adds a warning), a document
+    summary has no other content to fall back on.
     """
     start_time = time.time()
     detail = await documents_service.read_chunks_in_collection(documents, collections, user, document_id,
                                                                 collection_id)
     chunks = sorted(detail.chunks, key=lambda chunk: (chunk.order is None, chunk.order))
     truncated = chunks[:document_summarizer.chunk_limit]
-    summary = await document_summarizer.gen_document_summary(truncated, document_title=detail.document.title)
+    failures: list[Exception] = []
+    summary = await document_summarizer.gen_document_summary(truncated, document_title=detail.document.title,
+                                                              on_error=lambda _kind, exc: failures.append(exc))
+    if failures:
+        cause = failures[0]
+        message = str(cause) if isinstance(cause, LlmNotConfigured) else DOCUMENT_SUMMARY_FAILED_MESSAGE
+        raise DocumentSummaryFailed(message) from cause
     citations = [
         DocumentSummaryCitation(chunk_id=chunk.id, order=chunk.order, from_page=chunk.from_page,
                                 to_page=chunk.to_page)
         for chunk in truncated
     ]
     return DocumentSummaryResponse(document_id=detail.document.id, summary=summary, citations=citations,
-                                   time_spent=time.time() - start_time)
+                                   time_spent=time.time() - start_time, total_chunks=len(chunks),
+                                   summarized_chunks=len(truncated), truncated=len(truncated) < len(chunks))

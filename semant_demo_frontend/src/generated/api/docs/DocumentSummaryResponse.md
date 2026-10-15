@@ -1,7 +1,7 @@
 
 # DocumentSummaryResponse
 
-A summary of one document (#249). Self-contained (text, citations and the document id) rather than nested inside a search-specific type, so it stays reusable as Document Chat context once #243 defines a shared transcript, without a second incompatible summary shape.
+A summary of one document (#249). Self-contained (text, citations and the document id) rather than nested inside a search-specific type, so it stays reusable as Document Chat context once #243 defines a shared transcript, without a second incompatible summary shape.  ``summarized_chunks``/``total_chunks``/``truncated`` (#358 review) let the client show a \"partial summary\" notice rather than silently presenting a summary of only the first ``chunk_limit`` chunks of a long document as if it covered the whole thing.
 
 ## Properties
 
@@ -11,6 +11,9 @@ Name | Type
 `summary` | string
 `citations` | [Array&lt;DocumentSummaryCitation&gt;](DocumentSummaryCitation.md)
 `timeSpent` | number
+`totalChunks` | number
+`summarizedChunks` | number
+`truncated` | boolean
 
 ## Example
 
@@ -23,6 +26,9 @@ const example = {
   "summary": null,
   "citations": null,
   "timeSpent": null,
+  "totalChunks": null,
+  "summarizedChunks": null,
+  "truncated": null,
 } satisfies DocumentSummaryResponse
 
 console.log(example)
