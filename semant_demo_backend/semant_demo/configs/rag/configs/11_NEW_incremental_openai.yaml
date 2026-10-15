@@ -1,6 +1,6 @@
 id: "xandry12_IncrementalAdaptiveRagGenerator_openai_default_multiquery_big_model"
-name: "Incremental Adaptive RAG using OPENAI GPT 5.1 with multi query and web search"
-description: "NEW Incremental Adaptive RAG Generator configuration using OPENAI with multi query strategy and web search enabled."
+name: "Incremental Adaptive RAG (Claude Sonnet 5.5, premium)"
+description: "Premium adaptive RAG using Claude Sonnet 5.5 through OpenRouter; multi-query retrieval and optional web search. Costs grow with every graph iteration."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
   tier: "large"
