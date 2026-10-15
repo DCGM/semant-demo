@@ -77,8 +77,12 @@ kept; upgrade deliberately, e.g. for a security fix, with
 `LOCK_COMPILE_ARGS="--upgrade-package NAME" make lock` (or `--upgrade` for everything), and
 review the changed versions. The fast tests (`tests/test_dependency_locks.py`) fail when a
 lock no longer covers the declared requirements or the two locks pin different runtime
-versions; the CI `python-locks` job re-resolves both locks and installs the runtime lock on
-its own (`pip check`, OpenAPI export). Deployments wait for it. Locks must keep their
+versions; the CI `python-locks` job installs the runtime lock on its own (`pip check`,
+OpenAPI export) and re-resolves both locks. Re-resolution takes minutes, so on a PR it runs
+only when a path in `LOCK_INPUTS` of `scripts/python-locks.sh` changed (requirements, locks,
+the script, its test, or any workflow); pushes to `main`, tags and manual runs always
+re-resolve, and `python-locks-drift.yml` re-resolves `main` weekly. Run `make lock-check` or
+the drift workflow manually to re-resolve on demand. Deployments wait for the job. Locks must keep their
 hashes: CI installs them with `--require-hashes` from a cache shared between runs (see
 `deploy/README.md`). Frontend versions are
 pinned by `package-lock.json`; Vitest 0.23 is the last line supporting the Vite 2 used by

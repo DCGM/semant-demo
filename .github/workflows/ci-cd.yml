@@ -174,6 +174,8 @@ jobs:
   # The production image installs requirements-runtime.lock (#139). Check that it alone
   # installs, is consistent and serves the same OpenAPI schema, and that neither lock is
   # stale for its inputs (re-resolved with the pinned pip-tools; needs the package index).
+  # Re-resolution takes minutes, so PRs run it only when a lock input changed (#367); pushes,
+  # tags (which deploy) and manual runs always do, and python-locks-drift.yml runs it weekly.
   python-locks:
     name: Python dependency locks
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -203,10 +205,17 @@ jobs:
         working-directory: semant_demo_backend
         run: /tmp/runtime/bin/python export_openapi.py --output /tmp/openapi.json
       - name: Re-resolve locks
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           python -m venv /tmp/tools
           /tmp/tools/bin/pip install --no-compile pip-tools==7.6.2
-          LOCK_COMPILER=/tmp/tools/bin/pip-compile scripts/python-locks.sh check
+          if [ -n "$PR_BASE" ]; then
+            git fetch --no-tags --depth=1 origin "$PR_BASE" || true
+            LOCK_COMPILER=/tmp/tools/bin/pip-compile scripts/python-locks.sh check-since "$PR_BASE"
+          else
+            LOCK_COMPILER=/tmp/tools/bin/pip-compile scripts/python-locks.sh check
+          fi
 
   api-client-drift:
     name: Generated API client drift
