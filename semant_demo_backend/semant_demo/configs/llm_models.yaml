@@ -1,53 +1,70 @@
-# Server-side LLM model tiers (read from LLM_MODELS_CONFIG; see docs/ARCHITECTURE.md).
+# OpenRouter-hosted LLM tiers, selected by desk review on 2026-10-16 (#372).
+# All active tiers use the existing OpenAI-compatible provider adapter, whose
+# endpoint is OPENAI_API_URL (default: https://openrouter.ai/api/v1).
+# Prices are estimated USD per million input/output tokens, not quota enforcement.
+# These are currently listed base prices; routed-provider pricing, long-context
+# surcharges, reasoning output and promotional discounts may change.
+# See docs/LLM_MODEL_SELECTION_2026-10.md for evidence and trade-offs.
 #
-# Clients never name a model. Each feature uses its default tier; a RAG configuration
-# may choose another tier its feature allows (params.tier).
-#
-# Tier fields:
-#   provider      openai (any OpenAI-compatible endpoint: OpenAI, OpenRouter), ollama, google
-#   model         the provider's model identifier (OpenRouter names, e.g. openai/gpt-4.1-mini,
-#                 for the default OPENAI_API_URL)
-#   base_url      optional endpoint for this tier; otherwise OPENAI_API_URL or the first
-#                 OLLAMA_URLS entry. Keys always come from OPENAI_API_KEY / GOOGLE_API_KEY.
-#   capabilities  [tools] when the model supports function calling
-#   input_price / output_price
-#                 estimated USD per million tokens, used only for cost estimates;
-#                 leave out when unknown (the cost is then not reported)
+# The tier also defines OpenRouter's reasoning request field (enabled/effort/exclude).
+# If supports_temperature is false, the gateway omits sampling temperature even
+# when older feature code requests a value (required for current Claude 5.5).
 tiers:
   tiny:
-    # Self-hosted, no per-token cost.
-    provider: ollama
-    model: qwen2.5:32b-instruct
-    base_url: http://athena19.fit.vutbr.cz:11431
-    input_price: 0
-    output_price: 0
+    # Frequent search-result titles and summaries; prioritize fast visible text.
+    provider: openai
+    model: anthropic/claude-haiku-5.5
+    reasoning:
+      enabled: false
+    supports_temperature: false
+    input_price: 0.10
+    output_price: 0.50
   small:
+    # Basic and low-cost adaptive RAG; same efficient model but low-effort thinking.
     provider: openai
-    model: google/gemma-3-12b-it
+    model: anthropic/claude-haiku-5.5
+    reasoning:
+      effort: low
+      exclude: true
+    supports_temperature: false
+    input_price: 0.10
+    output_price: 0.50
   medium:
+    # Interactive question / span chat and default multi-call agentic RAG.
+    # OpenRouter displays a 50% promotional price (2026-10-16): $0.75/$3.75.
+    # Keep the normal $1.50/$7.50 list price for conservative cost estimates.
     provider: openai
-    model: openai/gpt-4.1-mini
+    model: google/gemini-3.8-flash
     capabilities: [tools]
-    input_price: 0.40
-    output_price: 1.60
+    reasoning:
+      effort: low
+      exclude: true
+    input_price: 1.50
+    output_price: 7.50
   large:
+    # Optional premium RAG; not the default for multi-call workflows.
     provider: openai
-    model: openai/gpt-5.1
+    model: anthropic/claude-sonnet-5.5
     capabilities: [tools]
-    input_price: 1.25
+    reasoning:
+      effort: low
+      exclude: true
+    supports_temperature: false
+    input_price: 2.00
     output_price: 10.00
 
-# Features and the tiers they may use (`allowed` defaults to just the default tier).
+# Feature defaults are server-controlled. RAG YAML configurations may select a
+# permitted tier; browsers cannot select arbitrary models. Topicer is separate.
 features:
-  search_summary:   # result titles, per-result and overall search summaries
+  search_summary:
     default: tiny
     allowed: [tiny]
-  question:         # POST /api/question
+  question:
     default: medium
     allowed: [medium]
-  span_chat:        # POST /api/ai/discuss_span
+  span_chat:
     default: medium
     allowed: [medium]
-  rag:              # RAG configurations choose with params.tier
-    default: large
+  rag:
+    default: medium
     allowed: [small, medium, large]
