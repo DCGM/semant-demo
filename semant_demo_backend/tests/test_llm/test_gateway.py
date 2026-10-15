@@ -130,7 +130,7 @@ def test_deployed_openrouter_catalog_has_explicit_pricing_and_profiles():
     assert all(t.input_price is not None and t.output_price is not None for t in catalog.tiers.values())
     assert catalog.resolve("search_summary").reasoning == {"enabled": False}
     assert catalog.resolve("rag", "small").reasoning["effort"] == "low"
-    assert catalog.resolve("question").model == "google/gemini-3.8-flash"
+    assert catalog.resolve("question").model == "anthropic/claude-haiku-5.5"
     assert catalog.resolve("rag").tier == "medium"
     assert catalog.resolve("rag", "large").model == "anthropic/claude-sonnet-5.5"
 
@@ -154,7 +154,7 @@ async def test_openrouter_request_applies_tier_reasoning_and_omits_claude_temper
                      openai_base_url="http://fake/openai/v1"), http_transport=transport)
     await llm.complete("search_summary", messages(), temperature=0.0, max_tokens=50)
     await llm.complete("rag", messages(), tier="small", temperature=0.4, max_tokens=100)
-    await llm.complete("question", messages(), temperature=0.2, max_tokens=100)
+    await llm.complete("span_chat", messages(), temperature=0.2, max_tokens=100)
     await llm.complete("rag", messages(), tier="large", temperature=0.3, max_tokens=100)
 
     assert transport.paths == ["/openai/v1/chat/completions"] * 4
