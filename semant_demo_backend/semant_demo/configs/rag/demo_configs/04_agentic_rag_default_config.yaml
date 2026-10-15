@@ -1,9 +1,9 @@
 id: "xmarti96_agentic_rag"
-name: "Agentic-RAG (GPT-5.1)"
-description: "Agentic rag implementation utilizing 5 different tools for answer synthesis. Does not support chat history or \"Explain\" functionality."
+name: "Agentic-RAG (Gemini 3.8 Flash)"
+description: "Agentic RAG with Gemini 3.8 Flash at low reasoning effort via OpenRouter. May make several paid model/tool calls. Does not support chat history or \"Explain\"."
 class_name: "xmartiAgentRag"
 params:
-  tier: "large"
+  tier: "medium"
   temperature: 0.0
   search_type : "hybrid"
   alpha: 0.5
