@@ -16,6 +16,10 @@
  *
  * A Vega-Lite specification gets the width of its container (`width`/`autosize` are set
  * here) and is drawn again when that width changes. A Vega specification is drawn as given.
+ *
+ * Drawings can overlap (a resize during a spec change) and finish in any order, so each one
+ * is made in its own detached element. Only the newest is put into the container; an older
+ * one finishing late is finalized without ever being shown.
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Result, VisualizationSpec } from 'vega-embed'
@@ -50,21 +54,24 @@ function sized (spec: VisualizationSpec): VisualizationSpec {
 function dispose () {
   result?.finalize()
   result = null
+  container.value?.replaceChildren()
 }
 
 async function render () {
   const current = ++generation
-  const element = container.value
-  if (!element) return
+  if (!container.value) return
+  const drawing = document.createElement('div')
+  drawing.className = 'vega-chart__drawing'
   try {
     const embed = await loadEmbed()
     if (current !== generation) return
-    const embedded = await embed(element, sized(props.spec), { actions: false, renderer: 'svg' })
-    if (current !== generation) {
+    const embedded = await embed(drawing, sized(props.spec), { actions: false, renderer: 'svg' })
+    if (current !== generation || !container.value) {
       embedded.finalize()
       return
     }
     dispose()
+    container.value.appendChild(drawing)
     result = embedded
     failed.value = false
   } catch (e) {

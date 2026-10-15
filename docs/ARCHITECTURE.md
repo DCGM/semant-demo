@@ -449,7 +449,9 @@ over the generated client. `app/` is the application shell (main layout, right s
 scope, about and not-found pages), `shared/` holds code without a feature owner (`api/`,
 `ui/` buttons and error display, notifications, write outcomes, pagination, color picker,
 `visualization/VegaChart.vue`: draws a Vega-Lite or Vega specification with vega-embed,
-loaded on demand, fitted to its container width and disposed of on unmount),
+loaded on demand, fitted to its container width and disposed of on unmount; each redraw is
+made in a detached element and only the newest is shown, so overlapping redraws cannot
+overwrite one another),
 and `router/` the routes and sign-in guard.
 
 | Feature | Contents |

@@ -32,7 +32,6 @@
             {{ computedAtText }}
             <span class="text-grey-7">({{ freshnessNote }})</span>
           </div>
-          <q-btn flat dense no-caps color="primary" icon="refresh" label="Reload" :loading="loading" @click="load" />
         </div>
       </section>
 
