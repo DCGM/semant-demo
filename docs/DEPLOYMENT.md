@@ -160,8 +160,8 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `PORT` | `8000` | Listen port of `run.py` and of the Docker image's uvicorn |
 | `STATIC_PATH` | `./static` | Built frontend served by the backend when the directory exists |
 | `LOG_LEVEL` | `INFO` | Python and OTLP log level |
-| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Model tier catalog: provider, model and estimated prices per tier, and the tiers each feature may use; the only place models are chosen |
-| `OPENAI_API_KEY` / `OPENAI_API_URL` | empty / `https://openrouter.ai/api/v1` | Key and default endpoint of `openai` tiers (any OpenAI-compatible API; model names must match the endpoint) |
+| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Server-side model, reasoning profile, temperature support, price estimate and permitted feature tiers. Shipped tiers use OpenRouter; see [the October 2026 review](LLM_MODEL_SELECTION_2026-10.md). |
+| `OPENAI_API_KEY` / `OPENAI_API_URL` | empty / `https://openrouter.ai/api/v1` | **OpenRouter key and endpoint required by all shipped LLM tiers.** The adapter is OpenAI-compatible; override the endpoint only when custom models/credentials support it. |
 | `OLLAMA_URLS` | `http://localhost:11434` | Default endpoint of `ollama` tiers (only the first URL is used) |
 | `GOOGLE_API_KEY` | empty | Key of `google` tiers |
 | `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | Directory of the RAG configurations offered to users |
