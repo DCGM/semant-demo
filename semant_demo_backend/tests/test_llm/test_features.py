@@ -103,7 +103,7 @@ async def test_basic_rag_with_history_meters_the_rephrasing_call_too(tmp_path, l
 
     await rag.rag_request(request, FakeRetriever())
 
-    assert rag_calls(metrics) == [("rag", "large", "provider", "success")] * 2   # the rag default tier
+    assert rag_calls(metrics) == [("rag", "medium", "provider", "success")] * 2   # the rag default tier
 
 
 async def test_incremental_rag_graph_completes_with_every_node_metered(tmp_path, llm, metrics):
@@ -183,7 +183,7 @@ async def test_question_endpoint_answers_with_the_question_tier(tmp_path, metric
     assert response.json() == {"summary": "Fake summary without passages.", "time_spent": 0.5}
     [call] = metrics.calls
     assert call["attributes"] == {"feature": "question", "tier": "medium", "provider": "openai",
-                                  "model": "openai/gpt-4.1-mini", "usage_source": "provider"}
+                                  "model": "google/gemini-3.8-flash", "usage_source": "provider"}
 
 
 async def test_question_without_a_provider_key_is_a_bad_gateway(tmp_path):
