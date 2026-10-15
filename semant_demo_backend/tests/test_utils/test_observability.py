@@ -14,7 +14,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from semant_demo.config import SCRIPT_PATH
 from semant_demo.core.request_context import current_request_id
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_llm
@@ -64,9 +63,9 @@ def test_usage_metric_attributes_are_low_cardinality():
     assert request_outcome(503) == "server_error"
 
 
-def test_classified_feature_paths_exist_in_the_api():
+def test_classified_feature_paths_exist_in_the_api(tmp_path):
     """Feature metrics must follow route renames instead of silently counting nothing."""
-    schema = json.loads((SCRIPT_PATH.parent / "openapi.json").read_text())
+    schema = create_app(make_test_config(tmp_path)).openapi()
     post_paths = [path for path, operations in schema["paths"].items() if "post" in operations]
     classified = {feature_for_request(path, "POST") for path in post_paths}
     assert {"rag", "search", "summarize", "ai_assistance", "tagging"} <= classified
