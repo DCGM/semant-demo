@@ -1,5 +1,6 @@
 """LLM gateway (adapters/llm/): tier policy, LangChain models against fake HTTP providers,
 and usage records for streamed, non-streamed, failed, abandoned and unmetered calls."""
+import json
 import logging
 
 import httpx
@@ -47,9 +48,11 @@ class CountingTransport(httpx.AsyncBaseTransport):
     def __init__(self, inner):
         self.inner = inner
         self.paths = []
+        self.payloads = []
 
     async def handle_async_request(self, request):
         self.paths.append(request.url.path)
+        self.payloads.append(json.loads(request.content))
         return await self.inner.handle_async_request(request)
 
 
@@ -118,6 +121,51 @@ def test_undefined_tiers_are_rejected():
     with pytest.raises(LlmConfigurationError, match="undefined tiers: large"):
         ModelCatalog.from_dict({"tiers": {"tiny": CATALOG["tiers"]["tiny"]},
                                 "features": {"x": {"default": "tiny", "allowed": ["tiny", "large"]}}})
+
+
+
+def test_deployed_openrouter_catalog_has_explicit_pricing_and_profiles():
+    catalog = ModelCatalog.load(SCRIPT_PATH / "configs" / "llm_models.yaml")
+    assert all(t.provider == "openai" for t in catalog.tiers.values())
+    assert all(t.input_price is not None and t.output_price is not None for t in catalog.tiers.values())
+    assert catalog.resolve("search_summary").reasoning == {"enabled": False}
+    assert catalog.resolve("rag", "small").reasoning["effort"] == "low"
+    assert catalog.resolve("question").model == "google/gemini-3.8-flash"
+    assert catalog.resolve("rag").tier == "medium"
+    assert catalog.resolve("rag", "large").model == "anthropic/claude-sonnet-5.5"
+
+
+@pytest.mark.parametrize("reasoning", [
+    {"enabled": False, "effort": "low"},
+    {"effort": "wrong"},
+    {"exclude": "false"},
+])
+def test_catalog_rejects_invalid_reasoning_settings(reasoning):
+    with pytest.raises(LlmConfigurationError):
+        ModelCatalog.from_dict({
+            "tiers": {"small": {"provider": "openai", "model": "example", "reasoning": reasoning}},
+            "features": {"x": {"default": "small"}},
+        })
+
+
+async def test_openrouter_request_applies_tier_reasoning_and_omits_claude_temperature(transport):
+    catalog = ModelCatalog.load(SCRIPT_PATH / "configs" / "llm_models.yaml")
+    llm = LlmGateway(catalog, ProviderSettings(openai_api_key=API_KEY,
+                     openai_base_url="http://fake/openai/v1"), http_transport=transport)
+    await llm.complete("search_summary", messages(), temperature=0.0, max_tokens=50)
+    await llm.complete("rag", messages(), tier="small", temperature=0.4, max_tokens=100)
+    await llm.complete("question", messages(), temperature=0.2, max_tokens=100)
+    await llm.complete("rag", messages(), tier="large", temperature=0.3, max_tokens=100)
+
+    assert transport.paths == ["/openai/v1/chat/completions"] * 4
+    tiny, small, medium, large = transport.payloads
+    assert tiny["reasoning"] == {"enabled": False}
+    assert small["reasoning"] == {"effort": "low", "exclude": True}
+    assert medium["reasoning"] == {"effort": "low", "exclude": True}
+    assert large["reasoning"] == {"effort": "low", "exclude": True}
+    assert "temperature" not in tiny and "temperature" not in small and "temperature" not in large
+    assert medium["temperature"] == 0.2
+
 
 
 # ── non-streamed calls ─────────────────────────────────────────────────────
