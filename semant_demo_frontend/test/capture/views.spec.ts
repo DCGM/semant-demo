@@ -71,23 +71,30 @@ test('corpus overview without libraries', async ({ page }, testInfo) => {
 })
 
 test('chat sources', async ({ page }, testInfo) => {
-  await answerChat(page, [{
-    rag_answer: 'The chronicle describes the arrival of the governor [doc 1] and a fire [doc 2].',
-    sources: [chatSource('chronicle_1'), chatSource('chronicle_3'), chatSource('gazette_1')]
-  }])
+  await answerChat(page, [
+    {
+      rag_answer: 'The chronicle describes the arrival of the governor [doc 1] and a fire [doc 2].',
+      sources: [chatSource('chronicle_1'), chatSource('chronicle_3')]
+    },
+    {
+      rag_answer: 'The gazette mentions a café [doc 1]; the fire is the same [doc 2].',
+      sources: [chatSource('gazette_1'), chatSource('chronicle_3')]
+    }
+  ])
   await page.goto('/#/rag')
   await closePhoneNavigation(page)
   await askChat(page, 'What happened in Lhota?')
-  await page.locator('.message-bubble', { hasText: 'The chronicle describes' }).getByText('Sources', { exact: true }).click()
-  await expect(page.getByTestId('chat-sources').getByRole('listitem')).toHaveCount(3)
+  await askChat(page, 'What is in the gazette?')
+  // One click on a citation selects its source: expanded in the list, all its citations marked.
+  await page.locator('.message-bubble').getByRole('link', { name: '[S2]', exact: true }).last().click()
+  const selected = page.getByTestId('chat-sources').getByRole('listitem', { name: 'Source S2' })
+  await expect(selected.locator('[aria-expanded="true"]')).toBeVisible()
   await expectSidebarsOpen(page, testInfo)
   await expectRightSidebarIn(page)
   await save(page, testInfo, 'chat-sources')
 
-  // On a phone the sources cover the chat.
-  if (testInfo.project.name === 'phone') await page.getByRole('button', { name: 'Close sidebar' }).click()
-  await page.getByRole('link', { name: '[doc 2]' }).click()
-  await expect(page.getByTestId('chunk-context').locator('[aria-current="true"]')).toBeInViewport()
+  await selected.getByRole('button', { name: 'View source S2 in its document' }).click()
+  await expect(page.getByTestId('chunk-context-target-label')).toBeInViewport()
   await expectRightSidebarIn(page)
   await save(page, testInfo, 'chat-source-document')
 })

@@ -5,7 +5,7 @@ import { effectScope, nextTick, ref } from 'vue'
 
 import type { SearchResultChunk } from 'src/generated/api'
 import ChatSourcesPanel from 'src/features/rag/ChatSourcesPanel.vue'
-import { useChatSources, type MessageWithSources } from 'src/features/rag/useChatSources'
+import { citedChunkId, sourceRegistry, useChatSources, type MessageWithSources } from 'src/features/rag/useChatSources'
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -43,6 +43,40 @@ const windowBody = (document: string, chunkId: string) => ({
   total_chunks: 1
 })
 
+describe('sourceRegistry', () => {
+  it('lists the sources of all answers in first-appearance order, once per chunk', () => {
+    const entries = sourceRegistry([
+      {},
+      { sources: [source('a'), source('b')] },
+      { sources: [source('c'), source('a')] }, // a again, cited by a later answer
+      { sources: [] }
+    ])
+    expect(entries.map(e => [e.label, e.id])).toEqual([['S1', 'a'], ['S2', 'b'], ['S3', 'c']])
+  })
+
+  it('keeps the labels when answers are added', () => {
+    const answers: MessageWithSources[] = [{ sources: [source('a'), source('b')] }]
+    const before = sourceRegistry(answers)
+    const after = sourceRegistry([...answers, { sources: [source('d'), source('b')] }])
+    expect(after.slice(0, 2)).toEqual(before)
+    expect(after.map(e => e.label)).toEqual(['S1', 'S2', 'S3'])
+  })
+})
+
+describe('citedChunkId', () => {
+  const answer = { sources: [source('a'), source('b')] }
+
+  it("resolves an answer's own [doc N] to its N-th source", () => {
+    expect(citedChunkId(answer, 1)).toBe('a')
+    expect(citedChunkId(answer, 2)).toBe('b')
+  })
+
+  it('does not resolve a citation without such a source', () => {
+    expect([citedChunkId(answer, 3), citedChunkId(answer, 0), citedChunkId({}, 1), citedChunkId(undefined, 1)])
+      .toEqual([null, null, null, null])
+  })
+})
+
 describe('useChatSources', () => {
   const originalFetch = globalThis.fetch
   let calls: ReturnType<typeof recordingFetch>['calls']
@@ -59,71 +93,76 @@ describe('useChatSources', () => {
 
   function setup () {
     const messages = ref<MessageWithSources[]>([
-      { id: 1 },
-      { id: 2, sources: [source('a'), source('b', 'doc-2')] },
-      { id: 3, sources: [source('c', 'doc-3')] }
+      {},
+      { sources: [source('a'), source('b', 'doc-2')] },
+      { sources: [source('c', 'doc-3'), source('a')] }
     ])
     const scope = effectScope()
     const chat = scope.run(() => useChatSources(messages))!
     return { messages, chat, scope }
   }
 
-  it('shows the sources of the clicked message, not of the latest one', async () => {
-    const { messages, chat } = setup()
-
-    expect(chat.showMessage(2)).toBe(true)
-    expect(chat.sources.value.map(s => s.id)).toEqual(['a', 'b'])
-    expect(chat.source.value).toBeNull()
-
-    // A new answer does not change what is shown.
-    messages.value.push({ id: 4, sources: [source('d')] })
-    await nextTick()
-    expect(chat.message.value?.id).toBe(2)
-    expect(chat.sources.value.map(s => s.id)).toEqual(['a', 'b'])
-
-    // A message without sources shows nothing new.
-    expect(chat.showMessage(1)).toBe(false)
-    expect(chat.message.value?.id).toBe(2)
+  it('labels a chunk cited by several answers once', () => {
+    const { chat } = setup()
+    expect(chat.entries.value.map(e => e.label)).toEqual(['S1', 'S2', 'S3'])
+    expect([chat.labelOf('a'), chat.labelOf('c'), chat.labelOf('zzz'), chat.labelOf(null)]).toEqual(['S1', 'S3', null, null])
   })
 
-  it("opens a source of a message in its document and highlights the message's citation", async () => {
+  it('selects a source and asks the list to show it, also the selected one again', () => {
     const { chat } = setup()
 
-    expect(chat.showSource(2, 1)).toBe(true)
+    expect(chat.select('b')).toBe(true)
+    expect(chat.selected.value?.label).toBe('S2')
+    expect(chat.reveal.value).toEqual({ id: 'b', seq: 1 })
+    expect(chat.select('b')).toBe(true)
+    expect([chat.selectedId.value, chat.reveal.value?.seq]).toEqual(['b', 2])
+
+    // Unknown sources are refused, the selected one stays.
+    expect(chat.select('zzz')).toBe(false)
+    expect(chat.selectedId.value).toBe('b')
+    expect(calls).toHaveLength(0) // selecting reads nothing
+  })
+
+  it('a new answer keeps the selection and its labels', async () => {
+    const { messages, chat } = setup()
+    chat.select('c')
+    messages.value.push({ sources: [source('d'), source('c')] })
+    await nextTick()
+    expect([chat.selectedId.value, chat.selected.value?.label, chat.labelOf('d')]).toEqual(['c', 'S3', 'S4'])
+  })
+
+  it('opens the selected source in its document', async () => {
+    const { chat } = setup()
+
+    expect(chat.openDocument('b')).toBe(true)
     await flush()
     expect(calls[0].path).toBe('/api/documents/doc-2/chunks/b/window')
-    expect([chat.message.value?.id, chat.sourceIndex.value, chat.source.value?.id]).toEqual([2, 1, 'b'])
+    expect([chat.selectedId.value, chat.documentSource.value?.label]).toEqual(['b', 'S2'])
     calls[0].answer(windowBody('doc-2', 'b'))
     await flush()
-    expect(chat.context.target?.chunkId).toBe('b')
     expect(chat.context.containsTarget).toBe(true)
 
-    // Unknown sources are refused, the shown one stays.
-    expect(chat.showSource(2, 5)).toBe(false)
-    expect(chat.showSource(99, 0)).toBe(false)
-    expect(chat.source.value?.id).toBe('b')
+    // Selecting it again keeps its document.
+    chat.select('b')
+    expect(chat.documentSource.value?.id).toBe('b')
   })
 
-  it("closes one message's source when another message's sources are shown", async () => {
+  it("selecting another source closes the previous one's document", async () => {
     const { chat } = setup()
-    chat.showSource(2, 0)
+    chat.openDocument('a')
     await flush()
 
-    // Showing the same message again keeps its open source.
-    chat.showMessage(2)
-    expect(chat.source.value?.id).toBe('a')
-
-    chat.showMessage(3)
+    chat.select('c')
     expect(calls[0].signal?.aborted).toBe(true)
     calls[0].answer(windowBody('doc-1', 'a')) // late answer for the old source
     await flush()
-    expect([chat.message.value?.id, chat.source.value, chat.context.target, chat.context.chunks]).toEqual([3, null, null, []])
+    expect([chat.selectedId.value, chat.documentSource.value, chat.context.target, chat.context.chunks]).toEqual(['c', null, null, []])
   })
 
-  it('drops the answer for a previously opened source', async () => {
+  it('drops the answer for a previously opened document', async () => {
     const { chat } = setup()
-    chat.showSource(2, 0)
-    chat.showSource(3, 0)
+    chat.openDocument('a')
+    chat.openDocument('c')
     await flush()
 
     calls[0].answer(windowBody('doc-1', 'a'))
@@ -133,22 +172,26 @@ describe('useChatSources', () => {
     expect(chat.context.chunks.map(c => c.id)).toEqual(['c'])
   })
 
-  it('forgets the sources when their message is gone (a reset conversation)', async () => {
+  it('forgets the selection and document when their sources are gone (a reset conversation)', async () => {
     const { messages, chat } = setup()
-    chat.showSource(2, 0)
+    chat.openDocument('a')
     await flush()
 
-    // The new conversation reuses no message id.
-    messages.value = [{ id: 5 }]
+    messages.value = [{}]
     await nextTick()
-    expect([chat.selection.value, chat.message.value, chat.source.value]).toEqual([null, null, null])
+    expect([chat.entries.value, chat.selectedId.value, chat.documentSource.value, chat.reveal.value]).toEqual([[], null, null, null])
     expect(calls[0].signal?.aborted).toBe(true)
     expect(chat.context.target).toBeNull()
+
+    // The next conversation starts again at S1.
+    messages.value = [{ sources: [source('z')] }]
+    await nextTick()
+    expect(chat.labelOf('z')).toBe('S1')
   })
 
   it('aborts its request when the page goes away', async () => {
     const { chat, scope } = setup()
-    chat.showSource(2, 0)
+    chat.openDocument('a')
     await flush()
     scope.stop()
     expect(calls[0].signal?.aborted).toBe(true)
@@ -156,28 +199,38 @@ describe('useChatSources', () => {
 })
 
 describe('ChatSourcesPanel', () => {
-  const mountPanel = (props: Record<string, unknown>) => mount(ChatSourcesPanel, {
-    props: { sources: [source('a'), { ...source('b', 'doc-2'), fromPage: 4, toPage: 4 }], ...props },
+  const entries = sourceRegistry([{ sources: [source('a'), { ...source('b', 'doc-2'), fromPage: 4, toPage: 4 }] }])
+  const mountPanel = (props: Record<string, unknown> = {}) => mount(ChatSourcesPanel, {
+    props: { entries, ...props },
     global: { plugins: [Quasar] }
   })
 
-  it('lists the sources numbered as their citations, with the question they answered', () => {
-    const wrapper = mountPanel({ question: 'Who founded Lhota?', selectedIndex: 1 })
+  it('lists the sources with their labels; only the selected one is expanded', () => {
+    const wrapper = mountPanel({ selectedId: 'b' })
 
-    expect(wrapper.text()).toContain('Sources of the answer to')
-    expect(wrapper.text()).toContain('Who founded Lhota?')
     const items = wrapper.findAll('li')
-    expect(items.map(i => i.attributes('aria-label'))).toEqual(['Source doc 1', 'Source doc 2'])
+    expect(items.map(i => i.attributes('aria-label'))).toEqual(['Source S1', 'Source S2'])
     expect(items[0].text()).toContain('Title of doc-1')
     expect(items[0].text()).toContain('1921 · pages 2–3')
     expect(items[1].text()).toContain('page 4')
-    expect(items[0].text()).toContain('Text of a')
     expect(items.map(i => i.attributes('aria-current'))).toEqual([undefined, 'true'])
+    expect(items.map(i => i.find('[role="button"]').attributes('aria-expanded'))).toEqual(['false', 'true'])
+    const texts = wrapper.findAll('[data-testid="chat-source-text"]')
+    expect(texts.map(t => t.classes('chat-sources__text--collapsed'))).toEqual([true, false])
+    expect(texts[1].text()).toBe('Text of b')
+    expect(wrapper.findAll('.chat-sources__view')).toHaveLength(2)
   })
 
-  it('asks to view a source in its document', async () => {
-    const wrapper = mountPanel({})
-    await wrapper.find('[aria-label="View source doc 2 in its document"]').trigger('click')
-    expect(wrapper.emitted('view')).toEqual([[1]])
+  it('selects on a click and opens the document on a double click or View document', async () => {
+    const wrapper = mountPanel({ selectedId: 'a' })
+    const summaries = wrapper.findAll('[role="button"]')
+
+    await summaries[1].trigger('click')
+    await summaries[1].trigger('keydown', { key: 'Enter' })
+    await summaries[1].trigger('dblclick')
+    await wrapper.find('[aria-label="View source S1 in its document"]').trigger('click')
+
+    expect(wrapper.emitted('select')).toEqual([['b'], ['b']])
+    expect(wrapper.emitted('open')).toEqual([['b'], ['a']])
   })
 })

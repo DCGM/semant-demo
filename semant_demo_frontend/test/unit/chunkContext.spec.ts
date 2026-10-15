@@ -256,6 +256,18 @@ describe('ChunkContextPanel', () => {
     expect(wrapper.text()).toContain('End of document')
   })
 
+  it('shows a reference label with the target only when one is given', async () => {
+    const plain = mountPanel()
+    expect(plain.find('[data-testid="chunk-context-target-label"]').exists()).toBe(false)
+    expect(plain.find('[aria-current="true"]').attributes('aria-label')).toBe('Matched passage')
+
+    const cited = mountPanel({ targetLabel: 'S3' })
+    const target = cited.find('[aria-current="true"]')
+    expect(target.find('[data-testid="chunk-context-target-label"]').text()).toBe('S3')
+    expect(target.attributes('aria-label')).toBe('Cited passage S3')
+    expect(cited.findAll('[data-testid="chunk-context-target-label"]')).toHaveLength(1)
+  })
+
   it('scrolls to the same target again on every focus request', async () => {
     // Regression: opening the same result again after reading elsewhere did not return to it.
     const wrapper = mountPanel()

@@ -457,7 +457,7 @@ and `router/` the routes and sign-in guard.
 | Feature | Contents |
 |---|---|
 | `search` | search page, result cards, classifications, summary panel, request/summary state |
-| `rag` | RAG chat page, the sources panel of an answer and its source selection (`useChatSources`) |
+| `rag` | RAG chat page, the conversation's sources panel and its source registry/selection (`useChatSources`) |
 | `user_collections` | collection list, collection workspace and its tabs, collection/share dialogs, `userCollectionsStore`, `collectionStatsStore`, `permissions.ts` |
 | `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`), the document view (`viewer/`), document metadata panel, links to the original digitized document (`originalSource.ts`, `OriginalSourceLink`; used by search results, their context, RAG sources and the document view) |
 | `annotations` | tags table and dialog, span discussion, annotation/AI-suggestion/tag-navigation composables, `tagsStore`, `tagSpansStore`, span offsets; in the document view: the annotated chunk text, span gutter, selection popover, tags panel and AI assist panel |
@@ -479,7 +479,7 @@ behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 | Route | Page | Description |
 |---|---|---|
 | `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
-| `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations; an answer's sources and one of them in its document in the right sidebar |
+| `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations (`[S1]`...); the conversation's sources and one of them in its document in the right sidebar |
 | `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication decade, library and language, with tables and unknown/unavailable values (no sign-in) |
 | `/collections` | `user_collections/UserCollectionsPage` | List user collections |
 | `/collections/:cid/overview` | `user_collections/CollectionOverviewPage` | Collection summary & stats |
