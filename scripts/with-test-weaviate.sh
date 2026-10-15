@@ -45,7 +45,21 @@ docker run -d --rm \
   -e DISABLE_TELEMETRY=true \
   "$IMAGE" --host 0.0.0.0 --port 8080 --scheme http >/dev/null
 
-port_of() { docker port "$NAME" "$1" | head -n1 | sed 's/.*://'; }
+# Docker Desktop (seen with its WSL2 backend) assigns the random host port shortly after
+# `docker run -d` returns, so `docker port` can be empty at first; wait for it.
+port_of() {
+  local port=""
+  for _ in $(seq 1 40); do
+    port="$(docker port "$NAME" "$1" 2>/dev/null | head -n1 | sed 's/.*://')"
+    [[ -n "$port" ]] && break
+    sleep 0.25
+  done
+  if [[ -z "$port" ]]; then
+    echo "Test Weaviate ($NAME) has no published host port for $1." >&2
+    exit 1
+  fi
+  echo "$port"
+}
 REST_PORT="$(port_of 8080/tcp)"
 GRPC_PORT="$(port_of 50051/tcp)"
 
