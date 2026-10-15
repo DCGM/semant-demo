@@ -20,7 +20,7 @@ tiers:
     input_price: 0.10
     output_price: 0.50
   small:
-    # Basic and low-cost adaptive RAG; same efficient model but low-effort thinking.
+    # Basic RAG and snippet-grounded questions; low-effort thinking.
     provider: openai
     model: anthropic/claude-haiku-5.5
     reasoning:
@@ -30,7 +30,7 @@ tiers:
     input_price: 0.10
     output_price: 0.50
   medium:
-    # Interactive question / span chat and default multi-call agentic RAG.
+    # Interactive span chat and default multi-call agentic RAG.
     # OpenRouter displays a 50% promotional price (2026-10-16): $0.75/$3.75.
     # Keep the normal $1.50/$7.50 list price for conservative cost estimates.
     provider: openai
@@ -60,8 +60,8 @@ features:
     default: tiny
     allowed: [tiny]
   question:
-    default: medium
-    allowed: [medium]
+    default: small
+    allowed: [small]
   span_chat:
     default: medium
     allowed: [medium]
