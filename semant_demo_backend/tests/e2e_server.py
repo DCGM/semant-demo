@@ -66,7 +66,7 @@ def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, f
         "TOPICER_URL": fake_url,
         "OPENAI_API_URL": f"{fake_url}/openai/v1",
         "OLLAMA_URLS": f"{fake_url}/ollama",
-        "OPENAI_API_KEY": "",
+        "OPENAI_API_KEY": "e2e-fake-openrouter-key",
         "GOOGLE_API_KEY": "",
         "PRODUCTION": "false",
     }
