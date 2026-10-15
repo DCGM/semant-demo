@@ -19,19 +19,24 @@ test('summarizing shows citations, and a citation to a displayed chunk scrolls t
   await openDocument(page, 'newspapers', 'chronicle')
   await expect(chunkText(page, 'chronicle_3')).toBeVisible()
 
-  // Open the annotation popover of the fixture span on this chunk before summarizing.
-  await page.locator('.gutter-item').first().click()
-  const popover = page.locator('.annotation-popover')
-  await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
-
+  // Switch to the Summary panel and generate the summary *before* opening the popover:
+  // switching sidebar panels is itself an "outside click" that already ends any in-progress
+  // quick-tagging (pre-existing, general behavior — not special-cased for this panel), so the
+  // popover must be opened while the Summary panel is already the active one for this test to
+  // isolate what the citation click itself does.
   await sidebarPanelButton(page, 'Summary').click()
   await page.getByRole('button', { name: 'Summarize Document' }).click()
   await expect(summary(page)).toContainText('Fake summary of 3 passage(s); last [3].')
 
+  // Open the annotation popover of the fixture span on this chunk.
+  await page.locator('.gutter-item').first().click()
+  const popover = page.locator('.annotation-popover')
+  await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
+
   await summary(page).getByRole('link', { name: '[3]' }).click()
 
   // A read-only navigation action: the chunk is (still) in view and the popover opened
-  // before summarizing is untouched — no selection clearing, no popover changes.
+  // before the click is untouched — no selection clearing, no popover changes.
   await expect(chunkText(page, 'chronicle_3')).toBeInViewport()
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 })

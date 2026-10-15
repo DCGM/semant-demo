@@ -33,6 +33,7 @@
               v-else
               href="#"
               class="citation-link"
+              @mousedown.stop
               @click.prevent="emit('cite', token.chunkId)"
             >[{{ token.number }}]</a>
           </template>
