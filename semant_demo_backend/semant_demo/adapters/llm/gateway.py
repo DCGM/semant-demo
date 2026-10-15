@@ -120,9 +120,13 @@ class LlmGateway:
             options: dict[str, Any] = {}
             if self._http_transport is not None:
                 options["http_async_client"] = httpx.AsyncClient(transport=self._http_transport)
+            if model.reasoning is not None:
+                # OpenRouter-specific Chat Completions parameters (not OpenAI SDK kwargs).
+                options["extra_body"] = {"reasoning": dict(model.reasoning)}
             return ChatOpenAI(model=model.model, api_key=SecretStr(self.providers.openai_api_key or _UNSET_KEY),
                               base_url=model.base_url or self.providers.openai_base_url,
-                              temperature=temperature, max_tokens=max_tokens, stream_usage=True,
+                              temperature=temperature if model.supports_temperature else None,
+                              max_tokens=max_tokens, stream_usage=True,
                               callbacks=[usage], **options)
         if model.provider == Provider.ollama:
             from langchain_ollama import ChatOllama
