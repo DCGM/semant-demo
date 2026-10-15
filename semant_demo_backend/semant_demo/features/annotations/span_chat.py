@@ -19,6 +19,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from semant_demo.core.errors import InvalidRequestError
+from semant_demo.features.annotations.offsets import code_point_offset, text_length
 from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanChatMessage, Tag, TagSpan, AnnotationChunk
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.user_collections import access
@@ -108,8 +109,8 @@ async def _assemble_chunks_covering_span(
     """
     Build a contiguous string from the chunks the span occupies. Starts at the first
     chunk (``span.chunkId``) and appends consecutive following chunks until the running
-    length covers ``span_end`` (a cross-chunk span's ``end`` is measured across the
-    concatenation of the chunks it spans, ADR 0006).
+    length covers ``span_end`` (a cross-chunk span's ``end`` is measured in UTF-16 code
+    units across the concatenation of the chunks it spans, ADR 0006).
 
     Returns ``(assembled_text, consumed_orders)`` where ``consumed_orders`` lists the
     orders of all chunks that contributed (including the first).
@@ -119,7 +120,7 @@ async def _assemble_chunks_covering_span(
         consumed.append(first_chunk_order)
     assembled = first_chunk_text
 
-    if span_end <= len(assembled) or document_id is None or first_chunk_order is None:
+    if span_end <= text_length(assembled) or document_id is None or first_chunk_order is None:
         return assembled, consumed
 
     next_chunks = await _chunks_in_range(store, document_id, first_chunk_order + 1,
@@ -127,7 +128,7 @@ async def _assemble_chunks_covering_span(
     for c in next_chunks:
         assembled += c.text
         consumed.append(c.order)
-        if len(assembled) >= span_end:
+        if text_length(assembled) >= span_end:
             break
     return assembled, consumed
 
@@ -174,9 +175,10 @@ async def build_context_message(store: AnnotationStore, *, span: TagSpan, contex
         span_end=span.end,
     )
 
-    # Defensive bounds: fall back to whatever text could be read.
-    s_start = max(0, min(span.start, len(assembled_text)))
-    s_end = max(s_start, min(span.end, len(assembled_text)))
+    # Span offsets are UTF-16 code units (ADR 0006); slice with code point indices.
+    # Offsets past the text fall back to whatever text could be read.
+    s_start = code_point_offset(assembled_text, max(0, span.start))
+    s_end = max(s_start, code_point_offset(assembled_text, span.end))
     span_text = assembled_text[s_start:s_end]
 
     window_chars = max(0, context_chars)

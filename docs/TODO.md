@@ -7,7 +7,6 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Correctness and behavior
 
-- [#232](https://github.com/DCGM/semant-demo/issues/232) — span chat slices UTF-16 span offsets as Python code points; context may shift around non-BMP characters.
 - [#224](https://github.com/DCGM/semant-demo/issues/224) — tag-filtered search indexes only the anchor chunk of a cross-chunk span.
 - [#218](https://github.com/DCGM/semant-demo/issues/218) — tag creation deduplication reads at most 2000 tags of a collection.
 - [#227](https://github.com/DCGM/semant-demo/issues/227) — Topicer calls are bounded per run, not across concurrent runs.
