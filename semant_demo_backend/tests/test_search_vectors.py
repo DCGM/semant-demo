@@ -4,6 +4,7 @@ Selection inside search is covered in test_search_service.py; the real multi-vec
 collection in integration/test_search.py.
 """
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -15,7 +16,7 @@ from pydantic import ValidationError
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.embeddings.openai_compatible import OpenAICompatibleEmbeddings
 from semant_demo.bootstrap import create_embedder, load_search_vectors
-from semant_demo.config import Config
+from semant_demo.config import SCRIPT_PATH, Config
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.rag import service as rag_service
 from semant_demo.features.rag.registry import BaseRag, RagRegistry
@@ -95,6 +96,25 @@ def test_an_unknown_selection_is_an_invalid_request():
 
     with pytest.raises(InvalidRequestError, match="Unknown search vector: nope"):
         vectors.resolve("nope")
+
+
+def test_the_qwen_configuration_matches_the_embedding_service_and_the_backfill():
+    """configs/search_vectors_qwen.yaml (#385) queries what the compose file serves and the backfill writes."""
+    root = Path(__file__).parents[2]
+    settings = load_search_vectors_settings(SCRIPT_PATH / "configs" / "search_vectors_qwen.yaml")
+    compose = yaml.safe_load((root / "deploy" / "docker-compose.embedder.yml").read_text())
+    backfill = yaml.safe_load((root / "data_tools" / "embedder" / "config.qwen.yaml").read_text())
+
+    [vector] = settings.vectors
+    service, = compose["services"].values()
+    args = dict((*arg.removeprefix("--").split("=", 1), "")[:2] for arg in service["command"])
+    assert settings.default == vector.id and vector.embedding.provider == "openai"
+    assert vector.embedding.base_url == f"http://{service['hostname']}:{args['port']}/v1"
+    assert vector.embedding.model == args["served-model-name"] == backfill["embedder"]["config"]["model_name"]
+    assert vector.target_vector == backfill["vector_name"]
+    assert vector.embedding.dimensions is None and backfill["embedder"]["config"]["dimensions"] is None
+    assert backfill["embedder"]["config"]["input_template"] == "{{ text }}" and vector.embedding.document_prefix == ""
+    assert vector.embedding.query_prefix.startswith("Instruct: ") and vector.embedding.query_prefix.endswith("\nQuery:")
 
 
 #############

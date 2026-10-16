@@ -1,29 +1,57 @@
+# Query and document embeddings for Search/RAG and the offline vector backfill (#385):
+# Qwen/Qwen3-Embedding-0.6B (1,024 dimensions) served by vLLM's OpenAI-compatible
+# /v1/embeddings. One GPU service shared by production, the test instances and the
+# backfill (data_tools/embedder); it replaces the Gemma `embedding-service`.
+#
+#   Apps (network semant_demo_embedder): http://qwen-embedder:8000/v1
+#   Backfill on this host:               http://127.0.0.1:${QWEN_EMBEDDER_PORT:-8002}/v1
+#
+# Started only by an operator (`./update.sh embedder-up`); never by CI. Settings and the
+# cutover procedure: deploy/README.md#qwen-embedding-service-385.
 services:
-  embedding-service:
-    hostname: embedding-service
-    build:
-      context: .
-      target: embedding-service
-      dockerfile: Dockerfile.embedder
-      args:
-        - REPO=${REPO}
-        - BRANCH=${BRANCH}
-    env_file:
-      - path: .env
-        required: true
+  qwen-embedder:
+    hostname: qwen-embedder
+    # Pinned release (CUDA 13.0 build; host driver 580 supports CUDA 13.0). Update deliberately.
+    image: vllm/vllm-openai:v0.31.0@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+    command:
+      - --model=Qwen/Qwen3-Embedding-0.6B
+      # Pinned model revision: queries and stored chunk vectors must come from the same weights.
+      - --revision=97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+      - --served-model-name=Qwen/Qwen3-Embedding-0.6B
+      - --runner=pooling
+      # Longest input in tokens. Longer inputs are refused (HTTP 400) unless the request
+      # asks for truncation (the backfill sets truncate_prompt_tokens).
+      - --max-model-len=${QWEN_MAX_MODEL_LEN:-2048}
+      - --max-num-batched-tokens=${QWEN_MAX_NUM_BATCHED_TOKENS:-16384}
+      # Share of the GPU's memory vLLM takes (weights ~1.2 GB; the rest is batch space).
+      - --gpu-memory-utilization=${QWEN_GPU_MEMORY_UTILIZATION:-0.5}
+      - --host=0.0.0.0
+      - --port=8000
+      - --disable-uvicorn-access-log
     environment:
-      - CUDA_VISIBLE_DEVICES=${GPU_DEVICE:-0}
-      - GEMMA_MODEL=${GEMMA_MODEL}
+      # Bearer key required by the server when set; the apps send EMBEDDING_API_KEY.
+      # Empty: no key (the port is reachable only from the embedder network and loopback).
+      - VLLM_API_KEY=${EMBEDDING_API_KEY:-}
+      - HF_HUB_DISABLE_TELEMETRY=1
+      - VLLM_NO_USAGE_STATS=1
     ports:
-      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:${QWEN_EMBEDDER_PORT:-8002}:8000"
     volumes:
       - /mnt/ssd2/huggingface_cache:/root/.cache/huggingface:rw
+    shm_size: 2gb
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # The first start downloads the model.
+      start_period: 15m
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              device_ids: ["${GPU_DEVICE:-0}"]
               capabilities: [ gpu ]
     networks:
       - semant_demo_embedder

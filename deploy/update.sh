@@ -25,8 +25,8 @@ case "$CMD" in
     docker compose -p semant-demo -f ./docker-compose.embedder.yml up -d ;;
   embedder-down)
     docker compose -p semant-demo -f ./docker-compose.embedder.yml down ;;
-  embedder-build)
-    docker compose -p semant-demo -f ./docker-compose.embedder.yml build ;;
+  embedder-pull)
+    docker compose -p semant-demo -f ./docker-compose.embedder.yml pull ;;
 
   topicer-up)
     docker compose -p semant-demo -f ./docker-compose.topicer.yml up -d ;;
@@ -47,7 +47,7 @@ case "$CMD" in
     echo "  app-up / app-down / app-build          production app"
     echo "  database-up / database-down    production weaviate"
     echo "  test-database-up / test-database-down  test weaviate"
-    echo "  embedder-up / embedder-down / embedder-build  embedder"
+    echo "  embedder-up / embedder-down / embedder-pull  Qwen embedding service (vLLM)"
     echo "  topicer-up / topicer-down / topicer-build  topicer"
     echo "  test-topicer-up / test-topicer-down / test-topicer-build  topicer test instance"
     exit 1 ;;
