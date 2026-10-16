@@ -31,6 +31,7 @@ Name | Type
 `positive` | boolean
 `automatic` | boolean
 `isHyde` | boolean
+`vector` | string
 
 ## Example
 
@@ -64,6 +65,7 @@ const example = {
   "positive": null,
   "automatic": null,
   "isHyde": null,
+  "vector": null,
 } satisfies SearchRequest
 
 console.log(example)

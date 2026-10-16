@@ -25,6 +25,7 @@ All URIs are relative to *http://localhost*
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
 | [**fetchDocumentApiDocumentDocumentIdGet**](DefaultApi.md#fetchdocumentapidocumentdocumentidget) | **GET** /api/document/{document_id} | Fetch Document |
 | [**getAvailableSearchFiltersApiSearchFiltersGet**](DefaultApi.md#getavailablesearchfiltersapisearchfiltersget) | **GET** /api/search/filters | Get Available Search Filters |
+| [**getAvailableSearchVectorsApiSearchVectorsGet**](DefaultApi.md#getavailablesearchvectorsapisearchvectorsget) | **GET** /api/search/vectors | Get Available Search Vectors |
 | [**getAvalaibleRagConfigurationsApiRagConfigurationsGet**](DefaultApi.md#getavalaibleragconfigurationsapiragconfigurationsget) | **GET** /api/rag/configurations | Get Avalaible Rag Configurations |
 | [**getChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGet**](DefaultApi.md#getchunksinrangeapiusercollectionscollectioniddocumentsdocumentidchunksrangeget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks/range | Get Chunks In Range |
 | [**getCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGet**](DefaultApi.md#getcollectiondocumentchunksapiusercollectionscollectioniddocumentsdocumentidchunksget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks | Get Collection Document Chunks |
@@ -1544,6 +1545,65 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**SearchFiltersResponse**](SearchFiltersResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getAvailableSearchVectorsApiSearchVectorsGet
+
+> SearchVectorsResponse getAvailableSearchVectorsApiSearchVectorsGet()
+
+Get Available Search Vectors
+
+The search vectors a search request may select, and the default one.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetAvailableSearchVectorsApiSearchVectorsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  try {
+    const data = await api.getAvailableSearchVectorsApiSearchVectorsGet();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**SearchVectorsResponse**](SearchVectorsResponse.md)
 
 ### Authorization
 

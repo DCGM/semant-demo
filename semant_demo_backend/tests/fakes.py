@@ -25,6 +25,10 @@ class FakeLlm:
 
 
 FAKE_EMBEDDING_DIM = 16
+# A second named vector of the test chunk collection (#217), with its own size so that
+# an embedding compared with the wrong vector fails instead of matching by chance.
+SECOND_VECTOR = "small"
+SECOND_EMBEDDING_DIM = 8
 
 
 def fake_embedding(text: str, dim: int = FAKE_EMBEDDING_DIM) -> list[float]:
@@ -37,6 +41,11 @@ def fake_embedding(text: str, dim: int = FAKE_EMBEDDING_DIM) -> list[float]:
     values = [digest[i % len(digest)] / 255.0 - 0.5 for i in range(dim)]
     norm = math.sqrt(sum(v * v for v in values)) or 1.0
     return [v / norm for v in values]
+
+
+def second_embedding(text: str) -> list[float]:
+    """Deterministic ``SECOND_VECTOR`` embedding of ``text``; unrelated to ``fake_embedding``."""
+    return fake_embedding("second:" + text, SECOND_EMBEDDING_DIM)
 
 
 class FakeStreamingChat:

@@ -54,7 +54,6 @@ refrase_question_from_history_prompt_template = [
 class RagGenerator(BaseRag):
     def __init__(self, global_config: Config, param_config, llm=None):
         super().__init__(global_config, param_config, llm)
-        self.retrieve = None
         #this can be part of config in future
         self.main_prompt = ChatPromptTemplate.from_messages(answer_question_prompt_template)
         self.history_prompt = ChatPromptTemplate.from_messages(refrase_question_from_history_prompt_template)
@@ -88,7 +87,7 @@ class RagGenerator(BaseRag):
         ]
         return ("\n".join(snippets))
     
-    async def _call_weaviate_search(self, rag_search: RagSearch,  type: SearchType) -> SearchResponse:
+    async def _call_weaviate_search(self, retrieve: Retriever, rag_search: RagSearch,  type: SearchType) -> SearchResponse:
         #create db search request
         search_request = SearchRequest(
             query = rag_search.search_query,
@@ -105,7 +104,7 @@ class RagGenerator(BaseRag):
             automatic = False
         )
         #call db search
-        search_response = await self.retrieve(search_request)
+        search_response = await retrieve(search_request)
         return search_response
     
     #rephrase question to search desired data in database
@@ -120,7 +119,8 @@ class RagGenerator(BaseRag):
         return correct_question
 
     # execute chain
-    async def generate_answer(self, question_string: str, history: list, rag_search: RagSearch, context_string: str | None = None):
+    async def generate_answer(self, question_string: str, history: list, rag_search: RagSearch, retrieve: Retriever,
+                              context_string: str | None = None):
         #create llm instance
         model = self.model
 
@@ -142,7 +142,7 @@ class RagGenerator(BaseRag):
             except ValueError:
                 raise ValueError(f"Rag error: Unknown search type: {rag_search.search_type}")
             #search in db
-            search_response = await self._call_weaviate_search(type = type, rag_search = rag_search)
+            search_response = await self._call_weaviate_search(retrieve, type = type, rag_search = rag_search)
             search_results = search_response.results
             #convert context to desired format
             final_context = self._format_weaviate_context(search_results)
@@ -160,9 +160,8 @@ class RagGenerator(BaseRag):
         }
     
     #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
+    # ``retrieve`` belongs to this request (e.g. its search vector); instances are shared.
     async def rag_request(self, request: RagRequest, retrieve: Retriever) -> RagResponse:
-        if (self.retrieve == None):
-            self.retrieve = retrieve
         if request.history:
             history_preprocessed = [msg.model_dump() for msg in request.history]
         else:
@@ -176,7 +175,8 @@ class RagGenerator(BaseRag):
                 question_string = request.question,
                 history= history_preprocessed,
                 #search parameters
-                rag_search = request.rag_search
+                rag_search = request.rag_search,
+                retrieve = retrieve
             )
             time_spent = time() - t1
 

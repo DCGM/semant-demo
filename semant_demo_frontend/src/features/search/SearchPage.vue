@@ -35,6 +35,8 @@
                   flat
                   color="primary"
                   icon="tune"
+                  aria-label="Search filters"
+                  :aria-expanded="showFilters"
                   @click="showFilters = !showFilters"
                 />
               </div>
@@ -92,6 +94,32 @@
                     >
                       <template v-slot:prepend>
                         <q-icon name="folder" />
+                      </template>
+                    </q-select>
+                  </div>
+
+                  <!-- Configured search vectors (embedding models); offered only when there is a choice. -->
+                  <div v-if="vectorOptions.length > 1" class="col-12 col-sm-6 col-md-4">
+                    <q-select
+                      v-model="selectedVector"
+                      :options="vectorOptions"
+                      label="Embedding model"
+                      outlined
+                      dense
+                      emit-value
+                      map-options
+                      data-testid="search-vector-select"
+                    >
+                      <template v-slot:prepend>
+                        <q-icon name="hub" />
+                      </template>
+                      <template v-slot:option="scope">
+                        <q-item v-bind="scope.itemProps">
+                          <q-item-section>
+                            <q-item-label>{{ scope.opt.label }}</q-item-label>
+                            <q-item-label v-if="scope.opt.description" caption>{{ scope.opt.description }}</q-item-label>
+                          </q-item-section>
+                        </q-item>
                       </template>
                     </q-select>
                   </div>
@@ -259,8 +287,8 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
-import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, Notify, useQuasar } from 'quasar'
-import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type SearchResultChunk } from 'src/generated/api'
+import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, QItem, QItemSection, QItemLabel, Notify, useQuasar } from 'quasar'
+import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type SearchResultChunk, type SearchVectorInfo } from 'src/generated/api'
 import { captureSession, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
@@ -296,7 +324,22 @@ const searchForm = ref<SearchRequest>({
   language: null,
   tagUuids: [],
   positive: true,
-  automatic: true
+  automatic: true,
+  vector: null // the configured default
+})
+
+// Search vectors (GET /api/search/vectors): null in the request means the server's default,
+// so choosing the default again sends no explicit selection.
+const availableVectors = ref<SearchVectorInfo[]>([])
+const defaultVector = ref<string | null>(null)
+const vectorOptions = computed(() => availableVectors.value.map(v => ({
+  label: v.id === defaultVector.value ? `${v.name} (default)` : v.name,
+  value: v.id,
+  description: v.description
+})))
+const selectedVector = computed<string | null>({
+  get: () => searchForm.value.vector ?? defaultVector.value,
+  set: (id) => { searchForm.value.vector = id === defaultVector.value ? null : id }
 })
 
 // Dynamic Filter Data State
@@ -478,7 +521,7 @@ const canAddToCollections = computed(() => userStore.isLoggedIn && targetCollect
 
 type ActiveFilterBadge = {
   key: string
-  type: 'collection' | 'dynamic'
+  type: 'collection' | 'vector' | 'dynamic'
   filterId?: string
   icon: string
   label: string
@@ -500,6 +543,16 @@ const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
       type: 'collection',
       icon: 'folder',
       label: selectedCollectionLabel.value ?? searchForm.value.userCollectionId
+    })
+  }
+
+  if (searchForm.value.vector) {
+    const id = searchForm.value.vector
+    badges.push({
+      key: `vector:${id}`,
+      type: 'vector',
+      icon: 'hub',
+      label: `Embedding: ${availableVectors.value.find(v => v.id === id)?.name ?? id}`
     })
   }
 
@@ -542,6 +595,10 @@ function removeFilterBadge (badge: ActiveFilterBadge) {
     searchForm.value.userCollectionId = null
     return
   }
+  if (badge.type === 'vector') {
+    searchForm.value.vector = null
+    return
+  }
 
   if (badge.filterId && filterValues.value[badge.filterId]) {
     const filter = availableSearchFilters.value.find(f => f.id === badge.filterId)
@@ -558,6 +615,7 @@ function removeFilterBadge (badge: ActiveFilterBadge) {
 
 function clearAllFilters () {
   searchForm.value.userCollectionId = null
+  searchForm.value.vector = null
   availableSearchFilters.value.forEach(filter => {
     if (filter.type === 'interval') {
       filterValues.value[filter.id] = intervalBounds(filter)
@@ -590,6 +648,17 @@ async function fetchAvailableFilters () {
     Notify.create({ message: 'Failed to load search filters', position: 'top', color: 'warning' })
   } finally {
     loadingFilters.value = false
+  }
+}
+
+async function fetchSearchVectors () {
+  try {
+    const data = await api.getAvailableSearchVectorsApiSearchVectorsGet()
+    availableVectors.value = data.vectors
+    defaultVector.value = data.defaultVector
+  } catch (e) {
+    // Without the list there is no choice to offer; searches use the server's default.
+    console.error('Failed to fetch search vectors:', e)
   }
 }
 
@@ -711,7 +780,7 @@ async function addSelectedDocumentsToCollection () {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
-  await fetchAvailableFilters()
+  await Promise.all([fetchAvailableFilters(), fetchSearchVectors()])
   await loadCollections()
 })
 

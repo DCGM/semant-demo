@@ -14,14 +14,28 @@ The fixture corpus (tests/fixtures/corpus.json):
 
 Every exclusion test first shows that the excluded chunk matches the same query without
 the restriction, so its absence comes from the filter.
+
+Chunks have two named vectors (#217): ``default`` (``fake_embedding``) and
+``SECOND_VECTOR`` (``second_embedding``, another size), so every vector query must name
+its target.
 """
 import pytest
+import yaml
+from httpx import ASGITransport
 
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
+from semant_demo.bootstrap import load_search_vectors
+from semant_demo.config import Config
+from semant_demo.features.rag import service as rag_service
+from semant_demo.features.rag.registry import RagRegistry
 from semant_demo.features.search import service
 from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, TagFilter
-from tests.fakes import fake_embedding
+from semant_demo.features.search.service import SearchBackends
+from tests.fake_providers import create_fake_provider_app
+from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
+from tests.integration.conftest import RecordingTransport
+from tests.test_search_vectors import SearchingRag, rag_request
 
 pytestmark = pytest.mark.integration
 
@@ -46,7 +60,7 @@ def keys(corpus):
 
 
 def query(**kwargs) -> ChunkQuery:
-    return ChunkQuery(**{"text": ALL_WORDS, "mode": SearchType.text, "limit": 50, **kwargs})
+    return ChunkQuery(**{"text": ALL_WORDS, "mode": SearchType.text, "limit": 50, "target_vector": "default", **kwargs})
 
 
 def tag_filter(ids, *names, automatic=False, positive=False) -> TagFilter:
@@ -137,6 +151,41 @@ async def test_vector_modes_apply_the_same_restrictions(chunks, keys, ids, corpu
     assert len(scoped) == 3 and "gazette_1" not in keys(scoped)
     assert keys(scoped) <= {"chronicle_1", "chronicle_2", "letters_1", "letters_2"}
     assert keys(tagged) == {"chronicle_1", "letters_1"}
+
+
+@pytest.mark.parametrize("mode", [SearchType.vector, SearchType.hybrid])
+@pytest.mark.parametrize("target, embed", [("default", fake_embedding), (SECOND_VECTOR, second_embedding)])
+async def test_vector_modes_query_the_named_target_vector(chunks, keys, ids, corpus, mode, target, embed):
+    text = corpus.chunks["gazette_1"]["text"]
+
+    found = await chunks.search(query(text=text, mode=mode, vector=embed(text), target_vector=target, limit=3))
+    scoped = await chunks.search(query(text=text, mode=mode, vector=embed(text), target_vector=target, limit=3,
+                                       collection_id=ids.col["chronicles"]))
+
+    assert keys(found[:1]) == {"gazette_1"}
+    assert len(scoped) == 3 and "gazette_1" not in keys(scoped)
+
+
+@pytest.mark.parametrize("mode", [SearchType.vector, SearchType.hybrid])
+async def test_an_embedding_compared_with_another_vector_fails(chunks, corpus, mode):
+    # The vectors differ in size, so a wrong target cannot pass unnoticed.
+    text = corpus.chunks["gazette_1"]["text"]
+    with pytest.raises(Exception, match="(?i)dimension|length|vector"):
+        await chunks.search(query(text=text, mode=mode, vector=second_embedding(text), target_vector="default"))
+
+
+@pytest.mark.parametrize("mode", [SearchType.vector, SearchType.hybrid])
+async def test_a_vector_query_without_target_is_refused_before_weaviate(chunks, mode):
+    with pytest.raises(ValueError, match="target vector"):
+        await chunks.search(query(mode=mode, vector=fake_embedding(ALL_WORDS), target_vector=None))
+
+
+async def test_the_store_needs_a_target_vector_for_untargeted_queries(seeded_store, collection_names):
+    # The fixture is a real multi-vector collection: Weaviate refuses a query without a
+    # target, which is why the application names one in every query.
+    chunks = seeded_store.collections.get(collection_names.chunks_collection_name)
+    with pytest.raises(Exception, match="(?i)target vector"):
+        await chunks.query.near_vector(near_vector=fake_embedding(ALL_WORDS), limit=1)
 
 
 async def test_results_map_chunk_and_document(chunks, corpus):
@@ -377,3 +426,90 @@ async def test_classification_filter_and_hit_metadata(post_search, keys, corpus)
 
     unfiltered = await post_search("owner")
     assert {r["id"]: r["metadata"] for r in unfiltered.json()["results"]}[corpus.chunks["gazette_1"]["id"]] == {}
+
+
+##################
+# Search vectors #
+##################
+
+@pytest.fixture
+def vector_calls(api_app, tmp_path, corpus) -> list[str]:
+    """Configures two search vectors served by the fake providers; the called provider paths.
+
+    ``gemma`` (default): the embedding service, stored as ``default``; ``small``: an
+    OpenAI-compatible endpoint, stored as ``SECOND_VECTOR``.
+    """
+    path = tmp_path / "search_vectors.yaml"
+    path.write_text(yaml.safe_dump({"default": "gemma", "vectors": [
+        {"id": "gemma", "name": "Gemma", "target_vector": "default",
+         "embedding": {"provider": "embedding_service", "base_url": "http://fake"}},
+        {"id": "small", "name": "Small", "target_vector": SECOND_VECTOR,
+         "embedding": {"provider": "openai", "base_url": "http://fake/openai/v1", "model": "fake-small"}},
+    ]}))
+    calls: list[str] = []
+    transport = RecordingTransport(ASGITransport(app=create_fake_provider_app(corpus)), calls)
+    api_app.state.resources.search_vectors = load_search_vectors(Config(environ={"SEARCH_VECTORS_CONFIG": str(path)}),
+                                                                 transport)
+    return calls
+
+
+QUERY_PATH = {"gemma": "/embed_query", "small": "/openai/v1/embeddings"}
+HYDE_PATH = {"gemma": "/embed_documents", "small": "/openai/v1/embeddings"}
+
+
+@pytest.mark.parametrize("search_type", ["vector", "hybrid"])
+@pytest.mark.parametrize("is_hyde", [False, True])
+@pytest.mark.parametrize("selected", [None, "gemma", "small"])
+async def test_search_embeds_with_the_selected_vector_and_queries_it(post_search, keys, vector_calls, corpus,
+                                                                     search_type, is_hyde, selected):
+    text = corpus.chunks["gazette_1"]["text"]
+
+    unscoped = await post_search("owner", query=text, type=search_type, is_hyde=is_hyde, limit=3, vector=selected)
+    scoped = await post_search("owner", query=text, type=search_type, is_hyde=is_hyde, limit=3, vector=selected,
+                               collection="chronicles")
+
+    used = selected or "gemma"
+    assert unscoped.status_code == scoped.status_code == 200, unscoped.text
+    assert unscoped.json()["results"][0]["id"] == corpus.chunks["gazette_1"]["id"]
+    assert "gazette_1" not in keys(scoped.json()["results"])
+    assert unscoped.json()["vector"] == used and unscoped.json()["search_request"]["vector"] == selected
+    assert vector_calls == [(HYDE_PATH if is_hyde else QUERY_PATH)[used]] * 2
+
+
+@pytest.mark.parametrize("search_type", ["text", "vector", "hybrid"])
+async def test_search_with_an_unknown_vector_is_refused(post_search, vector_calls, retrievals, search_type):
+    response = await post_search("owner", type=search_type, vector="missing")
+
+    assert (response.status_code, response.json()) == (400, {"detail": "Unknown search vector: missing."})
+    assert vector_calls == [] and retrievals == []
+
+
+@pytest.mark.parametrize("selected", [None, "small"])
+async def test_text_search_works_without_embedding(post_search, keys, vector_calls, corpus, selected):
+    response = await post_search(None, vector=selected)
+
+    assert response.status_code == 200, response.text
+    assert keys(response.json()["results"]) == set(corpus.chunks)
+    assert response.json()["vector"] is None and vector_calls == []
+
+
+async def test_vectors_endpoint_lists_the_configured_vectors(api_client, vector_calls):
+    response = await api_client.get("/api/search/vectors")
+
+    assert response.json() == {"default_vector": "gemma", "vectors": [{"id": "gemma", "name": "Gemma", "description": ""},
+                                                                {"id": "small", "name": "Small", "description": ""}]}
+
+
+@pytest.mark.parametrize("selected", [None, "gemma", "small"])
+async def test_rag_retrieves_from_the_selected_vector(api_app, vector_calls, retrievals, selected):
+    resources = api_app.state.resources
+    backends = SearchBackends(chunks=resources.weaviate.search, collections=resources.weaviate.user_collections,
+                              tags=resources.weaviate.tags, vectors=resources.search_vectors)
+
+    await rag_service.answer(RagRegistry(instances={"searching": SearchingRag()}), backends,
+                             rag_request(vector=selected))
+
+    used = selected or "gemma"
+    target = {"gemma": "default", "small": SECOND_VECTOR}[used]
+    assert [q.target_vector for q in retrievals] == [target, target]
+    assert vector_calls == [QUERY_PATH[used], HYDE_PATH[used]]

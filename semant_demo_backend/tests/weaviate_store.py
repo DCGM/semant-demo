@@ -32,6 +32,7 @@ from weaviate.classes.query import Filter
 
 from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.adapters.weaviate.names import CollectionNames
+from tests.fakes import SECOND_VECTOR
 
 MARKER_COLLECTION = "SemantTestStoreMarker"
 MARKER_PURPOSE = "semant-automated-tests"
@@ -215,7 +216,9 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
     deployed schema (docs/DATABASE.md), including the ``text[]`` chunk classifications
     written by ``data_tools/meta_data_enrichment`` (search filters and hit ``metadata``);
     other enrichment properties are omitted. Vectors are self-provided under the
-    ``default`` name.
+    ``default`` name; chunks also have a second named vector (``SECOND_VECTOR``, #217), so
+    every chunk vector query must name its target vector, as against a store populated by
+    the offline embedder.
     """
     text, text_array, integer = DataType.TEXT, DataType.TEXT_ARRAY, DataType.INT
     vectors = Configure.Vectors.self_provided()
@@ -276,7 +279,8 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
     )
     await client.collections.create(
         names.chunks_collection_name,
-        vector_config=vectors,
+        vector_config=[Configure.Vectors.self_provided(name="default"),
+                       Configure.Vectors.self_provided(name=SECOND_VECTOR)],
         properties=[
             Property(name="text", data_type=text),
             Property(name="title", data_type=text),

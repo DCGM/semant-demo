@@ -32,13 +32,16 @@ def _pipeline(registry: RagRegistry, rag_id: str, purpose: str = "") -> BaseRag:
 async def answer(registry: RagRegistry, backends: SearchBackends, request: RagRequestMain) -> RagResponse:
     """The answer of the chosen configuration, with its sources.
 
-    RAG requests carry no collection or tags: retrieval covers the public corpus.
+    RAG requests carry no collection or tags: retrieval covers the public corpus. Every
+    retrieval uses the requested search vector (default: the configured default), the
+    same way a direct search does; an unknown vector is refused before the pipeline runs.
     """
     pipeline = _pipeline(registry, request.rag_id)
-    logger.info("RAG request", extra={"rag.id": request.rag_id,
+    vector = backends.vectors.resolve(request.vector)
+    logger.info("RAG request", extra={"rag.id": request.rag_id, "rag.vector": vector.id,
                                       "rag.history_messages": len(request.rag_request.history or [])})
     return await pipeline.rag_request(request=request.rag_request,
-                                      retrieve=search_service.public_retriever(backends))
+                                      retrieve=search_service.public_retriever(backends, vector.id))
 
 
 async def explain(registry: RagRegistry, request: ExplainRequest):

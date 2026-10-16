@@ -354,6 +354,7 @@ class Workload:
             hits = await self.search.search(ChunkQuery(
                 text=chunk.terms, mode=SearchType(scenario.mode), limit=scenario.limit, alpha=scenario.alpha,
                 vector=chunk.vector if scenario.mode != "text" else None,
+                target_vector=self.inputs.vector_name if scenario.mode != "text" else None,
                 collection_id=collection_id, tags=tags, conditions=conditions))
             return [h.id for h in hits]
         return run

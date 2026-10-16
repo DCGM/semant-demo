@@ -33,6 +33,7 @@ import yaml
 
 # Only modules that do not import `semant_demo.config`; see `serve`.
 from tests.corpus import load_corpus
+from tests.fakes import SECOND_VECTOR
 from tests.weaviate_store import StoreEndpoint
 
 logger = logging.getLogger("e2e_server")
@@ -52,6 +53,15 @@ def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, f
         tier.pop("base_url", None)
     llm_models_path = work_dir / "llm_models.yaml"
     llm_models_path.write_text(yaml.safe_dump(catalog))
+    # Both named chunk vectors of the test store (#217), embedded by the fake providers.
+    search_vectors_path = work_dir / "search_vectors.yaml"
+    search_vectors_path.write_text(yaml.safe_dump({"default": "fake-default", "vectors": [
+        {"id": "fake-default", "name": "Fake default", "description": "The test store's default vector.",
+         "target_vector": "default", "embedding": {"provider": "embedding_service"}},
+        {"id": "fake-small", "name": "Fake small", "description": "The test store's second vector.",
+         "target_vector": SECOND_VECTOR, "embedding": {"provider": "openai", "base_url": f"{fake_url}/openai/v1",
+                                                 "model": "fake-small"}},
+    ]}))
     return {
         **endpoint.app_environ(),
         "SQL_DB_URL": f"sqlite+aiosqlite:///{work_dir / 'e2e.db'}",
@@ -59,6 +69,7 @@ def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, f
         "STATIC_PATH": str(static_dir),
         "RAG_CONFIGS_PATH": str(rag_dir),
         "LLM_MODELS_CONFIG": str(llm_models_path),
+        "SEARCH_VECTORS_CONFIG": str(search_vectors_path),
         "FEEDBACK_LOG_PATH": str(work_dir / "feedback.log.jsonl"),
         "FEEDBACK_WEBHOOK_URL": "",
         "EMBEDDING_SERVICE_HOST": "127.0.0.1",

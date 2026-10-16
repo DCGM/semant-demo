@@ -28,6 +28,10 @@ class Config:
         embedding_service_port = env.get("EMBEDDING_SERVICE_PORT",8001)
         self.GEMMA_URL = f"http://{embedding_service_host}:{embedding_service_port}"
         #self.GEMMA_URL = "http://localhost:8001"
+        # Search vectors: Weaviate named vectors and their query embedding (features/search/vectors.py).
+        self.SEARCH_VECTORS_CONFIG = env.get("SEARCH_VECTORS_CONFIG", str(SCRIPT_PATH / "configs" / "search_vectors.yaml"))
+        # Bearer key of the OpenAI-compatible embedding endpoints of search vectors; empty sends none.
+        self.EMBEDDING_API_KEY = env.get("EMBEDDING_API_KEY", "")
 
         self.PRODUCTION = env.get("PRODUCTION", str(False)).lower() in TRUE_VALUES
         self.PORT = int(env.get("PORT", 8000))

@@ -13,6 +13,7 @@ from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.search.service import SearchBackends
+from semant_demo.features.search.vectors import SearchVectors
 from semant_demo.features.rag.registry import RagRegistry
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,7 +72,10 @@ async def get_annotation_store(connection: HTTPConnection) -> AnnotationStore:
 async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
     weaviate = _weaviate(connection)
     return SearchBackends(chunks=weaviate.search, collections=weaviate.user_collections, tags=weaviate.tags,
-                          embeddings=get_resources(connection).embeddings)
+                          vectors=get_resources(connection).search_vectors)
+
+def get_search_vectors(connection: HTTPConnection) -> SearchVectors:
+    return get_resources(connection).search_vectors
 
 def get_topicer(connection: HTTPConnection) -> TopicerClient:
     return get_resources(connection).topicer

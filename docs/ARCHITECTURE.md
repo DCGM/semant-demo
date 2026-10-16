@@ -134,6 +134,7 @@ A `Config` class that reads settings once, at construction, from the process env
 - **Observability** — `OTEL_ENABLED` (default off) and the `OTEL_*` / `DEPLOYMENT_ENVIRONMENT` export settings; see [OBSERVABILITY.md](OBSERVABILITY.md)
 - **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments mount it, so it is kept)
 - **Auth** — `JWT_SECRET` (override in production with a long random string); tokens are valid for 7 days (`users/auth.py`)
+- **Search vectors** — `SEARCH_VECTORS_CONFIG` (the configured Weaviate named vectors and their query embedding; see *Search vectors* below) and `EMBEDDING_API_KEY` (bearer key of OpenAI-compatible embedding endpoints; empty sends none); `EMBEDDING_SERVICE_HOST` / `_PORT` locate the embedding service
 - **RAG** — config directory path
 - **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT` for the "discuss this span" chat (its model is the `span_chat` tier)
 
@@ -149,7 +150,8 @@ A `Config` class that reads settings once, at construction, from the process env
 | `get_documents()`, `get_tags()`, `get_user_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
 | `get_annotation_store()` | The repositories the Annotations service uses (collections, tags, spans, chunk tags, documents) | Startup → shutdown |
 | `get_corpus_analytics()`, `get_corpus_overview_cache()` | Document aggregates (`adapters/weaviate/analytics.py`); the app's last corpus overview | Startup → shutdown |
-| `get_search_backends()` | Search adapter, collection/tag repositories and the embedding client for the search service and RAG retrieval | Startup → shutdown |
+| `get_search_backends()` | Search adapter, collection/tag repositories and the configured search vectors (each with its query embedder) for the search service and RAG retrieval | Startup → shutdown |
+| `get_search_vectors()` | The configured search vectors (`features/search/vectors.SearchVectors`) | Startup → shutdown |
 | `get_topicer()`, `get_span_chat()` | Topicer client; the span chat's `FeatureChat` | Startup → shutdown |
 | `get_llm()` | The `LlmGateway` (model tiers, metered chat models) | Startup → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
@@ -240,13 +242,13 @@ sequenceDiagram
     participant WV as Weaviate
     participant LLM as LLM
 
-    FE->>BE: POST /api/search {query, type, filters...}
-    Note over BE: check collection and tag access, validate filters
+    FE->>BE: POST /api/search {query, type, vector?, filters...}
+    Note over BE: resolve the search vector (default if none), check collection and tag access, validate filters
     alt hybrid or vector search
-        BE->>EMB: POST /embed_query
+        BE->>EMB: embed the query with the vector's model
         EMB-->>BE: embedding vector
     end
-    BE->>WV: hybrid/bm25/near_vector query
+    BE->>WV: hybrid/bm25/near_vector query (target_vector of the selected vector)
     WV-->>BE: ranked chunks + document refs
     opt summaries requested (failure: results kept, warning added)
         BE->>LLM: generate title per chunk
@@ -263,7 +265,9 @@ Search supports three modes:
 
 Optional HyDE (Hypothetical Document Embedding): when `is_hyde=true`, the query is embedded as a document rather than a query, which can improve recall for some use cases.
 
-Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
+**Search vectors (#217).** The chunk collection may hold several Weaviate named vectors, created and populated offline (`data_tools/embedder`, #192). `configs/search_vectors.yaml` (`SEARCH_VECTORS_CONFIG`) lists those the application may use — an application `id`, a display `name`/`description`, the Weaviate `target_vector` and the query embedding: `embedding_service` (the project's embedding service) or `openai` (an OpenAI-compatible `/embeddings` endpoint, e.g. vLLM, with `model`, optional query/document prefixes and `dimensions`) — and names the `default` (`bge-gemma2`, the original `default` vector). It is validated at startup (an invalid file stops the app); vectors are never discovered from Weaviate. `GET /api/search/vectors` lists the ids, names and descriptions with the default (`default_vector`), no provider details. `SearchRequest.vector` selects one for vector and hybrid search; `null` uses the default, an unknown id answers 400 before any embedding or query (also for text search, which otherwise ignores the selection). `features/search/vectors.py` resolves the selection and the service embeds the query (or the HyDE document) with that vector's embedder (built per vector by `bootstrap.create_embedder`, `adapters/embeddings/`); the Weaviate adapter receives the resolved `ChunkQuery.target_vector` and passes it to every `near_vector`/`hybrid` call, so a collection with several named vectors works; it reads no configuration. `SearchResponse.vector` is the vector used (`null` for text search). The Search page offers the configured vectors in its filter panel when there is more than one and sends no selection for the default.
+
+Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, vector selection, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
 
 #### Corpus overview (`features/analytics/`, `adapters/weaviate/analytics.py`)
 
@@ -308,7 +312,13 @@ RAG implementations are loaded dynamically from YAML config files via a factory 
 (`features/rag/registry.py`; the classes are in `features/rag/pipelines/` and register
 themselves when the factory imports them). The routes call `features/rag/service.py`, which
 picks the configuration (unknown id: 400), retrieves from the public corpus only and stores
-answer feedback through `adapters/sql/feedback.py`:
+answer feedback through `adapters/sql/feedback.py`. `RagRequestMain.vector` selects the search
+vector of every retrieval of the answer (`null`: the default; unknown: 400 before the pipeline
+runs); the service resolves it and hands the pipeline a retriever bound to it
+(`search.service.public_retriever(backends, vector)`), so pipelines contain no vector logic.
+Pipeline instances are shared, so they use the retriever passed with each request and never
+keep it (the adaptive pipeline passes it to its graph nodes in the run's `configurable`).
+The chat page sends no selection yet (the default vector):
 
 ```mermaid
 flowchart TD

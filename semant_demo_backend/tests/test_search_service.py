@@ -1,6 +1,6 @@
 """Search service (features/search/service.py) called directly, with fake stores and providers.
 
-Covers embedding choice, filter normalization into neutral conditions, authorization of
+Covers embedding choice, search vector selection, filter normalization into neutral conditions, authorization of
 the collection and of every requested tag before retrieval, and optional summaries.
 """
 from types import SimpleNamespace
@@ -16,6 +16,7 @@ from semant_demo.features.search.schemas import (
     ChunkQuery, FieldCondition, Op, SearchFilterInput, SearchRequest, SearchType, TagFilter, SearchResultChunk,
 )
 from semant_demo.features.search.service import SearchBackends
+from semant_demo.features.search.vectors import SearchVector, SearchVectors
 from semant_demo.features.documents.schemas import Document
 from semant_demo.features.summarization.templated import ModelOptions, TemplatedSearchResultsSummarizer
 from tests.fakes import FakeLlm
@@ -54,16 +55,17 @@ class FakeChunks:
 
 
 class FakeEmbeddings:
-    def __init__(self):
+    def __init__(self, offset=0.0):
         self.calls = []
+        self.offset = offset
 
     async def embed_query(self, text):
         self.calls.append(("query", text))
-        return [0.1, 0.2]
+        return [0.1 + self.offset, 0.2]
 
     async def embed_document(self, text):
         self.calls.append(("document", text))
-        return [0.3, 0.4]
+        return [0.3 + self.offset, 0.4]
 
 
 class FailingSummarizer:
@@ -94,9 +96,16 @@ def hit(text) -> SearchResultChunk:
                                  document_object=Document(id=doc, library="mzk"))
 
 
-def backends(chunks=None, embeddings=None) -> SearchBackends:
+def search_vectors(embeddings=None, second=None) -> SearchVectors:
+    """``main`` (the default, stored as ``default``) and ``second`` (stored as ``second_target``)."""
+    return SearchVectors([SearchVector("main", "Main", "", "default", embeddings or FakeEmbeddings()),
+                          SearchVector("second", "Second", "", "second_target", second or FakeEmbeddings(10.0))],
+                         default="main")
+
+
+def backends(chunks=None, embeddings=None, second=None) -> SearchBackends:
     return SearchBackends(chunks=chunks or FakeChunks(), collections=FakeCollections(), tags=FakeTags(),
-                          embeddings=embeddings or FakeEmbeddings())
+                          vectors=search_vectors(embeddings, second))
 
 
 def request(**kwargs) -> SearchRequest:
@@ -131,6 +140,7 @@ async def test_embedding_is_requested_only_for_vector_modes(search_type, is_hyde
     assert query.mode == SearchType(search_type)
     assert query.vector == ({"query": [0.1, 0.2], "document": [0.3, 0.4]}[expected[0][0]] if expected else None)
     assert query.alpha == 0.7 and query.limit == 10 and query.text == "Novák"
+    assert query.target_vector == (None if search_type == "text" else "default")
 
 
 async def test_embedding_failure_propagates_without_retrieval():
@@ -142,6 +152,75 @@ async def test_embedding_failure_propagates_without_retrieval():
     with pytest.raises(RuntimeError):
         await service.retrieve(backends(chunks, Down()), OWNER, request(type="hybrid"))
     assert chunks.queries == []
+
+
+##################
+# Search vectors #
+##################
+
+@pytest.mark.parametrize("search_type", ["vector", "hybrid"])
+async def test_a_request_without_a_vector_uses_the_default(search_type):
+    main, second, chunks = FakeEmbeddings(), FakeEmbeddings(10.0), FakeChunks()
+
+    response = await service.retrieve(backends(chunks, main, second), OWNER, request(type=search_type))
+
+    [query] = chunks.queries
+    assert (query.target_vector, query.vector) == ("default", [0.1, 0.2])
+    assert main.calls == [("query", "Novák")] and second.calls == []
+    assert response.vector == "main" and response.search_request.vector is None
+
+
+@pytest.mark.parametrize("search_type", ["vector", "hybrid"])
+@pytest.mark.parametrize("is_hyde", [False, True])
+@pytest.mark.parametrize("selected, target, vector_offset", [("main", "default", 0.0), ("second", "second_target", 10.0)])
+async def test_a_selected_vector_embeds_with_its_model_and_queries_its_target(search_type, is_hyde, selected, target,
+                                                                              vector_offset):
+    embedders = {"main": FakeEmbeddings(), "second": FakeEmbeddings(10.0)}
+    chunks = FakeChunks()
+
+    response = await service.retrieve(backends(chunks, embedders["main"], embedders["second"]), OWNER,
+                                      request(type=search_type, is_hyde=is_hyde, vector=selected))
+
+    [query] = chunks.queries
+    kind = "document" if is_hyde else "query"
+    assert query.target_vector == target and query.mode == SearchType(search_type)
+    assert query.vector == [(0.3 if is_hyde else 0.1) + vector_offset, 0.4 if is_hyde else 0.2]
+    assert {name: e.calls for name, e in embedders.items()} == {
+        name: [(kind, "Novák")] if name == selected else [] for name in embedders}
+    assert response.vector == selected
+
+
+@pytest.mark.parametrize("search_type", ["text", "vector", "hybrid"])
+async def test_an_unknown_vector_is_refused_before_embedding_or_retrieval(search_type):
+    embeddings, chunks = FakeEmbeddings(), FakeChunks()
+
+    with pytest.raises(InvalidRequestError, match="Unknown search vector: missing"):
+        await service.retrieve(backends(chunks, embeddings), OWNER, request(type=search_type, vector="missing"))
+    assert embeddings.calls == [] and chunks.queries == []
+
+
+@pytest.mark.parametrize("vector", [None, "second"])
+async def test_text_search_uses_no_vector(vector):
+    main, second, chunks = FakeEmbeddings(), FakeEmbeddings(10.0), FakeChunks()
+
+    response = await service.retrieve(backends(chunks, main, second), OWNER, request(vector=vector))
+
+    [query] = chunks.queries
+    assert (query.mode, query.vector, query.target_vector) == (SearchType.text, None, None)
+    assert main.calls == second.calls == [] and response.vector is None
+
+
+async def test_public_retriever_with_a_vector_uses_it_for_every_request():
+    second, chunks = FakeEmbeddings(10.0), FakeChunks()
+    retrieve = service.public_retriever(backends(chunks, second=second), "second")
+
+    original = request(type="hybrid", vector="main")
+    response = await retrieve(original)
+    await retrieve(request(type="vector", is_hyde=True))
+
+    assert [q.target_vector for q in chunks.queries] == ["second_target"] * 2
+    assert second.calls == [("query", "Novák"), ("document", "Novák")]
+    assert response.vector == "second" and original.vector == "main"   # the caller's request is not changed
 
 
 ###########
