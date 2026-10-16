@@ -109,6 +109,7 @@ USER_COLLECTION_ROUTES = {
     ("get", "/api/user_collections/{collection_id}/documents/{document_id}"),
     ("post", "/api/user_collections/{collection_id}/documents/{document_id}"),
     ("delete", "/api/user_collections/{collection_id}/documents/{document_id}"),
+    ("post", "/api/user_collections/{collection_id}/documents/{document_id}/summary"),
     ("get", "/api/user_collections/{collection_id}/documents/{document_id}/stats"),
     ("get", "/api/user_collections/{collection_id}/documents/{document_id}/chunks"),
     ("get", "/api/user_collections/{collection_id}/documents/{document_id}/chunks/range"),

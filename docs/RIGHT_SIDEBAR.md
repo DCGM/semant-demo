@@ -215,6 +215,7 @@ the new request's loading state.
 | Search (`features/search/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
 | Document view (`features/documents/viewer/DocumentViewLayout.vue`) | `document-tags` | `features/annotations/DocumentTagsPanel.vue` | The collection's tags: create/edit, show/hide, step through their annotations, manual order, search. Ctrl+F focuses the search while this is the active panel (it opens a closed sidebar); otherwise the browser's find is left alone. |
 | Document view | `document-ai` | `features/annotations/AiAssistPanel.vue` | AI annotation suggestions (`fill`, `busy` while a document or selection run is under way). Auto spans are shown in the text only while this is the active panel; suggestion cards and spans highlight each other. *Suggest tags* on a text selection activates it. Leaving the view cancels running requests; saved suggestions stay. |
+| Document view | `document-summary` | `features/documents/DocumentSummaryPanel.vue` | Summary of the current document (#249; `fill`, `busy` while a summary request is under way): a *Summarize Document* / *Cancel* control, the generated text with `[docN]`-style citations (each a link to its source chunk), and a "Partial summary — first N of M chunks" notice when the document was truncated to the configured `chunk_limit`. A failed generation shows an error line, not a summary quietly built from the server's fallback text (the backend answers 502, not 200, on failure). Logic in `features/documents/useDocumentSummary.ts`, a module-scope singleton like `useAiAssistance` (see below), since a citation click must reach the document reader, a sibling route. The summary is not persisted: changing document/collection or leaving the view drops it, the same `reset()` wiring `AiAssistPanel` uses. |
 | Chat assistant (`features/rag/RagPage.vue`) | `chat-sources` | `features/rag/ChatSourcesPanel.vue` | All source chunks of the conversation (#246), in order of first appearance and once per chunk id, labelled `S1`, `S2`... The answers show their citations with these labels: each answer's own `[doc N]` is mapped to its `sources[N-1]` chunk and that chunk's label (`[S2]`, the same label wherever the chunk is cited again); a citation without such a source stays as written. The raw answer text, history and explanation input are unchanged. One click on a citation or a source selects it: the Sources panel opens, scrolls to it and shows its full stored text (the other sources are collapsed), and every citation of it in the conversation is marked; the conversation is not scrolled. A double click (or *View document*) opens it in the Document panel. An answer's *Sources* link shows the list at its first source. Registered once the conversation has sources. |
 | Chat assistant | `chat-source-context` | `features/documents/ChunkContextPanel.vue` | The selected source highlighted in its document, with its label (`targetLabel`), the same viewer as `search-context`. The selection and its marks stay while the document is navigated; *Return to cited passage* brings the cited chunk back into view (reloading it if extending dropped it). Selecting another source, resetting the conversation or another account closes it. A citation in an explanation selects its source and closes the explanation (the modal would cover the sidebar). On a phone the first tap on a citation opens the Sources overlay, so the document is opened from the list there. State in `features/rag/useChatSources.ts` (by chunk id); the citation marks are set on the rendered links, so selecting does not re-render the answer under a double click. |
 | Document view | `document-metadata` | `features/documents/DocumentMetadataPanel.vue` | Bibliographic fields of the document. |
@@ -223,6 +224,39 @@ The ids of the document panels are in `features/documents/viewer/documentSidebar
 panels get the collection and document ids through props; the annotation, tag navigation
 and AI state they share with the reader stays in the annotation composables, not in the
 sidebar store.
+
+#### Summary citation → reader navigation (#249)
+
+`DocumentViewLayout` (the page, not the panel) owns `useDocumentSummary()` and wires the
+panel's `summarize`/`cancel`/`cite` events to it, following the usual page→tool props /
+tool→page events convention; `cite(chunkId, order)` sets the composable's module-scope
+`requestedCitation` ref (`{ chunkId, order, token }`, the counter so clicking the same
+citation twice still re-triggers; `order` is the cited chunk's position in the document, from
+`DocumentSummaryCitation.order`). `DocumentReaderPage.vue`, a sibling route with no
+prop/event path to the panel, watches that same singleton ref (the same cross-component
+pattern `useAiAssistance().highlightedAutoSpanId` uses for span highlighting).
+
+If the cited chunk isn't in `useChunkWindow`'s currently displayed window (it loads a bounded
+window of a collection's member chunks, not necessarily every chunk of the document, while a
+citation can point anywhere in the whole document), the watcher calls
+`chunkWindow.loadUntil(order)` first (#358 review) — it loads only the chunks between the
+window and the target (extending the window at whichever edge is closer, or filling a
+partial-membership gap via the existing `loadGapAll` when the target falls inside the
+displayed range), never the rest of the document. Only then does it call its own
+`scrollToChunk(chunkId)` — a whole-chunk sibling of `scrollToSpan` that only scrolls, never
+touches `annotations`/`tagEditing`/`quickTagId` state, so in-progress tag editing is left
+exactly as it was. If the chunk still can't be found afterwards (a malformed citation, or
+`order` missing), `scrollToChunk` is a silent, documented no-op — a narrow fallback, not the
+primary behavior.
+
+Interacting with the right sidebar at all — switching to the Summary panel, clicking
+*Summarize Document*, or clicking a citation — must not discard an open annotation popover or
+an in-progress quick-tag selection either (#358 review): `DocumentReaderPage.vue`'s
+`onClickOutside` (the handler that ends quick-tagging on a click outside the editing context)
+exempts any click inside `.q-drawer--right`, the same way it already exempts the popover, the
+document text and a Quasar dialog opened from the popover. This covers every panel (Tags, AI
+assist, Document, Summary), not just Summary, since switching to any of them is equally not
+"abandoning" an edit.
 
 ### Document context (`features/documents/`)
 

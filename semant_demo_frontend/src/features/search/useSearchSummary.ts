@@ -1,5 +1,6 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import { createContextGuard, isAbortError, useApi } from 'src/shared/api'
+import { tokenizeCitations } from 'src/shared/citationTokens'
 import { selectResults, type ResultScope, type SearchResultsContext } from './searchResults'
 
 export type SummaryToken =
@@ -37,29 +38,7 @@ export function resultScope (option: SummaryScopeOption, selectedIds: readonly s
  * within the summarized subset, so they are translated to result numbers.
  */
 export function parseSummaryTokens (text: string, indicesMap: number[]): SummaryToken[] {
-  const tokens: SummaryToken[] = []
-  const citationRegex = /\[(doc([1-9][0-9]*))]/g
-  let lastIndex = 0
-
-  for (const match of text.matchAll(citationRegex)) {
-    const matchText = match[0]
-    const number = parseInt(match[2], 10)
-    const index = match.index ?? 0
-
-    if (index > lastIndex) {
-      tokens.push({ type: 'text', value: text.slice(lastIndex, index) })
-    }
-    const translatedNumber = indicesMap[number - 1] ?? number
-    tokens.push({ type: 'citation', docNumber: translatedNumber })
-
-    lastIndex = index + matchText.length
-  }
-
-  if (lastIndex < text.length) {
-    tokens.push({ type: 'text', value: text.slice(lastIndex) })
-  }
-
-  return tokens
+  return tokenizeCitations(text, number => ({ docNumber: indicesMap[number - 1] ?? number }))
 }
 
 /**

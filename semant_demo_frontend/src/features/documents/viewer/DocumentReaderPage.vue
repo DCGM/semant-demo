@@ -189,6 +189,7 @@ import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
 import useTagSpans from 'src/features/annotations/useTagSpans'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
+import useDocumentSummary from 'src/features/documents/useDocumentSummary'
 import useChunks from '../useChunks'
 import ChunkMembershipGutter from './ChunkMembershipGutter.vue'
 import ChunkSelectionBar from './ChunkSelectionBar.vue'
@@ -222,6 +223,7 @@ const tagEditing = useTagEditing(() => props.collectionId)
 const tagNav = useTagNavigation()
 const tagSpans = useTagSpans()
 const aiAssist = useAiAssistance()
+const documentSummary = useDocumentSummary()
 const rightSidebar = useRightSidebarStore()
 const aiPanelActive = computed(() => aiAssist.aiPanelActive.value)
 const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.value)
@@ -306,6 +308,14 @@ function scrollToSpan(chunkId: string, start: number, end: number) {
   }
 }
 
+// A document-summary citation (#249) is whole-chunk granularity, with no offset within the
+// chunk to find a text segment for, so this scrolls to the chunk itself rather than reusing
+// scrollToSpan's per-segment lookup.
+function scrollToChunk(chunkId: string) {
+  documentTextRef.value?.querySelector<HTMLElement>(`[data-chunk-id="${chunkId}"]`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
 // ── Per-tag navigation (shared with the tags panel via composable) ──
 watch(gutters.spanMarkers, (markers) => {
   tagNav.setItems(markers.map(i => ({
@@ -334,6 +344,25 @@ watch(highlightedAutoSpanId, (spanId) => {
     scrollToSpan(chunkId, span.start, span.end)
     return
   }
+})
+
+// A clicked citation in the document summary panel (a sibling of this route inside
+// DocumentViewLayout) scrolls the reader to the cited chunk, loading it into the displayed
+// window first (chunkWindow.loadUntil, #249 review) if it isn't shown yet — the summary
+// covers the whole document, but the reader only displays a bounded window by default. This
+// is otherwise an orthogonal, read-only navigation action: it must not touch
+// annotations/tagEditing/quickTagId state (no selection clearing, no popover changes, no span
+// highlight changes) or navigate, only scroll/load — so tag-editing state in progress is left
+// exactly as it was.
+watch(() => documentSummary.requestedCitation.value, async (citation) => {
+  if (!citation) return
+  if (!chunkWindow.findChunk(citation.chunkId) && citation.order != null) {
+    // A citation always refers to a chunk that exists (it came from the document's own
+    // chunks); if its order can't be resolved into the window either, there is nothing more
+    // to try and scrollToChunk below silently finds nothing (a narrow, documented fallback).
+    await chunkWindow.loadUntil(citation.order)
+  }
+  scrollToChunk(citation.chunkId)
 })
 
 // ── Annotation editing ──
@@ -581,14 +610,19 @@ const onClickOutside = (e: MouseEvent) => {
   if (!annotations.hasSelection.value && !quickTagId.value) return
   const target = e.target as HTMLElement
   // Don't dismiss if clicking inside the popover, the document text area,
-  // or a Quasar dialog opened from the popover (e.g. the create/edit-tag
+  // a Quasar dialog opened from the popover (e.g. the create/edit-tag
   // dialog) — those are teleported outside both containers, so without this
   // check the selection would be cleared out from under the dialog's own
-  // onOk handler while the user is still filling it in.
+  // onOk handler while the user is still filling it in — or the right
+  // sidebar (#249): switching tools there (checking tags, AI suggestions,
+  // document metadata, or the document summary and its citations) is a
+  // normal part of annotating and must not silently discard an open
+  // popover or an in-progress quick-tag selection either.
   const popover = document.querySelector('.annotation-popover')
   if (popover?.contains(target)) return
   if (documentTextRef.value?.contains(target)) return
   if (target.closest('.q-dialog')) return
+  if (target.closest('.q-drawer--right')) return
   endQuickTagging()
 }
 

@@ -34,7 +34,48 @@ class ModelOptions(ConfigurableMixin):
     )
 
 
-class TemplatedSearchResultsSummarizer(SearchResultsSummarizer):
+class TemplateGenerationMixin:
+    """
+    Prompt-selection and single-call LLM generation shared by both templated summarizers
+    (``TemplatedSearchResultsSummarizer`` here and ``TemplatedDocumentSummarizer`` in
+    ``document.py``). Pulled out (#358 review) because the two classes had near-identical
+    copies of this logic, differing only in which gateway feature-tier they generate with;
+    each keeps its own ``_generate_or_fallback``, since the two differ in what their
+    ``on_error`` callback gets — a document summary has only one generated part and passes the
+    exception itself to its caller, search summaries have several and only track which kind
+    failed.
+    """
+
+    llm: LlmGateway | None = None
+
+    @staticmethod
+    def handle_prompt(prompt: Optional[str], default_prompt: Template) -> Template:
+        """
+        The provided prompt, or the default one when none is provided.
+
+        :raises ValueError: if the provided prompt is not str
+        """
+        if prompt is None:
+            return default_prompt
+        if not isinstance(prompt, str):
+            raise ValueError("Prompt must be a string.")
+        return Template(prompt)
+
+    async def _complete(self, feature: str, system_prompt: Template, prompt: Template, values: dict,
+                        options: ModelOptions) -> str:
+        """The generated text; raises when the model call fails."""
+        if self.llm is None:
+            raise RuntimeError("The summarizer has no LLM gateway.")
+        reply = await self.llm.complete(
+            feature,
+            [{"role": "system", "content": system_prompt.render(values)},
+             {"role": "user", "content": prompt.render(values)}],
+            temperature=options.temperature, max_tokens=options.max_completion_tokens,
+            context_size=options.context_size)
+        return reply.strip()
+
+
+class TemplatedSearchResultsSummarizer(TemplateGenerationMixin, SearchResultsSummarizer):
 
     gen_title_model_options: ModelOptions = ConfigurableFactory(
         ModelOptions,
@@ -121,31 +162,10 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
         transform=TemplateTransformer()
     )
 
-    @staticmethod
-    def handle_prompt(prompt: Optional[str], default_prompt: Template) -> Template:
-        """
-        The provided prompt, or the default one when none is provided.
-
-        :raises ValueError: if the provided prompt is not str
-        """
-        if prompt is None:
-            return default_prompt
-        if not isinstance(prompt, str):
-            raise ValueError("Prompt must be a string.")
-        return Template(prompt)
-
     async def _generate(self, system_prompt: Template, prompt: Template, values: dict,
                         options: ModelOptions) -> str:
         """The generated text; raises when the model call fails."""
-        if self.llm is None:
-            raise RuntimeError("The summarizer has no LLM gateway.")
-        reply = await self.llm.complete(
-            "search_summary",
-            [{"role": "system", "content": system_prompt.render(values)},
-             {"role": "user", "content": prompt.render(values)}],
-            temperature=options.temperature, max_tokens=options.max_completion_tokens,
-            context_size=options.context_size)
-        return reply.strip()
+        return await self._complete("search_summary", system_prompt, prompt, values, options)
 
     async def _generate_or_fallback(self, kind: str, fallback: str, on_error: Optional[Callable[[str], None]],
                                     *args) -> str:

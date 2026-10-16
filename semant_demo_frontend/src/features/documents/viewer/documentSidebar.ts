@@ -2,5 +2,6 @@
 export const DOCUMENT_SIDEBAR_PANELS = {
   tags: 'document-tags',
   ai: 'document-ai',
+  summary: 'document-summary',
   metadata: 'document-metadata'
 } as const

@@ -38,6 +38,7 @@ class Config:
         # Only the first URL is used: the default endpoint of Ollama model tiers.
         self.OLLAMA_URLS = env.get("OLLAMA_URLS", "http://localhost:11434").split(",")
         self.SEARCH_SUMMARIZER_CONFIG = env.get("SEARCH_SUMMARIZER_CONFIG", str(SCRIPT_PATH / "configs" / "search_summarizer.yaml"))
+        self.DOCUMENT_SUMMARIZER_CONFIG = env.get("DOCUMENT_SUMMARIZER_CONFIG", str(SCRIPT_PATH / "configs" / "document_summarizer.yaml"))
         self.SEARCH_FILTERS_CONFIG = env.get("SEARCH_FILTERS_CONFIG", str(SCRIPT_PATH / "configs" / "search_filters.yaml"))
 
         self.GOOGLE_API_KEY = env.get("GOOGLE_API_KEY", "")
