@@ -49,6 +49,30 @@ To try it out, you can create a small `EmbedderTest` collection (it uses the con
 python run.py --create-test-collection config.yaml
 ```
 
+An existing `EmbedderTest` collection is refused and left unchanged; add `--force` to delete it and create it again.
+
+## Using the vector in the application
+
+The application never creates or fills vectors; it queries the ones listed in
+`semant_demo_backend/semant_demo/configs/search_vectors.yaml` (`SEARCH_VECTORS_CONFIG`, #217).
+After a run has filled the vector for the whole collection, add an entry there:
+
+- `target_vector`: this tool's `vector_name`;
+- `embedding.provider: openai` with the same `base_url` and `model` (`model_name` here) and
+  the same `dimensions`;
+- `query_prefix` / `document_prefix`: what the model expects before a query and a document.
+  The documents were embedded with this tool's `input_template`, so the document side must
+  match it (e.g. `passage: {{ text }}` here means `document_prefix: "passage: "`).
+
+Search and RAG name a target vector in every vector and hybrid query, so adding a vector does
+not break the existing ones. Until a vector is listed, it is unused.
+
+**Production.** Adding a vector rewrites every chunk object and needs memory for another
+vector index (see `docs/WEAVIATE_AUDIT_2026-10.md`, *Named vectors*). Do not add one to the
+production `Chunks` collection before its current vector index is complete (#375) and the
+memory is reserved, and only with the operator's approval. Try it on a copy or a test store
+first; `create_vector: true` adds the vector to the configured collection on the first run.
+
 ## How it works
 
 1. The named vector is created in the schema if it's missing (`create_vector`).
@@ -84,5 +108,13 @@ A new embedder backend can be added by subclassing `Embedder` and implementing `
 ## Important notes
 
 - **The collection must use named vectors.** Weaviate can add a named vector only to a collection that was created with named vectors. A collection with the legacy unnamed vector (for example, one created by an older server without `vector_config`) is refused with an error and has to be migrated first. Weaviate ≥ 1.34 creates collections without a vector config as a named vector called `default`.
-- **Queries must name their target vector once a collection has more than one vector.** `near_vector` and `hybrid` without `target_vector` fail with `class ... has multiple vectors, but no target vectors were provided`. Inserting with an unnamed vector fails as well. Use `target_vector="default"` and `vector={"default": ...}` in code that uses the original vector.
+- **Queries must name their target vector once a collection has more than one vector.** `near_vector` and `hybrid` without `target_vector` fail with `class ... has multiple vectors, but no target vectors were provided`. Inserting with an unnamed vector fails as well. The application does both since #217; other scripts that query or insert chunk vectors must use `target_vector="default"` and `vector={"default": ...}` for the original vector.
 - A request that keeps failing (e.g. an input longer than the model's context) stops the pipeline. Set `truncate_prompt_tokens`, or fix the record, and run again.
+
+## Tests
+
+`semant_demo_backend/tests/integration/test_embedder_tool.py` runs the pipeline against the
+test-owned Weaviate (`make test-integration`, and in CI) with a fake OpenAI-compatible
+endpoint: vector creation, preservation of properties, references and other vectors,
+resuming, write failures, refused collections, the guarded test collection and Search
+over the filled vector. The tool's dependencies are part of the backend's development lock.

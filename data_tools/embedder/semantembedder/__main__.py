@@ -22,7 +22,13 @@ def main():
     parser.add_argument(
         "--create-test-collection",
         action="store_true",
-        help="Create EmbedderTest collection (with named vectors) inside Weaviate with 10 Czech historical records."
+        help="Create EmbedderTest collection (with named vectors) inside Weaviate with 10 Czech historical records. "
+             "An existing EmbedderTest collection is refused unless --force is given."
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --create-test-collection: delete an existing EmbedderTest collection and create it again."
     )
 
     args = parser.parse_args()
@@ -54,7 +60,7 @@ def main():
                     api_key=api_key,
                     headers=headers
                 ) as client:
-                    await create_test_collection(client)
+                    await create_test_collection(client, replace=args.force)
                 print("Weaviate connection closed.")
 
             asyncio.run(create())
