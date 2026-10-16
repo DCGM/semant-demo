@@ -45,7 +45,7 @@ async def test_smoke_run_and_inventory_are_read_only(seeded_store, store_endpoin
     assert run["inputs"]["tags"] > 0 and run["inputs"]["user_collections"] > 0
     for name in ("hybrid_tag", "hybrid_user_collection"):
         assert all(p["hit_requests"] > 0 for p in by_name[name]["points"]), name
-    # Every level runs the same inputs.
+    # Every level runs the same number of requests (the same inputs by default).
     assert len({p["requests"] for p in by_name["hybrid"]["points"]}) == 1
     assert run["id_hashing"]["key_id"] == cli.id_hasher(str(tmp_path / "key")).key_id
     recall = by_name["self_recall"]["points"][0]
@@ -61,6 +61,14 @@ async def test_smoke_run_and_inventory_are_read_only(seeded_store, store_endpoin
     assert (tmp_path / "run.md").read_text().startswith("# Weaviate benchmark run")
     summary = json.loads((tmp_path / "run.summary.json").read_text())
     assert summary["kind"] == "run_summary" and not any("results" in s for s in summary["scenarios"])
+
+    # Disjoint level inputs: each level runs the next inputs of the sample.
+    fresh_args = cli.parser().parse_args(["run", "--profile", "smoke", "--scenarios", "hybrid", "--level-inputs",
+                                          "disjoint", "--out", str(tmp_path / "fresh"), *key, *_target(store_endpoint)])
+    assert await cli.cmd_run(fresh_args) == 0
+    fresh = json.loads((tmp_path / "fresh.json").read_text())
+    assert "next inputs" in fresh["input_reuse"] and fresh["scenarios"][0]["points"][0]["error_count"] == 0
+    assert await _counts(seeded_store) == before
 
     compare_args = cli.parser().parse_args(["compare", str(tmp_path / "run.json"), str(tmp_path / "run.json"),
                                             "--out", str(tmp_path / "cmp")])

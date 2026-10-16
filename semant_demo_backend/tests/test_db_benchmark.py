@@ -16,7 +16,7 @@ from semant_demo.maintenance.db_benchmark.cli import REFUSED, main
 from semant_demo.maintenance.db_benchmark.profile import Profile, Scenario, available_profiles, load_profile
 from semant_demo.maintenance.db_benchmark.runner import Pacer, percentile, run_point
 from semant_demo.maintenance.db_benchmark.workload import (
-    IdHasher, _pick_vector, _sample_matching_ids, short_hash, terms)
+    IdHasher, Inputs, SampledChunk, Workload, _pick_vector, _sample_matching_ids, short_hash, terms)
 
 UNREACHABLE = ["--host", "203.0.113.1"]
 
@@ -171,14 +171,44 @@ async def test_filter_values_are_sampled_only_when_they_match_chunks():
     collection = SimpleNamespace(query=SimpleNamespace(
         fetch_objects=lambda **kw: _resolved(SimpleNamespace(objects=[SimpleNamespace(uuid=i) for i in ids]))))
 
-    async def matches(candidate):
-        return candidate.int % 3 == 0  # 3, 6 and 9
+    async def chunk_inside(candidate):
+        return f"chunk of {candidate.int}" if candidate.int % 3 == 0 else None  # 3, 6 and 9
 
-    found, checked = await _sample_matching_ids(collection, random.Random(1), 5, matches)
-    assert sorted(found) == [UUID(int=3), UUID(int=6), UUID(int=9)] and checked == 10
-    found, checked = await _sample_matching_ids(collection, random.Random(1), 1, matches)
+    found, checked = await _sample_matching_ids(collection, random.Random(1), 5, chunk_inside)
+    assert sorted(found) == [(UUID(int=n), f"chunk of {n}") for n in (3, 6, 9)] and checked == 10
+    found, checked = await _sample_matching_ids(collection, random.Random(1), 1, chunk_inside)
     assert len(found) == 1 and checked < 10
-    assert await _sample_matching_ids(collection, random.Random(1), 0, matches) == ([], 0)
+    assert await _sample_matching_ids(collection, random.Random(1), 0, chunk_inside) == ([], 0)
+
+
+def _chunk(n: int, vector=True, text="slovo") -> SampledChunk:
+    return SampledChunk(id=UUID(int=n), vector=[1.0] if vector else None, terms=text, document_id=None, order=None)
+
+
+def test_scoped_filter_searches_query_from_a_chunk_inside_the_value():
+    # The search within a tag uses that tag's own chunk, so it can find results.
+    tag_a, tag_b, tag_c = UUID(int=101), UUID(int=102), UUID(int=103)
+    inputs = Inputs(chunks=[_chunk(1), _chunk(2)],
+                    scoped={"tag": [(tag_a, _chunk(11)), (tag_b, _chunk(12, vector=False)), (tag_c, _chunk(13))]})
+    profile = load_profile("smoke")
+    workload = Workload.__new__(Workload)
+    workload.inputs, workload.profile = inputs, profile
+    hybrid = Scenario(name="t", kind="search", mode="hybrid", filter="tag")
+    text = Scenario(name="t", kind="search", mode="text", filter="tag")
+    assert [c.id.int for c in workload._usable(hybrid)] == [11, 13]  # hybrid needs a vector
+    assert [workload._filter_value(hybrid, i) for i in range(3)] == [tag_a, tag_c, tag_a]
+    assert [c.id.int for c in workload._usable(text)] == [11, 12, 13]
+    assert workload._filter_value(text, 1) == tag_b
+    unscoped = Scenario(name="y", kind="search", mode="hybrid", filter="year_range")
+    assert [c.id.int for c in workload._usable(unscoped)] == [1, 2]
+
+
+def test_level_inputs_default_to_the_same_inputs():
+    assert load_profile("baseline").level_inputs == "same"
+    data = load_profile("smoke").model_dump()
+    data["level_inputs"] = "fresh"
+    with pytest.raises(pydantic.ValidationError):
+        Profile.model_validate(data)
 
 
 async def _resolved(value):

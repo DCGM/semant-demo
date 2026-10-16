@@ -161,6 +161,9 @@ def run_markdown(doc: dict) -> str:
         p = s["points"][0]
         out += ["", f"Self-recall `{s['name']}`: own chunk in top-{s['limit']} for {p['hit_requests']}/{p['ok']} "
                     "sampled chunks."]
+    repeats = [f"`{s['name']}`: {s['inputs_repeat']}" for s in doc["scenarios"] if s.get("inputs_repeat")]
+    if repeats:
+        out += ["", "Repeated inputs: " + "; ".join(repeats)]
     empty = [s["name"] for s in doc["scenarios"] if s["kind"] in ("search", "direct", "context", "document_view")
              and s.get("points") and not any(p["hit_requests"] for p in s["points"])]
     if empty:
