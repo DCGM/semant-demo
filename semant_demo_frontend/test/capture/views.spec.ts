@@ -37,6 +37,25 @@ test('search results', async ({ page }, testInfo) => {
   await save(page, testInfo, 'search-results')
 })
 
+test('search vector selection', async ({ page }, testInfo) => {
+  // The browser-test profile configures two search vectors (#217).
+  await page.goto('/#/search')
+  await closePhoneNavigation(page)
+  await page.getByRole('textbox').first().fill('Lhota')
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  const select = page.getByTestId('search-vector-select')
+  await select.click()
+  await expect(page.getByRole('option', { name: /Fake small/ })).toBeVisible()
+  await expect(page.locator('.q-menu')).not.toHaveClass(/q-transition/) // fully faded in
+  await save(page, testInfo, 'search-vector-options')
+  await page.getByRole('option', { name: /Fake small/ }).click()
+  await expect(page.locator('.q-menu')).toHaveCount(0)
+  await page.getByRole('textbox').first().press('Enter')
+  await expect(page.locator('#result-1')).toBeVisible()
+  await expect(page.locator('.active-filter-chip', { hasText: 'Embedding: Fake small' })).toBeVisible()
+  await save(page, testInfo, 'search-vector-selected')
+})
+
 test('document view', async ({ page }, testInfo) => {
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)

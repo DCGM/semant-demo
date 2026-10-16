@@ -52,6 +52,7 @@ import type {
   SearchFiltersResponse,
   SearchRequest,
   SearchResponse,
+  SearchVectorsResponse,
   ShareCollectionRequest,
   SuggestSpansRequest,
   SuggestSpansSelectionRequest,
@@ -138,6 +139,8 @@ import {
     SearchRequestToJSON,
     SearchResponseFromJSON,
     SearchResponseToJSON,
+    SearchVectorsResponseFromJSON,
+    SearchVectorsResponseToJSON,
     ShareCollectionRequestFromJSON,
     ShareCollectionRequestToJSON,
     SuggestSpansRequestFromJSON,
@@ -923,6 +926,28 @@ export interface DefaultApiInterface {
      * Get Available Search Filters
      */
     getAvailableSearchFiltersApiSearchFiltersGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchFiltersResponse>;
+
+    /**
+     * Creates request options for getAvailableSearchVectorsApiSearchVectorsGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getAvailableSearchVectorsApiSearchVectorsGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * The search vectors a search request may select, and the default one.
+     * @summary Get Available Search Vectors
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getAvailableSearchVectorsApiSearchVectorsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchVectorsResponse>>;
+
+    /**
+     * The search vectors a search request may select, and the default one.
+     * Get Available Search Vectors
+     */
+    getAvailableSearchVectorsApiSearchVectorsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchVectorsResponse>;
 
     /**
      * Creates request options for getAvalaibleRagConfigurationsApiRagConfigurationsGet without sending the request
@@ -2909,6 +2934,45 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getAvailableSearchFiltersApiSearchFiltersGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchFiltersResponse> {
         const response = await this.getAvailableSearchFiltersApiSearchFiltersGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getAvailableSearchVectorsApiSearchVectorsGet without sending the request
+     */
+    async getAvailableSearchVectorsApiSearchVectorsGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/search/vectors`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * The search vectors a search request may select, and the default one.
+     * Get Available Search Vectors
+     */
+    async getAvailableSearchVectorsApiSearchVectorsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchVectorsResponse>> {
+        const requestOptions = await this.getAvailableSearchVectorsApiSearchVectorsGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SearchVectorsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * The search vectors a search request may select, and the default one.
+     * Get Available Search Vectors
+     */
+    async getAvailableSearchVectorsApiSearchVectorsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchVectorsResponse> {
+        const response = await this.getAvailableSearchVectorsApiSearchVectorsGetRaw(initOverrides);
         return await response.value();
     }
 

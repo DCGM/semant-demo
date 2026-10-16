@@ -49,6 +49,8 @@ class RagRequest(BaseModel):
 class RagRequestMain(BaseModel):
     rag_id: str
     rag_request: RagRequest
+    # Search vector of every retrieval of this answer (GET /api/search/vectors); None: the default.
+    vector: str | None = None
 
 # rag response return by rag backend
 

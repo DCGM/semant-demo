@@ -52,6 +52,19 @@ class SearchFiltersResponse(BaseModel):
     filters: list[SearchFilter]
 
 
+class SearchVectorInfo(BaseModel):
+    """A configured search vector as clients see it (``vectors.py``)."""
+    id: str
+    name: str
+    description: str = ""
+
+
+class SearchVectorsResponse(BaseModel):
+    default_vector: str
+    """Id of the vector used when a request selects none."""
+    vectors: list[SearchVectorInfo]
+
+
 class SummaryRequestBase(BaseModel):
     """Which summaries to generate. The server chooses the model (the search_summary tier)."""
     search_title_generate: bool = True
@@ -92,6 +105,10 @@ class SearchRequest(SummaryRequestBase):
 
     is_hyde: bool = False  # variable which indicates if query is document
 
+    # Configured search vector (GET /api/search/vectors) of vector and hybrid search;
+    # None selects the default. Text search uses no vector.
+    vector: str | None = None
+
 
 class SearchResultChunk(DocumentChunk):
     """
@@ -117,6 +134,8 @@ class SearchResponse(BaseModel):
     search_request: SearchRequest
     time_spent: float
     search_log: list[str]
+    # The search vector used (the selected or default one); None for text search.
+    vector: str | None = None
     # Problems that did not prevent the results, e.g. failed optional summaries.
     warnings: list[str] = []
 
@@ -161,6 +180,8 @@ class ChunkQuery:
     """Hybrid weighting between vector (1.0) and keyword (0.0) scores."""
     vector: list[float] | None = None
     """Query embedding; required for vector and hybrid modes."""
+    target_vector: str | None = None
+    """Stored named vector that ``vector`` is compared with; required with ``vector``."""
     collection_id: UUID | None = None
     tags: TagFilter | None = None
     conditions: tuple[FieldCondition, ...] = ()

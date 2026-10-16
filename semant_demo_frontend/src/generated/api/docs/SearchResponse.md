@@ -11,6 +11,7 @@ Name | Type
 `searchRequest` | [SearchRequest](SearchRequest.md)
 `timeSpent` | number
 `searchLog` | Array&lt;string&gt;
+`vector` | string
 `warnings` | Array&lt;string&gt;
 
 ## Example
@@ -25,6 +26,7 @@ const example = {
   "searchRequest": null,
   "timeSpent": null,
   "searchLog": null,
+  "vector": null,
   "warnings": null,
 } satisfies SearchResponse
 

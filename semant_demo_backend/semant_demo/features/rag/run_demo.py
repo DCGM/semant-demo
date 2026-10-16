@@ -7,10 +7,10 @@ from dotenv import load_dotenv
 load_dotenv() #have to be called before config import
 
 from semant_demo.config import SCRIPT_PATH, config
-from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.weaviate.client import connect_weaviate
+from semant_demo.bootstrap import load_search_vectors
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -29,7 +29,7 @@ async def main():
         chunks=ChunkSearchRepository(client, names),
         collections=UserCollectionRepository(client, names),
         tags=TagRepository(client, names),
-        embeddings=GemmaEmbeddings(config.GEMMA_URL),
+        vectors=load_search_vectors(config),
     ))
     # question/query
     question = "Vyskytly se v Praze neštovice po roce 1800?"

@@ -135,6 +135,23 @@ async def test_agentic_rag_meters_the_agent_and_its_tool_subcalls(tmp_path, llm,
     assert rag_calls(metrics) == [("rag", "medium", "provider", "success")] * 4
 
 
+
+@pytest.mark.parametrize("class_name, params", [
+    ("RagGenerator", {}),
+    ("IncrementalAdaptiveRagGenerator", {"tier": "medium", "web_search_enabled": False, "max_retries": 1}),
+])
+async def test_rag_pipelines_retrieve_with_the_retriever_of_each_request(tmp_path, llm, class_name, params):
+    # The retriever carries per-request choices (the search vector, #217); a shared pipeline
+    # instance must not keep the first request's one.
+    rag = load_rag(tmp_path, llm, class_name, **params)
+    first, second = FakeRetriever(), FakeRetriever()
+
+    await rag.rag_request(RagRequest(question=QUESTION, rag_search=RagSearch()), first)
+    calls = len(first.requests)
+    await rag.rag_request(RagRequest(question=QUESTION, rag_search=RagSearch()), second)
+
+    assert calls > 0 and len(first.requests) == calls and second.requests
+
 @pytest.mark.parametrize(("params", "reason"), [
     ({"model_type": "OPENAI", "model_name": "gpt-4o"}, "retired model params"),
     ({"api_key": "sk-..."}, "retired model params"),

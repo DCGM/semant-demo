@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
+from semant_demo.adapters.embeddings.openai_compatible import OpenAICompatibleEmbeddings
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.llm.usage import LlmMetrics
@@ -28,6 +29,9 @@ from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.rag.registry import RagRegistry
+from semant_demo.features.search.vectors import (
+    Embedder, EmbeddingSettings, SearchVectors, load_search_vectors_settings,
+)
 from semant_demo.features.summarization.document import TemplatedDocumentSummarizer, load_document_summarizer
 from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer, load_summarizer
 
@@ -64,12 +68,29 @@ class WeaviateRepositories:
         )
 
 
+def create_embedder(settings: EmbeddingSettings, config: Config,
+                    transport: httpx.AsyncBaseTransport | None = None) -> Embedder:
+    """The client that embeds the queries of one search vector (``transport``: tests)."""
+    if settings.provider == "embedding_service":
+        return GemmaEmbeddings(settings.base_url or config.GEMMA_URL, transport=transport)
+    return OpenAICompatibleEmbeddings(
+        settings.base_url, settings.model, api_key=config.EMBEDDING_API_KEY, query_prefix=settings.query_prefix,
+        document_prefix=settings.document_prefix, dimensions=settings.dimensions, timeout=settings.timeout,
+        transport=transport)
+
+
+def load_search_vectors(config: Config, transport: httpx.AsyncBaseTransport | None = None) -> SearchVectors:
+    """The configured search vectors (``SEARCH_VECTORS_CONFIG``) with their embedders."""
+    return SearchVectors.build(load_search_vectors_settings(config.SEARCH_VECTORS_CONFIG),
+                               lambda settings: create_embedder(settings, config, transport))
+
+
 @dataclass
 class AppResources:
     config: Config
     engine: AsyncEngine
     session_maker: async_sessionmaker
-    embeddings: GemmaEmbeddings
+    search_vectors: SearchVectors
     topicer: TopicerClient
     llm: LlmGateway
     span_chat: FeatureChat
@@ -84,14 +105,15 @@ class AppResources:
                llm_transport: httpx.AsyncBaseTransport | None = None) -> "AppResources":
         """Construct resources without connecting to any external service.
 
-        Raises ``LlmConfigurationError`` when the model tier catalog is invalid.
+        Raises ``LlmConfigurationError`` when the model tier catalog is invalid, and
+        ``ValidationError`` when the search vector configuration is.
         """
         llm = LlmGateway(ModelCatalog.load(config.LLM_MODELS_CONFIG), ProviderSettings.from_config(config),
                          llm_metrics, http_transport=llm_transport)
         engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
         session_maker = async_sessionmaker(engine, autocommit=False, autoflush=True, expire_on_commit=False)
         return cls(config=config, engine=engine, session_maker=session_maker,
-                   embeddings=GemmaEmbeddings(config.GEMMA_URL),
+                   search_vectors=load_search_vectors(config),
                    topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT),
                    llm=llm,
                    span_chat=FeatureChat(llm, "span_chat", temperature=config.SPAN_CHAT_TEMPERATURE,

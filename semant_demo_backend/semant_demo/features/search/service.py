@@ -1,9 +1,10 @@
 """Search use cases: authorized chunk retrieval and optional summaries.
 
 ``retrieve`` checks access, normalizes the request into a neutral ``ChunkQuery``, embeds
-the query for vector/hybrid search and runs it through the search adapter. RAG uses it
-directly, without summaries. ``search`` adds the optional summaries; when some or all of
-them fail, the retrieved hits are still returned, with a warning.
+the query for vector/hybrid search with the embedder of the selected (or default) search
+vector (``vectors.py``) and runs it through the search adapter against that vector. RAG
+uses it directly, without summaries. ``search`` adds the optional summaries; when some or
+all of them fail, the retrieved hits are still returned, with a warning.
 
 Access (ADR 0007): a ``user_collection_id`` needs read access to that collection, and
 every requested tag must belong to a collection the user can read (to that collection,
@@ -16,7 +17,6 @@ from functools import partial
 from time import time
 from typing import Awaitable, Callable, Protocol
 
-from semant_demo.adapters.embeddings.gemma import GemmaEmbeddings
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -27,6 +27,7 @@ from semant_demo.features.search.filters import InvalidSearchFilterError, parse_
 from semant_demo.features.search.schemas import (
     ChunkQuery, FieldCondition, Op, SearchFiltersResponse, SearchRequest, SearchResponse, SearchType, TagFilter,
 )
+from semant_demo.features.search.vectors import SearchVector, SearchVectors
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class SearchBackends:
     chunks: ChunkSearchRepository
     collections: UserCollectionRepository
     tags: TagRepository
-    embeddings: GemmaEmbeddings
+    vectors: SearchVectors
 
 
 async def retrieve(backends: SearchBackends, user: Principal | None, request: SearchRequest,
@@ -59,6 +60,8 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
     filters, the legacy ``min_year``/``max_year``/``language`` fields apply instead.
     """
     start = time()
+    # An unknown vector is refused before any other work, also for text search.
+    vector = backends.vectors.resolve(request.vector)
     collection_id = None
     if request.user_collection_id is not None:
         collection_id = (await access.require_collection_read(
@@ -75,7 +78,8 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
         tags=TagFilter(tuple(tag_ids), automatic=request.automatic, positive=request.positive)
         if tag_ids and (request.automatic or request.positive) else None,
         conditions=tuple(filter_conditions(request, filter_definitions)),
-        vector=await _embed(backends.embeddings, request),
+        vector=await _embed(vector, request),
+        target_vector=None if request.type == SearchType.text else vector.target_vector,
     )
     hits = await backends.chunks.search(query)
     for hit in hits:
@@ -85,7 +89,8 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
     log_entry = f"Top {len(hits)} results for “{request.query}”. Retrieved in {elapsed:.2f} seconds:"
     # Content-free: RAG retrieves with the user's (rephrased) question.
     logger.info("Search returned %d results in %.2f s", len(hits), elapsed)
-    return SearchResponse(results=hits, search_request=request, time_spent=elapsed, search_log=[log_entry])
+    return SearchResponse(results=hits, search_request=request, time_spent=elapsed, search_log=[log_entry],
+                          vector=None if request.type == SearchType.text else vector.id)
 
 
 async def search(backends: SearchBackends, summarizer: Summarizer, user: Principal | None,
@@ -110,12 +115,19 @@ async def search(backends: SearchBackends, summarizer: Summarizer, user: Princip
     return response
 
 
-def public_retriever(backends: SearchBackends) -> Retriever:
+def public_retriever(backends: SearchBackends, vector: str | None = None) -> Retriever:
     """Retrieval over the public corpus for callers without a user (RAG).
 
-    Requests with a collection or tags are refused like anonymous ones.
+    Requests with a collection or tags are refused like anonymous ones. With ``vector``,
+    every request uses that search vector, whatever it selects itself; without it, the
+    request's own selection (by default the default vector) applies.
     """
-    return partial(retrieve, backends, None)
+    if vector is None:
+        return partial(retrieve, backends, None)
+
+    async def run(request: SearchRequest) -> SearchResponse:
+        return await retrieve(backends, None, request.model_copy(update={"vector": vector}))
+    return run
 
 
 def filter_conditions(request: SearchRequest,
@@ -142,12 +154,12 @@ def filter_conditions(request: SearchRequest,
     return conditions
 
 
-async def _embed(embeddings: GemmaEmbeddings, request: SearchRequest) -> list[float] | None:
+async def _embed(vector: SearchVector, request: SearchRequest) -> list[float] | None:
     if request.type == SearchType.text:
         return None
     if request.is_hyde:
-        return await embeddings.embed_document(request.query)
-    return await embeddings.embed_query(request.query)
+        return await vector.embedder.embed_document(request.query)
+    return await vector.embedder.embed_query(request.query)
 
 
 def display_text(text: str) -> str:

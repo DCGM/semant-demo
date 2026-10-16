@@ -39,6 +39,12 @@ export interface RagRequestMain {
      * @memberof RagRequestMain
      */
     ragRequest: RagRequest;
+    /**
+     * 
+     * @type {string}
+     * @memberof RagRequestMain
+     */
+    vector?: string | null;
 }
 
 /**
@@ -62,6 +68,7 @@ export function RagRequestMainFromJSONTyped(json: any, ignoreDiscriminator: bool
         
         'ragId': json['rag_id'],
         'ragRequest': RagRequestFromJSON(json['rag_request']),
+        'vector': json['vector'] == null ? undefined : json['vector'],
     };
 }
 
@@ -78,6 +85,7 @@ export function RagRequestMainToJSONTyped(value?: RagRequestMain | null, ignoreD
         
         'rag_id': value['ragId'],
         'rag_request': RagRequestToJSON(value['ragRequest']),
+        'vector': value['vector'],
     };
 }
 

@@ -1,0 +1,35 @@
+# Search vectors (#217): the Weaviate named vectors of the chunk collection that vector and
+# hybrid search (and RAG retrieval) may query, and how each one embeds its query.
+# Loaded at startup from SEARCH_VECTORS_CONFIG; fields: features/search/vectors.py.
+#
+# A vector must exist in the collection and be populated offline (data_tools/embedder,
+# #192) before it is listed here. Clients select a vector by `id` (GET /api/search/vectors);
+# a request without a selection uses `default`. Keys are never stored here: an `openai`
+# embedding sends EMBEDDING_API_KEY when it is set.
+
+default: bge-gemma2
+
+vectors:
+  - id: bge-gemma2
+    name: BGE Multilingual Gemma2
+    description: The original chunk embeddings (BAAI/bge-multilingual-gemma2, 3584 dimensions).
+    target_vector: default
+    embedding:
+      provider: embedding_service  # EMBEDDING_SERVICE_HOST / EMBEDDING_SERVICE_PORT
+
+  # A vector added by the offline embedder, queried through an OpenAI-compatible
+  # endpoint (e.g. vLLM). The prefixes must match how the model expects queries; the
+  # documents were embedded with the embedder's `input_template`.
+  #
+  # - id: qwen3-embedding-0.6b
+  #   name: Qwen3 Embedding 0.6B
+  #   description: Chunk text embedded with Qwen/Qwen3-Embedding-0.6B.
+  #   target_vector: Qwen3-Embedding-0-6B
+  #   embedding:
+  #     provider: openai
+  #     base_url: http://embedder.example:8000/v1
+  #     model: Qwen/Qwen3-Embedding-0.6B
+  #     query_prefix: "Instruct: Given a search query, retrieve relevant passages of historical Czech documents\nQuery: "
+  #     document_prefix: ""
+  #     dimensions:       # only for Matryoshka models
+  #     timeout: 36.0

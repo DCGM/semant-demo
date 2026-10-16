@@ -66,6 +66,12 @@ export interface SearchResponse {
     searchLog: Array<string>;
     /**
      * 
+     * @type {string}
+     * @memberof SearchResponse
+     */
+    vector?: string | null;
+    /**
+     * 
      * @type {Array<string>}
      * @memberof SearchResponse
      */
@@ -98,6 +104,7 @@ export function SearchResponseFromJSONTyped(json: any, ignoreDiscriminator: bool
         'searchRequest': SearchRequestFromJSON(json['search_request']),
         'timeSpent': json['time_spent'],
         'searchLog': json['search_log'],
+        'vector': json['vector'] == null ? undefined : json['vector'],
         'warnings': json['warnings'] == null ? undefined : json['warnings'],
     };
 }
@@ -118,6 +125,7 @@ export function SearchResponseToJSONTyped(value?: SearchResponse | null, ignoreD
         'search_request': SearchRequestToJSON(value['searchRequest']),
         'time_spent': value['timeSpent'],
         'search_log': value['searchLog'],
+        'vector': value['vector'],
         'warnings': value['warnings'],
     };
 }
