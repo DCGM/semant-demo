@@ -163,6 +163,10 @@ the database.** There is no downgrade: the backup is the rollback.
    Add its new vector right away with `collection.config.add_vector(...)` (it works without
    reading the config first); check the precondition over REST.
 
+Both database compose files set `LIMIT_RESOURCES: "true"`: Weaviate sets its Go memory limit
+to 80% of the container's `mem_limit` (1.40 warns that its memory-pressure checks are inert
+without one); CPU use is not limited because no CPU quota is set.
+
 Done on the shared test Weaviate on 2026-10-16 (filesystem backup
 `pre-1-40-upgrade-2026-10-16` first): upgrade, both `Chunks` vectors dropped in ~35 s,
 `Qwen3_Embedding_0_6B` added and filled (3,260 chunks), GraphQL working. Rehearsed earlier on a copy of the test store (3,260 chunks, 2026-10-16): 1.34.4 → 1.40.1 starts in

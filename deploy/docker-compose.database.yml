@@ -24,6 +24,10 @@ services:
       CLUSTER_HOSTNAME: 'node1'
       DISK_USE_READONLY_PERCENTAGE: "95"
       DISK_USE_WARNING_PERCENTAGE: "50"
+      # Go memory limit = 80% of mem_limit (from the cgroup); without it Weaviate 1.40's
+      # memory-pressure checks (batch admission, compaction, vector index growth) are inert.
+      # CPUs stay unlimited (no CPU quota is set).
+      LIMIT_RESOURCES: "true"
     mem_limit: 128g
     memswap_limit: 0g
     networks:
