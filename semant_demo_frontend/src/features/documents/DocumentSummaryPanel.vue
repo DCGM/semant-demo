@@ -71,3 +71,24 @@ const emit = defineEmits<{
   cite: [chunkId: string, order: number | null]
 }>()
 </script>
+
+<style scoped>
+/* Quasar's .column utility wraps by default: inside a `fill` RightSidebarPanel (a bounded
+   height, not auto), a summary longer than the panel's height would otherwise wrap sideways
+   into a second flex column next to the button instead of overflowing below it. Disabling
+   wrap, and letting the card scroll on its own, keeps Summarize/Cancel fixed in view while
+   the summary scrolls underneath it, matching the "fill" contract documented where this
+   panel is registered (DocumentViewLayout.vue). */
+.document-summary-panel {
+  flex-wrap: nowrap;
+}
+
+.document-summary-panel > .q-card {
+  /* flex-grow: 0, not 1 — the card should size to its content (a short summary keeps the
+     original compact look) and only shrink below that, scrolling internally, when a long
+     one would otherwise overflow the panel's bounded ("fill") height. */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+</style>

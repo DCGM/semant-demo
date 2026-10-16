@@ -106,6 +106,46 @@ test('switching documents drops a summary of the previous one', async ({ page })
   await expect(page.getByRole('button', { name: 'Summarize Document' })).toBeVisible()
 })
 
+test('a long summary stays below the Summarize button, scrolling on its own, instead of wrapping beside it', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'Summary').click()
+
+  // The fake LLM's canned reply is always short, so a long, realistic summary (one that
+  // overflows the sidebar's fixed "fill" height) needs a stubbed response: this exact shape
+  // regressed once (#358) into wrapping sideways next to the button instead of scrolling
+  // below it, because the panel's root inherited Quasar's .column default flex-wrap.
+  const longSummary = Array.from({ length: 20 }, (_, i) =>
+    `Sentence number ${i + 1} of a long document summary, long enough that the whole thing overflows the sidebar's height [doc1].`
+  ).join(' ')
+  await page.route('**/documents/*/summary', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      document_id: fixture.document('chronicle').id,
+      summary: longSummary,
+      citations: [{ chunk_id: fixture.chunk('chronicle_1').id, order: 0, from_page: 1, to_page: 1 }],
+      time_spent: 1,
+      total_chunks: 1,
+      summarized_chunks: 1,
+      truncated: false
+    })
+  }))
+
+  const summarizeButton = page.getByRole('button', { name: 'Summarize Document' })
+  await summarizeButton.click()
+  await expect(summary(page)).toBeVisible()
+
+  const buttonBox = await summarizeButton.boundingBox()
+  const summaryBox = await summary(page).boundingBox()
+  if (!buttonBox || !summaryBox) throw new Error('expected both the button and the summary card to have a layout box')
+
+  // Stacked (the card starts at or below the button's bottom), not side by side.
+  expect(summaryBox.y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height - 1)
+  // Same column (the card doesn't start to the right of the button).
+  expect(summaryBox.x).toBeLessThanOrEqual(buttonBox.x + 1)
+})
+
 test('a user without collection read access cannot request a document summary', async ({ request }) => {
   const response = await request.post(
     `/api/user_collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}/summary`,
