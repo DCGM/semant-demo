@@ -114,9 +114,12 @@ async def _write_page(collection, objects, vector_name: str, concurrency: int) -
             return
         async with semaphore:
             await collection.data.update(uuid=obj.uuid, vector={vector_name: vector})
-    # Stop on any error. If some writes landed, the checkpoint is NOT advanced;
-    # restarting safely replays this small page.
-    await asyncio.gather(*(update(obj) for obj in objects))
+    # Await every in-flight write before stopping. A failed page does not move
+    # the checkpoint; on resume the whole page is safely retried.
+    results = await asyncio.gather(*(update(obj) for obj in objects), return_exceptions=True)
+    failures = [r for r in results if isinstance(r, BaseException)]
+    if failures:
+        raise RuntimeError(f"{len(failures)} updates failed in this page: {failures[0]}")
 
 
 async def _run(collection, target: dict, args) -> int:
