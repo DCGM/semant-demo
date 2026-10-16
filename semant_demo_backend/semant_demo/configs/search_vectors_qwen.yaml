@@ -1,0 +1,28 @@
+# Search vectors after the Qwen cutover (#385). Not active by default: an instance uses it
+# when its SEARCH_VECTORS_CONFIG is /app/semant_demo/configs/search_vectors_qwen.yaml.
+#
+# Only the Qwen vector: the Gemma embedding service is stopped and there is no fallback to
+# the old `default` vector. Switch an instance only after the named vector exists in its
+# Weaviate chunk collection (a query for a missing target vector fails); until the backfill
+# finishes, vector and hybrid search cover only the chunks embedded so far, as accepted in #385.
+#
+# The served model, revision and URL are those of deploy/docker-compose.embedder.yml
+# (`qwen-embedder`); the chunk vectors are written by data_tools/embedder with the same
+# model and the plain chunk text (input_template `{{ text }}`, no document instruction).
+
+default: qwen3-embedding-0.6b
+
+vectors:
+  - id: qwen3-embedding-0.6b
+    name: Qwen3 Embedding 0.6B
+    description: Chunk text embedded with Qwen/Qwen3-Embedding-0.6B (1,024 dimensions).
+    target_vector: Qwen3-Embedding-0-6B
+    embedding:
+      provider: openai
+      base_url: http://qwen-embedder:8000/v1
+      model: Qwen/Qwen3-Embedding-0.6B
+      # Qwen3-Embedding query format (model card); documents and HyDE passages have no instruction.
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      document_prefix: ""
+      # The model has no Matryoshka support in vLLM: `dimensions` must stay unset.
+      timeout: 36.0

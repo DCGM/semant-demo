@@ -9,10 +9,10 @@ This folder holds the Docker Compose files, Dockerfiles and environment template
 | `docker-compose.app.yaml` | Production app: backend + built frontend |
 | `docker-compose.app-test.yml` | Test app for `test-main` and PR previews (CI/CD managed) |
 | `docker-compose.database.yml` / `docker-compose.database-test.yml` | Weaviate for production / for all test instances |
-| `docker-compose.embedder.yml` | GPU embedding service |
+| `docker-compose.embedder.yml` | GPU embedding service: Qwen3-Embedding-0.6B on vLLM (#385) |
 | `docker-compose.topicer.yml` / `docker-compose.topicer-test.yml` | Topicer service, started manually with `update.sh` (CI/CD does not deploy it, but the app compose files require its external networks). They build from a `Dockerfile.topicer` that is not in this repository ([#299](https://github.com/DCGM/semant-demo/issues/299)) |
 | `Dockerfile` | Multi-stage build of backend + frontend (`npm ci` and the committed generated API client, not regenerated) |
-| `Dockerfile.embedder` | Build of the embedding service |
+| `Dockerfile.embedder` | Build of the former Gemma embedding service (`embedding_service/`); no longer used by `docker-compose.embedder.yml` |
 | `update.sh` | Named shortcuts for the `docker compose` commands below |
 | `.env.example` / `.env.test.example` | Environment templates for production / test instances |
 
@@ -24,7 +24,7 @@ The stack is split across several compose files that are started independently a
 |---|---|---|---|
 | `docker-compose.database.yml` | `weaviate` | `semant_demo_database` | Production Weaviate (REST :8080, gRPC :50051) |
 | `docker-compose.database-test.yml` | `weaviate` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
-| `docker-compose.embedder.yml` | `embedding-service` | `semant_demo_embedder` | Single GPU embedder shared by **production and all test instances** (port 8001) |
+| `docker-compose.embedder.yml` | `qwen-embedder` | `semant_demo_embedder` | Single GPU embedder (vLLM) shared by **production, all test instances and the vector backfill** (`http://qwen-embedder:8000/v1`; host loopback port 8002) |
 | `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder`, `semant_demo_topicer` | Production app instance; own `tasks.db` and `feedback/` mounted via `$SQL_DB_PATH` |
 | `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_test_topicer` | One container per test instance (CI/CD managed); each has its own `tasks.db` and `feedback/` mounted via `$SQL_DB_PATH` |
 
@@ -63,7 +63,10 @@ deployment-only values:
 | `DOMAIN` | `demo.semant.cz` | Traefik Host rule |
 | `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Host directory whose `tasks.db` and `feedback/` are mounted into the container |
 | `FEEDBACK_LOG_PATH` | `/app/feedback/feedback.log.jsonl` | In-app feedback log inside the mounted `feedback/` directory; keep this template value |
-| `GEMMA_MODEL`, `GPU_DEVICE` | `BAAI/bge-multilingual-gemma2`, `0` | Embedding service model and GPU |
+| `GPU_DEVICE` | `0` | GPU of the embedding service |
+| `QWEN_EMBEDDER_PORT`, `QWEN_MAX_MODEL_LEN`, `QWEN_MAX_NUM_BATCHED_TOKENS`, `QWEN_GPU_MEMORY_UTILIZATION` | `8002`, `2048`, `16384`, `0.5` | Optional settings of the Qwen embedding service ([below](#qwen-embedding-service-385)) |
+| `EMBEDDING_API_KEY` | _(empty)_ | Optional key of the embedding service: the server requires it when set and the apps send it |
+| `GEMMA_MODEL` | `BAAI/bge-multilingual-gemma2` | Model of the former Gemma embedding service |
 | `OTEL_ENABLED`, `OTEL_SERVICE_NAME`, `DEPLOYMENT_ENVIRONMENT` | `true`, `semant-demo-app`, `production` | Telemetry of the deployed instances; CI sets the environment per instance ([OBSERVABILITY.md](../docs/OBSERVABILITY.md#runtime-configuration)) |
 
 ---
@@ -79,7 +82,7 @@ them when called without one:
 | `./update.sh app-up` / `app-down` / `app-build` | `docker compose -p semant-demo -f docker-compose.app.yaml up -d` / `down` / `build` |
 | `./update.sh database-up` / `database-down` | production Weaviate (`docker-compose.database.yml`) |
 | `./update.sh test-database-up` / `test-database-down` | test Weaviate (`docker-compose.database-test.yml`, project `semant-demo-test`) |
-| `./update.sh embedder-up` / `embedder-down` / `embedder-build` | embedding service |
+| `./update.sh embedder-up` / `embedder-down` / `embedder-pull` | Qwen embedding service (pulls the pinned vLLM image) |
 | `./update.sh topicer-*` / `test-topicer-*` | Topicer (see the note in [Contents](#contents)) |
 
 Other operations use `docker compose` with the same project and file, for example:
@@ -88,6 +91,51 @@ Other operations use `docker compose` with the same project and file, for exampl
 docker compose -p semant-demo -f docker-compose.app.yaml logs -f app
 docker compose -p semant-demo -f docker-compose.app.yaml ps
 ```
+
+### Qwen embedding service (#385)
+
+`docker-compose.embedder.yml` serves `Qwen/Qwen3-Embedding-0.6B` (1,024 dimensions, pinned
+model revision) with vLLM's OpenAI-compatible `/v1/embeddings` (pinned image
+`vllm/vllm-openai:v0.31.0`, a CUDA 13.0 build: the host driver must support CUDA 13.0).
+The apps reach it as `http://qwen-embedder:8000/v1` on `semant_demo_embedder`; the vector
+backfill (`data_tools/embedder`, template `data_tools/embedder/config.qwen.yaml`) uses the
+loopback port `http://127.0.0.1:8002/v1`. Nothing starts it automatically.
+
+- **Input length.** At most `QWEN_MAX_MODEL_LEN` = 2048 tokens. A longer input is refused
+  (HTTP 400); the backfill asks for truncation to the first 2048 tokens
+  (`truncate_prompt_tokens: -1`). Search queries are far shorter.
+- **No `dimensions`.** vLLM serves this model without Matryoshka support; requests with
+  `dimensions` are refused. Vectors are unit length.
+- **Shared GPU.** `QWEN_GPU_MEMORY_UTILIZATION` (default 0.5 of the GPU) bounds vLLM's
+  memory. On the RTX 4090 the server sustained about 375 chunks/s (≈330 tokens each) in a
+  smoke test; the backfill config keeps 4 concurrent requests to leave room for queries.
+- **Key.** Without `EMBEDDING_API_KEY` the server needs no key (reachable only from the
+  embedder network and loopback). With one, set the same value in each app's `.env`.
+
+Smoke test before use (2026-10-16, on the production host, throwaway container): 401
+without the key when one is set; 1,024 finite unit vectors; the model card's
+query/document example scores reproduced within 0.004 (bf16); an input over 2048 tokens
+refused, and accepted with truncation.
+
+**Cutover order** (operator, #385). Each step is a separate, explicit action:
+
+1. Stop the old Gemma service and remove its container: `docker stop
+   semant-demo-embedding-service-1 && docker rm semant-demo-embedding-service-1`. Do
+   **not** use `docker compose ... --remove-orphans`: the `semant-demo` project also holds
+   the production app and Weaviate.
+2. `./update.sh embedder-pull && ./update.sh embedder-up`; wait until healthy, then check
+   `curl -s http://127.0.0.1:8002/v1/models` and one embedding (1,024 values).
+3. Add the named vector `Qwen3-Embedding-0-6B` to the physical chunk collection
+   (`Chunks_test`) with the chosen index settings (#385, D).
+4. Switch the apps with `SEARCH_VECTORS_CONFIG=/app/semant_demo/configs/search_vectors_qwen.yaml`.
+   CI rebuilds each instance's `.env` from `.env.example` (production, deployed on a
+   release tag) or `.env.test.example` (test instances, deployed on merge) on every deploy,
+   so set it in those templates through a PR; an edit of a deployed `.env` is lost on the
+   next deploy. An instance whose Weaviate lacks the vector fails vector and hybrid search;
+   the test instances share the test Weaviate and need the vector there too. Text search is
+   unaffected.
+5. Start the backfill with a reviewed copy of `data_tools/embedder/config.qwen.yaml`;
+   rerun it to resume.
 
 ### In-app feedback storage
 

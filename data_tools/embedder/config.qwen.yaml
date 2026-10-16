@@ -1,0 +1,38 @@
+# Backfill of the Qwen vector (#385) into the production chunk collection, run on the
+# server next to deploy/docker-compose.embedder.yml. Operator action only, see
+# deploy/README.md#qwen-embedding-service-385; copy this file and check every value first.
+weaviate_host: localhost # production Weaviate (docker-compose.database.yml publishes it on loopback)
+weaviate_port: 8080
+weaviate_grpc_port: 50051
+weaviate_api_key:
+weaviate_headers:
+collection: Chunks_test # the physical collection behind the `Chunks` alias; schema updates need the real name
+vector_name: Qwen3-Embedding-0-6B # canonical name; the app's target_vector (configs/search_vectors_qwen.yaml)
+# The vector is added beforehand with its deliberately chosen index/compression (#385, D);
+# this tool would add plain HNSW without compression.
+create_vector: false
+vector_index_type: hnsw
+distance_metric: cosine
+return_properties: [text]
+max_records:
+scan_batch_size: 512
+embed_batch_size: 64
+# Leave capacity for the apps' query embeddings on the same server.
+max_concurrent_requests: 4
+max_concurrent_writes: 32
+max_retries: 5
+retry_delay: 10.0
+embedder:
+  cls: VLLMEmbedder
+  config:
+    base_url: http://127.0.0.1:8002/v1 # qwen-embedder's loopback port (QWEN_EMBEDDER_PORT)
+    api_key: # EMBEDDING_API_KEY if the server has one; empty uses OPENAI_API_KEY or a dummy
+    model_name: Qwen/Qwen3-Embedding-0.6B
+    input_template: '{{ text }}' # the canonical stored text, no instruction (documents)
+    dimensions: # must stay unset (no Matryoshka support in vLLM for this model)
+    # The server accepts at most 2048 tokens (QWEN_MAX_MODEL_LEN); longer chunks are
+    # embedded from their first 2048 tokens instead of failing the run.
+    truncate_prompt_tokens: -1
+    extra_body:
+    timeout: 120.0
+    max_retries: 5

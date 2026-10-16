@@ -67,6 +67,10 @@ After a run has filled the vector for the whole collection, add an entry there:
 Search and RAG name a target vector in every vector and hybrid query, so adding a vector does
 not break the existing ones. Until a vector is listed, it is unused.
 
+`config.qwen.yaml` is the template of the production backfill of the Qwen vector (#385):
+it writes `Qwen3-Embedding-0-6B` into `Chunks_test` through the embedding service of
+`deploy/docker-compose.embedder.yml`, truncating chunks to the server's 2048 tokens.
+
 **Production.** Adding a vector rewrites every chunk object and needs memory for another
 vector index (see `docs/WEAVIATE_AUDIT_2026-10.md`, *Named vectors*). Do not add one to the
 production `Chunks` collection before its current vector index is complete (#375) and the
