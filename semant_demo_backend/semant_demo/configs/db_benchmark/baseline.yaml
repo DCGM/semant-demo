@@ -1,0 +1,37 @@
+# Production-safe baseline (#374): read-only, at most 10 concurrent requests and 20 request
+# starts per second, 40 requests or 20 s per scenario and level. Query inputs are sampled at
+# run time (seeded); see docs/DB_BENCHMARK.md.
+name: baseline
+description: Representative semANT read paths at 1/5/10 concurrent requests.
+seed: 374
+concurrency: [1, 5, 10]
+requests_per_point: 40
+max_seconds_per_point: 20
+warmup_requests: 5
+timeout: 30
+max_qps: 20
+pause_between_points: 2
+queries:
+  sample_objects: 100
+  terms_per_query: 2
+  year_ranges: [[1900, 1920], [1800, 1850], [1940, 1952]]
+  languages: [ces, deu]
+  sample_tags: 20
+  sample_user_collections: 10
+scenarios:
+  - {name: bm25, kind: search, mode: text, description: "Search page, keyword mode (app adapter, document reference returned)"}
+  - {name: vector, kind: search, mode: vector, description: "Search page, vector mode"}
+  - {name: hybrid, kind: search, mode: hybrid, alpha: 0.5, description: "Search page default and RAG retrieval (hybrid, alpha 0.5, 10 chunks)"}
+  - {name: hybrid_year, kind: search, mode: hybrid, filter: year_range, description: "Hybrid + chunk yearIssued range filter"}
+  - {name: hybrid_language, kind: search, mode: hybrid, filter: language, description: "Hybrid + chunk language filter"}
+  - {name: hybrid_document_type, kind: search, mode: hybrid, filter: document_type, description: "Hybrid + documentType filter through the document reference"}
+  - {name: hybrid_tag, kind: search, mode: hybrid, filter: tag, description: "Hybrid + chunk tag reference filter (automatic or positive)"}
+  - {name: hybrid_user_collection, kind: search, mode: hybrid, filter: user_collection, description: "Hybrid within a user collection (reference filter)"}
+  - {name: bm25_direct, kind: direct, mode: text, description: "BM25 without references (database-level)"}
+  - {name: vector_direct, kind: direct, mode: vector, description: "near_vector without references"}
+  - {name: hybrid_direct, kind: direct, mode: hybrid, alpha: 0.5, description: "Hybrid without references"}
+  - {name: chunk_context, kind: context, context_chunks: 2, description: "Two chunks before and after a chunk (span chat / context)"}
+  - {name: document_view, kind: document_view, max_document_chunks: 2000, concurrency: [1, 5], description: "Document view: all chunks of a document with collection membership"}
+  - {name: corpus_overview, kind: aggregate, concurrency: [1, 5], description: "Corpus overview aggregates over Documents (uncached)"}
+  - {name: mixed, kind: mixed, of: [hybrid, hybrid_year, bm25, hybrid_user_collection, chunk_context, document_view], description: "Interleaved user-like mix"}
+  - {name: self_recall, kind: self_recall, limit: 10, description: "Recall check: each sampled chunk in the top 10 for its own vector"}

@@ -100,7 +100,8 @@ semant_demo_backend/semant_demo/
   configs/                YAML: llm_models, search_summarizer, search_filters, rag/ (RAG configurations)
   users/                  FastAPI Users: model, manager, auth routers, schemas; routes (user search)
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
-                          document_cleanup (audit, then gated delete of documents without chunks)
+                          document_cleanup (audit, then gated delete of documents without chunks),
+                          chunk_year, db_benchmark (read-only Weaviate inventory and query benchmark, #374)
 ```
 
 ```mermaid
