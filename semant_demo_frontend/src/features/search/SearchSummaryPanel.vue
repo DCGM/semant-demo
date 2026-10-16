@@ -39,17 +39,11 @@
     <q-card v-if="tokens.length" flat bordered class="bg-blue-grey-1" data-testid="search-summary">
       <q-card-section>
         <div class="text-caption text-grey q-mb-sm">Time spent: {{ timeSpent.toFixed(2) }}s</div>
-        <div class="text-body2" style="white-space: pre-wrap;">
-          <template v-for="(token, idx) in tokens" :key="idx">
-            <span v-if="token.type === 'text'">{{ token.value }}</span>
-            <a
-              v-else
-              href="#"
-              class="citation-link"
-              @click.prevent="emit('cite', token.docNumber)"
-            >[{{ token.docNumber }}]</a>
-          </template>
-        </div>
+        <CitedSummaryText
+          :tokens="tokens"
+          :label="(citation) => citation.docNumber"
+          @cite="(citation) => emit('cite', citation.docNumber)"
+        />
       </q-card-section>
     </q-card>
     <div v-else-if="!error" class="text-caption text-grey-7">
@@ -59,6 +53,7 @@
 </template>
 
 <script setup lang="ts">
+import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
 import { SUMMARY_BREVITY_OPTIONS, SUMMARY_SCOPE_OPTIONS } from './useSearchSummary'
 import type { SummaryScopeOption, SummaryToken } from './useSearchSummary'
 
@@ -79,10 +74,3 @@ const emit = defineEmits<{
   'update:scope': [value: SummaryScopeOption]
 }>()
 </script>
-
-<style scoped>
-.citation-link {
-  color: var(--q-primary);
-  text-decoration: underline;
-}
-</style>

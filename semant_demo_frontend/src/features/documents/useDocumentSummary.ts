@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
-import type { DocumentSummaryCitation } from 'src/generated/api'
+import type { DocumentSummaryCitation, DocumentSummaryResponse } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
+import { tokenizeCitations } from 'src/shared/citationTokens'
 
 const SUMMARY_FAILED_FALLBACK = 'Failed to summarize the document.'
 
@@ -16,31 +17,10 @@ export type SummaryToken =
  * text is model output) is shown as plain text rather than a dead link.
  */
 export function parseDocumentSummaryTokens (text: string, citations: DocumentSummaryCitation[]): SummaryToken[] {
-  const tokens: SummaryToken[] = []
-  const citationRegex = /\[(doc([1-9][0-9]*))]/g
-  let lastIndex = 0
-
-  for (const match of text.matchAll(citationRegex)) {
-    const matchText = match[0]
-    const number = parseInt(match[2], 10)
-    const index = match.index ?? 0
-
-    if (index > lastIndex) {
-      tokens.push({ type: 'text', value: text.slice(lastIndex, index) })
-    }
+  return tokenizeCitations(text, number => {
     const citation = citations[number - 1]
-    tokens.push(citation
-      ? { type: 'citation', chunkId: citation.chunkId, number, order: citation.order ?? null }
-      : { type: 'text', value: matchText })
-
-    lastIndex = index + matchText.length
-  }
-
-  if (lastIndex < text.length) {
-    tokens.push({ type: 'text', value: text.slice(lastIndex) })
-  }
-
-  return tokens
+    return citation ? { chunkId: citation.chunkId, number, order: citation.order ?? null } : null
+  })
 }
 
 export interface RequestedCitation {
@@ -57,13 +37,10 @@ export interface RequestedCitation {
 // `DocumentReaderPage` is a sibling route with no prop/event path from the panel. Setting
 // `requestedCitation` from the panel's `cite` event makes the reader page scroll to it.
 const summarizing = ref(false)
-const summary = ref('')
-const citations = ref<DocumentSummaryCitation[]>([])
+// The six DocumentSummaryResponse fields are always set and reset together, so one slot
+// carries all of them rather than one ref each (#358 review).
+const result = ref<DocumentSummaryResponse | null>(null)
 const error = ref<string | null>(null)
-const timeSpent = ref(0)
-const totalChunks = ref(0)
-const summarizedChunks = ref(0)
-const truncated = ref(false)
 const requestedCitation = ref<RequestedCitation | null>(null)
 let citationToken = 0
 let abort: AbortController | null = null
@@ -80,20 +57,16 @@ const guard = createContextGuard()
 export function useDocumentSummary () {
   const api = useApi().default
 
-  const tokens = computed(() => parseDocumentSummaryTokens(summary.value, citations.value))
+  const tokens = computed(() =>
+    result.value ? parseDocumentSummaryTokens(result.value.summary, result.value.citations) : [])
 
   function reset () {
     abort?.abort()
     abort = null
     guard.enter()
     summarizing.value = false
-    summary.value = ''
-    citations.value = []
+    result.value = null
     error.value = null
-    timeSpent.value = 0
-    totalChunks.value = 0
-    summarizedChunks.value = 0
-    truncated.value = false
   }
 
   async function summarize (collectionId: string, documentId: string) {
@@ -109,12 +82,7 @@ export function useDocumentSummary () {
         { signal: controller.signal }
       )
       if (!isCurrent()) return
-      summary.value = data.summary
-      citations.value = data.citations
-      timeSpent.value = data.timeSpent
-      totalChunks.value = data.totalChunks
-      summarizedChunks.value = data.summarizedChunks
-      truncated.value = data.truncated
+      result.value = data
     } catch (e) {
       if (!isCurrent() || isAbortError(e)) return
       console.error('Document summarization failed', e)
@@ -143,13 +111,13 @@ export function useDocumentSummary () {
 
   return {
     summarizing: computed(() => summarizing.value),
-    summary: computed(() => summary.value),
-    citations: computed(() => citations.value),
+    summary: computed(() => result.value?.summary ?? ''),
+    citations: computed(() => result.value?.citations ?? []),
     error: computed(() => error.value),
-    timeSpent: computed(() => timeSpent.value),
-    totalChunks: computed(() => totalChunks.value),
-    summarizedChunks: computed(() => summarizedChunks.value),
-    truncated: computed(() => truncated.value),
+    timeSpent: computed(() => result.value?.timeSpent ?? 0),
+    totalChunks: computed(() => result.value?.totalChunks ?? 0),
+    summarizedChunks: computed(() => result.value?.summarizedChunks ?? 0),
+    truncated: computed(() => result.value?.truncated ?? false),
     tokens,
     summarize,
     cancel,

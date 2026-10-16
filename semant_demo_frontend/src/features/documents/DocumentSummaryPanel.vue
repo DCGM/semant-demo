@@ -35,17 +35,11 @@
           <q-icon name="warning" size="16px" class="q-mr-xs" />
           Partial summary — first {{ summarizedChunks }} of {{ totalChunks }} chunks.
         </div>
-        <div class="text-body2" style="white-space: pre-wrap;">
-          <template v-for="(token, idx) in tokens" :key="idx">
-            <span v-if="token.type === 'text'">{{ token.value }}</span>
-            <a
-              v-else
-              href="#"
-              class="citation-link"
-              @click.prevent="emit('cite', token.chunkId, token.order)"
-            >[{{ token.number }}]</a>
-          </template>
-        </div>
+        <CitedSummaryText
+          :tokens="tokens"
+          :label="(citation) => citation.number"
+          @cite="(citation) => emit('cite', citation.chunkId, citation.order)"
+        />
       </q-card-section>
     </q-card>
     <div v-else-if="!error && !loading" class="text-caption text-grey-7">
@@ -55,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
 import type { SummaryToken } from './useDocumentSummary'
 
 // Props-in/events-out only: this panel does not know it is shown in a sidebar and has no
@@ -76,10 +71,3 @@ const emit = defineEmits<{
   cite: [chunkId: string, order: number | null]
 }>()
 </script>
-
-<style scoped>
-.citation-link {
-  color: var(--q-primary);
-  text-decoration: underline;
-}
-</style>

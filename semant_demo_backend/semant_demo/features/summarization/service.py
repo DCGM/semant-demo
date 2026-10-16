@@ -35,28 +35,27 @@ QUESTION_SYSTEM_PROMPT = "\n".join([
 
 
 QUESTION_FAILED_MESSAGE = "The language model could not answer the question."
-
-
-class QuestionFailed(Exception):
-    """The model did not answer; carries the safe error message shown to the client.
-
-    Provider exception messages may echo the request, endpoints or credentials, so only a
-    fixed message, or the server-authored :class:`LlmNotConfigured` one, is passed on.
-    """
-
-
 DOCUMENT_SUMMARY_FAILED_MESSAGE = "The document could not be summarized."
 
 
-class DocumentSummaryFailed(Exception):
-    """The model did not produce a document summary; carries the safe error message shown to
-    the client (same reasoning as :class:`QuestionFailed`: provider exception text may echo
-    the request or credentials, so only a fixed message, or the server-authored
-    :class:`LlmNotConfigured` one, is passed on). A generation failure is reported as a
-    failed request rather than a 200 whose ``summary`` is quietly the configured fallback
-    text (#358 review) — unlike the search-results summarizer, a document summary has no
-    other content to fall back on, so there is nothing useful to keep.
+class SafeLlmFailure(Exception):
+    """A model call did not produce a result; carries only the safe error message shown to
+    the client.
+
+    Provider exception messages may echo the request, endpoints or credentials, so only a
+    fixed per-feature message, or the server-authored :class:`LlmNotConfigured` one, is ever
+    passed on. A generation failure is reported as a failed request rather than a 200 whose
+    content is quietly the configured fallback text — the question endpoint has nothing else
+    to answer with, and a document summary has no other content to fall back on.
+
+    ``QuestionFailed`` and ``DocumentSummaryFailed`` are this same class under the names each
+    call site (and their tests) already use (#358 review: the two were structurally
+    identical, differing only in which fixed message their raiser passes in).
     """
+
+
+QuestionFailed = SafeLlmFailure
+DocumentSummaryFailed = SafeLlmFailure
 
 
 async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
@@ -118,13 +117,20 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
                                                                 collection_id)
     chunks = sorted(detail.chunks, key=lambda chunk: (chunk.order is None, chunk.order))
     truncated = chunks[:document_summarizer.chunk_limit]
-    failures: list[Exception] = []
+    # gen_document_summary calls the model exactly once here, so a single slot — not the
+    # list-of-failures accumulator the multi-part search summarizer needs — is enough to carry
+    # the exception out of its on_error callback (#358 review).
+    failure: Exception | None = None
+
+    def capture_failure(_kind: str, exc: Exception) -> None:
+        nonlocal failure
+        failure = exc
+
     summary = await document_summarizer.gen_document_summary(truncated, document_title=detail.document.title,
-                                                              on_error=lambda _kind, exc: failures.append(exc))
-    if failures:
-        cause = failures[0]
-        message = str(cause) if isinstance(cause, LlmNotConfigured) else DOCUMENT_SUMMARY_FAILED_MESSAGE
-        raise DocumentSummaryFailed(message) from cause
+                                                              on_error=capture_failure)
+    if failure is not None:
+        message = str(failure) if isinstance(failure, LlmNotConfigured) else DOCUMENT_SUMMARY_FAILED_MESSAGE
+        raise DocumentSummaryFailed(message) from failure
     citations = [
         DocumentSummaryCitation(chunk_id=chunk.id, order=chunk.order, from_page=chunk.from_page,
                                 to_page=chunk.to_page)

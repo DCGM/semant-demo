@@ -77,3 +77,11 @@ async def test_unconfigured_provider_names_the_missing_setting():
 
     with pytest.raises(service.QuestionFailed, match="^OPENAI_API_KEY is not configured on the server$"):
         await service.answer_question(FakeLlm(failing), QUESTION, results("Jan Novák."))
+
+
+def test_question_and_document_summary_failures_are_the_same_exception_type():
+    # #358 review: QuestionFailed and DocumentSummaryFailed were structurally identical
+    # (SafeLlmFailure under two names); each call site and its tests can keep using its own
+    # name, but they must still be one `except` away from each other.
+    assert service.QuestionFailed is service.DocumentSummaryFailed
+    assert service.QuestionFailed is service.SafeLlmFailure

@@ -3,9 +3,9 @@
 Deliberately not a subclass of ``SearchResultsSummarizer`` (``features/summarization/base.py``):
 every one of its abstract methods takes a search ``query`` as a required first argument, and a
 document summary has none. Forcing one through that contract would mean inventing a fake query
-string. This reuses only the shared plumbing (``ModelOptions``, ``Template``, the
-``_generate``/``_generate_or_fallback`` pattern, ``LlmGateway.complete``), the same way
-``TemplatedSearchResultsSummarizer`` (``templated.py``) is built.
+string. It shares its prompt-selection and single-call LLM generation with
+``TemplatedSearchResultsSummarizer`` (``templated.py``) via ``TemplateGenerationMixin``, and
+otherwise follows the same ``_generate``/``_generate_or_fallback`` pattern.
 """
 import logging
 from typing import Callable, Optional, Sequence
@@ -16,11 +16,11 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 
 from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.features.documents.schemas import DocumentChunk
-from semant_demo.features.summarization.templated import ModelOptions
+from semant_demo.features.summarization.templated import ModelOptions, TemplateGenerationMixin
 from semant_demo.utils.template import Template, TemplateTransformer
 
 
-class TemplatedDocumentSummarizer(ConfigurableMixin, CreatableMixin):
+class TemplatedDocumentSummarizer(TemplateGenerationMixin, ConfigurableMixin, CreatableMixin):
     """
     Summarizes a document from a (possibly truncated) sequence of its chunks. Prompts and
     options come from the configuration; the model is the ``document_summary`` feature's
@@ -31,8 +31,6 @@ class TemplatedDocumentSummarizer(ConfigurableMixin, CreatableMixin):
     fake LLM provider recognizes): the caller builds citations from the same chunk order it
     passed in, so citation N always refers to ``chunks[N - 1]``.
     """
-
-    llm: LlmGateway | None = None
 
     chunk_limit: int = ConfigurableValue(
         user_default=40,
@@ -74,27 +72,10 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
         transform=TemplateTransformer()
     )
 
-    @staticmethod
-    def _handle_prompt(prompt: Optional[str], default_prompt: Template) -> Template:
-        """The provided prompt, or the default one when none is provided."""
-        if prompt is None:
-            return default_prompt
-        if not isinstance(prompt, str):
-            raise ValueError("Prompt must be a string.")
-        return Template(prompt)
-
     async def _generate(self, system_prompt: Template, prompt: Template, values: dict,
                         options: ModelOptions) -> str:
         """The generated text; raises when the model call fails."""
-        if self.llm is None:
-            raise RuntimeError("The summarizer has no LLM gateway.")
-        reply = await self.llm.complete(
-            "document_summary",
-            [{"role": "system", "content": system_prompt.render(values)},
-             {"role": "user", "content": prompt.render(values)}],
-            temperature=options.temperature, max_tokens=options.max_completion_tokens,
-            context_size=options.context_size)
-        return reply.strip()
+        return await self._complete("document_summary", system_prompt, prompt, values, options)
 
     async def _generate_or_fallback(self, kind: str, fallback: str,
                                     on_error: Optional[Callable[[str, Exception], None]], *args) -> str:
@@ -116,22 +97,24 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
             return fallback
 
     async def gen_document_summary(self, chunks: Sequence[DocumentChunk], document_title: Optional[str] = None,
-                                   prompt: Optional[str] = None,
                                    on_error: Optional[Callable[[str, Exception], None]] = None) -> str:
         """
         Creates an overall summary of a document from ``chunks`` (already truncated by the
         caller to ``chunk_limit``, in document order).
 
+        Unlike the search-results summarizer, there is no caller-supplied prompt override here:
+        nothing in the document-summary API lets a client set one (#358 review — it was
+        speculative generality, added for symmetry rather than an actual need).
+
         :param chunks: the document's chunks to summarize, in document order; labelled
             ``[docN]`` (1-based) in the prompt
         :param document_title: optional document title given to the model for context
-        :param prompt: optional prompt to use instead of the default one
         :param on_error: called with ("summary", the exception) if generation fails
         :return: the generated summary, or the configured fallback text on failure
         """
         return await self._generate_or_fallback(
             "summary", self.gen_summary_error_summary, on_error,
-            self.gen_summary_system_prompt, self._handle_prompt(prompt, self.gen_summary_prompt),
+            self.gen_summary_system_prompt, self.gen_summary_prompt,
             {"chunks": chunks, "document_title": document_title}, self.gen_summary_model_options)
 
 
