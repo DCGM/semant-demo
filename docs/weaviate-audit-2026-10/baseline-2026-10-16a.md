@@ -4,9 +4,11 @@
 - Target: `localhost:8080` (Weaviate 1.34.4), chunks collection `Chunks` → `Chunks_test`
 - Tool: db_benchmark v1, git `985a269`
 - Profile: `baseline` (fingerprint `2f81b722cce82ed1`), seed 374, max 20.0 req/s, 40 requests or 20.0 s per point, timeout 30.0 s, warm-up 5 requests per scenario
-- Inputs: sampled_chunks 100, with_vector 100, vector_dimensions 3584, vector_name default, with_terms 100, documents 100, tags 20, user_collections 10, document_types 10, sampling_seconds 13.01, query_set 8c8d3ae26293; note: document_view skips 7 sampled documents with more than 2000 chunks
-- Resource source: /host-cgroup/system.slice/docker-fb8e9f1db2088e66b0ef76b37e7fae06586a804f1a915bcee9b7c17fa123bd12.scope
+- Inputs: sampled_chunks 100, with_vector 100, vector_dimensions 3584, vector_name default, with_terms 100, documents 100, tags 20, user_collections 10, document_types 10, sampling_seconds 13.01, query_set 8e519190f939; note: document_view skips 7 sampled documents with more than 2000 chunks
+- Resource source: Weaviate container cgroup v2
 - Heavy profile opt-in: False
+- Inputs per level: each concurrency level ran the next inputs (tool version 1): levels differ in queries as well as concurrency
+- Id hashes: keyed, key id `968d574b` (keyed from unkeyed version 1 hashes)
 
 | scenario | layer | conc. | ok | non-empty | errors | timeouts | p50 ms | p95 ms | p99 ms | max ms | req/s | Weaviate CPU cores | anon max | disk read | host IO PSI max |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -56,5 +58,7 @@
 | self_recall | direct | 1 | 100 | 0 | 0 | 0 | 6 | 8.2 | 13.7 | 13.9 | 20.17 | 0.57 | 3.7 GiB | 5060 MiB | 1.6 |
 
 Self-recall `self_recall`: own chunk in top-10 for 0/100 sampled chunks.
+
+**No request returned results in `hybrid_tag`: these timings are not representative of the scenario (for example a filter that matches nothing).**
 
 Scenarios: `bm25` — Search page, keyword mode (app adapter, document reference returned); `vector` — Search page, vector mode; `hybrid` — Search page default and RAG retrieval (hybrid, alpha 0.5, 10 chunks); `hybrid_year` — Hybrid + chunk yearIssued range filter; `hybrid_language` — Hybrid + chunk language filter; `hybrid_document_type` — Hybrid + documentType filter through the document reference; `hybrid_tag` — Hybrid + chunk tag reference filter (automatic or positive); `hybrid_user_collection` — Hybrid within a user collection (reference filter); `bm25_direct` — BM25 without references (database-level); `vector_direct` — near_vector without references; `hybrid_direct` — Hybrid without references; `chunk_context` — Two chunks before and after a chunk (span chat / context); `document_view` — Document view: all chunks of a document with collection membership; `corpus_overview` — Corpus overview aggregates over Documents (uncached); `mixed` — Interleaved user-like mix; `self_recall` — Recall check: each sampled chunk in the top 10 for its own vector

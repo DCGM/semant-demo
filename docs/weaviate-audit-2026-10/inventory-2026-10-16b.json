@@ -1,9 +1,9 @@
 {
  "kind": "inventory",
  "environment": {
-  "created_at": "2026-10-16T10:08:31+00:00",
-  "tool_version": 1,
-  "git_commit": "985a269",
+  "created_at": "2026-10-16T12:42:45+00:00",
+  "tool_version": 2,
+  "git_commit": "9417ee5",
   "target": {
    "endpoint": "localhost:8080",
    "weaviate_version": "1.34.4",
@@ -71,6 +71,15 @@
     },
     "shards": [
      {
+      "class": "Tag_test",
+      "name": "NKTxrGUDeCfZ",
+      "objectCount": 11336,
+      "vectorIndexingStatus": "READY",
+      "vectorQueueLength": 0,
+      "compressed": false,
+      "loaded": true
+     },
+     {
       "class": "MetaDataEnrichmentTest",
       "name": "S0svkpY1LgQt",
       "objectCount": 10,
@@ -123,27 +132,197 @@
       "vectorQueueLength": 0,
       "compressed": false,
       "loaded": true
-     },
-     {
-      "class": "Tag_test",
-      "name": "NKTxrGUDeCfZ",
-      "objectCount": 11336,
-      "vectorIndexingStatus": "READY",
-      "vectorQueueLength": 0,
-      "compressed": false,
-      "loaded": true
      }
     ]
    }
   ],
   "aliases": {
-   "Documents": "Documents_test",
    "Span": "Span_test",
    "Tag": "Tag_test",
    "UserCollection": "Usercollection_test",
-   "Chunks": "Chunks_test"
+   "Chunks": "Chunks_test",
+   "Documents": "Documents_test"
   },
   "collections": {
+   "Tag_test": {
+    "vectors": {
+     "default": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": null
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": true,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 8,
+    "searchable": [
+     "collection_name",
+     "tag_color",
+     "tag_definition",
+     "tag_examples",
+     "tag_name",
+     "tag_pictogram",
+     "tag_shorthand"
+    ],
+    "filterable": 8,
+    "range_filters": [],
+    "references": [
+     "userCollection"
+    ],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {}
+   },
+   "Chunks_test": {
+    "vectors": {
+     "default": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": {
+       "rq": {
+        "bits": 8,
+        "rescoreLimit": 20
+       }
+      }
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": false,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 31,
+    "searchable": [
+     "communicative_mode",
+     "complexity",
+     "documentary_role",
+     "emotional_tone",
+     "geographic_scope",
+     "information_granularity",
+     "intertextual_density",
+     "language",
+     "named_entity_focus",
+     "narrative_perspective",
+     "quantitative_content_density",
+     "reliability_signals",
+     "start_page_id",
+     "structural_form",
+     "style",
+     "subject_domain",
+     "tagSpans",
+     "temporal_reference_frame",
+     "text",
+     "textual_stance",
+     "title"
+    ],
+    "filterable": 31,
+    "range_filters": [
+     "yearIssued"
+    ],
+    "references": [
+     "automaticTag",
+     "document",
+     "negativeTag",
+     "positiveTag",
+     "userCollection"
+    ],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {
+     "default": 3584
+    }
+   },
+   "Usercollection_test": {
+    "vectors": {
+     "default": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": null
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": true,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 8,
+    "searchable": [
+     "color",
+     "description",
+     "name",
+     "owner",
+     "user_id"
+    ],
+    "filterable": 8,
+    "range_filters": [],
+    "references": [],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {}
+   },
    "MetaDataEnrichmentTest": {
     "vectors": {
      "default": {
@@ -357,239 +536,52 @@
     "vector_dimensions": {
      "default": 3584
     }
-   },
-   "Tag_test": {
-    "vectors": {
-     "default": {
-      "type": "hnsw",
-      "distance": "cosine",
-      "ef": -1,
-      "efConstruction": 128,
-      "maxConnections": 32,
-      "vectorCacheMaxObjects": 1000000000000,
-      "filterStrategy": "acorn",
-      "flatSearchCutoff": 40000,
-      "dynamicEfMin": 100,
-      "dynamicEfMax": 500,
-      "dynamicEfFactor": 8,
-      "skip": false,
-      "quantizer": null
-     }
-    },
-    "inverted": {
-     "bm25": {
-      "b": 0.75,
-      "k1": 1.2
-     },
-     "usingBlockMaxWAND": true,
-     "stopwords": "en",
-     "indexTimestamps": false,
-     "indexNullState": false,
-     "indexPropertyLength": false
-    },
-    "properties": 8,
-    "searchable": [
-     "collection_name",
-     "tag_color",
-     "tag_definition",
-     "tag_examples",
-     "tag_name",
-     "tag_pictogram",
-     "tag_shorthand"
-    ],
-    "filterable": 8,
-    "range_filters": [],
-    "references": [
-     "userCollection"
-    ],
-    "sharding": {
-     "desiredCount": 1,
-     "actualCount": 1
-    },
-    "replication_factor": 1,
-    "multi_tenancy": false,
-    "vector_dimensions": {}
-   },
-   "Chunks_test": {
-    "vectors": {
-     "default": {
-      "type": "hnsw",
-      "distance": "cosine",
-      "ef": -1,
-      "efConstruction": 128,
-      "maxConnections": 32,
-      "vectorCacheMaxObjects": 1000000000000,
-      "filterStrategy": "acorn",
-      "flatSearchCutoff": 40000,
-      "dynamicEfMin": 100,
-      "dynamicEfMax": 500,
-      "dynamicEfFactor": 8,
-      "skip": false,
-      "quantizer": {
-       "rq": {
-        "bits": 8,
-        "rescoreLimit": 20
-       }
-      }
-     }
-    },
-    "inverted": {
-     "bm25": {
-      "b": 0.75,
-      "k1": 1.2
-     },
-     "usingBlockMaxWAND": false,
-     "stopwords": "en",
-     "indexTimestamps": false,
-     "indexNullState": false,
-     "indexPropertyLength": false
-    },
-    "properties": 31,
-    "searchable": [
-     "communicative_mode",
-     "complexity",
-     "documentary_role",
-     "emotional_tone",
-     "geographic_scope",
-     "information_granularity",
-     "intertextual_density",
-     "language",
-     "named_entity_focus",
-     "narrative_perspective",
-     "quantitative_content_density",
-     "reliability_signals",
-     "start_page_id",
-     "structural_form",
-     "style",
-     "subject_domain",
-     "tagSpans",
-     "temporal_reference_frame",
-     "text",
-     "textual_stance",
-     "title"
-    ],
-    "filterable": 31,
-    "range_filters": [
-     "yearIssued"
-    ],
-    "references": [
-     "automaticTag",
-     "document",
-     "negativeTag",
-     "positiveTag",
-     "userCollection"
-    ],
-    "sharding": {
-     "desiredCount": 1,
-     "actualCount": 1
-    },
-    "replication_factor": 1,
-    "multi_tenancy": false,
-    "vector_dimensions": {
-     "default": 3584
-    }
-   },
-   "Usercollection_test": {
-    "vectors": {
-     "default": {
-      "type": "hnsw",
-      "distance": "cosine",
-      "ef": -1,
-      "efConstruction": 128,
-      "maxConnections": 32,
-      "vectorCacheMaxObjects": 1000000000000,
-      "filterStrategy": "acorn",
-      "flatSearchCutoff": 40000,
-      "dynamicEfMin": 100,
-      "dynamicEfMax": 500,
-      "dynamicEfFactor": 8,
-      "skip": false,
-      "quantizer": null
-     }
-    },
-    "inverted": {
-     "bm25": {
-      "b": 0.75,
-      "k1": 1.2
-     },
-     "usingBlockMaxWAND": true,
-     "stopwords": "en",
-     "indexTimestamps": false,
-     "indexNullState": false,
-     "indexPropertyLength": false
-    },
-    "properties": 8,
-    "searchable": [
-     "color",
-     "description",
-     "name",
-     "owner",
-     "user_id"
-    ],
-    "filterable": 8,
-    "range_filters": [],
-    "references": [],
-    "sharding": {
-     "desiredCount": 1,
-     "actualCount": 1
-    },
-    "replication_factor": 1,
-    "multi_tenancy": false,
-    "vector_dimensions": {}
    }
   },
   "backups": [
    {
-    "id": "pre-document-cleanup-281-prod",
     "status": "SUCCESS",
     "size_gib": 193.2,
     "started": "2026-10-12T13:39:14",
     "collections": 7
    },
    {
-    "id": "full_2026-09-21_utc_1790030115s",
     "status": "SUCCESS",
     "size_gib": 267.8,
     "started": "2026-09-21T22:35:15",
     "collections": 7
    },
    {
-    "id": "full_2026-09-17_utc_1789680203s",
     "status": "SUCCESS",
     "size_gib": 268.3,
     "started": "2026-09-17T21:23:23",
     "collections": 8
    },
    {
-    "id": "full_2026-08-31_utc_1788157021s_origin",
     "status": "SUCCESS",
     "size_gib": 255.2,
     "started": "2026-08-31T06:17:21",
     "collections": 7
    },
    {
-    "id": "full_2026-08-28_utc_1787910198s",
     "status": "SUCCESS",
     "size_gib": 188.4,
     "started": "2026-08-28T09:43:19",
     "collections": 7
    },
    {
-    "id": "full_2026-08-25_utc_1787664116s",
     "status": "SUCCESS",
     "size_gib": 255.2,
     "started": "2026-08-25T13:21:56",
     "collections": 7
    },
    {
-    "id": "full_2026-08-18_utc_1787019366s",
     "status": "SUCCESS",
     "size_gib": 255.3,
     "started": "2026-08-18T02:16:06",
     "collections": 7
    },
    {
-    "id": "full-migration_2026-08-11_utc_1786463154",
     "status": "SUCCESS",
     "size_gib": 255.3,
     "started": "2026-08-11T15:46:04",
@@ -611,7 +603,7 @@
   "disk": {
    "filesystem": {
     "total": 3936149856256,
-    "free": 1034835972096
+    "free": 1028803358720
    },
    "unreadable_paths": 6,
    "unreadable_examples": [
@@ -621,11 +613,11 @@
     "chunks_test/j90Blz6sFOmp/lsm/property_yearIssued",
     "chunks_test/j90Blz6sFOmp/lsm/property_yearIssued_rangeable"
    ],
-   "listed_via": "file list files.txt",
+   "listed_via": "a saved file list",
    "usage": {
-    "total_bytes": 341072515115,
+    "total_bytes": 341112967510,
     "top_level": {
-     "chunks_test": 339381511050,
+     "chunks_test": 339421963445,
      "documents_test": 1603039814,
      "tag_test": 55919272,
      "span_test": 29238178,
@@ -770,10 +762,10 @@
       "lsm/property_start_page_id": 3094637352,
       "lsm/property_title": 1457001766,
       "lsm/property_start_page_id_searchable": 1426292948,
-      "lsm/vectors_compressed_default": 1222038441,
+      "lsm/vectors_compressed_default": 1230247124,
       "lsm/property_subject_domain_searchable": 1156302965,
       "lsm/property__id": 1149278752,
-      "vectors_default.hnsw.commitlog.d": 1040911934,
+      "vectors_default.hnsw.commitlog.d": 1073155646,
       "lsm/property_reliability_signals_searchable": 904523777,
       "lsm/property_structural_form_searchable": 881762112,
       "lsm/property_title_searchable": 804026588,
@@ -907,10 +899,8 @@
        728803591,
        330356536,
        146610311,
-       975081,
-       845016,
-       610691,
-       218611
+       6467906,
+       4169376
       ],
       "objects": [
        136643621491,
@@ -938,81 +928,151 @@
     }
    },
    "backup_filesystem": {
-    "total": 46356953169920,
-    "free": 1388745850880
+    "total": 46356952514560,
+    "free": 1384559542272
    }
   },
   "memory": {
    "host": {
     "mem_total": 201770475520,
-    "mem_available": 15533158400,
-    "cached": 15852871680,
-    "anon_pages": 89088598016,
+    "mem_available": 14710116352,
+    "cached": 15244226560,
+    "anon_pages": 88873185280,
     "swap_total": 0,
     "swap_free": 0,
-    "zfs_arc_size": 4,
-    "zfs_arc_max": 4,
+    "zfs_arc_size": 89441455400,
+    "zfs_arc_max": 100885237760,
     "pressure_memory_avg10": {
-     "some": 0.54,
-     "full": 0.54
+     "some": 0.0,
+     "full": 0.0
     },
     "pressure_io_avg10": {
-     "some": 1.19,
-     "full": 1.16
+     "some": 0.64,
+     "full": 0.64
     },
     "pressure_cpu_avg10": {
      "some": 0.0,
      "full": 0.0
     },
     "loadavg": [
-     1.23,
-     1.03,
-     1.01
+     3.03,
+     4.56,
+     3.61
     ],
     "cpu_count": 32
    },
    "cgroup": {
-    "memory_current": 18564145152,
+    "memory_current": 16379473920,
     "memory_peak": 101996634112,
     "memory_max": 105226698752,
-    "anon": 3913015296,
-    "file": 13931962368,
-    "file_mapped": 3316121600,
-    "cpu_usage_usec": 188535248311,
+    "anon": 3341602816,
+    "file": 12373741568,
+    "file_mapped": 1414520832,
+    "cpu_usage_usec": 190934509060,
     "oom_events": 0,
     "oom_kill_events": 0,
     "io": {
-     "rbytes": 80096047280128,
-     "wbytes": 3236197908480,
-     "rios": 907215383,
-     "wios": 26994727
+     "rbytes": 81485526151168,
+     "wbytes": 3236302094336,
+     "rios": 925596114,
+     "wios": 26995630
     }
    },
    "cgroup_unavailable": null,
    "container": null
   },
   "logs": {
-   "lines": 10503,
+   "lines": 10532,
    "first": "2026-09-21T22:21:32Z",
-   "last": "2026-10-16T10:08:23Z",
+   "last": "2026-10-16T11:34:22Z",
    "panic_lines": 0,
-   "startups": 4,
-   "signals": {
-    "warning | - | Number of found nested reference results exceeds configured QUERY_MAXIMUM_RESULTS. This ma": 758,
-    "warning | read_disk_use | disk usage currently at N%, threshold set to N%": 53,
-    "error | backup_status | coordinator cannot get status: metadata not found: \"\": get object path could not find /var": 24,
-    "warning | graphql_rebuild | ignoring ref prop \"document\" on class \"Chunks_test\", because it contains reference to none": 4,
-    "warning | graphql_rebuild | ignoring ref prop \"userCollection\" on class \"Chunks_test\", because it contains reference t": 3,
-    "warning | graphql_rebuild | ignoring ref prop \"automaticTag\" on class \"Chunks_test\", because it contains reference to ": 2,
-    "warning | graphql_rebuild | ignoring ref prop \"negativeTag\" on class \"Chunks_test\", because it contains reference to n": 2,
-    "warning | graphql_rebuild | ignoring ref prop \"positiveTag\" on class \"Chunks_test\", because it contains reference to n": 2,
-    "warning | - | log level not recognized, defaulting to info": 1,
-    "warning | - | Multiple vector spaces are present, GraphQL Explore and REST API list objects endpoint mod": 1,
-    "warning | raft | heartbeat timeout reached, starting election": 1,
-    "warning | graphql_rebuild | ignoring ref prop \"tag\" on class \"Span_test\", because it contains reference to nonexistent": 1,
-    "warning | graphql_rebuild | ignoring ref prop \"userCollection\" on class \"Tag_test\", because it contains reference to n": 1,
-    "error | try_backup | invalid backup id: 'BACKUP_N' allowed characters are lowercase, N-N, _, -": 1
-   }
+   "startups": 1,
+   "signals": [
+    {
+     "count": 782,
+     "level": "warning",
+     "action": "-",
+     "message": "Number of found nested reference results exceeds configured QUERY_MAXIMUM_RESULTS. This ma"
+    },
+    {
+     "count": 54,
+     "level": "warning",
+     "action": "read_disk_use",
+     "message": "disk usage currently at N%, threshold set to N%"
+    },
+    {
+     "count": 24,
+     "level": "error",
+     "action": "backup_status",
+     "message": "coordinator cannot get status: metadata not found: \"\": get object path could not find /var"
+    },
+    {
+     "count": 4,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"document\" on class \"Chunks_test\", because it contains reference to none"
+    },
+    {
+     "count": 3,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"userCollection\" on class \"Chunks_test\", because it contains reference t"
+    },
+    {
+     "count": 2,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"automaticTag\" on class \"Chunks_test\", because it contains reference to "
+    },
+    {
+     "count": 2,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"negativeTag\" on class \"Chunks_test\", because it contains reference to n"
+    },
+    {
+     "count": 2,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"positiveTag\" on class \"Chunks_test\", because it contains reference to n"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "-",
+     "message": "log level not recognized, defaulting to info"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "-",
+     "message": "Multiple vector spaces are present, GraphQL Explore and REST API list objects endpoint mod"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "raft",
+     "message": "heartbeat timeout reached, starting election"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"tag\" on class \"Span_test\", because it contains reference to nonexistent"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"userCollection\" on class \"Tag_test\", because it contains reference to n"
+    },
+    {
+     "count": 1,
+     "level": "error",
+     "action": "try_backup",
+     "message": "invalid backup id: 'BACKUP_N' allowed characters are lowercase, N-N, _, -"
+    }
+   ]
   }
  }
 }
