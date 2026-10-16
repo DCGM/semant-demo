@@ -51,21 +51,29 @@ class Pacer:
     """Spaces request starts at least ``1 / max_qps`` seconds apart across all workers."""
 
     def __init__(self, max_qps: float):
-        self.interval = 1.0 / max_qps if max_qps > 0 else 0.0
+        if not max_qps > 0:
+            raise ValueError("max_qps must be positive")
+        self.interval = 1.0 / max_qps
         self.next = time.monotonic()
         self.lock = asyncio.Lock()
 
-    async def wait(self) -> None:
+    async def wait(self, deadline: float) -> bool:
+        """Waits for the next start slot; False (without waiting) when that slot is at or past ``deadline``."""
         async with self.lock:
             now = time.monotonic()
-            delay = self.next - now
-            self.next = max(now, self.next) + self.interval
-        if delay > 0:
-            await asyncio.sleep(delay)
+            slot = max(now, self.next)
+            if slot >= deadline:
+                return False
+            self.next = slot + self.interval
+        if slot > now:
+            await asyncio.sleep(slot - now)
+        return True
 
 
 async def run_point(request: Request, concurrency: int, requests: int, max_seconds: float, timeout: float,
                     max_qps: float, start_index: int = 0, keep_results: bool = False) -> PointResult:
+    if concurrency < 1 or requests < 1 or not (max_seconds > 0 and timeout > 0):
+        raise ValueError("concurrency, requests, max_seconds and timeout must be positive")
     result = PointResult(concurrency=concurrency)
     pacer = Pacer(max_qps)
     issued = 0
@@ -77,12 +85,12 @@ async def run_point(request: Request, concurrency: int, requests: int, max_secon
         while True:
             if issued >= requests:
                 return
-            if time.monotonic() >= deadline:
-                result.stopped_by = "time"
-                return
             index = start_index + issued
             issued += 1
-            await pacer.wait()
+            # No request starts at or after the deadline, also when the pacer delayed this one.
+            if time.monotonic() >= deadline or not await pacer.wait(deadline):
+                result.stopped_by = "time"
+                return
             t0 = time.perf_counter()
             try:
                 ids = await asyncio.wait_for(request(index), timeout)
