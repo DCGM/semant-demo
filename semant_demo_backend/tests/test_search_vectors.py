@@ -27,7 +27,7 @@ from semant_demo.main import create_app
 from tests.app_support import make_test_config, offline_weaviate
 from tests.test_search_service import FakeChunks, FakeEmbeddings, backends
 
-QWEN = {"id": "qwen3", "name": "Qwen3", "target_vector": "Qwen3-Embedding-0-6B",
+QWEN = {"id": "qwen3", "name": "Qwen3", "target_vector": "Qwen3_Embedding_0_6B",
         "embedding": {"provider": "openai", "base_url": "http://embedder.invalid/v1", "model": "Qwen/Qwen3-Embedding-0.6B",
                       "query_prefix": "Query: ", "dimensions": 256}}
 GEMMA = {"id": "gemma", "name": "Gemma", "description": "original", "target_vector": "default",
@@ -58,7 +58,7 @@ def test_a_configuration_file_is_found_through_the_setting(tmp_path):
 
     vectors = load_search_vectors(Config(environ={"SEARCH_VECTORS_CONFIG": str(path)}))
 
-    assert vectors.default == "qwen3" and vectors.resolve(None).target_vector == "Qwen3-Embedding-0-6B"
+    assert vectors.default == "qwen3" and vectors.resolve(None).target_vector == "Qwen3_Embedding_0_6B"
     assert [v.id for v in vectors.describe().vectors] == ["gemma", "qwen3"]
     assert load_search_vectors_settings(path) == SearchVectorsSettings.model_validate(settings(default="qwen3"))
 
@@ -69,6 +69,9 @@ def test_a_configuration_file_is_found_through_the_setting(tmp_path):
     {"vectors": [GEMMA, {**QWEN, "id": "gemma"}]},
     {"vectors": [GEMMA, {**QWEN, "id": "has space"}]},
     {"vectors": [GEMMA, {**QWEN, "target_vector": ""}]},
+    # Weaviate builds GraphQL names from the vector name; `-` breaks GraphQL for the whole instance.
+    {"vectors": [GEMMA, {**QWEN, "target_vector": "Qwen3-Embedding-0-6B"}]},
+    {"vectors": [GEMMA, {**QWEN, "target_vector": "3vector"}]},
     {"vectors": [GEMMA, {**QWEN, "unknown": 1}]},
     {"vectors": [GEMMA, {**QWEN, "embedding": {"provider": "openai", "base_url": "http://x.invalid/v1"}}]},
     {"vectors": [GEMMA, {**QWEN, "embedding": {"provider": "openai", "model": "m"}}]},

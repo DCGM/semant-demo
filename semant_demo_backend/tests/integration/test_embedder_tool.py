@@ -224,3 +224,13 @@ async def test_the_test_collection_is_replaced_only_when_forced(tool_store):
 
     await create_test_collection(tool_store, replace=True, collection_name=TEST_COLLECTION)
     assert (await collection.aggregate.over_all(total_count=True)).total_count == 10
+
+
+@pytest.mark.parametrize("name", ["Qwen3-Embedding-0-6B", "3vector", ""])
+async def test_a_vector_name_graphql_cannot_use_is_refused_before_any_write(tool_store, make_pipeline, name):
+    # Weaviate 1.34 and 1.40 accept such a named vector but can then build no GraphQL schema (#385).
+    await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
+
+    with pytest.raises(Exception, match="vector_name"):
+        make_pipeline(vector_name=name)
+    assert set((await tool_store.collections.get(TEST_COLLECTION).config.get()).vector_config) == {"default"}

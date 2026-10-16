@@ -20,7 +20,7 @@
 
 | Layer | Technology |
 |---|---|
-| Database | Weaviate 1.34 (Docker) + SQLite (user accounts, RAG answer feedback) |
+| Database | Weaviate 1.40 (Docker) + SQLite (user accounts, RAG answer feedback) |
 | Embeddings | `BAAI/bge-multilingual-gemma2` via a dedicated FastAPI service |
 | Backend | Python 3.12 · FastAPI · LangChain / LangGraph · LLM tiers on OpenAI-compatible APIs (OpenRouter by default), Ollama or Google Gemini |
 | Frontend | Vue 3 · Quasar 2 · TypeScript · Pinia · OpenAPI-generated client |

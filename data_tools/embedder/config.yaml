@@ -4,7 +4,7 @@ weaviate_grpc_port: 50051 # Weaviate gRPC port (required for client v4)
 weaviate_api_key: # Authentication API Key for Weaviate instance
 weaviate_headers: # Additional HTTP headers (e.g. API keys for third-party vectorizers)
 collection: EmbedderTest # Name of the Weaviate collection to embed (it must use named vectors). The default is the test collection of --create-test-collection; never point it at production Chunks without approval (see README)
-vector_name: Qwen3-Embedding-0-6B # Name of the named vector the embeddings are written to
+vector_name: Qwen3_Embedding_0_6B # Name of the named vector the embeddings are written to
 create_vector: true # Create the named vector in the collection schema if it does not exist
 vector_index_type: hnsw # Vector index type used when the named vector is created (hnsw, flat, dynamic)
 distance_metric: cosine # Distance metric used when the named vector is created (cosine, dot, l2-squared, hamming, manhattan)

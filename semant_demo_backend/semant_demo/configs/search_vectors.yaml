@@ -24,7 +24,7 @@ vectors:
   # - id: qwen3-embedding-0.6b
   #   name: Qwen3 Embedding 0.6B
   #   description: Chunk text embedded with Qwen/Qwen3-Embedding-0.6B.
-  #   target_vector: Qwen3-Embedding-0-6B
+  #   target_vector: Qwen3_Embedding_0_6B  # letters, digits and _ only (a GraphQL name)
   #   embedding:
   #     provider: openai
   #     base_url: http://embedder.example:8000/v1

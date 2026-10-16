@@ -29,8 +29,9 @@ DOCUMENT_FIELDS = {
     "partName", "authors", "description", "keywords", "section", "region", "id_code"
 }
 
-# Document properties returned with each hit: every field of the document model. A store
-# without some of them returns the others.
+# Document properties returned with each hit: the fields of the document model that the store's
+# document collection has (``ChunkSearchRepository._document_properties``). Weaviate 1.40 refuses
+# a query naming a property the schema lacks (1.34 ignored it), and stores differ (#312).
 DOCUMENT_PROPERTIES = [name for name in Document.model_fields if name != "id"]
 
 # Chunk tag references: the projection of the spans (ADR 0004, chunk_tags.py).
@@ -42,6 +43,19 @@ class ChunkSearchRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
+        self._returned_document_properties: list[str] | None = None
+
+    async def _document_properties(self) -> list[str]:
+        """``DOCUMENT_PROPERTIES`` that the document collection has; read once, then cached.
+
+        A property added to the schema later is returned after the application restarts.
+        """
+        if self._returned_document_properties is None:
+            config = await self.client.collections.get(self.collectionNames.document_collection_name).config.get(
+                simple=True)
+            stored = {p.name for p in config.properties}
+            self._returned_document_properties = [name for name in DOCUMENT_PROPERTIES if name in stored]
+        return self._returned_document_properties
 
     async def search(self, query: ChunkQuery) -> list[SearchResultChunk]:
         """Top ``query.limit`` chunks matching every condition, best first.
@@ -52,7 +66,7 @@ class ChunkSearchRepository:
         common = dict(
             limit=query.limit,
             filters=self._filter(query),
-            return_references=[QueryReference(link_on="document", return_properties=DOCUMENT_PROPERTIES)],
+            return_references=[QueryReference(link_on="document", return_properties=await self._document_properties())],
         )
         if query.mode == SearchType.text:
             result = await chunks.query.bm25(query=query.text, **common)

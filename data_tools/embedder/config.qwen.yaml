@@ -7,7 +7,7 @@ weaviate_grpc_port: 50051
 weaviate_api_key:
 weaviate_headers:
 collection: Chunks_test # the physical collection behind the `Chunks` alias; schema updates need the real name
-vector_name: Qwen3-Embedding-0-6B # canonical name; the app's target_vector (configs/search_vectors_qwen.yaml)
+vector_name: Qwen3_Embedding_0_6B # canonical name; the app's target_vector (configs/search_vectors_qwen.yaml)
 # The vector is added beforehand with its deliberately chosen index/compression (#385, D);
 # this tool would add plain HNSW without compression.
 create_vector: false
