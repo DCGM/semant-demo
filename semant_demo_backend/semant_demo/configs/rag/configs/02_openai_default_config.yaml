@@ -1,6 +1,6 @@
 id: "xandry12_RagGenerator_openai_default"
-name: "GPT-4.1 mini Rag with history"
-description: "RAG using OpenAI's model GPT-4.1 mini. It supports history between messages."
+name: "Basic RAG (Gemini 3.8 Flash)"
+description: "Basic RAG using Gemini 3.8 Flash at low reasoning effort via OpenRouter, with conversation history."
 class_name: "RagGenerator"
 params:
   tier: "medium"

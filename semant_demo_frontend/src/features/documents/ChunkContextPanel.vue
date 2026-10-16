@@ -58,9 +58,14 @@
             class="chunk-context__chunk"
             :class="{ 'chunk-context__chunk--target': chunk.id === targetChunkId }"
             :aria-current="chunk.id === targetChunkId ? 'true' : undefined"
-            :aria-label="chunk.id === targetChunkId ? 'Matched passage' : undefined"
+            :aria-label="chunk.id === targetChunkId ? (targetLabel ? `Cited passage ${targetLabel}` : 'Matched passage') : undefined"
             :data-chunk-id="chunk.id"
           >
+            <div
+              v-if="targetLabel && chunk.id === targetChunkId"
+              class="chunk-context__target-label text-caption text-weight-bold"
+              data-testid="chunk-context-target-label"
+            >{{ targetLabel }}</div>
             <div class="chunk-context__chunk-text text-body2">{{ chunk.text }}</div>
           </section>
         </div>
@@ -106,6 +111,8 @@ const props = withDefaults(defineProps<{
   error?: string | null
   /** Label of the action returning to where the target came from (e.g. a search result). */
   returnLabel?: string | null
+  /** Reference shown with the highlighted target (e.g. a chat citation's `S3`); none by default. */
+  targetLabel?: string | null
   emptyText?: string
 }>(), {
   hasBefore: false,
@@ -115,6 +122,7 @@ const props = withDefaults(defineProps<{
   extending: null,
   error: null,
   returnLabel: null,
+  targetLabel: null,
   emptyText: 'Nothing selected.'
 })
 
@@ -205,6 +213,11 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value] as const, as
 .chunk-context__chunk--target {
   border-left-color: var(--q-primary);
   background-color: #fff8d6;
+}
+
+.chunk-context__target-label {
+  color: var(--q-primary);
+  line-height: 1.2;
 }
 
 .chunk-context__chunk-text {

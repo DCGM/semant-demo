@@ -90,10 +90,9 @@ test('Chat Assistant sources link their originals', async ({ page }) => {
   await page.goto('/#/rag')
   await page.getByPlaceholder('Vaše otázka?').fill('Question')
   await page.getByPlaceholder('Vaše otázka?').press('Enter')
-  await page.getByText('Sources', { exact: true }).click()
+  await page.locator('.message-bubble').getByText('Sources', { exact: true }).click()
 
-  const dialog = page.getByRole('dialog')
-  const items = dialog.locator('.q-item')
+  const items = page.getByTestId('chat-sources').getByRole('listitem')
   await expect(items.filter({ hasText: 'Title a' }).getByTestId('original-source-link'))
     .toHaveAttribute('href', viewer('mzk', chronicle.id, chronicle1.start_page_id))
   await expect(items.filter({ hasText: 'Title b' })).toBeVisible()

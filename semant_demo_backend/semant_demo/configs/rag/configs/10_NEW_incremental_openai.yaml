@@ -1,6 +1,6 @@
 id: "xandry12_IncrementalAdaptiveRagGenerator_openai_default_multiquery"
-name: "Incremental Adaptive RAG using OPENAI with multi query and web search"
-description: "NEW Incremental Adaptive RAG Generator configuration using OPENAI with multi query strategy and web search enabled."
+name: "Incremental Adaptive RAG (Gemini 3.8 Flash)"
+description: "Adaptive RAG using Gemini 3.8 Flash on OpenRouter; multi-query retrieval and optional web search."
 class_name: "IncrementalAdaptiveRagGenerator"
 params:
   tier: "medium"

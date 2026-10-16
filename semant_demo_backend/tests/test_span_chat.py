@@ -21,14 +21,15 @@ CHUNKS = [AnnotationChunk(id=uuid4(), document_id=DOCUMENT, order=i, text=t)
           for i, t in enumerate(["Before. ", "Jan Nov", "ák went home. ", "After."])]
 
 
-def span(start: int, end: int, chunk: int = 1) -> TagSpan:
-    return TagSpan(id=str(uuid4()), chunkId=str(CHUNKS[chunk].id), tagId=str(TAG), start=start, end=end,
+def span(start: int, end: int, chunk: int = 1, chunks=CHUNKS) -> TagSpan:
+    return TagSpan(id=str(uuid4()), chunkId=str(chunks[chunk].id), tagId=str(TAG), start=start, end=end,
                    type=SpanType.pos)
 
 
 class FakeStore:
-    def __init__(self, stored: TagSpan):
+    def __init__(self, stored: TagSpan, chunks=CHUNKS):
         self.span = stored
+        self.chunks = chunks
         self.reads: list[str] = []
         self.collections = SimpleNamespace(read_access_record=self._access)
         self.tags = SimpleNamespace(read_collection_ids=self._tag_collections, read=self._tag)
@@ -56,7 +57,7 @@ class FakeStore:
 
     async def _chunk(self, chunk_id):
         self.reads.append("chunk")
-        return next((c for c in CHUNKS if c.id == chunk_id), None)
+        return next((c for c in self.chunks if c.id == chunk_id), None)
 
     async def _document(self, document_id):
         self.reads.append("document")
@@ -64,7 +65,7 @@ class FakeStore:
 
     async def _following(self, document_id, after_order, limit):
         self.reads.append(f"following:{after_order}:{limit}")
-        return [c for c in CHUNKS if c.order > after_order][:limit]
+        return [c for c in self.chunks if c.order > after_order][:limit]
 
 
 def request(stored: TagSpan, *messages: tuple[str, str]) -> DiscussSpanRequest:
@@ -135,6 +136,25 @@ async def test_cross_chunk_span_reads_the_following_chunks():
     # The following chunk is part of the span, not repeated as later context.
     assert "[later in document, ~5 chars] After..." in instructions
     assert "following:1:8" in store.reads
+
+
+# Span offsets are UTF-16 code units (ADR 0006): a non-BMP character counts as two.
+EMOJI_CHUNKS = [AnnotationChunk(id=uuid4(), document_id=DOCUMENT, order=i, text=t)
+                for i, t in enumerate(["Before. ", "😀 Karel 😀 Nov", "ák went home. ", "After."])]
+
+
+@pytest.mark.parametrize("start, end, expected", [
+    # Non-BMP characters before and inside the span ("😀 " is 3 units).
+    (3, 11, "<<<SPAN>>>Karel 😀<<<END_SPAN>>> Nov"),
+    # Cross-chunk: "😀 Karel 😀 Nov" is 15 units, so end 17 is 2 units into the next chunk.
+    (12, 17, "<<<SPAN>>>Novák<<<END_SPAN>>> went"),
+])
+async def test_span_offsets_after_non_bmp_characters_are_utf16(start, end, expected):
+    store, provider = FakeStore(span(start, end, 1, EMOJI_CHUNKS), EMOJI_CHUNKS), FakeStreamingChat()
+
+    await run(store, provider)
+
+    assert expected in provider.calls[0][0]
 
 
 async def test_history_is_limited_to_the_latest_messages():

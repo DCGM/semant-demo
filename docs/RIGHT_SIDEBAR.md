@@ -24,6 +24,9 @@ which tools (if any) it shows there.
 - **Behaves like the left drawer.** It pushes the page content on wide screens, becomes an
   overlay on narrow screens (below 1024 px) and has a mini state that shows only the
   narrow (48 px) icon rail. The open and mini states are not remembered between pages.
+  It is 420 px wide, or the screen width on a narrower phone. As an overlay it covers the
+  header's toggle on a phone, so it then has its own *Close sidebar* button next to the
+  panel title.
 
 The document view (`/collections/:cid/documents/:did/v1`) adds its tags, AI assist and
 document tools as panels (#230); see section 6.
@@ -213,6 +216,8 @@ the new request's loading state.
 | Document view (`features/documents/viewer/DocumentViewLayout.vue`) | `document-tags` | `features/annotations/DocumentTagsPanel.vue` | The collection's tags: create/edit, show/hide, step through their annotations, manual order, search. Ctrl+F focuses the search while this is the active panel (it opens a closed sidebar); otherwise the browser's find is left alone. |
 | Document view | `document-ai` | `features/annotations/AiAssistPanel.vue` | AI annotation suggestions (`fill`, `busy` while a document or selection run is under way). Auto spans are shown in the text only while this is the active panel; suggestion cards and spans highlight each other. *Suggest tags* on a text selection activates it. Leaving the view cancels running requests; saved suggestions stay. |
 | Document view | `document-summary` | `features/documents/DocumentSummaryPanel.vue` | Summary of the current document (#249; `fill`, `busy` while a summary request is under way): a *Summarize Document* / *Cancel* control, the generated text with `[docN]`-style citations (each a link to its source chunk), and a "Partial summary — first N of M chunks" notice when the document was truncated to the configured `chunk_limit`. A failed generation shows an error line, not a summary quietly built from the server's fallback text (the backend answers 502, not 200, on failure). Logic in `features/documents/useDocumentSummary.ts`, a module-scope singleton like `useAiAssistance` (see below), since a citation click must reach the document reader, a sibling route. The summary is not persisted: changing document/collection or leaving the view drops it, the same `reset()` wiring `AiAssistPanel` uses. |
+| Chat assistant (`features/rag/RagPage.vue`) | `chat-sources` | `features/rag/ChatSourcesPanel.vue` | All source chunks of the conversation (#246), in order of first appearance and once per chunk id, labelled `S1`, `S2`... The answers show their citations with these labels: each answer's own `[doc N]` is mapped to its `sources[N-1]` chunk and that chunk's label (`[S2]`, the same label wherever the chunk is cited again); a citation without such a source stays as written. The raw answer text, history and explanation input are unchanged. One click on a citation or a source selects it: the Sources panel opens, scrolls to it and shows its full stored text (the other sources are collapsed), and every citation of it in the conversation is marked; the conversation is not scrolled. A double click (or *View document*) opens it in the Document panel. An answer's *Sources* link shows the list at its first source. Registered once the conversation has sources. |
+| Chat assistant | `chat-source-context` | `features/documents/ChunkContextPanel.vue` | The selected source highlighted in its document, with its label (`targetLabel`), the same viewer as `search-context`. The selection and its marks stay while the document is navigated; *Return to cited passage* brings the cited chunk back into view (reloading it if extending dropped it). Selecting another source, resetting the conversation or another account closes it. A citation in an explanation selects its source and closes the explanation (the modal would cover the sidebar). On a phone the first tap on a citation opens the Sources overlay, so the document is opened from the list there. State in `features/rag/useChatSources.ts` (by chunk id); the citation marks are set on the rendered links, so selecting does not re-render the answer under a double click. |
 | Document view | `document-metadata` | `features/documents/DocumentMetadataPanel.vue` | Bibliographic fields of the document. |
 
 The ids of the document panels are in `features/documents/viewer/documentSidebar.ts`. The
@@ -266,6 +271,8 @@ document (404 otherwise) and read at most 50 chunks per side. At most 60 chunks 
 extending past that drops the other end. Opening another target, `clear()` or unmounting
 aborts running requests and drops their late answers. A missing chunk or document is
 reported in the panel with *Retry*; no other text is shown. The panel takes everything
-through props and reports `extend`, `reload` and `return` events, so it can also show other
-sources (e.g. RAG citations, #243). Text is the canonical stored chunk text. Whether these
+through props and reports `extend`, `reload` and `return` events, so it also shows the chat
+assistant's sources (#246); an optional `targetLabel` (the chat's `S3`) is shown with the
+highlighted chunk, Search passes none. `focus()` brings the target back into view after the user
+scrolled the passage (and reloads it when extending dropped it). Text is the canonical stored chunk text. Whether these
 public reads should consider document access metadata is tracked in #279.

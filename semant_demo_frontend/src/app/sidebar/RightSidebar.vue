@@ -4,7 +4,7 @@
     side="right"
     bordered
     :breakpoint="breakpoint"
-    :width="420"
+    :width="width"
     :mini="sidebar.miniState"
     :mini-width="railWidth"
   >
@@ -36,8 +36,12 @@
       <q-separator v-show="!sidebar.miniState" vertical />
 
       <div v-show="!sidebar.miniState" class="col column no-wrap">
-        <div class="text-subtitle1 text-weight-medium text-grey-9 q-px-md q-pt-md q-pb-sm" data-testid="right-sidebar-title">
-          {{ sidebar.activePanel?.label }}
+        <div class="row items-center no-wrap q-pl-md q-pr-sm q-pt-md q-pb-sm">
+          <div class="col text-subtitle1 text-weight-medium text-grey-9" data-testid="right-sidebar-title">
+            {{ sidebar.activePanel?.label }}
+          </div>
+          <!-- As an overlay the drawer can cover the header's toggle (phones). -->
+          <q-btn v-if="overlay" flat round dense icon="close" aria-label="Close sidebar" @click="sidebar.open = false" />
         </div>
         <!-- A plain scroller (not q-scroll-area), so a panel with fill gets a definite height. -->
         <div ref="target" class="col column no-wrap scroll q-px-md q-pb-md" />
@@ -63,6 +67,11 @@ const railWidth = 48
 const $q = useQuasar()
 const sidebar = useRightSidebarStore()
 const target = ref<HTMLElement | null>(null)
+
+// Below the breakpoint the drawer covers the page instead of pushing it.
+const overlay = computed(() => $q.screen.width <= breakpoint)
+// No wider than a phone screen, so the rail stays on it.
+const width = computed(() => Math.min(420, $q.screen.width || 420))
 
 const drawerOpen = computed({
   get: () => sidebar.hasPanels && sidebar.open,

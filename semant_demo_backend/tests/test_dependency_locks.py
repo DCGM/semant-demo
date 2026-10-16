@@ -5,7 +5,10 @@ CI tests `requirements-dev.lock` (runtime plus test tools). The runtime lock is 
 the dev lock as a constraint, so every runtime package must carry the same version and hashes
 in both locks, and both must cover exactly the declared direct requirements.
 """
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,7 +16,10 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
 BACKEND = Path(__file__).resolve().parents[1]
-DOCKERFILE = BACKEND.parent / "deploy" / "Dockerfile"
+ROOT = BACKEND.parent
+DOCKERFILE = ROOT / "deploy" / "Dockerfile"
+LOCK_SCRIPT = ROOT / "scripts" / "python-locks.sh"
+WORKFLOWS = ROOT / ".github" / "workflows"
 RUNTIME_LOCK = BACKEND / "requirements-runtime.lock"
 DEV_LOCK = BACKEND / "requirements-dev.lock"
 
@@ -108,3 +114,111 @@ def test_production_image_installs_only_the_runtime_lock():
     for line in installs:
         assert "--require-hashes" in line and "requirements-runtime.lock" in line, line
         assert "requirements.txt" not in line, line
+
+
+def _lock_inputs():
+    script = LOCK_SCRIPT.read_text()
+    block = re.search(r"^LOCK_INPUTS=\((.*?)^\)", script, re.MULTILINE | re.DOTALL)
+    assert block, "LOCK_INPUTS not found in scripts/python-locks.sh"
+    return block[1].split()
+
+
+def test_lock_inputs_cover_the_lock_files_and_their_tooling():
+    inputs = _lock_inputs()
+    for path in inputs:
+        assert (ROOT / path).exists(), f"LOCK_INPUTS names a missing path: {path}"
+    for required in ["requirements.txt", "requirements-dev.txt", "requirements-dev.lock",
+                     "requirements-runtime.lock"]:
+        assert f"semant_demo_backend/{required}" in inputs
+    assert {"scripts/python-locks.sh", ".github/workflows/"} <= set(inputs)
+
+
+def test_workflows_re_resolve_with_the_same_pip_tools():
+    versions = {path.name: re.findall(r"pip-tools==(\S+)", path.read_text())
+                for path in WORKFLOWS.glob("*.yml")}
+    pinned = {version for found in versions.values() for version in found}
+    assert len(pinned) == 1, versions
+    assert versions["ci-cd.yml"] and versions["python-locks-drift.yml"]
+
+
+@pytest.fixture
+def lock_repo(tmp_path):
+    """A git repository with the lock script and inputs, and a fake pip-compile that logs calls."""
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    repo = tmp_path / "repo"
+    for path in _lock_inputs():
+        source = ROOT / path
+        if source.is_dir():
+            shutil.copytree(source, repo / path)
+        else:
+            (repo / path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, repo / path)
+    (repo / "docs").mkdir()
+    (repo / "docs" / "notes.md").write_text("notes\n")
+    log = tmp_path / "compile.log"
+    compiler = tmp_path / "pip-compile"
+    # The committed lock is already the output file, so the re-resolution "keeps" every pin
+    # unless STALE_PIN asks it to resolve a different pytest version.
+    compiler.write_text(f"""#!/bin/sh
+echo "$*" >> {log}
+for arg; do
+  case $arg in --output-file=*) out=${{arg#--output-file=}};; esac
+done
+[ -z "$STALE_PIN" ] || sed -i 's/^pytest==.*/pytest==0.0.1/' "$out"
+""")
+    compiler.chmod(0o755)
+
+    def git(*args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+                        "-c", "commit.gpgsign=false", *args],
+                       cwd=repo, check=True, capture_output=True)
+
+    git("init", "-q")
+    git("add", ".")
+    git("commit", "-qm", "base")
+
+    def check_since(base="HEAD~1", stale=False, expect_ok=True):
+        result = subprocess.run(
+            ["bash", "scripts/python-locks.sh", "check-since", base], cwd=repo,
+            env={**os.environ, "LOCK_COMPILER": str(compiler), "STALE_PIN": "1" if stale else ""},
+            capture_output=True, text=True)
+        assert (result.returncode == 0) == expect_ok, result.stdout + result.stderr
+        return log.read_text().count("--output-file") if log.exists() else 0
+
+    def commit(path, text):
+        with open(repo / path, "a") as file:
+            file.write(text)
+        git("commit", "-qam", f"change {path}")
+
+    return check_since, commit
+
+
+def test_check_since_skips_re_resolution_when_no_lock_input_changed(lock_repo):
+    check_since, commit = lock_repo
+    commit("docs/notes.md", "more\n")
+    assert check_since() == 0
+
+
+@pytest.mark.parametrize("path", [
+    "semant_demo_backend/requirements.txt",
+    "semant_demo_backend/requirements-runtime.lock",
+    "scripts/python-locks.sh",
+    ".github/workflows/ci-cd.yml",
+])
+def test_check_since_re_resolves_both_locks_when_a_lock_input_changed(lock_repo, path):
+    check_since, commit = lock_repo
+    commit(path, "\n# changed\n")
+    assert check_since() == 2
+
+
+def test_check_since_re_resolves_when_the_base_is_unknown(lock_repo):
+    check_since, commit = lock_repo
+    commit("docs/notes.md", "more\n")
+    assert check_since("0" * 40) == 2
+
+
+def test_check_since_fails_on_a_stale_pin(lock_repo):
+    check_since, commit = lock_repo
+    commit("semant_demo_backend/requirements-dev.txt", "\n# changed\n")
+    assert check_since(stale=True, expect_ok=False) == 2

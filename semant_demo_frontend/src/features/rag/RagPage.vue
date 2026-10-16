@@ -5,7 +5,7 @@
       <div class="q-pa-md flex-1 overflow-auto" ref="chatArea">
         <q-chat-message
           v-for="(message, index) in messages"
-          :key="index"
+          :key="message.id"
           :name="message.sender"
           :sent="message.sender === 'me'"
           :bg-color="message.sender === 'me' ? 'light-blue-2' : 'grey-2'"
@@ -16,13 +16,14 @@
             <div class="row items-center justify-between q-mt-sm q-pt-xs" style="border-top: 1px solid rgba(0,0,0,0.05)">
               <!-- message TEXT  -->
               <div
-                v-html="replaceSourcesAndConvertToMarcdown(message, index)" class="markdown-body"
+                v-html="replaceSourcesAndConvertToMarcdown(message)" class="markdown-body"
                 @mouseup="handleMouseUp(index)"
                 @click.capture="singleSourceClicks"
+                @dblclick.capture="doubleSourceClicks"
               ></div>
               <!-- show sources - bottom button  -->
               <div v-if="message.sender === 'AI' && message.sources && message.sources.length > 0" class="row items-center justify-between q-mt-sm">
-                <a href="#" @click.prevent="openSourcesDialog(message.sources)" class="source-link">Sources</a>
+                <a href="#" class="source-link" @click.prevent="showSources(message)">Sources</a>
               </div>
               <!-- like and dislike -->
               <div v-if="message.sender === 'AI' && index > 0" class="row items-center q-gutter-x-xs">
@@ -138,40 +139,6 @@
         </q-card>
       </q-dialog>
 
-      <!-- sources window -->
-      <q-dialog v-model="showSourcesDialog">
-        <q-card style="width: 900px; max-width: 80vw;">
-          <q-card-section>
-            <div class="text-h6">Sources</div>
-          </q-card-section>
-
-          <q-card-section class="q-pt-none">
-            <q-list bordered separator>
-              <q-item v-for="(source, index) in currentSources" :key="index">
-                <q-item-section>
-                  <!-- difference between one and more sources -->
-                  <q-item-label overline>
-                    <span v-if="currentSources.length > 1">Doc: {{ index + 1 }}</span>
-                    <span v-else>Source of this information:</span>
-                  </q-item-label>
-                  <q-item-label v-if="source.documentObject?.title" class="text-weight-medium">
-                    {{ source.documentObject.title }}
-                  </q-item-label>
-                  <q-item-label caption>
-                    <div v-html="convertToMarkdown(source.text)" class="markdown-body"></div>
-                  </q-item-label>
-                  <OriginalSourceLink :document="source.documentObject" :page-id="source.startPageId" class="text-caption q-mt-xs" />
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-
-          <q-card-actions align="right">
-            <q-btn flat label="Close" color="primary" v-close-popup />
-          </q-card-actions>
-        </q-card>
-      </q-dialog>
-
       <!-- explaination functionality -->
       <q-btn
       v-if="selectionData.show"
@@ -203,31 +170,69 @@
           </div>
           <div
             v-else
-            v-html="convertToMarkdown(convertLinks(explanationDialog.text, messages[selectionData.msgIndex]?.sources, selectionData.msgIndex))"
+            ref="explanationEl"
+            v-html="convertToMarkdown(convertLinks(explanationDialog.text, messages[selectionData.msgIndex]))"
             class="markdown-body"
-            @click.capture="singleSourceClicks">
+            @click.capture="singleSourceClicks"
+            @dblclick.capture="doubleSourceClicks">
           </div>
         </q-card-section>
       </q-card>
     </q-dialog>
 
+    <!-- All sources of the conversation, labelled as their citations (#246). -->
+    <RightSidebarPanel v-if="chatSources.entries.value.length" :id="SOURCES_PANEL_ID" label="Sources" icon="format_quote">
+      <ChatSourcesPanel
+        :entries="chatSources.entries.value"
+        :selected-id="chatSources.selectedId.value"
+        :reveal="chatSources.reveal.value"
+        @select="selectSource"
+        @open="openSourceDocument"
+      />
+    </RightSidebarPanel>
+
+    <!-- Registered once a source is opened in its document, so Sources stays the default panel. -->
+    <RightSidebarPanel v-if="chatSources.documentSource.value" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
+      <ChunkContextPanel
+        :target-chunk-id="sourceContext.target?.chunkId ?? null"
+        :document="sourceContext.document"
+        :chunks="sourceContext.chunks"
+        :has-before="sourceContext.hasBefore"
+        :has-after="sourceContext.hasAfter"
+        :focus-request="sourceContext.focusRequest"
+        :loading="sourceContext.loading"
+        :extending="sourceContext.extending"
+        :error="sourceContext.error"
+        :target-label="chatSources.documentSource.value?.label ?? null"
+        return-label="Return to cited passage"
+        @extend="sourceContext.extend"
+        @reload="sourceContext.load"
+        @return="sourceContext.focus"
+      />
+    </RightSidebarPanel>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, onUpdated, watch } from 'vue'
 import { marked } from 'marked'
 import { useQuasar } from 'quasar'
 import { SearchType, type RagChatMessage, type RagRouteConfig, type SearchResultChunk } from 'src/generated/api'
 import { createContextGuard, errorStatus, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
-import OriginalSourceLink from 'src/features/documents/OriginalSourceLink.vue'
+import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
+import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
+import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
+import ChatSourcesPanel from './ChatSourcesPanel.vue'
+import { citedChunkId, useChatSources } from './useChatSources'
 const $q = useQuasar() // notifications
 const api = useApi().default
 // ---------------------------------------------------
 type Source = SearchResultChunk
 
 interface Message {
+  /** Stays the same for the message's lifetime; citations and the shown sources refer to it. */
+  id: number;
   sender: 'AI' | 'me';
   text: string;
   sources?: Source[];
@@ -235,18 +240,27 @@ interface Message {
   responseId?: string;
 }
 
+let lastMessageId = 0
+const nextMessageId = () => ++lastMessageId
+
 // First message from AI
-const messages = ref<Message[]>([
-  { sender: 'AI', text: 'Ahoj, máte na mě nějakou otázku?\n\n**Tip:** Označte část odpovědi a klikněte na **Explain** pro ověření tvrzení.' }
-])
+const greeting = (): Message => ({
+  id: nextMessageId(),
+  sender: 'AI',
+  text: 'Ahoj, máte na mě nějakou otázku?\n\n**Tip:** Označte část odpovědi a klikněte na **Explain** pro ověření tvrzení.'
+})
+const messages = ref<Message[]>([greeting()])
 
 const newMessage = ref('')
 const chatArea = ref<HTMLElement | null>(null)
 const isAiThinking = ref(false)
 
-// sources dialog
-const showSourcesDialog = ref(false)
-const currentSources = ref<Source[]>([])
+// The conversation's sources, the selected one and one in its document, in the right sidebar
+const SOURCES_PANEL_ID = 'chat-sources'
+const CONTEXT_PANEL_ID = 'chat-source-context'
+const rightSidebar = useRightSidebarStore()
+const chatSources = useChatSources(messages)
+const sourceContext = chatSources.context
 
 // selected rags from config
 const rags = ref<RagRouteConfig[]>([])
@@ -283,7 +297,7 @@ async function loadRagConfigs () {
       selectedRAG.value = rags.value[0]
     }
   } catch (error) {
-    messages.value.push({ sender: 'AI', text: 'None RAG model is avalaible.' })
+    messages.value.push({ id: nextMessageId(), sender: 'AI', text: 'None RAG model is avalaible.' })
   } finally {
     isLoadingRagConfigs.value = false
   }
@@ -333,7 +347,7 @@ const sendMessage = async () => {
   const lastAImessage = [...messages.value].reverse().find(m => m.sender === 'AI' && m.sources && m.sources.length > 0)
   const previousDocuments = lastAImessage ? lastAImessage.sources : []
 
-  messages.value.push({ sender: 'me', text: userQuery })
+  messages.value.push({ id: nextMessageId(), sender: 'me', text: userQuery })
   newMessage.value = ''
   scrollToBottom()
 
@@ -376,6 +390,7 @@ const sendMessage = async () => {
     // sources
     if (!sources || sources.length === 0) {
       messages.value.push({
+        id: nextMessageId(),
         sender: 'AI',
         text: 'Sorry we have no information about this topick.',
         sources: [],
@@ -388,6 +403,7 @@ const sendMessage = async () => {
     // }))
 
     messages.value.push({
+      id: nextMessageId(),
       sender: 'AI',
       text: ragAnswer,
       sources,
@@ -397,9 +413,9 @@ const sendMessage = async () => {
     if (!isCurrent()) return
     console.error('RAG error:', error)
     if (errorStatus(error) === 401) {
-      messages.value.push({ sender: 'AI', text: 'You have entered invalid API key.' })
+      messages.value.push({ id: nextMessageId(), sender: 'AI', text: 'You have entered invalid API key.' })
     } else {
-      messages.value.push({ sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
+      messages.value.push({ id: nextMessageId(), sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
     }
   } finally {
     if (isCurrent()) {
@@ -421,62 +437,104 @@ const convertToMarkdown = (markdownText: string) => {
   return marked(markdownText) as string
 }
 
-// convert links
-const convertLinks = (text: string, sources: Source[] | undefined, msgIndex: number) => {
-  return text.replace(/\[([^[\]]+)\]/g, (match, content) => {
-    return content.replace(/\b(?:doc|dokument)\s*(\d+)\b/gi, (docMatch: string, strIndex: string) => {
-      const sourceIndex = parseInt(strIndex, 10) - 1 // -1 bcs array
-      if (sources && sources[sourceIndex]) {
-        return `<a href="#" class="source-link" data-message-index="${msgIndex}" data-source-index="${sourceIndex}">[doc ${strIndex}]</a>`
-      }
-      return docMatch
+// convert links: an answer's own citations `[doc N]` (or those of an explanation of it) become
+// links labelled with the conversation-wide source label (`[S3]`). The text itself (history,
+// explanation input) is not changed; a citation without a source of that answer stays as
+// written. The HTML does not depend on the selection (markSelectedCitations), so selecting
+// does not replace the clicked link and a double click still reaches it.
+const escapeAttribute = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+
+const convertLinks = (text: string, msg: Message | undefined) => {
+  return text.replace(/\[([^[\]]+)\]/g, (match, content: string) => {
+    let linked = false
+    const replaced = content.replace(/\b(?:doc|dokument)\s*(\d+)\b/gi, (docMatch: string, strIndex: string) => {
+      const chunkId = citedChunkId(msg, parseInt(strIndex, 10))
+      const label = chatSources.labelOf(chunkId)
+      if (!chunkId || !label) return docMatch
+      linked = true
+      return `<a href="#" class="source-link" data-source-id="${escapeAttribute(chunkId)}">[${label}]</a>`
     })
+    return linked ? replaced : match
   })
 }
 
+// Marks every citation of the selected source, in the conversation and the explanation.
+const explanationEl = ref<HTMLElement | null>(null)
+const markSelectedCitations = () => {
+  const selected = chatSources.selectedId.value
+  for (const root of [chatArea.value, explanationEl.value]) {
+    root?.querySelectorAll<HTMLElement>('a.source-link[data-source-id]').forEach(link => {
+      const isSelected = link.dataset.sourceId === selected
+      link.classList.toggle('source-link--selected', isSelected)
+      if (isSelected) link.setAttribute('aria-current', 'true')
+      else link.removeAttribute('aria-current')
+    })
+  }
+}
+watch(() => chatSources.selectedId.value, markSelectedCitations, { flush: 'post' })
+// Slot content (answers, the explanation) may re-render without the page.
+watch([explanationEl, () => explanationDialog.value.text, () => messages.value.length], markSelectedCitations, { flush: 'post' })
+onUpdated(markSelectedCitations)
+
 // Process source and conver to MarcDown
-const replaceSourcesAndConvertToMarcdown = (msg: Message, msgIndex: number) => {
+const replaceSourcesAndConvertToMarcdown = (msg: Message) => {
   if (msg.sender !== 'AI' || !msg.sources) { // replace sources only for AI messages
     return convertToMarkdown(msg.text)
   }
-  const result = convertLinks(msg.text, msg.sources, msgIndex)
+  const result = convertLinks(msg.text, msg)
   return convertToMarkdown(result)
 }
 
-// sources
-const openSourcesDialog = (sources: Source[]) => {
-  currentSources.value = sources
-  showSourcesDialog.value = true
+// Sources in the right sidebar. Selecting one never scrolls the conversation.
+const selectSource = async (id: string) => {
+  if (!chatSources.select(id)) return
+  await nextTick() // the panel registers with the first answer's sources
+  rightSidebar.activate(SOURCES_PANEL_ID)
 }
 
-const singleSourceClicks = (event: Event) => {
+const openSourceDocument = async (id: string) => {
+  if (!chatSources.openDocument(id)) return
+  await nextTick() // the panel registers when a source is opened for the first time
+  rightSidebar.activate(CONTEXT_PANEL_ID)
+}
+
+// An answer's Sources link shows the list at its first source, without selecting it.
+const showSources = async (msg: Message) => {
+  const first = msg.sources?.[0]
+  if (!first) return
+  chatSources.revealSource(first.id)
+  await nextTick()
+  rightSidebar.activate(SOURCES_PANEL_ID)
+}
+
+const citedSourceId = (event: Event): string | null => {
   const target = event.target as HTMLElement
-  // check if element was clicked and have required atributes
-  if (target.classList.contains('source-link') && target.dataset.sourceIndex && target.dataset.messageIndex) {
-    event.preventDefault()
-    // get indexes
-    const msgIndex = parseInt(target.dataset.messageIndex, 10)
-    const sourceIndex = parseInt(target.dataset.sourceIndex, 10)
+  if (!target.classList.contains('source-link') || !target.dataset.sourceId) return null
+  event.preventDefault()
+  // The modal explanation would cover the sidebar.
+  explanationDialog.value.show = false
+  return target.dataset.sourceId
+}
 
-    const clickedMsg = messages.value[msgIndex]
+// One click on a citation selects its source, a double click opens it in its document.
+const singleSourceClicks = (event: Event) => {
+  const id = citedSourceId(event)
+  if (id) selectSource(id)
+}
 
-    if (clickedMsg && clickedMsg.sources && clickedMsg.sources[sourceIndex]) {
-      openSourcesDialog([clickedMsg.sources[sourceIndex]])
-    }
-  }
+const doubleSourceClicks = (event: Event) => {
+  const id = citedSourceId(event)
+  if (id) openSourceDocument(id)
 }
 
 // put chat into starting state: no messages, sources, explanation or feedback of the old
 // conversation stay open, and its pending answers are ignored
 const resetChat = () => {
   conversation.enter()
-  messages.value = [
-    { sender: 'AI', text: 'Ahoj, máte na mě nějakou otázku?\n\n**Tip:** Označte část odpovědi a klikněte na **Explain** pro ověření tvrzení.' }
-  ]
+  messages.value = [greeting()]
   newMessage.value = ''
   isAiThinking.value = false
-  showSourcesDialog.value = false
-  currentSources.value = []
+  chatSources.clear()
   selectionData.value = { show: false, x: 0, y: 0, text: '', msgIndex: -1 }
   explanationDialog.value = { show: false, text: '', loading: false }
   showFeedbackDialog.value = false
@@ -628,6 +686,13 @@ const submitFeedback = async () => {
 
 .source-link:hover {
   text-decoration: underline;
+}
+
+.markdown-body :deep(.source-link--selected) {
+  font-weight: bold;
+  background-color: #fff3b0;
+  border-radius: 2px;
+  outline: 1px solid var(--q-primary);
 }
 
 .markdown-body {

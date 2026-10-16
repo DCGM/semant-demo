@@ -26,7 +26,7 @@ def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
     """
     rag_dir = tmp_dir / "rag_configs"
     rag_dir.mkdir(exist_ok=True)
-    # The default model catalog names an external Ollama host; use the unreachable OLLAMA_URLS.
+    # Keep both OpenRouter and Ollama endpoints unreachable in isolated tests.
     llm_models_path = write_offline_llm_catalog(tmp_dir / "llm_models.yaml")
     environ = {
         "SQL_DB_URL": f"sqlite+aiosqlite:///{tmp_dir / 'test.db'}",

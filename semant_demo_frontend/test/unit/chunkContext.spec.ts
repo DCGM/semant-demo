@@ -138,6 +138,27 @@ describe('useChunkContext', () => {
     expect(context.focusRequest.value).toBe(2)
   })
 
+  it('focuses the target again, reloading it only when extending dropped it', async () => {
+    const context = useChunkContext()
+    const opening = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11]))
+    await opening
+
+    await context.focus()
+    expect([context.focusRequest.value, calls.length]).toEqual([2, 1])
+
+    // As if extending had trimmed the target away.
+    context.chunks.value = [chunk(40), chunk(41)]
+    const focusing = context.focus()
+    await flush()
+    expect(context.focusRequest.value).toBe(3)
+    expect(calls[1].url.pathname).toBe('/api/documents/doc-1/chunks/doc-1-c10/window')
+    calls[1].answer(windowBody(10, [9, 10, 11]))
+    await focusing
+    expect(context.containsTarget.value).toBe(true)
+  })
+
   it('drops the answer for an earlier target', async () => {
     const context = useChunkContext()
     const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c1' })
@@ -233,6 +254,18 @@ describe('ChunkContextPanel', () => {
     expect(wrapper.text()).not.toMatch(/Passage|Pages|Jump to match/)
     expect(wrapper.text()).toContain('Show earlier text')
     expect(wrapper.text()).toContain('End of document')
+  })
+
+  it('shows a reference label with the target only when one is given', async () => {
+    const plain = mountPanel()
+    expect(plain.find('[data-testid="chunk-context-target-label"]').exists()).toBe(false)
+    expect(plain.find('[aria-current="true"]').attributes('aria-label')).toBe('Matched passage')
+
+    const cited = mountPanel({ targetLabel: 'S3' })
+    const target = cited.find('[aria-current="true"]')
+    expect(target.find('[data-testid="chunk-context-target-label"]').text()).toBe('S3')
+    expect(target.attributes('aria-label')).toBe('Cited passage S3')
+    expect(cited.findAll('[data-testid="chunk-context-target-label"]')).toHaveLength(1)
   })
 
   it('scrolls to the same target again on every focus request', async () => {
