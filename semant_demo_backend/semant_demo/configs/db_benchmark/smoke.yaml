@@ -1,0 +1,32 @@
+# Tiny profile for a quick check of the tool or of a small store (tests, development snapshot).
+name: smoke
+description: Every scenario kind once or twice at concurrency 1 and 2.
+seed: 1
+concurrency: [1, 2]
+requests_per_point: 4
+max_seconds_per_point: 10
+warmup_requests: 1
+timeout: 20
+max_qps: 10
+pause_between_points: 0
+queries:
+  sample_objects: 8
+  year_ranges: [[1800, 2000]]
+  languages: [ces]
+  sample_tags: 3
+  sample_user_collections: 3
+scenarios:
+  - {name: bm25, kind: search, mode: text}
+  - {name: vector, kind: search, mode: vector}
+  - {name: hybrid, kind: search, mode: hybrid}
+  - {name: hybrid_year, kind: search, mode: hybrid, filter: year_range}
+  - {name: hybrid_language, kind: search, mode: hybrid, filter: language}
+  - {name: hybrid_document_type, kind: search, mode: hybrid, filter: document_type}
+  - {name: hybrid_tag, kind: search, mode: hybrid, filter: tag}
+  - {name: hybrid_user_collection, kind: search, mode: hybrid, filter: user_collection}
+  - {name: hybrid_direct, kind: direct, mode: hybrid}
+  - {name: chunk_context, kind: context}
+  - {name: document_view, kind: document_view}
+  - {name: corpus_overview, kind: aggregate, concurrency: [1]}
+  - {name: mixed, kind: mixed, of: [hybrid, bm25, chunk_context]}
+  - {name: self_recall, kind: self_recall}
