@@ -59,6 +59,9 @@ features:
   search_summary:
     default: tiny
     allowed: [tiny]
+  document_summary:
+    default: tiny
+    allowed: [tiny]
   question:
     default: small
     allowed: [small]

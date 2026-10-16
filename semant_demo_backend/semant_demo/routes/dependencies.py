@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import AsyncGenerator
 
 #summarizer
+from semant_demo.features.summarization.document import TemplatedDocumentSummarizer
 from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer
 
 
@@ -83,6 +84,9 @@ def get_llm(connection: HTTPConnection) -> LlmGateway:
 
 async def get_summarizer(connection: HTTPConnection) -> TemplatedSearchResultsSummarizer:
     return get_resources(connection).get_summarizer()
+
+async def get_document_summarizer(connection: HTTPConnection) -> TemplatedDocumentSummarizer:
+    return get_resources(connection).get_document_summarizer()
 
 def get_rag_registry(connection: HTTPConnection) -> RagRegistry:
     return get_resources(connection).rag

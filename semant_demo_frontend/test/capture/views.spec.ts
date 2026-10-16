@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { annotation, answerChat, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search } from '../e2e/support'
+import { annotation, answerChat, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, sidebarPanelButton } from '../e2e/support'
 
 // UI review captures (`scripts/e2e-dev.sh capture`), not part of `make test-e2e`. The
 // capture projects in playwright.config.ts run this file at wide desktop, narrow desktop
@@ -46,6 +46,24 @@ test('document view', async ({ page }, testInfo) => {
   await closePhoneNavigation(page)
   await expectSidebarsOpen(page, testInfo)
   await save(page, testInfo, 'document-view')
+})
+
+test('document view - summary panel (#249)', async ({ page }, testInfo) => {
+  await ensureLoggedIn(page, 'owner')
+  await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
+  await page.reload() // without the sign-in notification
+  await expect(annotation(page, 'novak_manual')).toBeVisible()
+  await closePhoneNavigation(page)
+  await expectSidebarsOpen(page, testInfo)
+  // On phone the right sidebar is a closed overlay by default; open it to reach the panel.
+  if (testInfo.project.name === 'phone') {
+    await page.getByRole('button', { name: 'Toggle sidebar' }).click()
+  }
+
+  await sidebarPanelButton(page, 'Summary').click()
+  await page.getByRole('button', { name: 'Summarize Document' }).click()
+  await expect(page.getByTestId('document-summary')).toBeVisible()
+  await save(page, testInfo, 'document-view-summary')
 })
 
 test('corpus overview', async ({ page }, testInfo) => {

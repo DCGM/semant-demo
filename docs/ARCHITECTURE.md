@@ -97,7 +97,7 @@ semant_demo_backend/semant_demo/
                           feature policy), gateway (metered LangChain chat models, complete,
                           stream, FeatureChat), usage (token/cost records)
   routes/                 dependencies.py (DI from AppResources), router registration
-  configs/                YAML: llm_models, search_summarizer, search_filters, rag/ (RAG configurations)
+  configs/                YAML: llm_models, search_summarizer, document_summarizer, search_filters, rag/ (RAG configurations)
   users/                  FastAPI Users: model, manager, auth routers, schemas; routes (user search)
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks),
@@ -119,7 +119,9 @@ flowchart LR
 Dependencies are one-way: Documents, Search and Annotations use the user collections access
 functions; RAG uses Search's authorized retrieval; nothing imports RAG. Summarization reads
 Search's schemas; Search calls the summarizer only through its `Summarizer` protocol, which
-the search route receives from `get_summarizer`. No service reaches
+the search route receives from `get_summarizer`. The document summary (#249) calls
+Documents' `read_chunks_in_collection` for access and chunk data instead of a new Weaviate
+read. No service reaches
 a raw Weaviate or OpenAI client: SDK objects stay inside `adapters/`.
 
 #### Configuration (`config.py`)
@@ -151,6 +153,7 @@ A `Config` class that reads settings once, at construction, from the process env
 | `get_topicer()`, `get_span_chat()` | Topicer client; the span chat's `FeatureChat` | Startup → shutdown |
 | `get_llm()` | The `LlmGateway` (model tiers, metered chat models) | Startup → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
+| `get_document_summarizer()` | Whole-document summarization engine (#249) | First access → shutdown |
 | `get_rag_registry()` | Configured RAG instances | Startup → shutdown |
 
 Requests that need these resources while the lifespan is not running get HTTP 503.
@@ -395,11 +398,13 @@ Prompts are in Czech by default (application targets Czech heritage texts). Prom
 
 `POST /api/question` answers `question_text` from the snippets of `search_response`, both sent in the JSON body (`QuestionRequest`), so the question never appears in a URL that a proxy or access log records (the `question` tier). A failed model call answers 502 with a fixed message, or with the name of the missing provider setting (`LlmNotConfigured`); the provider's exception text, which may echo the request or endpoint, is neither returned nor logged.
 
+**Document summary (#249)** — `TemplatedDocumentSummarizer` (`features/summarization/document.py`) is a separate class, not a subclass of the search-results summarizer: it has no query, so it does not fit that ABC's `gen_*(query, ...)` contract. `POST /api/user_collections/{collection_id}/documents/{document_id}/summary` (routed here, in `features/summarization/routes.py`, since it owns the LLM-specific summary contract and config, even though the route's URL belongs to the documents resource family) requires collection read access via `features.documents.service.read_chunks_in_collection` — the same check and chunk read the matching `GET` route uses, so a denied request never reaches the model. Chunks are sorted by `order` and truncated to the configured `chunk_limit` (default 40; first N chunks in document order) before being sent to the model, each labelled `[docN]` the same way the search summarizer labels results; the response (`DocumentSummaryResponse`: `document_id`, `summary`, `citations` — chunk id, order, page range — `time_spent`, `total_chunks`, `summarized_chunks`, `truncated`) is self-contained rather than nested in a search-specific type, so a later Document Chat feature (#243, open) can reuse it as context without a second, incompatible summary shape; the truncation fields let the client show a "partial summary" notice for a long document instead of presenting a summary of its first `chunk_limit` chunks as if it covered the whole thing. Prompts, the fallback text, model options and `chunk_limit` are configurable via `configs/document_summarizer.yaml`; the model is the `document_summary` tier. Unlike the search-results summarizer (whose fallback keeps other, successfully-generated results), a document summary has nothing else to fall back on: a failed generation answers 502 (`DocumentSummaryFailed`, the same convention `POST /api/question` uses — a fixed safe message, or the server-authored `LlmNotConfigured` one) rather than 200 with the configured fallback text, so the client never shows a failed generation as a successful summary.
+
 #### LLM gateway (`adapters/llm/`)
 
 Every backend-owned LLM call goes through `LlmGateway` (built by bootstrap, `get_llm()`); Topicer calls its own models and is not metered here.
 
-- **Tiers** — `configs/llm_models.yaml` (`LLM_MODELS_CONFIG`) maps `tiny` / `small` / `medium` / `large` to a provider (`openai` — any OpenAI-compatible endpoint —, `ollama` or `google`), a model, an optional endpoint, capabilities (`tools`) and estimated prices. It also lists the tiers each feature may use and its default: `search_summary`, `question`, `span_chat`, `rag`. Keys and default endpoints come from the environment; the catalog holds no secrets. Clients never choose a model or tier; a RAG configuration chooses a permitted tier server-side.
+- **Tiers** — `configs/llm_models.yaml` (`LLM_MODELS_CONFIG`) maps `tiny` / `small` / `medium` / `large` to a provider (`openai` — any OpenAI-compatible endpoint —, `ollama` or `google`), a model, an optional endpoint, capabilities (`tools`) and estimated prices. It also lists the tiers each feature may use and its default: `search_summary`, `document_summary`, `question`, `span_chat`, `rag`. Keys and default endpoints come from the environment; the catalog holds no secrets. Clients never choose a model or tier; a RAG configuration chooses a permitted tier server-side.
 - **Current deployed model policy (October 2026)** — the shipped `tiny`/`small`/`medium`/`large` tiers are all hosted on OpenRouter through the existing `openai`/OpenAI-compatible adapter, with explicit estimated prices. Each tier may specify an OpenRouter `reasoning` mapping and `supports_temperature: false` to suppress unsupported temperature settings. The mapping is server-side, passed via ChatOpenAI `extra_body`, and leaves user-supplied temperature requests ignored only for tiers that reject them. See [LLM_MODEL_SELECTION_2026-10.md](LLM_MODEL_SELECTION_2026-10.md) for the dated speed/cost/quality review and rationale. The Ollama and direct Google adapter code remains available for alternate deployments, but is not selected by the shipped catalog.
 - **Construction** — `chat_model(feature, tier=..., temperature=..., ...)` returns a LangChain chat model (`ChatOpenAI`, `ChatOllama`, `ChatGoogleGenerativeAI`) for the permitted tier, shared by calls with the same options. RAG chains, the LangGraph pipeline and agent tool subcalls use these models unchanged; `complete()` and `stream()` serve the summaries, the question endpoint and span chat (`FeatureChat`). A provider without a key refuses the call before any request is sent (`LlmNotConfigured`).
 - **Usage** — a callback on every model records each call as a structured log line (`LLM call finished`) and, with telemetry, metrics: feature, tier, provider, model, outcome (`success`/`error`/`cancelled`), duration, input/output/total tokens, estimated cost and `request.id`. Tokens are provider-reported (`usage_source=provider`, also for streams) or, when the provider reports none and for failed or abandoned calls, estimated from text length (`estimated`); unknown usage is never reported as zero. Cost is always an estimate from the tier prices and absent when a price is unknown. Records never contain prompts, messages, generated text, snippets or keys. A non-streamed call cancelled by a client disconnect is not recorded. See [OBSERVABILITY.md](OBSERVABILITY.md#llm-calls).

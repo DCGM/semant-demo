@@ -82,7 +82,7 @@ def messages(text=PROMPT):
 def test_the_deployed_catalog_gives_every_feature_a_permitted_tier():
     catalog = ModelCatalog.load(SCRIPT_PATH / "configs" / "llm_models.yaml")
 
-    assert set(catalog.features) == {"search_summary", "question", "span_chat", "rag"}
+    assert set(catalog.features) == {"search_summary", "document_summary", "question", "span_chat", "rag"}
     for feature, policy in catalog.features.items():
         assert catalog.resolve(feature).tier == policy.default
     # Agentic RAG needs tool calling on the RAG default tier.
