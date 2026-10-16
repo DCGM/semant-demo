@@ -122,16 +122,24 @@ async def ensure_named_vector_exists(
     print(f"Successfully created named vector '{vector_name}' ({index_type}, {distance_metric}) in collection '{collection_name}'.")
 
 
-async def create_test_collection(client: weaviate.WeaviateAsyncClient) -> None:
+TEST_COLLECTION = "EmbedderTest"
+
+
+async def create_test_collection(client: weaviate.WeaviateAsyncClient, replace: bool = False,
+                                 collection_name: str = TEST_COLLECTION) -> None:
     """Create the EmbedderTest collection (with named vectors) and populate it with 10 Czech historical records.
 
     Args:
         client: The WeaviateAsyncClient.
+        replace: Delete an existing collection of that name first. Without it, an existing collection
+            is refused (ValueError) and left unchanged.
+        collection_name: Name of the created collection.
     """
-    collection_name = "EmbedderTest"
-
     if await client.collections.exists(collection_name):
-        print(f"Collection '{collection_name}' already exists. Deleting it to create a fresh one...")
+        if not replace:
+            raise ValueError(f"Collection '{collection_name}' already exists. It was left unchanged; "
+                             f"use --force to delete it and create it again.")
+        print(f"Collection '{collection_name}' already exists. Deleting it (--force) to create a fresh one...")
         await client.collections.delete(collection_name)
 
     print(f"Creating collection '{collection_name}'...")
