@@ -8,6 +8,7 @@ Name | Type
 ------------ | -------------
 `ragId` | string
 `ragRequest` | [RagRequest](RagRequest.md)
+`vector` | string
 
 ## Example
 
@@ -18,6 +19,7 @@ import type { RagRequestMain } from ''
 const example = {
   "ragId": null,
   "ragRequest": null,
+  "vector": null,
 } satisfies RagRequestMain
 
 console.log(example)

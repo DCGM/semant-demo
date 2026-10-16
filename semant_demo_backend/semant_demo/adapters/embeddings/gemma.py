@@ -9,17 +9,18 @@ class GemmaEmbeddings:
     HTTP errors propagate.
     """
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, transport: httpx.AsyncBaseTransport | None = None):
         self.base_url = base_url
+        self.transport = transport
 
     async def embed_query(self, query: str) -> list[float]:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(transport=self.transport) as client:
             resp = await client.post(f"{self.base_url}/embed_query", json={"query": query}, timeout=36.0)
             resp.raise_for_status()
             return resp.json()["embedding"]
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(transport=self.transport) as client:
             resp = await client.post(f"{self.base_url}/embed_documents", json={"texts": texts}, timeout=6.0)
             resp.raise_for_status()
             return resp.json()["embeddings"]

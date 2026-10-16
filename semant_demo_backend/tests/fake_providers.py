@@ -1,4 +1,5 @@
-"""Deterministic HTTP stand-ins for the embedding service, Topicer and LLM chat
+"""Deterministic HTTP stand-ins for the embedding service, an OpenAI-compatible embedding
+endpoint (``/openai/v1/embeddings``: the second search vector), Topicer and LLM chat
 (Ollama ``/ollama/api/chat`` and OpenAI-compatible ``/openai/v1/chat/completions``).
 
 Used by the browser-test profile (``tests/e2e_server.py``), where the backend reaches its
@@ -21,7 +22,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from tests.corpus import Corpus
-from tests.fakes import fake_embedding
+from tests.fakes import fake_embedding, second_embedding
 
 FAKE_REASON = "fake provider: tag example found in text"
 
@@ -110,6 +111,13 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
     @app.post("/embed_documents")
     async def embed_documents(body: dict):
         return {"embeddings": [fake_embedding(t) for t in body["texts"]]}
+
+    # OpenAI-compatible embeddings (a search vector's query model, #217): the second vector.
+    @app.post("/openai/v1/embeddings")
+    async def openai_embeddings(body: dict):
+        return {"object": "list", "model": body["model"],
+                "data": [{"object": "embedding", "index": i, "embedding": second_embedding(t)}
+                         for i, t in enumerate(body["input"])]}
 
     @app.post("/v1/tags/propose/texts")
     async def propose_texts(body: dict):

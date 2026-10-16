@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from ddgs import DDGS
 import uuid
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 
 import logging
@@ -64,7 +65,6 @@ class AdaptiveRagState(TypedDict):
 class IncrementalAdaptiveRagGenerator(BaseRag):
     def __init__(self, global_config: Config, param_config, llm=None):
         super().__init__(global_config, param_config, llm)
-        self.retrieve = None
 
         #multilanguage prompt
         self.identify_language_prompt = ChatPromptTemplate.from_messages(identify_language_prompt_template)
@@ -234,7 +234,9 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 #--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
     # retrieval node
     # use to get relevant documents from database based on question, history and metadata (if extracted)
-    async def node_retrieve(self, state: AdaptiveRagState):
+    # The request's retriever comes in the run's config (``rag_request``), not from the shared instance.
+    async def node_retrieve(self, state: AdaptiveRagState, config: RunnableConfig):
+        retrieve: Retriever = config["configurable"]["retrieve"]
         try:
             #get metadata
             metadata = state.get("metadata", {})
@@ -281,7 +283,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     is_hyde = use_hyde_embedding
                 )
                 #call db search
-                return await self.retrieve(search_request)
+                return await retrieve(search_request)
 
             #call in parallel
             search_tasks = [single_search(query) for query in queries]
@@ -631,8 +633,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
     #method that is implemented in base rag class - basicly just preprocessing of request and calling generate method
     async def rag_request(self, request: RagRequest, retrieve: Retriever) -> RagResponse:
-        if (self.retrieve == None):
-            self.retrieve = retrieve
         # get history and previous documents from request
         previous_documents = []
         if request.history:
@@ -660,7 +660,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                 "web_search_performed" : False
             }
             
-            config = {"recursion_limit" : 50}
+            config = {"recursion_limit" : 50, "configurable": {"retrieve": retrieve}}
 
             generated_result = await self.rag.ainvoke(intial_state_values, config=config)
 

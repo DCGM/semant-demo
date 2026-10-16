@@ -1,8 +1,10 @@
 """Chunk retrieval: neutral ``ChunkQuery`` -> Weaviate BM25/near-vector/hybrid query -> chunks.
 
 Owns filter translation, the choice of query call, the returned references/properties and
-the mapping of result objects. Embeddings are computed by the caller (``query.vector``);
-no provider is called here.
+the mapping of result objects. Embeddings are computed by the caller (``query.vector``),
+which also names the stored vector to compare with (``query.target_vector``); every
+vector and hybrid query names it, so a collection with several named vectors works. No
+provider is called and no configuration is read here.
 """
 from collections.abc import Mapping
 from typing import Any
@@ -55,9 +57,12 @@ class ChunkSearchRepository:
         if query.mode == SearchType.text:
             result = await chunks.query.bm25(query=query.text, **common)
         elif query.mode == SearchType.vector:
-            result = await chunks.query.near_vector(near_vector=_vector(query), **common)
+            vector, target = _vector(query)
+            result = await chunks.query.near_vector(near_vector=vector, target_vector=target, **common)
         elif query.mode == SearchType.hybrid:
-            result = await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=_vector(query), **common)
+            vector, target = _vector(query)
+            result = await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=vector,
+                                               target_vector=target, **common)
         else:
             raise ValueError(f"Unknown search type: {query.mode}")
 
@@ -129,10 +134,10 @@ def classifications(properties: Mapping[str, Any]) -> dict[str, list[str]]:
     return result
 
 
-def _vector(query: ChunkQuery) -> list[float]:
-    if query.vector is None:
-        raise ValueError(f"{query.mode.value} search needs a query vector")
-    return query.vector
+def _vector(query: ChunkQuery) -> tuple[list[float], str]:
+    if query.vector is None or not query.target_vector:
+        raise ValueError(f"{query.mode.value} search needs a query vector and its target vector")
+    return query.vector, query.target_vector
 
 
 def _condition(condition: FieldCondition):

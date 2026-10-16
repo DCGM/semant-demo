@@ -14,7 +14,7 @@ from semant_demo.adapters.sql.tables import create_tables
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.users.models import User
 from tests.corpus import Corpus
-from tests.fakes import fake_embedding
+from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
 from tests.weaviate_store import claim_store
 
 FIXTURE_TIMESTAMP = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -95,7 +95,7 @@ async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, cor
                 **corpus.chunk_classifications.get(key, {}),
             },
             references=references,
-            vector={"default": fake_embedding(chunk["text"])},
+            vector={"default": fake_embedding(chunk["text"]), SECOND_VECTOR: second_embedding(chunk["text"])},
         ))
     await _insert(client, names.chunks_collection_name, chunk_objects)
 

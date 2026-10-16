@@ -65,6 +65,8 @@ docs/SearchRequest.md
 docs/SearchResponse.md
 docs/SearchResultChunk.md
 docs/SearchType.md
+docs/SearchVectorInfo.md
+docs/SearchVectorsResponse.md
 docs/ShareCollectionRequest.md
 docs/SpanChatMessage.md
 docs/SpanType.md
@@ -150,6 +152,8 @@ models/SearchRequest.ts
 models/SearchResponse.ts
 models/SearchResultChunk.ts
 models/SearchType.ts
+models/SearchVectorInfo.ts
+models/SearchVectorsResponse.ts
 models/ShareCollectionRequest.ts
 models/SpanChatMessage.ts
 models/SpanType.ts

@@ -184,6 +184,12 @@ export interface SearchRequest {
      * @memberof SearchRequest
      */
     isHyde?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof SearchRequest
+     */
+    vector?: string | null;
 }
 
 
@@ -234,6 +240,7 @@ export function SearchRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
         'positive': json['positive'],
         'automatic': json['automatic'],
         'isHyde': json['is_hyde'] == null ? undefined : json['is_hyde'],
+        'vector': json['vector'] == null ? undefined : json['vector'],
     };
 }
 
@@ -273,6 +280,7 @@ export function SearchRequestToJSONTyped(value?: SearchRequest | null, ignoreDis
         'positive': value['positive'],
         'automatic': value['automatic'],
         'is_hyde': value['isHyde'],
+        'vector': value['vector'],
     };
 }
 

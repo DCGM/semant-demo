@@ -61,6 +61,8 @@ export * from './SearchRequest';
 export * from './SearchResponse';
 export * from './SearchResultChunk';
 export * from './SearchType';
+export * from './SearchVectorInfo';
+export * from './SearchVectorsResponse';
 export * from './ShareCollectionRequest';
 export * from './SpanChatMessage';
 export * from './SpanType';

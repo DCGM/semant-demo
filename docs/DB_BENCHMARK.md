@@ -143,9 +143,9 @@ so it is not a capacity figure.
 
 To add a workload, copy a profile and change its scenarios, inputs (`year_ranges`,
 `languages`, `document_types`) or `collections` (other collection names or aliases). For a
-store with several named vectors, `--target-vector NAME` selects the one the `direct` and
-`self_recall` scenarios and the coverage check query (the adapter queries whatever the
-application queries). A named vector that the sampled chunks do not have is an error; it is
+store with several named vectors, `--target-vector NAME` selects the one all vector and hybrid
+scenarios (`direct`, `app` through the search adapter, `self_recall`) and the coverage check
+query; the sampled query vectors are that vector's. A named vector that the sampled chunks do not have is an error; it is
 never replaced by another vector. Without the option, the first vector by name is used and the
 run notes which vectors exist.
 

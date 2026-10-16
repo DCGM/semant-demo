@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends
-from semant_demo.features.search.schemas import SearchFiltersResponse, SearchRequest, SearchResponse
+from semant_demo.features.search.schemas import SearchFiltersResponse, SearchRequest, SearchResponse, SearchVectorsResponse
 
 from semant_demo.features.search import service
 from semant_demo.features.search.service import SearchBackends
-from semant_demo.routes.dependencies import get_search_backends, get_summarizer, get_search_filters
+from semant_demo.features.search.vectors import SearchVectors
+from semant_demo.routes.dependencies import get_search_backends, get_summarizer, get_search_filters, get_search_vectors
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 
@@ -15,6 +16,12 @@ async def get_available_search_filters(
     filters_response: SearchFiltersResponse = Depends(get_search_filters),
 ) -> SearchFiltersResponse:
     return filters_response
+
+
+@exp_router.get("/api/search/vectors", response_model=SearchVectorsResponse)
+async def get_available_search_vectors(vectors: SearchVectors = Depends(get_search_vectors)) -> SearchVectorsResponse:
+    """The search vectors a search request may select, and the default one."""
+    return vectors.describe()
 
 
 @exp_router.post("/api/search", response_model=SearchResponse)

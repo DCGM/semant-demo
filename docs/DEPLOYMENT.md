@@ -167,6 +167,8 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | Directory of the RAG configurations offered to users |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summary prompts, fallbacks and options |
 | `SEARCH_FILTERS_CONFIG` | `configs/search_filters.yaml` | Search filters ([SEARCH_FILTERS.md](SEARCH_FILTERS.md)) |
+| `SEARCH_VECTORS_CONFIG` | `configs/search_vectors.yaml` | Weaviate named vectors Search and RAG may query, their query embedding and the default ([ARCHITECTURE.md](ARCHITECTURE.md#search-pipeline)); validated at startup. List a vector only after it is populated in the chunk collection |
+| `EMBEDDING_API_KEY` | (empty) | Bearer key sent to the OpenAI-compatible embedding endpoints of search vectors; empty sends none |
 | `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service |
 | `SPAN_CHAT_TEMPERATURE` / `SPAN_CHAT_MAX_TOKENS` | `0.4` / `1024` | Span discussion replies (`span_chat` tier) |
 | `SPAN_CHAT_CONTEXT_CHARS` / `SPAN_CHAT_HISTORY_LIMIT` | `1500` / `20` | Context window around the span; chat messages forwarded |
