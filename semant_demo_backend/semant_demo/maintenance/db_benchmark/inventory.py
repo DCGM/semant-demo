@@ -101,8 +101,13 @@ def walk_data_dir(path: str) -> tuple[list[tuple[int, str]], list[str]]:
 
 
 def container_files(container: str, path: str = CONTAINER_DATA_PATH) -> list[tuple[int, str]]:
-    """File sizes under the data path, listed by ``find`` inside the container (read-only)."""
-    out = subprocess.run(["docker", "exec", container, "find", path, "-type", "f", "-exec", "stat", "-c", "%s %n", "{}", "+"],
+    """File sizes under the data path, listed by ``find`` inside the container (read-only).
+
+    ``-xdev`` keeps mounts below the data path out (e.g. a backup directory mounted at
+    ``/var/lib/weaviate/backups``), as ``--data-dir`` on the host does.
+    """
+    out = subprocess.run(["docker", "exec", container, "find", path, "-xdev", "-type", "f", "-exec", "stat", "-c", "%s %n",
+                          "{}", "+"],
                          capture_output=True, text=True, timeout=600, check=True).stdout
     return parse_files_list(out, path)
 
@@ -200,7 +205,8 @@ async def collect(client: WeaviateAsyncClient, base_url: str, names: CollectionN
                   for n in nodes.get("nodes", [])],
         "aliases": {a["alias"]: a["class"] for a in aliases} if aliases is not None else None,
         "collections": {c["class"]: collection_summary(c) for c in schema.get("classes", [])},
-        "backups": [{"id": b.get("id"), "status": b.get("status"), "size_gib": round(b.get("size") or 0, 1),
+        # Backup ids are not recorded (they may name operations or hosts); the start time identifies a backup.
+        "backups": [{"status": b.get("status"), "size_gib": round(b.get("size") or 0, 1),
                      "started": (b.get("startedAt") or "")[:19], "collections": len(b.get("classes") or [])}
                     for b in backups] if isinstance(backups, list) else None,
     }
@@ -229,10 +235,10 @@ async def collect(client: WeaviateAsyncClient, base_url: str, names: CollectionN
         disk["unreadable_examples"] = unreadable[:5]
     if files_list:
         entries = parse_files_list(Path(files_list).read_text())
-        disk["listed_via"] = f"file list {Path(files_list).name}"
+        disk["listed_via"] = "a saved file list"
     elif container and container_files_scan:
         entries = container_files(container)
-        disk["listed_via"] = f"docker exec {container} find"
+        disk["listed_via"] = "docker exec find in the container"
     if data_dir or files_list or container_files_scan:
         disk["usage"] = scan_files(entries)
     if backup_dir:

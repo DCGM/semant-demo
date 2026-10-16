@@ -3,14 +3,18 @@
 Inputs are drawn at run time with a seeded random generator (random cursors in a large
 collection, the id list of a small one), so no corpus ids or texts are checked in. Query vectors are the stored vectors of sampled chunks ("document as query"),
 which keeps embedding calls out of the timings; BM25 text is the longest words of the same
-chunk. Neither texts, vectors nor ids are written to the results: only short (unsalted)
-hashes of ids, used to compare result lists between runs.
+chunk. Neither texts, vectors nor ids are written to the results: only short keyed hashes
+of ids (``IdHasher``), used to compare result lists between runs made with the same key.
+
+Tag and user-collection filter values are only those that match at least one chunk, so a
+filtered search measures a search that can return results.
 
 The ``search``, ``context``, ``document_view`` and ``aggregate`` kinds call the application's
 adapters/services (layer ``adapter``); ``direct`` and ``self_recall`` query Weaviate without
 references (layer ``direct``).
 """
 import hashlib
+import hmac
 import random
 import re
 import uuid
@@ -40,7 +44,33 @@ Request = Callable[[int], Awaitable[list[UUID]]]
 
 
 def short_hash(value: object) -> str:
+    """Unkeyed 12-character hash; only an intermediate step, never written as is (see ``IdHasher``)."""
     return hashlib.sha256(str(value).encode()).hexdigest()[:12]
+
+
+class IdHasher:
+    """Keyed hashes of the result ids and query fingerprints written to results.
+
+    An unkeyed hash of an object id can be reversed by anyone who can list the ids, so the
+    ``short_hash`` of a value is hashed again with a secret key (HMAC-SHA256). Runs made with
+    the same key can be compared; ``key_id`` identifies the key without revealing it.
+    ``rekey`` also converts the unkeyed hashes of results written by tool version 1.
+    """
+
+    def __init__(self, key: bytes):
+        if len(key) < 16:
+            raise ValueError("the id hash key must have at least 16 bytes")
+        self.key = key
+        self.key_id = hashlib.sha256(b"db_benchmark key id:" + key).hexdigest()[:8]
+
+    def rekey(self, unkeyed: str) -> str:
+        return hmac.new(self.key, unkeyed.encode(), hashlib.sha256).hexdigest()[:12]
+
+    def __call__(self, value: object) -> str:
+        return self.rekey(short_hash(value))
+
+    def describe(self) -> dict:
+        return {"method": "hmac-sha256(key, sha256(id)[:12])[:12]", "key_id": self.key_id}
 
 
 @dataclass
@@ -61,6 +91,8 @@ class Inputs:
     document_types: list[str] = field(default_factory=list)
     vector_name: str | None = None
     notes: list[str] = field(default_factory=list)
+    filter_values_checked: dict[str, int] = field(default_factory=dict)
+    """Tags / user collections checked for matching chunks while sampling."""
 
     def summary(self) -> dict:
         with_vector = [c for c in self.chunks if c.vector is not None]
@@ -72,6 +104,7 @@ class Inputs:
             "with_terms": sum(bool(c.terms) for c in self.chunks),
             "documents": len({c.document_id for c in self.chunks if c.document_id}),
             "tags": len(self.tags),
+            "filter_values_checked": self.filter_values_checked,
             "user_collections": len(self.user_collections),
             "document_types": len(self.document_types),
             "notes": self.notes,
@@ -92,21 +125,39 @@ def terms(text: str, count: int) -> str:
 
 
 def _pick_vector(vector, name: str | None) -> tuple[list[float] | None, str | None]:
-    if isinstance(vector, dict):
+    """The object's vector called ``name`` (None when it has none); without a name, the first by name.
+
+    Another vector is never substituted for the requested one.
+    """
+    if not isinstance(vector, dict):
+        vector = {"default": vector} if vector is not None else {}
+    if name is None:
         if not vector:
-            return None, name
-        key = name if name in vector else sorted(vector)[0]
-        return vector[key], key
-    return vector, name
+            return None, None
+        name = sorted(vector)[0]
+    return vector.get(name), name
 
 
-async def _sample_ids(collection, rnd: random.Random, count: int) -> list[UUID]:
+FILTER_CHECKS = 1000
+"""At most this many tags / user collections are checked for matching chunks."""
+
+
+async def _sample_matching_ids(collection, rnd: random.Random, count: int,
+                               matches: Callable[[UUID], Awaitable[bool]]) -> tuple[list[UUID], int]:
+    """Up to ``count`` random ids of ``collection`` for which ``matches`` holds, and how many were checked."""
     if count <= 0:
-        return []
-    response = await collection.query.fetch_objects(limit=1000, return_properties=[])
-    ids = [o.uuid for o in response.objects]
+        return [], 0
+    response = await collection.query.fetch_objects(limit=FILTER_CHECKS, return_properties=[])
+    ids = sorted(o.uuid for o in response.objects)
     rnd.shuffle(ids)
-    return ids[:count]
+    found, checked = [], 0
+    for candidate in ids:
+        if len(found) >= count:
+            break
+        checked += 1
+        if await matches(candidate):
+            found.append(candidate)
+    return found, checked
 
 
 async def sample_inputs(client: WeaviateAsyncClient, names: CollectionNames, profile: Profile,
@@ -135,25 +186,45 @@ async def sample_inputs(client: WeaviateAsyncClient, names: CollectionNames, pro
             response = await chunks.query.fetch_objects(limit=1, after=uuid.UUID(int=rnd.getrandbits(128)), **fetch)
             if response.objects and response.objects[0].uuid not in {o.uuid for o in objects}:
                 objects.append(response.objects[0])
+    available: set[str] = set()
     for obj in objects:
         if obj is None:
             continue
+        available |= set(obj.vector) if isinstance(obj.vector, dict) else {"default"} if obj.vector else set()
         vector, vector_name = _pick_vector(obj.vector, vector_name)
         docs = (obj.references or {}).get("document")
         sampled[obj.uuid] = SampledChunk(
             id=obj.uuid, vector=vector, terms=terms(obj.properties.get("text") or "", q.terms_per_query),
             document_id=docs.objects[0].uuid if docs and docs.objects else None,
             order=obj.properties.get("order"))
+    if target_vector is not None and sampled and not any(c.vector is not None for c in sampled.values()):
+        raise ValueError(f"no sampled chunk has the named vector {target_vector!r}; "
+                         f"available: {', '.join(sorted(available)) or 'none'}")
     inputs = Inputs(chunks=list(sampled.values()), vector_name=vector_name)
     if not inputs.chunks:
         inputs.notes.append("no chunks could be sampled")
+    if target_vector is None and len(available) > 1:
+        inputs.notes.append(f"named vectors {', '.join(sorted(available))}: using {vector_name!r} "
+                            "(select one with --target-vector)")
+    missing = sum(1 for c in inputs.chunks if c.vector is None)
+    if missing:
+        inputs.notes.append(f"{missing} sampled chunks have no {vector_name!r} vector")
 
     needs = {s.filter for s in profile.scenarios} | {s.kind for s in profile.scenarios}
+    search = ChunkSearchRepository(client, names)
+
+    async def has_chunks(**query) -> bool:
+        flt = search._filter(ChunkQuery(text="", mode=SearchType.text, limit=1, **query))
+        return bool((await chunks.aggregate.over_all(filters=flt, total_count=True)).total_count)
+
     if "tag" in needs:
-        inputs.tags = await _sample_ids(client.collections.get(names.tag_collection_name), rnd, q.sample_tags)
+        inputs.tags, inputs.filter_values_checked["tag"] = await _sample_matching_ids(
+            client.collections.get(names.tag_collection_name), rnd, q.sample_tags,
+            lambda i: has_chunks(tags=TagFilter((i,), automatic=True, positive=True)))
     if "user_collection" in needs:
-        inputs.user_collections = await _sample_ids(
-            client.collections.get(names.user_collection_name), rnd, q.sample_user_collections)
+        inputs.user_collections, inputs.filter_values_checked["user_collection"] = await _sample_matching_ids(
+            client.collections.get(names.user_collection_name), rnd, q.sample_user_collections,
+            lambda i: has_chunks(collection_id=i))
     if "document_type" in needs:
         inputs.document_types = list(q.document_types)
         if not inputs.document_types:
@@ -210,11 +281,11 @@ class Workload:
         needed = {"tag": self.inputs.tags, "user_collection": self.inputs.user_collections,
                   "document_type": self.inputs.document_types}
         if scenario.filter in needed and not needed[scenario.filter]:
-            return f"no {scenario.filter} values sampled"
+            return f"no {scenario.filter} value that matches any chunk"
         return None
 
     def fingerprint(self, scenario: Scenario, index: int) -> str:
-        """Identifies the query of ``index`` (its input and filter value) without revealing it."""
+        """Identifies the query of ``index`` (its input and filter value); keyed by ``IdHasher`` before it is written."""
         if scenario.kind in ("aggregate", "mixed"):
             return short_hash(index)
         chunk = self._usable(scenario)[index % self.input_count(scenario)]

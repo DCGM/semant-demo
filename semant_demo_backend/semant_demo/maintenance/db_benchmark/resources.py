@@ -106,14 +106,24 @@ def cgroup_snapshot(cgroup: Path | None) -> dict[str, Any] | None:
     }
 
 
-def _arcstats() -> dict[str, int]:
-    """ZFS ARC counters ('name type value' lines); empty without ZFS."""
+def parse_arcstats(text: str | None) -> dict[str, int]:
+    """ZFS ARC counters from ``arcstats`` ('name type data' lines: the value is the third column)."""
     values = {}
-    for line in (_read(ZFS_ARCSTATS) or "").splitlines():
+    for line in (text or "").splitlines():
         parts = line.split()
-        if len(parts) == 3 and parts[2].isdigit():
+        if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
             values[parts[0]] = int(parts[2])
     return values
+
+
+def _arcstats() -> dict[str, int]:
+    """Empty without ZFS."""
+    return parse_arcstats(_read(ZFS_ARCSTATS))
+
+
+def source_label(cgroup: Path | None, reason: str | None) -> dict[str, str | None]:
+    """Where resource figures came from, without host paths or container ids."""
+    return {"cgroup": "Weaviate container cgroup v2" if cgroup else None, "unavailable": None if cgroup else reason}
 
 
 def _pressure(kind: str) -> dict[str, float] | None:

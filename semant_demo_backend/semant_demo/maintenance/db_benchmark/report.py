@@ -1,4 +1,6 @@
-"""Markdown rendering of inventory and run results, and the side-by-side comparison of two runs."""
+"""Markdown rendering of inventory and run results, the side-by-side comparison of two runs, a
+compact run summary and the sanitized copy of a result for publication."""
+import copy
 from typing import Any
 
 GIB = 1024 ** 3
@@ -114,8 +116,8 @@ def inventory_markdown(doc: dict) -> str:
                       [[e["count"], e["level"], e["action"], e["message"].replace("|", "\\|")] for e in logs["signals"]])
     if inv.get("backups"):
         out += ["", "## Backups (backup-filesystem module)", ""]
-        out += _table(["id", "status", "size", "started"], [[b["id"], b["status"], f"{b['size_gib']} GiB", b["started"]]
-                                                          for b in inv["backups"]])
+        out += _table(["started", "status", "size", "collections"],
+                      [[b["started"], b["status"], f"{b['size_gib']} GiB", b.get("collections")] for b in inv["backups"]])
     return "\n".join(out) + "\n"
 
 
@@ -137,7 +139,11 @@ def run_markdown(doc: dict) -> str:
             "- Inputs: " + ", ".join(f"{k} {v}" for k, v in doc["inputs"].items() if k != "notes")
             + "".join(f"; note: {n}" for n in doc["inputs"].get("notes", [])),
             f"- Resource source: {doc['resource_source']['cgroup'] or doc['resource_source']['unavailable']}",
-            f"- Heavy profile opt-in: {doc['allow_heavy']}", ""]
+            f"- Heavy profile opt-in: {doc['allow_heavy']}",
+            "- Inputs per level: " + (doc.get("input_reuse") or
+                                      "each concurrency level ran the next inputs (tool version 1): levels "
+                                      "differ in queries as well as concurrency"),
+            f"- Id hashes: {_hashing(doc)}", ""]
     rows = []
     for s in doc["scenarios"]:
         if s.get("skipped"):
@@ -155,6 +161,11 @@ def run_markdown(doc: dict) -> str:
         p = s["points"][0]
         out += ["", f"Self-recall `{s['name']}`: own chunk in top-{s['limit']} for {p['hit_requests']}/{p['ok']} "
                     "sampled chunks."]
+    empty = [s["name"] for s in doc["scenarios"] if s["kind"] in ("search", "direct", "context", "document_view")
+             and s.get("points") and not any(p["hit_requests"] for p in s["points"])]
+    if empty:
+        out += ["", "**No request returned results in " + ", ".join(f"`{n}`" for n in empty) +
+                ": these timings are not representative of the scenario (for example a filter that matches nothing).**"]
     errors = {f"{s['name']}@{p['concurrency']}": p["errors"] for s in doc["scenarios"] for p in s.get("points", [])
               if p["errors"]}
     if errors:
@@ -162,6 +173,55 @@ def run_markdown(doc: dict) -> str:
     out += ["", "Scenarios: " + "; ".join(f"`{s['name']}` — {s['description']}" for s in doc["scenarios"]
                                           if s.get("description"))]
     return "\n".join(out) + "\n"
+
+
+def _hashing(doc: dict) -> str:
+    hashing = doc.get("id_hashing")
+    if not hashing:
+        return "unkeyed (tool version 1)"
+    return f"keyed, key id `{hashing['key_id']}`" + (f" ({hashing['converted']})" if hashing.get("converted") else "")
+
+
+def run_summary(doc: dict) -> dict:
+    """The run without the per-query result hashes: everything but the overlap of ``compare``."""
+    summary = copy.deepcopy(doc)
+    summary["kind"] = "run_summary"
+    for scenario in summary["scenarios"]:
+        scenario.pop("results", None)
+    return summary
+
+
+def sanitize(doc: dict, hasher) -> dict:
+    """A copy of a result for publication: unkeyed (version 1) id hashes keyed with ``hasher``,
+    and no cgroup path, backup ids or file-list name.
+
+    Raises ValueError when the result is already keyed with another key (that cannot be converted).
+    """
+    clean = copy.deepcopy(doc)
+    if clean["kind"] == "run":
+        hashing = clean.get("id_hashing")
+        if hashing is None:
+            for scenario in clean["scenarios"]:
+                if "results" in scenario:
+                    scenario["results"] = {hasher.rekey(k): [hasher.rekey(h) for h in ids]
+                                           for k, ids in scenario["results"].items()}
+            if clean["inputs"].get("query_set"):
+                clean["inputs"]["query_set"] = hasher.rekey(clean["inputs"]["query_set"])
+            clean["id_hashing"] = {**hasher.describe(), "converted": "keyed from unkeyed version 1 hashes"}
+        elif hashing["key_id"] != hasher.key_id:
+            raise ValueError(f"the result is keyed with key {hashing['key_id']}, not {hasher.key_id}")
+        source = clean.get("resource_source") or {}
+        clean["resource_source"] = {"cgroup": "Weaviate container cgroup v2" if source.get("cgroup") else None,
+                                    "unavailable": None if source.get("cgroup") else "unavailable"}
+    else:
+        inv = clean["inventory"]
+        for backup in inv.get("backups") or []:
+            backup.pop("id", None)
+        if (inv.get("disk") or {}).get("listed_via"):
+            inv["disk"]["listed_via"] = ("docker exec find in the container" if "docker exec" in inv["disk"]["listed_via"]
+                                         else "a saved file list")
+    clean["sanitized"] = True
+    return clean
 
 
 def _overlap(a: dict[str, list[str]], b: dict[str, list[str]]) -> tuple[float | None, int]:
@@ -195,7 +255,13 @@ def compare_markdown(a: dict, b: dict) -> str:
             warnings.append(label)
     if warnings:
         out += ["", f"**Setup differs ({', '.join(warnings)}): attribute latency changes with care.**"]
-    if a["profile_fingerprint"] != b["profile_fingerprint"] or a["inputs"].get("query_set") != b["inputs"].get("query_set"):
+    key_a, key_b = ((d.get("id_hashing") or {}).get("key_id") for d in (a, b))
+    comparable_ids = key_a == key_b
+    if not comparable_ids:
+        out += ["", f"The id hashes use different keys (A: {key_a or 'unkeyed'}, B: {key_b or 'unkeyed'}): result "
+                    "overlap is not computed. Run both with the same --id-key-file, or `sanitize` a version 1 "
+                    "result with the key of the other."]
+    elif a["profile_fingerprint"] != b["profile_fingerprint"] or a["inputs"].get("query_set") != b["inputs"].get("query_set"):
         out += ["", "The query sets differ (profile or sampled inputs): result overlap is only computed for "
                     "identical query fingerprints."]
 
@@ -212,7 +278,8 @@ def compare_markdown(a: dict, b: dict) -> str:
             sb, pb = other
             def delta(x, y):
                 return f"{(y - x) / x * 100:+.0f}%" if x and y is not None else ""
-            overlap, n = _overlap(s.get("results", {}), sb.get("results", {})) if p["concurrency"] == s["points"][0]["concurrency"] else (None, 0)
+            first = p["concurrency"] == s["points"][0]["concurrency"]
+            overlap, n = _overlap(s.get("results", {}), sb.get("results", {})) if first and comparable_ids else (None, 0)
             rows.append([s["name"], p["concurrency"], p["latency_ms"]["p50"], pb["latency_ms"]["p50"],
                          delta(p["latency_ms"]["p50"], pb["latency_ms"]["p50"]), p["latency_ms"]["p95"],
                          pb["latency_ms"]["p95"], delta(p["latency_ms"]["p95"], pb["latency_ms"]["p95"]),

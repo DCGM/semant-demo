@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
 
 PROFILE_DIR = Path(__file__).resolve().parents[2] / "configs" / "db_benchmark"
 
@@ -32,30 +32,32 @@ class Scenario(BaseModel):
     description: str = ""
     mode: Literal["text", "vector", "hybrid"] | None = None
     """search / direct: the query call."""
-    limit: int = 10
-    alpha: float = 0.5
+    limit: PositiveInt = 10
+    alpha: float = Field(0.5, ge=0, le=1)
     filter: FilterKind | None = None
     of: list[str] = Field(default_factory=list)
     """mixed: names of the scenarios a request is drawn from (uniformly)."""
-    context_chunks: int = 2
+    context_chunks: PositiveInt = 2
     """context: chunks read before and after the sampled chunk."""
-    max_document_chunks: int = 2000
+    max_document_chunks: PositiveInt = 2000
     """document_view: documents with more chunks are skipped when sampling (keeps one request bounded)."""
-    concurrency: list[int] | None = None
+    concurrency: list[PositiveInt] | None = Field(None, min_length=1)
     """Overrides the profile's levels (e.g. one level for an aggregate or a check)."""
 
 
 class QueryInputs(BaseModel):
-    sample_objects: int = 100
+    sample_objects: PositiveInt = 100
     """Chunks sampled (seeded random cursor) for query vectors, terms, documents and contexts."""
-    terms_per_query: int = 2
+    terms_per_query: PositiveInt = 2
     """BM25/hybrid text: this many of the longest words of the sampled chunk (never stored in results)."""
     year_ranges: list[tuple[int, int]] = Field(default_factory=lambda: [(1900, 1920)])
     languages: list[str] = Field(default_factory=lambda: ["ces"])
     document_types: list[str] = Field(default_factory=list)
     """Values of the document's ``documentType`` (filtered through the reference); empty: sampled."""
-    sample_tags: int = 20
-    sample_user_collections: int = 10
+    sample_tags: int = Field(20, ge=0)
+    """Tags that match at least one chunk (tags without chunks are skipped while sampling)."""
+    sample_user_collections: int = Field(10, ge=0)
+    """User collections with at least one chunk."""
 
 
 class Collections(BaseModel):
@@ -71,15 +73,15 @@ class Profile(BaseModel):
     name: str
     description: str = ""
     seed: int = 374
-    concurrency: list[int] = Field(default_factory=lambda: [1, 5, 10])
-    requests_per_point: int = 40
-    max_seconds_per_point: float = 20.0
-    warmup_requests: int = 5
-    timeout: float = 30.0
-    max_qps: float = 20.0
+    concurrency: list[PositiveInt] = Field(default_factory=lambda: [1, 5, 10], min_length=1)
+    requests_per_point: PositiveInt = 40
+    max_seconds_per_point: PositiveFloat = 20.0
+    warmup_requests: int = Field(5, ge=0)
+    timeout: PositiveFloat = 30.0
+    max_qps: PositiveFloat = 20.0
     """Total request starts per second across all workers (a pacing limit, not a target)."""
-    pause_between_points: float = 2.0
-    self_recall_k: int = 10
+    pause_between_points: float = Field(2.0, ge=0)
+    self_recall_k: PositiveInt = 10
     collections: Collections = Field(default_factory=Collections)
     queries: QueryInputs = Field(default_factory=QueryInputs)
     scenarios: list[Scenario]
@@ -114,10 +116,10 @@ class Profile(BaseModel):
                 raise ValueError(f"scenario {s.name}: {s.kind} needs a mode")
             if s.kind == "direct" and s.filter is not None:
                 raise ValueError(f"scenario {s.name}: direct scenarios take no filter")
-            if s.kind == "mixed" and (not s.of or set(s.of) - set(names)):
+            if s.kind == "mixed" and (not s.of or set(s.of) - set(names) or s.name in s.of):
                 raise ValueError(f"scenario {s.name}: 'of' must name other scenarios")
-        if not self.concurrency or min(self.concurrency) < 1:
-            raise ValueError("concurrency levels must be positive")
+        if not self.scenarios:
+            raise ValueError("a profile needs at least one scenario")
 
 
 def load_profile(name_or_path: str) -> Profile:
