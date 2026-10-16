@@ -323,8 +323,11 @@ collection (10:08 UTC) only by normal drift (for example 958 instead of 964 GiB 
 coverage check gave the same 2/300 and 3/300.
 
 The full results, which `compare` needs for result overlap, are archived as immutable, dated
-files in the project's benchmark Gist (linked from #374/#377; **upload pending** when this was
-written: add the exact Gist revision here once uploaded). Never overwrite them; later runs get
+files in the project's benchmark Gist, revision
+[`dd9ee46`](https://gist.github.com/michal-hradis/5db0a765435bbaf8b2b12a155134282f/dd9ee46cd1cc702a7bb5b47850adeb861bddd4a5)
+(with a `SHA256SUMS` file; download a file at that revision from
+`https://gist.githubusercontent.com/michal-hradis/5db0a765435bbaf8b2b12a155134282f/raw/dd9ee46cd1cc702a7bb5b47850adeb861bddd4a5/<file>`).
+Never overwrite them; later runs get
 new dated files. Their id hashes are keyed (run A was converted with `sanitize`), and the key
 stays on the production server outside the repository, so overlap with them can only be
 computed there.
