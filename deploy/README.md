@@ -157,8 +157,14 @@ the database.** There is no downgrade: the backup is the rollback.
    resumes on the next start). Until then the schema lists the vector without an index and
    the Python client's `config.get()` fails. Use the physical name (`Chunks_test`), not the alias.
 4. Check `/v1/graphql`, the schema and a sample of objects.
+5. A collection whose last named vector was dropped has no vector config, which
+   `weaviate-client` 4.23.1 cannot parse (`config.get()` raises `KeyError: 'vectorizer'`).
+   Add its new vector right away with `collection.config.add_vector(...)` (it works without
+   reading the config first); check the precondition over REST.
 
-Rehearsed on a copy of the test store (3,260 chunks, 2026-10-16): 1.34.4 → 1.40.1 starts in
+Done on the shared test Weaviate on 2026-10-16 (filesystem backup
+`pre-1-40-upgrade-2026-10-16` first): upgrade, both `Chunks` vectors dropped in ~35 s,
+`Qwen3_Embedding_0_6B` added and filled (3,260 chunks), GraphQL working. Rehearsed earlier on a copy of the test store (3,260 chunks, 2026-10-16): 1.34.4 → 1.40.1 starts in
 seconds; dropping two vectors took ~15 s, restored GraphQL, kept 28 properties and the
 document references and shrank the chunk data from 289 to 57 MB. Not rehearsed at
 production size (startup and drop duration unknown).
