@@ -81,6 +81,11 @@ class Profile(BaseModel):
     max_qps: PositiveFloat = 20.0
     """Total request starts per second across all workers (a pacing limit, not a target)."""
     pause_between_points: float = Field(2.0, ge=0)
+    level_inputs: Literal["same", "disjoint"] = "same"
+    """same: every concurrency level runs the same inputs (levels after the first repeat queries
+    the store has just served). disjoint: each level runs the next ``requests_per_point`` inputs
+    of the sample, so every level runs queries not yet served in this scenario (equally drawn,
+    not identical; sample at least levels × requests_per_point inputs)."""
     self_recall_k: PositiveInt = 10
     collections: Collections = Field(default_factory=Collections)
     queries: QueryInputs = Field(default_factory=QueryInputs)

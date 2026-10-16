@@ -134,7 +134,7 @@ def _profile(args):
         raise ValueError(f"--concurrency {args.concurrency!r}: expected comma-separated integers") from None
     profile = apply_overrides(profile, {
         "concurrency": levels, "requests_per_point": args.requests, "max_seconds_per_point": args.max_seconds,
-        "timeout": args.timeout, "max_qps": args.max_qps, "seed": args.seed})
+        "timeout": args.timeout, "max_qps": args.max_qps, "seed": args.seed, "level_inputs": args.level_inputs})
     if args.scenarios is not None:
         wanted = {n for n in args.scenarios.split(",") if n}
         unknown = wanted - {s.name for s in profile.scenarios}
@@ -200,12 +200,18 @@ async def cmd_run(args) -> int:
                     # when they need more requests than there are other inputs.
                     await run_point(request, 1, profile.warmup_requests, profile.max_seconds_per_point,
                                     profile.timeout, profile.max_qps, start_index=-profile.warmup_requests)
+            disjoint = profile.level_inputs == "disjoint" and scenario.kind != "self_recall"
+            if disjoint and workload.input_count(scenario) < count * len(levels) + profile.warmup_requests:
+                entry["inputs_repeat"] = (f"{workload.input_count(scenario)} usable inputs for {len(levels)} levels of "
+                                          f"{count} requests: later levels repeat inputs")
             for i, level in enumerate(levels):
-                # Every level runs the same inputs (indices 0..count-1), so levels differ only in
-                # concurrency; levels after the first re-run inputs the store has just served.
+                # same: every level runs inputs 0..count-1, so levels differ only in concurrency and
+                # later levels re-run queries the store has just served. disjoint: each level runs
+                # the next count inputs (fresh queries, equally drawn).
                 sampler.window()
                 point = await run_point(request, level, count, profile.max_seconds_per_point, profile.timeout,
-                                        profile.max_qps, start_index=0, keep_results=i == 0)
+                                        profile.max_qps, start_index=i * count if disjoint else 0,
+                                        keep_results=i == 0)
                 summary = point.summary()
                 summary["resources"] = sampler.window()
                 entry["points"].append(summary)
@@ -223,7 +229,9 @@ async def cmd_run(args) -> int:
     doc = {"kind": "run", "environment": environment, "profile": profile.model_dump(mode="json"),
            "profile_fingerprint": profile.fingerprint(), "allow_heavy": bool(args.allow_heavy),
            "safety_limits": SAFE.model_dump(), "inputs": input_summary, "id_hashing": hasher.describe(),
-           "input_reuse": "every concurrency level runs the same inputs; levels after the first re-run them",
+           "input_reuse": ("every concurrency level runs the same inputs; levels after the first re-run them"
+                           if profile.level_inputs == "same" else
+                           "each concurrency level runs the next inputs of the sample (fresh queries)"),
            "resource_source": resources.source_label(cgroup, reason), "scenarios": scenarios}
     _write(doc, report.run_markdown(doc), args.out or _default_out("run"))
     return 0
@@ -306,6 +314,9 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--timeout", type=float, help="per-request timeout (s)")
     run.add_argument("--max-qps", type=float, help="request starts per second across all workers")
     run.add_argument("--seed", type=int)
+    run.add_argument("--level-inputs", choices=["same", "disjoint"],
+                     help="same: every concurrency level runs the same inputs (default); disjoint: each level "
+                          "runs fresh inputs of the sample")
     run.add_argument("--allow-heavy", action="store_true",
                      help="permit limits above the production-safe defaults (staging/snapshot only)")
     key_file(run)

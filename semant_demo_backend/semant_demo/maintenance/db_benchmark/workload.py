@@ -6,8 +6,9 @@ which keeps embedding calls out of the timings; BM25 text is the longest words o
 chunk. Neither texts, vectors nor ids are written to the results: only short keyed hashes
 of ids (``IdHasher``), used to compare result lists between runs made with the same key.
 
-Tag and user-collection filter values are only those that match at least one chunk, so a
-filtered search measures a search that can return results.
+Tag and user-collection filter values are only those that match at least one chunk, and the
+query of such a filtered search is taken from a chunk inside that tag or collection (a user
+searching within it), so the search can return results. Each value is paired with one chunk.
 
 The ``search``, ``context``, ``document_view`` and ``aggregate`` kinds call the application's
 adapters/services (layer ``adapter``); ``direct`` and ``self_recall`` query Weaviate without
@@ -93,6 +94,8 @@ class Inputs:
     notes: list[str] = field(default_factory=list)
     filter_values_checked: dict[str, int] = field(default_factory=dict)
     """Tags / user collections checked for matching chunks while sampling."""
+    scoped: dict[str, list[tuple[UUID, SampledChunk]]] = field(default_factory=dict)
+    """``tag`` / ``user_collection``: each sampled value with a chunk inside it (the query source)."""
 
     def summary(self) -> dict:
         with_vector = [c for c in self.chunks if c.vector is not None]
@@ -143,8 +146,9 @@ FILTER_CHECKS = 1000
 
 
 async def _sample_matching_ids(collection, rnd: random.Random, count: int,
-                               matches: Callable[[UUID], Awaitable[bool]]) -> tuple[list[UUID], int]:
-    """Up to ``count`` random ids of ``collection`` for which ``matches`` holds, and how many were checked."""
+                               match: Callable[[UUID], Awaitable[object | None]]) -> tuple[list[tuple[UUID, object]], int]:
+    """Up to ``count`` random ids of ``collection`` with what ``match`` returned for them (ids
+    for which it returns None are skipped), and how many ids were checked."""
     if count <= 0:
         return [], 0
     response = await collection.query.fetch_objects(limit=FILTER_CHECKS, return_properties=[])
@@ -155,9 +159,19 @@ async def _sample_matching_ids(collection, rnd: random.Random, count: int,
         if len(found) >= count:
             break
         checked += 1
-        if await matches(candidate):
-            found.append(candidate)
+        matched = await match(candidate)
+        if matched is not None:
+            found.append((candidate, matched))
     return found, checked
+
+
+def _sampled_chunk(obj, vector_name: str | None, terms_per_query: int) -> tuple[SampledChunk, str | None]:
+    vector, vector_name = _pick_vector(obj.vector, vector_name)
+    docs = (obj.references or {}).get("document")
+    return SampledChunk(
+        id=obj.uuid, vector=vector, terms=terms(obj.properties.get("text") or "", terms_per_query),
+        document_id=docs.objects[0].uuid if docs and docs.objects else None,
+        order=obj.properties.get("order")), vector_name
 
 
 async def sample_inputs(client: WeaviateAsyncClient, names: CollectionNames, profile: Profile,
@@ -191,12 +205,7 @@ async def sample_inputs(client: WeaviateAsyncClient, names: CollectionNames, pro
         if obj is None:
             continue
         available |= set(obj.vector) if isinstance(obj.vector, dict) else {"default"} if obj.vector else set()
-        vector, vector_name = _pick_vector(obj.vector, vector_name)
-        docs = (obj.references or {}).get("document")
-        sampled[obj.uuid] = SampledChunk(
-            id=obj.uuid, vector=vector, terms=terms(obj.properties.get("text") or "", q.terms_per_query),
-            document_id=docs.objects[0].uuid if docs and docs.objects else None,
-            order=obj.properties.get("order"))
+        sampled[obj.uuid], vector_name = _sampled_chunk(obj, vector_name, q.terms_per_query)
     if target_vector is not None and sampled and not any(c.vector is not None for c in sampled.values()):
         raise ValueError(f"no sampled chunk has the named vector {target_vector!r}; "
                          f"available: {', '.join(sorted(available)) or 'none'}")
@@ -213,18 +222,22 @@ async def sample_inputs(client: WeaviateAsyncClient, names: CollectionNames, pro
     needs = {s.filter for s in profile.scenarios} | {s.kind for s in profile.scenarios}
     search = ChunkSearchRepository(client, names)
 
-    async def has_chunks(**query) -> bool:
+    async def chunk_inside(**query) -> SampledChunk | None:
+        """A chunk the application's filter for ``query`` matches (the same filter the search uses)."""
         flt = search._filter(ChunkQuery(text="", mode=SearchType.text, limit=1, **query))
-        return bool((await chunks.aggregate.over_all(filters=flt, total_count=True)).total_count)
+        found = (await chunks.query.fetch_objects(filters=flt, limit=1, **fetch)).objects
+        return _sampled_chunk(found[0], vector_name, q.terms_per_query)[0] if found else None
 
     if "tag" in needs:
-        inputs.tags, inputs.filter_values_checked["tag"] = await _sample_matching_ids(
+        inputs.scoped["tag"], inputs.filter_values_checked["tag"] = await _sample_matching_ids(
             client.collections.get(names.tag_collection_name), rnd, q.sample_tags,
-            lambda i: has_chunks(tags=TagFilter((i,), automatic=True, positive=True)))
+            lambda i: chunk_inside(tags=TagFilter((i,), automatic=True, positive=True)))
+        inputs.tags = [value for value, _ in inputs.scoped["tag"]]
     if "user_collection" in needs:
-        inputs.user_collections, inputs.filter_values_checked["user_collection"] = await _sample_matching_ids(
+        inputs.scoped["user_collection"], inputs.filter_values_checked["user_collection"] = await _sample_matching_ids(
             client.collections.get(names.user_collection_name), rnd, q.sample_user_collections,
-            lambda i: has_chunks(collection_id=i))
+            lambda i: chunk_inside(collection_id=i))
+        inputs.user_collections = [value for value, _ in inputs.scoped["user_collection"]]
     if "document_type" in needs:
         inputs.document_types = list(q.document_types)
         if not inputs.document_types:
@@ -260,7 +273,17 @@ class Workload:
     def input_count(self, scenario: Scenario) -> int:
         return max(1, len(self._usable(scenario)))
 
+    def _scoped(self, scenario: Scenario) -> list[tuple[UUID, SampledChunk]] | None:
+        """Tag / user-collection searches: (value, chunk inside it) pairs usable for the scenario's mode."""
+        if scenario.kind != "search" or scenario.filter not in self.inputs.scoped:
+            return None
+        return [(v, c) for v, c in self.inputs.scoped[scenario.filter]
+                if (scenario.mode == "text" or c.vector is not None) and (scenario.mode == "vector" or c.terms)]
+
     def _usable(self, scenario: Scenario) -> list[SampledChunk]:
+        scoped = self._scoped(scenario)
+        if scoped is not None:
+            return [c for _, c in scoped]
         chunks = self.inputs.chunks
         if scenario.kind in ("search", "direct") and scenario.mode != "text" or scenario.kind == "self_recall":
             chunks = [c for c in chunks if c.vector is not None]
@@ -292,6 +315,9 @@ class Workload:
         return short_hash((chunk.id, self._filter_value(scenario, index)))
 
     def _filter_value(self, scenario: Scenario, index: int):
+        scoped = self._scoped(scenario)
+        if scoped is not None:
+            return scoped[index % len(scoped)][0] if scoped else None
         values = {
             "year_range": self.profile.queries.year_ranges, "language": self.profile.queries.languages,
             "document_type": self.inputs.document_types, "tag": self.inputs.tags,
