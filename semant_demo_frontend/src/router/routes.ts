@@ -5,95 +5,109 @@ const routes: RouteRecordRaw[] = [
     name: 'default',
     path: '/',
     redirect: '/search/',
-    component: () => import('layouts/MainLayout.vue'),
+    component: () => import('src/app/MainLayout.vue'),
     children: [
       {
         name: 'search',
         path: '/search',
-        component: () => import('pages/SearchPage.vue')
+        component: () => import('src/features/search/SearchPage.vue')
       },
       {
         name: 'rag',
         path: '/rag',
-        component: () => import('pages/RagPage.vue')
+        component: () => import('src/features/rag/RagPage.vue')
+      },
+      {
+        // Document counts of the whole public corpus; no sign-in needed (#254).
+        name: 'corpus',
+        path: '/corpus',
+        component: () => import('src/features/analytics/CorpusOverviewPage.vue')
+      },
+      {
+        // A protected link waiting for a stored session to be verified (router/authGuard.ts).
+        name: 'sessionPending',
+        path: '/session-pending',
+        component: () => import('src/features/auth/SessionPendingPage.vue')
       },
       {
         name: 'collections',
+        meta: { requiresAuth: true },
         path: '/collections',
-        component: () => import('pages/Collections/UserCollectionsPage.vue')
+        component: () => import('src/features/user_collections/UserCollectionsPage.vue')
       },
       {
         name: 'collectionDetail',
+        meta: { requiresAuth: true },
         path: '/collections/:collectionId',
-        component: () => import('layouts/CollectionDetailLayout.vue'),
+        component: () => import('src/features/user_collections/CollectionDetailLayout.vue'),
         props: true,
         redirect: { name: 'collectionOverview' },
         children: [
           {
             name: 'collectionOverview',
             path: 'overview',
-            component: () => import('pages/Collections/CollectionOverviewPage.vue')
+            component: () => import('src/features/user_collections/CollectionOverviewPage.vue')
           },
           {
             name: 'collectionDocumentsTagging',
             path: 'documents',
-            component: () => import('src/pages/Collections/CollectionDocumentsPage.vue')
+            component: () => import('src/features/user_collections/CollectionDocumentsPage.vue')
           },
           {
             name: 'collectionTags',
             path: 'tags',
-            component: () => import('pages/Collections/CollectionTagsPage.vue')
+            component: () => import('src/features/user_collections/CollectionTagsPage.vue')
           },
           {
             name: 'collectionTaggingJobs',
             path: 'tagging_jobs',
-            component: () => import('pages/Collections/CollectionTaggingJobsPage.vue')
+            component: () => import('src/features/user_collections/CollectionTaggingJobsPage.vue')
           },
           {
             name: 'collectionMembers',
             path: 'members',
-            component: () => import('pages/Collections/CollectionMembersPage.vue')
+            component: () => import('src/features/user_collections/CollectionMembersPage.vue')
           }
         ]
       },
       {
         name: 'documentDetailLayout',
+        meta: { requiresAuth: true },
         path: '/collections/:collectionId/documents/:documentId',
-        component: () => import('layouts/DocumentDetailLayout.vue'),
+        component: () => import('src/features/documents/DocumentPageLayout.vue'),
         props: true,
         redirect: { name: 'documentDetailV1' },
         children: [
           {
             name: 'documentDetailLayoutV1',
             path: 'v1',
-            component: () => import('pages/Collections/xjuric31/DocumentDetailLayout.vue'),
+            component: () => import('src/features/documents/viewer/DocumentViewLayout.vue'),
             props: true,
             children: [
               {
                 name: 'documentDetailV1',
                 path: '',
-                component: () => import('pages/Collections/xjuric31/DocumentDetailPage.vue'),
+                component: () => import('src/features/documents/viewer/DocumentReaderPage.vue'),
                 props: true
               }
             ]
           },
           {
-            name: 'documentDetailV2',
+            // The V2 document view was retired in #210; old links open the document view.
             path: 'v2',
-            component: () => import('pages/Collections/DocumentDetailPageV2.vue'),
-            props: true
+            redirect: { name: 'documentDetailV1' }
           }
         ]
       },
       {
         name: 'about',
         path: '/about',
-        component: () => import('pages/AboutPage.vue')
+        component: () => import('src/app/AboutPage.vue')
       },
       {
         name: 'feedback',
         path: '/feedback',
-        component: () => import('pages/FeedbackPage.vue')
+        component: () => import('src/features/feedback/FeedbackPage.vue')
       }
     ]
   },
@@ -101,7 +115,7 @@ const routes: RouteRecordRaw[] = [
   // but you can also remove it
   {
     path: '/:catchAll(.*)*',
-    component: () => import('pages/ErrorNotFound.vue')
+    component: () => import('src/app/ErrorNotFound.vue')
   }
 ]
 

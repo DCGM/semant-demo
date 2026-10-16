@@ -1,0 +1,786 @@
+<template>
+  <div class="ai-assist-panel" :class="{ 'has-pending': pendingAutoSpans.length > 0 }">
+    <div class="text-caption text-grey-7 q-mb-xs">
+      Pick the tags the AI should look for in this document and choose a mode.
+    </div>
+
+    <div class="ai-section-label">Mode</div>
+    <q-option-group
+      v-model="aiMode"
+      :options="aiModeOptions"
+      type="radio"
+      dense
+      class="q-mb-xs"
+      :disable="aiAssist.isRunning.value"
+    />
+
+    <div class="ai-section-label">
+      Tags
+      <span class="text-caption text-grey-6 q-ml-xs">({{ selectedAiTagIds.length }}/{{ tags.length }})</span>
+      <q-space />
+      <q-btn flat dense no-caps size="sm" label="All" @click="selectAllAiTags" :disable="aiAssist.isRunning.value" />
+      <q-btn flat dense no-caps size="sm" label="None" @click="clearAiTags" :disable="aiAssist.isRunning.value" />
+    </div>
+    <div v-if="!tags.length" class="text-body2 text-grey-6 q-mb-sm">
+      No tags in this collection yet.
+    </div>
+    <div v-else class="ai-tag-list q-mb-sm">
+      <div
+        v-for="tag in tags"
+        :key="tag.id"
+        class="ai-tag-list-row"
+      >
+        <q-checkbox
+          :model-value="selectedAiTagIds.includes(tag.id)"
+          @update:model-value="(v: unknown) => toggleAiTag(tag.id, !!v)"
+          dense
+          size="sm"
+          :disable="aiAssist.isRunning.value"
+          class="ai-tag-checkbox"
+        >
+          <template v-slot:default>
+            <span class="ai-tag-row">
+              <q-icon
+                :name="tag.pictogram || 'label'"
+                :style="{ color: tag.color || '#64748b' }"
+                size="16px"
+                class="q-mr-xs"
+              />
+              <span class="ai-tag-name">{{ tag.name }}</span>
+            </span>
+          </template>
+        </q-checkbox>
+        <div v-if="autoSpansByTag[tag.id]?.length" class="ai-tag-nav">
+          <q-btn
+            flat dense round size="xs"
+            icon="chevron_left"
+            :disable="autoSpansByTag[tag.id].length === 0"
+            @click="navigateAutoSpan(tag.id, 'prev')"
+          >
+            <q-tooltip>Previous suggestion</q-tooltip>
+          </q-btn>
+          <span class="ai-tag-nav-counter">
+            {{ autoSpanNavIndex(tag.id) != null ? (autoSpanNavIndex(tag.id)! + 1) : '–' }}/{{ autoSpansByTag[tag.id].length }}
+          </span>
+          <q-btn
+            flat dense round size="xs"
+            icon="chevron_right"
+            :disable="autoSpansByTag[tag.id].length === 0"
+            @click="navigateAutoSpan(tag.id, 'next')"
+          >
+            <q-tooltip>Next suggestion</q-tooltip>
+          </q-btn>
+        </div>
+      </div>
+    </div>
+
+    <div class="ai-actions q-mb-xs">
+      <q-btn
+        v-if="!aiAssist.isRunning.value"
+        color="primary"
+        icon="auto_awesome"
+        label="Run AI"
+        no-caps
+        :disable="!selectedAiTagIds.length"
+        @click="onRunAi"
+      />
+      <q-btn
+        v-else
+        color="negative"
+        icon="stop"
+        label="Cancel"
+        no-caps
+        @click="aiAssist.cancel"
+      />
+      <q-btn
+        outline
+        color="negative"
+        icon="delete_sweep"
+        label="Clear unresolved"
+        no-caps
+        :loading="isBulkDeleting"
+        :disable="!selectedAiTagIds.length || aiAssist.isRunning.value"
+        @click="onBulkDelete"
+      >
+        <q-tooltip>
+          Delete every unresolved AI suggestion (auto spans) for the selected tags in this document.
+        </q-tooltip>
+      </q-btn>
+    </div>
+    <div
+      v-if="lastStatusKind === 'deleted' && lastDeletedCount != null"
+      class="text-caption text-grey-7"
+    >
+      Removed {{ lastDeletedCount }} unresolved suggestion(s).
+    </div>
+
+    <div
+      v-else-if="lastStatusKind === 'processed' && (aiAssist.isRunning.value || aiAssist.processedChunkCount.value > 0)"
+      class="ai-progress"
+    >
+      <q-spinner v-if="aiAssist.isRunning.value" color="primary" size="1.2em" class="q-mr-xs" />
+      <span class="text-body2">
+        Processed {{ aiAssist.processedChunkCount.value }} chunks,
+        {{ aiAssist.totalSpansAdded.value }} suggestions.
+        <template v-if="aiAssist.lastStatus.value === 'cancelled'">Cancelled; saved suggestions are kept.</template>
+      </span>
+    </div>
+
+    <!-- Selection-scoped run (triggered from the in-text "Suggest tags"
+         popover button). Lives next to the document-wide progress so
+         the user can see something is happening even after the
+         popover closes. -->
+    <div v-if="aiAssist.isSelectionRunning.value" class="ai-progress q-mb-xs">
+      <q-spinner color="primary" size="1.2em" class="q-mr-xs" />
+      <span class="text-body2">Generating annotation suggestions for the selected passage…</span>
+      <q-space />
+      <q-btn
+        flat dense no-caps
+        size="sm"
+        color="negative"
+        icon="stop"
+        label="Cancel"
+        @click="aiAssist.cancelSelection"
+      />
+    </div>
+
+    <div v-if="aiAssist.lastSelectionError.value" class="ai-error q-mb-xs">
+      {{ aiAssist.lastSelectionError.value }}
+    </div>
+
+    <div v-if="aiAssist.lastError.value" class="ai-error q-mb-xs">
+      {{ aiAssist.lastError.value }}
+    </div>
+
+    <q-separator class="q-my-xs" />
+
+    <div class="ai-section-label">
+      Pending suggestions
+      <span class="text-caption text-grey-6 q-ml-xs">({{ pendingAutoSpans.length }})</span>
+    </div>
+    <div v-if="!pendingAutoSpans.length" class="text-body2 text-grey-6">
+      No unresolved AI suggestions in the displayed chunks.
+    </div>
+    <template v-else>
+      <div class="auto-span-bulk-bar">
+        <q-checkbox
+          :model-value="allSuggestionsSelected"
+          :indeterminate-value="'mixed'"
+          :toggle-indeterminate="false"
+          dense
+          size="sm"
+          :disable="isBulkResolving"
+          @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
+        >
+          <span class="text-caption text-grey-7">
+            {{ selectedSuggestionIds.size }} / {{ pendingAutoSpans.length }} selected
+          </span>
+        </q-checkbox>
+        <q-space />
+        <q-btn
+          flat dense no-caps size="sm"
+          icon="check"
+          color="positive"
+          label="Approve"
+          :loading="isBulkResolving"
+          :disable="!selectedSuggestionIds.size || isBulkResolving"
+          @click="bulkResolveSelected(SpanType.pos)"
+        >
+          <q-tooltip>Approve all selected suggestions</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat dense no-caps size="sm"
+          icon="close"
+          color="negative"
+          label="Reject"
+          :loading="isBulkResolving"
+          :disable="!selectedSuggestionIds.size || isBulkResolving"
+          @click="bulkResolveSelected(SpanType.neg)"
+        >
+          <q-tooltip>Reject all selected suggestions</q-tooltip>
+        </q-btn>
+      </div>
+      <div class="auto-span-list">
+        <div
+          v-for="entry in pendingAutoSpans"
+          :key="entry.span.id || `${entry.span.chunkId}:${entry.span.start}:${entry.span.end}:${entry.span.tagId}`"
+          class="auto-span-card"
+          :class="{
+            'is-busy': busyAutoSpanIds.has(entry.span.id || ''),
+            'is-highlighted': aiAssist.highlightedAutoSpanId.value && entry.span.id === aiAssist.highlightedAutoSpanId.value,
+            'is-selected': entry.span.id ? selectedSuggestionIds.has(entry.span.id) : false
+          }"
+          :ref="(el) => { if (entry.span.id) suggestionCardRefs[entry.span.id] = el as HTMLElement | null }"
+          @click="onSuggestionClick(entry.span)"
+        >
+          <div class="auto-span-header">
+            <q-checkbox
+              :model-value="entry.span.id ? selectedSuggestionIds.has(entry.span.id) : false"
+              @update:model-value="(v: unknown) => toggleSuggestionSelection(entry.span, !!v)"
+              @click.stop
+              dense
+              size="xs"
+              :disable="isBulkResolving || busyAutoSpanIds.has(entry.span.id || '')"
+              class="q-mr-xs"
+            />
+            <q-icon
+              :name="entry.tag?.pictogram || 'label'"
+              :style="{ color: entry.tag?.color || '#64748b' }"
+              size="16px"
+              class="q-mr-xs"
+            />
+            <span class="auto-span-tag-name">{{ entry.tag?.name || 'Unknown tag' }}</span>
+            <q-badge
+              v-if="entry.span.confidence != null"
+              outline
+              :label="`${Math.round((entry.span.confidence as number) * 100)}%`"
+              class="auto-span-confidence q-ml-xs"
+            />
+            <q-space />
+            <q-btn
+              flat dense round size="xs"
+              icon="settings"
+              :disable="!entry.tag || busyAutoSpanIds.has(entry.span.id || '')"
+              @click.stop="onEditEntryTag(entry)"
+            >
+              <q-tooltip>Tag details</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat dense round size="xs"
+              icon="check"
+              color="positive"
+              :disable="busyAutoSpanIds.has(entry.span.id || '')"
+              @click.stop="approveAutoSpan(entry.span)"
+            >
+              <q-tooltip>Approve</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat dense round size="xs"
+              icon="close"
+              color="negative"
+              :disable="busyAutoSpanIds.has(entry.span.id || '')"
+              @click.stop="rejectAutoSpan(entry.span)"
+            >
+              <q-tooltip>Reject</q-tooltip>
+            </q-btn>
+          </div>
+          <div
+            v-if="entry.span.reason"
+            class="auto-span-reason"
+          >
+            {{ entry.span.reason }}
+            <q-tooltip
+              anchor="top middle"
+              self="bottom middle"
+              :delay="150"
+              max-width="320px"
+              class="auto-span-reason-tooltip"
+            >
+              {{ entry.span.reason }}
+            </q-tooltip>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { storeToRefs } from 'pinia'
+import { computed, nextTick, ref, watch } from 'vue'
+import { useQuasar } from 'quasar'
+import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
+import { useApi } from 'src/shared/api'
+import { describeIncomplete } from 'src/shared/writeOutcome'
+import { useTagsStore } from './tagsStore'
+import useAiAssistance, { type AiAssistanceMode } from './useAiAssistance'
+import { useTagEditing } from './useTagEditing'
+import useTagSpans from './useTagSpans'
+
+// AI annotation suggestions for a document: runs over the selected tags, the pending
+// suggestions with approve/reject, and two-way highlighting with the spans in the text
+// (through useAiAssistance().highlightedAutoSpanId).
+const props = defineProps<{
+  collectionId: string
+  documentId: string
+}>()
+
+const $q = useQuasar()
+const { default: api } = useApi()
+const { tags } = storeToRefs(useTagsStore())
+const tagEditing = useTagEditing(() => props.collectionId)
+const aiAssist = useAiAssistance()
+const tagSpans = useTagSpans()
+const aiMode = ref<AiAssistanceMode>('optimized')
+const aiModeOptions = [
+  { label: 'Optimized (vector pre-filtering)', value: 'optimized' },
+  { label: 'Thorough (every chunk in collection)', value: 'thorough' }
+]
+const selectedAiTagIds = ref<string[]>([])
+const busyAutoSpanIds = ref<Set<string>>(new Set())
+const isBulkDeleting = ref(false)
+const lastDeletedCount = ref<number | null>(null)
+// Tracks which of the two mutually-exclusive status messages should be
+// visible — whichever event happened most recently wins.
+const lastStatusKind = ref<'deleted' | 'processed' | null>(null)
+
+watch(
+  () => aiAssist.processedChunkCount.value,
+  (n, prev) => {
+    if (n !== prev) lastStatusKind.value = 'processed'
+  }
+)
+watch(
+  () => aiAssist.isRunning.value,
+  (v) => {
+    if (v) lastStatusKind.value = 'processed'
+  }
+)
+
+function onSuggestionClick(span: TagSpan) {
+  if (!span.id) return
+  aiAssist.highlightedAutoSpanId.value =
+    aiAssist.highlightedAutoSpanId.value === span.id ? null : span.id
+}
+
+// Track card DOM nodes so we can scroll to whichever one is highlighted from
+// the document side (i.e. the user clicked an auto span in the text).
+const suggestionCardRefs = ref<Record<string, HTMLElement | null>>({})
+watch(
+  () => aiAssist.highlightedAutoSpanId.value,
+  (id) => {
+    if (!id) return
+    void nextTick(() => {
+      const el = suggestionCardRefs.value[id]
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }
+)
+
+function toggleAiTag(tagId: string, on: boolean) {
+  if (on) {
+    if (!selectedAiTagIds.value.includes(tagId)) selectedAiTagIds.value.push(tagId)
+  } else {
+    selectedAiTagIds.value = selectedAiTagIds.value.filter((id) => id !== tagId)
+  }
+}
+function selectAllAiTags() {
+  selectedAiTagIds.value = tags.value.map((t) => t.id)
+}
+function clearAiTags() {
+  selectedAiTagIds.value = []
+}
+
+async function onRunAi() {
+  if (!selectedAiTagIds.value.length) return
+  await aiAssist.run({
+    collectionId: props.collectionId,
+    documentId: props.documentId,
+    tagIds: [...selectedAiTagIds.value],
+    mode: aiMode.value
+  })
+}
+
+interface AutoSpanEntry {
+  span: TagSpan
+  tag: Tag | undefined
+}
+
+const tagsById = computed(() => {
+  const m: Record<string, Tag> = {}
+  for (const t of tags.value) m[t.id] = t
+  return m
+})
+
+// Canonical pending auto spans (ordered by confidence desc) come from the
+// composable; we just join in the tag for display.
+const pendingAutoSpans = computed<AutoSpanEntry[]>(() =>
+  aiAssist.pendingAutoSpans.value.map((span) => ({
+    span,
+    tag: tagsById.value[span.tagId]
+  }))
+)
+
+// Group pending suggestions by tag id so each tag in the AI tag list can show
+// per-tag navigation arrows and a counter.
+const autoSpansByTag = computed<Record<string, TagSpan[]>>(() => {
+  const out: Record<string, TagSpan[]> = {}
+  for (const entry of pendingAutoSpans.value) {
+    const list = out[entry.span.tagId] ?? (out[entry.span.tagId] = [])
+    list.push(entry.span)
+  }
+  return out
+})
+
+function autoSpanNavIndex(tagId: string): number | null {
+  const list = autoSpansByTag.value[tagId]
+  if (!list?.length) return null
+  const highlightedId = aiAssist.highlightedAutoSpanId.value
+  if (!highlightedId) return null
+  const idx = list.findIndex((s) => s.id === highlightedId)
+  return idx === -1 ? null : idx
+}
+
+function navigateAutoSpan(tagId: string, direction: 'prev' | 'next') {
+  const list = autoSpansByTag.value[tagId]
+  if (!list?.length) return
+  const current = autoSpanNavIndex(tagId)
+  let nextIdx: number
+  if (current == null) {
+    nextIdx = direction === 'next' ? 0 : list.length - 1
+  } else {
+    nextIdx = direction === 'next' ? (current + 1) % list.length : (current - 1 + list.length) % list.length
+  }
+  const target = list[nextIdx]
+  if (target.id) aiAssist.highlightedAutoSpanId.value = target.id
+}
+
+async function resolveSuggestion(span: TagSpan, type: SpanType) {
+  if (!span.id) return
+  busyAutoSpanIds.value.add(span.id)
+  try {
+    await aiAssist.resolveAutoSpan(span, type)
+  } finally {
+    busyAutoSpanIds.value.delete(span.id)
+  }
+}
+
+const approveAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.pos)
+const rejectAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.neg)
+
+// ── Bulk approve / reject of selected suggestions ──
+const selectedSuggestionIds = ref<Set<string>>(new Set())
+const isBulkResolving = ref(false)
+
+const allSuggestionsSelected = computed(() => {
+  const ids = pendingAutoSpans.value
+    .map((e) => e.span.id)
+    .filter((id): id is string => !!id)
+  if (!ids.length) return false
+  return ids.every((id) => selectedSuggestionIds.value.has(id))
+})
+
+function toggleSuggestionSelection(span: TagSpan, on: boolean) {
+  if (!span.id) return
+  const next = new Set(selectedSuggestionIds.value)
+  if (on) next.add(span.id)
+  else next.delete(span.id)
+  selectedSuggestionIds.value = next
+}
+
+function toggleSelectAllSuggestions(on: boolean) {
+  if (on) {
+    const ids = pendingAutoSpans.value
+      .map((e) => e.span.id)
+      .filter((id): id is string => !!id)
+    selectedSuggestionIds.value = new Set(ids)
+  } else {
+    selectedSuggestionIds.value = new Set()
+  }
+}
+
+// Drop ids from the selection once their spans disappear from the pending list
+// (i.e. they got approved / rejected / deleted somewhere else).
+watch(pendingAutoSpans, (entries) => {
+  if (!selectedSuggestionIds.value.size) return
+  const present = new Set(
+    entries.map((e) => e.span.id).filter((id): id is string => !!id)
+  )
+  const next = new Set<string>()
+  for (const id of selectedSuggestionIds.value) {
+    if (present.has(id)) next.add(id)
+  }
+  if (next.size !== selectedSuggestionIds.value.size) {
+    selectedSuggestionIds.value = next
+  }
+})
+
+async function bulkResolveSelected(type: SpanType) {
+  if (!selectedSuggestionIds.value.size) return
+  // Snapshot the spans we want to act on (id -> chunkId) before any mutations
+  // start removing them from the pending list.
+  const targets: Array<{ id: string; chunkId: string }> = []
+  const idSet = selectedSuggestionIds.value
+  for (const entry of pendingAutoSpans.value) {
+    if (entry.span.id && idSet.has(entry.span.id)) {
+      targets.push({ id: entry.span.id, chunkId: entry.span.chunkId })
+    }
+  }
+  if (!targets.length) return
+
+  // Pre-compute which suggestion should be highlighted once these resolve.
+  const targetIds = new Set(targets.map((t) => t.id))
+  const nextHighlight =
+    pendingAutoSpans.value.find((e) => e.span.id && !targetIds.has(e.span.id))?.span.id ?? null
+
+  isBulkResolving.value = true
+  for (const t of targets) busyAutoSpanIds.value.add(t.id)
+  try {
+    await tagSpans
+      .bulkUpdateSpans(
+        targets.map((t) => t.id),
+        { type }
+      )
+      .catch((e: unknown) => {
+        console.error('Bulk resolve failed', e)
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : 'Failed to update the selected suggestions.' })
+      })
+    aiAssist.highlightedAutoSpanId.value = nextHighlight
+  } finally {
+    for (const t of targets) busyAutoSpanIds.value.delete(t.id)
+    isBulkResolving.value = false
+    selectedSuggestionIds.value = new Set()
+  }
+}
+
+async function onBulkDelete() {
+  if (!selectedAiTagIds.value.length) return
+  isBulkDeleting.value = true
+  lastDeletedCount.value = null
+  try {
+    const result = await api.deleteAutoSpansApiAiAutoSpansDeletePost({
+      deleteAutoSpansRequest: {
+        collectionId: props.collectionId,
+        documentId: props.documentId,
+        tagIds: [...selectedAiTagIds.value]
+      }
+    })
+    lastDeletedCount.value = result.deleted
+    lastStatusKind.value = 'deleted'
+    // Drop exactly the spans the backend deleted; failed ones stay visible.
+    const deletedIds = new Set(result.succeeded ?? [])
+    tagSpans.removeSpansLocally((s) => !!s.id && deletedIds.has(s.id))
+    if (result.outcome !== WriteOutcome.complete) {
+      $q.notify({ type: 'negative', message: describeIncomplete(result, 'Removing suggestions') })
+    }
+  } catch (e) {
+    console.error('Bulk delete of auto spans failed', e)
+    $q.notify({ type: 'negative', message: 'Failed to remove suggestions.' })
+  } finally {
+    isBulkDeleting.value = false
+  }
+}
+
+function onEditEntryTag(entry: AutoSpanEntry) {
+  if (!entry.tag) return
+  tagEditing.editTag(entry.tag)
+}
+
+// The panel stays alive while another sidebar panel is shown and keeps its state. The
+// run state itself is reset by the document view; the panel drops its own selection and
+// status when the document or collection changes, and the chosen tags (a collection's
+// tags) when the collection changes.
+watch(
+  () => [props.collectionId, props.documentId],
+  () => {
+    selectedSuggestionIds.value = new Set()
+    lastDeletedCount.value = null
+    lastStatusKind.value = null
+  }
+)
+watch(
+  () => props.collectionId,
+  () => {
+    selectedAiTagIds.value = []
+  }
+)
+</script>
+
+<style scoped>
+/* Only the suggestions list scrolls; the panel fills the height it is given. */
+.ai-assist-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.ai-assist-panel .ai-tag-list {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.ai-assist-panel .auto-span-list {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+}
+
+.ai-assist-panel.has-pending .ai-tag-list {
+  flex: 0 1 auto;
+}
+
+.ai-assist-panel.has-pending .auto-span-list {
+  flex: 4 1 0;
+}
+
+.ai-section-label {
+  display: flex;
+  align-items: center;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(71, 85, 105, 0.85);
+  margin-bottom: 6px;
+}
+
+.ai-tag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 15%;
+  overflow-y: auto;
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 6px;
+}
+
+.ai-tag-row {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.ai-tag-list-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-tag-checkbox {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ai-tag-nav {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: rgba(71, 85, 105, 0.85);
+}
+
+.ai-tag-nav-counter {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: center;
+  color: rgba(71, 85, 105, 0.85);
+}
+
+.ai-tag-name {
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.ai-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ai-progress {
+  display: flex;
+  align-items: center;
+  color: #475569;
+}
+
+.ai-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  background: rgba(185, 28, 28, 0.08);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.auto-span-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.auto-span-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 6px 4px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  margin-bottom: 6px;
+}
+
+.auto-span-card.is-selected {
+  border-style: solid;
+  border-color: rgba(37, 99, 235, 0.5);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.auto-span-card.is-selected.is-highlighted {
+  border-color: rgba(37, 99, 235, 0.7);
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.auto-span-card {
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+  padding: 6px 8px;
+  transition: opacity 0.15s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
+  cursor: pointer;
+}
+
+.auto-span-card:hover {
+  border-color: rgba(15, 23, 42, 0.32);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.auto-span-card.is-highlighted {
+  border-style: solid;
+  border-color: rgba(15, 23, 42, 0.4);
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.auto-span-card.is-busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.auto-span-header {
+  display: flex;
+  align-items: center;
+}
+
+.auto-span-tag-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.auto-span-reason {
+  margin-top: 4px;
+  padding-left: 22px;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: rgba(71, 85, 105, 0.85);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.auto-span-confidence {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #64748b;
+  border-color: #94a3b8;
+}
+
+.auto-span-reason-tooltip {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  background: rgba(15, 23, 42, 0.92);
+}
+</style>

@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { SemantDemoSchemaDocumentsDocument } from './SemantDemoSchemaDocumentsDocument';
+import type { Document } from './Document';
 import {
-    SemantDemoSchemaDocumentsDocumentFromJSON,
-    SemantDemoSchemaDocumentsDocumentFromJSONTyped,
-    SemantDemoSchemaDocumentsDocumentToJSON,
-    SemantDemoSchemaDocumentsDocumentToJSONTyped,
-} from './SemantDemoSchemaDocumentsDocument';
+    DocumentFromJSON,
+    DocumentFromJSONTyped,
+    DocumentToJSON,
+    DocumentToJSONTyped,
+} from './Document';
 
 /**
  * 
@@ -29,10 +29,10 @@ import {
 export interface DocumentBrowse {
     /**
      * 
-     * @type {Array<SemantDemoSchemaDocumentsDocument>}
+     * @type {Array<Document>}
      * @memberof DocumentBrowse
      */
-    items: Array<SemantDemoSchemaDocumentsDocument>;
+    items: Array<Document>;
     /**
      * 
      * @type {number}
@@ -73,7 +73,7 @@ export function DocumentBrowseFromJSONTyped(json: any, ignoreDiscriminator: bool
     }
     return {
         
-        'items': ((json['items'] as Array<any>).map(SemantDemoSchemaDocumentsDocumentFromJSON)),
+        'items': ((json['items'] as Array<any>).map(DocumentFromJSON)),
         'nextOffset': json['next_offset'] == null ? undefined : json['next_offset'],
         'hasMore': json['has_more'],
         'totalCount': json['total_count'],
@@ -91,7 +91,7 @@ export function DocumentBrowseToJSONTyped(value?: DocumentBrowse | null, ignoreD
 
     return {
         
-        'items': ((value['items'] as Array<any>).map(SemantDemoSchemaDocumentsDocumentToJSON)),
+        'items': ((value['items'] as Array<any>).map(DocumentToJSON)),
         'next_offset': value['nextOffset'],
         'has_more': value['hasMore'],
         'total_count': value['totalCount'],

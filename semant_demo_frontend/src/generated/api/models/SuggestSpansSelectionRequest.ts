@@ -17,19 +17,20 @@ import { mapValues } from '../runtime';
  * Request body for ``POST /api/ai/suggest_spans/selection``.
  * 
  * The user has highlighted a passage and asked the AI to propose tags
- * for *only that passage*. The selection may span multiple consecutive
- * chunks; the frontend sends the chunk IDs in document order. Offsets
- * are measured against the concatenation of those chunks' text:
+ * for *only that passage*. The selection may span multiple chunks of the
+ * collection; the frontend sends the chunk IDs in document order. Offsets
+ * are measured, in UTF-16 code units, against the concatenation of those
+ * chunks' text:
  * 
- * - ``selection_start`` — char offset measured from the start of the
+ * - ``selection_start`` — offset measured from the start of the
  *   first chunk (so it is also the local offset inside that chunk).
- * - ``selection_end`` — char offset across the concatenation (may
+ * - ``selection_end`` — offset across the concatenation (may
  *   exceed the first chunk's length when the selection extends into
  *   later chunks).
  * 
- * Resulting auto spans are anchored on the first chunk in
- * ``chunk_ids`` with ``start`` / ``end`` in the same coordinate
- * system, mirroring how cross-chunk user spans are stored.
+ * Each resulting auto span is anchored on the chunk where it starts, with
+ * ``start`` / ``end`` in that chunk's coordinates, as cross-chunk user spans
+ * are stored.
  * @export
  * @interface SuggestSpansSelectionRequest
  */

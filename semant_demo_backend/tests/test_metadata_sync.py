@@ -1,0 +1,995 @@
+"""Kramerius metadata synchronization: mapping, source-library policy, report and apply (#257)."""
+import json
+from datetime import datetime, timezone
+from uuid import UUID
+
+import pytest
+from sqlalchemy import create_engine, insert
+
+from semant_demo.adapters.sql.kramerius_metadata import (
+    META_RECORDS, PageChain, read_ancestors, read_meta_records, read_page_chains)
+from semant_demo.config import Config
+from semant_demo.maintenance import metadata_sync
+from semant_demo.maintenance.kramerius_mapping import (
+    FIELDS, IssueDate, SourceRecord, compose_title, map_record, parse_issue_date, values)
+from semant_demo.maintenance.metadata_sync import (
+    apply_exit_code, apply_report, build_report, classify_pages, coerce, plan_document, read_library_map, sync,
+    sync_exit_code, target_properties, write_inferred)
+
+DOC = UUID("5e3a0000-0000-4000-8000-00000000d001")
+OTHER = UUID("5e3a0000-0000-4000-8000-00000000d002")
+NAMES = Config(environ={}).collectionNames
+UTC = timezone.utc
+
+CURRENT_SCHEMA = {
+    "title": "text", "titleMetadata": "text", "subtitle": "text", "partNumber": "text", "partName": "text",
+    "dateIssued": "date", "yearIssued": "number", "dateIssuedMetadata": "date", "yearIssuedMetadata": "number",
+    "author": "text[]", "publisher": "text", "language": "text", "documentType": "text",
+    "placeOfPublication": "text", "seriesName": "text", "seriesNumber": "text", "edition": "text",
+    "editors": "text[]", "illustrators": "text[]", "translators": "text[]", "redaktors": "text[]",
+    "manufacturePublisher": "text", "manufacturePlaceTerm": "text", "public": "boolean", "url": "uuid",
+    "library": "text",
+}
+LEGACY_SCHEMA = {
+    "library": "text", "title": "text", "subTitle": "text", "partNumber": "int", "yearIssued": "int",
+    "dateIssued": "date", "authors": "text[]", "placeTerm": "text", "seriesNumber": "int", "public": "boolean",
+    "url": "text",
+}
+
+
+def record(library="mzk", **kwargs) -> SourceRecord:
+    return SourceRecord(id=str(DOC), library=library, **kwargs)
+
+
+def targets(schema=CURRENT_SCHEMA):
+    return target_properties(schema)[0]
+
+
+# --- value normalization -----------------------------------------------------------------
+
+@pytest.mark.parametrize("data, expected", [
+    ([["Own", "Parent"], ["Parent", "Grandparent"]], ["Own", "Parent", "Grandparent"]),
+    (["B", "A", "B"], ["B", "A"]),
+    ("  single ", ["single"]),
+    ([[], ["", None], [" x "]], ["x"]),
+    (None, []),
+])
+def test_values_flatten_in_order_without_repeats(data, expected):
+    assert values(data) == expected
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("22.5.1929", IssueDate(datetime(1929, 5, 22, tzinfo=UTC), 1929)),
+    ("1929-05-22", IssueDate(datetime(1929, 5, 22, tzinfo=UTC), 1929)),
+    ("5.1929", IssueDate(year=1929)),
+    ("1929-05", IssueDate(year=1929)),
+    ("1929", IssueDate(year=1929)),
+    ("[1929?]", IssueDate(year=1929)),
+    ("asi 1929", IssueDate(year=1929)),
+    ("ca. 1929", IssueDate(year=1929)),
+    ("1890-1895", IssueDate()),
+    ("1890-", IssueDate()),
+    ("189-", IssueDate()),
+    ("31.2.1929", IssueDate()),
+    ("13.1929", IssueDate()),
+    ("unknown", IssueDate()),
+    (None, IssueDate()),
+])
+def test_issue_dates_keep_only_stated_precision(text, expected):
+    assert parse_issue_date(text) == expected
+
+
+def test_parsed_range_within_one_year_gives_that_year():
+    assert parse_issue_date("1890-1890", datetime(1890, 1, 1), datetime(1890, 12, 31)) == IssueDate(year=1890)
+    assert parse_issue_date("1890-1895", datetime(1890, 1, 1), datetime(1895, 12, 31)) == IssueDate()
+    # Seen in the mirror: an issue with date "not_found" and equal parsed start/end.
+    assert parse_issue_date("not_found", datetime(1921, 3, 29), datetime(1921, 3, 29)) == IssueDate(
+        datetime(1921, 3, 29, tzinfo=UTC), 1921)
+    assert parse_issue_date(None, datetime(1921, 1, 1), datetime(1921, 1, 1)) == IssueDate(year=1921)
+    # "1912/13" with a garbage parsed start (4000-04-04) and no end.
+    assert parse_issue_date("1912/13", datetime(4000, 4, 4), None) == IssueDate()
+    # A start date alone is either a point (e.g. a year stored as 1 January) or an open range.
+    assert parse_issue_date(None, datetime(1890, 1, 1), None) == IssueDate()
+
+
+def test_map_record_takes_own_values_first_and_leaves_missing_fields_out():
+    mapped = map_record(record(
+        title=None, date="1889", record_type="periodicalitem", public=True,
+        metadata_json={"Title": [["Brünner Zeitung"], ["Parent title"]], "DateIssued": [["12.12.1889"]],
+                       "Author": [["B. Author", "A. Author"], ["A. Author"]], "Language": [["deu"]],
+                       "SeriesNumber": [["IV"]], "PlaceTerm": [[]]}))
+
+    assert mapped == {
+        "title": "Brünner Zeitung", "titleMetadata": "Brünner Zeitung",
+        "dateIssued": datetime(1889, 12, 12, tzinfo=UTC), "yearIssued": 1889,
+        "dateIssuedMetadata": datetime(1889, 12, 12, tzinfo=UTC), "yearIssuedMetadata": 1889,
+        "author": ["B. Author", "A. Author"], "language": "deu", "seriesNumber": "IV",
+        "documentType": "periodicalitem", "public": True, "library": "mzk",
+    }
+    assert set(mapped) <= set(FIELDS)
+
+
+def test_a_day_outside_the_chosen_year_is_dropped():
+    mapped = map_record(record(date="1889", metadata_json={"DateIssued": ["12.12.1890"]}))
+    assert mapped["yearIssued"] == 1889 and "dateIssued" not in mapped
+    assert mapped["dateIssuedMetadata"] == datetime(1890, 12, 12, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("levels, title", [
+    (["Časopis českého lékárnictva", "2", "12"], "Časopis českého lékárnictva. 2. 12"),     # mzk: numbers only
+    (["Časopis českého lékárnictva", None, "Časopis českého lékárnictva. 12"], "Časopis českého lékárnictva. 12"),
+    (["Křesťanská revue", ". 70", "Křesťanská revue. 6"], "Křesťanská revue. 70. 6"),       # nkp: own prefix
+    (["ČSNN : časopis neurologů", "ČSNN : časopis neurologů", "ČSNN"], "ČSNN : časopis neurologů"),  # short variant
+    (["Lidové noviny", "Lidové novíny."], "Lidové noviny"),                                # within 2 characters
+    (["Lidové noviny", "Lidové listy"], "Lidové noviny. Lidové listy"),
+    (["Právo lidu: časopis hájící zájmy", "20", "Právo lidu. 183"], "Právo lidu: časopis hájící zájmy. 20. 183"),
+    (["Reichenberger Zeitung: Organ", "57", "Reichenberger Zeitung: Tagblatt. 57"],   # repeated pieces
+     "Reichenberger Zeitung: Organ. 57. Tagblatt"),
+    (["1932", "1"], "1932. 1"), (["2", "12"], "2. 12"), (["12", "12"], "12"),             # short: only equality
+    (["Čas. čes. lék.", "2"], "Čas. čes. lék. 2"),
+    (["Verše psané na vodu: Starojaponská pětiverší"], "Verše psané na vodu: Starojaponská pětiverší"),
+    ([None, " "], None),
+])
+def test_title_is_composed_from_the_levels(levels, title):
+    assert compose_title(levels) == title
+
+
+def test_map_record_composes_the_title_from_ancestors():
+    periodical = record(title=None, metadata_json={"Title": [["Časopis českého lékárnictva", "Čas. čes. lék"]]})
+    volume = record(title="2")
+    item = record(title="12", metadata_json={"Title": [[], [], ["Časopis českého lékárnictva", "Čas. čes. lék"]]})
+
+    mapped = map_record(item, [periodical, volume])
+
+    assert mapped["title"] == "Časopis českého lékárnictva. 2. 12"
+    assert mapped["titleMetadata"] == "Časopis českého lékárnictva"
+    assert map_record(item)["title"] == "12"
+
+
+def test_a_part_without_a_title_is_named_by_its_part_number():
+    periodical = record(title="Právo lidu")
+    volume = record(title=None, parent_id="p", metadata_json={"Title": [[], ["Právo lidu"]], "PartNumber": [["20"], []]})
+    item = record(title="Právo lidu. 183", parent_id="v")
+    assert map_record(item, [periodical, volume])["title"] == "Právo lidu. 20. 183"
+    assert "title" not in map_record(record(metadata_json={"PartNumber": [["7"]]}))   # not a part of anything
+
+
+@pytest.mark.parametrize("value, data_type, expected", [
+    ("IV", "text", "IV"),
+    ("12", "int", 12),
+    (12, "text", "12"),
+    (1889, "number", 1889),
+    ("1889", "number", 1889),
+    (["a"], "text[]", ["a"]),
+    (True, "boolean", True),
+    (datetime(1889, 1, 2), "date", datetime(1889, 1, 2, tzinfo=UTC)),
+])
+def test_coerce_converts_to_the_declared_type(value, data_type, expected):
+    assert coerce(value, data_type) == expected
+
+
+@pytest.mark.parametrize("value, data_type", [
+    ("IV", "int"), ("IV", "number"), (True, "text"), (1, "boolean"), ("x", "uuid"), ("x", "text[]"), ("1889", "date"),
+])
+def test_coerce_rejects_values_that_do_not_fit(value, data_type):
+    with pytest.raises(ValueError):
+        coerce(value, data_type)
+
+# --- source library policy ---------------------------------------------------------------
+
+MZK = record("mzk", title="Own title", public=False, in_library=True, metadata_json={"Publisher": ["MZK publisher"]})
+NKP = record("nkp", title="Fuller title", public=True, date="1.1.1900",
+             metadata_json={"Publisher": ["NKP publisher"], "Author": ["Someone"], "Language": ["ces"]})
+
+
+def plan(stored, records, schema=CURRENT_SCHEMA, **kwargs):
+    return plan_document(DOC, stored, records, targets(schema), **kwargs)
+
+
+@pytest.mark.parametrize("records", [[MZK, NKP], [NKP, MZK]])
+def test_only_the_source_library_row_is_used(records):
+    entry = plan({"library": "mzk", "public": False}, records)
+
+    assert entry["library"] == "mzk" and entry["library_from"] == "stored" and entry["in_library"] is True
+    assert entry["mirror_libraries"] == ["mzk", "nkp"]
+    assert entry["changes"] == {"title": {"old": None, "new": "Own title"},
+                                "publisher": {"old": None, "new": "MZK publisher"}}
+    assert "held" not in entry  # NKP's public=True is never considered
+
+
+def test_fields_missing_in_the_source_library_stay_missing():
+    entry = plan({"library": "mzk"}, [NKP, MZK])
+    assert {"author", "language", "yearIssued", "dateIssued"}.isdisjoint(entry["changes"])
+
+
+def test_stored_values_the_source_lacks_are_reported_not_cleared():
+    entry = plan({"library": "mzk", "author": ["Kept"], "public": False}, [MZK])
+    assert entry["stale"] == ["author"] and "author" not in entry["changes"]
+
+
+@pytest.mark.parametrize("old, new, row", [(False, True, NKP), (True, False, MZK)])
+def test_access_follows_the_source_library_row(old, new, row):
+    entry = plan({"library": row.library, "public": old}, [MZK, NKP])
+    assert entry["changes"]["public"] == {"old": old, "new": new}   # no --overwrite needed
+
+
+def test_differing_values_are_replaced_only_with_overwrite():
+    stored = {"library": "mzk", "title": "Corrected title", "public": False}
+    assert plan(stored, [MZK])["held"]["title"]["new"] == "Own title"
+    assert plan(stored, [MZK], overwrite=True)["changes"]["title"] == {"old": "Corrected title", "new": "Own title"}
+
+
+@pytest.mark.parametrize("stored, mapped, records, kind", [
+    ({}, None, [], "no_library"),
+    ({}, None, [MZK], "no_library"),                       # one row, but inference not requested
+    ({"library": ""}, None, [MZK], "no_library"),
+    ({}, None, [MZK, NKP], "multiple_libraries"),
+    ({"library": "mzk"}, "nkp", [MZK, NKP], "library_conflict"),
+    ({"library": "knav"}, None, [MZK, NKP], "no_source_row"),
+    ({}, "knav", [], "no_source_row"),
+    ({"library": "mzk"}, None, [MZK, MZK], "ambiguous_source_row"),
+])
+def test_unknown_or_unmatched_source_is_unresolved(stored, mapped, records, kind):
+    entry = plan(stored, records, mapped_library=mapped)
+    assert entry["status"] == "unresolved" and entry["kind"] == kind
+    assert "changes" not in entry
+
+
+def test_unresolved_entries_name_the_mirror_libraries_without_using_them():
+    entry = plan({"library": "knav"}, [NKP, MZK])
+    assert entry["reason"] == "no mirror row for library 'knav' (rows exist for mzk, nkp; not used)"
+    assert entry["mirror_libraries"] == ["mzk", "nkp"] and entry["stored_library"] == "knav"
+
+
+def test_library_map_supplies_the_library_and_fills_a_declared_property():
+    entry = plan({}, [MZK, NKP], mapped_library="mzk")
+    assert entry["status"] == "update" and entry["library_from"] == "library_map"
+    assert entry["changes"]["library"] == {"old": None, "new": "mzk"}
+
+
+def test_mirror_inference_uses_the_unique_row_or_the_priority():
+    unique = plan({"public": False}, [NKP], infer_from_mirror=True)
+    assert unique["status"] == "update" and unique["library_from"] == "mirror_unique"
+    assert unique["changes"]["library"] == {"old": None, "new": "nkp"}
+    assert unique["changes"]["public"] == {"old": False, "new": True}
+
+    chosen = plan({}, [MZK, NKP], infer_from_mirror=True, priority=("knav", "nkp", "mzk"))
+    assert (chosen["library"], chosen["library_from"]) == ("nkp", "mirror_priority")
+    assert plan({}, [MZK, NKP], infer_from_mirror=True)["kind"] == "multiple_libraries"
+    assert plan({}, [MZK, NKP], infer_from_mirror=True, priority=("knav",))["kind"] == "multiple_libraries"
+    assert plan({}, [MZK, NKP], priority=("mzk",))["kind"] == "multiple_libraries"   # not without the flag
+    assert plan({"library": "mzk"}, [MZK, NKP], infer_from_mirror=True, priority=("nkp",))["library"] == "mzk"
+
+
+NKP_WITHOUT_MODS = record("nkp", title="Fuller title", public=True)
+
+
+def test_metadata_preference_chooses_the_mirror_library_with_mods():
+    options = {"infer_from_mirror": True, "priority": ("nkp", "mzk")}
+    preferred = plan({}, [MZK, NKP_WITHOUT_MODS], prefer_metadata=True, **options)
+    assert (preferred["library"], preferred["library_from"], preferred["has_metadata"]) == (
+        "mzk", "mirror_metadata", True)
+    assert preferred["changes"]["publisher"]["new"] == "MZK publisher"
+    plain = plan({}, [MZK, NKP_WITHOUT_MODS], **options)
+    assert (plain["library"], plain["library_from"], plain["has_metadata"]) == ("nkp", "mirror_priority", False)
+
+    # Both or neither with metadata: the priority decides; nothing decides without one.
+    assert plan({}, [MZK, NKP], prefer_metadata=True, **options)["library_from"] == "mirror_priority"
+    neither = plan({}, [record("mzk"), NKP_WITHOUT_MODS], prefer_metadata=True, **options)
+    assert (neither["library"], neither["library_from"]) == ("nkp", "mirror_priority")
+    assert plan({}, [record("mzk"), NKP_WITHOUT_MODS], prefer_metadata=True,
+                infer_from_mirror=True)["kind"] == "multiple_libraries"
+    # Among several with metadata, the priority chooses only among those.
+    knav = record("knav", metadata_json={"Publisher": ["KNAV"]})
+    three = plan({}, [MZK, NKP_WITHOUT_MODS, knav], prefer_metadata=True, infer_from_mirror=True,
+                 priority=("nkp", "knav", "mzk"))
+    assert (three["library"], three["library_from"]) == ("knav", "mirror_priority")
+
+
+def test_metadata_preference_does_not_replace_a_stored_or_single_library():
+    stored = plan({"library": "nkp"}, [MZK, NKP_WITHOUT_MODS], prefer_metadata=True, infer_from_mirror=True)
+    assert (stored["library"], stored["library_from"]) == ("nkp", "stored")
+    unique = plan({}, [NKP_WITHOUT_MODS], prefer_metadata=True, infer_from_mirror=True)
+    assert (unique["library_from"], unique["has_metadata"]) == ("mirror_unique", False)
+
+
+def test_distrusted_stored_library_is_resolved_again():
+    stored = {"library": "mzk"}
+    assert plan(stored, [NKP], distrusted=frozenset({"mzk"}))["kind"] == "no_library"
+    inferred = plan(stored, [NKP], distrusted=frozenset({"mzk"}), infer_from_mirror=True)
+    mapped = plan(stored, [MZK, NKP], distrusted=frozenset({"mzk"}), mapped_library="nkp")
+
+    assert inferred["status"] == "update" and inferred["changes"]["library"] == {"old": "mzk", "new": "nkp"}
+    assert mapped["status"] == "update" and mapped["changes"]["library"] == {"old": "mzk", "new": "nkp"}
+    assert mapped["changes"]["publisher"]["new"] == "NKP publisher"
+
+
+def test_override_corrects_a_wrong_stored_library_without_overwrite():
+    entry = plan({"library": "mzk", "publisher": "MZK publisher"}, [MZK, NKP], override_library="nkp")
+
+    assert entry["library_from"] == "override"
+    assert entry["changes"]["library"] == {"old": "mzk", "new": "nkp"}
+    assert entry["held"]["publisher"]["new"] == "NKP publisher"  # other values still need --overwrite
+
+
+# --- target schema -----------------------------------------------------------------------
+
+def test_legacy_property_names_and_types():
+    src = record("mzk", date="1889", metadata_json={
+        "Author": ["A"], "Subtitle": ["Sub"], "PlaceTerm": ["Brno"], "SeriesNumber": ["IV"], "PartNumber": ["7"]})
+    entry = plan({"library": "mzk"}, [src], LEGACY_SCHEMA)
+
+    assert entry["changes"] == {
+        "authors": {"old": None, "new": ["A"]}, "subTitle": {"old": None, "new": "Sub"},
+        "placeTerm": {"old": None, "new": "Brno"}, "partNumber": {"old": None, "new": 7},
+        "yearIssued": {"old": None, "new": 1889}}
+    assert entry["skipped"] == {"seriesNumber": "'IV' does not fit int"}
+
+
+def test_undeclared_fields_are_never_written():
+    mapped_targets, undeclared = target_properties({"title": "text"})
+    assert set(mapped_targets) == {"title"}
+    assert "manufacturePublisher" in undeclared and "library" in undeclared
+
+
+def test_stored_values_compare_after_normalization():
+    src = record("mzk", date="12.12.1889")
+    stored = {"library": "mzk", "yearIssued": 1889.0, "dateIssued": datetime(1889, 12, 12, tzinfo=UTC)}
+    assert plan(stored, [src])["status"] == "unchanged"
+
+
+# --- mirror reads ------------------------------------------------------------------------
+
+@pytest.fixture
+def source():
+    engine = create_engine("sqlite://")
+    META_RECORDS.metadata.create_all(engine)
+    with engine.connect() as connection:
+        yield connection
+    engine.dispose()
+
+
+def add_rows(connection, *rows):
+    connection.execute(insert(META_RECORDS), [
+        {"parent_id": None, "parent_library": None, "public": None, "in_library": False, "record_type": None,
+         "title": None, "date": None, "start_date": None, "end_date": None, "metadata_json": None, **row}
+        for row in rows])
+
+
+def test_read_meta_records_groups_all_libraries_by_id(source):
+    add_rows(source, {"id": DOC, "library": "mzk", "metadata_json": {"Author": [["A"]]}},
+             {"id": DOC, "library": "nkp"}, {"id": OTHER, "library": "mzk"})
+
+    found = read_meta_records(source, [DOC, UUID(int=1)])
+
+    assert set(found) == {DOC}
+    assert sorted(r.library for r in found[DOC]) == ["mzk", "nkp"]
+    assert next(r for r in found[DOC] if r.library == "mzk").metadata_json == {"Author": [["A"]]}
+
+
+# --- report and apply against a fake documents collection -------------------------------
+
+class FakeDocuments:
+    def __init__(self, documents: dict[UUID, dict], schema=CURRENT_SCHEMA):
+        self.documents = documents
+        self.schema = schema
+        self.updates: list[tuple[UUID, dict]] = []
+        self.fail: set[UUID] = set()
+        self.lose_writes = False
+
+    def install(self, monkeypatch):
+        async def property_types(client, names):
+            return self.schema
+
+        async def page(client, names, after, limit):
+            ids = sorted(i for i in self.documents if after is None or i > after)[:limit]
+            return [(i, dict(self.documents[i])) for i in ids]
+
+        async def read(client, names, ids):
+            return {i: dict(self.documents[i]) for i in ids if i in self.documents}
+
+        async def update(client, names, document_id, properties):
+            if document_id in self.fail:
+                raise TimeoutError("timed out")
+            self.updates.append((document_id, properties))
+            if not self.lose_writes:
+                self.documents[document_id].update(properties)
+
+        for name, fake in (("document_property_types", property_types), ("read_document_page", page),
+                           ("read_documents", read), ("update_document", update)):
+            monkeypatch.setattr(metadata_sync, name, fake)
+        return self
+
+
+async def report_of(source, **kwargs):
+    return await build_report(None, NAMES, source, endpoint="localhost:8080", source_name="test", **kwargs)
+
+
+async def test_report_continues_past_documents_without_source_rows(source, monkeypatch):
+    FakeDocuments({DOC: {"library": "mzk"}, OTHER: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": OTHER, "library": "mzk", "title": "Found"})
+
+    report = await report_of(source)
+
+    counts = report["counts"]
+    assert (counts["in_scope"], counts["eligible"]) == (2, 1)
+    assert counts["unresolved"] == {"no_source_row": 1}
+    assert counts["mirror_libraries"] == {"none": 1, "one": 1, "several": 0}
+    assert counts["library_from"] == {"stored": 1}
+    assert report["next_after"] is None
+    assert [e["status"] for e in report["documents"]] == ["unresolved", "update"]
+
+
+async def test_report_pages_with_limit_and_after(source, monkeypatch):
+    FakeDocuments({DOC: {}, OTHER: {}}).install(monkeypatch)
+
+    first = await report_of(source, limit=1)
+    rest = await report_of(source, after=UUID(first["next_after"]), limit=1)
+
+    assert first["next_after"] == str(DOC)
+    assert [e["id"] for e in first["documents"] + rest["documents"]] == [str(DOC), str(OTHER)]
+
+
+async def test_report_lists_requested_ids_missing_from_the_target(source, monkeypatch):
+    FakeDocuments({DOC: {}}).install(monkeypatch)
+    report = await report_of(source, document_ids=[OTHER], library_map={OTHER: "mzk"})
+    assert report["documents"] == [{"id": str(OTHER), "status": "unresolved", "kind": "not_in_target",
+                                    "reason": "no such document in the target collection"}]
+
+
+async def test_inferred_libraries_are_written_with_their_evidence(source, monkeypatch, tmp_path):
+    FakeDocuments({DOC: {}, OTHER: {}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "nkp"}, {"id": OTHER, "library": "mzk"}, {"id": OTHER, "library": "nkp"})
+    report = await report_of(source, infer_from_mirror=True)
+    path = tmp_path / "inferred.csv"
+
+    assert write_inferred(path, report) == 1
+    assert path.read_text(encoding="utf-8").splitlines()[1] == f"{DOC},nkp,mirror_unique,,,"
+    assert read_library_map(path) == {DOC: "nkp"}
+    assert report["counts"]["unresolved"] == {"multiple_libraries": 1}
+
+
+async def test_inferred_libraries_without_changes_are_listed(source, monkeypatch, tmp_path):
+    schema = {k: v for k, v in CURRENT_SCHEMA.items() if k != "library"}
+    FakeDocuments({DOC: {}}, schema=schema).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "nkp"})
+    report = await report_of(source, infer_from_mirror=True)
+
+    assert [e["status"] for e in report["documents"]] == ["unchanged"]
+    assert write_inferred(tmp_path / "c.csv", report) == 1
+
+
+async def test_report_is_json_and_apply_writes_and_verifies_reviewed_changes(source, monkeypatch):
+    store = FakeDocuments({DOC: {}, OTHER: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "date": "22.5.1929", "title": "T"},
+             {"id": OTHER, "library": "mzk", "title": "U"})
+    report = json.loads(json.dumps(await report_of(source, library_map={DOC: "mzk"})))
+
+    result = await apply_report(None, NAMES, report)
+
+    assert {k: result[k] for k in ("in_scope", "unresolved", "eligible", "applied", "verified",
+                                   "already_applied", "not_applied", "failed")} == {
+        "in_scope": 2, "unresolved": 0, "eligible": 2, "applied": 2, "verified": 2,
+        "already_applied": 0, "not_applied": [], "failed": []}
+    assert apply_exit_code(result) == 0
+    assert store.documents[DOC] == {"library": "mzk", "title": "T", "yearIssued": 1929,
+                                    "dateIssued": datetime(1929, 5, 22, tzinfo=UTC)}
+    again = await apply_report(None, NAMES, report)  # rerunning is safe
+    assert again["already_applied"] == 2 and apply_exit_code(again) == 0
+
+
+async def test_apply_checks_the_library_even_when_it_is_not_changed(source, monkeypatch):
+    store = FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "MZK title"})
+    report = await report_of(source)
+    assert "library" not in report["documents"][0]["changes"]
+    store.documents[DOC]["library"] = "nkp"
+
+    result = await apply_report(None, NAMES, report)
+
+    assert result["not_applied"] == [{"id": str(DOC), "reason": "library changed since the report"}]
+    assert store.updates == [] and apply_exit_code(result) == 1
+
+
+async def test_apply_skips_documents_changed_since_the_report_and_reports_failures(source, monkeypatch):
+    third = UUID(int=3)
+    store = FakeDocuments({DOC: {"library": "mzk"}, OTHER: {"library": "mzk"}, third: {"library": "mzk"}})
+    store.install(monkeypatch)
+    add_rows(source, *({"id": i, "library": "mzk", "title": "New"} for i in (DOC, OTHER, third)))
+    report = await report_of(source)
+    store.documents[DOC]["title"] = "Edited meanwhile"
+    del store.documents[third]
+    store.fail.add(OTHER)
+
+    result = await apply_report(None, NAMES, report)
+
+    assert result["applied"] == 0
+    assert result["not_applied"] == [{"id": str(third), "reason": "the document no longer exists"},
+                                     {"id": str(DOC), "reason": "title changed since the report"}]
+    assert result["failed"] == [{"id": str(OTHER), "error": "TimeoutError: timed out"}]
+    assert store.documents[DOC]["title"] == "Edited meanwhile"
+    assert apply_exit_code(result) == 1
+
+
+async def test_apply_reports_writes_that_do_not_read_back(source, monkeypatch):
+    store = FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "New"})
+    report = await report_of(source)
+    store.lose_writes = True
+
+    result = await apply_report(None, NAMES, report)
+
+    assert (result["applied"], result["verified"]) == (1, 0)
+    assert result["failed"] == [{"id": str(DOC), "error": "read back differs: title"}]
+    assert apply_exit_code(result) == 1
+
+
+async def test_apply_with_nothing_eligible_is_not_a_success(source, monkeypatch):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk"})
+    result = await apply_report(None, NAMES, await report_of(source))
+    assert result["eligible"] == 0 and apply_exit_code(result) == 1
+
+
+async def test_apply_refuses_incomplete_reports_unless_accepted(source, monkeypatch):
+    store = FakeDocuments({DOC: {"library": "mzk"}, OTHER: {}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "New"}, {"id": OTHER, "library": "nkp"})
+    report = await report_of(source)
+    assert report["counts"]["unresolved"] == {"no_library": 1}
+
+    with pytest.raises(LookupError, match="1 documents in the report are unresolved"):
+        await apply_report(None, NAMES, report)
+    result = await apply_report(None, NAMES, report, accept_incomplete=True)
+
+    assert (result["eligible"], result["verified"], result["unresolved"]) == (1, 1, 1)
+    assert store.documents[OTHER] == {}  # the unresolved document is never written
+
+
+@pytest.mark.parametrize("report_schema, store_schema", [
+    (CURRENT_SCHEMA, {**CURRENT_SCHEMA, "seriesNumber": "int"}),                   # changed type
+    ({k: v for k, v in CURRENT_SCHEMA.items() if k != "library"},) * 2,           # library not storable
+])
+async def test_apply_refuses_an_unsuitable_schema(source, monkeypatch, report_schema, store_schema):
+    FakeDocuments({DOC: {"library": "mzk"}}, schema=report_schema).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "New"})
+    report = await report_of(source)
+    FakeDocuments({DOC: {"library": "mzk"}}, schema=store_schema).install(monkeypatch)
+
+    with pytest.raises(LookupError):
+        await apply_report(None, NAMES, report)
+
+
+# --- single-pass sync -------------------------------------------------------------------
+
+async def sync_of(source, directory, **kwargs):
+    return await sync(None, NAMES, source, checkpoint=directory / "sync.json", manifest=directory / "sync.jsonl",
+                      endpoint="localhost:8080", source_name="test", progress=lambda line: None, **kwargs)
+
+
+def manifest_of(tmp_path):
+    return [json.loads(line) for line in (tmp_path / "sync.jsonl").read_text(encoding="utf-8").splitlines()]
+
+
+async def test_sync_writes_page_by_page_and_reads_back_only_updated_documents(source, monkeypatch, tmp_path):
+    third = UUID(int=3)
+    store = FakeDocuments({DOC: {"library": "mzk", "public": False}, OTHER: {"library": "mzk", "title": "U"},
+                           third: {}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "T", "public": True},
+             {"id": OTHER, "library": "mzk", "title": "U"})
+    reads = []
+    read = metadata_sync.read_documents
+
+    async def counting_read(client, names, ids):
+        reads.append(list(ids))
+        return await read(client, names, ids)
+    monkeypatch.setattr(metadata_sync, "read_documents", counting_read)
+    monkeypatch.setattr(metadata_sync, "PAGE_SIZE", 2)
+
+    result = await sync_of(source, tmp_path)
+
+    counts = result["counts"]
+    assert (counts["examined"], counts["updated"], counts["unchanged"], counts["failed"]) == (3, 1, 1, 0)
+    assert counts["unresolved"] == {"no_library": 1}
+    assert counts["public"]["false_to_true"] == 1 and counts["changed_properties"] == {"public": 1, "title": 1}
+    assert counts["without_source_metadata"] == 2   # neither mirror row has metadata_json
+    assert result["done"] and result["to_retry"] == 0 and sync_exit_code(result) == 0
+    assert store.documents[DOC] == {"library": "mzk", "public": True, "title": "T"}
+    assert reads == [[DOC], []]  # only written documents are read back
+    assert manifest_of(tmp_path) == [{"id": str(third), "status": "unresolved", "kind": "no_library",
+                                      "reason": "no library and no mirror row", "mirror_libraries": []}]
+    assert '"T"' not in (tmp_path / "sync.json").read_text()  # the checkpoint holds no metadata values
+
+
+async def test_sync_refuses_a_store_without_a_library_property(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {}}, schema={k: v for k, v in CURRENT_SCHEMA.items() if k != "library"})
+    store.install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "nkp", "title": "T"})
+    with pytest.raises(LookupError, match="add-library-property"):
+        await sync_of(source, tmp_path, infer_from_mirror=True)
+    assert store.updates == [] and not (tmp_path / "sync.json").exists()
+
+
+async def test_sync_rerun_on_a_new_checkpoint_changes_nothing(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {}, OTHER: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "nkp", "title": "T"}, {"id": OTHER, "library": "mzk", "title": "U"})
+    first = await sync_of(source, tmp_path, infer_from_mirror=True)
+    assert first["counts"]["updated"] == 2 and first["counts"]["library_from"] == {
+        "mirror_unique": 1, "stored": 1}
+
+    (tmp_path / "again").mkdir()
+    again = await sync_of(source, tmp_path / "again", infer_from_mirror=True)
+
+    assert (again["counts"]["updated"], again["counts"]["unchanged"]) == (0, 2)
+    assert len(store.updates) == 2
+
+
+async def test_sync_resumes_after_the_checkpoint_and_retries_failures_first(source, monkeypatch, tmp_path):
+    ids = [UUID(int=i) for i in range(1, 6)]
+    store = FakeDocuments({i: {"library": "mzk"} for i in ids}).install(monkeypatch)
+    add_rows(source, *({"id": i, "library": "mzk", "title": "New"} for i in ids))
+    monkeypatch.setattr(metadata_sync, "PAGE_SIZE", 2)
+    store.fail.add(ids[1])
+
+    first = await sync_of(source, tmp_path, limit=3)
+
+    assert (first["after"], first["done"], first["to_retry"]) == (str(ids[2]), False, 1)
+    assert first["counts"]["failed"] == 1 and sync_exit_code(first) == 1
+    assert manifest_of(tmp_path) == [{"id": str(ids[1]), "status": "failed", "reason": "TimeoutError: timed out"}]
+    store.fail.clear()
+
+    second = await sync_of(source, tmp_path)
+
+    assert second["done"] and second["to_retry"] == 0 and sync_exit_code(second) == 0
+    counts = second["counts"]
+    assert (counts["examined"], counts["updated"], counts["failed"]) == (5, 5, 0)
+    assert [d for d, _ in store.updates] == [ids[0], ids[2], ids[1], ids[3], ids[4]]
+    assert manifest_of(tmp_path)[-1] == {"id": str(ids[1]), "status": "verified_on_retry"}
+    assert all(d["title"] == "New" for d in store.documents.values())
+
+
+async def test_sync_retries_every_failure_across_several_retry_batches(source, monkeypatch, tmp_path):
+    ids = [UUID(int=i) for i in range(1, 161)]
+    store = FakeDocuments({i: {"library": "mzk"} for i in ids}).install(monkeypatch)
+    add_rows(source, *({"id": i, "library": "mzk", "title": "New"} for i in ids))
+    assert metadata_sync.PAGE_SIZE == 100
+    failing = ids[:155]
+    store.fail.update(failing)
+
+    first = await sync_of(source, tmp_path)
+
+    assert first["to_retry"] == 155 and first["counts"]["failed"] == 155 and first["counts"]["updated"] == 5
+    store.fail.clear()
+    store.updates.clear()
+
+    second = await sync_of(source, tmp_path)
+
+    assert second["to_retry"] == 0 and sync_exit_code(second) == 0
+    assert sorted(d for d, _ in store.updates) == failing  # every failed id retried once
+    counts = second["counts"]
+    assert (counts["examined"], counts["updated"], counts["failed"]) == (160, 160, 0)
+    assert json.loads((tmp_path / "sync.json").read_text())["retry"] == []
+    retried = {line["id"] for line in manifest_of(tmp_path) if line["status"] == "verified_on_retry"}
+    assert retried == {str(i) for i in failing}
+    assert all(d["title"] == "New" for d in store.documents.values())
+
+
+async def test_sync_keeps_writes_that_do_not_read_back_for_retry(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "New"})
+    store.lose_writes = True
+    result = await sync_of(source, tmp_path)
+    assert result["to_retry"] == 1 and result["counts"]["updated"] == 0
+    assert manifest_of(tmp_path)[0]["reason"] == "read back differs: title"
+
+
+async def test_sync_interrupted_mid_page_redoes_that_page(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {"library": "mzk"}, OTHER: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, *({"id": i, "library": "mzk", "title": "New"} for i in (DOC, OTHER)))
+    monkeypatch.setattr(metadata_sync, "SYNC_ATTEMPTS", 1)
+    read = metadata_sync.read_documents
+
+    async def crash(client, names, ids):
+        raise ConnectionError("lost")
+    monkeypatch.setattr(metadata_sync, "read_documents", crash)
+    with pytest.raises(ConnectionError):
+        await sync_of(source, tmp_path)
+    assert json.loads((tmp_path / "sync.json").read_text())["after"] is None  # the page is not finished
+    monkeypatch.setattr(metadata_sync, "read_documents", read)
+
+    result = await sync_of(source, tmp_path)
+
+    assert result["done"] and result["counts"]["examined"] == 2
+    assert (result["counts"]["updated"], result["counts"]["unchanged"]) == (0, 2)  # written before the crash
+    assert all(d["title"] == "New" for d in store.documents.values())
+
+
+async def test_sync_retries_a_failing_batch(source, monkeypatch, tmp_path):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "title": "New"})
+    monkeypatch.setattr(metadata_sync, "SYNC_BACKOFF", 0)
+    page = metadata_sync.read_document_page
+    calls = []
+
+    async def flaky(*args):
+        calls.append(1)
+        if len(calls) == 1:
+            raise ConnectionError("blip")
+        return await page(*args)
+    monkeypatch.setattr(metadata_sync, "read_document_page", flaky)
+
+    assert (await sync_of(source, tmp_path))["counts"]["updated"] == 1
+
+
+@pytest.mark.parametrize("change", [{"overwrite": True}, {"priority": ("nkp",)}, {"prefer_metadata": True},
+                                    {"library_override": {DOC: "nkp"}}])
+async def test_sync_refuses_a_checkpoint_with_other_options(source, monkeypatch, tmp_path, change):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    await sync_of(source, tmp_path, limit=1)
+    with pytest.raises(LookupError, match="options"):
+        await sync_of(source, tmp_path, **change)
+
+
+async def test_sync_refuses_a_checkpoint_of_another_endpoint(source, monkeypatch, tmp_path):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    await sync_of(source, tmp_path, limit=1)
+    with pytest.raises(LookupError, match="endpoint"):
+        await sync(None, NAMES, source, checkpoint=tmp_path / "sync.json", manifest=tmp_path / "sync.jsonl",
+                   endpoint="localhost:8082", source_name="test", progress=lambda line: None)
+
+
+# --- command line ------------------------------------------------------------------------
+
+@pytest.fixture
+def no_connection(monkeypatch):
+    async def refuse(config):
+        raise AssertionError("must not connect")
+    monkeypatch.setattr("semant_demo.adapters.weaviate.client.connect_weaviate", refuse)
+    for name in ("WEAVIATE_HOST", "WEAVIATE_REST_PORT", metadata_sync.DSN_VARIABLE):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.mark.parametrize("report, args", [
+    ({"endpoint": "localhost:8080", "collection": "Documents"}, []),
+    ({"endpoint": "localhost:8080", "collection": "Documents"}, ["--confirm-endpoint", "server:8080"]),
+    ({"endpoint": "server:8080", "collection": "Documents"}, ["--confirm-endpoint", "localhost:8080"]),
+    ({"endpoint": "localhost:8080", "collection": "Other"}, ["--confirm-endpoint", "localhost:8080"]),
+])
+async def test_apply_refuses_before_connecting(no_connection, tmp_path, report, args):
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps({**report, "documents": []}), encoding="utf-8")
+    assert await metadata_sync._main(["--apply", str(path), *args]) == 2
+
+
+@pytest.mark.parametrize("args", [[], ["--confirm-endpoint", "server:8080"]])
+async def test_schema_change_refuses_before_connecting(no_connection, args):
+    assert await metadata_sync._main(["--add-library-property", *args]) == 2
+
+
+@pytest.mark.parametrize("args", [
+    ["--sync", "--checkpoint", "c.json"],                                            # no confirmation
+    ["--sync", "--checkpoint", "c.json", "--confirm-endpoint", "server:8080"],      # another endpoint
+    ["--sync", "--confirm-endpoint", "localhost:8080"],                             # no checkpoint
+    ["--sync", "--checkpoint", "c.json", "--confirm-endpoint", "localhost:8080",
+     "--report", "r.json"],
+])
+async def test_sync_refuses_before_connecting(no_connection, monkeypatch, args):
+    monkeypatch.setenv(metadata_sync.DSN_VARIABLE, "sqlite://")
+    assert await metadata_sync._main(args) == 2
+
+
+async def test_report_needs_a_source_before_connecting(no_connection):
+    assert await metadata_sync._main([]) == 2
+
+
+def test_library_map_rejects_an_id_with_two_libraries(tmp_path):
+    path = tmp_path / "map.csv"
+    path.write_text(f"# document_id,library\n{DOC},mzk\n\n{OTHER},nkp\n", encoding="utf-8")
+    assert read_library_map(path) == {DOC: "mzk", OTHER: "nkp"}
+
+    path.write_text(f"{DOC},mzk\n{DOC},nkp\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="two libraries"):
+        read_library_map(path)
+
+
+# --- page evidence -----------------------------------------------------------------------
+
+P = [UUID(int=0x100 + i) for i in range(10)]   # page ids
+ISSUE, VOLUME, ELSEWHERE = UUID(int=0x201), UUID(int=0x202), UUID(int=0x203)
+
+
+def page(page_id, library, parent, parent_library=None):
+    return {"id": page_id, "library": library, "parent_id": parent, "parent_library": parent_library or library,
+            "record_type": "page"}
+
+
+def statuses(chains):
+    return sorted((c.page_id, c.library, c.status) for c in chains)
+
+
+def test_page_chains_follow_parents_within_one_library(source):
+    add_rows(source,
+             {"id": DOC, "library": "mzk"}, {"id": DOC, "library": "nkp"},
+             page(P[0], "mzk", DOC),                       # direct child, mzk only
+             page(P[1], "nkp", DOC),                       # a different page in nkp
+             page(P[2], "mzk", ISSUE), {"id": ISSUE, "library": "mzk", "parent_id": VOLUME, "parent_library": "mzk"},
+             {"id": VOLUME, "library": "mzk", "parent_id": DOC, "parent_library": "mzk"},   # via intermediate nodes
+             page(P[3], "mzk", DOC), page(P[3], "nkp", DOC),                               # mirrored page
+             page(P[4], "mzk", ELSEWHERE), {"id": ELSEWHERE, "library": "mzk"},             # another document
+             page(P[5], "mzk", UUID(int=0x999)),                                            # broken parent
+             page(P[6], "mzk", DOC, "nkp"))                                                 # cross-library hop
+
+    chains = read_page_chains(source, {DOC: set(P[:8])})[DOC]
+
+    assert statuses(chains) == sorted([
+        (P[0], "mzk", "verified"), (P[1], "nkp", "verified"), (P[2], "mzk", "verified"),
+        (P[3], "mzk", "verified"), (P[3], "nkp", "verified"), (P[4], "mzk", "other_document"),
+        (P[5], "mzk", "broken"), (P[6], "mzk", "cross_library")])   # P[7] is not in the mirror: no chain
+    assert next(c for c in chains if c.page_id == P[2]).path == (P[2], ISSUE, VOLUME, DOC)
+
+
+def test_page_chains_stop_at_cycles_and_depth(source):
+    a, b = UUID(int=0x301), UUID(int=0x302)
+    add_rows(source, page(P[0], "mzk", a), {"id": a, "library": "mzk", "parent_id": b, "parent_library": "mzk"},
+             {"id": b, "library": "mzk", "parent_id": a, "parent_library": "mzk"},
+             page(P[1], "mzk", ISSUE), {"id": ISSUE, "library": "mzk", "parent_id": VOLUME, "parent_library": "mzk"},
+             {"id": VOLUME, "library": "mzk", "parent_id": DOC, "parent_library": "mzk"}, {"id": DOC, "library": "mzk"})
+
+    assert statuses(read_page_chains(source, {DOC: {P[0], P[1]}}, max_depth=2)[DOC]) == [
+        (P[0], "mzk", "cycle"), (P[1], "mzk", "too_deep")]
+    assert statuses(read_page_chains(source, {DOC: {P[1]}}, max_depth=3)[DOC]) == [(P[1], "mzk", "verified")]
+
+
+def chain(page_id, library, status="verified"):
+    return PageChain(page_id, library, status, (page_id, DOC))
+
+
+@pytest.mark.parametrize("start_pages, chains, confidence, verified", [
+    ([], [], "no_chunks", {}),
+    ([None, "not-a-uuid"], [], "none", {}),
+    ([str(P[0])], [chain(P[0], "mzk", "other_document")], "none", {}),
+    ([str(P[0]), str(P[0]), str(P[0])], [chain(P[0], "nkp")], "low", {"nkp": 1}),   # one page, three chunks
+    ([str(P[0]), str(P[1])], [chain(P[0], "nkp"), chain(P[1], "nkp")], "high", {"nkp": 2}),
+    ([str(P[0])], [chain(P[0], "mzk"), chain(P[0], "nkp")], "ambiguous", {"mzk": 1, "nkp": 1}),
+    ([str(P[0]), str(P[1])], [chain(P[0], "mzk"), chain(P[1], "nkp")], "ambiguous", {"mzk": 1, "nkp": 1}),
+])
+def test_page_evidence_confidence(start_pages, chains, confidence, verified):
+    evidence = classify_pages(start_pages, False, chains)
+    assert evidence["confidence"] == confidence and evidence["verified_pages"] == verified
+    assert evidence["method"] == "page_ancestry"
+
+
+def test_page_evidence_counts_invalid_and_unmatched_pages():
+    evidence = classify_pages([str(P[0]), str(P[1]), None, "x"], True, [chain(P[0], "mzk", "broken")])
+    assert (evidence["chunks"], evidence["start_pages"], evidence["invalid_page_ids"], evidence["pages_not_in_mirror"],
+            evidence["unverified_chains"], evidence["truncated"]) == (4, 2, 2, 1, {"broken": 1}, True)
+
+
+HIGH_NKP = classify_pages([str(P[0]), str(P[1])], False, [chain(P[0], "nkp"), chain(P[1], "nkp")])
+LOW_NKP = classify_pages([str(P[0])], False, [chain(P[0], "nkp")])
+AMBIGUOUS = classify_pages([str(P[0])], False, [chain(P[0], "mzk"), chain(P[0], "nkp")])
+NO_PAGES = classify_pages([], False, [])
+
+
+@pytest.mark.parametrize("evidence", [HIGH_NKP, LOW_NKP])
+def test_page_evidence_assigns_its_library(evidence):
+    entry = plan({"public": False}, [MZK, NKP], pages=evidence)
+
+    assert entry["status"] == "update" and entry["library_from"] == "page_ancestry"
+    assert entry["changes"]["library"] == {"old": None, "new": "nkp"}
+    assert entry["changes"]["publisher"]["new"] == "NKP publisher"            # only the nkp row is used
+    assert entry["changes"]["public"] == {"old": False, "new": True}           # access of the chosen library
+    assert entry["page_evidence"] is evidence
+
+
+def test_ambiguous_page_evidence_uses_the_priority_or_stays_unresolved():
+    assert plan({}, [MZK, NKP], pages=AMBIGUOUS)["kind"] == "page_evidence_ambiguous"
+    assert plan({}, [MZK, NKP], pages=AMBIGUOUS, priority=("knav",))["kind"] == "page_evidence_ambiguous"
+    entry = plan({}, [MZK, NKP], pages=AMBIGUOUS, priority=("knav", "nkp", "mzk"))
+    assert (entry["library"], entry["library_from"]) == ("nkp", "page_priority")
+    # The priority chooses among the libraries the pages reach, not among all mirror rows.
+    knav = record("knav")
+    assert plan({}, [MZK, NKP, knav], pages=AMBIGUOUS, priority=("knav", "mzk"))["library"] == "mzk"
+
+
+def test_metadata_preference_chooses_among_the_libraries_the_pages_reach():
+    entry = plan({}, [MZK, NKP_WITHOUT_MODS], pages=AMBIGUOUS, priority=("nkp", "mzk"), prefer_metadata=True)
+    assert (entry["library"], entry["library_from"]) == ("mzk", "page_metadata")
+    # Pages reaching one library decide, with or without metadata.
+    single = plan({}, [MZK, NKP_WITHOUT_MODS], pages=HIGH_NKP, prefer_metadata=True)
+    assert (single["library"], single["library_from"]) == ("nkp", "page_ancestry")
+    # A library the pages do not reach is not chosen for its metadata.
+    knav = record("knav", metadata_json={"Publisher": ["KNAV"]})
+    only_knav = plan({}, [record("mzk"), NKP_WITHOUT_MODS, knav], pages=AMBIGUOUS, priority=("nkp",),
+                     prefer_metadata=True)
+    assert (only_knav["library"], only_knav["library_from"]) == ("nkp", "page_priority")
+
+
+def test_documents_without_page_evidence_use_the_other_rules():
+    assert plan({}, [MZK, NKP], pages=NO_PAGES)["kind"] == "multiple_libraries"
+    entry = plan({}, [NKP], pages=NO_PAGES, infer_from_mirror=True)
+    assert entry["status"] == "update" and entry["library_from"] == "mirror_unique"
+    assert plan({"library": "mzk"}, [MZK, NKP], pages=NO_PAGES)["library_from"] == "stored"
+
+
+def test_page_evidence_replaces_a_contradicted_stored_library():
+    entry = plan({"library": "mzk", "publisher": "MZK publisher"}, [MZK, NKP], pages=HIGH_NKP)
+    assert entry["library_from"] == "page_ancestry" and entry["changes"]["library"] == {"old": "mzk", "new": "nkp"}
+    assert entry["held"]["publisher"]["new"] == "NKP publisher"   # other values still need --overwrite
+    assert plan({"library": "nkp"}, [MZK, NKP], pages=HIGH_NKP)["library_from"] == "page_ancestry"
+    assert plan({"library": "mzk"}, [MZK, NKP], pages=AMBIGUOUS)["library_from"] == "stored"  # one of the verified
+    knav = plan({"library": "knav"}, [MZK, NKP], pages=AMBIGUOUS, priority=("nkp",))
+    assert knav["library_from"] == "page_priority" and knav["changes"]["library"] == {"old": "knav", "new": "nkp"}
+    assert plan({"library": "knav"}, [MZK, NKP], pages=AMBIGUOUS)["kind"] == "page_evidence_ambiguous"
+
+
+@pytest.mark.parametrize("kwargs, origin", [
+    ({"mapped_library": "mzk"}, "library_map"),
+    ({"override_library": "mzk"}, "override"),
+])
+def test_explicit_libraries_win_over_pages_and_are_flagged(kwargs, origin):
+    entry = plan({}, [MZK, NKP], pages=HIGH_NKP, **kwargs)
+    assert entry["status"] == "update" and entry["library_from"] == origin
+    assert entry["page_evidence_disagrees"] is True
+
+
+async def test_report_with_page_evidence_and_inferred_file(source, monkeypatch, tmp_path):
+    FakeDocuments({DOC: {}, OTHER: {}}).install(monkeypatch)
+    starts = {DOC: ([str(P[0]), str(P[1]), str(P[1])], False), OTHER: ([], False)}
+
+    async def read_start_pages(client, names, document_id, limit):
+        return starts[document_id]
+    monkeypatch.setattr(metadata_sync, "read_start_pages", read_start_pages)
+    add_rows(source, {"id": DOC, "library": "mzk"}, {"id": DOC, "library": "nkp"},
+             page(P[0], "nkp", DOC), page(P[1], "nkp", DOC), {"id": OTHER, "library": "mzk"},
+             {"id": OTHER, "library": "nkp"})
+
+    report = await report_of(source, infer_from_pages=True)
+    assert await report_of(source, infer_from_pages=True, infer_from_mirror=True, priority=("nkp",)) != report
+
+    by_id = {e["id"]: e for e in report["documents"]}
+    assert by_id[str(DOC)]["library_from"] == "page_ancestry"
+    assert by_id[str(DOC)]["page_evidence"]["verified_pages"] == {"nkp": 2}
+    assert by_id[str(OTHER)]["kind"] == "multiple_libraries"
+    assert report["counts"]["page_evidence"] == {"high": 1, "no_chunks": 1}
+
+    path = tmp_path / "inferred.csv"
+    assert write_inferred(path, report) == 1
+    assert path.read_text(encoding="utf-8").splitlines()[1] == f"{DOC},nkp,page_ancestry,high,2,"
+    assert read_library_map(path) == {DOC: "nkp"}
+
+
+def test_ancestors_stay_in_the_record_library(source):
+    periodical, volume = UUID(int=0x401), UUID(int=0x402)
+    add_rows(source,
+             {"id": periodical, "library": "mzk", "title": "Periodical"},
+             {"id": volume, "library": "mzk", "parent_id": periodical, "parent_library": "mzk", "title": "2"},
+             {"id": DOC, "library": "mzk", "parent_id": volume, "parent_library": "mzk", "title": "12"},
+             {"id": DOC, "library": "nkp", "parent_id": volume, "parent_library": "mzk"},   # cross-library parent
+             {"id": OTHER, "library": "mzk", "parent_id": UUID(int=0x999), "parent_library": "mzk"})
+    records = [r for rows in read_meta_records(source, [DOC, OTHER]).values() for r in rows]
+    cache = {}
+
+    ancestors = read_ancestors(source, records, cache)
+
+    assert [r.title for r in ancestors[(str(DOC), "mzk")]] == ["Periodical", "2"]
+    assert ancestors[(str(DOC), "nkp")] == [] and ancestors[(str(OTHER), "mzk")] == []
+    assert map_record(next(r for r in records if r.library == "mzk"), ancestors[(str(DOC), "mzk")])["title"] == \
+        "Periodical. 2. 12"
+    assert read_ancestors(source, records, cache, max_depth=1)[(str(DOC), "mzk")] == [
+        next(r for r in cache.values() if r and r.title == "2")]
+
+
+def test_ancestor_walk_stops_at_a_cycle(source):
+    a = UUID(int=0x501)
+    add_rows(source, {"id": a, "library": "mzk", "parent_id": DOC, "parent_library": "mzk"},
+             {"id": DOC, "library": "mzk", "parent_id": a, "parent_library": "mzk"})
+    records = read_meta_records(source, [DOC])[DOC]
+    assert [r.id for r in read_ancestors(source, records)[(str(DOC), "mzk")]] == [str(a)]
+
+
+async def test_report_titles_use_the_ancestors(source, monkeypatch):
+    FakeDocuments({DOC: {"library": "mzk"}}).install(monkeypatch)
+    add_rows(source, {"id": OTHER, "library": "mzk", "title": "Periodical"},
+             {"id": DOC, "library": "mzk", "parent_id": OTHER, "parent_library": "mzk", "title": "12"})
+    report = await report_of(source)
+    assert report["documents"][0]["changes"]["title"] == {"old": None, "new": "Periodical. 12"}

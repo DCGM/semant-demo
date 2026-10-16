@@ -1,5 +1,9 @@
 # Weaviate Benchmarks
 
+> **Historical / manual.** A standalone measurement tool, not part of the application or of CI.
+> It runs against a live Weaviate with real data and writes to it; never point it at a shared or
+> production instance (see [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)).
+
 Focused benchmark suite for measuring **tag-reference operations on document
 chunks** against a live Weaviate instance with real data.
 

@@ -6,7 +6,7 @@
 
 Name | Type
 ------------ | -------------
-`items` | [Array&lt;SemantDemoSchemaDocumentsDocument&gt;](SemantDemoSchemaDocumentsDocument.md)
+`items` | [Array&lt;Document&gt;](Document.md)
 `nextOffset` | number
 `hasMore` | boolean
 `totalCount` | number

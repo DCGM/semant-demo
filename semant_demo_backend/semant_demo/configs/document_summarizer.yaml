@@ -1,0 +1,25 @@
+# Document summary (#249). The model is the document_summary feature's tier (LLM_MODELS_CONFIG).
+chunk_limit: 40 # Maximum number of chunks summarized for one document. The caller truncates longer documents to their first chunk_limit chunks, in document order, before calling the summarizer.
+gen_summary_model_options: # Model options for document summary generation.
+  temperature:  # Temperature for the model.
+  context_size: # Context size for the model.
+  max_completion_tokens: # Maximum number of tokens to generate. None for default.
+gen_summary_error_summary: N/A # Summary to use when document summary generation fails.
+gen_summary_system_prompt: |
+  Jsi asistent pro sumarizaci historických dokumentů.
+  Dostaneš úryvky (chunky) jednoho dokumentu v pořadí, v jakém se v dokumentu vyskytují; každý je označen unikátním ID jako [doc1], [doc2], … [docN].
+  Tvým úkolem je vytvořit jediný, souvislý souhrn celého dokumentu, který pokryje jeho klíčové body.
+  Po každém faktu, který z úryvku získáš, připoj ID daného úryvku v hranatých závorkách – například: „Obec byla založena v roce 1850 [doc2].“
+  Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID: „Kronikář zaznamenal neúrodu [doc1][doc3].“
+  Nikdy neslučuj více id do jednoho, jako [doc2-4] nebo [doc2, doc3, doc4], ale vždy je uváděj jednotlivě.
+  Nevymýšlej žádná fakta, která v úryvcích nejsou. Pokud je dokument zkrácen jen na jeho první úryvky, shrň pouze to, co je v nich obsaženo, a nepředstírej znalost zbytku dokumentu.
+  Piš přehledně a stručně.
+  Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
+# System prompt for document summary generation.
+gen_summary_prompt: |
+  Vytvoř souhrn následujícího dokumentu{% if document_title %} s názvem "{{ document_title }}"{% endif %}.
+
+  {% for chunk in chunks %}
+  [doc{{ loop.index }}] {{ chunk.text }}
+  {% endfor %}
+# Prompt for document summary generation.

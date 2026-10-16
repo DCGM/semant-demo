@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { TextChunkWithDocumentInput } from './TextChunkWithDocumentInput';
+import type { SearchResultChunk } from './SearchResultChunk';
 import {
-    TextChunkWithDocumentInputFromJSON,
-    TextChunkWithDocumentInputFromJSONTyped,
-    TextChunkWithDocumentInputToJSON,
-    TextChunkWithDocumentInputToJSONTyped,
-} from './TextChunkWithDocumentInput';
+    SearchResultChunkFromJSON,
+    SearchResultChunkFromJSONTyped,
+    SearchResultChunkToJSON,
+    SearchResultChunkToJSONTyped,
+} from './SearchResultChunk';
 
 /**
  * 
@@ -47,10 +47,10 @@ export interface FeedbackRequest {
     question: string;
     /**
      * 
-     * @type {Array<TextChunkWithDocumentInput>}
+     * @type {Array<SearchResultChunk>}
      * @memberof FeedbackRequest
      */
-    sources: Array<TextChunkWithDocumentInput>;
+    sources: Array<SearchResultChunk>;
     /**
      * 
      * @type {string}
@@ -103,7 +103,7 @@ export function FeedbackRequestFromJSONTyped(json: any, ignoreDiscriminator: boo
         'ragId': json['rag_id'],
         'responseId': json['response_id'],
         'question': json['question'],
-        'sources': ((json['sources'] as Array<any>).map(TextChunkWithDocumentInputFromJSON)),
+        'sources': ((json['sources'] as Array<any>).map(SearchResultChunkFromJSON)),
         'answer': json['answer'],
         'rating': json['rating'],
         'errorTypes': json['error_types'] == null ? undefined : json['error_types'],
@@ -125,7 +125,7 @@ export function FeedbackRequestToJSONTyped(value?: FeedbackRequest | null, ignor
         'rag_id': value['ragId'],
         'response_id': value['responseId'],
         'question': value['question'],
-        'sources': ((value['sources'] as Array<any>).map(TextChunkWithDocumentInputToJSON)),
+        'sources': ((value['sources'] as Array<any>).map(SearchResultChunkToJSON)),
         'answer': value['answer'],
         'rating': value['rating'],
         'error_types': value['errorTypes'],

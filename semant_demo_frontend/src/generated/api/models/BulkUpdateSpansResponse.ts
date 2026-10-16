@@ -20,13 +20,51 @@ import {
     TagSpanToJSON,
     TagSpanToJSONTyped,
 } from './TagSpan';
+import type { WriteOutcome } from './WriteOutcome';
+import {
+    WriteOutcomeFromJSON,
+    WriteOutcomeFromJSONTyped,
+    WriteOutcomeToJSON,
+    WriteOutcomeToJSONTyped,
+} from './WriteOutcome';
+import type { StepFailure } from './StepFailure';
+import {
+    StepFailureFromJSON,
+    StepFailureFromJSONTyped,
+    StepFailureToJSON,
+    StepFailureToJSONTyped,
+} from './StepFailure';
 
 /**
- * Updated spans returned by a bulk update.
+ * Result of a bulk update: the updated spans, plus per-span failures (best effort).
  * @export
  * @interface BulkUpdateSpansResponse
  */
 export interface BulkUpdateSpansResponse {
+    /**
+     * 
+     * @type {WriteOutcome}
+     * @memberof BulkUpdateSpansResponse
+     */
+    outcome: WriteOutcome;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof BulkUpdateSpansResponse
+     */
+    succeeded?: Array<string>;
+    /**
+     * 
+     * @type {Array<StepFailure>}
+     * @memberof BulkUpdateSpansResponse
+     */
+    failed?: Array<StepFailure>;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof BulkUpdateSpansResponse
+     */
+    unattempted?: Array<string>;
     /**
      * 
      * @type {Array<TagSpan>}
@@ -35,10 +73,13 @@ export interface BulkUpdateSpansResponse {
     spans: Array<TagSpan>;
 }
 
+
+
 /**
  * Check if a given object implements the BulkUpdateSpansResponse interface.
  */
 export function instanceOfBulkUpdateSpansResponse(value: object): value is BulkUpdateSpansResponse {
+    if (!('outcome' in value) || value['outcome'] === undefined) return false;
     if (!('spans' in value) || value['spans'] === undefined) return false;
     return true;
 }
@@ -53,6 +94,10 @@ export function BulkUpdateSpansResponseFromJSONTyped(json: any, ignoreDiscrimina
     }
     return {
         
+        'outcome': WriteOutcomeFromJSON(json['outcome']),
+        'succeeded': json['succeeded'] == null ? undefined : json['succeeded'],
+        'failed': json['failed'] == null ? undefined : ((json['failed'] as Array<any>).map(StepFailureFromJSON)),
+        'unattempted': json['unattempted'] == null ? undefined : json['unattempted'],
         'spans': ((json['spans'] as Array<any>).map(TagSpanFromJSON)),
     };
 }
@@ -68,6 +113,10 @@ export function BulkUpdateSpansResponseToJSONTyped(value?: BulkUpdateSpansRespon
 
     return {
         
+        'outcome': WriteOutcomeToJSON(value['outcome']),
+        'succeeded': value['succeeded'],
+        'failed': value['failed'] == null ? undefined : ((value['failed'] as Array<any>).map(StepFailureToJSON)),
+        'unattempted': value['unattempted'],
         'spans': ((value['spans'] as Array<any>).map(TagSpanToJSON)),
     };
 }

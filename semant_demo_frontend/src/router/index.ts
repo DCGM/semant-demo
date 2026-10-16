@@ -6,7 +6,10 @@ import {
   createWebHistory
 } from 'vue-router'
 
+import { Notify } from 'quasar'
+import { useUserStore } from 'src/features/auth/userStore'
 import routes from './routes'
+import { installAuthGuard } from './authGuard'
 
 /*
  * If not building with SSR mode, you can
@@ -17,7 +20,7 @@ import routes from './routes'
  * with the Router instance.
  */
 
-export default route(function (/* { store, ssrContext } */) {
+export default route(function ({ store }) {
   const createHistory = process.env.SERVER
     ? createMemoryHistory
     : (process.env.VUE_ROUTER_MODE === 'history' ? createWebHistory : createWebHashHistory)
@@ -30,6 +33,10 @@ export default route(function (/* { store, ssrContext } */) {
     // quasar.conf.js -> build -> vueRouterMode
     // quasar.conf.js -> build -> publicPath
     history: createHistory(process.env.VUE_ROUTER_BASE)
+  })
+
+  installAuthGuard(Router, useUserStore(store), () => {
+    Notify.create({ type: 'warning', position: 'top', message: 'Log in to open your collections.' })
   })
 
   return Router

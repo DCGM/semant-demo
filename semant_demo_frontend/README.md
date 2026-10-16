@@ -1,37 +1,36 @@
-# Image search (image-search-frontend)
+# semANT demo frontend
 
-Semantic image search
+Vue 3 + Quasar SPA. Setup, checks and
+client generation are described in [CONTRIBUTING.md](../CONTRIBUTING.md#2-setup-and-commands);
+the structure in [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md#3-frontend-semant_demo_frontend).
 
 ## Install the dependencies
 ```bash
-yarn
-# or
-npm install
+npm ci
 ```
 
 ### Start the app in development mode (hot-code reloading, error reporting, etc.)
 
-**Before running the app in development mode, backend types and functions need be generated.**
-1. activate virtual environment
-2. run `npm run sync-client` in the frontend folder (requires Java installed)
+The generated API client (`src/generated/api`) is committed. After a backend API change,
+regenerate it from the repository root with `make api-generate` (requires Java 11+); never
+edit it by hand. The production image (`deploy/Dockerfile`) builds from this committed
+client with `npm ci`; it does not regenerate it.
 
 ```bash
-quasar dev
+npm run dev
 ```
 
-
-### Lint the files
+### Checks
 ```bash
-yarn lint
-# or
-npm run lint
+npm run lint        # ESLint
+npm run typecheck   # vue-tsc against typecheck-baseline.json (empty: no known errors)
+npm test            # Vitest unit/component tests (test/unit)
+npm run test:e2e    # Playwright smoke suite; use `make test-e2e` from the root (needs Docker)
 ```
-
-
 
 ### Build the app for production
 ```bash
-quasar build
+npx quasar build
 ```
 
 ### Customize the configuration
@@ -40,18 +39,24 @@ See [Configuring quasar.config.js](https://v2.quasar.dev/quasar-cli-vite/quasar-
 
 ### Call API functions
 
+All requests go through `src/shared/api` (one backend URL, the signed-in user's token,
+common error handling); do not create another HTTP client.
+
 ```ts
-import { useApi } from 'src/composables/useApi'
+import { ref } from 'vue'
+import { apiErrorMessage, useApi } from 'src/shared/api'
 import type { Collection } from 'src/generated/api'
 
 const api = useApi().default
 const collections = ref<Collection[]>([])
 
-const fetchCollections = async (uId: string) => {
-    try {
-      	const response = await api.fetchCollectionsApiCollectionsGet({ userId: uId })
-      	console.log('Collections fetched:', response)
-		collections.value = response.collections
-    } catch (error) {...}
+const fetchCollections = async () => {
+  try {
+    collections.value = await api.fetchCollectionsApiUserCollectionsGet()
+  } catch (error) {
+    console.error(await apiErrorMessage(error, 'Failed to load collections'))
+  }
 }
 ```
+
+NDJSON streams use `postNdjson(path, body, { onValue, signal })` from the same module.

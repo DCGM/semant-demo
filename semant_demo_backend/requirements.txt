@@ -11,7 +11,6 @@ langchain_core
 langchain-ollama
 langchain_google_genai
 langchain_openai
-langchain-ollama
 langchain_community
 langgraph
 jinja2
@@ -21,8 +20,10 @@ ddgs
 pydantic-ai
 fastapi-users[sqlalchemy]
 python-multipart
-# testing
-pytest
-pytest-asyncio
+opentelemetry-sdk<1.45.0
+opentelemetry-exporter-otlp-proto-http<1.45.0
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-logging
+opentelemetry-instrumentation-system-metrics
 httpx
-asgi-lifespan
+anyio

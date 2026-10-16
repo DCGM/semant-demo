@@ -8,15 +8,12 @@ Name | Type
 ------------ | -------------
 `searchTitleGenerate` | boolean
 `searchTitlePrompt` | string
-`searchTitleModel` | string
 `searchTitleBrevity` | number
 `searchSummaryGenerate` | boolean
 `searchSummaryPrompt` | string
-`searchSummaryModel` | string
 `searchSummaryBrevity` | number
 `searchResultsSummaryGenerate` | boolean
 `searchResultsSummaryPrompt` | string
-`searchResultsSummaryModel` | string
 `searchResultsSummaryBrevity` | number
 `query` | string
 `limit` | number
@@ -44,15 +41,12 @@ import type { SearchRequest } from ''
 const example = {
   "searchTitleGenerate": null,
   "searchTitlePrompt": null,
-  "searchTitleModel": null,
   "searchTitleBrevity": null,
   "searchSummaryGenerate": null,
   "searchSummaryPrompt": null,
-  "searchSummaryModel": null,
   "searchSummaryBrevity": null,
   "searchResultsSummaryGenerate": null,
   "searchResultsSummaryPrompt": null,
-  "searchResultsSummaryModel": null,
   "searchResultsSummaryBrevity": null,
   "query": null,
   "limit": null,

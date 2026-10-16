@@ -13,39 +13,39 @@
  */
 
 import { mapValues } from '../runtime';
-import type { SemantDemoSchemasDocument } from './SemantDemoSchemasDocument';
+import type { Document } from './Document';
 import {
-    SemantDemoSchemasDocumentFromJSON,
-    SemantDemoSchemasDocumentFromJSONTyped,
-    SemantDemoSchemasDocumentToJSON,
-    SemantDemoSchemasDocumentToJSONTyped,
-} from './SemantDemoSchemasDocument';
-import type { DocumentDetailTextChunkWithUserCollectionInfo } from './DocumentDetailTextChunkWithUserCollectionInfo';
+    DocumentFromJSON,
+    DocumentFromJSONTyped,
+    DocumentToJSON,
+    DocumentToJSONTyped,
+} from './Document';
+import type { DocumentViewChunk } from './DocumentViewChunk';
 import {
-    DocumentDetailTextChunkWithUserCollectionInfoFromJSON,
-    DocumentDetailTextChunkWithUserCollectionInfoFromJSONTyped,
-    DocumentDetailTextChunkWithUserCollectionInfoToJSON,
-    DocumentDetailTextChunkWithUserCollectionInfoToJSONTyped,
-} from './DocumentDetailTextChunkWithUserCollectionInfo';
+    DocumentViewChunkFromJSON,
+    DocumentViewChunkFromJSONTyped,
+    DocumentViewChunkToJSON,
+    DocumentViewChunkToJSONTyped,
+} from './DocumentViewChunk';
 
 /**
- * 
+ * A document with all its chunks, each marked with membership in one collection.
  * @export
  * @interface DocumentDetail
  */
 export interface DocumentDetail {
     /**
      * 
-     * @type {SemantDemoSchemasDocument}
+     * @type {Document}
      * @memberof DocumentDetail
      */
-    document: SemantDemoSchemasDocument;
+    document: Document;
     /**
      * 
-     * @type {Array<DocumentDetailTextChunkWithUserCollectionInfo>}
+     * @type {Array<DocumentViewChunk>}
      * @memberof DocumentDetail
      */
-    chunks: Array<DocumentDetailTextChunkWithUserCollectionInfo>;
+    chunks: Array<DocumentViewChunk>;
 }
 
 /**
@@ -67,8 +67,8 @@ export function DocumentDetailFromJSONTyped(json: any, ignoreDiscriminator: bool
     }
     return {
         
-        'document': SemantDemoSchemasDocumentFromJSON(json['document']),
-        'chunks': ((json['chunks'] as Array<any>).map(DocumentDetailTextChunkWithUserCollectionInfoFromJSON)),
+        'document': DocumentFromJSON(json['document']),
+        'chunks': ((json['chunks'] as Array<any>).map(DocumentViewChunkFromJSON)),
     };
 }
 
@@ -83,8 +83,8 @@ export function DocumentDetailToJSONTyped(value?: DocumentDetail | null, ignoreD
 
     return {
         
-        'document': SemantDemoSchemasDocumentToJSON(value['document']),
-        'chunks': ((value['chunks'] as Array<any>).map(DocumentDetailTextChunkWithUserCollectionInfoToJSON)),
+        'document': DocumentToJSON(value['document']),
+        'chunks': ((value['chunks'] as Array<any>).map(DocumentViewChunkToJSON)),
     };
 }
 

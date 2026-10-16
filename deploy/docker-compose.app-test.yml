@@ -8,6 +8,7 @@ services:
       args:
         - REPO=${REPO}
         - BRANCH=${BRANCH}
+        - COMMIT=${COMMIT:-}
         - BACKEND_URL=${BACKEND_URL}
     env_file:
       - path: .env
@@ -16,6 +17,12 @@ services:
       - type: bind
         source: ${SQL_DB_PATH}/tasks.db
         target: /app/tasks.db
+        bind:
+          create_host_path: false
+      # In-app feedback log (FEEDBACK_LOG_PATH in the .env template), kept across container recreation.
+      - type: bind
+        source: ${SQL_DB_PATH}/feedback
+        target: /app/feedback
         bind:
           create_host_path: false
     networks:

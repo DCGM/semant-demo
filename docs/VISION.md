@@ -64,7 +64,9 @@ Uses advanced features: semantic similarity, AI-assisted tagging, RAG-based cros
 
 ## Planned Capabilities (Roadmap)
 
-The following features are planned or in early prototype stages:
+The following features are planned or in early prototype stages (what runs today is described
+in [ARCHITECTURE.md](ARCHITECTURE.md); an agentic RAG configuration and Topicer-based span
+suggestions already exist as prototypes):
 
 - **Agentic search & agentic RAG** — multi-step autonomous retrieval pipelines
 - **Topic discovery** — unsupervised topic modelling over collections

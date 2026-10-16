@@ -1,13 +1,14 @@
 
 # DocumentDetail
 
+A document with all its chunks, each marked with membership in one collection.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`document` | [SemantDemoSchemasDocument](SemantDemoSchemasDocument.md)
-`chunks` | [Array&lt;DocumentDetailTextChunkWithUserCollectionInfo&gt;](DocumentDetailTextChunkWithUserCollectionInfo.md)
+`document` | [Document](Document.md)
+`chunks` | [Array&lt;DocumentViewChunk&gt;](DocumentViewChunk.md)
 
 ## Example
 

@@ -5,7 +5,7 @@ on:
     branches: [ main ]
     tags: ["v*.*.*"]   
   pull_request:
-    types: [opened, synchronize, reopened, closed] 
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
 concurrency:
@@ -13,16 +13,19 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type != 'tag' && github.event.action != 'closed' }}
 
 jobs:
+  # Fast offline checks (see `make check`). These jobs are blocking: a failure fails the
+  # workflow and prevents the production and test-main deployments below. They use no
+  # secrets, API keys, GPU or live services.
   test-backend:
     name: Backend tests
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    continue-on-error: true
-    runs-on: [self-hosted, semant-server]
+    runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
-      options: --user 1025:1027
+      options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
     env:
       HOME: /tmp
+      PIP_CACHE_DIR: /pip-cache
     permissions:
       contents: read
       checks: write
@@ -30,27 +33,44 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up virtual environment
         run: python -m venv /tmp/venv
-      - name: Install dependencies
+      # The pip cache is shared by the CI runners on this host (setup: deploy/README.md)
+      # and is trusted: only these CI jobs write to it. --require-hashes checks every
+      # downloaded archive against the lock, also when pip's HTTP cache serves it; a wheel
+      # pip built locally from an sdist is reused after checking only the source hash
+      # recorded with it in the cache. All locked packages currently install from wheels.
+      # pip silently downloads without a cache it cannot write, so check that first.
+      # --no-compile: this venv is used once; skipping .pyc precompilation saves ~20 s.
+      - name: Install pinned dependencies
         working-directory: semant_demo_backend
         run: |
-          /tmp/venv/bin/pip install --no-cache-dir -r requirements.txt
-          /tmp/venv/bin/pip install --no-cache-dir -e .
-      - name: Run tests
-        id: pytest
-        working-directory: semant_demo_backend
-        run: /tmp/venv/bin/pytest tests -v --junitxml=test-results.xml
-
-      - name: Verify test results were generated
-        if: always()
-        continue-on-error: true
-        run: |
-          if [ ! -f semant_demo_backend/test-results.xml ]; then
-            echo "::warning::test-results.xml nebyl vytvořen – testy se pravděpodobně vůbec nespustily (chyba instalace závislostí nebo pádu pytestu)."
+          if probe=$(mktemp -p "$PIP_CACHE_DIR" .write-probe.XXXXXX 2>/dev/null); then
+            rm -f "$probe"
+            echo "pip cache $PIP_CACHE_DIR is writable by $(id -u):$(id -g)"
+          else
+            echo "::warning title=pip cache unavailable::$PIP_CACHE_DIR is not writable by $(id -u):$(id -g) ($(ls -ldn "$PIP_CACHE_DIR" 2>&1)); installing without the cache. See deploy/README.md."
           fi
+          /tmp/venv/bin/pip install --require-hashes --no-compile -r requirements-dev.lock
+          /tmp/venv/bin/pip install --no-compile --no-deps -e .
+      - name: Lint
+        working-directory: semant_demo_backend
+        run: /tmp/venv/bin/ruff check .
+      - name: Export OpenAPI schema
+        working-directory: semant_demo_backend
+        run: /tmp/venv/bin/python export_openapi.py --output openapi.json
+      - name: Upload OpenAPI schema
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openapi-schema
+          path: semant_demo_backend/openapi.json
+          if-no-files-found: error
+          retention-days: 3
+      - name: Run fast tests
+        working-directory: semant_demo_backend
+        run: /tmp/venv/bin/pytest -m "not integration and not live and not benchmark" -v --junitxml=test-results.xml
 
       - name: Publish test results
         if: always()
-        continue-on-error: true 
+        continue-on-error: true # reporting only; the test step above is the gate
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         with:
           name: Backend test results
@@ -58,34 +78,188 @@ jobs:
           reporter: java-junit
           fail-on-error: false
 
-  #test-frontend:
-  #  name: CI Test Frontend
-  #  if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-  #  runs-on: [self-hosted, semant-server]
-  #  container:
-  #    image: node:20-slim
-  #    options: --user 1025:1027
-  #  steps:
-  #    - uses: actions/checkout@v4
-  #    - name: Install dependencies
-  #      working-directory: semant_demo_frontend
-  #      run: npm ci
-  #    - name: Lint
-  #      working-directory: semant_demo_frontend
-  #      run: npm run lint
+  test-frontend:
+    name: Frontend checks
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: node:22
+      options: --user 1025:1027
+    env:
+      HOME: /tmp
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install dependencies
+        working-directory: semant_demo_frontend
+        run: npm ci
+      - name: Lint
+        working-directory: semant_demo_frontend
+        run: npm run lint
+      - name: Type check
+        working-directory: semant_demo_frontend
+        run: npm run typecheck
+      - name: Unit and component tests
+        working-directory: semant_demo_frontend
+        run: npm test
+
+  # Real-Weaviate tests (see `make test-integration`). The Weaviate service container is
+  # created for this job only and has no volume; the tests additionally refuse any
+  # instance that holds data they did not create. No secrets, API keys or live services.
+  test-integration:
+    name: Integration tests
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: python:3.12
+      options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
+    services:
+      weaviate:
+        # Same version as the deployed and local development Weaviate.
+        image: cr.weaviate.io/semitechnologies/weaviate:1.34.4
+        env:
+          QUERY_DEFAULTS_LIMIT: 25
+          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+          PERSISTENCE_DATA_PATH: /var/lib/weaviate
+          DEFAULT_VECTORIZER_MODULE: none
+          CLUSTER_HOSTNAME: node1
+          DISABLE_TELEMETRY: "true"
+    env:
+      HOME: /tmp
+      PIP_CACHE_DIR: /pip-cache
+      SEMANT_TEST_WEAVIATE_HOST: weaviate
+      SEMANT_TEST_WEAVIATE_REST_PORT: 8080
+      SEMANT_TEST_WEAVIATE_GRPC_PORT: 50051
+      # The service is reached by its job-network name, not loopback.
+      SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL: "1"
+      # Ownership token unique to this run attempt and job (see tests/weaviate_store.py).
+      SEMANT_TEST_STORE_TOKEN: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up virtual environment
+        run: python -m venv /tmp/venv
+      # The pip cache is shared by the CI runners on this host (setup: deploy/README.md)
+      # and is trusted: only these CI jobs write to it. --require-hashes checks every
+      # downloaded archive against the lock, also when pip's HTTP cache serves it; a wheel
+      # pip built locally from an sdist is reused after checking only the source hash
+      # recorded with it in the cache. All locked packages currently install from wheels.
+      # pip silently downloads without a cache it cannot write, so check that first.
+      # --no-compile: this venv is used once; skipping .pyc precompilation saves ~20 s.
+      - name: Install pinned dependencies
+        working-directory: semant_demo_backend
+        run: |
+          if probe=$(mktemp -p "$PIP_CACHE_DIR" .write-probe.XXXXXX 2>/dev/null); then
+            rm -f "$probe"
+            echo "pip cache $PIP_CACHE_DIR is writable by $(id -u):$(id -g)"
+          else
+            echo "::warning title=pip cache unavailable::$PIP_CACHE_DIR is not writable by $(id -u):$(id -g) ($(ls -ldn "$PIP_CACHE_DIR" 2>&1)); installing without the cache. See deploy/README.md."
+          fi
+          /tmp/venv/bin/pip install --require-hashes --no-compile -r requirements-dev.lock
+          /tmp/venv/bin/pip install --no-compile --no-deps -e .
+      - name: Wait for Weaviate
+        run: |
+          for _ in $(seq 1 60); do
+            curl -fsS http://weaviate:8080/v1/.well-known/ready && exit 0
+            sleep 2
+          done
+          echo "Weaviate service did not become ready" >&2
+          exit 1
+      - name: Run integration tests
+        working-directory: semant_demo_backend
+        run: /tmp/venv/bin/pytest -m integration -v --durations=25
+
+  # The production image installs requirements-runtime.lock (#139). Check that it alone
+  # installs, is consistent and serves the same OpenAPI schema, and that neither lock is
+  # stale for its inputs (re-resolved with the pinned pip-tools; needs the package index).
+  # Re-resolution takes minutes, so PRs run it only when a lock input changed (#367); pushes,
+  # tags (which deploy) and manual runs always do, and python-locks-drift.yml runs it weekly.
+  python-locks:
+    name: Python dependency locks
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: python:3.12
+      options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
+    env:
+      HOME: /tmp
+      PIP_CACHE_DIR: /pip-cache
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the runtime lock only
+        working-directory: semant_demo_backend
+        run: |
+          python -m venv /tmp/runtime
+          /tmp/runtime/bin/pip install --require-hashes --no-compile -r requirements-runtime.lock
+          /tmp/runtime/bin/pip install --no-compile --no-deps -e .
+          /tmp/runtime/bin/pip check
+          if /tmp/runtime/bin/python -c "import pytest" 2>/dev/null; then
+            echo "::error::test tools are installed by the runtime lock" >&2
+            exit 1
+          fi
+      - name: Export OpenAPI schema from the runtime install
+        working-directory: semant_demo_backend
+        run: /tmp/runtime/bin/python export_openapi.py --output /tmp/openapi.json
+      - name: Re-resolve locks
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python -m venv /tmp/tools
+          /tmp/tools/bin/pip install --no-compile pip-tools==7.6.2
+          if [ -n "$PR_BASE" ]; then
+            git fetch --no-tags --depth=1 origin "$PR_BASE" || true
+            LOCK_COMPILER=/tmp/tools/bin/pip-compile scripts/python-locks.sh check-since "$PR_BASE"
+          else
+            LOCK_COMPILER=/tmp/tools/bin/pip-compile scripts/python-locks.sh check
+          fi
+
+  api-client-drift:
+    name: Generated API client drift
+    needs: [test-backend]
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      # Same generator version as semant_demo_frontend/openapitools.json.
+      image: openapitools/openapi-generator-cli:v7.20.0
+      options: --user 1025:1027
+    env:
+      HOME: /tmp
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download OpenAPI schema
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: openapi-schema
+          path: /tmp/openapi-schema
+      - name: Compare generated client
+        env:
+          OPENAPI_JSON: /tmp/openapi-schema/openapi.json
+          OPENAPI_GENERATOR: java -jar /opt/openapi-generator/modules/openapi-generator-cli/target/openapi-generator-cli.jar
+        run: bash semant_demo_frontend/scripts/api-client.sh check
 
   deploy-production:
     name: Deploy Production ${{ github.ref_name }}
-    needs: [test-backend]
-    if: always() && github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [test-backend, test-frontend, test-integration, api-client-drift, python-locks]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: [self-hosted, semant-server]
     environment: production
     timeout-minutes: 30
+
+    env:
+      # The one commit deployed: deploy files and the image source (COMMIT) both use it.
+      DEPLOY_COMMIT: ${{ github.sha }}
     
     steps:
       - name: Checkout repository 
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.DEPLOY_COMMIT }}
           fetch-depth: 0
 
       - name: Validate tag points to a commit contained in main
@@ -139,26 +313,20 @@ jobs:
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}"
-          TMP_DIR="/tmp/semant-deploy"
+          cd "$GITHUB_WORKSPACE"
 
-          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
-
-          git clone --depth=1 --filter=blob:none --sparse \
-            --branch "${{ github.ref_name }}" \
-            "https://github.com/DCGM/semant-demo.git" \
-            "$TMP_DIR/repo"
-
-          cd "$TMP_DIR/repo"
-          git sparse-checkout set deploy/docker-compose.app.yaml deploy/Dockerfile deploy/.env.example
+          HEAD=$(git rev-parse HEAD)
+          if [ "$HEAD" != "$DEPLOY_COMMIT" ]; then
+            echo "ERROR: Checked out $HEAD, expected deploy commit $DEPLOY_COMMIT" >&2 ; exit 1
+          fi
 
           if [ ! -f "deploy/docker-compose.app.yaml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.example" ]; then
-            echo "ERROR: Required files not found in deploy/ for ref ${{ github.ref_name }}" >&2 ; exit 1
+            echo "ERROR: Required files not found in deploy/ at $DEPLOY_COMMIT" >&2 ; exit 1
           fi
 
           cp deploy/docker-compose.app.yaml "$DEPLOY_PATH/"
           cp deploy/Dockerfile "$DEPLOY_PATH/"
           cp deploy/.env.example "$DEPLOY_PATH/"
-          rm -rf "$TMP_DIR"
 
       - name: Create .env
         env:
@@ -170,14 +338,19 @@ jobs:
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}"
           PREV_BRANCH=$(grep "^BRANCH=" "$DEPLOY_PATH/.env" 2>/dev/null | cut -d= -f2 || true)
           echo "PREV_BRANCH=${PREV_BRANCH}" >> "$GITHUB_ENV"
+          PREV_COMMIT=$(grep "^COMMIT=" "$DEPLOY_PATH/.env" 2>/dev/null | cut -d= -f2 || true)
+          echo "PREV_COMMIT=${PREV_COMMIT}" >> "$GITHUB_ENV"
           cp "$DEPLOY_PATH/.env.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=${{ github.ref_name }}|" "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${DEPLOY_COMMIT}|" "$DEPLOY_PATH/.env"
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=${{ vars.SQL_DB_DIR }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^DOMAIN=.*|DOMAIN=${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^ALLOWED_ORIGIN=.*|ALLOWED_ORIGIN=https://${{ vars.BASE_DOMAIN }}|" "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "$OPENAI_API_KEY")|" "$DEPLOY_PATH/.env"
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "$JWT_SECRET")|" "$DEPLOY_PATH/.env"
+          sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=true|" "$DEPLOY_PATH/.env"
+          sed -i "s|^DEPLOYMENT_ENVIRONMENT=.*|DEPLOYMENT_ENVIRONMENT=production|" "$DEPLOY_PATH/.env"
 
       - name: Initialize SQLite database (first run only)
         run: |
@@ -197,6 +370,8 @@ jobs:
           else
             echo "Using existing SQLite database"
           fi
+          # Mounted at /app/feedback: the in-app feedback log (FEEDBACK_LOG_PATH).
+          mkdir -p "$SQL_DB_PATH/feedback"
 
       - name: Build and start
         id: build
@@ -241,15 +416,20 @@ jobs:
           [ -n "$BACKEND_IMG" ] && docker tag semant-demo-rollback "$BACKEND_IMG" || true
 
           sed -i "s|^BRANCH=.*|BRANCH=$PREV|" .env
+          sed -i "s|^COMMIT=.*|COMMIT=${{ env.PREV_COMMIT }}|" .env
           docker compose -p semant-demo -f ./docker-compose.app.yaml up -d
           echo "Rollback complete."
 
   deploy-test-main:
     name: Deploy test-main
-    needs: [test-backend]
-    if: always() && github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main'
+    needs: [test-backend, test-frontend, test-integration, api-client-drift, python-locks]
+    if: github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
+
+    env:
+      # The one commit deployed: deploy files and the image source (COMMIT) both use it.
+      DEPLOY_COMMIT: ${{ github.sha }}
 
     steps:
       - name: Validate SQL database directory
@@ -285,30 +465,32 @@ jobs:
             echo "Deploy directory already exists: $FULL_PATH"
           fi
 
+      - name: Check out deploy files at the deploy commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_COMMIT }}
+          path: deploy-src
+          sparse-checkout: deploy
+          persist-credentials: false
+
       - name: Update deploy files
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-main"
-          TMP_DIR="/tmp/semant-test-main-deploy"
+          cd "$GITHUB_WORKSPACE/deploy-src"
 
-          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
-
-          git clone --depth=1 --filter=blob:none --sparse \
-            --branch "main" \
-            "https://github.com/DCGM/semant-demo.git" \
-            "$TMP_DIR/repo"
-
-          cd "$TMP_DIR/repo"
-          git sparse-checkout set deploy/docker-compose.app-test.yml deploy/Dockerfile deploy/.env.test.example
+          HEAD=$(git rev-parse HEAD)
+          if [ "$HEAD" != "$DEPLOY_COMMIT" ]; then
+            echo "ERROR: Checked out $HEAD, expected deploy commit $DEPLOY_COMMIT" >&2 ; exit 1
+          fi
 
           if [ ! -f "deploy/docker-compose.app-test.yml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.test.example" ]; then
-            echo "ERROR: Required files not found in deploy/ for branch main" >&2 ; exit 1
+            echo "ERROR: Required files not found in deploy/ at $DEPLOY_COMMIT" >&2 ; exit 1
           fi
 
           cp deploy/docker-compose.app-test.yml "$DEPLOY_PATH/"
           cp deploy/Dockerfile "$DEPLOY_PATH/"
           cp deploy/.env.test.example "$DEPLOY_PATH/"
-          rm -rf "$TMP_DIR"
 
       - name: Create .env
         env:
@@ -325,6 +507,7 @@ jobs:
 
           cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=main|"                                                                                    "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${DEPLOY_COMMIT}|"                                                                        "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
@@ -332,6 +515,8 @@ jobs:
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "$OPENAI_API_KEY")|"  "$DEPLOY_PATH/.env"
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "$JWT_SECRET")|"  "$DEPLOY_PATH/.env"
+          sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=true|" "$DEPLOY_PATH/.env"
+          sed -i "s|^DEPLOYMENT_ENVIRONMENT=.*|DEPLOYMENT_ENVIRONMENT=test-main|" "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 
@@ -353,6 +538,8 @@ jobs:
           else
             echo "Using existing SQLite database"
           fi
+          # Mounted at /app/feedback: the in-app feedback log (FEEDBACK_LOG_PATH).
+          mkdir -p "$SQL_DB_PATH/feedback"
 
       - name: Build and start
         run: |
@@ -381,6 +568,8 @@ jobs:
 
   deploy-test-pr:
     name: "Deploy test PR #${{ github.event.pull_request.number }}"
+    # always(): the preview deploys even when checks fail, for manual diagnosis. Failed checks
+    # still block merging through branch protection, not the preview (#213).
     needs: [test-backend]
     if: always() && github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, semant-server]
@@ -389,8 +578,27 @@ jobs:
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       BRANCH: ${{ github.head_ref }}
+      # The one commit deployed: deploy files and the image source (COMMIT) both use it. This is
+      # the PR head; the pull_request checks test GitHub's merge commit instead (#213).
+      DEPLOY_COMMIT: ${{ github.event.pull_request.head.sha }}
 
     steps:
+      # Previews run unreviewed PR code, so they get dedicated preview credentials and never the
+      # production OPENAI_API_KEY / JWT_SECRET; a missing one fails here, with no fallback (#213).
+      - name: Check preview credentials
+        env:
+          OPENAI_API_KEY_PREVIEW: ${{ secrets.OPENAI_API_KEY_PREVIEW }}
+          JWT_SECRET_PREVIEW: ${{ secrets.JWT_SECRET_PREVIEW }}
+        run: |
+          missing=0
+          for name in OPENAI_API_KEY_PREVIEW JWT_SECRET_PREVIEW; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set. PR previews do not fall back to production credentials; see deploy/README.md (PR preview credentials)."
+              missing=1
+            fi
+          done
+          exit $missing
+
       - name: Validate SQL database directory
         run: |
           SQL_DB_DIR="${{ vars.SQL_DB_DIR_TEST }}"
@@ -427,35 +635,38 @@ jobs:
             echo "Deploy directory already exists: $FULL_PATH"
           fi
 
+      - name: Check out deploy files at the deploy commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_COMMIT }}
+          path: deploy-src
+          sparse-checkout: deploy
+          persist-credentials: false
+
       - name: Update deploy files
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
-          TMP_DIR="/tmp/semant-test-deploy-${PR_NUMBER}"
+          cd "$GITHUB_WORKSPACE/deploy-src"
 
-          rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
-
-          git clone --depth=1 --filter=blob:none --sparse \
-            --branch "$BRANCH" \
-            "https://github.com/DCGM/semant-demo.git" \
-            "$TMP_DIR/repo"
-
-          cd "$TMP_DIR/repo"
-          git sparse-checkout set deploy/docker-compose.app-test.yml deploy/Dockerfile deploy/.env.test.example
+          HEAD=$(git rev-parse HEAD)
+          if [ "$HEAD" != "$DEPLOY_COMMIT" ]; then
+            echo "ERROR: Checked out $HEAD, expected deploy commit $DEPLOY_COMMIT" >&2 ; exit 1
+          fi
 
           if [ ! -f "deploy/docker-compose.app-test.yml" ] || [ ! -f "deploy/Dockerfile" ] || [ ! -f "deploy/.env.test.example" ]; then
-            echo "ERROR: Required files not found in deploy/ for branch $BRANCH" >&2 ; exit 1
+            echo "ERROR: Required files not found in deploy/ at $DEPLOY_COMMIT" >&2 ; exit 1
           fi
 
           cp deploy/docker-compose.app-test.yml "$DEPLOY_PATH/"
           cp deploy/Dockerfile "$DEPLOY_PATH/"
           cp deploy/.env.test.example "$DEPLOY_PATH/"
-          rm -rf "$TMP_DIR"
 
       - name: Create .env
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          # Written to the preview .env as OPENAI_API_KEY / JWT_SECRET.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_PREVIEW }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET_PREVIEW }}
         run: |
           BASE_DOMAIN="${{ vars.BASE_DOMAIN }}"
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
@@ -467,6 +678,7 @@ jobs:
 
           cp "$DEPLOY_PATH/.env.test.example" "$DEPLOY_PATH/.env"
           sed -i "s|^BRANCH=.*|BRANCH=$(escape_sed_replacement "${BRANCH}")|"                                      "$DEPLOY_PATH/.env"
+          sed -i "s|^COMMIT=.*|COMMIT=${DEPLOY_COMMIT}|"                                                          "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_SUBDOMAIN=.*|TEST_SUBDOMAIN=$(escape_sed_replacement "${TEST_SUBDOMAIN}")|"              "$DEPLOY_PATH/.env"
           sed -i "s|^TEST_ROUTER_NAME=.*|TEST_ROUTER_NAME=$(escape_sed_replacement "${TEST_ROUTER_NAME}")|"        "$DEPLOY_PATH/.env"
           sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$(escape_sed_replacement "https://${TEST_SUBDOMAIN}")|"            "$DEPLOY_PATH/.env"
@@ -474,6 +686,8 @@ jobs:
           sed -i "s|^SQL_DB_PATH=.*|SQL_DB_PATH=$(escape_sed_replacement "${SQL_DB_PATH}")|"                       "$DEPLOY_PATH/.env"
           sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(escape_sed_replacement "$OPENAI_API_KEY")|"  "$DEPLOY_PATH/.env"
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "$JWT_SECRET")|"  "$DEPLOY_PATH/.env"
+          sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=true|" "$DEPLOY_PATH/.env"
+          sed -i "s|^DEPLOYMENT_ENVIRONMENT=.*|DEPLOYMENT_ENVIRONMENT=test-pr-${PR_NUMBER}|" "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 
@@ -495,6 +709,8 @@ jobs:
           else
             echo "Using existing SQLite database"
           fi
+          # Mounted at /app/feedback: the in-app feedback log (FEEDBACK_LOG_PATH).
+          mkdir -p "$SQL_DB_PATH/feedback"
 
       - name: Build and start
         run: |
@@ -515,6 +731,7 @@ jobs:
             if curl --fail --silent --max-time 10 "$TEST_URL"; then
               echo ""
               echo "Health check passed: $TEST_URL"
+              echo "Preview https://${TEST_SUBDOMAIN} is up for manual testing. Previews deploy even when checks fail, so this says nothing about whether the PR passed CI; see the PR's checks." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
           done

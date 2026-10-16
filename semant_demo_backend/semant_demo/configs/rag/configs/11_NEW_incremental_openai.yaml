@@ -1,0 +1,15 @@
+id: "xandry12_IncrementalAdaptiveRagGenerator_openai_default_multiquery_big_model"
+name: "Incremental Adaptive RAG (Claude Sonnet 5.5, premium)"
+description: "Premium adaptive RAG using Claude Sonnet 5.5 through OpenRouter; multi-query retrieval and optional web search. Costs grow with every graph iteration."
+class_name: "IncrementalAdaptiveRagGenerator"
+params:
+  tier: "large"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 10
+  qt_strategy : "multi_query"
+  max_retries : 3
+  web_search_enabled : True
+  metadata_extraction_allowed : True
+  self_reflection : True

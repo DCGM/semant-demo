@@ -1,0 +1,15 @@
+id: "xandry12_IncrementalAdaptiveRagGenerator_openai_default_multiquery"
+name: "Incremental Adaptive RAG (Gemini 3.8 Flash)"
+description: "Adaptive RAG using Gemini 3.8 Flash on OpenRouter; multi-query retrieval and optional web search."
+class_name: "IncrementalAdaptiveRagGenerator"
+params:
+  tier: "medium"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 10
+  qt_strategy : "multi_query"
+  max_retries : 3
+  web_search_enabled : True
+  metadata_extraction_allowed : True
+  self_reflection : True

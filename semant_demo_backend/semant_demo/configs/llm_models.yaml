@@ -1,0 +1,73 @@
+# OpenRouter-hosted LLM tiers, selected by desk review on 2026-10-16 (#372).
+# All active tiers use the existing OpenAI-compatible provider adapter, whose
+# endpoint is OPENAI_API_URL (default: https://openrouter.ai/api/v1).
+# Prices are estimated USD per million input/output tokens, not quota enforcement.
+# These are currently listed base prices; routed-provider pricing, long-context
+# surcharges, reasoning output and promotional discounts may change.
+# See docs/LLM_MODEL_SELECTION_2026-10.md for evidence and trade-offs.
+#
+# The tier also defines OpenRouter's reasoning request field (enabled/effort/exclude).
+# If supports_temperature is false, the gateway omits sampling temperature even
+# when older feature code requests a value (required for current Claude 5.5).
+tiers:
+  tiny:
+    # Frequent search-result titles and summaries; prioritize fast visible text.
+    provider: openai
+    model: anthropic/claude-haiku-5.5
+    reasoning:
+      enabled: false
+    supports_temperature: false
+    input_price: 0.10
+    output_price: 0.50
+  small:
+    # Basic RAG and snippet-grounded questions; low-effort thinking.
+    provider: openai
+    model: anthropic/claude-haiku-5.5
+    reasoning:
+      effort: low
+      exclude: true
+    supports_temperature: false
+    input_price: 0.10
+    output_price: 0.50
+  medium:
+    # Interactive span chat and default multi-call agentic RAG.
+    # OpenRouter displays a 50% promotional price (2026-10-16): $0.75/$3.75.
+    # Keep the normal $1.50/$7.50 list price for conservative cost estimates.
+    provider: openai
+    model: google/gemini-3.8-flash
+    capabilities: [tools]
+    reasoning:
+      effort: low
+      exclude: true
+    input_price: 1.50
+    output_price: 7.50
+  large:
+    # Optional premium RAG; not the default for multi-call workflows.
+    provider: openai
+    model: anthropic/claude-sonnet-5.5
+    capabilities: [tools]
+    reasoning:
+      effort: low
+      exclude: true
+    supports_temperature: false
+    input_price: 2.00
+    output_price: 10.00
+
+# Feature defaults are server-controlled. RAG YAML configurations may select a
+# permitted tier; browsers cannot select arbitrary models. Topicer is separate.
+features:
+  search_summary:
+    default: tiny
+    allowed: [tiny]
+  document_summary:
+    default: tiny
+    allowed: [tiny]
+  question:
+    default: small
+    allowed: [small]
+  span_chat:
+    default: medium
+    allowed: [medium]
+  rag:
+    default: medium
+    allowed: [small, medium, large]

@@ -3,6 +3,17 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Local development database snapshot
+local_data/
+
+# scripts/e2e-dev.sh state (pid, logs, build fingerprints)
+.e2e-dev/
+
+# Playwright output
+test-results/
+playwright-report/
+
+
 # C extensions
 *.so
 

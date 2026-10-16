@@ -1,133 +1,49 @@
-# TODO — Technical Debt & Recommended Improvements
+# Open risks and follow-ups
 
-## Critical / High Priority
+A short index of **open** limitations that affect development or operation. Requirements,
+decisions and status live on the linked GitHub issues; update this list when an issue is
+opened or closed, not with progress notes. Completed work is recorded on its issue/PR and,
+for the 2026 refactor, in the [archive](archive/README.md).
 
-### 2. Remove duplicate imports
-Multiple files contain repeated imports (e.g. `tag_routes.py` imports `openai`, `logging`, `schemas`, `config`, `WeaviateSearch`, `asyncio` twice). This causes no runtime error but hurts readability and indicates copy-paste patterns.
+## Correctness and behavior
 
-**Fix:** Clean up import blocks in all route files.
+- [#224](https://github.com/DCGM/semant-demo/issues/224) — tag-filtered search indexes only the anchor chunk of a cross-chunk span.
+- [#218](https://github.com/DCGM/semant-demo/issues/218) — tag creation deduplication reads at most 2000 tags of a collection.
+- [#227](https://github.com/DCGM/semant-demo/issues/227) — Topicer calls are bounded per run, not across concurrent runs.
+- **Chunk tag consistency** — span writes and their chunk tag references are best effort, serialized only within one backend process, so run one process ([ADR 0002](adr/0002-best-effort-writes.md)). Audit and reviewed repair: [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-tag-audit-chunk_tag_audit).
+- **Topicer offsets** — proposals are read as code points and stored as UTF-16; older AI spans near non-BMP characters may need review; no automatic migration is planned ([ADR 0006](adr/0006-context-and-text.md)).
 
-### 3. Add authentication and user management
-User identity is currently just a free-text string passed from the frontend. There is no authentication, session management, or access control.
+## Data
 
-**Fix:** Implement proper auth (e.g. OAuth2 / JWT) and associate user collections and tags with authenticated users.
+- [#375](https://github.com/DCGM/semant-demo/issues/375) — the production chunk vector index covers an estimated 2% of the chunks: vector and hybrid search miss most of the corpus ([audit](WEAVIATE_AUDIT_2026-10.md)).
+- [#376](https://github.com/DCGM/semant-demo/issues/376) — chunk context reads (and sorts) every chunk of the document; 0.2–0.5 s p50, up to 4 s.
+- [#259](https://github.com/DCGM/semant-demo/issues/259) — Kramerius metadata import: unresolved libraries and mirror rows without MODS (no author/publisher).
+- [#281](https://github.com/DCGM/semant-demo/issues/281) — documents without text chunks: audit and gated removal ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#documents-without-chunks-document_cleanup-281)).
+- [#279](https://github.com/DCGM/semant-demo/issues/279) — corpus document public-access policy.
+- [#313](https://github.com/DCGM/semant-demo/issues/313) — chunk ingestion does not fill `Chunks.yearIssued`, which the year filter uses; until it does, run `chunk_year --write` after ingesting chunks or changing document years ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)).
+- When deploying against an existing Weaviate store, compare property types (especially document metadata) and review the chunk tag audit; never silently rewrite or reset shared data.
 
-### 4. Replace in-process asyncio tasks with a proper task queue
-Tagging jobs run as `asyncio.create_task()` inside the FastAPI process. If the server restarts, all running tasks are lost. There is no retry logic and no way to distribute work across multiple workers.
+## Deployment, security and tests
 
-**Fix:** Use Celery + Redis/RabbitMQ (there's already a `celery_tagging.py` stub) or a similar job queue. This also enables horizontal scaling.
+- [#234](https://github.com/DCGM/semant-demo/issues/234) — anonymous RAG, summary and question endpoints call paid providers; decide login/rate/cost limits.
+- [#319](https://github.com/DCGM/semant-demo/issues/319) — access tokens live 7 days without renewal, and the stateless JWT logout revokes nothing server-side: signing out only forgets the token in this browser (all its tabs).
+- [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI.
+- [#299](https://github.com/DCGM/semant-demo/issues/299) — Topicer compose files lack their Dockerfile; Topicer is deployed manually, not by CI/CD.
+- [#261](https://github.com/DCGM/semant-demo/issues/261) — reproducibility of the production frontend build. The backend Python packages are locked; the base images and the embedding service requirements are not ([DEPLOYMENT.md](DEPLOYMENT.md#docker--production-deployment)).
+- PR previews share the server and Docker daemon with CI and the other deployments; separate preview credentials limit, but do not isolate, them ([deploy/README](../deploy/README.md#pr-preview-credentials)). Host separation is out of scope.
 
-### 5. Pin dependency versions
-`requirements.txt` for both backend and embedding service list packages without version pins. This makes builds non-reproducible and risks breakage on updates.
+## Product work (when scoped)
 
-**Fix:** Add version pins or use a lockfile (`pip-compile`, `poetry.lock`).
+- [#43](https://github.com/DCGM/semant-demo/issues/43) — optional durable bulk tagging jobs; the `Tagging Jobs` tab is a placeholder.
+- Page-specific sidebar tools and chat: [#243](https://github.com/DCGM/semant-demo/issues/243) and its linked issues.
 
----
+Create a focused issue before starting other improvements (SQL scalability beyond SQLite,
+search pagination, provider readiness checks).
 
-## Medium Priority
+## Documentation policy
 
-### 6. Centralise LLM model creation
-Both `RagGenerator` and `AdaptiveRagGenerator` contain identical `_create_model()` methods that switch on model_type (OLLAMA/OPENAI/GOOGLE).
-
-**Fix:** Move to `BaseRag` or a factory function in `rag_factory.py`.
-
-### 7. Standardise error handling in routes
-Some endpoints return `{"created": false, "message": ...}` on errors instead of raising HTTP exceptions. Others raise `HTTPException`. The inconsistency makes it harder for the frontend to handle errors uniformly.
-
-**Fix:** Use a consistent error strategy — either always raise HTTPException with appropriate status codes, or define a standard error response schema.
-
-### 8. Add integration tests
-Current tests cover only the LLM API, template rendering and summarisation (with mocks). There are no integration tests for:
-- Search pipeline (Weaviate queries)
-- RAG end-to-end
-- Tag CRUD and tagging task lifecycle
-- User collection operations
-
-**Fix:** Add integration tests using a test Weaviate instance (Docker) and test fixtures.
-
-### 9. Add OpenAPI schema documentation
-FastAPI auto-generates OpenAPI docs, but response models are not consistently declared (some endpoints have no `response_model`). Several route handlers have ambiguous return types.
-
-**Fix:** Add `response_model` to all endpoints. Add `tags` grouping to routers for cleaner Swagger UI.
-
-### 10. Frontend hardcoded backend URL
-`boot/axios.ts` falls back to `http://pcvaskom.fit.vutbr.cz:8024/api` if `BACKEND_URL` is not set. This is a development-machine-specific URL.
-
-**Fix:** Default to `http://localhost:8000/api` or make the fallback a build-time configuration.
-
-### 11. Improve Weaviate search module size
-`weaviate_search.py` is ~1500 lines covering search, tag CRUD, collection CRUD, tag propagation, and chunk filtering.
-
-**Fix:** Split into focused modules: `search.py`, `tag_repository.py`, `collection_repository.py`.
-
-### 12. SQLite not suitable for production
-SQLite with `aiosqlite` works for development but has concurrency limitations under real load. Also the DB file (`tasks.db`) is created relative to the working directory.
-
-**Fix:** Support PostgreSQL via env config for production. Make the DB path configurable.
-
----
-
-## Low Priority / Nice to Have
-
-### 13. Add frontend linting and type checking to CI
-`package.json` has ESLint configured but `"test"` script is a no-op. TypeScript strict mode is not enforced.
-
-**Fix:** Add `tsc --noEmit` and `eslint` to CI pipeline.
-
-### 14. Add request/response logging middleware
-No structured request logging exists. Debugging production issues requires manual log reading.
-
-**Fix:** Add FastAPI middleware that logs request method, path, status code, and latency.
-
-### 15. Configuration validation on startup
-`Config.__init__` reads env vars but does not validate them. Missing required keys (like API keys for configured RAG) only fail at request time.
-
-**Fix:** Add startup validation — e.g. check that Weaviate is reachable, Ollama is running, required API keys are set for the loaded RAG configs.
-
-### 16. Docker Compose for full stack
-Only Weaviate has a Docker Compose file. There is no way to bring up the entire stack (backend + frontend + embedding service + Weaviate) with a single command.
-
-**Fix:** Create a root `docker-compose.yml` with all services, or add Dockerfiles to backend and embedding_service.
-
-### 17. Add pagination to search and collection endpoints
-Search uses a `limit` parameter but there is no offset/cursor-based pagination. Large collections cannot be browsed incrementally.
-
-### 18. Prompt template management
-RAG prompts are hardcoded in `adaptive_rag_prompts.py` while summarisation prompts are in YAML. Tagging prompts are in `prompt_templates.py`. Three different mechanisms for the same concept.
-
-**Fix:** Unify prompt management — either all YAML/config-driven, or all in a shared prompt registry.
-
-### 19. Frontend `package.json` metadata
-Package name is `image-search-frontend` and description says "Semantic image search" — both are outdated from an earlier project.
-
-**Fix:** Update to `semant-demo-frontend` / "semANT demo application".
-
-### 20. Add health-check endpoints
-No `/health` or `/ready` endpoint exists. Container orchestrators (Kubernetes, Docker Compose health checks) cannot verify service status.
-
-**Fix:** Add `GET /health` that checks Weaviate connectivity and embedding service availability.
-
-### XX. Format the project's code consistently
-Unreadable unstyled ununiform code.
-Define formatter for BE and FE. FE should use Prettier. ESLint will then listen to Prettier rules and only report actual code issues. Add a package.json script for formatting whole frontend.
-
-### XX. Use Pylance
-Backend is full of typing errors.
-
----
-
-## Code Smells to Address
-
-| Location | Issue |
-|---|---|
-| `schemas.py` — `ExtractedMeradata` | Typo in class name (should be `ExtractedMetadata`); `min_date` field declared twice |
-| `tag_routes.py` | `global_engine` created in both `main.py` startup and `tag_routes.py` dependency |
-| `routes.ts` | `/tag/` route references `TaggingPage.vue` which does not exist in the repository |
-| `package.json` | Package name is `image-search-frontend`, description says "Semantic image search" — both outdated |
-| `ollama_proxy.py` | Typo: `"genereting"` → `"generating"` |
-| `config.py` | `GEMMA_URL` is hardcoded to `http://localhost:8001`, not configurable via env var |
-| `config.py` | `MODEL_NAME` (default `clip-ViT-L-14`) and `USE_TRANSLATOR` env vars appear unused in the codebase |
-| `weaviate_search.py` | Contains `# TODO remove` on `add_or_get_tag` |
-| `rag_generator.py` | `RagGenerator` and `AdaptiveRagGenerator` share ~40 identical lines of model init code |
-| `prompt_templates.py` | `"Strict"` template: missing comma after `"{content}"` causes `"Do not output..."` lines to be silently concatenated after the content placeholder via Python implicit string concatenation, instead of appearing as instructions before it |
-| `db_insert_jsonl.py` | Hardcoded `limit=1000` in inspection scripts — may miss data in larger collections |
+Update [ARCHITECTURE.md](ARCHITECTURE.md) when implementation changes,
+[CONTRIBUTING.md](../CONTRIBUTING.md) for workflow/test-policy changes,
+[DEPLOYMENT.md](DEPLOYMENT.md) or [deploy/README](../deploy/README.md) for deployment changes,
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for maintenance procedures, and the
+[ADRs](adr/README.md) when an agreed decision changes. Do not modify archived history.

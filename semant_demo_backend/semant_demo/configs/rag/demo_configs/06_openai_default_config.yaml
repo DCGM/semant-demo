@@ -1,0 +1,10 @@
+id: "xandry12_RagGenerator_gemma_default"
+name: "Basic-RAG (Claude Haiku 5.5)"
+description: "Standard economical linear RAG using Claude Haiku 5.5 with low reasoning effort via OpenRouter. Supports history; no advanced correction loops or multi-query logic."
+class_name: "RagGenerator"
+params:
+  tier: "small"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 5

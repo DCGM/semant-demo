@@ -114,6 +114,9 @@ def create_chunks(client) -> None:
             Property(name="to_page", data_type=DataType.INT),
             Property(name="title", data_type=DataType.TEXT),
             Property(name="order", data_type=DataType.INT),
+            # the document's yearIssued, filtered by the search (#153; filled by
+            # python -m semant_demo.maintenance.chunk_year)
+            Property(name="yearIssued", data_type=DataType.INT, index_range_filters=True),
         ],
         references=[
             ReferenceProperty(name="document", target_collection="Documents"),

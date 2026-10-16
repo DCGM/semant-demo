@@ -1,3 +1,8 @@
+> **Destructive tools.** Several scripts here drop collections or delete data (for example
+> `db_insert_jsonl.py --delete-old`, `delete_*.py`) and connect to `localhost:8080`. Verify the
+> endpoint, back up and follow the rules in [DATA_MAINTENANCE.md](../docs/DATA_MAINTENANCE.md)
+> before running them; never against a shared or production store without explicit authorization.
+
 ## Setup weaviate
 #### Connect
 To server with postgresql:
@@ -23,10 +28,12 @@ Load chunks and document IDs to weaviate:
 ```
 python db_insert_jsonl.py --source-dir /mnt/ssd2/weaviate_data/all.768/chunks.vec.lang/ --delete-old
 ```
-Load the metadata to weaviate:
-```
-python update_metadata.py --logging-on
-```
+Load the metadata to weaviate: `update_metadata.py` was replaced by the reviewed
+report/apply command `python -m semant_demo.maintenance.metadata_sync` in
+`semant_demo_backend/` (#257); see `docs/DATA_MAINTENANCE.md`.
+Documents without chunks: `scan_document_chunks.py` was replaced by
+`python -m semant_demo.maintenance.document_cleanup` (#281; audit, then gated delete); see
+`docs/DATA_MAINTENANCE.md`.
 ------
 ### Local
 Jus in step "Load chunks and document IDs to weaviate" load from local files:

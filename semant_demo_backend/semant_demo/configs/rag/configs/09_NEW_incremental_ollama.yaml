@@ -1,0 +1,15 @@
+id: "xandry12_IncrementalAdaptiveRagGenerator_ollama_default_multiquery"
+name: "Incremental Adaptive RAG (Claude Haiku 5.5)"
+description: "Adaptive RAG using Claude Haiku 5.5 on OpenRouter; multi-query retrieval and optional web search."
+class_name: "IncrementalAdaptiveRagGenerator"
+params:
+  tier: "small"
+  temperature: 0.0
+  search_type : "hybrid"
+  alpha: 0.5
+  chunk_limit: 5
+  qt_strategy : "multi_query"
+  max_retries : 2
+  web_search_enabled : True
+  metadata_extraction_allowed : True
+  self_reflection : True

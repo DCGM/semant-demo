@@ -1,0 +1,30 @@
+name: Python lock drift
+
+# PRs re-resolve the backend locks only when a lock input changes (#367). This weekly run
+# re-resolves main anyway, so a lock that went stale through package index changes is
+# noticed before the next dependency PR or release. GitHub notifies the user who last
+# changed the schedule of a failure; fix it with `make lock` in a PR.
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  python-locks:
+    name: Re-resolve Python locks
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: python:3.12
+      options: --user 1025:1027 -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
+    env:
+      HOME: /tmp
+      PIP_CACHE_DIR: /pip-cache
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Re-resolve locks
+        run: |
+          python -m venv /tmp/tools
+          /tmp/tools/bin/pip install --no-compile pip-tools==7.6.2
+          LOCK_COMPILER=/tmp/tools/bin/pip-compile scripts/python-locks.sh check

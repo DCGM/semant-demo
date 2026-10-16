@@ -1,0 +1,103 @@
+{
+  "description": "Span coordinate cases shared by the backend (semant_demo/features/annotations/offsets.py, tests/test_span_offsets.py) and the frontend (src/utils/spanOffsets.ts, test/unit/spanOffsets.spec.ts). A span is anchored on chunks[anchor]; start/end are half-open offsets in UTF-16 code units from the start of that chunk's text and may continue into the following chunks while their order values are consecutive. 'parts' is the span clipped to each chunk it covers (chunk index and local start/end). 'error' is null for a valid span, otherwise the reason the backend rejects it.",
+  "cases": [
+    {
+      "name": "single chunk",
+      "chunks": [{"order": 0, "text": "Hello world"}],
+      "anchor": 0, "start": 6, "end": 11,
+      "parts": [{"chunk": 0, "start": 6, "end": 11}],
+      "error": null
+    },
+    {
+      "name": "precomposed diacritics are one unit each",
+      "chunks": [{"order": 0, "text": "Jan Novák"}],
+      "anchor": 0, "start": 4, "end": 9,
+      "parts": [{"chunk": 0, "start": 4, "end": 9}],
+      "error": null
+    },
+    {
+      "name": "a combining mark is its own unit",
+      "chunks": [{"order": 0, "text": "Novák"}],
+      "anchor": 0, "start": 3, "end": 6,
+      "parts": [{"chunk": 0, "start": 3, "end": 6}],
+      "error": null
+    },
+    {
+      "name": "a non-BMP character is two units",
+      "chunks": [{"order": 0, "text": "Karel 😀!"}],
+      "anchor": 0, "start": 6, "end": 9,
+      "parts": [{"chunk": 0, "start": 6, "end": 9}],
+      "error": null
+    },
+    {
+      "name": "continues into the next chunk",
+      "chunks": [{"order": 0, "text": "abc"}, {"order": 1, "text": "defg"}],
+      "anchor": 0, "start": 1, "end": 5,
+      "parts": [{"chunk": 0, "start": 1, "end": 3}, {"chunk": 1, "start": 0, "end": 2}],
+      "error": null
+    },
+    {
+      "name": "ends exactly at the chunk boundary",
+      "chunks": [{"order": 0, "text": "abc"}, {"order": 1, "text": "def"}],
+      "anchor": 0, "start": 1, "end": 3,
+      "parts": [{"chunk": 0, "start": 1, "end": 3}],
+      "error": null
+    },
+    {
+      "name": "covers three chunks",
+      "chunks": [{"order": 0, "text": "ab"}, {"order": 1, "text": "cd"}, {"order": 2, "text": "ef"}],
+      "anchor": 0, "start": 1, "end": 6,
+      "parts": [{"chunk": 0, "start": 1, "end": 2}, {"chunk": 1, "start": 0, "end": 2}, {"chunk": 2, "start": 0, "end": 2}],
+      "error": null
+    },
+    {
+      "name": "crosses a chunk boundary after a non-BMP character",
+      "chunks": [{"order": 0, "text": "x😀"}, {"order": 1, "text": "yz"}],
+      "anchor": 0, "start": 1, "end": 4,
+      "parts": [{"chunk": 0, "start": 1, "end": 3}, {"chunk": 1, "start": 0, "end": 1}],
+      "error": null
+    },
+    {
+      "name": "anchored on a later chunk, never projected backwards",
+      "chunks": [{"order": 0, "text": "abc"}, {"order": 1, "text": "def"}, {"order": 2, "text": "gh"}],
+      "anchor": 1, "start": 2, "end": 4,
+      "parts": [{"chunk": 1, "start": 2, "end": 3}, {"chunk": 2, "start": 0, "end": 1}],
+      "error": null
+    },
+    {
+      "name": "a gap in chunk order stops the span",
+      "chunks": [{"order": 0, "text": "abc"}, {"order": 2, "text": "def"}],
+      "anchor": 0, "start": 1, "end": 5,
+      "parts": [{"chunk": 0, "start": 1, "end": 3}],
+      "error": "gap"
+    },
+    {
+      "name": "ends after the end of the document",
+      "chunks": [{"order": 0, "text": "abc"}, {"order": 1, "text": "de"}],
+      "anchor": 0, "start": 2, "end": 6,
+      "parts": [{"chunk": 0, "start": 2, "end": 3}, {"chunk": 1, "start": 0, "end": 2}],
+      "error": "past_end"
+    },
+    {
+      "name": "starts at the end of its anchor chunk",
+      "chunks": [{"order": 0, "text": "abc"}, {"order": 1, "text": "def"}],
+      "anchor": 0, "start": 3, "end": 5,
+      "parts": [{"chunk": 1, "start": 0, "end": 2}],
+      "error": "start_outside_anchor"
+    },
+    {
+      "name": "empty",
+      "chunks": [{"order": 0, "text": "abc"}],
+      "anchor": 0, "start": 2, "end": 2,
+      "parts": [],
+      "error": "empty"
+    },
+    {
+      "name": "negative start",
+      "chunks": [{"order": 0, "text": "abc"}],
+      "anchor": 0, "start": -1, "end": 2,
+      "parts": [{"chunk": 0, "start": 0, "end": 2}],
+      "error": "negative_start"
+    }
+  ]
+}

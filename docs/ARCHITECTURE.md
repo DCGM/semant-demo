@@ -1,8 +1,15 @@
 # Architecture
 
+This document describes the implemented application architecture. Ongoing design
+principles are in [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md), adopted
+decisions in the [ADRs](adr/README.md), and outstanding work in
+[TODO.md](TODO.md). Historical design and delivery records are
+[archived](archive/refactor-2026/README.md).
+
 ## System Overview
 
-The application follows a microservice-like architecture with four independently deployable components:
+One FastAPI backend and one Vue/Quasar frontend, alongside separately deployed services
+(Weaviate, the embedding service, Ollama, Topicer) and external AI APIs:
 
 ```mermaid
 flowchart TB
@@ -51,96 +58,114 @@ The main application server. Built with FastAPI, it handles:
 
 #### Module Map
 
+The backend is one application organized by feature ([ADR 0001](adr/0001-simple-feature-monolith.md)).
+Routes parse HTTP and call one service function; services check access and coordinate work;
+concrete storage and provider clients live in `adapters/` and are built by `bootstrap.py`.
+
+```text
+semant_demo_backend/semant_demo/
+  main.py                 create_app, router registration, lifespan, error mapping
+  bootstrap.py            AppResources: SQL engine, Weaviate repositories, providers (per app)
+  config.py               Config (read once from the environment or an explicit mapping)
+  opentelemetry.py        OTLP logs/traces/metrics (off unless OTEL_ENABLED), request logging middleware
+  core/errors.py          NotFoundError (404), InvalidRequestError (400), IncompleteWriteError (500)
+  core/outcomes.py        WriteResult, StepFailure, WriteOutcome (best-effort multi-write results, ADR 0002)
+  features/
+    user_collections/     routes, service, access (rights checks, ADR 0007), schemas (incl. CollectionChunk);
+                          every collection-scoped route is under /api/user_collections/{collection_id}/...
+    documents/            routes, service, schemas (Document, DocumentChunk, DocumentViewChunk, ...):
+                          public corpus reads (/api/document(s)/...) and the collection's
+                          document view (GET /api/user_collections/{collection_id}/documents/{document_id})
+    annotations/          tags and spans (routes, service, offsets, schemas incl. internal AnnotationChunk),
+                          AI suggestions (suggestions, suggestion_routes), span chat (span_chat, span_chat_routes)
+    search/               routes, service, filters, schemas (incl. SearchResultChunk, SummaryRequestBase)
+    rag/                  routes, service (answer, explain, answer feedback), registry (BaseRag,
+                          class registration, YAML factory), schemas, pipelines/ (RagGenerator,
+                          IncrementalAdaptiveRagGenerator, xmartiAgentRag, TestRag), run_demo
+    summarization/        routes, service (results summary, question), base and templated
+                          (search summarizer), schemas (SummaryResponse)
+    feedback/             app feedback: routes, service (feedback log, webhook), schemas
+    analytics/            corpus overview: routes, service (counting rules, overview cache), schemas
+  adapters/
+    weaviate/             one repository per concern: user_collections, documents, tags, spans,
+                          chunk_tags, search, analytics (document aggregates); client, paging, writes (best-effort cascades),
+                          names (CollectionNames: configured Weaviate collection names)
+    sql/                  base (declarative Base), tables (create_tables), users (UserLookup), feedback
+    embeddings/gemma.py   embedding service client
+    topicer/client.py     Topicer client
+    llm/                  the one gateway for backend LLM calls: models (tier catalog and
+                          feature policy), gateway (metered LangChain chat models, complete,
+                          stream, FeatureChat), usage (token/cost records)
+  routes/                 dependencies.py (DI from AppResources), router registration
+  configs/                YAML: llm_models, search_summarizer, document_summarizer, search_filters, rag/ (RAG configurations)
+  users/                  FastAPI Users: model, manager, auth routers, schemas; routes (user search)
+  maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
+                          document_cleanup (audit, then gated delete of documents without chunks),
+                          chunk_year, db_benchmark (read-only Weaviate inventory and query benchmark, #374)
+```
+
 ```mermaid
 flowchart LR
-    subgraph main.py
-        APP[FastAPI app]
-    end
-
-    subgraph routes/
-        DI["dependencies.py<br/>(DI Container)"]
-        SUM_R[summarizer_routes]
-        RAG_R[rag_routes]
-        TAG_R[tag_routes]
-        SPAN_R[span_routes]
-        AI_R[ai_assistance_routes]
-        CHAT_R[span_chat_routes]
-        DOC_R[document_routes]
-        COL_R[user_collection_routes]
-        USR_R[user_routes]
-        FB_R[feedback_routes]
-        AUTH_R["users/<br/>(auth, register, users)"]
-    end
-
-    subgraph Core
-        WS[weaviate_utils/weaviate_abstraction.py]
-        CFG[config.py]
-        SCH["schemas.py + schema/"]
-    end
-
-    subgraph LLM
-        OLLP[ollama_proxy.py]
-        GEMMA[gemma_embedding.py]
-        LLM_API[llm_api/]
-    end
-
-    subgraph Features
-        RAG_F[rag/]
-        SUM[summarization/]
-        TAG_F[tagging/]
-        AI_F["ai_assistance/<br/>(topicer_client, span_chat)"]
-        USERS[users/]
-    end
-
-    APP --> DI & RAG_F & USERS
-    SUM_R & RAG_R & TAG_R & SPAN_R & AI_R & CHAT_R & DOC_R & COL_R & USR_R & FB_R & AUTH_R --> DI
-    DI --> WS
-    RAG_R --> RAG_F
-    SUM_R --> SUM
-    TAG_R --> TAG_F
-    AI_R --> AI_F
-    CHAT_R --> AI_F
-    WS --> GEMMA
-    RAG_F --> LLM_API
-    SUM --> LLM_API
-    TAG_F --> OLLP
-    AI_F --> LLM_API
-    AUTH_R --> USERS
+    Routes["features/*/routes.py<br/>users/routes.py"] --> Services["features/*/service.py<br/>suggestions.py, span_chat.py"]
+    Services --> Access["features/user_collections/access.py"]
+    Services --> Adapters["adapters/weaviate, adapters/sql"]
+    Services --> Providers["adapters/embeddings, topicer, llm"]
+    RAG["features/rag"] --> Search["features/search/service.retrieve"]
+    Bootstrap["bootstrap.py"] -. builds .-> Adapters
+    Bootstrap -. builds .-> Providers
+    Adapters --> Stores[("Weaviate, SQLite")]
 ```
+
+Dependencies are one-way: Documents, Search and Annotations use the user collections access
+functions; RAG uses Search's authorized retrieval; nothing imports RAG. Summarization reads
+Search's schemas; Search calls the summarizer only through its `Summarizer` protocol, which
+the search route receives from `get_summarizer`. The document summary (#249) calls
+Documents' `read_chunks_in_collection` for access and chunk data instead of a new Weaviate
+read. No service reaches
+a raw Weaviate or OpenAI client: SDK objects stay inside `adapters/`.
 
 #### Configuration (`config.py`)
 
-A singleton `Config` class that reads environment variables with sensible defaults. Key groups:
+A `Config` class that reads settings once, at construction, from the process environment or from an explicit mapping (`Config(environ={...})`, used by tests). `create_app(config)` stores it on `app.state.config`; routes and bootstrap read it through the `get_config` dependency. The process-wide `config` instance is only the entry-point configuration: `semant_demo.main:app`, `run.py` and the standalone scripts (`create_default_configurations.py`, `features/rag/run_demo.py`) read it; application code uses the app's `Config`. Key groups:
 
 - **Weaviate connection** — host, REST port, gRPC port
-- **LLM endpoints** — Ollama URLs (comma-separated for load balancing), model names, API keys
-- **Application** — port, CORS origin, static file path
-- **Database** — SQLite URL for task tracking and user accounts
-- **Auth** — `JWT_SECRET` (override in production with a long random string), `JWT_LIFETIME_SECONDS`
+- **LLM providers** — `OPENAI_API_KEY` / `OPENAI_API_URL` (any OpenAI-compatible endpoint, OpenRouter by default), `OLLAMA_URLS` (only the first is used), `GOOGLE_API_KEY`, and `LLM_MODELS_CONFIG`, the tier catalog (see *LLM gateway* below). There are no per-feature model settings.
+- **Application** — port, CORS origin, static file path, `LOG_LEVEL`
+- **Observability** — `OTEL_ENABLED` (default off) and the `OTEL_*` / `DEPLOYMENT_ENVIRONMENT` export settings; see [OBSERVABILITY.md](OBSERVABILITY.md)
+- **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments mount it, so it is kept)
+- **Auth** — `JWT_SECRET` (override in production with a long random string); tokens are valid for 7 days (`users/auth.py`)
 - **RAG** — config directory path
-- **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_*` group for the OpenAI-compatible "discuss this span" chat (`SPAN_CHAT_API_KEY`, `SPAN_CHAT_API_URL`, `SPAN_CHAT_MODEL` — all falling back to the corresponding `OPENAI_*` values — plus `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT`)
+- **AI assistance** — `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` for the external Topicer span-proposal service; `SPAN_CHAT_TEMPERATURE`, `SPAN_CHAT_MAX_TOKENS`, `SPAN_CHAT_CONTEXT_CHARS`, `SPAN_CHAT_HISTORY_LIMIT` for the "discuss this span" chat (its model is the `span_chat` tier)
 
-#### Dependency Injection (`routes/dependencies.py`)
+#### Application resources (`bootstrap.py`, `routes/dependencies.py`)
 
-FastAPI application uses a centralized dependency-injection container to manage singleton instances:
+`bootstrap.AppResources` holds the application-scoped resources of one running app. The lifespan creates it, stores it on `app.state.resources`, and closes it at shutdown. At startup it opens the one Weaviate client of the app (`adapters/weaviate/client.connect_weaviate`, which also checks readiness); startup fails if Weaviate cannot be reached. `create_app(config, weaviate_connector=...)` replaces the connector in tests. The dependency functions in `routes/dependencies.py` read from it:
 
 | Dependency | Manages | Lifetime |
 |---|---|---|
-| `get_engine()` | SQLAlchemy engine + async session factory | App startup → shutdown |
+| `get_config()` | The app's `Config` | App lifetime |
 | `get_async_session()` | Database sessions for individual requests | Per-request |
-| `get_search()` | Weaviate connection wrapper (`WeaviateAbstraction`) | First access → shutdown |
+| `get_user_lookup()` | SQL user lookups (`adapters/sql/users.UserLookup`) on a request session | Per-request |
+| `get_documents()`, `get_tags()`, `get_user_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
+| `get_annotation_store()` | The repositories the Annotations service uses (collections, tags, spans, chunk tags, documents) | Startup → shutdown |
+| `get_corpus_analytics()`, `get_corpus_overview_cache()` | Document aggregates (`adapters/weaviate/analytics.py`); the app's last corpus overview | Startup → shutdown |
+| `get_search_backends()` | Search adapter, collection/tag repositories and the embedding client for the search service and RAG retrieval | Startup → shutdown |
+| `get_topicer()`, `get_span_chat()` | Topicer client; the span chat's `FeatureChat` | Startup → shutdown |
+| `get_llm()` | The `LlmGateway` (model tiers, metered chat models) | Startup → shutdown |
 | `get_summarizer()` | Search result summarization engine | First access → shutdown |
+| `get_document_summarizer()` | Whole-document summarization engine (#249) | First access → shutdown |
+| `get_rag_registry()` | Configured RAG instances | Startup → shutdown |
 
-All route handlers inject dependencies via FastAPI's `Depends()` pattern, avoiding scattered global state. The `cleanup_dependencies()` function is called during app shutdown to properly close connections.
+Requests that need these resources while the lifespan is not running get HTTP 503.
 
-**Example:**
+**Example** (the route only parses HTTP; the service checks access before any read):
 ```python
-@exp_router.post("/api/search")
-async def search(req: SearchRequest, 
-                 searcher: WeaviateAbstraction = Depends(get_search),
-                 summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer)) -> SearchResponse:
-    # searcher and summarizer are automatically injected
-    ...
+@exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}", response_model=DocumentDetail)
+async def fetch_collection_document(collection_id: str, document_id: str,
+                                    documents: DocumentRepository = Depends(get_documents),
+                                    collections: UserCollectionRepository = Depends(get_user_collections),
+                                    current_user: User = Depends(current_active_user)) -> DocumentDetail:
+    return await service.read_chunks_in_collection(documents, collections, current_user, document_id, collection_id)
 ```
 
 #### Application Startup & Shutdown
@@ -148,27 +173,30 @@ async def search(req: SearchRequest,
 The FastAPI `@asynccontextmanager` lifespan handler orchestrates:
 
 1. **Startup** (`main.py` lifespan):
-   - Initialize SQLAlchemy engine and database connection pool via `get_engine()`
-   - Create all required database tables (`Task`, `User`, etc.)
-   - Load RAG configurations from YAML and instantiate RAG engines via `rag_factory()`
+   - Create `AppResources` (SQLAlchemy engine and session factory, provider clients and the LLM gateway; nothing external is contacted; an invalid tier catalog fails startup)
+   - Create missing SQL tables (`user`, `rag_user_feedback`; `adapters/sql/tables.create_tables` never drops or alters existing tables)
+   - Open the Weaviate client and build the repositories (startup fails if Weaviate is not ready)
+   - Load RAG configurations from YAML and instantiate RAG engines via `rag_factory()` (each gets its chat models from the gateway; a configuration naming a model or an unpermitted tier is skipped with an error log)
 
 2. **Request handling** — dependency injection provides fresh database sessions and reuses long-lived connections (Weaviate, summarizer)
 
-3. **Shutdown**:
-   - Call `cleanup_dependencies()` to close Weaviate client, dispose of the database engine, and clean up resources
+3. **Shutdown** (also after a failed startup):
+   - `AppResources.close()` closes the Weaviate client if one was opened, disposes of the database engine, and drops cached resources, so the same app can be started again.
+   - When telemetry is enabled, the providers are flushed and the instrumentation removed.
 
-This ensures no resource leaks and proper initialization order.
+`create_app()` and `app.openapi()` do not connect to Weaviate, SQL, or AI providers; `export_openapi.py` relies on this. With `OTEL_ENABLED=true`, `create_app()` also sets up the process-wide OpenTelemetry providers and exporters (export runs in the background; an unreachable collector does not fail requests), so a process should create one such app.
 
 #### Authentication (`users/`)
 
-User accounts are managed with [FastAPI Users](https://fastapi-users.github.io/fastapi-users/) using JWT Bearer tokens. User records are stored in the **same SQLite database** as tasks.
+User accounts are managed with [FastAPI Users](https://fastapi-users.github.io/fastapi-users/) using JWT Bearer tokens. User records are stored in the SQL database at `SQL_DB_URL` (SQLite by default), next to the RAG feedback table.
 
 | Module | Responsibility |
 |---|---|
-| `users/models.py` | SQLAlchemy `User` table — UUID PK, email, hashed password, active/superuser/verified flags, plus `username` (unique, indexed), `name`, `institution` |
+| `users/models.py` | SQLAlchemy `User` table (on `adapters/sql/base.Base`) — UUID PK, email, hashed password, active/superuser/verified flags, plus `username` (unique, indexed), `name`, `institution` |
 | `users/schemas.py` | Pydantic `UserRead` / `UserCreate` / `UserUpdate` schemas (all include the extra fields as optional) |
 | `users/manager.py` | `UserManager` — overrides `authenticate()` to accept **email or username** at login; lifecycle hooks (`on_after_register`, etc.) |
 | `users/auth.py` | JWT strategy, `FastAPIUsers` instance, exported routers; exports `current_active_user` (mandatory) and `current_active_optional_user` (optional) dependency shortcuts |
+| `users/routes.py` | `GET /api/users/search` (signed-in users; username substring of at least 3 characters, at most 4 matches) through `adapters/sql/users.UserLookup` |
 
 **API endpoints:**
 
@@ -179,15 +207,26 @@ User accounts are managed with [FastAPI Users](https://fastapi-users.github.io/f
 | `POST` | `/api/auth/jwt/logout` | Logout (client discards token) |
 | `GET` | `/api/users/me` | Current user info (requires Bearer token) |
 | `PATCH` | `/api/users/me` | Update current user (email / password / name / institution) |
+| `GET` | `/api/users/search?q=` | Find users by username substring (for sharing a collection) |
 
 **Route-level authentication:**
 
-All route handlers accept user identity via `Depends()`. Two variants are used:
+Routes authenticate; services authorize ([ADR 0007](adr/0007-access-and-collaboration.md)). Two dependencies are used:
 
 | Dependency | Behaviour | Applied to |
 |---|---|---|
-| `current_active_user` | Mandatory — returns `401` if no valid token | All `/api/user_collection/*` endpoints |
-| `current_active_optional_user` | Optional — `None` when unauthenticated | All other routes (search, RAG, tags, summarise) |
+| `current_active_user` | Mandatory — returns `401` if no valid token | Collection, tag, span, AI suggestion, span chat, collection-scoped document reads, user search |
+| `current_active_optional_user` | Optional — `None` when unauthenticated | Public corpus reads and search, RAG, summaries (these services refuse collection- or tag-scoped requests from anonymous users) |
+
+Resource rights (owner, shared user, admin) are checked by the feature services through
+`features/user_collections/access.py`: shared users may read and annotate (spans, tag definitions)
+but not change membership, metadata or sharing. Public corpus reads (`GET /api/document/{id}`,
+`/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`,
+`/api/documents/{id}/chunks/{chunk_id}/window` and `/adjacent` (a bounded passage around a
+chunk and its extension), search
+without collection and tags, the corpus overview `/api/analytics/corpus/overview`) need no login. RAG, `/api/summarize/results` and
+`/api/question` are public too and call LLM providers with client-supplied text;
+this existing product behavior is tracked for an access/cost decision in [#234](https://github.com/DCGM/semant-demo/issues/234).
 
 The JWT secret is configured via the `JWT_SECRET` environment variable (default is a placeholder — **must be overridden in production**).
 
@@ -202,20 +241,19 @@ sequenceDiagram
     participant LLM as LLM
 
     FE->>BE: POST /api/search {query, type, filters...}
+    Note over BE: check collection and tag access, validate filters
     alt hybrid or vector search
         BE->>EMB: POST /embed_query
         EMB-->>BE: embedding vector
     end
     BE->>WV: hybrid/bm25/near_vector query
-    WV-->>BE: ranked chunks + document refs + tag refs
-    par title generation
+    WV-->>BE: ranked chunks + document refs
+    opt summaries requested (failure: results kept, warning added)
         BE->>LLM: generate title per chunk
-    and summary generation
         BE->>LLM: generate per-chunk summary
-    and results summary
         BE->>LLM: generate overall results summary
     end
-    BE-->>FE: SearchResponse {results, summaries, tags}
+    BE-->>FE: SearchResponse {results, summaries, warnings}
 ```
 
 Search supports three modes:
@@ -225,39 +263,78 @@ Search supports three modes:
 
 Optional HyDE (Hypothetical Document Embedding): when `is_hyde=true`, the query is embedded as a document rather than a query, which can improve recall for some use cases.
 
-Filters: `min_year`, `max_year`, `min_date`, `max_date`, `language`, tag UUIDs (positive/automatic).
+Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
+
+#### Corpus overview (`features/analytics/`, `adapters/weaviate/analytics.py`)
+
+`GET /api/analytics/corpus/overview` (public, #254) counts the documents of the searchable
+corpus: the total, documents per publication decade (`Documents.yearIssued`), per source
+library (`Documents.library`) and per bibliographic language (`Documents.language`, not the
+chunks' language). The response states its `scope` (`searchable_corpus`), `unit`
+(`documents`), `computed_at` and `data_source`; it carries counts, not chart specifications.
+
+- **Population.** Every object of `Documents`, as Search covers the whole public corpus;
+  `Documents.public` is not used (#279). A future public-read policy must restrict the
+  counting query itself, and the cache below must then be kept per scope. Documents without
+  chunks are not checked per request: their absence is a maintenance invariant (#281, #313).
+- **Counting.** Native aggregates over `Documents` only (never through chunks, never
+  objects or vectors): one aggregate reads the total and, per property, the number of
+  documents with a value; one grouped aggregate per property reads documents per value (at
+  most 10,000 values). Missing values are `total - known` (the deployed collections do not
+  index null state, so `is_none` filters fail), and empty or blank values count as unknown.
+  Decades are `[start, start + 10)` and run without gaps from the earliest to the latest;
+  years that are not whole numbers from 1 to 9999 are unknown. Libraries and languages list
+  at most 50 values, with the remaining documents in `other_count`; stored values are
+  returned unchanged (the page adds names but keeps the codes). For each available
+  dimension, listed counts + `other_count` + `unknown_count` = `total_documents`; counts that
+  do not add up (the corpus changed between the queries, or more than 10,000 years) fail
+  the request rather than misreport.
+- **Unavailable properties.** A property the collection does not declare
+  (`missing_property`, e.g. `library` before `metadata_sync`) or that is not a single value
+  of the expected type (`unsupported_type`) is `available: false` with `null` counts, never
+  zeros; the rest of the overview is still returned.
+- **Load and freshness.** Measured on Weaviate 1.34.4 (local Docker, 12 cores): 15 ms for the
+  500-document development snapshot; about 1.9 s for 300,000 synthetic documents (the grouped
+  aggregates take 0.8–0.9 s each; 20 concurrent computations took 26 s). The app therefore
+  keeps its last overview for `CORPUS_OVERVIEW_MAX_AGE` seconds (default 600) and serves it
+  again with `data_source: "cached_aggregation"` and the original `computed_at`; concurrent
+  requests wait for one computation. Each backend process has its own cache; nothing is
+  precomputed or stored, and a failure is not cached (an error response, never an empty
+  overview).
 
 #### RAG System
 
-RAG implementations are loaded dynamically from YAML config files via a factory pattern:
+RAG implementations are loaded dynamically from YAML config files via a factory pattern
+(`features/rag/registry.py`; the classes are in `features/rag/pipelines/` and register
+themselves when the factory imports them). The routes call `features/rag/service.py`, which
+picks the configuration (unknown id: 400), retrieves from the public corpus only and stores
+answer feedback through `adapters/sql/feedback.py`:
 
 ```mermaid
 flowchart TD
-    FACTORY[rag_factory.py] -->|loads YAML| CONFIGS[rag_configs/configs/*.yaml]
+    FACTORY["registry.py: rag_factory"] -->|loads YAML| CONFIGS["RAG_CONFIGS_PATH/*.yaml"]
     FACTORY -->|registers| REGISTRY["RAG_IMPLEMENTATIONS dict"]
-    FACTORY -->|instantiates| INSTANCES["RAG_INSTANCES dict"]
+    FACTORY -->|instantiates| INSTANCES["RagRegistry (per app)"]
 
     subgraph Implementations
         RG[RagGenerator] -->|extends| BASE[BaseRag]
-        ARG[AdaptiveRagGenerator] -->|extends| BASE
-        AOG[AdaptiveRagGeneratorOg] -->|extends| BASE
         IR[IncrementalAdaptiveRagGenerator] -->|extends| BASE
         AR[xmartiAgentRag] -->|extends| BASE
         TR[TestRag] -->|extends| BASE
     end
 
-    REGISTRY --- RG & ARG & AOG & IR & AR & TR
+    REGISTRY --- RG & IR & AR & TR
 ```
 
 **RagGenerator** — Simple single-pass RAG: reformulate question with history → search → generate answer with citations.
 
-**AdaptiveRagGenerator** — LangGraph-based stateful workflow with iterative retrieval and answer grading.
-
-**AdaptiveRagGeneratorOg** — Original AdaptiveRAG variant; stable base for experimentation.
-
 **IncrementalAdaptiveRagGenerator** — Current production-ready variant that incrementally expands retrieval, grades context and outputs, and uses fallback search strategies when the initial retrieval is insufficient.
 
 **xmartiAgentRag** — Agentic workflow with tool orchestration (query expansion, decomposition, retrieval quality assessment, evidence synthesis).
+
+**TestRag** — Returns a fixed answer without retrieval or model calls (route tests).
+
+The default `RAG_CONFIGS_PATH` is `configs/rag/demo_configs/` (the configurations offered in the deployed demo). `configs/rag/configs/` holds further loadable variants of the same classes for development and `run_demo`; a test loads both sets, so every shipped configuration names an existing class and a permitted tier.
 
 #### Incremental RAG:
 ```mermaid
@@ -304,12 +381,12 @@ IncrementalAdaptiveRagGenerator is implemented as a `langgraph` state machine. T
 This incremental RAG process is more resilient than a single-pass pipeline: it adapts retrieval strategy based on result quality, tightens search with inferred metadata, and validates both retrieved evidence and the final answer before finishing.
 
 Configurable parameters per RAG config YAML include:
-- `model_type` — OLLAMA / OPENAI / GOOGLE
-- `api_key`, `model_name`, `temperature`
+- `tier` — a model tier the `rag` feature allows (default: the feature's default tier); the retired `model_type`, `model_name` and `api_key` are rejected
+- `temperature`
 - `chunk_limit`, `alpha`, `search_type`
 - `max_retries`, `web_search_enabled`, `metadata_extraction_allowed`
 
-#### Summarisation (`summarization/`)
+#### Summarisation (`features/summarization/`)
 
 Uses Jinja2 templates for prompt construction. Three generation tasks per search:
 
@@ -317,20 +394,22 @@ Uses Jinja2 templates for prompt construction. Three generation tasks per search
 2. **Query summary** — per-chunk summary of relevance to query
 3. **Results summary** — overall summary across all returned chunks
 
-Prompts are in Czech by default (application targets Czech heritage texts). All prompts and models are configurable via `configs/search_summarizer.yaml`.
+Prompts are in Czech by default (application targets Czech heritage texts). Prompts, fallback texts and per-task options (temperature, context size, maximum tokens) are configurable via `configs/search_summarizer.yaml`; the model is the `search_summary` tier. Clients may send prompts but never a model. A failed summary keeps the results and adds a warning.
 
-#### Tagging (`tagging/`)
+`POST /api/question` answers `question_text` from the snippets of `search_response`, both sent in the JSON body (`QuestionRequest`), so the question never appears in a URL that a proxy or access log records (the `question` tier). A failed model call answers 502 with a fixed message, or with the name of the missing provider setting (`LlmNotConfigured`); the provider's exception text, which may echo the request or endpoint, is neither returned nor logged.
 
-LLM-assisted tag propagation:
+**Document summary (#249)** — `TemplatedDocumentSummarizer` (`features/summarization/document.py`) is a separate class, not a subclass of the search-results summarizer: it has no query, so it does not fit that ABC's `gen_*(query, ...)` contract. `POST /api/user_collections/{collection_id}/documents/{document_id}/summary` (routed here, in `features/summarization/routes.py`, since it owns the LLM-specific summary contract and config, even though the route's URL belongs to the documents resource family) requires collection read access via `features.documents.service.read_chunks_in_collection` — the same check and chunk read the matching `GET` route uses, so a denied request never reaches the model. Chunks are sorted by `order` and truncated to the configured `chunk_limit` (default 40; first N chunks in document order) before being sent to the model, each labelled `[docN]` the same way the search summarizer labels results; the response (`DocumentSummaryResponse`: `document_id`, `summary`, `citations` — chunk id, order, page range — `time_spent`, `total_chunks`, `summarized_chunks`, `truncated`) is self-contained rather than nested in a search-specific type, so a later Document Chat feature (#243, open) can reuse it as context without a second, incompatible summary shape; the truncation fields let the client show a "partial summary" notice for a long document instead of presenting a summary of its first `chunk_limit` chunks as if it covered the whole thing. Prompts, the fallback text, model options and `chunk_limit` are configurable via `configs/document_summarizer.yaml`; the model is the `document_summary` tier. Unlike the search-results summarizer (whose fallback keeps other, successfully-generated results), a document summary has nothing else to fall back on: a failed generation answers 502 (`DocumentSummaryFailed`, the same convention `POST /api/question` uses — a fixed safe message, or the server-authored `LlmNotConfigured` one) rather than 200 with the configured fallback text, so the client never shows a failed generation as a successful summary.
 
-1. User creates a **Tag** (name, definition, examples, colour, pictogram).
-2. User starts a **tagging task** — the system iterates over all chunks in the tag's collection.
-3. For each chunk, the LLM is asked whether the tag applies (binary Ano/Ne decision).
-4. Results stored as `automaticTag` references on chunks in Weaviate.
-5. Users can approve (→ `positiveTag`) or reject automatic tags.
-6. Task progress tracked in SQLite (`Task` model) with polling endpoint.
+#### LLM gateway (`adapters/llm/`)
 
-#### Tag Spans (`weaviate_utils/span.py`, `routes/span_routes.py`)
+Every backend-owned LLM call goes through `LlmGateway` (built by bootstrap, `get_llm()`); Topicer calls its own models and is not metered here.
+
+- **Tiers** — `configs/llm_models.yaml` (`LLM_MODELS_CONFIG`) maps `tiny` / `small` / `medium` / `large` to a provider (`openai` — any OpenAI-compatible endpoint —, `ollama` or `google`), a model, an optional endpoint, capabilities (`tools`) and estimated prices. It also lists the tiers each feature may use and its default: `search_summary`, `document_summary`, `question`, `span_chat`, `rag`. Keys and default endpoints come from the environment; the catalog holds no secrets. Clients never choose a model or tier; a RAG configuration chooses a permitted tier server-side.
+- **Current deployed model policy (October 2026)** — the shipped `tiny`/`small`/`medium`/`large` tiers are all hosted on OpenRouter through the existing `openai`/OpenAI-compatible adapter, with explicit estimated prices. Each tier may specify an OpenRouter `reasoning` mapping and `supports_temperature: false` to suppress unsupported temperature settings. The mapping is server-side, passed via ChatOpenAI `extra_body`, and leaves user-supplied temperature requests ignored only for tiers that reject them. See [LLM_MODEL_SELECTION_2026-10.md](LLM_MODEL_SELECTION_2026-10.md) for the dated speed/cost/quality review and rationale. The Ollama and direct Google adapter code remains available for alternate deployments, but is not selected by the shipped catalog.
+- **Construction** — `chat_model(feature, tier=..., temperature=..., ...)` returns a LangChain chat model (`ChatOpenAI`, `ChatOllama`, `ChatGoogleGenerativeAI`) for the permitted tier, shared by calls with the same options. RAG chains, the LangGraph pipeline and agent tool subcalls use these models unchanged; `complete()` and `stream()` serve the summaries, the question endpoint and span chat (`FeatureChat`). A provider without a key refuses the call before any request is sent (`LlmNotConfigured`).
+- **Usage** — a callback on every model records each call as a structured log line (`LLM call finished`) and, with telemetry, metrics: feature, tier, provider, model, outcome (`success`/`error`/`cancelled`), duration, input/output/total tokens, estimated cost and `request.id`. Tokens are provider-reported (`usage_source=provider`, also for streams) or, when the provider reports none and for failed or abandoned calls, estimated from text length (`estimated`); unknown usage is never reported as zero. Cost is always an estimate from the tier prices and absent when a price is unknown. Records never contain prompts, messages, generated text, snippets or keys. A non-streamed call cancelled by a client disconnect is not recorded. See [OBSERVABILITY.md](OBSERVABILITY.md#llm-calls).
+
+#### Tags and Tag Spans (`features/annotations/`, `adapters/weaviate/spans.py`, `adapters/weaviate/tags.py`)
 
 Tags can additionally be anchored to specific character ranges inside a chunk via the `Span` collection. Three span types coexist:
 
@@ -338,59 +417,95 @@ Tags can additionally be anchored to specific character ranges inside a chunk vi
 - `neg` — manually rejected span (negative example, useful for AI training/filtering).
 - `auto` — AI-proposed span; carries optional `reason` (LLM justification) and `confidence` ∈ `[0, 1]`.
 
-Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `text_chunk` → `Chunks` — rather than as plain UUID properties. The backend lazily ensures `reason`/`confidence` properties exist on legacy collections (`Span._ensure_ai_properties`).
+Spans are stored with two Weaviate cross-references — `tag` → `Tag` and `text_chunk` → `Chunks` — rather than as plain UUID properties. The backend lazily ensures `reason`/`confidence` properties exist on legacy collections (`SpanRepository._ensure_ai_properties`).
+
+The Annotations feature (`features/annotations/service.py`) owns tag and span use cases: access checks (read: collection read; spans: annotation edit; tags: tag-definition edit — owner and shared users), offset validation, the span write followed by the chunk tag re-derivation, and partial outcomes. Routes only parse HTTP; `adapters/weaviate/spans.py` and `tags.py` only read and write. AI suggestions (`suggestions.py`, below) save validated proposals and delete suggestions through the same service.
+
+Coordinates (`features/annotations/offsets.py`, frontend twin `src/features/annotations/spanOffsets.ts`, shared cases in `semant_demo_backend/tests/fixtures/text_offsets.json`): a span is stored on the chunk where it starts; `start`/`end` are half-open UTF-16 code-unit offsets (the browser's `String.length`) from the start of that chunk's text. `end` may exceed the chunk: the span continues into the following chunks of the document while their `order` is consecutive, whether or not they are in the collection. Span creation and offset changes are rejected with 400 when `start` is negative or not inside the anchor chunk, the span is empty, it crosses a gap in chunk order, or it ends after the document's text. Changes that do not touch offsets (approve, reject, retag) do not re-check stored offsets.
+
+Tag creation inserts the tag and then links it to its collection; when the link fails the new tag is deleted again and the request fails with 500 (`step: link_collection`; if that deletion fails too, `step: delete_unlinked_tag` and the detail says an unreachable tag may remain). Tag and collection deletion keep 204 on success; when a step fails they answer 500 with `detail`, `step`, `completed` (counts of completed steps) and `uncertain`, keep the completed deletions, and deleting again continues.
 
 REST surface (all under `/api/tag_spans`): `POST`, `GET` (filter by chunk/tag/collection), `POST /batch`, `PATCH /{id}`, `DELETE /{id}`, `POST /bulk_update`, `POST /in_document/delete` (delete spans for given tags inside a single document).
 
-#### AI Assistance (`ai_assistance/`, `routes/ai_assistance_routes.py`, `routes/span_chat_routes.py`)
+Tag-filtered search reads the chunk references `automaticTag` / `positiveTag` / `negativeTag`, not the spans. These references are derived from the spans: a chunk references tag `T` through the property matching span type `auto` / `pos` / `neg` exactly when at least one such span with tag `T` is anchored on the chunk (a cross-chunk span is anchored on its first chunk; indexing following chunks is deferred to [#224](https://github.com/DCGM/semant-demo/issues/224)). The lists follow the spans' current type: `automaticTag` holds tags with unresolved AI suggestions, so approving a suggestion moves the tag from the chunk's `automaticTag` list to its `positiveTag` list unless another `auto` span of that tag remains. Every span create, update (also offset-only, so saving again retries) and delete (single, bulk, scoped and AI) re-derives the references of the (chunk, tag) pairs it touched (`adapters/weaviate/chunk_tags.py`). Within one process the re-derivation of a pair runs one at a time (`ChunkTagRepository`), so concurrent writes on the same pair end consistent; with several worker processes they can still leave it stale. That second write is best effort: on failure the span write is kept and the response reports a `partial` outcome with an `update_chunk_tags` step. Existing inconsistencies are reported, and corrected only on request, by `python -m semant_demo.maintenance.chunk_tag_audit` (see [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md)).
+
+#### AI Assistance (`features/annotations/suggestions.py`, `suggestion_routes.py`, `span_chat.py`, `span_chat_routes.py`, `adapters/topicer/`, `adapters/llm/`)
 
 External AI integrations that produce or critique spans. All streaming endpoints use NDJSON (`application/x-ndjson`) so the frontend can render partial results incrementally.
 
-**Topicer span proposal.** `topicer_client.py` is an async `httpx` client for the Topicer service (`TOPICER_URL`, default `http://localhost:8089`). Topicer returns proposed `(start, end, reason, confidence)` triples per `(chunk, tag)` pair. The backend exposes two routes:
+**Topicer span proposal.** `adapters/topicer/client.py` (`TopicerClient`, built by bootstrap from `TOPICER_URL` — default `http://topicer:8089` — `TOPICER_CONFIG_NAME` and `TOPICER_TIMEOUT`) is an async `httpx` client for the Topicer service. Topicer returns proposed `(tag, start, end, reason, confidence)` per chunk. The workflow (`features/annotations/suggestions.py`) is request-scoped (ADR 0003): a `prepare_*` function checks annotation-edit access and the tag/document/chunk scope and loads tags and chunks before the stream starts (a denied request makes no provider call); iterating the run calls Topicer (at most 10 calls of a run at a time), validates each proposal (its tag must be a requested tag, its chunk a chunk of the document in the collection, its offsets `0 <= start < end <= len(text sent)`, read as code points and stored as UTF-16 units; invalid proposals are rejected, not clamped), saves each valid one as an `auto` span with its chunk tag, and yields a `result` event after the write. The route only encodes events as NDJSON. Each stream ends with an `end` event (`outcome` complete / partial / failed, counts of saved, rejected, failed saves, chunk tag failures and provider failures); a stream without it was interrupted. Failures do not stop the run and nothing is rolled back. On client disconnect the route closes the run: running Topicer calls are cancelled and awaited, a span write in progress finishes first, saved spans remain. Running again stores duplicate `auto` spans for identical proposals (no comparison with stored spans).
 
 | Route | Topicer call | Behaviour |
 |---|---|---|
-| `POST /api/ai/suggest_spans/thorough` | `POST /v1/tags/propose/texts` (per chunk) | Backend iterates over chunks of the target collection, calling Topicer per chunk and emitting one NDJSON line per completed chunk. Slower but resilient to per-chunk failures. |
-| `POST /api/ai/suggest_spans/optimized` | `POST /v1/tags/propose/db/stream` | Backend forwards Topicer's own DB-streaming response straight to the client, line-by-line. Fastest path; Topicer pulls chunks directly from Weaviate. |
-| `POST /api/ai/auto_spans/delete` | — | Cleanup endpoint: deletes all `auto`-typed spans for the given tag(s), optionally scoped to a single document. |
+| `POST /api/ai/suggest_spans/thorough` | `POST /v1/tags/propose/texts` (per chunk) | One call per chunk of the document in the collection with all requested tags; one `result` line per chunk in completion order. Slower but resilient to per-chunk failures. |
+| `POST /api/ai/suggest_spans/optimized` | `POST /v1/tags/propose/db/stream` (per tag) | Topicer pre-filters chunks by vector similarity and streams them; one `result` line per returned chunk, tags one after another. Proposals on chunks outside the collection are rejected. |
+| `POST /api/ai/suggest_spans/selection` | `POST /v1/tags/propose/texts` (once) | The user's selection (UTF-16 offsets over the selected chunks' concatenated text); one `result` line per proposal. Spans are anchored on the chunk where they start; their end counts the document's chunks in between, also those outside the collection. |
+| `POST /api/ai/auto_spans/delete` | — | Cleanup endpoint: deletes the `auto` spans of the given tags in one document of the collection. |
 
-Approved proposals are written to the `Span` collection as `auto` spans; reviewers then promote them to `pos` (or remove them) through the standard span endpoints.
+Reviewers then approve (`pos`) or reject (`neg`) suggestions through the standard span endpoints.
 
-**Span discussion chat.** `span_chat.py` builds a rich system prompt around a single span — tag definition + examples, host document metadata, the span's chunk text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a configurable window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters drawn from the same and neighbouring chunks of the document) — and streams the assistant reply from any OpenAI-compatible Chat Completions endpoint. The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON deltas; configuration lives in the `SPAN_CHAT_*` env-var group.
+The frontend (`src/features/annotations/useAiAssistance.ts`) reads the stream with `postNdjson` (`src/shared/api/ndjson.ts`), shows saved suggestions as they arrive and reports partial, failed and interrupted runs. Each run carries a token; changing document or collection aborts it and its late events no longer change the store, errors or loading state.
 
-#### LLM API Abstraction (`llm_api/`)
-
-A `classconfig`-based abstraction supporting:
-- **OpenAsyncAPI** — async OpenAI-compatible client with rate-limit retry and concurrency semaphore
-- **OllamaAsyncAPI** — async Ollama client
-
-Both implement `process_single_request(APIRequest) → APIOutput`, which standardises model, messages, temperature and response format.
+**Span discussion chat.** `features/annotations/span_chat.py` checks collection read access for the span before the stream starts (a denied request reads no context and makes no provider call), then reads the context through the repositories and builds a system prompt around the span — tag definition + examples, host document metadata, the span's text with `<<<SPAN>>>`/`<<<END_SPAN>>>` markers, and a window of surrounding context (`SPAN_CHAT_CONTEXT_CHARS` characters from the same and neighbouring chunks of the document; a cross-chunk span is assembled from the following chunks) — and streams the reply from the `span_chat` model tier (`adapters/llm/gateway.FeatureChat`, built by bootstrap with `SPAN_CHAT_TEMPERATURE`/`SPAN_CHAT_MAX_TOKENS`). The route `POST /api/ai/discuss_span` returns `SpanChatDelta` NDJSON lines ending with `{"done": true}`, or with `{"error": "The assistant reply failed."}` when reading the context or the provider failed after the stream started (only the exception class is logged). Optional context that cannot be read (tag, document, neighbouring chunks) is left out of the prompt. Nothing is stored; the client sends the whole history each turn (the last `SPAN_CHAT_HISTORY_LIMIT` messages are used).
 
 ### 3. Frontend (`semant_demo_frontend/`)
 
-Vue 3 + Quasar 2 SPA with TypeScript. Key pages:
+Vue 3 + Quasar 2 SPA with TypeScript. Code is grouped by feature under `src/features/`:
+each feature owns its pages, components, Pinia stores, composables and repository wrappers
+over the generated client. `app/` is the application shell (main layout, right sidebar, session
+scope, about and not-found pages), `shared/` holds code without a feature owner (`api/`,
+`ui/` buttons and error display, notifications, write outcomes, pagination, color picker,
+`visualization/VegaChart.vue`: draws a Vega-Lite or Vega specification with vega-embed,
+loaded on demand, fitted to its container width and disposed of on unmount; each redraw is
+made in a detached element and only the newest is shown, so overlapping redraws cannot
+overwrite one another),
+and `router/` the routes and sign-in guard.
+
+| Feature | Contents |
+|---|---|
+| `search` | search page, result cards, classifications, summary panel, request/summary state |
+| `rag` | RAG chat page, the conversation's sources panel and its source registry/selection (`useChatSources`) |
+| `user_collections` | collection list, collection workspace and its tabs, collection/share dialogs, `userCollectionsStore`, `collectionStatsStore`, `permissions.ts` |
+| `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`), the document view (`viewer/`), document metadata panel, links to the original digitized document (`originalSource.ts`, `OriginalSourceLink`; used by search results, their context, RAG sources and the document view) |
+| `annotations` | tags table and dialog, span discussion, annotation/AI-suggestion/tag-navigation composables, `tagsStore`, `tagSpansStore`, span offsets; in the document view: the annotated chunk text, span gutter, selection popover, tags panel and AI assist panel |
+| `auth` | login/register/account dialogs, `userStore`, user search |
+| `feedback` | feedback page and its schema |
+| `analytics` | corpus overview page, its request (`useCorpusOverview`: abort on leave, retry, slow notice), rows/labels/chart specifications (`corpusOverview.ts`) |
+
+The document view (`features/documents/viewer/`) is `DocumentViewLayout` (header; the tags,
+AI assist and document tools as panels of the app's right sidebar; loads the document,
+collection and tags) around the reader page `DocumentReaderPage`. The reader composes the displayed chunks
+(`useChunkWindow`: collection chunks, previews and hidden gap chunks), chunk membership
+(`useChunkMembership`), gutter measurement (`useReaderGutters`), the offset helpers
+(`readerOffsets.ts`, on top of `annotations/spanOffsets.ts`), and the annotation components
+`ChunkAnnotator`, `AnnotationGutter` and `AnnotationPopover`. The panels and the reader share
+the annotation, tag navigation and AI suggestion state through their composables.
+Components use stores directly (`storeToRefs` for state); composables exist where they add
+behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 
 | Route | Page | Description |
 |---|---|---|
-| `/search` | `SearchPage` | Main search interface with filters, results, summaries |
-| `/rag` | `RagPage` | Multi-turn RAG chat with source citations |
-| `/tag_manage` | `TagManagementPage` | Create tags, start/monitor tagging tasks |
-| `/collections` | `Collections/UserCollectionsPage` | List user collections |
-| `/collections/:cid/overview` | `Collections/CollectionOverviewPage` | Collection summary & stats |
-| `/collections/:cid/documents` | `Collections/CollectionDocumentsPage` | Documents inside a collection |
-| `/collections/:cid/tags` | `Collections/CollectionTagsPage` | Tags scoped to the collection |
-| `/collections/:cid/tagging_jobs` | `Collections/CollectionTaggingJobsPage` | Async tagging job monitor |
-| `/collections/:cid/members` | `Collections/CollectionMembersPage` | Collection sharing / role management |
-| `/collections/:cid/documents/:did/v1` | `Collections/xjuric31/DocumentDetailPage` | Document detail — variant V1 |
-| `/collections/:cid/documents/:did/v2` | `Collections/DocumentDetailPageV2` | Document detail — variant V2 |
-| `/feedback` | `FeedbackPage` | In-app feedback form |
-| `/about` | `AboutPage` | Project information |
+| `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
+| `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations (`[S1]`...); the conversation's sources and one of them in its document in the right sidebar |
+| `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication decade, library and language, with tables and unknown/unavailable values (no sign-in) |
+| `/collections` | `user_collections/UserCollectionsPage` | List user collections |
+| `/collections/:cid/overview` | `user_collections/CollectionOverviewPage` | Collection summary & stats |
+| `/collections/:cid/documents` | `user_collections/CollectionDocumentsPage` | Documents inside a collection |
+| `/collections/:cid/tags` | `user_collections/CollectionTagsPage` | Tags scoped to the collection |
+| `/collections/:cid/tagging_jobs` | `user_collections/CollectionTaggingJobsPage` | Placeholder page (no behavior; the old tagging jobs were removed) |
+| `/collections/:cid/members` | `user_collections/CollectionMembersPage` | Collection sharing / role management |
+| `/collections/:cid/documents/:did/v1` | `documents/viewer/DocumentReaderPage` | Document view (text, annotations, AI suggestions, span chat) |
+| `/collections/:cid/documents/:did/v2` | — | Redirects to the document view (the retired V2 variant) |
+| `/feedback` | `feedback/FeedbackPage` | In-app feedback form |
+| `/about` | `app/AboutPage` | Project information |
 
-State management via Pinia stores (`user-store`, `collectionsStore`, `collectionStatsStore`, `chunksStore`, `chunk_collection-store`, `documentsStore`, `tagsStore`, `tagSpansStore`). Reusable streaming logic lives in `composables/` (e.g. `useSpanDiscussion` for the NDJSON span chat). API communication goes through repositories that wrap the OpenAPI-generated TypeScript client (`src/generated/`); raw streaming endpoints (span suggestions, span discussion) use the generated `*Raw` variants and read `apiResponse.raw.body` directly.
+All network calls go through `src/shared/api`: one backend origin (`BACKEND_URL`), one bearer-token source, the OpenAPI-generated TypeScript client (`src/generated/`, via `useApi()`, used directly or through a feature's repository wrapper) and `postNdjson()` for the NDJSON streams (span suggestions, span discussion), which sends the same token and turns a refused request into an `ApiError` with the backend's `detail`. There is no other HTTP client. State that belongs to a context (collection, document, search, conversation) drops answers that arrive after the context changed (`createContextGuard`/`createScope`); signing out, an expired session or another account clears user-scoped stores (`app/session.ts`) and page state that belongs to the user (account dialog, chat conversation, search results of their collections), and a 401 answer to a request sent with the current token signs the user out locally (expired or revoked session). Availability is not authentication: only a 401 (or an explicit sign-out) ends a session; network errors and 5xx answers never change a verified session's identity, navigation, route, token or user data, the failed operation reports its error. A stored session whose account cannot be read on page load (server unreachable or failing) *awaits verification* (`userStore.awaitingVerification`/`restoreFailed`): neither signed-in nor signed-out navigation, no user data, a layout banner with Retry and Sign out (which ends it locally without a server request), and retries when the tab regains focus or the browser is back online (no polling). A protected link opened meanwhile waits on `/session-pending?redirect=…` and opens once the session is verified; it goes to search if the session ends there or another account's token arrives. A sign-in whose account cannot be read afterwards is dropped and reported as a server problem, not as wrong credentials. Open tabs follow each other through the `auth_token` storage event: a sign-out or another account's token ends the session in every tab, a new token of the same user (signed in again; renewal, #319) keeps it. Ending a session (logout, 401) removes the stored token only while it is still that session's; a restore that fails for another reason ends nothing, the session awaits verification, so a newer token stored by another tab meanwhile survives and is adopted. Only the session is cleared, never other localStorage preferences. Signing out ends the local session at once (token, user and user-scoped state), before and whatever the server answers; the server logout is then sent best effort with the old token named explicitly, so a hanging request never keeps the old session on screen and a late answer cannot touch a newer session. When that request fails the user is told the server did not confirm it (the JWT logout revokes nothing anyway; revocation is #319). The `/collections` routes need a signed-in user (`meta.requiresAuth`, `router/authGuard.ts`): a direct link waits for a stored session to be restored, otherwise goes to search, and signing out on such a route leaves it. The navigation drawer follows the session (Collections, Settings — the account dialog — and Sign out when signed in; Log in and Register otherwise). Back arrows (collection workspace → collection list, document view → collection documents) link to a fixed parent route rather than browser history and never change drawer state; drawer collapse uses the separate neutral `MiniStateButton`. These are UI conveniences; the backend authorizes every request. The app-level right sidebar (`app/sidebar/`) hosts page tools such as the search summary, the document context of a search result and the sources of a chat answer; see [RIGHT_SIDEBAR.md](RIGHT_SIDEBAR.md). Owner-only collection controls are hidden for shared users (`features/user_collections/permissions.ts`, mirroring the backend rules).
 
-### 4. Weaviate + Utilities (`weaviate_utils/`)
+### 4. Weaviate + Utilities (repository root `weaviate_utils/`)
 
-Weaviate runs via Docker Compose with persistent storage. Utility scripts:
+Weaviate runs via Docker Compose with persistent storage. Standalone maintenance scripts (not
+part of the backend package; several delete or rewrite data — check the endpoint first, see
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md)):
 
 | Script | Purpose |
 |---|---|
@@ -398,35 +513,19 @@ Weaviate runs via Docker Compose with persistent storage. Utility scripts:
 | `inspect_chunks.py` | Dump chunks (pretty or JSON) |
 | `inspect_documents.py` | Dump documents (pretty or JSON) |
 | `inspect_all.py` | Inspect all collections |
-| `update_metadata.py` | Batch-update document metadata |
 
-## Request Flow Examples
+Document metadata from the Kramerius PostgreSQL mirror is synchronized by the backend
+command `python -m semant_demo.maintenance.metadata_sync` (read-only report, then explicit
+apply, or a checkpointed single-pass `--sync`; source library only — see
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) and [DATABASE.md](DATABASE.md)). Documents without
+chunks are audited, and on explicit request deleted, by
+`python -m semant_demo.maintenance.document_cleanup` (#281). The document year that the
+search filters on is copied to the chunks, and checked, by
+`python -m semant_demo.maintenance.chunk_year` (#153).
 
-### Tagging Task Lifecycle
+## Historical material
 
-```mermaid
-sequenceDiagram
-    participant FE as Frontend
-    participant BE as tag_routes
-    participant SQL as SQLite
-    participant WV as Weaviate
-    participant LLM as Ollama
-
-    FE->>BE: POST /api/tag/task {tag definition + task config}
-    BE->>SQL: INSERT Task (PENDING)
-    BE->>BE: asyncio.create_task(tag_and_store)
-    BE-->>FE: {task_id, started: true}
-
-    loop For each chunk in collection
-        BE->>WV: fetch chunk text
-        BE->>LLM: "Does tag X apply?" → Ano/Ne
-        BE->>WV: add automaticTag reference
-        BE->>SQL: UPDATE processed_count
-    end
-
-    BE->>SQL: UPDATE status=COMPLETED
-
-    FE->>BE: GET /api/tag/task/status/{id}
-    BE->>SQL: SELECT task
-    BE-->>FE: {status, processed_count, ...}
-```
+The old SQL-tracked background tagging tasks (`tagging/`, `Task` model, `/api/tag/task*`
+polling) are retired; AI suggestions are request-scoped
+([ADR 0003](adr/0003-request-scoped-ai.md)). The [span storage benchmark](archive/TagSpans_benchmark.md)
+and `weaviate_benchmarks/` are historical measurements, not a description of current behavior.

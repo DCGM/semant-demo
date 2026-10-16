@@ -3,7 +3,7 @@
 The application uses two databases:
 
 1. **Weaviate** — primary vector + document store (collections, references, HNSW index)
-2. **SQLite** — lightweight task-tracking for async tagging jobs
+2. **SQLite** (any SQLAlchemy async URL) — user accounts and RAG answer feedback
 
 ---
 
@@ -52,6 +52,7 @@ erDiagram
         int to_page
         bool end_paragraph
         text language
+        int yearIssued "copy of the document's"
         text_array ner_P "Person"
         text_array ner_T "Temporal"
         text_array ner_A "Address"
@@ -106,13 +107,68 @@ erDiagram
 
 Stores bibliographic metadata for each digitised document (book, periodical issue, etc.). No vector index — documents are not directly searchable by similarity.
 
+The property list in the diagram above is older than the local development snapshot
+(`local_data/`, checked 2026-10-08), which stores `author` (`text[]`), `subtitle`,
+`partNumber` (`text`), `url` (`uuid`), `placeOfPublication`, `editors`, `seriesName`,
+`seriesNumber` (`text`), `edition`, `illustrators`, `translators`, `redaktors` and has no
+`library`, `authors`, `subTitle`, `description`, `keywords`, `genre`, `placeTerm`,
+`section`, `region` or `id_code`. Deployed databases were not checked. The API reads every
+store through one model, `features/documents/schemas.Document`: the snapshot's properties plus the
+older `library`, `description`, `keywords` (`text[]`), `genre` and `placeTerm`. Properties
+a store lacks are absent from the answer; stored properties the model does not name (e.g.
+`authors`, `subTitle`, `manufacturePublisher`) are not returned, as before #208.
+
 Key fields:
-- `library` — source digital library identifier (e.g. `"mzk"`)
-- `yearIssued` / `dateIssued` — used for temporal filtering
+- `library` — source digital library code (e.g. `"mzk"`, `"nkp"`), as in the Kramerius
+  metadata mirror; the API returns it only when stored (no default). With the document id
+  (the Kramerius record UUID) and a chunk's `start_page_id` (its first page's UUID) it forms
+  the link to the original, `https://www.digitalniknihovna.cz/<library>/view/uuid:<document>?page=uuid:<page>`,
+  built in the frontend (`features/documents/originalSource.ts`) only for library codes that
+  digitalniknihovna.cz serves (#255)
+- `yearIssued` / `dateIssued` — publication year and date; the search filters years on the
+  chunks' copy (`Chunks.yearIssued`, below)
 - `authors` — array of author names
 - `documentType`, `genre`, `keywords` — categorical metadata
-- `url` — link back to the source digital library page
+- `url` — in the local snapshot (`uuid`) the Kramerius record UUID, equal to the document
+  id, not a link; source links are built from `library` and the id (above)
 - `public` — whether the document is publicly accessible
+
+#### Document metadata from the Kramerius mirror
+
+`python -m semant_demo.maintenance.metadata_sync` ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#kramerius-metadata-sync-metadata_sync-257))
+fills these properties from the `meta_records` row of the document's source library
+(`semant_demo/maintenance/kramerius_mapping.py`). MODS values (`metadata_json`) list the
+record's own values before its ancestors'; "first" is the first non-empty one, "all" every
+distinct value in that order. A field is written only if the collection declares one of
+its property names (the first declared one is used) and the value fits the declared type;
+otherwise the report lists it as undeclared or skipped.
+
+| Field | Source (same row only) | Property names (current, older) | API (`Document`) |
+|---|---|---|---|
+| title | the own titles of the row's ancestors in the same library and the row, root first, joined by ". " (e.g. periodical. volume. issue). A level's own title is `title`, else its own MODS `Title`, else (for a part) its own `PartNumber`; a leading repeat of a kept main title is dropped, and pieces within 2 characters of a kept piece (6+ characters; shorter only if equal) or a shortened variant are left out | `title` | yes |
+| titleMetadata | first MODS `Title` | `titleMetadata` | no (stored provenance) |
+| subtitle | first `Subtitle` | `subtitle`, `subTitle` | `subtitle` |
+| partNumber, partName | first `PartNumber`, `PartName` | same (`partNumber` `text` or `int`) | yes |
+| dateIssued | day of `date`, else of equal `start_date`/`end_date` (not 1 January), else of MODS `DateIssued`; only when the source names the day and it lies in yearIssued; midnight UTC | `dateIssued` | yes |
+| yearIssued | year of `date`, else of `start_date`/`end_date` in one year, else of MODS `DateIssued`; ranges give none | `yearIssued` | yes |
+| dateIssuedMetadata, yearIssuedMetadata | MODS `DateIssued` alone | same | no (stored provenance) |
+| author | all `Author` | `author`, `authors` | `author` |
+| editors, illustrators, translators, redaktors | all `Editor`, `Illustrator`, `Translator`, `Redaktor` | same | yes |
+| publisher, language, seriesName, edition | first `Publisher`, `Language` (code as normalized by the MODS parser), `SeriesName`, `Edition` | same | yes |
+| seriesNumber | first `SeriesNumber` (text such as "IV" kept) | `seriesNumber` (`text` or `int`) | yes |
+| placeOfPublication | first `PlaceTerm` | `placeOfPublication`, `placeTerm` | yes |
+| manufacturePublisher, manufacturePlaceTerm | first `ManufacturePublisher`, `ManufacturePlaceTerm` | same | no (stored only) |
+| documentType | `record_type` | `documentType` | yes |
+| public | `public` of the selected row, always (access matches the source library's record) | `public` | yes |
+| library | the selected library (see the source library rule in DATA_MAINTENANCE) | `library` (`text`, field tokenization; added by `--add-library-property`) | yes |
+
+`url` and chunk `language` are not written. `in_library` of the selected row is shown in the
+report but does not change anything (the mirror sets it on rows added or updated since the
+column was introduced; `false` is not an access or deletion signal). The local snapshot
+declares no `library`; applying needs it declared first. In the snapshot (checked
+2026-10-10 against the mirror) 237 of 500 documents have mirror rows in one library and
+263 in several (207 of them `mzk` + `nkp`); for these the library comes from page evidence, the library
+whose row has MODS metadata (`--prefer-library-with-metadata`) or `--library-priority` (DATA_MAINTENANCE).
 
 ### Collection: `Chunks`
 
@@ -123,16 +179,35 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 - `from_page` / `to_page` — page range in the source document
 - `start_page_id` — UUID of the first page
 - `ner_*` — named entity arrays extracted by NER (Persons, Temporal, Address, Geographical, Institution, Media, Cultural artifacts)
+- classifications (`text[]`, e.g. `communicative_mode`, `style`, `subject_domain`) — written by `data_tools/meta_data_enrichment`; the properties named in `features/search/filters.py::TASK_CLASSES` are search filters and are returned as a hit's `metadata` ([SEARCH_FILTERS](SEARCH_FILTERS.md#5-classifications-on-search-hits))
+- `yearIssued` (`int`, filterable with a range index) — a copy of the referenced document's
+  `yearIssued`, absent when the document has none; the search's year filters use it, not the
+  document reference (#153). It is not maintained by document writes or chunk ingestion:
+  `python -m semant_demo.maintenance.chunk_year` declares it, copies the years and checks them
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)); keeping it
+  current at ingestion is [#313](https://github.com/DCGM/semant-demo/issues/313). The test
+  store's `documentYearIssued` (an earlier copy that a declared property cannot be removed from)
+  is not used.
 
 #### References from Chunks
 
 | Reference | Target | Cardinality | Description |
 |---|---|---|---|
 | `document` | Documents | 1 | Parent document |
-| `automaticTag` | Tag | many | Tags assigned by LLM |
-| `positiveTag` | Tag | many | Tags approved by user |
-| `negativeTag` | Tag | many | Tags rejected by user |
+| `automaticTag` | Tag | many | Tags of `auto` spans anchored on this chunk (unresolved AI suggestions) |
+| `positiveTag` | Tag | many | Tags of `pos` spans anchored on this chunk (approved) |
+| `negativeTag` | Tag | many | Tags of `neg` spans anchored on this chunk (rejected) |
 | `userCollection` | UserCollection | many | User collections containing this chunk |
+
+The three tag references are what tag-filtered search uses. They are derived from the
+`Span` collection: a chunk holds a tag reference exactly when at least one span of the
+matching type with that tag is anchored on the chunk (its `text_chunk` reference). The
+lists follow the spans' current type: approving a suggestion (`auto` → `pos`) moves its
+tag from `automaticTag` to `positiveTag` unless another `auto` span of that tag remains;
+`automaticTag` does not record that the AI once proposed an approved tag. Span
+writes maintain this; a reference without such a span is a data inconsistency, not a
+supported legacy state (ADR 0004). `python -m semant_demo.maintenance.chunk_tag_audit`
+reports inconsistencies.
 
 ### Collection: `Tag`
 
@@ -173,36 +248,23 @@ References:
 | `tag` | Tag | 1 | The tag this span instantiates |
 | `text_chunk` | Chunks | 1 | The chunk inside which the span lives |
 
-> **Lazy schema migration.** Older deployments created the `Span` collection without `reason` / `confidence`. The backend (`Span._ensure_ai_properties` in `weaviate_utils/span.py`) idempotently adds these properties on first AI-write, so no manual migration is required.
+> **Lazy schema migration.** Older deployments created the `Span` collection without `reason` / `confidence`. The backend (`SpanRepository._ensure_ai_properties` in `adapters/weaviate/spans.py`) idempotently adds these properties on first AI-write, so no manual migration is required.
 
-> **Cascade on tag/chunk delete.** Deleting a Tag or a Chunk also removes all Spans referencing them; this is enforced by the backend (`weaviate_utils/helpers.py`, `delete_span_cascade`) rather than by Weaviate itself.
+> **Cascade on tag delete.** Deleting a Tag (also as part of deleting its collection) first removes the chunk tag references to it, then its Spans, then the Tag; this is done by the backend (`adapters/weaviate/writes.py`) rather than by Weaviate itself. It is not atomic: a failed step keeps the completed deletions and is reported, and deleting again continues.
 
 ---
 
 ## SQLite Schema
 
-SQLite holds two tables, both created automatically at startup via `TasksBase.metadata.create_all`.
+The SQL database (`SQL_DB_URL`, SQLite file `tasks.db` by default — the name is historical)
+holds two application tables, declared on `adapters/sql/base.Base` and created at startup by
+`adapters/sql/tables.create_tables` when missing: `user` (below) and `rag_user_feedback` (likes /
+dislikes of RAG answers, `adapters/sql/feedback.py`). Startup never drops or alters existing
+tables or rows.
 
-### `tasks` — Asynchronous tagging jobs
-
-```sql
-CREATE TABLE tasks (
-    taskId          VARCHAR(36)  PRIMARY KEY,   -- UUID
-    status          VARCHAR(20)  DEFAULT 'PENDING',  -- PENDING | RUNNING | COMPLETED | FAILED
-    result          JSON,                        -- final result or error
-    all_texts_count INTEGER,                     -- total chunks to process
-    processed_count INTEGER,                     -- chunks processed so far
-    collection_name VARCHAR,                     -- target chunk collection
-    tag_id          VARCHAR(36),                 -- UUID of the tag being applied
-    tag_processing_data JSON,                    -- per-chunk tagging details
-    time_updated    DATETIME,                    -- auto-updated timestamp
-    task_name       VARCHAR                      -- asyncio task name (for cancellation)
-);
-```
-
-Task lifecycle: `PENDING` → `RUNNING` → `COMPLETED` / `FAILED`
-
-The backend polls this table via `GET /api/tag/task/status/{taskId}` and the frontend uses periodic polling to display progress.
+Databases created before the refactor may also contain a `tasks` table from the removed
+background tagging jobs. Nothing reads or writes it any more; it is left in place (dropping it
+would be a separate, reviewed data change).
 
 ### `user` — User accounts (FastAPI Users)
 
