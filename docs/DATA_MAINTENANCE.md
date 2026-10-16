@@ -150,7 +150,7 @@ Never run a writing step against the only copy of `local_data/weaviate_semant_te
    docker run --rm --entrypoint sh \
      --mount type=bind,source="$(pwd)/local_data/weaviate_semant_test",target=/src,readonly \
      --mount type=bind,source="$COPY",target=/dst \
-     cr.weaviate.io/semitechnologies/weaviate:1.34.4 -c 'cp -a /src/. /dst/'
+     cr.weaviate.io/semitechnologies/weaviate:1.40.1 -c 'cp -a /src/. /dst/'
    ```
 
 2. Restart the development Weaviate and start the copy as a second instance with the

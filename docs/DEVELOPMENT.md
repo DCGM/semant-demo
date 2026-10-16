@@ -32,7 +32,7 @@ Both are **mutable development data**. They must not be committed.
 
 The copied Weaviate data should originate from a consistent snapshot and should initially be opened with the same Weaviate version used by the server test environment.
 
-The current test deployment uses **Weaviate 1.34.4**.
+The current test deployment uses **Weaviate 1.40.1** (#312).
 
 ## 2. Development safety rules
 
@@ -67,7 +67,7 @@ docker run --rm \
   -e CLUSTER_HOSTNAME=node1 \
   -e DISK_USE_READONLY_PERCENTAGE=90 \
   -e DISK_USE_WARNING_PERCENTAGE=50 \
-  cr.weaviate.io/semitechnologies/weaviate:1.34.4 \
+  cr.weaviate.io/semitechnologies/weaviate:1.40.1 \
   --host 0.0.0.0 \
   --port 8080 \
   --scheme http

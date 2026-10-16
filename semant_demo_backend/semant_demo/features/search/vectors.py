@@ -61,8 +61,9 @@ class VectorSettings(BaseModel):
     """Application identifier, sent by clients."""
     name: str
     description: str = ""
-    target_vector: str = Field(min_length=1)
-    """Weaviate named vector of the chunk collection."""
+    target_vector: str = Field(pattern=r"^[_A-Za-z][_A-Za-z0-9]*$")
+    """Weaviate named vector of the chunk collection. Weaviate builds GraphQL names from it, so
+    it must be a GraphQL name: a vector named with `-` breaks GraphQL for the whole instance (#385)."""
     embedding: EmbeddingSettings
 
 

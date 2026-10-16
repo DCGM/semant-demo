@@ -125,7 +125,9 @@ refused, and accepted with truncation.
    the production app and Weaviate.
 2. `./update.sh embedder-pull && ./update.sh embedder-up`; wait until healthy, then check
    `curl -s http://127.0.0.1:8002/v1/models` and one embedding (1,024 values).
-3. Add the named vector `Qwen3-Embedding-0-6B` to the physical chunk collection
+3. Add the named vector `Qwen3_Embedding_0_6B` (letters, digits and `_` only: Weaviate
+   builds GraphQL names from vector names, and one name with `-` breaks GraphQL for the whole
+   instance, which only dropping that vector on 1.40 repairs) to the physical chunk collection
    (`Chunks_test`) with the chosen index settings (#385, D).
 4. Switch the apps with `SEARCH_VECTORS_CONFIG=/app/semant_demo/configs/search_vectors_qwen.yaml`
    (set in `.env.example` and `.env.test.example` since 2026-10-16).
@@ -137,6 +139,30 @@ refused, and accepted with truncation.
    unaffected.
 5. Start the backfill with a reviewed copy of `data_tools/embedder/config.qwen.yaml`;
    rerun it to resume.
+
+### Weaviate 1.40 upgrade and dropping a named vector (#312)
+
+Both `docker-compose.database*.yml` pin Weaviate **1.40.1**. 1.40 refuses a query that names a
+property missing from the schema (1.34 ignored it); the app requests only the document
+properties the store has, so it runs on both versions. **Deploy the app before upgrading
+the database.** There is no downgrade: the backup is the rollback.
+
+1. Back up the data directory, deploy the app, stop Weaviate (`./update.sh database-down`).
+2. Start the pinned 1.40.1 (`./update.sh database-up`) on the same data; check the version,
+   aliases, schema and object counts.
+3. Drop a named vector (its index, its stored vectors and its schema entry; objects,
+   properties and references stay) with
+   `curl -X DELETE http://127.0.0.1:8080/v1/schema/<PhysicalCollection>/vectors/<vector>/index`.
+   It is a background task: wait for `drop-vector: task-completion: dropped vector(s)
+   removed from schema` in the Weaviate log before restarting (a restart pauses it; it
+   resumes on the next start). Until then the schema lists the vector without an index and
+   the Python client's `config.get()` fails. Use the physical name (`Chunks_test`), not the alias.
+4. Check `/v1/graphql`, the schema and a sample of objects.
+
+Rehearsed on a copy of the test store (3,260 chunks, 2026-10-16): 1.34.4 → 1.40.1 starts in
+seconds; dropping two vectors took ~15 s, restored GraphQL, kept 28 properties and the
+document references and shrank the chunk data from 289 to 57 MB. Not rehearsed at
+production size (startup and drop duration unknown).
 
 ### In-app feedback storage
 

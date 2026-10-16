@@ -68,7 +68,7 @@ Search and RAG name a target vector in every vector and hybrid query, so adding 
 not break the existing ones. Until a vector is listed, it is unused.
 
 `config.qwen.yaml` is the template of the production backfill of the Qwen vector (#385):
-it writes `Qwen3-Embedding-0-6B` into `Chunks_test` through the embedding service of
+it writes `Qwen3_Embedding_0_6B` into `Chunks_test` through the embedding service of
 `deploy/docker-compose.embedder.yml`, truncating chunks to the server's 2048 tokens.
 
 **Production.** Adding a vector rewrites every chunk object and needs memory for another

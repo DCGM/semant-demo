@@ -1,4 +1,5 @@
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional
 
@@ -73,9 +74,11 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
 
     # Target vector settings
     vector_name: str = ConfigurableValue(
-        desc="Name of the named vector the embeddings are written to",
+        desc="Name of the named vector the embeddings are written to. Letters, digits and _ only, "
+             "not starting with a digit: Weaviate builds GraphQL names from it, and a name with '-' "
+             "breaks GraphQL for the whole instance",
         user_default="my_embedder",
-        validator=lambda x: isinstance(x, str) and len(x) > 0
+        validator=lambda x: isinstance(x, str) and re.fullmatch(r"[_A-Za-z][_A-Za-z0-9]*", x) is not None
     )
     create_vector: bool = ConfigurableValue(
         desc="Create the named vector in the collection schema if it does not exist",

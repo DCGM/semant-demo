@@ -24,7 +24,7 @@ if [[ -n "${SEMANT_TEST_WEAVIATE_HOST:-}" ]]; then
 fi
 
 # Same version as the deployed and local development Weaviate (docs/DEVELOPMENT.md).
-IMAGE="${SEMANT_TEST_WEAVIATE_IMAGE:-cr.weaviate.io/semitechnologies/weaviate:1.34.4}"
+IMAGE="${SEMANT_TEST_WEAVIATE_IMAGE:-cr.weaviate.io/semitechnologies/weaviate:1.40.1}"
 NAME="semant-weaviate-test-$(date +%s)-$$"
 
 cleanup() {
