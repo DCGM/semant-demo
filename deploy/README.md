@@ -127,7 +127,8 @@ refused, and accepted with truncation.
    `curl -s http://127.0.0.1:8002/v1/models` and one embedding (1,024 values).
 3. Add the named vector `Qwen3-Embedding-0-6B` to the physical chunk collection
    (`Chunks_test`) with the chosen index settings (#385, D).
-4. Switch the apps with `SEARCH_VECTORS_CONFIG=/app/semant_demo/configs/search_vectors_qwen.yaml`.
+4. Switch the apps with `SEARCH_VECTORS_CONFIG=/app/semant_demo/configs/search_vectors_qwen.yaml`
+   (production: set in `.env.example` since 2026-10-16; the test instances not yet).
    CI rebuilds each instance's `.env` from `.env.example` (production, deployed on a
    release tag) or `.env.test.example` (test instances, deployed on merge) on every deploy,
    so set it in those templates through a PR; an edit of a deployed `.env` is lost on the
