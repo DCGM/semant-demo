@@ -15,6 +15,7 @@ This folder holds the Docker Compose files, Dockerfiles and environment template
 | `Dockerfile` | Multi-stage build of backend + frontend (`npm ci` and the committed generated API client, not regenerated) |
 | `Dockerfile.embedder` | Build of the former Gemma embedding service (`embedding_service/`); no longer used by `docker-compose.embedder.yml` |
 | `update.sh` | Named shortcuts for the `docker compose` commands below |
+| `sqlite_backup.sh` / `semant-sqlite-backup.cron` | Daily backup of the production `tasks.db` (host cron); see [SQLite backup](#sqlite-backup-399) |
 | `.env.example` / `.env.test.example` | Environment templates for production / test instances |
 
 ## Services
@@ -247,6 +248,74 @@ curl -fsS -X POST "https://<host>/api/v1/feedback" -H 'Content-Type: application
 docker compose -p <project> -f <compose file> up -d --force-recreate app
 sudo tail -n 1 "$SQL_DB_PATH/feedback/feedback.log.jsonl"   # still shows the entry
 ```
+
+### SQLite backup (#399)
+
+The production `tasks.db` (`$SQL_DB_PATH/tasks.db` = `/mnt/ssd2/semant_demo_app_data/tasks.db`)
+holds user accounts, RAG answer feedback and the LLM quota ledger. Weaviate backups do not
+include it. As of 2026-10-17, no other host backup covers it either: `/mnt/ssd2` is on the root ext4
+RAID (`/dev/md1`), which has no snapshots, and none of the readable cron jobs or systemd timers copy it.
+
+- **What.** `sqlite_backup.sh` copies the database with the SQLite online backup API
+  (`sqlite3 .backup` on a read-only connection), so it waits for the app's locks rather than
+  copying the file in the middle of a write. It runs `PRAGMA integrity_check` on the copy before
+  keeping it. The database uses the rollback journal (not WAL), so the single bind-mounted file
+  is the whole database.
+- **Where.** `/mnt/zfs1/semant_demo_app_data/sqlite_backups/tasks_<UTC timestamp>.db`, with
+  `latest.db` pointing to the newest. This is a different disk pool from the live file, but the
+  same server: it is not an off-site copy.
+- **Schedule and retention.** Daily at 03:30 server time (`semant-sqlite-backup.cron`); the
+  newest 30 backups are kept (`KEEP`). The database is about 4 MB.
+- **Permissions.** The job runs as root with `umask 077`: the directory is `700` and the
+  backups are `600`, because they contain password hashes and e-mail addresses. Reading them
+  needs `sudo`.
+- **Failure visibility.** Every run logs to syslog (tag `semant-sqlite-backup`) and to
+  `backup.log`, and writes one line (`OK …` or `FAILED: …`) to `last_status`. A successful run
+  prints nothing; a failed one prints an error, which cron mails to root.
+
+Install or update (copy the script; the cron entry does not depend on a checkout):
+
+```bash
+sudo install -m 755 deploy/sqlite_backup.sh /usr/local/sbin/semant-sqlite-backup
+sudo install -m 644 deploy/semant-sqlite-backup.cron /etc/cron.d/semant-sqlite-backup
+# First backup now, instead of waiting for 03:30
+sudo /usr/local/sbin/semant-sqlite-backup /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
+```
+
+Did the most recent backup succeed? `--check` exits 1 when the last run failed, the newest
+backup is older than 26 h (`MAX_AGE_HOURS`), or the newest backup fails `integrity_check`:
+
+```bash
+sudo /usr/local/sbin/semant-sqlite-backup --check /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
+sudo tail -n 5 /mnt/zfs1/semant_demo_app_data/sqlite_backups/backup.log
+journalctl -t semant-sqlite-backup --since -2d
+```
+
+Restore test (into a separate path; never write over the production file while testing):
+
+```bash
+T=$(mktemp -d) && sudo cp /mnt/zfs1/semant_demo_app_data/sqlite_backups/latest.db "$T/tasks.db" && sudo chown "$USER" "$T/tasks.db"
+sqlite3 -readonly "$T/tasks.db" "PRAGMA integrity_check; SELECT count(*) FROM user; SELECT count(*) FROM rag_user_feedback;"
+sqlite3 -readonly "$T/tasks.db" "SELECT count(*) FROM llm_quota_day;"   # once a release with #371 has started
+rm -r "$T"
+```
+
+Restore into production: stop the app, keep the current file as evidence, copy a backup over
+the production file in place (the bind mount points to that file's inode, so do not replace it with `mv`),
+then start the app:
+
+```bash
+cd deploy && ./update.sh app-down
+sudo cp -a /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/ssd2/semant_demo_app_data/tasks.db.before-restore
+sudo cp /mnt/zfs1/semant_demo_app_data/sqlite_backups/tasks_<timestamp>.db /mnt/ssd2/semant_demo_app_data/tasks.db
+./update.sh app-up
+```
+
+Tested on 2026-10-17. A backup of production was restored into a temporary path, and the restored
+copy had the same tables and counts as the live file (41 users, 330 feedback rows). It passed
+`integrity_check`, and the backend at `b95eb57` opened it and created the quota tables in that
+copy. The live file's checksum was unchanged afterwards. The feedback log
+(`feedback/feedback.log.jsonl`) is not part of this backup.
 
 ### Recovering / Rebuilding the Weaviate database
 
