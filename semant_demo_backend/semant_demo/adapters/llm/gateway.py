@@ -10,11 +10,17 @@ The feature's limits (``models.FeatureLimits``) bound every call: its output tok
 capped, an oversized input is refused before sending, and inside
 :meth:`LlmGateway.operation` the calls of one user-visible operation are counted and capped.
 Provider requests have a timeout and a small retry count (``ProviderSettings``).
+
+An operation given an :class:`~semant_demo.adapters.llm.usage.OperationBudget` (the
+caller's daily AI allowance) is admitted by it before its first model call, which a
+refusal prevents, and its calls are settled with it when it ends. Every request-scoped
+LLM use case runs its calls in such an operation.
 """
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable, Iterator, Sequence
-from contextlib import contextmanager
+import asyncio
+from collections.abc import AsyncIterator, Iterable, Sequence
+from contextvars import Token
 from dataclasses import dataclass
 from functools import cache
 from typing import Any
@@ -28,8 +34,11 @@ from pydantic import SecretStr
 
 from semant_demo.adapters.llm.models import Capability, ModelCatalog, Provider, TierModel
 from semant_demo.adapters.llm.usage import (
-    REPORTED_COST_KEY, LlmMetrics, LlmOperation, UsageCallback, UsageRecorder, current_llm_operation, reported_cost,
+    REPORTED_COST_KEY, LlmMetrics, LlmOperation, OperationBudget, UsageCallback, UsageRecorder, current_llm_operation,
+    reported_cost,
 )
+
+logger = logging.getLogger(__name__)
 
 Message = dict[str, str] | BaseMessage
 """A ``{"role", "content"}`` turn (``system``/``user``/``assistant``) or a LangChain message."""
@@ -72,6 +81,7 @@ class LlmGateway:
         self.recorder = UsageRecorder(metrics)
         self._http_transport = http_transport
         self._models: dict[tuple, BaseChatModel] = {}
+        self._settlements: set[asyncio.Task] = set()
 
     def tier_model(self, feature: str, tier: str | None = None, requires: Iterable[Capability] = ()) -> TierModel:
         """The model ``feature`` gets for ``tier`` (its default when ``None``); raises if not permitted."""
@@ -97,24 +107,27 @@ class LlmGateway:
             self._models[key] = model
         return model
 
-    @contextmanager
-    def operation(self, feature: str) -> Iterator[LlmOperation]:
-        """Count the model calls made inside as one user-visible operation of ``feature``.
+    def operation(self, feature: str, budget: OperationBudget | None = None) -> OperationScope:
+        """``async with``: count the model calls made inside as one user-visible operation
+        of ``feature``, admitted by ``budget`` when one is given.
 
         A call beyond the feature's ``max_calls`` is refused (``LlmOperationLimitExceeded``).
-        Inside another operation, the outer one keeps counting.
+        Inside another operation, the outer one keeps counting (and ``budget`` is unused).
         """
-        current = current_llm_operation.get()
-        if current is not None:
-            yield current
-            return
-        operation = LlmOperation(feature, self.catalog.policy(feature).limits.max_calls)
-        token = current_llm_operation.set(operation)
-        try:
-            yield operation
-        finally:
-            current_llm_operation.reset(token)
-            self.recorder.record_operation(operation)
+        return OperationScope(self, feature, budget)
+
+    async def wait_for_settlements(self) -> None:
+        """Wait for the settlements of ended operations (one may outlive its cancelled request)."""
+        while self._settlements:
+            await asyncio.gather(*self._settlements)
+
+    async def _settle(self, budget: OperationBudget, admission: Any, operation: LlmOperation) -> None:
+        # A task of its own, so that cancelling the request (a client disconnect) does not
+        # cancel the settlement; the request's cancellation still propagates.
+        task = asyncio.create_task(_settle_logged(budget, admission, operation))
+        self._settlements.add(task)
+        task.add_done_callback(self._settlements.discard)
+        await asyncio.shield(task)
 
     async def complete(self, feature: str, messages: Sequence[Message], *, tier: str | None = None,
                        temperature: float | None = None, max_tokens: int | None = None,
@@ -187,6 +200,60 @@ class LlmGateway:
                                       callbacks=[usage])
 
 
+class OperationScope:
+    """One user-visible operation of a feature (``LlmGateway.operation``).
+
+    Entering it admits the operation against its budget (unless :meth:`admit` did so
+    already) and makes it the current operation; leaving it settles its calls with the
+    budget. A streamed reply admits before its response starts and enters the scope in
+    the stream, so a refusal is still an HTTP error. An operation admitted and never
+    entered stays unsettled: its reservation remains charged.
+    """
+
+    def __init__(self, gateway: LlmGateway, feature: str, budget: OperationBudget | None):
+        self.gateway = gateway
+        self.feature = feature
+        self.budget = budget
+        self._admission: Any = None
+        self._admitted = False
+        self._operation: LlmOperation | None = None
+        self._token: Token | None = None
+
+    async def admit(self) -> None:
+        """Admit the operation against its budget now; raises the budget's refusal."""
+        if self._admitted or self.budget is None or current_llm_operation.get() is not None:
+            return
+        reserve_usd = self.gateway.catalog.policy(self.feature).limits.reserve_usd
+        self._admission = await self.budget.admit(self.feature, reserve_usd)
+        self._admitted = True
+
+    async def __aenter__(self) -> LlmOperation:
+        current = current_llm_operation.get()
+        if current is not None:
+            return current
+        await self.admit()
+        self._operation = LlmOperation(self.feature, self.gateway.catalog.policy(self.feature).limits.max_calls)
+        self._token = current_llm_operation.set(self._operation)
+        return self._operation
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        operation, self._operation = self._operation, None
+        if operation is None:
+            return
+        current_llm_operation.reset(self._token)
+        self.gateway.recorder.record_operation(operation)
+        if self._admitted:
+            await self.gateway._settle(self.budget, self._admission, operation)
+
+
+async def _settle_logged(budget: OperationBudget, admission: Any, operation: LlmOperation) -> None:
+    try:
+        await budget.settle(admission, operation)
+    except Exception as e:
+        # Content-free; the operation's reservation stays charged.
+        logger.error("LLM operation settlement failed: %s", type(e).__name__)
+
+
 @cache
 def _cost_reporting_chat_openai() -> type[BaseChatModel]:
     """``ChatOpenAI`` that keeps a reported call cost (OpenRouter ``usage.cost``).
@@ -229,7 +296,8 @@ def limit_provider_sdk_logs() -> None:
 
 
 class FeatureChat:
-    """Streams a reply for one feature from instructions and ``{"role", "content"}`` turns."""
+    """Streams a reply for one feature from instructions and ``{"role", "content"}`` turns;
+    run it inside :meth:`operation`."""
 
     def __init__(self, llm: LlmGateway, feature: str, *, temperature: float | None = None,
                  max_tokens: int | None = None):
@@ -237,6 +305,9 @@ class FeatureChat:
         self.feature = feature
         self.temperature = temperature
         self.max_tokens = max_tokens
+
+    def operation(self, budget: OperationBudget | None = None) -> OperationScope:
+        return self.llm.operation(self.feature, budget)
 
     async def stream(self, instructions: str, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         async for delta in self.llm.stream(self.feature, [{"role": "system", "content": instructions}, *messages],

@@ -6,6 +6,7 @@ from classconfig import ConfigurableMixin
 from classconfig.configurable import CreatableMixin
 
 from semant_demo.adapters.llm.gateway import LlmGateway
+from semant_demo.adapters.llm.usage import OperationBudget
 from semant_demo.features.search.schemas import SearchResponse, SummaryRequestBase
 from semant_demo.features.documents.schemas import DocumentChunk
 
@@ -22,12 +23,19 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
     max_generated_results: int = 10
     """Results that get a generated title and per-result summary in one search."""
 
-    async def __call__(self, request: SummaryRequestBase, results: SearchResponse) -> list[str]:
+    def operation(self, budget: OperationBudget | None = None):
+        """``async with``: the ``search_summary`` LLM operation, admitted against ``budget``."""
+        return self.llm.operation("search_summary", budget) if self.llm is not None else nullcontext()
+
+    async def __call__(self, request: SummaryRequestBase, results: SearchResponse,
+                       budget: OperationBudget | None = None) -> list[str]:
         """
         Creates summaries for the search results.
 
         :param results: search results to summarize
             Is modified in place.
+        :param budget: admits the generation (one operation); its refusal propagates before
+            any model call. Nothing is admitted when the request asks for no generation.
         :return: the kinds of the parts that could not be generated ("title", "query_summary",
             "results_summary"), once per failed part; they hold the configured fallback text.
             "results_limit" once when titles or per-result summaries were asked for more than
@@ -38,8 +46,11 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
         if (request.search_title_generate or request.search_summary_generate) and len(per_result) < len(results.results):
             failures.append("results_limit")
 
+        if not (request.search_title_generate or request.search_summary_generate
+                or request.search_results_summary_generate):
+            return failures
         # All calls of one search are one operation, whose call count the gateway caps.
-        with self.llm.operation("search_summary") if self.llm is not None else nullcontext():
+        async with self.operation(budget):
             if request.search_title_generate:
                 await self.gen_titles(request.query, per_result, request.search_title_prompt,
                                       on_error=failures.append)

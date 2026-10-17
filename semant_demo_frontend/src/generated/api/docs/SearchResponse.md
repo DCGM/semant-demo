@@ -13,6 +13,7 @@ Name | Type
 `searchLog` | Array&lt;string&gt;
 `vector` | string
 `warnings` | Array&lt;string&gt;
+`quotaExhausted` | [QuotaExhaustedResponse](QuotaExhaustedResponse.md)
 
 ## Example
 
@@ -28,6 +29,7 @@ const example = {
   "searchLog": null,
   "vector": null,
   "warnings": null,
+  "quotaExhausted": null,
 } satisfies SearchResponse
 
 console.log(example)

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
 from semant_demo.features.search.schemas import SearchFiltersResponse, SearchRequest, SearchResponse, SearchVectorsResponse
 
+from semant_demo.features.quota.principal import get_allowance_budget
+from semant_demo.features.quota.service import AllowanceBudget
 from semant_demo.features.search import service
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.features.search.vectors import SearchVectors
@@ -28,5 +30,8 @@ async def get_available_search_vectors(vectors: SearchVectors = Depends(get_sear
 async def search(req: SearchRequest, backends: SearchBackends = Depends(get_search_backends),
                  summarizer: service.Summarizer = Depends(get_summarizer),
                  current_user: User | None = Depends(current_active_optional_user),
-                 available_filters: SearchFiltersResponse = Depends(get_search_filters)) -> SearchResponse:
-    return await service.search(backends, summarizer, current_user, req, available_filters)
+                 available_filters: SearchFiltersResponse = Depends(get_search_filters),
+                 budget: AllowanceBudget = Depends(get_allowance_budget)) -> SearchResponse:
+    """Retrieval, plus the titles and summaries asked for. Those are skipped with a warning
+    (``quota_exhausted``) when the daily AI allowance has no room; the results are not."""
+    return await service.search(backends, summarizer, current_user, req, available_filters, budget)

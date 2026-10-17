@@ -64,6 +64,9 @@ tiers:
 #                      a larger call is refused before it is sent
 #   max_calls:         model calls of one user-visible operation (a search's
 #                      titles/summaries, one RAG answer or explanation)
+#   reserve_usd:       estimate of one operation, reserved from the caller's daily AI
+#                      allowance when it is admitted and replaced by the calls' cost when
+#                      it ends; the charge when a call's cost is unknown (default 0.01)
 features:
   search_summary:
     default: tiny
@@ -74,6 +77,7 @@ features:
       max_input_tokens: 32000
       # Titles and per-result summaries of up to 10 results, plus the results summary.
       max_calls: 21
+      reserve_usd: 0.01
   document_summary:
     default: tiny
     allowed: [tiny]
@@ -82,6 +86,7 @@ features:
       # Up to chunk_limit (40) chunks of one document.
       max_input_tokens: 48000
       max_calls: 1
+      reserve_usd: 0.01
   question:
     default: small
     allowed: [small]
@@ -89,6 +94,7 @@ features:
       max_output_tokens: 512
       max_input_tokens: 32000
       max_calls: 1
+      reserve_usd: 0.005
   span_chat:
     default: medium
     allowed: [medium]
@@ -96,6 +102,8 @@ features:
       max_output_tokens: 1536
       max_input_tokens: 16000
       max_calls: 1
+      # About one call of the full input and output at the medium tier's list prices.
+      reserve_usd: 0.04
   rag:
     default: medium
     allowed: [small, medium, large]
@@ -105,3 +113,5 @@ features:
       # Policy of the limited test deployment. An agentic answer fits; adaptive RAG grading
       # 10 documents in each later retrieval round can reach it and is then refused (503).
       max_calls: 20
+      # A typical multi-call answer at the medium tier, not the worst case of max_calls.
+      reserve_usd: 0.10

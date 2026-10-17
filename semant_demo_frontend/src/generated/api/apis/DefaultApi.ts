@@ -46,6 +46,7 @@ import type {
   PostSpan,
   PostTag,
   QuestionRequest,
+  QuotaExhaustedResponse,
   QuotaStatusResponse,
   RagRequestMain,
   RagResponse,
@@ -128,6 +129,8 @@ import {
     PostTagToJSON,
     QuestionRequestFromJSON,
     QuestionRequestToJSON,
+    QuotaExhaustedResponseFromJSON,
+    QuotaExhaustedResponseToJSON,
     QuotaStatusResponseFromJSON,
     QuotaStatusResponseToJSON,
     RagRequestMainFromJSON,
@@ -1510,7 +1513,7 @@ export interface DefaultApiInterface {
     searchApiSearchPostRequestOpts(requestParameters: SearchApiSearchPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * 
+     * Retrieval, plus the titles and summaries asked for. Those are skipped with a warning (``quota_exhausted``) when the daily AI allowance has no room; the results are not.
      * @summary Search
      * @param {SearchRequest} searchRequest 
      * @param {*} [options] Override http request option.
@@ -1520,6 +1523,7 @@ export interface DefaultApiInterface {
     searchApiSearchPostRaw(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchResponse>>;
 
     /**
+     * Retrieval, plus the titles and summaries asked for. Those are skipped with a warning (``quota_exhausted``) when the daily AI allowance has no room; the results are not.
      * Search
      */
     searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse>;
@@ -4268,6 +4272,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Retrieval, plus the titles and summaries asked for. Those are skipped with a warning (``quota_exhausted``) when the daily AI allowance has no room; the results are not.
      * Search
      */
     async searchApiSearchPostRaw(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SearchResponse>> {
@@ -4278,6 +4283,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Retrieval, plus the titles and summaries asked for. Those are skipped with a warning (``quota_exhausted``) when the daily AI allowance has no room; the results are not.
      * Search
      */
     async searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse> {

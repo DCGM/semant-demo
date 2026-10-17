@@ -7,13 +7,18 @@ later operations are refused (``QuotaExhausted``, HTTP 429). Settlement replaces
 reservation with the calls' cost on the operation's start day. An operation that is
 never settled (a crash, a lost callback) keeps its reservation charged; nothing expires
 or is refunded.
+
+:class:`AllowanceBudget` is the request's allowance as the LLM gateway's operation budget
+(``LlmGateway.operation``): AI use cases admit and settle through it (#398).
 """
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
+from semant_demo.adapters.llm.usage import LlmOperation
 from semant_demo.adapters.sql.quota import MICRO_USD, CallRecord, DayTotals, QuotaLedger, usd_to_micro
 from semant_demo.config import Config
 
@@ -145,3 +150,30 @@ async def settle(ledger: QuotaLedger, operation_id: str, calls: list[CallRecord]
                  now: datetime.datetime | None = None) -> int | None:
     """Charge the operation's calls to its start day (see ``QuotaLedger.settle``)."""
     return await ledger.settle(operation_id, calls, now=now or utc_now())
+
+
+@dataclass(frozen=True)
+class AllowanceBudget:
+    """A principal's daily allowance as an ``OperationBudget`` of the LLM gateway.
+
+    ``admit`` raises ``QuotaExhausted`` before any model call. ``settle`` records the
+    operation's finished calls; a call that was still running counts as one of unknown
+    cost, so the operation is charged at least its reservation.
+    """
+    ledger: QuotaLedger
+    policy: QuotaPolicy
+    principal: QuotaPrincipal
+    clock: Callable[[], datetime.datetime] = utc_now
+
+    async def admit(self, feature: str, reserve_usd: float) -> str:
+        return await admit(self.ledger, self.policy, self.principal, feature, reserve_usd, now=self.clock())
+
+    async def settle(self, admission: str, operation: LlmOperation) -> None:
+        calls = [CallRecord(feature=c.feature, tier=str(c.model.tier), provider=str(c.model.provider),
+                            model=c.model.model, outcome=c.outcome, usage_source=c.usage_source,
+                            cost_source=c.cost_source, cost_usd=c.cost_usd, input_tokens=c.input_tokens,
+                            output_tokens=c.output_tokens) for c in operation.calls]
+        unfinished = max(operation.started_calls - len(operation.calls), 0)
+        calls += [CallRecord(feature=operation.feature, tier="", provider="", model="", outcome="unfinished",
+                             usage_source="unavailable", cost_source="unknown", cost_usd=None)] * unfinished
+        await settle(self.ledger, admission, calls, now=self.clock())

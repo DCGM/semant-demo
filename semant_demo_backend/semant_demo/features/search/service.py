@@ -4,7 +4,9 @@
 the query for vector/hybrid search with the embedder of the selected (or default) search
 vector (``vectors.py``) and runs it through the search adapter against that vector. RAG
 uses it directly, without summaries. ``search`` adds the optional summaries; when some or
-all of them fail, the retrieved hits are still returned, with a warning.
+all of them fail, the retrieved hits are still returned, with a warning. The summaries are
+one AI operation admitted against the caller's daily allowance; when it has no room, they
+are skipped and the hits are returned with a quota warning, never a 429.
 
 Access (ADR 0007): a ``user_collection_id`` needs read access to that collection, and
 every requested tag must belong to a collection the user can read (to that collection,
@@ -17,10 +19,13 @@ from functools import partial
 from time import time
 from typing import Awaitable, Callable, Protocol
 
+from semant_demo.adapters.llm.usage import OperationBudget
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.core.errors import InvalidRequestError
+from semant_demo.features.quota.schemas import QuotaExhaustedResponse
+from semant_demo.features.quota.service import QuotaExhausted
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.search.filters import InvalidSearchFilterError, parse_and_validate_search_filters
@@ -33,15 +38,19 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_FAILED_WARNING = "Some titles or summaries could not be generated."
 SUMMARY_LIMITED_WARNING = "Titles and result summaries were generated only for the first results."
+SUMMARY_QUOTA_WARNING = "Titles and summaries were not generated. "
+"""Followed by the ``QuotaExhausted`` message (the reset time)."""
 
 Retriever = Callable[[SearchRequest], Awaitable[SearchResponse]]
 
 
 class Summarizer(Protocol):
     """Adds the titles and summaries ``request`` asks for to ``response`` in place
-    (``features/summarization``); returns the kinds of the parts that failed."""
+    (``features/summarization``) as one operation admitted by ``budget``; returns the kinds
+    of the parts that failed."""
 
-    async def __call__(self, request: SearchRequest, response: SearchResponse) -> list[str]: ...
+    async def __call__(self, request: SearchRequest, response: SearchResponse,
+                       budget: OperationBudget | None = None) -> list[str]: ...
 
 
 @dataclass(frozen=True)
@@ -95,19 +104,25 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
 
 
 async def search(backends: SearchBackends, summarizer: Summarizer, user: Principal | None,
-                 request: SearchRequest, filter_definitions: SearchFiltersResponse | None = None) -> SearchResponse:
+                 request: SearchRequest, filter_definitions: SearchFiltersResponse | None = None,
+                 budget: OperationBudget | None = None) -> SearchResponse:
     """Retrieval plus the summaries the request asks for.
 
     When a title or summary cannot be generated (the summarizer reports it and keeps its
     fallback text) or the summarizer fails altogether, the hits and the summaries made so
     far are kept and ``SUMMARY_FAILED_WARNING`` is added. When only the first results got
     titles and summaries (the summarizer's ``results_limit``), ``SUMMARY_LIMITED_WARNING``
-    is added. Retrieval errors propagate.
+    is added. When ``budget`` refuses the summaries (``QuotaExhausted``), none are generated:
+    ``quota_exhausted`` is set and ``SUMMARY_QUOTA_WARNING`` added. Retrieval errors propagate.
     """
     start = time()
     response = await retrieve(backends, user, request, filter_definitions)
     try:
-        failed = await summarizer(request, response)
+        failed = await summarizer(request, response, budget)
+    except QuotaExhausted as e:
+        failed = []
+        response.quota_exhausted = QuotaExhaustedResponse.model_validate(e.body())
+        response.warnings.append(SUMMARY_QUOTA_WARNING + str(e))
     except Exception as e:
         logger.error("Search summary generation failed: %s", type(e).__name__)
         failed = ["summarizer"]

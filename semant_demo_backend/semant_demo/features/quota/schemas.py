@@ -23,10 +23,18 @@ class QuotaStatusResponse(BaseModel):
 class QuotaExhaustedResponse(BaseModel):
     """The body of a 429 answer to an AI operation refused for the daily allowance
     (``QuotaExhausted.body``); the answer also has a ``Retry-After`` header (seconds).
-    AI routes declare it as their 429 response once they admit operations (#398)."""
+    AI routes declare it as their 429 response (``QUOTA_EXHAUSTED_RESPONSES``)."""
     detail: str
     code: Literal["llm_quota_exhausted"]
     principal: Literal["guest", "account"]
     reset_at: datetime.datetime
     limit_usd: float
     used_usd: float
+
+
+QUOTA_EXHAUSTED_RESPONSES: dict[int | str, dict] = {429: {
+    "model": QuotaExhaustedResponse,
+    "description": "The caller's daily AI allowance has no room for the operation; nothing was generated.",
+    "headers": {"Retry-After": {"description": "Seconds until the allowance resets (UTC midnight)",
+                                "schema": {"type": "integer"}}}}}
+"""``responses`` of a route whose AI operation is admitted against the daily allowance."""

@@ -13,20 +13,23 @@ class FakeLlm:
     """Replaces ``adapters.llm.gateway.LlmGateway`` for callers of ``complete`` (and ``operation``).
 
     ``reply`` maps the request's messages to the reply text, or raises to simulate a
-    provider failure. Every call is recorded in ``calls`` as ``(feature, messages, options)``.
+    provider failure. Every call is recorded in ``calls`` as ``(feature, messages, options)``,
+    every operation in ``operations`` (its feature) and ``budgets`` (its budget).
     """
 
     def __init__(self, reply: Callable[[list[dict[str, str]]], str] | str = "fake reply"):
         self.reply = reply if callable(reply) else (lambda messages: reply)
         self.calls: list[tuple[str, list[dict[str, str]], dict]] = []
         self.operations: list[str] = []
+        self.budgets: list = []
 
     async def complete(self, feature: str, messages, **options) -> str:
         self.calls.append((feature, list(messages), options))
         return self.reply(list(messages))
 
-    def operation(self, feature: str):
+    def operation(self, feature: str, budget=None):
         self.operations.append(feature)
+        self.budgets.append(budget)
         return contextlib.nullcontext()
 
 
@@ -54,16 +57,40 @@ def second_embedding(text: str) -> list[float]:
     return fake_embedding("second:" + text, SECOND_EMBEDDING_DIM)
 
 
+class FakeOperation:
+    """Replaces ``adapters.llm.gateway.OperationScope``; records whether it was admitted,
+    entered and left."""
+
+    def __init__(self, budget=None):
+        self.budget = budget
+        self.events: list[str] = []
+
+    async def admit(self) -> None:
+        self.events.append("admit")
+
+    async def __aenter__(self):
+        self.events.append("enter")
+
+    async def __aexit__(self, *exc_info) -> None:
+        self.events.append("exit")
+
+
 class FakeStreamingChat:
     """Replaces ``adapters.llm.gateway.FeatureChat``: yields ``deltas``, records calls.
 
     With ``error`` set, raises it after the deltas (a provider failing mid-stream).
+    ``operations`` holds the operations the stream was given.
     """
 
     def __init__(self, deltas: list[str] | None = None, error: Exception | None = None):
         self.deltas = list(deltas if deltas is not None else ["Fits", " the tag."])
         self.error = error
         self.calls: list[tuple[str, list[dict[str, str]]]] = []
+        self.operations: list[FakeOperation] = []
+
+    def operation(self, budget=None) -> FakeOperation:
+        self.operations.append(FakeOperation(budget))
+        return self.operations[-1]
 
     async def stream(self, instructions: str, messages: list[dict[str, str]]):
         self.calls.append((instructions, messages))

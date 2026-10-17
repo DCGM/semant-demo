@@ -137,6 +137,8 @@ class LlmOperation:
     """The sum of the known call costs."""
     unknown_cost_calls: int = 0
     cost_sources: set[str] = field(default_factory=set)
+    calls: list[LlmCall] = field(default_factory=list)
+    """The finished calls, in the order they finished."""
 
     def start_call(self) -> None:
         if self.started_calls >= self.max_calls:
@@ -146,12 +148,27 @@ class LlmOperation:
 
     def add(self, call: LlmCall) -> None:
         self.finished_calls += 1
+        self.calls.append(call)
         cost = call.cost_usd
         self.cost_sources.add(call.cost_source)
         if cost is None:
             self.unknown_cost_calls += 1
         else:
             self.cost_usd += cost
+
+
+class OperationBudget(Protocol):
+    """Admits the operations of ``LlmGateway.operation`` and is told what they cost (the
+    caller's daily allowance, ``features/quota``).
+
+    ``admit`` runs before the operation's first model call and raises to refuse it; what
+    it returns is passed back to ``settle`` once the operation has ended, with the
+    operation (its finished ``calls``; ``started_calls`` counts those still running too).
+    """
+
+    async def admit(self, feature: str, reserve_usd: float) -> Any: ...
+
+    async def settle(self, admission: Any, operation: LlmOperation) -> None: ...
 
 
 current_llm_operation: ContextVar[LlmOperation | None] = ContextVar("current_llm_operation", default=None)

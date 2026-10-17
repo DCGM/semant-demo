@@ -10,6 +10,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 - [#224](https://github.com/DCGM/semant-demo/issues/224) — tag-filtered search indexes only the anchor chunk of a cross-chunk span.
 - [#218](https://github.com/DCGM/semant-demo/issues/218) — tag creation deduplication reads at most 2000 tags of a collection.
 - [#227](https://github.com/DCGM/semant-demo/issues/227) — Topicer calls are bounded per run, not across concurrent runs.
+- [#402](https://github.com/DCGM/semant-demo/issues/402) — the adaptive RAG's Explain answers 500 when `sources`, the selection or the answer is empty.
 - **Chunk tag consistency** — span writes and their chunk tag references are best effort, serialized only within one backend process, so run one process ([ADR 0002](adr/0002-best-effort-writes.md)). Audit and reviewed repair: [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-tag-audit-chunk_tag_audit).
 - **Topicer offsets** — proposals are read as code points and stored as UTF-16; older AI spans near non-BMP characters may need review; no automatic migration is planned ([ADR 0006](adr/0006-context-and-text.md)).
 
@@ -24,7 +25,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Deployment, security and tests
 
-- [#234](https://github.com/DCGM/semant-demo/issues/234) — anonymous RAG, summary and question endpoints call paid providers; decide login/rate/cost limits.
+- [#234](https://github.com/DCGM/semant-demo/issues/234) — the frontend does not show the daily AI allowance yet (usage, near-limit warning, a structured message for its 429 and Search's `quota_exhausted`); the backend enforces it ([ARCHITECTURE.md](ARCHITECTURE.md#daily-llm-allowances-featuresquota-adapterssqlquotapy)).
 - [#319](https://github.com/DCGM/semant-demo/issues/319) — access tokens live 7 days without renewal, and the stateless JWT logout revokes nothing server-side: signing out only forgets the token in this browser (all its tabs).
 - [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI.
 - [#261](https://github.com/DCGM/semant-demo/issues/261) — reproducibility of the production frontend build. The backend Python packages are locked; the base images and the embedding service requirements are not ([DEPLOYMENT.md](DEPLOYMENT.md#docker--production-deployment)).

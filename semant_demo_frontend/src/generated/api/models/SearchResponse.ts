@@ -20,6 +20,13 @@ import {
     SearchRequestToJSON,
     SearchRequestToJSONTyped,
 } from './SearchRequest';
+import type { QuotaExhaustedResponse } from './QuotaExhaustedResponse';
+import {
+    QuotaExhaustedResponseFromJSON,
+    QuotaExhaustedResponseFromJSONTyped,
+    QuotaExhaustedResponseToJSON,
+    QuotaExhaustedResponseToJSONTyped,
+} from './QuotaExhaustedResponse';
 import type { SearchResultChunk } from './SearchResultChunk';
 import {
     SearchResultChunkFromJSON,
@@ -76,6 +83,12 @@ export interface SearchResponse {
      * @memberof SearchResponse
      */
     warnings?: Array<string>;
+    /**
+     * 
+     * @type {QuotaExhaustedResponse}
+     * @memberof SearchResponse
+     */
+    quotaExhausted?: QuotaExhaustedResponse | null;
 }
 
 /**
@@ -106,6 +119,7 @@ export function SearchResponseFromJSONTyped(json: any, ignoreDiscriminator: bool
         'searchLog': json['search_log'],
         'vector': json['vector'] == null ? undefined : json['vector'],
         'warnings': json['warnings'] == null ? undefined : json['warnings'],
+        'quotaExhausted': json['quota_exhausted'] == null ? undefined : QuotaExhaustedResponseFromJSON(json['quota_exhausted']),
     };
 }
 
@@ -127,6 +141,7 @@ export function SearchResponseToJSONTyped(value?: SearchResponse | null, ignoreD
         'search_log': value['searchLog'],
         'vector': value['vector'],
         'warnings': value['warnings'],
+        'quota_exhausted': QuotaExhaustedResponseToJSON(value['quotaExhausted']),
     };
 }
 

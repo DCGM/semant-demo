@@ -2,8 +2,9 @@
 users rate the answers.
 
 Pipelines are loaded at startup into a :class:`RagRegistry` (``registry.py``); their model
-calls go through the LLM gateway. One answer or explanation is one LLM operation, whose
-model calls the ``rag`` feature's ``max_calls`` caps. Logs carry the configuration id,
+calls go through the LLM gateway. One answer or explanation is one LLM operation, admitted
+against the caller's daily allowance (``budget``) before the pipeline runs, whose model
+calls the ``rag`` feature's ``max_calls`` caps. Logs carry the configuration id,
 never questions, answers or retrieved text.
 """
 import logging
@@ -11,6 +12,7 @@ from contextlib import nullcontext
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from semant_demo.adapters.llm.usage import OperationBudget
 from semant_demo.adapters.sql import feedback as feedback_store
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.rag.registry import BaseRag, RagRegistry
@@ -33,8 +35,8 @@ def _pipeline(registry: RagRegistry, rag_id: str, purpose: str = "") -> BaseRag:
     return registry.instances[rag_id]
 
 
-def _operation(pipeline: BaseRag):
-    return pipeline.llm.operation("rag") if pipeline.llm is not None else nullcontext()
+def _operation(pipeline: BaseRag, budget: OperationBudget | None):
+    return pipeline.llm.operation("rag", budget) if pipeline.llm is not None else nullcontext()
 
 
 def _recent(history: list[RagChatMessage] | None, limit: int) -> list[RagChatMessage] | None:
@@ -43,13 +45,14 @@ def _recent(history: list[RagChatMessage] | None, limit: int) -> list[RagChatMes
 
 
 async def answer(registry: RagRegistry, backends: SearchBackends, request: RagRequestMain,
-                 history_limit: int = 20) -> RagResponse:
+                 history_limit: int = 20, budget: OperationBudget | None = None) -> RagResponse:
     """The answer of the chosen configuration, with its sources.
 
     RAG requests carry no collection or tags: retrieval covers the public corpus. Every
     retrieval uses the requested search vector (default: the configured default), the
     same way a direct search does; an unknown vector is refused before the pipeline runs.
-    Only the last ``history_limit`` history messages reach the pipeline.
+    Only the last ``history_limit`` history messages reach the pipeline. A refusal of
+    ``budget`` (``QuotaExhausted``) propagates before any retrieval or model call.
     """
     pipeline = _pipeline(registry, request.rag_id)
     vector = backends.vectors.resolve(request.vector)
@@ -57,19 +60,21 @@ async def answer(registry: RagRegistry, backends: SearchBackends, request: RagRe
         update={"history": _recent(request.rag_request.history, history_limit)})
     logger.info("RAG request", extra={"rag.id": request.rag_id, "rag.vector": vector.id,
                                       "rag.history_messages": len(request.rag_request.history or [])})
-    with _operation(pipeline):
+    async with _operation(pipeline, budget):
         return await pipeline.rag_request(request=rag_request,
                                           retrieve=search_service.public_retriever(backends, vector.id))
 
 
-async def explain(registry: RagRegistry, request: ExplainRequest, history_limit: int = 20):
+async def explain(registry: RagRegistry, request: ExplainRequest, history_limit: int = 20,
+                  budget: OperationBudget | None = None):
     """An explanation of a selected part of an answer, by the configuration that gave it.
 
-    Only the last ``history_limit`` history messages reach the pipeline.
+    Only the last ``history_limit`` history messages reach the pipeline; ``budget`` as in
+    :func:`answer`.
     """
     pipeline = _pipeline(registry, request.rag_id, " used for explaining")
     logger.info("RAG explain request", extra={"rag.id": request.rag_id})
-    with _operation(pipeline):
+    async with _operation(pipeline, budget):
         return await pipeline.explain_selection(
             request=request.model_copy(update={"history": _recent(request.history, history_limit)}))
 

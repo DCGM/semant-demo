@@ -83,6 +83,9 @@ class FeatureLimits:
     """Input of one call, estimated from its length; a larger call is refused before sending."""
     max_calls: int = 1
     """Model calls of one user-visible operation (``LlmGateway.operation``)."""
+    reserve_usd: float = 0.01
+    """USD-equivalent estimate of one operation, reserved from the caller's daily allowance
+    when it is admitted; also its charge when a call's cost is unknown."""
 
 
 @dataclass(frozen=True)
@@ -200,6 +203,9 @@ def _limits(spec: dict[str, Any]) -> FeatureLimits:
     if unknown:
         raise ValueError(f"Unsupported limits: {', '.join(sorted(unknown))}")
     for name, value in spec.items():
-        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        if name == "reserve_usd":
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value < math.inf:
+                raise ValueError("limits.reserve_usd must be a positive amount")
+        elif isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ValueError(f"limits.{name} must be a positive integer")
     return FeatureLimits(**spec)
