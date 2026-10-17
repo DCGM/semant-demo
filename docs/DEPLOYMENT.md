@@ -1,7 +1,7 @@
 # Deployment & Configuration
 
 This document is the backend configuration reference and describes a manual standalone setup.
-The Docker Compose stacks, CI/CD, previews and server setup are documented in
+The Docker Compose stacks, CI/CD, previews, Topicer deployment and server setup are documented in
 [deploy/README.md](../deploy/README.md). For local development, including the local Weaviate
 and SQLite snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
@@ -12,7 +12,7 @@ and SQLite snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
 | Python | ≥ 3.12 | Backend and embedding service |
 | Node.js | 22 | Frontend build (`package.json` engines) |
 | Docker + Docker Compose | Latest | Weaviate container |
-| GPU (optional) | CUDA-capable | Recommended for embedding service |
+| GPU (optional for standalone setup) | CUDA-capable | Required for the deployed Qwen embedder and GPU-based Topicer configurations |
 | Ollama | Latest | If using local LLM models |
 
 ## Service Ports (Defaults)
@@ -21,7 +21,8 @@ and SQLite snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
 |---|---|---|
 | Weaviate HTTP | 8080 | REST |
 | Weaviate gRPC | 50051 | gRPC |
-| Embedding Service | 8001 | HTTP |
+| Legacy Embedding Service (standalone) | 8001 | HTTP |
+| Topicer API (separate service) | 8089 | HTTP |
 | Backend API | 8000 | HTTP |
 | Frontend (dev) | 9000 | HTTP |
 | Ollama | 11434 | HTTP |
@@ -32,7 +33,7 @@ and SQLite snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 For server deployments, use the compose files in `deploy/` instead of the manual steps below; see [deploy/README.md](../deploy/README.md). CI/CD deploys production from a `v*.*.*` tag on `main`, a persistent `test-main` instance from `main`, and an ephemeral preview per PR (deployed even when checks fail, with separate preview credentials).
 
-The backend image installs `semant_demo_backend/requirements-runtime.lock` with `--require-hashes`: the same Python package versions that CI tests, with no resolution at build time (see [CONTRIBUTING.md](../CONTRIBUTING.md) for updating the locks). To audit a running instance, run `docker compose -p <project> -f <compose file> exec app python -m pip freeze --user` and compare it with the lock. The lock does not freeze the floating `python:3.12` / `python:3.12-slim` base images (OS packages and patch release), nor the separate embedding service image (`deploy/Dockerfile.embedder`), which still installs unpinned requirements.
+The backend image installs `semant_demo_backend/requirements-runtime.lock` with `--require-hashes`: the same Python package versions that CI tests, with no resolution at build time (see [CONTRIBUTING.md](../CONTRIBUTING.md) for updating the locks). To audit a running instance, run `docker compose -p <project> -f <compose file> exec app python -m pip freeze --user` and compare it with the lock. The lock does not freeze the floating `python:3.12` / `python:3.12-slim` base images (OS packages and patch release). Production uses a pinned vLLM image and model revision for Qwen embeddings ([deploy/README](../deploy/README.md#qwen-embedding-service-385)), not the legacy `deploy/Dockerfile.embedder` (which still installs unpinned requirements). Topicer is built separately from upstream `main` with independently resolved dependencies ([Topicer deployment](../deploy/README.md#topicer)); it is not covered by the backend lock.
 
 ---
 
@@ -169,7 +170,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `SEARCH_FILTERS_CONFIG` | `configs/search_filters.yaml` | Search filters ([SEARCH_FILTERS.md](SEARCH_FILTERS.md)) |
 | `SEARCH_VECTORS_CONFIG` | `configs/search_vectors.yaml` | Weaviate named vectors Search and RAG may query, their query embedding and the default ([ARCHITECTURE.md](ARCHITECTURE.md#search-pipeline)); validated at startup. List a vector only after it is populated in the chunk collection |
 | `EMBEDDING_API_KEY` | (empty) | Bearer key sent to the OpenAI-compatible embedding endpoints of search vectors; empty sends none |
-| `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service |
+| `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service; deployed separately ([Topicer deployment](../deploy/README.md#topicer)) |
 | `SPAN_CHAT_TEMPERATURE` / `SPAN_CHAT_MAX_TOKENS` | `0.4` / `1024` | Span discussion replies (`span_chat` tier) |
 | `SPAN_CHAT_CONTEXT_CHARS` / `SPAN_CHAT_HISTORY_LIMIT` | `1500` / `20` | Context window around the span; chat messages forwarded |
 | `CORPUS_OVERVIEW_MAX_AGE` | `600` | Seconds a computed corpus overview (`/api/analytics/corpus/overview`) is served again before it is recomputed; `0` computes it on every request |
