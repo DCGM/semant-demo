@@ -289,7 +289,8 @@ import { storeToRefs } from 'pinia'
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, QItem, QItemSection, QItemLabel, Notify, useQuasar } from 'quasar'
 import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type SearchResultChunk, type SearchVectorInfo } from 'src/generated/api'
-import { captureSession, useApi } from 'src/shared/api'
+import { captureSession, reportAiOperation, useApi } from 'src/shared/api'
+import { generatesText, searchQuotaMessage } from './searchQuota'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
@@ -705,9 +706,18 @@ async function onSearch () {
     if (context.response.results.length === 0) {
       Notify.create({ message: 'No results found', position: 'top', color: 'info' })
     }
+    // Generated titles/summaries skipped for the daily AI allowance: the results stand; the
+    // backend's warning is replaced by the allowance message (local reset time), shown as
+    // information rather than as a provider failure.
+    const refusal = context.response.quotaExhausted
     for (const warning of context.response.warnings ?? []) {
+      if (refusal && warning.includes(refusal.detail)) continue
       Notify.create({ message: warning, position: 'top', color: 'warning' })
     }
+    if (refusal) {
+      Notify.create({ message: searchQuotaMessage(refusal), position: 'top', color: 'info', icon: 'hourglass_bottom' })
+    }
+    if (refusal || generatesText(request)) reportAiOperation()
   } catch (e) {
     console.error(e)
     Notify.create({ message: 'Search failed', position: 'top', color: 'negative' })

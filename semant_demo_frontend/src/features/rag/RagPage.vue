@@ -218,7 +218,7 @@ import { ref, nextTick, onMounted, onUnmounted, onUpdated, watch } from 'vue'
 import { marked } from 'marked'
 import { useQuasar } from 'quasar'
 import { SearchType, type RagChatMessage, type RagRouteConfig, type SearchResultChunk } from 'src/generated/api'
-import { createContextGuard, errorStatus, useApi } from 'src/shared/api'
+import { createContextGuard, errorStatus, quotaRefusalMessage, quotaRefusalOf, reportAiOperation, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
@@ -412,12 +412,18 @@ const sendMessage = async () => {
   } catch (error) {
     if (!isCurrent()) return
     console.error('RAG error:', error)
-    if (errorStatus(error) === 401) {
+    // Refused for the daily AI allowance: nothing was generated and nothing is retried.
+    const refusal = await quotaRefusalOf(error)
+    if (!isCurrent()) return
+    if (refusal) {
+      messages.value.push({ id: nextMessageId(), sender: 'AI', text: quotaRefusalMessage(refusal) })
+    } else if (errorStatus(error) === 401) {
       messages.value.push({ id: nextMessageId(), sender: 'AI', text: 'You have entered invalid API key.' })
     } else {
       messages.value.push({ id: nextMessageId(), sender: 'AI', text: 'Sorry, error occurred while genereting response.' })
     }
   } finally {
+    reportAiOperation()
     if (isCurrent()) {
       isAiThinking.value = false
       scrollToBottom()

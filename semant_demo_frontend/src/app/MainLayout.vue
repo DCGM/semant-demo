@@ -21,6 +21,8 @@
         </q-toolbar-title>
         <q-space />
 
+        <QuotaIndicator @login="showLogin = true" @register="showRegister = true" />
+
         <!-- User avatar with auth menu -->
         <q-btn flat round dense aria-label="User menu">
           <q-avatar size="36px" :color="userStore.isLoggedIn ? undefined : 'grey-5'" text-color="primary">
@@ -203,6 +205,7 @@
           <q-btn flat color="primary" label="Sign out" @click="handleLogout" />
         </template>
       </q-banner>
+      <QuotaBanner @login="showLogin = true" @register="showRegister = true" />
       <router-view />
     </q-page-container>
 
@@ -225,6 +228,8 @@ import LoginDialog from 'src/features/auth/LoginDialog.vue'
 import RegisterDialog from 'src/features/auth/RegisterDialog.vue'
 import UserInfoDialog from 'src/features/auth/UserInfoDialog.vue'
 import AboutAppDialog from './AboutAppDialog.vue'
+import QuotaIndicator from 'src/features/quota/QuotaIndicator.vue'
+import QuotaBanner from 'src/features/quota/QuotaBanner.vue'
 import { errorStatus } from 'src/shared/api'
 
 const drawerMiniState = ref(false)

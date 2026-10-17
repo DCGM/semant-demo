@@ -5,6 +5,7 @@ import type { SearchResponse, SearchResultChunk } from 'src/generated/api'
 import { selectResults, type SearchResultsContext } from 'src/features/search/searchResults'
 import { parseSummaryTokens, useSearchSummary } from 'src/features/search/useSearchSummary'
 import { useSearchRequest } from 'src/features/search/useSearchRequest'
+import { onAiOperation } from 'src/shared/api'
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -67,7 +68,7 @@ describe('parseSummaryTokens', () => {
 
 /** Fetch stand-in: each call waits until the test answers it. */
 function controlledFetch () {
-  const calls: { url: string, body: unknown, signal?: AbortSignal | null, answer: (body: unknown) => void }[] = []
+  const calls: { url: string, body: unknown, signal?: AbortSignal | null, answer: (body: unknown, status?: number) => void }[] = []
   const fetchMock = vi.fn((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => new Promise<Response>((resolve, reject) => {
     const abort = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
     if (init?.signal?.aborted) abort()
@@ -76,7 +77,7 @@ function controlledFetch () {
       url: String(input),
       body: init?.body ? JSON.parse(String(init.body)) : null,
       signal: init?.signal,
-      answer: (body) => resolve(new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }))
+      answer: (body, status = 200) => resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
     })
   }))
   return { calls, fetchMock }
@@ -113,6 +114,28 @@ describe('useSearchSummary', () => {
 
     expect(summary.tokens.value).toContainEqual({ type: 'citation', docNumber: 3 })
     expect([summary.summarizing.value, summary.error.value]).toEqual([false, null])
+  })
+
+  it('explains a refusal for the daily AI allowance, does not retry it and reports the operation', async () => {
+    const operations = vi.fn()
+    const stop = onAiOperation(operations)
+    const summary = useSearchSummary(ref(contextOf(1, ['a'])), ref<string[]>([]))
+
+    const running = summary.summarize()
+    await flush()
+    calls[0].answer({
+      detail: 'Insufficient remaining daily AI allowance for this operation; it resets at 2026-10-18 00:00 UTC.',
+      code: 'llm_quota_exhausted',
+      principal: 'guest',
+      reset_at: '2026-10-18T00:00:00Z',
+      limit_usd: 0.25,
+      used_usd: 0.25
+    }, 429)
+    await running
+    stop()
+
+    expect(summary.error.value).toMatch(/^Today's AI allowance has no room for this request, so nothing was generated\. It resets /)
+    expect([calls.length, summary.summarizing.value, operations.mock.calls.length]).toEqual([1, false, 1])
   })
 
   it('reports an empty selection without calling the backend', async () => {

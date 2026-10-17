@@ -73,6 +73,25 @@ describe('useSpanDiscussion', () => {
     expect(chat.messages.value.map((m) => m.content)).toEqual(['About s2', 'answer about s2'])
   })
 
+  it('explains a refusal for the daily AI allowance and removes the empty reply', async () => {
+    globalThis.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      detail: 'Insufficient remaining daily AI allowance for this operation; it resets at 2026-10-18 00:00 UTC.',
+      code: 'llm_quota_exhausted',
+      principal: 'guest',
+      reset_at: '2026-10-18T00:00:00Z',
+      limit_usd: 0.25,
+      used_usd: 0.25
+    }), { status: 429 }))) as typeof fetch
+    const chat = useSpanDiscussion()
+    chat.reset({ spanId: 's1' })
+
+    await chat.send('Why?')
+
+    expect(chat.error.value).toMatch(/^Today's AI allowance has no room for this request, so nothing was generated\. It resets /)
+    expect(chat.messages.value).toEqual([{ role: 'user', content: 'Why?' }])
+    expect([chat.isStreaming.value, (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length]).toEqual([false, 1])
+  })
+
   it('drops deltas after cancel and keeps what arrived before', async () => {
     const chat = useSpanDiscussion()
     chat.reset({ spanId: 's1' })

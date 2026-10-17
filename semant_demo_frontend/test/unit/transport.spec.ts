@@ -63,6 +63,19 @@ describe('shared API transport', () => {
     ])
   })
 
+  it('sends and keeps cookies (the guest allowance) on generated-client and NDJSON requests', async () => {
+    const credentials: (RequestCredentials | undefined)[] = []
+    respond = (_url, init) => {
+      credentials.push(init?.credentials)
+      return Promise.resolve(credentials.length === 1 ? jsonResponse({ status: 'ok' }) : new Response(streamOf()))
+    }
+
+    await createApiClients().default.healthHealthGet()
+    await postNdjson('/ai/discuss_span', {}, { onValue: () => undefined })
+
+    expect(credentials).toEqual(['include', 'include'])
+  })
+
   it('sends no Authorization header when signed out', async () => {
     await createApiClients().default.healthHealthGet()
     respond = () => Promise.resolve(new Response(streamOf()))

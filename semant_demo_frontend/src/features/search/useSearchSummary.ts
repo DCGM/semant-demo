@@ -1,5 +1,5 @@
 import { computed, ref, watch, type Ref } from 'vue'
-import { createContextGuard, isAbortError, useApi } from 'src/shared/api'
+import { createContextGuard, isAbortError, quotaRefusalMessage, quotaRefusalOf, reportAiOperation, useApi } from 'src/shared/api'
 import { tokenizeCitations } from 'src/shared/citationTokens'
 import { selectResults, type ResultScope, type SearchResultsContext } from './searchResults'
 
@@ -125,8 +125,12 @@ export function useSearchSummary (
     } catch (e) {
       if (!isCurrent() || isAbortError(e)) return
       console.error('Summarization failed', e)
-      error.value = 'Failed to summarize.'
+      // Refused for the daily AI allowance: nothing was generated and nothing is retried.
+      const refusal = await quotaRefusalOf(e)
+      if (!isCurrent()) return
+      error.value = refusal ? quotaRefusalMessage(refusal) : 'Failed to summarize.'
     } finally {
+      reportAiOperation()
       if (isCurrent()) {
         summarizing.value = false
         abort = null

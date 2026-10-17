@@ -214,6 +214,30 @@ export async function answerChat (page: Page, answers: ChatAnswer[]): Promise<vo
   })
 }
 
+/**
+ * Answers this page's `/api/quota` with a guest who has used `used` of a $0.25 allowance
+ * (near the limit from $0.20, used up at $0.25), for allowance states the profile's cheap
+ * fake calls do not reach. Returns the reset time (the next UTC midnight).
+ */
+export async function answerGuestQuota (page: Page, used: number): Promise<Date> {
+  const reset = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1))
+  await page.route('**/api/quota', (route) => route.fulfill({
+    json: {
+      principal: 'guest',
+      day: new Date().toISOString().slice(0, 10),
+      limit_usd: 0.25,
+      used_usd: used,
+      charged_usd: used,
+      reserved_usd: 0,
+      remaining_usd: Math.max(0, 0.25 - used),
+      reset_at: reset.toISOString(),
+      near_limit: used >= 0.2,
+      exhausted: used >= 0.25
+    }
+  }))
+  return reset
+}
+
 /** Asks the chat assistant `question` and waits until its answer is shown. */
 export async function askChat (page: Page, question: string): Promise<void> {
   const input = page.getByPlaceholder('Vaše otázka?')

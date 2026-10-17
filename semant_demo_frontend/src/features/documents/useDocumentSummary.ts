@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import type { DocumentSummaryCitation, DocumentSummaryResponse } from 'src/generated/api'
-import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
+import { aiErrorMessage, createContextGuard, isAbortError, reportAiOperation, useApi } from 'src/shared/api'
 import { tokenizeCitations } from 'src/shared/citationTokens'
 
 const SUMMARY_FAILED_FALLBACK = 'Failed to summarize the document.'
@@ -87,11 +87,13 @@ export function useDocumentSummary () {
       if (!isCurrent() || isAbortError(e)) return
       console.error('Document summarization failed', e)
       // The backend answers 502 with a safe, pre-sanitized detail on generation failure
-      // (never provider internals) — show it directly, same as other composables do.
-      const message = await apiErrorMessage(e, SUMMARY_FAILED_FALLBACK)
+      // (never provider internals) — show it directly, same as other composables do; a
+      // refusal for the daily AI allowance gets its own message.
+      const message = await aiErrorMessage(e, SUMMARY_FAILED_FALLBACK)
       if (!isCurrent()) return
       error.value = message
     } finally {
+      reportAiOperation()
       if (isCurrent()) {
         summarizing.value = false
         abort = null

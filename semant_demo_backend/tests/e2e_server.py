@@ -7,7 +7,10 @@ test-owned Weaviate. It
 
 * resets the test store and seeds the fixture corpus (ownership verified first);
 * creates a temporary SQLite database with the corpus users;
-* serves the built frontend from the same origin as the API;
+* serves the built frontend from the same origin as the API, and the same build again on
+  ``port + 2``, the origin allowed for credentialed cross-origin requests: a browser test
+  checks the guest cookie there across origins (local development: frontend :9000, API
+  :8000);
 * runs fake embedding/Topicer/LLM providers on ``port + 1`` and points every AI
   provider setting at them, with no API keys, so no live or paid provider can be reached
   (tiers on keyed providers are refused before any request).
@@ -30,6 +33,7 @@ from pathlib import Path
 
 import uvicorn
 import yaml
+from starlette.staticfiles import StaticFiles
 
 # Only modules that do not import `semant_demo.config`; see `serve`.
 from tests.corpus import load_corpus
@@ -44,7 +48,8 @@ FAKE_TOPICER_STREAM_DELAY = 3.0
 DEFAULT_LLM_MODELS_CONFIG = Path(__file__).parents[1] / "semant_demo" / "configs" / "llm_models.yaml"
 
 
-def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, fake_url: str, fake_port: int) -> dict[str, str]:
+def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, fake_url: str, fake_port: int,
+                    cross_origin: str) -> dict[str, str]:
     rag_dir = work_dir / "rag_configs"
     rag_dir.mkdir()
     # The default model tiers without per-tier endpoints: every tier uses the fake provider.
@@ -67,6 +72,7 @@ def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, f
         "SQL_DB_URL": f"sqlite+aiosqlite:///{work_dir / 'e2e.db'}",
         "JWT_SECRET": E2E_JWT_SECRET,
         "STATIC_PATH": str(static_dir),
+        "ALLOWED_ORIGIN": cross_origin,
         "RAG_CONFIGS_PATH": str(rag_dir),
         "LLM_MODELS_CONFIG": str(llm_models_path),
         "SEARCH_VECTORS_CONFIG": str(search_vectors_path),
@@ -108,12 +114,14 @@ async def serve(port: int, static_dir: Path) -> None:
     endpoint = StoreEndpoint.from_env()
     fake_port = port + 1
     fake_url = f"http://127.0.0.1:{fake_port}"
+    cross_port = port + 2
     work_dir = Path(tempfile.mkdtemp(prefix="semant-e2e-"))
     try:
         # Set before importing the application: importing `semant_demo.main` builds the
         # process-wide `config` (log level, the production `app`) from the environment.
         assert "semant_demo.config" not in sys.modules, "process-wide config created too early"
-        os.environ.update(profile_environ(endpoint, work_dir, static_dir, fake_url, fake_port))
+        os.environ.update(profile_environ(endpoint, work_dir, static_dir, fake_url, fake_port,
+                                          cross_origin=f"http://127.0.0.1:{cross_port}"))
         from semant_demo.config import Config, config as process_config
         from semant_demo.main import create_app
         from tests.fake_providers import create_fake_provider_app
@@ -126,10 +134,14 @@ async def serve(port: int, static_dir: Path) -> None:
             uvicorn.Server(uvicorn.Config(create_app(config), host="127.0.0.1", port=port, log_level="warning")),
             uvicorn.Server(uvicorn.Config(create_fake_provider_app(load_corpus(), FAKE_TOPICER_STREAM_DELAY),
                                           host="127.0.0.1", port=fake_port, log_level="warning")),
+            # The build alone, for its API requests to cross origins.
+            uvicorn.Server(uvicorn.Config(StaticFiles(directory=static_dir, html=True),
+                                          host="127.0.0.1", port=cross_port, log_level="warning")),
         ]
-        logger.info("E2E app on http://127.0.0.1:%d, fake providers on %s", port, fake_url)
+        logger.info("E2E app on http://127.0.0.1:%d, fake providers on %s, the frontend also on :%d",
+                    port, fake_url, cross_port)
         # Each uvicorn server handles SIGINT/SIGTERM, then restores the previous handler and
-        # re-raises the signal. A no-op base handler lets that end here, so both servers
+        # re-raises the signal. A no-op base handler lets that end here, so all servers
         # stop and the temporary directory is removed below.
         for sig in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig, lambda *_: None)

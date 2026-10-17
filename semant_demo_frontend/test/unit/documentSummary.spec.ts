@@ -199,6 +199,26 @@ describe('useDocumentSummary', () => {
     expect(summary.error.value).toBe('The document could not be summarized.')
   })
 
+  it('a refusal for the daily AI allowance (429) explains it instead of the backend detail', async () => {
+    const summary = useDocumentSummary()
+    const refusal = {
+      detail: 'Insufficient remaining daily AI allowance for this operation; it resets at 2026-10-18 00:00 UTC.',
+      code: 'llm_quota_exhausted',
+      principal: 'guest',
+      reset_at: '2026-10-18T00:00:00Z',
+      limit_usd: 0.25,
+      used_usd: 0.25
+    }
+
+    const request = summary.summarize('c1', 'd1')
+    calls[0].reject(new ResponseError(new Response(JSON.stringify(refusal), { status: 429 })))
+    await request
+
+    expect(summary.error.value).toMatch(/^Today's AI allowance has no room for this request, so nothing was generated\. It resets /)
+    expect(summary.error.value).toContain('Logging in gives you a separate daily allowance.')
+    expect([calls.length, summary.summarizing.value]).toEqual([1, false])
+  })
+
   it('cite() bumps requestedCitation so clicking the same citation twice still re-triggers, and carries the order', () => {
     const summary = useDocumentSummary()
 

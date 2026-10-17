@@ -25,7 +25,6 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Deployment, security and tests
 
-- [#234](https://github.com/DCGM/semant-demo/issues/234) — the frontend does not show the daily AI allowance yet (usage, near-limit warning, a structured message for its 429 and Search's `quota_exhausted`); the backend enforces it ([ARCHITECTURE.md](ARCHITECTURE.md#daily-llm-allowances-featuresquota-adapterssqlquotapy)).
 - [#319](https://github.com/DCGM/semant-demo/issues/319) — access tokens live 7 days without renewal, and the stateless JWT logout revokes nothing server-side: signing out only forgets the token in this browser (all its tabs).
 - [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI.
 - [#261](https://github.com/DCGM/semant-demo/issues/261) — reproducibility of the production frontend build. The backend Python packages are locked; the base images and the embedding service requirements are not ([DEPLOYMENT.md](DEPLOYMENT.md#docker--production-deployment)).

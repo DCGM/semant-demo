@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { createContextGuard, isAbortError, postNdjson } from 'src/shared/api'
+import { createContextGuard, isAbortError, postNdjson, quotaRefusalMessage, quotaRefusalOf, reportAiOperation } from 'src/shared/api'
 
 /**
  * Streaming chat-with-AI helper for span discussion.
@@ -104,9 +104,16 @@ export function useSpanDiscussion() {
       // A cancelled request is not an error; whatever was streamed so far stays.
       if (isCurrentTurn() && !isAbortError(e)) {
         console.error('Span discussion failed', e)
-        error.value = (e as { message?: string })?.message || 'Span discussion request failed'
+        // Refused for the daily AI allowance before the stream started: nothing is retried.
+        const refusal = await quotaRefusalOf(e)
+        if (isCurrentTurn()) {
+          error.value = refusal
+            ? quotaRefusalMessage(refusal)
+            : (e as { message?: string })?.message || 'Span discussion request failed'
+        }
       }
     } finally {
+      reportAiOperation()
       if (isCurrentTurn()) {
         activeAbort = null
         isStreaming.value = false
