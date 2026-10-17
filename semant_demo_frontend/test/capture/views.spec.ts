@@ -1,5 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { annotation, answerChat, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, sidebarPanelButton } from '../e2e/support'
+import {
+  annotation, answerChat, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, sidebarPanelButton
+} from '../e2e/support'
 
 // UI review captures (`scripts/e2e-dev.sh capture`), not part of `make test-e2e`. The
 // capture projects in playwright.config.ts run this file at wide desktop, narrow desktop
@@ -134,4 +136,45 @@ test('chat sources', async ({ page }, testInfo) => {
   await expect(page.getByTestId('chunk-context-target-label')).toBeInViewport()
   await expectRightSidebarIn(page)
   await save(page, testInfo, 'chat-source-document')
+})
+
+// The daily AI allowance (#234): the header indicator and its details, the near-limit warning
+// and a refused chat question (the allowance answered by the test, see answerGuestQuota).
+test('ai allowance details', async ({ page }, testInfo) => {
+  await page.goto('/#/search')
+  await closePhoneNavigation(page)
+  await page.getByRole('button', { name: /^AI allowance:/ }).click()
+  await expect(page.getByTestId('quota-details')).toBeVisible()
+  await expect(page.locator('.q-menu')).toHaveCSS('opacity', '1') // faded in
+  await save(page, testInfo, 'ai-allowance-details')
+})
+
+test('ai allowance near the limit', async ({ page }, testInfo) => {
+  await answerGuestQuota(page, 0.21)
+  await page.goto('/#/rag')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('quota-banner')).toBeVisible()
+  await save(page, testInfo, 'ai-allowance-near-limit')
+})
+
+test('ai allowance used up', async ({ page }, testInfo) => {
+  const reset = await answerGuestQuota(page, 0.25)
+  await page.route('**/api/rag', (route) => route.fulfill({
+    status: 429,
+    json: {
+      detail: 'Insufficient remaining daily AI allowance for this operation.',
+      code: 'llm_quota_exhausted',
+      principal: 'guest',
+      reset_at: reset.toISOString(),
+      limit_usd: 0.25,
+      used_usd: 0.25
+    }
+  }))
+  await page.goto('/#/rag')
+  await closePhoneNavigation(page)
+  const input = page.getByPlaceholder('Vaše otázka?')
+  await input.fill('What happened in Lhota?')
+  await input.press('Enter')
+  await expect(page.locator('.message-bubble').last()).toContainText('Today\'s AI allowance has no room')
+  await save(page, testInfo, 'ai-allowance-used-up')
 })

@@ -353,7 +353,10 @@ They never use the development container or `local_data/`:
 - `make test-e2e` builds the frontend into `semant_demo_frontend/dist/e2e` and starts
   `python -m tests.e2e_server` (from `semant_demo_backend`): the same seeded corpus, a
   temporary SQLite database with the corpus users, the built frontend on the same origin,
-  and fake embedding/Topicer providers on the next port. All AI provider URLs point at the
+  and fake embedding/Topicer providers on the next port. The port after that
+  (`http://127.0.0.1:8767`, the profile's `ALLOWED_ORIGIN`) serves the same build again, so
+  `test/e2e/quota.spec.ts` checks the guest cookie across origins, as in local development
+  (:9000 → :8000). All AI provider URLs point at the
   fakes and no API keys are set; unfaked provider routes answer 501.
 
 The profile serves at `http://127.0.0.1:8765`; log in with a corpus user, e.g. `owner` /
@@ -390,7 +393,7 @@ The Make targets call `scripts/e2e-dev.sh start|test|capture|rebuild|restart|sta
   helper would use that external store instead of a disposable one). The profile runs in the background in its own process group; `stop` ends that group
   (also a server left behind by a killed wrapper) and removes only the container recorded in
   `.e2e-dev/server.log`. State (pid, logs, build fingerprints) is in `.e2e-dev/`, ignored by
-  git. The port is `E2E_DEV_PORT` (default 8775, fake providers on 8776), so the loop does
+  git. The port is `E2E_DEV_PORT` (default 8775, fake providers on 8776, the cross-origin frontend on 8777), so the loop does
   not collide with `make test-e2e` on 8765. A running profile keeps the port it was started
   on; commands with a different `E2E_DEV_PORT` are refused until `stop`.
 - **No silent widening.** `test` needs a selection, a spec or directory path or `--grep`;

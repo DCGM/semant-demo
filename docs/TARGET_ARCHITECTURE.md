@@ -16,4 +16,4 @@ The authoritative description of what the application **does today** is [ARCHITE
 
 ## Open boundaries
 
-See [TODO.md](TODO.md) for relevant issues, including cross-chunk tag-search behavior (#224), multi-request AI concurrency (#227), provider access (#234), and data/index repair as explicitly reviewed maintenance. These do not require reintroducing obsolete architectural layers.
+See [TODO.md](TODO.md) for relevant issues, including cross-chunk tag-search behavior (#224), multi-request AI concurrency (#227), and data/index repair as explicitly reviewed maintenance. These do not require reintroducing obsolete architectural layers.

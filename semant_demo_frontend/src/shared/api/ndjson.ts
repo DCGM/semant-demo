@@ -1,5 +1,5 @@
 import { authHeaders, reportUnauthorized } from './auth'
-import { apiUrl } from './config'
+import { API_CREDENTIALS, apiUrl } from './config'
 import { apiErrorFromResponse } from './errors'
 
 /**
@@ -71,6 +71,7 @@ export async function postNdjson (path: string, body: unknown, request: NdjsonRe
       ...headers
     },
     body: JSON.stringify(body),
+    credentials: API_CREDENTIALS,
     signal: request.signal
   })
   if (response.status === 401) reportUnauthorized(headers)

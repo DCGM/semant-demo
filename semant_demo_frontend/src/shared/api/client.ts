@@ -1,6 +1,6 @@
 import { AuthApi, Configuration, DefaultApi, UsersApi, type Middleware } from 'src/generated/api'
 import { authHeaders, reportUnauthorized } from './auth'
-import { BACKEND_URL } from './config'
+import { API_CREDENTIALS, BACKEND_URL } from './config'
 
 export interface ApiClients {
   default: DefaultApi
@@ -27,11 +27,12 @@ const authentication: Middleware = {
 }
 
 /**
- * The one configuration of the generated client: backend origin and authentication.
- * Hand-written requests (NDJSON streams) use the same sources (`config.ts`, `auth.ts`).
+ * The one configuration of the generated client: backend origin, authentication and
+ * credentials. Hand-written requests (NDJSON streams) use the same sources (`config.ts`,
+ * `auth.ts`, {@link API_CREDENTIALS}).
  */
 export function createApiClients (basePath: string = BACKEND_URL): ApiClients {
-  const configuration = new Configuration({ basePath, middleware: [authentication] })
+  const configuration = new Configuration({ basePath, middleware: [authentication], credentials: API_CREDENTIALS })
   return {
     default: new DefaultApi(configuration),
     auth: new AuthApi(configuration),
