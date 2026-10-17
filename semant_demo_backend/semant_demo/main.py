@@ -8,6 +8,7 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
 from semant_demo.adapters.llm.gateway import limit_provider_sdk_logs
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
+from semant_demo.features.quota.service import QuotaExhausted, utc_now
 from semant_demo.features.user_collections.access import AccessDenied, AuthenticationRequired
 from semant_demo.opentelemetry import RequestTelemetryMiddleware, initialize_opentelemetry
 from semant_demo.features.rag.registry import rag_factory
@@ -94,6 +95,12 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     async def incomplete_write(request: Request, exc: IncompleteWriteError) -> JSONResponse:
         return JSONResponse(status_code=500, content=exc.body())
     app.add_exception_handler(IncompleteWriteError, incomplete_write)
+
+    # An AI operation refused for the caller's daily allowance (features/quota).
+    async def quota_exhausted(request: Request, exc: QuotaExhausted) -> JSONResponse:
+        return JSONResponse(status_code=429, content=exc.body(),
+                            headers={"Retry-After": str(exc.retry_after_seconds(utc_now()))})
+    app.add_exception_handler(QuotaExhausted, quota_exhausted)
 
     app.add_middleware(RequestTelemetryMiddleware, telemetry=telemetry)
     app.add_middleware(

@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
+from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway
 from semant_demo.adapters.topicer.client import TopicerClient
@@ -12,6 +13,7 @@ from semant_demo.bootstrap import AppResources, WeaviateRepositories
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.features.quota.service import QuotaPolicy
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.features.search.vectors import SearchVectors
 from semant_demo.features.rag.registry import RagRegistry
@@ -76,6 +78,12 @@ async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
 
 def get_search_vectors(connection: HTTPConnection) -> SearchVectors:
     return get_resources(connection).search_vectors
+
+def get_quota_ledger(connection: HTTPConnection) -> QuotaLedger:
+    return get_resources(connection).quota_ledger
+
+def get_quota_policy(connection: HTTPConnection) -> QuotaPolicy:
+    return get_resources(connection).quota_policy
 
 def get_topicer(connection: HTTPConnection) -> TopicerClient:
     return get_resources(connection).topicer

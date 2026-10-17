@@ -3,7 +3,7 @@
 The application uses two databases:
 
 1. **Weaviate** — primary vector + document store (collections, references, HNSW index)
-2. **SQLite** (any SQLAlchemy async URL) — user accounts and RAG answer feedback
+2. **SQLite** (any SQLAlchemy async URL) — user accounts, RAG answer feedback and the daily LLM allowance ledger
 
 ---
 
@@ -257,10 +257,10 @@ References:
 ## SQLite Schema
 
 The SQL database (`SQL_DB_URL`, SQLite file `tasks.db` by default — the name is historical)
-holds two application tables, declared on `adapters/sql/base.Base` and created at startup by
-`adapters/sql/tables.create_tables` when missing: `user` (below) and `rag_user_feedback` (likes /
-dislikes of RAG answers, `adapters/sql/feedback.py`). Startup never drops or alters existing
-tables or rows.
+holds the application tables, declared on `adapters/sql/base.Base` and created at startup by
+`adapters/sql/tables.create_tables` when missing: `user` (below), `rag_user_feedback` (likes /
+dislikes of RAG answers, `adapters/sql/feedback.py`) and the LLM quota ledger (below,
+`adapters/sql/quota.py`). Startup never drops or alters existing tables or rows.
 
 Databases created before the refactor may also contain a `tasks` table from the removed
 background tagging jobs. Nothing reads or writes it any more; it is left in place (dropping it
@@ -283,6 +283,51 @@ CREATE TABLE user (
 ```
 
 Users authenticate with a JWT Bearer token (via FastAPI Users). Login accepts **email or username**. Token lifetime is 7 days; the secret is set via the `JWT_SECRET` environment variable.
+
+### LLM quota ledger — daily AI allowances (#371)
+
+Behavior: [ARCHITECTURE.md](ARCHITECTURE.md#daily-llm-allowances-featuresquota-adapterssqlquotapy).
+Amounts are integer micro-USD (1 USD = 1,000,000), USD-equivalent estimates. A principal is
+`guest` (id: SHA-256 hex of the guest cookie) or `account` (id: user UUID). Days are UTC
+`YYYY-MM-DD`. No row holds prompts, answers or secrets; rows are kept indefinitely for now.
+
+```sql
+-- Admission totals; changed only together with an operation, by conditional UPDATEs.
+CREATE TABLE llm_quota_day (
+    principal_kind      VARCHAR(16),
+    principal_id        VARCHAR(64),
+    day                 VARCHAR(10),
+    reserved_micro_usd  BIGINT NOT NULL,  -- reservations of operations not settled (yet, or ever)
+    charged_micro_usd   BIGINT NOT NULL,  -- charges of settled operations
+    PRIMARY KEY (principal_kind, principal_id, day)
+);
+
+-- One admitted user-visible AI operation, booked on its UTC start day.
+CREATE TABLE llm_quota_operation (
+    id                  VARCHAR(36) PRIMARY KEY,
+    principal_kind      VARCHAR(16) NOT NULL,
+    principal_id        VARCHAR(64) NOT NULL,   -- indexed
+    day                 VARCHAR(10) NOT NULL,
+    feature             VARCHAR(64) NOT NULL,
+    status              VARCHAR(16) NOT NULL,   -- pending | settled
+    reserved_micro_usd  BIGINT NOT NULL,
+    charged_micro_usd   BIGINT,                 -- set at settlement
+    unknown_cost_calls  INTEGER,
+    started_at          DATETIME NOT NULL,
+    settled_at          DATETIME
+);
+
+-- The model calls of a settled operation.
+CREATE TABLE llm_quota_call (
+    id              INTEGER PRIMARY KEY,
+    operation_id    VARCHAR(36) NOT NULL REFERENCES llm_quota_operation (id),  -- indexed
+    feature, tier, provider, model, outcome, usage_source, cost_source  VARCHAR NOT NULL,
+    cost_micro_usd  BIGINT,                     -- NULL when unknown, never 0 for unknown
+    input_tokens    INTEGER,
+    output_tokens   INTEGER,
+    recorded_at     DATETIME
+);
+```
 
 ---
 
