@@ -158,4 +158,6 @@ class AppResources:
         except Exception:
             logger.exception("Failed to close Weaviate client.")
         finally:
+            # Settlements of operations whose requests were cancelled write to SQL.
+            await self.llm.wait_for_settlements()
             await self.engine.dispose()

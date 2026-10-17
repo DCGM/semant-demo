@@ -17,7 +17,7 @@ from semant_demo.adapters.llm.models import Capability, FeatureLimits, LlmConfig
 from semant_demo.adapters.llm.usage import (
     LlmInputTooLarge, LlmNotConfigured, LlmOperationLimitExceeded, reported_cost,
 )
-from semant_demo.config import SCRIPT_PATH
+from semant_demo.config import SCRIPT_PATH, Config
 from semant_demo.core.request_context import current_request_id
 from tests.corpus import load_corpus
 from tests.fake_providers import FAKE_COST_PER_TOKEN, create_fake_provider_app
@@ -330,8 +330,10 @@ def test_the_deployed_catalog_sets_explicit_limits_for_every_feature():
     catalog = ModelCatalog.load(SCRIPT_PATH / "configs" / "llm_models.yaml")
 
     for name, spec in raw["features"].items():
-        assert set(spec["limits"]) == {"max_output_tokens", "max_input_tokens", "max_calls"}
+        assert set(spec["limits"]) == {"max_output_tokens", "max_input_tokens", "max_calls", "reserve_usd"}
         assert catalog.policy(name).limits == FeatureLimits(**spec["limits"])
+        # A guest's default daily allowance admits a few operations of every feature.
+        assert 0 < catalog.policy(name).limits.reserve_usd <= Config(environ={}).LLM_QUOTA_GUEST_DAILY_USD / 2
     # Multi-call operations have room for their documented fan-out; single calls do not.
     assert catalog.policy("search_summary").limits.max_calls >= 2 * 10 + 1
     assert catalog.policy("rag").limits.max_calls > catalog.policy("question").limits.max_calls == 1
@@ -390,7 +392,7 @@ async def test_an_input_above_the_limit_is_refused_before_any_request(transport,
 async def test_calls_beyond_the_operation_limit_are_refused(transport, metrics):
     llm = gateway(transport, metrics, catalog=LIMITED)
 
-    with llm.operation("chat") as operation:
+    async with llm.operation("chat") as operation:
         await llm.complete("chat", messages("Krátce."))
         await llm.chat_model("chat", tier="small").ainvoke("Krátce.")
         with pytest.raises(LlmOperationLimitExceeded, match="more than the 2 language model calls"):
@@ -407,8 +409,8 @@ async def test_calls_beyond_the_operation_limit_are_refused(transport, metrics):
 async def test_parallel_calls_share_the_operation_and_nested_operations_reuse_it(transport):
     llm = gateway(transport, catalog=LIMITED)
 
-    with llm.operation("chat") as outer:
-        with llm.operation("chat") as inner:
+    async with llm.operation("chat") as outer:
+        async with llm.operation("chat") as inner:
             assert inner is outer
         results = await asyncio.gather(*(llm.complete("chat", messages("Krátce.")) for _ in range(3)),
                                        return_exceptions=True)
@@ -421,7 +423,7 @@ async def test_the_operation_log_is_content_free(transport, caplog):
     caplog.set_level(logging.INFO, logger="semant_demo.adapters.llm.usage")
     llm = gateway(transport, catalog=LIMITED)
 
-    with llm.operation("chat"):
+    async with llm.operation("chat"):
         await llm.complete("chat", messages())
 
     [record] = [r for r in caplog.records if r.getMessage() == "LLM operation finished"]
@@ -492,7 +494,7 @@ async def test_estimated_tokens_are_priced_and_marked_as_estimated(transport, me
 async def test_an_unpriced_call_has_an_unknown_cost_never_zero(transport, metrics):
     llm = gateway(transport, metrics, catalog=LIMITED)
 
-    with llm.operation("unpriced") as operation:
+    async with llm.operation("unpriced") as operation:
         await llm.complete("unpriced", messages("Krátce."))
 
     [call] = metrics.calls

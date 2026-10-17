@@ -4,14 +4,16 @@ answered from the results. Search titles and per-result summaries are added by
 (#249) is a separate use case over a whole document's chunks; see ``summarize_document``.
 
 Calls go through the LLM gateway (the ``search_summary``, ``document_summary`` and
-``question`` tiers). Logs never carry the query, the question, snippets or the generated text.
+``question`` tiers), each use case as one operation admitted against the caller's daily
+allowance (``budget``); a refusal (``QuotaExhausted``) propagates before the model call.
+Logs never carry the query, the question, snippets or the generated text.
 """
 import logging
 import time
 from uuid import UUID
 
 from semant_demo.adapters.llm.gateway import LlmGateway
-from semant_demo.adapters.llm.usage import LlmRequestRefused
+from semant_demo.adapters.llm.usage import LlmRequestRefused, OperationBudget
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.core.errors import InvalidRequestError
@@ -70,7 +72,7 @@ DocumentSummaryFailed = SafeLlmFailure
 
 
 async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
-                    search_response: SearchResponse) -> SummaryResponse:
+                    search_response: SearchResponse, budget: OperationBudget | None = None) -> SummaryResponse:
     """The summary of ``summary_type`` of the results; only ``results`` is supported.
 
     A failed generation returns the summarizer's configured fallback text.
@@ -78,11 +80,14 @@ async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
     start_time = time.time()
     if summary_type != "results":
         raise InvalidRequestError(f"Unknown summary type: {summary_type}")
-    summary = await summarizer.gen_results_summary(search_response.search_request.query, search_response.results)
+    async with summarizer.operation(budget):
+        summary = await summarizer.gen_results_summary(search_response.search_request.query,
+                                                       search_response.results)
     return SummaryResponse(summary=summary, time_spent=time.time() - start_time)
 
 
-async def answer_question(llm: LlmGateway, question: str, search_response: SearchResponse) -> SummaryResponse:
+async def answer_question(llm: LlmGateway, question: str, search_response: SearchResponse,
+                          budget: OperationBudget | None = None) -> SummaryResponse:
     """An answer to ``question`` from the result snippets, citing them as ``[docN]``.
 
     ``time_spent`` is the search's. Raises :class:`QuestionFailed` when the model call fails.
@@ -93,17 +98,19 @@ async def answer_question(llm: LlmGateway, question: str, search_response: Searc
         {"role": "user", "content": "\n".join(["Here are the text snippets I want to talk about:", *snippets])},
         {"role": "user", "content": question},
     ]
-    try:
-        summary_text = await llm.complete("question", messages, temperature=0.0, max_tokens=300)
-    except Exception as e:
-        logger.error("Question answering failed: %s", type(e).__name__)
-        raise QuestionFailed.of(e, QUESTION_FAILED_MESSAGE) from e
+    async with llm.operation("question", budget):
+        try:
+            summary_text = await llm.complete("question", messages, temperature=0.0, max_tokens=300)
+        except Exception as e:
+            logger.error("Question answering failed: %s", type(e).__name__)
+            raise QuestionFailed.of(e, QUESTION_FAILED_MESSAGE) from e
     return SummaryResponse(summary=summary_text.strip(), time_spent=search_response.time_spent)
 
 
 async def summarize_document(documents: DocumentRepository, collections: UserCollectionRepository,
                              document_summarizer: TemplatedDocumentSummarizer, user: Principal | None,
-                             document_id: Id, collection_id: Id) -> DocumentSummaryResponse:
+                             document_id: Id, collection_id: Id,
+                             budget: OperationBudget | None = None) -> DocumentSummaryResponse:
     """
     A summary of the current document of ``collection_id`` (#249), with citations to the
     chunks it was built from.
@@ -111,7 +118,7 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
     Authorization and chunk access go entirely through
     ``features.documents.service.read_chunks_in_collection`` (collection-read access, then
     the document must belong to the collection) rather than a new Weaviate read: a denied
-    request never reaches the summarizer. Chunks are sorted by their document ``order``
+    request never reaches the summarizer, nor ``budget``. Chunks are sorted by their document ``order``
     (chunks without one sort last) and truncated to the summarizer's configured
     ``chunk_limit`` (first N chunks in document order); the citations list exactly the
     chunks sent to the model, and ``truncated``/``total_chunks``/``summarized_chunks`` let the
@@ -137,8 +144,9 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
         nonlocal failure
         failure = exc
 
-    summary = await document_summarizer.gen_document_summary(truncated, document_title=detail.document.title,
-                                                              on_error=capture_failure)
+    async with document_summarizer.operation(budget):
+        summary = await document_summarizer.gen_document_summary(truncated, document_title=detail.document.title,
+                                                                  on_error=capture_failure)
     if failure is not None:
         raise DocumentSummaryFailed.of(failure, DOCUMENT_SUMMARY_FAILED_MESSAGE) from failure
     citations = [

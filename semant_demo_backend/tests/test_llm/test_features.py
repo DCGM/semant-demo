@@ -352,8 +352,9 @@ async def test_an_agentic_rag_answer_is_capped_by_the_rag_call_limit(tmp_path, m
     llm = limited_llm(tmp_path, metrics, "rag", max_calls=3)
     rag = load_rag(tmp_path, llm, "xmartiAgentRag", **AGENT_PARAMS)
 
-    with llm.operation("rag"), pytest.raises(LlmOperationLimitExceeded):
-        await rag.rag_request(RagRequest(question=QUESTION, rag_search=RagSearch()), FakeRetriever())
+    async with llm.operation("rag"):
+        with pytest.raises(LlmOperationLimitExceeded):
+            await rag.rag_request(RagRequest(question=QUESTION, rag_search=RagSearch()), FakeRetriever())
 
     assert len(metrics.calls) == 3
 
@@ -374,8 +375,9 @@ async def test_the_adaptive_rag_passes_a_server_refusal_on(tmp_path, metrics):
     rag = load_rag(tmp_path, llm, "IncrementalAdaptiveRagGenerator", tier="medium", web_search_enabled=False,
                    max_retries=1)
 
-    with llm.operation("rag"), pytest.raises(LlmOperationLimitExceeded):
-        await rag.rag_request(RagRequest(question=QUESTION, rag_search=RagSearch()), FakeRetriever())
+    async with llm.operation("rag"):
+        with pytest.raises(LlmOperationLimitExceeded):
+            await rag.rag_request(RagRequest(question=QUESTION, rag_search=RagSearch()), FakeRetriever())
     assert len(metrics.calls) == 1
 
 

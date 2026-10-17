@@ -322,6 +322,8 @@ CREATE TABLE llm_quota_call (
     id              INTEGER PRIMARY KEY,
     operation_id    VARCHAR(36) NOT NULL REFERENCES llm_quota_operation (id),  -- indexed
     feature, tier, provider, model, outcome, usage_source, cost_source  VARCHAR NOT NULL,
+    -- outcome: success | error | cancelled | unfinished (still running when the operation
+    -- ended: tier/provider/model empty, cost unknown)
     cost_micro_usd  BIGINT,                     -- NULL when unknown, never 0 for unknown
     input_tokens    INTEGER,
     output_tokens   INTEGER,

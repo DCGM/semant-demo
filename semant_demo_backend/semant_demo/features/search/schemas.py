@@ -12,6 +12,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from semant_demo.features.documents.schemas import DocumentChunk, Document
+from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 
 
 class SearchType(str, Enum):
@@ -138,6 +139,9 @@ class SearchResponse(BaseModel):
     vector: str | None = None
     # Problems that did not prevent the results, e.g. failed optional summaries.
     warnings: list[str] = []
+    # Set when the requested titles/summaries were skipped because the caller's daily AI
+    # allowance had no room for them; the results are complete (warnings says so too).
+    quota_exhausted: QuotaExhaustedResponse | None = None
 
 
 #############################

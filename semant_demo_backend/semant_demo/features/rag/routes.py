@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from semant_demo.adapters.llm.usage import LlmRequestRefused
 from semant_demo.config import Config
+from semant_demo.features.quota.principal import get_allowance_budget
+from semant_demo.features.quota.schemas import QUOTA_EXHAUSTED_RESPONSES
+from semant_demo.features.quota.service import AllowanceBudget
 from semant_demo.features.rag import service
 from semant_demo.features.rag.registry import RagRegistry
 from semant_demo.features.rag.schemas import ExplainRequest, FeedbackRequest, RagRequestMain, RagResponse, RagRouteConfig
@@ -25,24 +28,26 @@ async def get_avalaible_rag_configurations(current_user: User | None = Depends(c
     return service.configurations(rag_registry)
 
 
-@exp_router.post("/api/rag", response_model=RagResponse)
+@exp_router.post("/api/rag", response_model=RagResponse, responses=QUOTA_EXHAUSTED_RESPONSES)
 async def rag(request: RagRequestMain, search_backends: SearchBackends = Depends(get_search_backends),
               current_user: User | None = Depends(current_active_optional_user),
               rag_registry: RagRegistry = Depends(get_rag_registry),
-              config: Config = Depends(get_config)) -> RagResponse:
+              config: Config = Depends(get_config),
+              budget: AllowanceBudget = Depends(get_allowance_budget)) -> RagResponse:
     try:
-        return await service.answer(rag_registry, search_backends, request, config.RAG_HISTORY_LIMIT)
+        return await service.answer(rag_registry, search_backends, request, config.RAG_HISTORY_LIMIT, budget)
     except LlmRequestRefused as e:
         raise HTTPException(status_code=e.status_code, detail=str(e))
 
 
-@exp_router.post("/api/rag/explain")
+@exp_router.post("/api/rag/explain", responses=QUOTA_EXHAUSTED_RESPONSES)
 async def explain_selection(request: ExplainRequest,
                             current_user: User | None = Depends(current_active_optional_user),
                             rag_registry: RagRegistry = Depends(get_rag_registry),
-                            config: Config = Depends(get_config)):
+                            config: Config = Depends(get_config),
+                            budget: AllowanceBudget = Depends(get_allowance_budget)):
     try:
-        return await service.explain(rag_registry, request, config.RAG_HISTORY_LIMIT)
+        return await service.explain(rag_registry, request, config.RAG_HISTORY_LIMIT, budget)
     except LlmRequestRefused as e:
         raise HTTPException(status_code=e.status_code, detail=str(e))
 

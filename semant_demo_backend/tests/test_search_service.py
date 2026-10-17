@@ -72,7 +72,7 @@ class FailingSummarizer:
     def __init__(self, titles_done=1):
         self.titles_done = titles_done
 
-    async def __call__(self, request, response):
+    async def __call__(self, request, response, budget=None):
         for r in response.results[:self.titles_done]:
             r.query_title = "title"
         raise RuntimeError("summary provider down")
@@ -83,7 +83,7 @@ class RecordingSummarizer:
         self.calls = 0
         self.failures = list(failures)
 
-    async def __call__(self, request, response):
+    async def __call__(self, request, response, budget=None):
         self.calls += 1
         response.results_summary = "summary"
         return self.failures

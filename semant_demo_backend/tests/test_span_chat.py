@@ -186,7 +186,7 @@ async def _events(store, provider) -> list[dict]:
 
     discussion = await span_chat.prepare_discussion(store, OWNER, request(store.span), provider,
                                                     context_chars=5, history_limit=20)
-    return [json.loads(line) async for line in _stream(discussion)]
+    return [json.loads(line) async for line in _stream(discussion, provider.operation())]
 
 
 async def test_stream_ends_with_done():

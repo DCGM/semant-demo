@@ -1,7 +1,9 @@
-"""``GET /api/quota``, the guest cookie and the 429 contract of an exhausted allowance."""
+"""``GET /api/quota``, the guest cookie (on every kind of response) and the 429 contract of
+an exhausted allowance."""
 import pytest
 from asgi_lifespan import LifespanManager
-from fastapi import Depends
+from fastapi import Depends, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
 from httpx import ASGITransport, AsyncClient
 
 from semant_demo.features.quota import service
@@ -42,6 +44,21 @@ async def _start(tmp_path, **settings):
                            policy=Depends(get_quota_policy)):
         return {"operation_id": await service.admit(ledger, policy, principal, "rag", 0.01)}
 
+    # Responses that are not a route's returned model.
+    @app.get("/api/test/stream")
+    async def stream(principal=Depends(get_quota_principal)):
+        async def lines():
+            yield b"a\n"
+        return StreamingResponse(lines(), media_type="application/x-ndjson")
+
+    @app.get("/api/test/own-response")
+    async def own_response(principal=Depends(get_quota_principal)):
+        return JSONResponse({"ok": True}, headers={"set-cookie": "other=1; Path=/"})
+
+    @app.get("/api/test/error")
+    async def error(principal=Depends(get_quota_principal)):
+        raise HTTPException(status_code=502, detail="The provider failed.")
+
     return app
 
 
@@ -71,6 +88,30 @@ async def test_a_guest_gets_a_cookie_and_the_guest_allowance(quota_app):
         == {"principal": "guest", "limit_usd": 0.25, "used_usd": 0.0, "remaining_usd": 0.25,
             "near_limit": False, "exhausted": False}
     assert body["reset_at"].endswith(("+00:00", "Z")) and body["reset_at"][11:19] == "00:00:00"
+
+
+@pytest.mark.parametrize("path, status", [
+    ("/api/test/stream", 200), ("/api/test/own-response", 200), ("/api/test/error", 502),
+])
+async def test_a_new_guest_cookie_reaches_streamed_own_and_error_responses(quota_app, path, status):
+    async with quota_app.client() as client:
+        response = await client.get(path)
+        again = await client.get(path)
+
+    assert response.status_code == status
+    assert "HttpOnly" in _guest_cookie(response)
+    # The route's own cookies are kept, and a returning guest gets no new cookie.
+    if path == "/api/test/own-response":
+        assert "other=1; Path=/" in response.headers.get_list("set-cookie")
+    assert not [h for h in again.headers.get_list("set-cookie") if h.startswith(f"{GUEST_COOKIE}=")]
+
+
+async def test_a_new_guest_refused_with_429_gets_its_cookie(tmp_path):
+    app = await _start(tmp_path, LLM_QUOTA_GUEST_DAILY_USD="0.005")  # less than the operation's $0.01
+    async with LifespanManager(app), App(app).client() as client:
+        refused = await client.post("/api/test/ai-operation")
+
+    assert refused.status_code == 429 and "HttpOnly" in _guest_cookie(refused)
 
 
 async def test_the_guest_cookie_keeps_the_guest_usage(quota_app):

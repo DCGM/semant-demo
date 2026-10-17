@@ -8,6 +8,7 @@ string. It shares its prompt-selection and single-call LLM generation with
 otherwise follows the same ``_generate``/``_generate_or_fallback`` pattern.
 """
 import logging
+from contextlib import nullcontext
 from typing import Callable, Optional, Sequence
 
 from classconfig import ConfigurableFactory, ConfigurableMixin, ConfigurableValue
@@ -15,6 +16,7 @@ from classconfig.configurable import CreatableMixin
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from semant_demo.adapters.llm.gateway import LlmGateway
+from semant_demo.adapters.llm.usage import OperationBudget
 from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.features.summarization.templated import ModelOptions, TemplateGenerationMixin
 from semant_demo.utils.template import Template, TemplateTransformer
@@ -71,6 +73,10 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
         desc="Prompt for document summary generation.",
         transform=TemplateTransformer()
     )
+
+    def operation(self, budget: OperationBudget | None = None):
+        """``async with``: the ``document_summary`` LLM operation, admitted against ``budget``."""
+        return self.llm.operation("document_summary", budget) if self.llm is not None else nullcontext()
 
     async def _generate(self, system_prompt: Template, prompt: Template, values: dict,
                         options: ModelOptions) -> str:

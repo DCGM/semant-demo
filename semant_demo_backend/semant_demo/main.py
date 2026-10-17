@@ -8,6 +8,7 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
 from semant_demo.adapters.llm.gateway import limit_provider_sdk_logs
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
+from semant_demo.features.quota.guest_cookie import GuestCookieMiddleware
 from semant_demo.features.quota.service import QuotaExhausted, utc_now
 from semant_demo.features.user_collections.access import AccessDenied, AuthenticationRequired
 from semant_demo.opentelemetry import RequestTelemetryMiddleware, initialize_opentelemetry
@@ -102,6 +103,8 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
                             headers={"Retry-After": str(exc.retry_after_seconds(utc_now()))})
     app.add_exception_handler(QuotaExhausted, quota_exhausted)
 
+    # A guest cookie issued for a request reaches every kind of response (features/quota).
+    app.add_middleware(GuestCookieMiddleware)
     app.add_middleware(RequestTelemetryMiddleware, telemetry=telemetry)
     app.add_middleware(
         CORSMiddleware,
