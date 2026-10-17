@@ -20,7 +20,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces connect and [DATABASE.
 | Run the application with real development data | [Local development](DEVELOPMENT.md) |
 | Understand deployment or environment settings | [Deployment guide](DEPLOYMENT.md) and [Compose operations](../deploy/README.md) |
 | Inspect or repair data | [Data maintenance](DATA_MAINTENANCE.md) — read the safety rules first |
-| Measure Weaviate size and query performance | [DB benchmark tool](DB_BENCHMARK.md) and the [2026-10 production audit](WEAVIATE_AUDIT_2026-10.md) |
+| Measure Weaviate size and query performance | [DB benchmark tool](DB_BENCHMARK.md) and the production audits [before](WEAVIATE_AUDIT_2026-10.md) and [after](WEAVIATE_AUDIT_2026-10-17.md) the Qwen migration |
 | Find known limitations or proposed work | [Open issues](TODO.md) and [architecture decisions](adr/README.md) |
 
 ## Start with tests, not a database copy
