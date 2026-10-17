@@ -10,7 +10,8 @@ visibly instead of reaching a real service.
 Chat replies report token usage (whitespace-separated words) unless the requested model
 name contains ``no-usage``. OpenAI-compatible replies also report an OpenRouter-style
 ``usage.cost`` (``FAKE_COST_PER_TOKEN`` per token) when the model name contains
-``reported-cost``, also in the final usage chunk of a stream. With tools offered, the OpenAI fake acts as a minimal agent:
+``reported-cost``, also in the final usage chunk of a stream, and an invalid negative one when
+it contains ``negative-cost``. With tools offered, the OpenAI fake acts as a minimal agent:
 it searches for the question, then synthesizes the found passages, then answers.
 """
 from __future__ import annotations
@@ -180,6 +181,8 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
         usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
         if _reports_cost(body):
             usage["cost"] = usage["total_tokens"] * FAKE_COST_PER_TOKEN
+        elif "negative-cost" in str(body.get("model", "")):
+            usage["cost"] = -1.0
         base = {"id": "fake", "created": 1767225600, "model": body.get("model", "")}
         if not body.get("stream"):
             return {**base, "object": "chat.completion",

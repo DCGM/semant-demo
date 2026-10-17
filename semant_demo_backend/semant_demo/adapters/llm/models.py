@@ -9,6 +9,7 @@ from the environment.
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -189,8 +190,8 @@ def _tier(tier: ModelTier, spec: dict[str, Any]) -> TierModel:
 def _price(value: Any) -> float | None:
     if value is None:
         return None
-    if isinstance(value, bool) or float(value) < 0:
-        raise ValueError("Prices must be non-negative numbers")
+    if isinstance(value, bool) or not math.isfinite(float(value)) or float(value) < 0:
+        raise ValueError("Prices must be finite non-negative numbers")
     return float(value)
 
 

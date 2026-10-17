@@ -36,6 +36,19 @@ from semant_demo.features.rag.pipelines.incremental_rag_prompts import *
 logger = logging.getLogger(__name__)
 
 
+async def gather_or_cancel(aws) -> list:
+    """``asyncio.gather``, but when one awaitable fails the others are cancelled and awaited
+    before its exception is raised, so no model call outlives the LLM operation counting it."""
+    tasks = [asyncio.ensure_future(a) for a in aws]
+    try:
+        return await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+
 # Internal state of the adaptive RAG graph.
 class ExtractedMetadata(BaseModel):
     min_year: int | None = None
@@ -288,7 +301,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
             #call in parallel
             search_tasks = [single_search(query) for query in queries]
-            search_responses = await asyncio.gather(*search_tasks)
+            search_responses = await gather_or_cancel(search_tasks)
             
             #remove duplicities and put it together
             unique_chunks = {}
@@ -469,7 +482,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             
         #call in parallel
         grade_tasks = [grader_single_doc(doc) for doc in state["documents"]]
-        doc_responses = await asyncio.gather(*grade_tasks)
+        doc_responses = await gather_or_cancel(grade_tasks)
 
         #remove None
         filtered_documents = [doc for doc in doc_responses if doc is not None]

@@ -330,20 +330,31 @@ def _reported_cost(response: LLMResult) -> float | None:
 
 
 def reported_cost(usage: Any) -> float | None:
-    """The call cost in an OpenRouter ``usage`` object, or ``None`` when it has none.
+    """The call cost in an OpenRouter ``usage`` object, or ``None`` when it has no valid one.
 
     For a call on the account's own provider key (``is_byok``) OpenRouter reports its fee
     as ``cost`` and the provider's charge as ``cost_details.upstream_inference_cost``.
     """
     if not isinstance(usage, dict):
         return None
-    cost = usage.get("cost")
-    if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+    cost = _valid_cost(usage.get("cost"))
+    if cost is None:
         return None
     upstream = (usage.get("cost_details") or {}).get("upstream_inference_cost")
-    if usage.get("is_byok") and isinstance(upstream, (int, float)) and not isinstance(upstream, bool):
+    if usage.get("is_byok") and upstream is not None:
+        upstream = _valid_cost(upstream)
+        if upstream is None:
+            return None
         cost += upstream
-    return float(cost)
+    return cost
+
+
+def _valid_cost(value: Any) -> float | None:
+    """A finite non-negative number as ``float``; anything else (negative, NaN, infinity,
+    non-numbers) is not a usable cost."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        return None
+    return float(value)
 
 
 def _estimate_tokens(chars: int) -> int:
