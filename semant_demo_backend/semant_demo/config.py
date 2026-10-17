@@ -49,6 +49,11 @@ class Config:
 
         # Server-side model tiers and the tiers each feature may use (adapters/llm/models.py).
         self.LLM_MODELS_CONFIG = env.get("LLM_MODELS_CONFIG", str(SCRIPT_PATH / "configs" / "llm_models.yaml"))
+        # Timeout (seconds) and SDK retries of one provider request of the LLM gateway.
+        self.LLM_TIMEOUT_SECONDS = float(env.get("LLM_TIMEOUT_SECONDS", 120.0))
+        self.LLM_MAX_RETRIES = int(env.get("LLM_MAX_RETRIES", 1))
+        # Most recent RAG history messages sent to the model; older ones are left out.
+        self.RAG_HISTORY_LIMIT = int(env.get("RAG_HISTORY_LIMIT", 20))
 
         # SQL db
         # Default is relative to the backend working directory.

@@ -8,7 +8,9 @@ provider route answers 501, so a feature that would call an unfaked provider fai
 visibly instead of reaching a real service.
 
 Chat replies report token usage (whitespace-separated words) unless the requested model
-name contains ``no-usage``. With tools offered, the OpenAI fake acts as a minimal agent:
+name contains ``no-usage``. OpenAI-compatible replies also report an OpenRouter-style
+``usage.cost`` (``FAKE_COST_PER_TOKEN`` per token) when the model name contains
+``reported-cost``, also in the final usage chunk of a stream. With tools offered, the OpenAI fake acts as a minimal agent:
 it searches for the question, then synthesizes the found passages, then answers.
 """
 from __future__ import annotations
@@ -25,6 +27,7 @@ from tests.corpus import Corpus
 from tests.fakes import fake_embedding, second_embedding
 
 FAKE_REASON = "fake provider: tag example found in text"
+FAKE_COST_PER_TOKEN = 3e-6
 
 
 def fake_chat_answer(messages: list[dict[str, Any]]) -> str:
@@ -51,6 +54,10 @@ def _words(messages: list[dict[str, Any]]) -> int:
 
 def _reports_usage(body: dict) -> bool:
     return "no-usage" not in str(body.get("model", ""))
+
+
+def _reports_cost(body: dict) -> bool:
+    return "reported-cost" in str(body.get("model", ""))
 
 
 def fake_agent_step(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -171,6 +178,8 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
         usage = {"prompt_tokens": _words(body.get("messages", [])),
                  "completion_tokens": len(str(message.get("content") or "").split())}
         usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
+        if _reports_cost(body):
+            usage["cost"] = usage["total_tokens"] * FAKE_COST_PER_TOKEN
         base = {"id": "fake", "created": 1767225600, "model": body.get("model", "")}
         if not body.get("stream"):
             return {**base, "object": "chat.completion",

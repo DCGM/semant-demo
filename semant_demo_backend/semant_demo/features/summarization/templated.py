@@ -77,6 +77,13 @@ class TemplateGenerationMixin:
 
 class TemplatedSearchResultsSummarizer(TemplateGenerationMixin, SearchResultsSummarizer):
 
+    max_generated_results: int = ConfigurableValue(
+        user_default=10,
+        desc="Results of one search that get a generated title and per-result summary; later results get "
+             "none, and the search response says so in a warning. Keep within the search_summary "
+             "max_calls limit (two calls per result plus the results summary)."
+    )
+
     gen_title_model_options: ModelOptions = ConfigurableFactory(
         ModelOptions,
         desc="Model options for title generation.",

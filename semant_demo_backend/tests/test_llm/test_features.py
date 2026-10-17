@@ -1,8 +1,10 @@
 """Complete requests of the LLM features through the real gateway and LangChain models,
 against fake HTTP providers: the RAG pipelines (incl. agent tool subcalls), the question
-endpoint and search summaries. Also: RAG configurations choose only permitted tiers."""
+endpoint and search summaries. Also: RAG configurations choose only permitted tiers, and
+feature limits bound each feature's calls and operations (#397)."""
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -11,13 +13,16 @@ from httpx import ASGITransport, AsyncClient
 
 from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings, limit_provider_sdk_logs
 from semant_demo.adapters.llm.models import ModelCatalog
+from semant_demo.adapters.llm.usage import LlmInputTooLarge, LlmOperationLimitExceeded
 from semant_demo.config import SCRIPT_PATH, Config
 from semant_demo.features.documents.schemas import Document
-from semant_demo.features.rag.schemas import RagRequest, RagSearch
+from semant_demo.features.rag import service as rag_service
+from semant_demo.features.rag.schemas import ExplainRequest, RagRequest, RagRequestMain, RagResponse, RagSearch
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
 from semant_demo.main import create_app
-from semant_demo.routes.dependencies import get_llm
-from semant_demo.features.rag.registry import rag_factory, rag_load_single_config
+from semant_demo.features.summarization.templated import load_summarizer
+from semant_demo.routes.dependencies import get_llm, get_rag_registry, get_search_backends
+from semant_demo.features.rag.registry import BaseRag, RagRegistry, rag_factory, rag_load_single_config
 from tests.app_support import make_test_config, offline_weaviate, write_offline_llm_catalog
 from tests.corpus import load_corpus
 from tests.fake_providers import create_fake_provider_app
@@ -200,7 +205,8 @@ async def test_question_endpoint_answers_with_the_question_tier(tmp_path, metric
     assert response.json() == {"summary": "Fake summary without passages.", "time_spent": 0.5}
     [call] = metrics.calls
     assert call["attributes"] == {"feature": "question", "tier": "small", "provider": "openai",
-                                  "model": "anthropic/claude-haiku-5.5", "usage_source": "provider"}
+                                  "model": "anthropic/claude-haiku-5.5", "usage_source": "provider",
+                                  "cost_source": "price"}
 
 
 async def test_question_without_a_provider_key_is_a_bad_gateway(tmp_path):
@@ -291,3 +297,156 @@ async def test_rag_pipelines_neither_print_nor_log_questions_passages_or_answers
     logged = caplog.text + capsys.readouterr().out
     for content in ("Novák", "Lhot", "Kronika", response.rag_answer):
         assert content not in logged
+
+
+# ── bounded workloads (#397) ───────────────────────────────────────────────
+
+AGENT_PARAMS = {"alpha": 0.5, "chunk_limit": 5, "agent_iterations": 5, "prompts": {
+    "system_prompt_template": "Agent ({remaining_iterations} steps).",
+    **{name: name for name in ("assess_retrieval_quality_prompt", "expand_query_prompt",
+                               "decompose_question_prompt", "synthesize_evidence_prompt")}}}
+
+
+def limited_catalog(tmp_path, feature: str, **limits) -> Path:
+    path = write_offline_llm_catalog(tmp_path / "limited_llm_models.yaml")
+    catalog = yaml.safe_load(path.read_text())
+    catalog["features"][feature]["limits"].update(limits)
+    path.write_text(yaml.safe_dump(catalog))
+    return path
+
+
+def limited_llm(tmp_path, metrics, feature: str, **limits) -> LlmGateway:
+    settings = ProviderSettings(openai_api_key="test-key", openai_base_url="http://fake/openai/v1")
+    return LlmGateway(ModelCatalog.load(limited_catalog(tmp_path, feature, **limits)), settings, metrics,
+                      http_transport=ASGITransport(app=create_fake_provider_app(load_corpus())))
+
+
+class RecordingRag(BaseRag):
+    def __init__(self, llm=None, error: Exception | None = None):
+        super().__init__(None, {}, llm)
+        self.requests: list = []
+        self.error = error
+
+    async def rag_request(self, request, retrieve):
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        return RagResponse(rag_answer="ok", time_spent=0.0, response_id="r", sources=[])
+
+    async def explain_selection(self, request):
+        self.requests.append(request)
+        return {"explanation": "ok"}
+
+
+def rag_backends():
+    return SimpleNamespace(vectors=SimpleNamespace(resolve=lambda vector: SimpleNamespace(id="default")))
+
+
+def history(n: int) -> list[dict[str, str]]:
+    return [{"role": "user" if i % 2 == 0 else "assistant", "content": f"m{i}"} for i in range(n)]
+
+
+async def test_an_agentic_rag_answer_is_capped_by_the_rag_call_limit(tmp_path, metrics):
+    # The fake agent needs 4 calls (agent, agent, synthesize subcall, agent); allow 3.
+    llm = limited_llm(tmp_path, metrics, "rag", max_calls=3)
+    rag = load_rag(tmp_path, llm, "xmartiAgentRag", **AGENT_PARAMS)
+
+    with llm.operation("rag"), pytest.raises(LlmOperationLimitExceeded):
+        await rag.rag_request(RagRequest(question=QUESTION, rag_search=RagSearch()), FakeRetriever())
+
+    assert len(metrics.calls) == 3
+
+
+async def test_each_rag_answer_and_explanation_is_one_llm_operation():
+    llm = FakeLlm()
+    registry = RagRegistry(instances={"r": RecordingRag(llm)})
+
+    await rag_service.answer(registry, rag_backends(), RagRequestMain(
+        rag_id="r", rag_request=RagRequest(question=QUESTION, rag_search=RagSearch())))
+    await rag_service.explain(registry, ExplainRequest(rag_id="r", selected_text="x", full_answer="x", sources=[]))
+
+    assert llm.operations == ["rag", "rag"]
+
+
+async def test_the_adaptive_rag_passes_a_server_refusal_on(tmp_path, metrics):
+    llm = limited_llm(tmp_path, metrics, "rag", max_calls=1)
+    rag = load_rag(tmp_path, llm, "IncrementalAdaptiveRagGenerator", tier="medium", web_search_enabled=False,
+                   max_retries=1)
+
+    with llm.operation("rag"), pytest.raises(LlmOperationLimitExceeded):
+        await rag.rag_request(RagRequest(question=QUESTION, rag_search=RagSearch()), FakeRetriever())
+    assert len(metrics.calls) == 1
+
+
+async def test_an_oversized_rag_input_is_refused_by_the_basic_rag(tmp_path, metrics):
+    llm = limited_llm(tmp_path, metrics, "rag", max_input_tokens=50)
+    rag = load_rag(tmp_path, llm, "RagGenerator", tier="small")
+
+    with pytest.raises(LlmInputTooLarge):
+        await rag.rag_request(RagRequest(question="Novák " * 300, rag_search=RagSearch()), FakeRetriever())
+    assert metrics.calls == []
+
+
+async def test_rag_answers_and_explanations_get_only_the_recent_history():
+    pipeline = RecordingRag()
+    registry = RagRegistry(instances={"r": pipeline})
+
+    await rag_service.answer(registry, rag_backends(), RagRequestMain(
+        rag_id="r", rag_request=RagRequest(question=QUESTION, rag_search=RagSearch(), history=history(7))),
+        history_limit=4)
+    await rag_service.explain(registry, ExplainRequest(rag_id="r", selected_text="x", full_answer="x",
+                                                       history=history(7), sources=[]), history_limit=4)
+
+    assert [[m.content for m in r.history] for r in pipeline.requests] == [["m3", "m4", "m5", "m6"]] * 2
+
+
+@pytest.mark.parametrize(("error", "status"), [
+    (LlmOperationLimitExceeded("The request needs more than the 60 language model calls allowed for it."), 503),
+    (LlmInputTooLarge("The request is too large for the language model (about 24000 tokens are allowed)."), 413),
+])
+async def test_rag_routes_answer_a_server_refusal_with_its_status_and_message(tmp_path, error, status):
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_rag_registry] = lambda: RagRegistry(instances={"r": RecordingRag(error=error)})
+    app.dependency_overrides[get_search_backends] = rag_backends
+
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/rag", json={"rag_id": "r", "rag_request": {
+                "question": QUESTION, "rag_search": {}}})
+
+    assert (response.status_code, response.json()) == (status, {"detail": str(error)})
+
+
+async def test_a_question_above_the_input_limit_is_refused_with_413(tmp_path, metrics):
+    fake = create_fake_provider_app(load_corpus())
+    config = make_test_config(tmp_path, OPENAI_API_KEY="test-key", OPENAI_API_URL="http://fake/openai/v1",
+                              LLM_MODELS_CONFIG=str(limited_catalog(tmp_path, "question", max_input_tokens=30)))
+    app = create_app(config, weaviate_connector=offline_weaviate, llm_transport=ASGITransport(app=fake))
+    body = SearchResponse(results=[hit(t) for t in PASSAGES * 5], search_request=search_request(), time_spent=0.5,
+                          search_log=[])
+
+    async with app.router.lifespan_context(app):
+        app.state.resources.llm.recorder.metrics = metrics
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/question", json=question_body(QUESTION, body))
+
+    assert response.status_code == 413
+    assert response.json() == {"detail": "The request is too large for the language model "
+                                         "(about 30 tokens are allowed)."}
+    assert metrics.calls == []
+
+
+async def test_search_summaries_run_as_one_capped_operation_through_the_gateway(tmp_path, metrics, caplog):
+    caplog.set_level(logging.INFO, logger="semant_demo.adapters.llm.usage")
+    llm = limited_llm(tmp_path, metrics, "search_summary")
+    summarizer = load_summarizer(str(SCRIPT_PATH / "configs" / "search_summarizer.yaml"), llm)
+    response = SearchResponse(results=[hit(f"{PASSAGES[0]} {i}") for i in range(12)],
+                              search_request=search_request(), time_spent=0.0, search_log=[])
+
+    failures = await summarizer(search_request(), response)
+
+    # 10 titles + 10 per-result summaries + the results summary, within max_calls (21).
+    assert failures == ["results_limit"] and len(metrics.calls) == 21
+    assert [r.query_title is not None for r in response.results] == [True] * 10 + [False] * 2
+    [record] = [r for r in caplog.records if r.getMessage() == "LLM operation finished"]
+    assert (record.__dict__["llm.operation.calls"], record.__dict__["llm.operation.max_calls"]) == (21, 21)

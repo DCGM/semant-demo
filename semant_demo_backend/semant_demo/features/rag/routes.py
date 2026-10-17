@@ -4,11 +4,13 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from semant_demo.adapters.llm.usage import LlmRequestRefused
+from semant_demo.config import Config
 from semant_demo.features.rag import service
 from semant_demo.features.rag.registry import RagRegistry
 from semant_demo.features.rag.schemas import ExplainRequest, FeedbackRequest, RagRequestMain, RagResponse, RagRouteConfig
 from semant_demo.features.search.service import SearchBackends
-from semant_demo.routes.dependencies import get_async_session, get_rag_registry, get_search_backends
+from semant_demo.routes.dependencies import get_async_session, get_config, get_rag_registry, get_search_backends
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 
@@ -26,15 +28,23 @@ async def get_avalaible_rag_configurations(current_user: User | None = Depends(c
 @exp_router.post("/api/rag", response_model=RagResponse)
 async def rag(request: RagRequestMain, search_backends: SearchBackends = Depends(get_search_backends),
               current_user: User | None = Depends(current_active_optional_user),
-              rag_registry: RagRegistry = Depends(get_rag_registry)) -> RagResponse:
-    return await service.answer(rag_registry, search_backends, request)
+              rag_registry: RagRegistry = Depends(get_rag_registry),
+              config: Config = Depends(get_config)) -> RagResponse:
+    try:
+        return await service.answer(rag_registry, search_backends, request, config.RAG_HISTORY_LIMIT)
+    except LlmRequestRefused as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
 
 
 @exp_router.post("/api/rag/explain")
 async def explain_selection(request: ExplainRequest,
                             current_user: User | None = Depends(current_active_optional_user),
-                            rag_registry: RagRegistry = Depends(get_rag_registry)):
-    return await service.explain(rag_registry, request)
+                            rag_registry: RagRegistry = Depends(get_rag_registry),
+                            config: Config = Depends(get_config)):
+    try:
+        return await service.explain(rag_registry, request, config.RAG_HISTORY_LIMIT)
+    except LlmRequestRefused as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
 
 
 # endpoint of feedback - like/dislike

@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from semant_demo.adapters.llm.gateway import FeatureChat
+from semant_demo.adapters.llm.usage import LlmRequestRefused
 from semant_demo.config import Config
 from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanChatDelta
 from semant_demo.features.annotations.service import AnnotationStore
@@ -42,9 +43,11 @@ async def _stream(discussion: SpanDiscussion) -> AsyncGenerator[bytes, None]:
         async for delta in discussion.deltas():
             yield _ndjson(SpanChatDelta(delta=delta))
     except Exception as e:
-        # Provider and storage errors may echo the conversation or credentials.
+        # Provider and storage errors may echo the conversation or credentials; a server
+        # refusal (e.g. a conversation above the input limit) has a safe message.
         logger.error("Span discussion stream failed: %s", type(e).__name__)
-        yield _ndjson(SpanChatDelta(error=STREAM_FAILED_MESSAGE))
+        message = str(e) if isinstance(e, LlmRequestRefused) else STREAM_FAILED_MESSAGE
+        yield _ndjson(SpanChatDelta(error=message))
         return
     yield _ndjson(SpanChatDelta(done=True))
 

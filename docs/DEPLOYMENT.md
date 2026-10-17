@@ -161,17 +161,19 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `PORT` | `8000` | Listen port of `run.py` and of the Docker image's uvicorn |
 | `STATIC_PATH` | `./static` | Built frontend served by the backend when the directory exists |
 | `LOG_LEVEL` | `INFO` | Python and OTLP log level |
-| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Server-side model, reasoning profile, temperature support, price estimate and permitted feature tiers. Shipped tiers use OpenRouter; see [the October 2026 review](LLM_MODEL_SELECTION_2026-10.md). |
+| `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Server-side model, reasoning profile, temperature support, price estimate (or `local_rate` of a self-hosted tier), permitted feature tiers and per-feature limits ([ARCHITECTURE.md](ARCHITECTURE.md#llm-gateway-adaptersllm)). Shipped tiers use OpenRouter; see [the October 2026 review](LLM_MODEL_SELECTION_2026-10.md). |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `120` / `1` | Timeout and SDK retries of one LLM provider request (Ollama does not retry) |
 | `OPENAI_API_KEY` / `OPENAI_API_URL` | empty / `https://openrouter.ai/api/v1` | **OpenRouter key and endpoint required by all shipped LLM tiers.** The adapter is OpenAI-compatible; override the endpoint only when custom models/credentials support it. |
 | `OLLAMA_URLS` | `http://localhost:11434` | Default endpoint of `ollama` tiers (only the first URL is used) |
 | `GOOGLE_API_KEY` | empty | Key of `google` tiers |
 | `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | Directory of the RAG configurations offered to users |
-| `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summary prompts, fallbacks and options |
+| `RAG_HISTORY_LIMIT` | `20` | Most recent RAG/Explain chat history messages sent to the model |
+| `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summary prompts, fallbacks, options and `max_generated_results` (results of one search that get titles and per-result summaries) |
 | `SEARCH_FILTERS_CONFIG` | `configs/search_filters.yaml` | Search filters ([SEARCH_FILTERS.md](SEARCH_FILTERS.md)) |
 | `SEARCH_VECTORS_CONFIG` | `configs/search_vectors.yaml` | Weaviate named vectors Search and RAG may query, their query embedding and the default ([ARCHITECTURE.md](ARCHITECTURE.md#search-pipeline)); validated at startup. List a vector only after it is populated in the chunk collection |
 | `EMBEDDING_API_KEY` | (empty) | Bearer key sent to the OpenAI-compatible embedding endpoints of search vectors; empty sends none |
 | `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service; deployed separately ([Topicer deployment](../deploy/README.md#topicer)) |
-| `SPAN_CHAT_TEMPERATURE` / `SPAN_CHAT_MAX_TOKENS` | `0.4` / `1024` | Span discussion replies (`span_chat` tier) |
+| `SPAN_CHAT_TEMPERATURE` / `SPAN_CHAT_MAX_TOKENS` | `0.4` / `1024` | Span discussion replies (`span_chat` tier; the tokens are capped by its `max_output_tokens`) |
 | `SPAN_CHAT_CONTEXT_CHARS` / `SPAN_CHAT_HISTORY_LIMIT` | `1500` / `20` | Context window around the span; chat messages forwarded |
 | `CORPUS_OVERVIEW_MAX_AGE` | `600` | Seconds a computed corpus overview (`/api/analytics/corpus/overview`) is served again before it is recomputed; `0` computes it on every request |
 | `FEEDBACK_LOG_PATH` | `semant_demo/feedback.log.jsonl` | JSONL file receiving in-app feedback. An empty value means the default. Deployed instances use `/app/feedback/feedback.log.jsonl`, a host directory mounted from the instance data ([deploy/README](../deploy/README.md#in-app-feedback-storage)) |

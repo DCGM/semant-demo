@@ -1,21 +1,26 @@
 """LLM gateway (adapters/llm/): tier policy, LangChain models against fake HTTP providers,
-and usage records for streamed, non-streamed, failed, abandoned and unmetered calls."""
+usage records for streamed, non-streamed, failed, abandoned and unmetered calls, feature
+limits and operations, and cost sources (provider-reported, price, local rate, unknown)."""
+import asyncio
 import json
 import logging
 
 import httpx
 import pytest
+import yaml
 from httpx import ASGITransport
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway, ProviderSettings
-from semant_demo.adapters.llm.models import Capability, LlmConfigurationError, ModelCatalog
-from semant_demo.adapters.llm.usage import LlmNotConfigured
+from semant_demo.adapters.llm.models import Capability, FeatureLimits, LlmConfigurationError, ModelCatalog
+from semant_demo.adapters.llm.usage import (
+    LlmInputTooLarge, LlmNotConfigured, LlmOperationLimitExceeded, reported_cost,
+)
 from semant_demo.config import SCRIPT_PATH
 from semant_demo.core.request_context import current_request_id
 from tests.corpus import load_corpus
-from tests.fake_providers import create_fake_provider_app
+from tests.fake_providers import FAKE_COST_PER_TOKEN, create_fake_provider_app
 
 API_KEY = "sk-test-secret-key"
 PROMPT = "Kdo byl Jan Novák? [doc1] Jan Novák byl kronikář. [doc2] Novák psal kroniku."
@@ -177,7 +182,8 @@ async def test_openai_compatible_call_records_provider_usage_and_estimated_cost(
     assert transport.paths == ["/openai/v1/chat/completions"]
     [call] = metrics.calls
     assert call["attributes"] == {"feature": "chat", "tier": "medium", "provider": "openai",
-                                  "model": "fake-medium", "usage_source": "provider"}
+                                  "model": "fake-medium", "usage_source": "provider",
+                                  "cost_source": "price"}
     input_tokens = len(" ".join(m["content"] for m in messages()).split())
     assert (call["outcome"], call["input_tokens"], call["output_tokens"]) == ("success", input_tokens, 7)
     assert call["cost_usd"] == pytest.approx((input_tokens * 2.0 + 7 * 10.0) / 1_000_000)
@@ -293,7 +299,218 @@ async def test_usage_log_carries_identity_but_no_content_or_secrets(transport, c
     fields = {k: v for k, v in vars(record).items() if k.startswith(("llm.", "request."))}
     assert fields["request.id"] == "req-123"
     assert fields["llm.feature"] == "chat" and fields["llm.tier"] == "medium" and fields["llm.model"] == "fake-medium"
-    assert fields["llm.usage_source"] == "provider" and fields["llm.estimated_cost_usd"] > 0
+    assert fields["llm.usage_source"] == "provider" and fields["llm.cost_usd"] > 0
+    assert fields["llm.cost_source"] == "price"
     rendered = record.getMessage() + repr(vars(record))
     for secret_or_content in (API_KEY, "Novák", "kronik", "Fake summary"):
         assert secret_or_content not in rendered
+
+
+# ── limits (#397) ──────────────────────────────────────────────────────────
+
+LIMITED = {
+    "tiers": {**CATALOG["tiers"],
+              "small": {"provider": "openai", "model": "fake-small-reported-cost", "input_price": 2.0,
+                        "output_price": 10.0},
+              "large": {"provider": "ollama", "model": "fake-local", "price_basis": "local_rate",
+                        "input_price": 0.5, "output_price": 1.5}},
+    "features": {
+        "chat": {"default": "medium", "allowed": ["small", "medium", "large"],
+                 "limits": {"max_output_tokens": 100, "max_input_tokens": 40, "max_calls": 2}},
+        "unpriced": {"default": "tiny", "allowed": ["tiny"]},
+    },
+}
+LIMITED["tiers"]["tiny"] = {"provider": "openai", "model": "fake-unpriced"}
+
+
+def test_the_deployed_catalog_sets_explicit_limits_for_every_feature():
+    with open(SCRIPT_PATH / "configs" / "llm_models.yaml") as f:
+        raw = yaml.safe_load(f)
+    catalog = ModelCatalog.load(SCRIPT_PATH / "configs" / "llm_models.yaml")
+
+    for name, spec in raw["features"].items():
+        assert set(spec["limits"]) == {"max_output_tokens", "max_input_tokens", "max_calls"}
+        assert catalog.policy(name).limits == FeatureLimits(**spec["limits"])
+    # Multi-call operations have room for their documented fan-out; single calls do not.
+    assert catalog.policy("search_summary").limits.max_calls >= 2 * 10 + 1
+    assert catalog.policy("rag").limits.max_calls > catalog.policy("question").limits.max_calls == 1
+
+
+def test_a_feature_without_limits_gets_the_conservative_defaults():
+    assert ModelCatalog.from_dict(CATALOG).policy("chat").limits == FeatureLimits()
+
+
+@pytest.mark.parametrize(("change", "message"), [
+    ({"features": {"x": {"default": "tiny", "limits": {"max_calls": 0}}}}, "positive integer"),
+    ({"features": {"x": {"default": "tiny", "limits": {"max_tokens": 10}}}}, "Unsupported limits"),
+    ({"features": {"x": {"default": "tiny", "limits": {"max_output_tokens": True}}}}, "positive integer"),
+    ({"tiers": {"tiny": {"provider": "ollama", "model": "m", "price_basis": "local_rate"}}}, "local_rate tier needs"),
+    ({"tiers": {"tiny": {"provider": "ollama", "model": "m", "price_basis": "local_rate", "input_price": 0}}},
+     "local_rate tier needs"),
+    ({"tiers": {"tiny": {"provider": "openai", "model": "m", "input_price": -1, "output_price": 1}}}, "non-negative"),
+    ({"tiers": {"tiny": {"provider": "openai", "model": "m", "price_basis": "invoice"}}}, "Invalid"),
+])
+def test_invalid_limits_and_prices_are_rejected(change, message):
+    data = {"tiers": {"tiny": CATALOG["tiers"]["tiny"]}, "features": {"x": {"default": "tiny"}}, **change}
+    with pytest.raises(LlmConfigurationError, match=message):
+        ModelCatalog.from_dict(data)
+
+
+@pytest.mark.parametrize(("requested", "sent"), [(None, 100), (50, 50), (5000, 100)])
+async def test_output_tokens_are_capped_by_the_feature_limit(transport, requested, sent):
+    llm = gateway(transport, catalog=LIMITED)
+
+    await llm.complete("chat", messages("Krátce."), max_tokens=requested)
+    [d async for d in llm.stream("chat", messages("Krátce."), max_tokens=requested)]
+    await llm.chat_model("chat", max_tokens=requested).ainvoke("Krátce.")
+
+    # LangChain sends max_tokens as Chat Completions max_completion_tokens.
+    assert [p["max_completion_tokens"] for p in transport.payloads] == [sent] * 3
+
+
+async def test_an_input_above_the_limit_is_refused_before_any_request(transport, metrics, caplog):
+    llm = gateway(transport, metrics, catalog=LIMITED)
+    long_prompt = "Novák " * 40   # about 60 estimated tokens, the limit is 40
+
+    with pytest.raises(LlmInputTooLarge, match="too large") as refused:
+        await llm.complete("chat", messages(long_prompt))
+    with pytest.raises(LlmInputTooLarge):
+        [d async for d in llm.stream("chat", messages(long_prompt))]
+
+    assert refused.value.status_code == 413
+    assert transport.paths == [] and metrics.calls == []
+    assert "Novák" not in caplog.text and "LLM call refused" in caplog.text
+
+
+async def test_calls_beyond_the_operation_limit_are_refused(transport, metrics):
+    llm = gateway(transport, metrics, catalog=LIMITED)
+
+    with llm.operation("chat") as operation:
+        await llm.complete("chat", messages("Krátce."))
+        await llm.chat_model("chat", tier="small").ainvoke("Krátce.")
+        with pytest.raises(LlmOperationLimitExceeded, match="more than the 2 language model calls"):
+            await llm.complete("chat", messages("Krátce."))
+    # Outside an operation, single calls are not counted.
+    await llm.complete("chat", messages("Krátce."))
+
+    assert len(transport.paths) == 3
+    assert (operation.started_calls, operation.finished_calls, operation.unknown_cost_calls) == (2, 2, 0)
+    assert operation.cost_sources == {"price", "provider"}
+    assert operation.cost_usd == pytest.approx(sum(c["cost_usd"] for c in metrics.calls[:2]))
+
+
+async def test_parallel_calls_share_the_operation_and_nested_operations_reuse_it(transport):
+    llm = gateway(transport, catalog=LIMITED)
+
+    with llm.operation("chat") as outer:
+        with llm.operation("chat") as inner:
+            assert inner is outer
+        results = await asyncio.gather(*(llm.complete("chat", messages("Krátce.")) for _ in range(3)),
+                                       return_exceptions=True)
+
+    assert sum(isinstance(r, LlmOperationLimitExceeded) for r in results) == 1
+    assert outer.started_calls == 2 and len(transport.paths) == 2
+
+
+async def test_the_operation_log_is_content_free(transport, caplog):
+    caplog.set_level(logging.INFO, logger="semant_demo.adapters.llm.usage")
+    llm = gateway(transport, catalog=LIMITED)
+
+    with llm.operation("chat"):
+        await llm.complete("chat", messages())
+
+    [record] = [r for r in caplog.records if r.getMessage() == "LLM operation finished"]
+    fields = {k: v for k, v in vars(record).items() if k.startswith("llm.")}
+    assert fields["llm.feature"] == "chat" and fields["llm.operation.calls"] == 1
+    assert fields["llm.operation.max_calls"] == 2 and fields["llm.operation.cost_usd"] > 0
+    assert fields["llm.operation.cost_sources"] == "price"
+    assert "Novák" not in repr(vars(record))
+
+
+def test_provider_requests_have_a_timeout_and_few_retries(transport):
+    llm = gateway(transport, catalog=LIMITED, timeout_seconds=7.0, max_retries=0)
+
+    openai_model = llm.chat_model("chat")
+    ollama_model = llm.chat_model("chat", tier="large")
+
+    assert (openai_model.request_timeout, openai_model.max_retries) == (7.0, 0)
+    assert ollama_model.client_kwargs["timeout"] == 7.0
+
+
+# ── cost sources (#397) ────────────────────────────────────────────────────
+
+async def test_a_provider_reported_cost_is_preferred_to_the_tier_prices(transport, metrics):
+    llm = gateway(transport, metrics, catalog=LIMITED)
+
+    await llm.complete("chat", messages("Krátce."), tier="small")
+    [d async for d in llm.stream("chat", messages("Krátce."), tier="small")]
+
+    for call in metrics.calls:
+        assert call["attributes"]["cost_source"] == "provider"
+        tokens = call["input_tokens"] + call["output_tokens"]
+        assert call["cost_usd"] == pytest.approx(tokens * FAKE_COST_PER_TOKEN)
+        assert call["cost_usd"] != pytest.approx((call["input_tokens"] * 2 + call["output_tokens"] * 10) / 1e6)
+
+
+async def test_without_a_reported_cost_provider_tokens_times_prices_are_used(transport, metrics):
+    await gateway(transport, metrics, catalog=LIMITED).complete("chat", messages("Krátce."))
+
+    [call] = metrics.calls
+    assert (call["attributes"]["usage_source"], call["attributes"]["cost_source"]) == ("provider", "price")
+    assert call["cost_usd"] == pytest.approx((call["input_tokens"] * 2 + call["output_tokens"] * 10) / 1e6)
+
+
+async def test_estimated_tokens_are_priced_and_marked_as_estimated(transport, metrics):
+    catalog = {**LIMITED, "tiers": {**LIMITED["tiers"], "medium": {
+        "provider": "openai", "model": "fake-no-usage", "input_price": 2.0, "output_price": 10.0}}}
+
+    await gateway(transport, metrics, catalog=catalog).complete("chat", messages("Krátce."))
+
+    [call] = metrics.calls
+    assert (call["attributes"]["usage_source"], call["attributes"]["cost_source"]) == ("estimated", "price")
+    assert call["cost_usd"] > 0
+
+
+async def test_an_unpriced_call_has_an_unknown_cost_never_zero(transport, metrics):
+    llm = gateway(transport, metrics, catalog=LIMITED)
+
+    with llm.operation("unpriced") as operation:
+        await llm.complete("unpriced", messages("Krátce."))
+
+    [call] = metrics.calls
+    assert call["attributes"]["cost_source"] == "unknown" and call["cost_usd"] is None
+    assert operation.unknown_cost_calls == 1 and operation.cost_usd == 0
+
+
+async def test_a_local_tier_is_charged_its_configured_rate(transport, metrics):
+    await gateway(transport, metrics, catalog=LIMITED).complete("chat", messages("Krátce."), tier="large")
+
+    [call] = metrics.calls
+    assert call["attributes"]["provider"] == "ollama" and call["attributes"]["cost_source"] == "local_rate"
+    assert call["cost_usd"] == pytest.approx((call["input_tokens"] * 0.5 + call["output_tokens"] * 1.5) / 1e6)
+
+
+async def test_failed_and_abandoned_calls_are_priced_from_estimates(transport, metrics):
+    failing = gateway(transport, metrics, catalog=LIMITED, openai_base_url="http://fake/unfaked/v1")
+    with pytest.raises(Exception):
+        await failing.complete("chat", messages("Krátce."), tier="small")
+    stream = gateway(transport, metrics, catalog=LIMITED).stream("chat", messages("Krátce."), tier="small")
+    await anext(stream)
+    await stream.aclose()
+
+    assert [(c["outcome"], c["attributes"]["usage_source"], c["attributes"]["cost_source"]) for c in metrics.calls] \
+        == [("error", "estimated", "price"), ("cancelled", "estimated", "price")]
+    assert all(c["cost_usd"] > 0 for c in metrics.calls)
+
+
+@pytest.mark.parametrize(("usage", "cost"), [
+    ({"cost": 0.0012}, 0.0012),
+    ({"cost": 0}, 0.0),
+    ({"cost": 0.0001, "is_byok": True, "cost_details": {"upstream_inference_cost": 0.002}}, 0.0021),
+    ({"cost": 0.0001, "cost_details": {"upstream_inference_cost": 0.002}}, 0.0001),
+    ({"prompt_tokens": 3}, None),
+    ({"cost": "0.1"}, None),
+    (None, None),
+])
+def test_reported_cost_reads_openrouter_usage(usage, cost):
+    assert reported_cost(usage) == (pytest.approx(cost) if cost is not None else None)

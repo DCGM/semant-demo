@@ -91,7 +91,7 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
                 # (features.summarization.service.summarize_document) turns this into a
                 # failed request rather than returning the fallback text as if it were a
                 # successful summary. The exception itself, not just its kind, is passed
-                # through so the caller can keep a safe, server-authored LlmNotConfigured
+                # through so the caller can keep a safe, server-authored LlmRequestRefused
                 # message (as answer_question does) instead of a generic one.
                 on_error(kind, e)
             return fallback
