@@ -1,0 +1,1080 @@
+{
+ "kind": "inventory",
+ "environment": {
+  "created_at": "2026-10-17T12:21:32+00:00",
+  "tool_version": 2,
+  "git_commit": "8e22680",
+  "target": {
+   "endpoint": "localhost:8080",
+   "weaviate_version": "1.40.1",
+   "chunks_collection": "Chunks",
+   "chunks_class": "Chunks_test",
+   "chunks_objects": 8280272,
+   "chunks_vector_index": "Qwen3_Embedding_0_6B: hnsw maxConn=32 efC=128 ef=-1 quantizer=rq8"
+  }
+ },
+ "inventory": {
+  "weaviate": {
+   "version": "1.40.1",
+   "modules": [
+    "backup-filesystem",
+    "generative-anthropic",
+    "generative-anyscale",
+    "generative-aws",
+    "generative-cohere",
+    "generative-contextualai",
+    "generative-databricks",
+    "generative-deepseek",
+    "generative-digitalocean",
+    "generative-friendliai",
+    "generative-google",
+    "generative-meta",
+    "generative-mistral",
+    "generative-nvidia",
+    "generative-octoai",
+    "generative-openai",
+    "generative-xai",
+    "multi2multivec-jinaai",
+    "multi2multivec-weaviate",
+    "multi2vec-aws",
+    "multi2vec-cohere",
+    "multi2vec-google",
+    "multi2vec-jinaai",
+    "multi2vec-nvidia",
+    "multi2vec-twelvelabs",
+    "multi2vec-voyageai",
+    "reranker-cohere",
+    "reranker-contextualai",
+    "reranker-jinaai",
+    "reranker-nvidia",
+    "reranker-voyageai",
+    "text2multivec-jinaai",
+    "text2vec-aws",
+    "text2vec-cohere",
+    "text2vec-databricks",
+    "text2vec-digitalocean",
+    "text2vec-google",
+    "text2vec-huggingface",
+    "text2vec-jinaai",
+    "text2vec-mistral",
+    "text2vec-morph",
+    "text2vec-nvidia",
+    "text2vec-octoai",
+    "text2vec-openai",
+    "text2vec-voyageai",
+    "text2vec-weaviate"
+   ]
+  },
+  "nodes": [
+   {
+    "name": "node1",
+    "status": "HEALTHY",
+    "version": "1.40.1",
+    "git_hash": "e0c3f76",
+    "stats": {
+     "objectCount": 8363649,
+     "shardCount": 7
+    },
+    "shards": [
+     {
+      "class": "Chunks_test",
+      "name": "j90Blz6sFOmp",
+      "objectCount": 8280272,
+      "vectorIndexingStatus": "READY",
+      "vectorQueueLength": 0,
+      "compressed": true,
+      "loaded": true
+     },
+     {
+      "class": "Documents_test",
+      "name": "BEFUQKrVXFM4",
+      "objectCount": 59008,
+      "vectorIndexingStatus": "READY",
+      "vectorQueueLength": 0,
+      "compressed": false,
+      "loaded": true
+     },
+     {
+      "class": "MetaDataEnrichmentTest",
+      "name": "S0svkpY1LgQt",
+      "objectCount": 10,
+      "vectorIndexingStatus": "READY",
+      "vectorQueueLength": 0,
+      "compressed": false,
+      "loaded": true
+     },
+     {
+      "class": "Span_test",
+      "name": "IV1w39pPebAE",
+      "objectCount": 12869,
+      "vectorIndexingStatus": "READY",
+      "vectorQueueLength": 0,
+      "compressed": false,
+      "loaded": true
+     },
+     {
+      "class": "Tag_test",
+      "name": "NKTxrGUDeCfZ",
+      "objectCount": 11336,
+      "vectorIndexingStatus": "READY",
+      "vectorQueueLength": 0,
+      "compressed": false,
+      "loaded": true
+     },
+     {
+      "class": "TmpChunks",
+      "name": "SEI2h4TPH54y",
+      "objectCount": 32,
+      "vectorIndexingStatus": "READY",
+      "vectorQueueLength": 0,
+      "compressed": false,
+      "loaded": true
+     },
+     {
+      "class": "Usercollection_test",
+      "name": "GjUtht3d1unZ",
+      "objectCount": 122,
+      "vectorIndexingStatus": "READY",
+      "vectorQueueLength": 0,
+      "compressed": false,
+      "loaded": true
+     }
+    ]
+   }
+  ],
+  "aliases": {
+   "Tag": "Tag_test",
+   "UserCollection": "Usercollection_test",
+   "Chunks": "Chunks_test",
+   "Documents": "Documents_test",
+   "Span": "Span_test"
+  },
+  "collections": {
+   "TmpChunks": {
+    "vectors": {
+     "(unnamed)": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": null
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": true,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 7,
+    "searchable": [
+     "language",
+     "text"
+    ],
+    "filterable": 7,
+    "range_filters": [],
+    "references": [],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {
+     "default": 3584
+    }
+   },
+   "Chunks_test": {
+    "vectors": {
+     "Qwen3_Embedding_0_6B": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": {
+       "rq": {
+        "bits": 8,
+        "rescoreLimit": 20
+       }
+      }
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": true,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 31,
+    "searchable": [
+     "communicative_mode",
+     "complexity",
+     "documentary_role",
+     "emotional_tone",
+     "geographic_scope",
+     "information_granularity",
+     "intertextual_density",
+     "language",
+     "named_entity_focus",
+     "narrative_perspective",
+     "quantitative_content_density",
+     "reliability_signals",
+     "start_page_id",
+     "structural_form",
+     "style",
+     "subject_domain",
+     "tagSpans",
+     "temporal_reference_frame",
+     "text",
+     "textual_stance",
+     "title"
+    ],
+    "filterable": 31,
+    "range_filters": [
+     "yearIssued"
+    ],
+    "references": [
+     "automaticTag",
+     "document",
+     "negativeTag",
+     "positiveTag",
+     "userCollection"
+    ],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {
+     "Qwen3_Embedding_0_6B": 1024
+    }
+   },
+   "Span_test": {
+    "vectors": {
+     "default": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": null
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": true,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 9,
+    "searchable": [
+     "reason",
+     "type"
+    ],
+    "filterable": 9,
+    "range_filters": [],
+    "references": [
+     "tag",
+     "text_chunk"
+    ],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {}
+   },
+   "Usercollection_test": {
+    "vectors": {
+     "default": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": null
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": true,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 8,
+    "searchable": [
+     "color",
+     "description",
+     "name",
+     "owner",
+     "user_id"
+    ],
+    "filterable": 8,
+    "range_filters": [],
+    "references": [],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {}
+   },
+   "MetaDataEnrichmentTest": {
+    "vectors": {
+     "default": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": null
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": true,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 6,
+    "searchable": [
+     "complexity",
+     "emotional_tone",
+     "language",
+     "test_complexity",
+     "test_emotional_tone",
+     "text"
+    ],
+    "filterable": 6,
+    "range_filters": [],
+    "references": [],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {}
+   },
+   "Documents_test": {
+    "vectors": {
+     "default": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": null
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": false,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 27,
+    "searchable": [
+     "author",
+     "documentType",
+     "edition",
+     "editors",
+     "illustrators",
+     "language",
+     "library",
+     "manufacturePlaceTerm",
+     "manufacturePublisher",
+     "partName",
+     "partNumber",
+     "placeOfPublication",
+     "publisher",
+     "redaktors",
+     "seriesName",
+     "seriesNumber",
+     "subtitle",
+     "title",
+     "titleMetadata",
+     "translators"
+    ],
+    "filterable": 27,
+    "range_filters": [
+     "dateIssued",
+     "dateIssuedMetadata",
+     "yearIssued",
+     "yearIssuedMetadata"
+    ],
+    "references": [
+     "collection"
+    ],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {}
+   },
+   "Tag_test": {
+    "vectors": {
+     "default": {
+      "type": "hnsw",
+      "distance": "cosine",
+      "ef": -1,
+      "efConstruction": 128,
+      "maxConnections": 32,
+      "vectorCacheMaxObjects": 1000000000000,
+      "filterStrategy": "acorn",
+      "flatSearchCutoff": 40000,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "skip": false,
+      "quantizer": null
+     }
+    },
+    "inverted": {
+     "bm25": {
+      "b": 0.75,
+      "k1": 1.2
+     },
+     "usingBlockMaxWAND": true,
+     "stopwords": "en",
+     "indexTimestamps": false,
+     "indexNullState": false,
+     "indexPropertyLength": false
+    },
+    "properties": 8,
+    "searchable": [
+     "collection_name",
+     "tag_color",
+     "tag_definition",
+     "tag_examples",
+     "tag_name",
+     "tag_pictogram",
+     "tag_shorthand"
+    ],
+    "filterable": 8,
+    "range_filters": [],
+    "references": [
+     "userCollection"
+    ],
+    "sharding": {
+     "desiredCount": 1,
+     "actualCount": 1
+    },
+    "replication_factor": 1,
+    "multi_tenancy": false,
+    "vector_dimensions": {}
+   }
+  },
+  "backups": [
+   {
+    "status": "SUCCESS",
+    "size_gib": 193.2,
+    "started": "2026-10-12T13:39:14",
+    "collections": 7
+   },
+   {
+    "status": "SUCCESS",
+    "size_gib": 267.8,
+    "started": "2026-09-21T22:35:15",
+    "collections": 7
+   },
+   {
+    "status": "SUCCESS",
+    "size_gib": 268.3,
+    "started": "2026-09-17T21:23:23",
+    "collections": 8
+   },
+   {
+    "status": "SUCCESS",
+    "size_gib": 255.2,
+    "started": "2026-08-31T06:17:21",
+    "collections": 7
+   },
+   {
+    "status": "SUCCESS",
+    "size_gib": 188.4,
+    "started": "2026-08-28T09:43:19",
+    "collections": 7
+   },
+   {
+    "status": "SUCCESS",
+    "size_gib": 255.2,
+    "started": "2026-08-25T13:21:56",
+    "collections": 7
+   },
+   {
+    "status": "SUCCESS",
+    "size_gib": 255.3,
+    "started": "2026-08-18T02:16:06",
+    "collections": 7
+   },
+   {
+    "status": "SUCCESS",
+    "size_gib": 255.3,
+    "started": "2026-08-11T15:46:04",
+    "collections": 7
+   }
+  ],
+  "vector_coverage": {
+   "collection": "Chunks",
+   "vector_name": "Qwen3_Embedding_0_6B",
+   "sampled": 500,
+   "k": 10,
+   "seed": 394,
+   "self_in_top_k": 500,
+   "self_top1": 475,
+   "found_by_id_filter": 500,
+   "self_in_top_k_rate": 1.0,
+   "found_by_id_filter_rate": 1.0
+  },
+  "disk": {
+   "filesystem": {
+    "total": 3936149856256,
+    "free": 1088225525760
+   },
+   "unreadable_paths": 7,
+   "unreadable_examples": [
+    "documents_test/BEFUQKrVXFM4/lsm",
+    "chunks_test/j90Blz6sFOmp/lsm/property_tagSpans_searchable",
+    "chunks_test/j90Blz6sFOmp/lsm/property_tagSpans",
+    "chunks_test/j90Blz6sFOmp/lsm/property_yearIssued",
+    "chunks_test/j90Blz6sFOmp/lsm/vectors_compressed_Qwen3_Embedding_0_6B"
+   ],
+   "listed_via": "a saved file list",
+   "usage": {
+    "total_bytes": 179269284089,
+    "top_level": {
+     "chunks_test": 177564891034,
+     "documents_test": 1599229095,
+     "tag_test": 60148881,
+     "span_test": 33725488,
+     "tmpchunks": 5555722,
+     "usercollection_test": 4968994,
+     "raft": 524436,
+     "metadataenrichmenttest": 125751,
+     "schema.db": 32768,
+     "index.db": 32768,
+     "classifications.db": 32768,
+     "modules.db": 16384,
+     "migration1.22.fs.hierarchy": 0,
+     "migration1.19.filter2search.skip.flag": 0,
+     "migration1.19.filter2search.state": 0
+    },
+    "components": {
+     "metadataenrichmenttest": {
+      "lsm/property_text": 60922,
+      "index.db": 32768,
+      "lsm/property_text_searchable": 18882,
+      "lsm/objects": 5639,
+      "lsm/property_test_emotional_tone": 1794,
+      "lsm/property__id": 1386,
+      "lsm/property_test_emotional_tone_searchable": 1188,
+      "lsm/property_emotional_tone": 770,
+      "lsm/property_test_complexity": 520,
+      "lsm/property_emotional_tone_searchable": 431,
+      "lsm/property_test_complexity_searchable": 340,
+      "lsm/property_complexity": 264,
+      "lsm/property_language": 262,
+      "lsm/property_language_searchable": 222,
+      "lsm/property_complexity_searchable": 207,
+      "proplengths": 146,
+      "indexcount": 8,
+      "version": 2,
+      "vectors_default.hnsw.commitlog.d": 0
+     },
+     "tmpchunks": {
+      "main.hnsw.commitlog.d": 4194329,
+      "lsm/property_text": 609014,
+      "lsm/objects": 501747,
+      "lsm/property_text_searchable": 199200,
+      "index.db": 32768,
+      "lsm/property_order": 8300,
+      "lsm/property__id": 4400,
+      "lsm/property_start_page_id": 1648,
+      "lsm/property_to_page": 1552,
+      "lsm/property_from_page": 1552,
+      "lsm/property_end_paragraph": 500,
+      "lsm/property_language_searchable": 272,
+      "lsm/property_language": 262,
+      "proplengths": 168,
+      "indexcount": 8,
+      "version": 2
+     },
+     "span_test": {
+      "lsm/objects": 11054321,
+      "lsm/property_tag": 8627364,
+      "vectors_default.hnsw.commitlog.d": 4194329,
+      "lsm/property_reason": 3069056,
+      "lsm/property__id": 2653107,
+      "lsm/property_text_chunk": 1770345,
+      "lsm/property_reason_searchable": 987619,
+      "lsm/property_end": 507888,
+      "lsm/property_start": 462676,
+      "lsm/property_type_searchable": 189022,
+      "lsm/property_confidence": 84852,
+      "lsm/property_type": 62940,
+      "index.db": 32768,
+      "lsm/property_text_chunk__meta_count": 14232,
+      "lsm/property_tag__meta_count": 14120,
+      "lsm/property_chunkId": 288,
+      "lsm/property_tagId": 288,
+      "proplengths": 263,
+      "indexcount": 8,
+      "version": 2
+     },
+     "documents_test": {
+      "lsm/objects": 587980125,
+      "lsm/property_title_searchable": 142703283,
+      "lsm/property__id": 126259052,
+      "lsm/property_dateIssued": 114632368,
+      "lsm/property_dateIssuedMetadata": 102108064,
+      "lsm/property_title": 84861880,
+      "lsm/property_subtitle_searchable": 66501298,
+      "lsm/property_publisher_searchable": 56551893,
+      "lsm/property_titleMetadata_searchable": 54923373,
+      "lsm/property_titleMetadata": 42342400,
+      "lsm/property_placeOfPublication_searchable": 28799117,
+      "lsm/property_subtitle": 28160982,
+      "lsm/property_documentType_searchable": 23158614,
+      "lsm/property_language_searchable": 20369908,
+      "lsm/property_partNumber_searchable": 18661670,
+      "lsm/property_partNumber": 15538170,
+      "lsm/property_publisher": 13695264,
+      "lsm/property_author": 9901976,
+      "lsm/property_partName": 6590342,
+      "lsm/property_partName_searchable": 5696492,
+      "lsm/property_dateIssued_rangeable": 5263604,
+      "lsm/property_dateIssuedMetadata_rangeable": 5256692,
+      "lsm/property_library_searchable": 5082929,
+      "lsm/property_seriesName": 4547168,
+      "lsm/property_placeOfPublication": 4415744,
+      "lsm/property_author_searchable": 3636609,
+      "lsm/property_yearIssued": 3579920,
+      "lsm/property_editors_searchable": 3454113,
+      "lsm/property_yearIssuedMetadata": 2957368,
+      "lsm/property_seriesName_searchable": 1836058,
+      "lsm/property_editors": 1802332,
+      "lsm/property_yearIssued_rangeable": 1240622,
+      "lsm/property_yearIssuedMetadata_rangeable": 1033875,
+      "lsm/property_edition": 806206,
+      "lsm/property_edition_searchable": 570752,
+      "lsm/property_library": 549212,
+      "lsm/property_illustrators": 465730,
+      "lsm/property_translators": 464420,
+      "lsm/property_language": 458864,
+      "lsm/property_documentType": 376340,
+      "lsm/property_redaktors_searchable": 357437,
+      "lsm/property_manufacturePublisher": 340344,
+      "lsm/property_collection__meta_count": 247748,
+      "lsm/property_public": 220288,
+      "lsm/property_translators_searchable": 163578,
+      "lsm/property_illustrators_searchable": 139345,
+      "lsm/property_manufacturePublisher_searchable": 137636,
+      "lsm/property_collection": 90504,
+      "lsm/property_redaktors": 90152,
+      "lsm/property_seriesNumber": 78332,
+      "lsm/property_manufacturePlaceTerm": 38632,
+      "index.db": 32768,
+      "lsm/property_seriesNumber_searchable": 25244,
+      "lsm/property_manufacturePlaceTerm_searchable": 21425,
+      "lsm/property_url": 8056,
+      "proplengths": 2742,
+      "vectors_default.hnsw.commitlog.d": 25,
+      "indexcount": 8,
+      "version": 2
+     },
+     "raft": {
+      "users.json": 148
+     },
+     "chunks_test": {
+      "lsm/objects": 57622701620,
+      "lsm/property_text_searchable": 44795617160,
+      "lsm/property_text": 21401020882,
+      "lsm/vectors_compressed_Qwen3_Embedding_0_6B": 9368673105,
+      "lsm/property_start_page_id": 4888612404,
+      "lsm/property_subject_domain_searchable": 3187636774,
+      "lsm/property_start_page_id_searchable": 2958807502,
+      "lsm/property_reliability_signals_searchable": 2501062841,
+      "lsm/property_structural_form_searchable": 2437412987,
+      "lsm/property_title": 2307293210,
+      "lsm/property_emotional_tone_searchable": 2164793181,
+      "lsm/property_temporal_reference_frame_searchable": 2104689079,
+      "lsm/property_narrative_perspective_searchable": 2095381270,
+      "lsm/property__id": 2017669812,
+      "lsm/property_named_entity_focus_searchable": 1882134101,
+      "lsm/property_title_searchable": 1672777326,
+      "lsm/property_geographic_scope_searchable": 1540285617,
+      "lsm/property_textual_stance_searchable": 1446415252,
+      "lsm/property_document": 1433016408,
+      "lsm/property_quantitative_content_density_searchable": 1337831403,
+      "lsm/property_information_granularity_searchable": 1197884965,
+      "vectors_Qwen3_Embedding_0_6B.hnsw.commitlog.d": 1140059184,
+      "lsm/property_intertextual_density_searchable": 1087853836,
+      "lsm/property_communicative_mode_searchable": 1034115602,
+      "lsm/property_style_searchable": 885263747,
+      "lsm/property_documentary_role_searchable": 842169322,
+      "lsm/property_complexity_searchable": 709274435,
+      "lsm/property_language_searchable": 501695476,
+      "lsm/property_order": 156133168,
+      "lsm/property_subject_domain": 93961700,
+      "lsm/property_reliability_signals": 80455628,
+      "lsm/property_to_page": 75810616,
+      "lsm/property_from_page": 75689488,
+      "lsm/property_emotional_tone": 52036760,
+      "lsm/property_structural_form": 51685572,
+      "lsm/property_textual_stance": 39996588,
+      "lsm/property_documentary_role": 34455192,
+      "lsm/property_yearIssued": 34147548,
+      "lsm/property_temporal_reference_frame": 32669580,
+      "lsm/property_geographic_scope": 30218284,
+      "lsm/property_narrative_perspective": 30198388,
+      "lsm/property_named_entity_focus": 30140728,
+      "lsm/property_communicative_mode": 29987192,
+      "lsm/property_style": 28832784,
+      "lsm/property_information_granularity": 22735628,
+      "lsm/property_quantitative_content_density": 22612500,
+      "lsm/property_yearIssued_rangeable": 19982229,
+      "lsm/property_intertextual_density": 16204158,
+      "lsm/property_complexity": 13033744,
+      "lsm/property_language": 7131158,
+      "lsm/property_end_paragraph": 5044776,
+      "lsm/property_userCollection__meta_count": 3057324,
+      "lsm/property_positiveTag": 3039472,
+      "lsm/property_positiveTag__meta_count": 3025284,
+      "lsm/property_automaticTag__meta_count": 2597134,
+      "lsm/property_negativeTag__meta_count": 2595296,
+      "lsm/property_document__meta_count": 2533824,
+      "lsm/property_userCollection": 2502880,
+      "lsm/property_negativeTag": 179420,
+      "index.db": 32768,
+      "lsm/property_automaticTag": 12700,
+      "proplengths": 3012,
+      "indexcount": 8,
+      "version": 2,
+      "lsm/.migrations": 0
+     },
+     "tag_test": {
+      "lsm/property_tag_definition": 16171736,
+      "lsm/objects": 15978042,
+      "lsm/property_tag_examples": 5777911,
+      "lsm/property__id": 4265017,
+      "vectors_default.hnsw.commitlog.d": 4194329,
+      "lsm/property_tag_definition_searchable": 4177446,
+      "lsm/property_tag_name": 3805010,
+      "lsm/property_tag_examples_searchable": 1770585,
+      "lsm/property_tag_name_searchable": 1266670,
+      "lsm/property_tag_shorthand": 695262,
+      "lsm/property_tag_color": 565572,
+      "lsm/property_tag_shorthand_searchable": 447904,
+      "lsm/property_tag_color_searchable": 362314,
+      "lsm/property_tag_pictogram_searchable": 275782,
+      "lsm/property_userCollection": 121938,
+      "lsm/property_collection_name_searchable": 104478,
+      "lsm/property_tag_pictogram": 50890,
+      "lsm/property_userCollection__meta_count": 50312,
+      "lsm/property_collection_name": 33954,
+      "index.db": 32768,
+      "proplengths": 951,
+      "indexcount": 8,
+      "version": 2
+     },
+     "usercollection_test": {
+      "vectors_default.hnsw.commitlog.d": 4194329,
+      "lsm/objects": 138828,
+      "lsm/property_name": 93194,
+      "lsm/property_created_at": 81604,
+      "lsm/property_description": 79856,
+      "lsm/property_updated_at": 58900,
+      "lsm/property_user_id": 57002,
+      "lsm/property__id": 54487,
+      "lsm/property_color": 52908,
+      "lsm/property_description_searchable": 33522,
+      "index.db": 32768,
+      "lsm/property_name_searchable": 32104,
+      "lsm/property_user_id_searchable": 23065,
+      "lsm/property_owner": 14092,
+      "lsm/property_color_searchable": 10817,
+      "lsm/property_owner_searchable": 7432,
+      "lsm/property_shared_with": 3658,
+      "proplengths": 418,
+      "indexcount": 8,
+      "version": 2
+     }
+    },
+    "largest_bucket_segments": {
+     "metadataenrichmenttest": {
+      "objects": [
+       5627
+      ]
+     },
+     "tmpchunks": {
+      "objects": [
+       501551
+      ]
+     },
+     "span_test": {
+      "objects": [
+       10417094,
+       394369,
+       37024,
+       31322,
+       24556
+      ]
+     },
+     "documents_test": {
+      "objects": [
+       274804724,
+       179842804,
+       89048877,
+       39553044
+      ]
+     },
+     "chunks_test": {
+      "vectors_compressed_Qwen3_Embedding_0_6B": [
+       5792429906,
+       3077071091,
+       382738346,
+       93434981,
+       2626081
+      ],
+      "objects": [
+       41992010785,
+       8720614401,
+       4344210248,
+       2185835076,
+       303316065,
+       37823449,
+       45952
+      ]
+     },
+     "tag_test": {
+      "objects": [
+       15682994,
+       13516
+      ]
+     },
+     "usercollection_test": {
+      "objects": [
+       118174,
+       11433,
+       5830
+      ]
+     }
+    }
+   },
+   "backup_filesystem": {
+    "total": 46356973617152,
+    "free": 1081213976576
+   }
+  },
+  "memory": {
+   "host": {
+    "mem_total": 201770475520,
+    "mem_available": 92260515840,
+    "cached": 86046445568,
+    "anon_pages": 74185015296,
+    "swap_total": 0,
+    "swap_free": 0,
+    "zfs_arc_size": 27896569096,
+    "zfs_arc_max": 100885237760,
+    "pressure_memory_avg10": {
+     "some": 1.92,
+     "full": 1.74
+    },
+    "pressure_io_avg10": {
+     "some": 1.81,
+     "full": 1.81
+    },
+    "pressure_cpu_avg10": {
+     "some": 0.0,
+     "full": 0.0
+    },
+    "loadavg": [
+     1.82,
+     1.12,
+     0.93
+    ],
+    "cpu_count": 32
+   },
+   "cgroup": {
+    "memory_current": 85343113216,
+    "memory_peak": 105226842112,
+    "memory_max": 105226698752,
+    "anon": 17586155520,
+    "file": 66026401792,
+    "file_mapped": 11628904448,
+    "cpu_usage_usec": 40750500314,
+    "oom_events": 0,
+    "oom_kill_events": 0,
+    "io": {
+     "rbytes": 640290963456,
+     "wbytes": 5759756812288,
+     "rios": 5886125,
+     "wios": 49266355
+    }
+   },
+   "cgroup_unavailable": null,
+   "container": null
+  },
+  "logs": {
+   "lines": 486,
+   "first": "2026-10-16T20:45:37Z",
+   "last": "2026-10-17T09:58:10Z",
+   "panic_lines": 0,
+   "startups": 1,
+   "signals": [
+    {
+     "count": 7,
+     "level": "warning",
+     "action": "lazy_shard_auto_detection",
+     "message": "lazy load shard auto-detection result"
+    },
+    {
+     "count": 6,
+     "level": "warning",
+     "action": "read_disk_use",
+     "message": "disk usage currently at N%, threshold set to N%"
+    },
+    {
+     "count": 4,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"document\" on class \"Chunks_test\", because it contains reference to none"
+    },
+    {
+     "count": 3,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"userCollection\" on class \"Chunks_test\", because it contains reference t"
+    },
+    {
+     "count": 2,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"automaticTag\" on class \"Chunks_test\", because it contains reference to "
+    },
+    {
+     "count": 2,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"negativeTag\" on class \"Chunks_test\", because it contains reference to n"
+    },
+    {
+     "count": 2,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"positiveTag\" on class \"Chunks_test\", because it contains reference to n"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "-",
+     "message": "log level not recognized, defaulting to info"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "-",
+     "message": "Multiple vector spaces are present, GraphQL Explore and REST API list objects endpoint mod"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "raft",
+     "message": "heartbeat timeout reached, starting election"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"tag\" on class \"Span_test\", because it contains reference to nonexistent"
+    },
+    {
+     "count": 1,
+     "level": "warning",
+     "action": "graphql_rebuild",
+     "message": "ignoring ref prop \"userCollection\" on class \"Tag_test\", because it contains reference to n"
+    }
+   ]
+  }
+ }
+}

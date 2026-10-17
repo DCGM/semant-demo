@@ -15,12 +15,11 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Data
 
-- [#375](https://github.com/DCGM/semant-demo/issues/375) — the production chunk vector index covers an estimated 2% of the chunks: vector and hybrid search miss most of the corpus ([audit](WEAVIATE_AUDIT_2026-10.md)).
-- [#376](https://github.com/DCGM/semant-demo/issues/376) — chunk context reads (and sorts) every chunk of the document; 0.2–0.5 s p50, up to 4 s.
+- [#376](https://github.com/DCGM/semant-demo/issues/376) — chunk context reads (and sorts) every chunk of the document; 0.14–0.2 s p50, up to 2.4 s ([audit](WEAVIATE_AUDIT_2026-10-17.md#376-chunk-context-and-document-reads)).
 - [#259](https://github.com/DCGM/semant-demo/issues/259) — Kramerius metadata import: unresolved libraries and mirror rows without MODS (no author/publisher).
 - [#281](https://github.com/DCGM/semant-demo/issues/281) — documents without text chunks: audit and gated removal ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#documents-without-chunks-document_cleanup-281)).
 - [#279](https://github.com/DCGM/semant-demo/issues/279) — corpus document public-access policy.
-- [#313](https://github.com/DCGM/semant-demo/issues/313) — chunk ingestion does not fill `Chunks.yearIssued`, which the year filter uses; until it does, run `chunk_year --write` after ingesting chunks or changing document years ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)).
+- [#313](https://github.com/DCGM/semant-demo/issues/313) — chunk ingestion does not fill `Chunks.yearIssued`, which the year filter uses; until it does, run `chunk_year --write` after ingesting chunks or changing document years ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)). Ingestion also does not add the `Qwen3_Embedding_0_6B` vector: run the embedder (`data_tools/embedder`) afterwards, or new chunks are missing from vector and hybrid search.
 - When deploying against an existing Weaviate store, compare property types (especially document metadata) and review the chunk tag audit; never silently rewrite or reset shared data.
 
 ## Deployment, security and tests

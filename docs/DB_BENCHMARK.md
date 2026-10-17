@@ -5,7 +5,8 @@ recording the state of a Weaviate deployment and measuring the application's rea
 low concurrency (#374). Use it again before and after a Weaviate upgrade, a quantization or
 index change, a vector-index rebuild or the introduction of named vectors, and compare the
 runs. The first production baseline and its findings are in
-[WEAVIATE_AUDIT_2026-10.md](WEAVIATE_AUDIT_2026-10.md).
+[WEAVIATE_AUDIT_2026-10.md](WEAVIATE_AUDIT_2026-10.md); the audit after the Qwen migration is
+[WEAVIATE_AUDIT_2026-10-17.md](WEAVIATE_AUDIT_2026-10-17.md).
 
 It is not a load-test framework, a monitor or a CI gate. Run it from `semant_demo_backend/`
 with the repository `.venv`, like the [maintenance commands](DATA_MAINTENANCE.md); the module
@@ -29,7 +30,8 @@ docstring and `--help` list every option.
   result ids and query fingerprints (for overlap between runs), counts, timings and
   configuration. The key is read from `--id-key-file` (default
   `~/.config/semant-demo/db-benchmark-id-key`, created with a random key on first use; never
-  commit or publish it). An unkeyed hash of an id can be matched by anyone who can list the
+  commit or publish it; when the tool runs in a container, mount the file and pass it, or a new key
+  is created inside the container). An unkeyed hash of an id can be matched by anyone who can list the
   ids; a keyed one cannot. Only runs made with the same key can be compared for overlap; the
   results record a `key_id` that identifies the key without revealing it.
 - Results record no host paths, cgroup paths, container ids or backup ids. Container

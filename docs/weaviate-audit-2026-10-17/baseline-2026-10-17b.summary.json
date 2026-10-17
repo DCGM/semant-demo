@@ -1,0 +1,2002 @@
+{
+ "kind": "run_summary",
+ "environment": {
+  "created_at": "2026-10-17T12:41:27+00:00",
+  "tool_version": 2,
+  "git_commit": "8e22680",
+  "target": {
+   "endpoint": "localhost:8080",
+   "weaviate_version": "1.40.1",
+   "chunks_collection": "Chunks",
+   "chunks_class": "Chunks_test",
+   "chunks_objects": 8280272,
+   "chunks_vector_index": "Qwen3_Embedding_0_6B: hnsw maxConn=32 efC=128 ef=-1 quantizer=rq8"
+  }
+ },
+ "profile": {
+  "name": "baseline",
+  "description": "Representative semANT read paths at 1/5/10 concurrent requests.",
+  "seed": 374,
+  "concurrency": [
+   1,
+   5,
+   10
+  ],
+  "requests_per_point": 40,
+  "max_seconds_per_point": 20.0,
+  "warmup_requests": 5,
+  "timeout": 30.0,
+  "max_qps": 20.0,
+  "pause_between_points": 2.0,
+  "level_inputs": "same",
+  "self_recall_k": 10,
+  "collections": {
+   "chunks": null,
+   "documents": null,
+   "tags": null,
+   "user_collections": null,
+   "spans": null
+  },
+  "queries": {
+   "sample_objects": 100,
+   "terms_per_query": 2,
+   "year_ranges": [
+    [
+     1900,
+     1920
+    ],
+    [
+     1800,
+     1850
+    ],
+    [
+     1940,
+     1952
+    ]
+   ],
+   "languages": [
+    "ces",
+    "deu"
+   ],
+   "document_types": [],
+   "sample_tags": 20,
+   "sample_user_collections": 10
+  },
+  "scenarios": [
+   {
+    "name": "bm25",
+    "kind": "search",
+    "description": "Search page, keyword mode (app adapter, document reference returned)",
+    "mode": "text",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "vector",
+    "kind": "search",
+    "description": "Search page, vector mode",
+    "mode": "vector",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "hybrid",
+    "kind": "search",
+    "description": "Search page default and RAG retrieval (hybrid, alpha 0.5, 10 chunks)",
+    "mode": "hybrid",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "hybrid_year",
+    "kind": "search",
+    "description": "Hybrid + chunk yearIssued range filter",
+    "mode": "hybrid",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": "year_range",
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "hybrid_language",
+    "kind": "search",
+    "description": "Hybrid + chunk language filter",
+    "mode": "hybrid",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": "language",
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "hybrid_document_type",
+    "kind": "search",
+    "description": "Hybrid + documentType filter through the document reference",
+    "mode": "hybrid",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": "document_type",
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "hybrid_tag",
+    "kind": "search",
+    "description": "Hybrid + chunk tag reference filter (automatic or positive)",
+    "mode": "hybrid",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": "tag",
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "hybrid_user_collection",
+    "kind": "search",
+    "description": "Hybrid within a user collection (reference filter)",
+    "mode": "hybrid",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": "user_collection",
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "bm25_direct",
+    "kind": "direct",
+    "description": "BM25 without references (database-level)",
+    "mode": "text",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "vector_direct",
+    "kind": "direct",
+    "description": "near_vector without references",
+    "mode": "vector",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "hybrid_direct",
+    "kind": "direct",
+    "description": "Hybrid without references",
+    "mode": "hybrid",
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "chunk_context",
+    "kind": "context",
+    "description": "Two chunks before and after a chunk (span chat / context)",
+    "mode": null,
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "document_view",
+    "kind": "document_view",
+    "description": "Document view: all chunks of a document with collection membership",
+    "mode": null,
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": [
+     1,
+     5
+    ]
+   },
+   {
+    "name": "corpus_overview",
+    "kind": "aggregate",
+    "description": "Corpus overview aggregates over Documents (uncached)",
+    "mode": null,
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": [
+     1,
+     5
+    ]
+   },
+   {
+    "name": "mixed",
+    "kind": "mixed",
+    "description": "Interleaved user-like mix",
+    "mode": null,
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [
+     "hybrid",
+     "hybrid_year",
+     "bm25",
+     "hybrid_user_collection",
+     "chunk_context",
+     "document_view"
+    ],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   },
+   {
+    "name": "self_recall",
+    "kind": "self_recall",
+    "description": "Recall check: each sampled chunk in the top 10 for its own vector",
+    "mode": null,
+    "limit": 10,
+    "alpha": 0.5,
+    "filter": null,
+    "of": [],
+    "context_chunks": 2,
+    "max_document_chunks": 2000,
+    "concurrency": null
+   }
+  ]
+ },
+ "profile_fingerprint": "38e2705497ecc09a",
+ "allow_heavy": false,
+ "safety_limits": {
+  "max_concurrency": 10,
+  "max_qps": 25.0,
+  "max_requests_per_point": 200,
+  "max_seconds_per_point": 60.0,
+  "max_timeout": 60.0,
+  "max_sampled_objects": 500
+ },
+ "inputs": {
+  "sampled_chunks": 100,
+  "with_vector": 100,
+  "vector_dimensions": 1024,
+  "vector_name": "Qwen3_Embedding_0_6B",
+  "with_terms": 100,
+  "documents": 100,
+  "tags": 20,
+  "filter_values_checked": {
+   "tag": 84,
+   "user_collection": 11
+  },
+  "user_collections": 10,
+  "document_types": 10,
+  "notes": [
+   "document_view skips 7 sampled documents with more than 2000 chunks"
+  ],
+  "sampling_seconds": 0.38,
+  "query_set": "716d6939397d"
+ },
+ "id_hashing": {
+  "method": "hmac-sha256(key, sha256(id)[:12])[:12]",
+  "key_id": "968d574b"
+ },
+ "input_reuse": "every concurrency level runs the same inputs; levels after the first re-run them",
+ "resource_source": {
+  "cgroup": "Weaviate container cgroup v2",
+  "unavailable": null
+ },
+ "scenarios": [
+  {
+   "name": "bm25",
+   "kind": "search",
+   "layer": "adapter",
+   "description": "Search page, keyword mode (app adapter, document reference returned)",
+   "limit": 10,
+   "mode": "text",
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.47,
+     "latency_ms": {
+      "min": 1.8,
+      "p50": 3.5,
+      "p95": 8.2,
+      "p99": null,
+      "max": 14.5,
+      "mean": 4.2
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.07,
+      "memory_current_max": 103653867520,
+      "anon_max": 29491609600,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79095721984,
+      "host_pressure_memory_some_avg10_max": 0.04,
+      "host_pressure_io_some_avg10_max": 0.34
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.48,
+     "latency_ms": {
+      "min": 1.8,
+      "p50": 3.2,
+      "p95": 7.8,
+      "p99": null,
+      "max": 13.6,
+      "mean": 4.1
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.07,
+      "memory_current_max": 103671574528,
+      "anon_max": 29509566464,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79111315456,
+      "host_pressure_memory_some_avg10_max": 0.02,
+      "host_pressure_io_some_avg10_max": 0.28
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.47,
+     "latency_ms": {
+      "min": 1.7,
+      "p50": 3.3,
+      "p95": 7.3,
+      "p99": null,
+      "max": 14.2,
+      "mean": 4.2
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.08,
+      "memory_current_max": 103689814016,
+      "anon_max": 29527527424,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 78953148416,
+      "host_pressure_memory_some_avg10_max": 0.01,
+      "host_pressure_io_some_avg10_max": 0.18
+     }
+    }
+   ]
+  },
+  {
+   "name": "vector",
+   "kind": "search",
+   "layer": "adapter",
+   "description": "Search page, vector mode",
+   "limit": 10,
+   "mode": "vector",
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.45,
+     "latency_ms": {
+      "min": 3.1,
+      "p50": 4.2,
+      "p95": 5.2,
+      "p99": null,
+      "max": 5.7,
+      "mean": 4.3
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.07,
+      "memory_current_max": 103689797632,
+      "anon_max": 29527531520,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 78926688256,
+      "host_pressure_memory_some_avg10_max": 0.01,
+      "host_pressure_io_some_avg10_max": 4.08
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.46,
+     "latency_ms": {
+      "min": 3.3,
+      "p50": 4.2,
+      "p95": 5.1,
+      "p99": null,
+      "max": 5.8,
+      "mean": 4.3
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.07,
+      "memory_current_max": 103689555968,
+      "anon_max": 29527531520,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 78930632704,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 3.34
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.47,
+     "latency_ms": {
+      "min": 3.1,
+      "p50": 4.3,
+      "p95": 5.2,
+      "p99": null,
+      "max": 5.5,
+      "mean": 4.3
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.07,
+      "memory_current_max": 103689555968,
+      "anon_max": 29527531520,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79136931840,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 2.24
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid",
+   "kind": "search",
+   "layer": "adapter",
+   "description": "Search page default and RAG retrieval (hybrid, alpha 0.5, 10 chunks)",
+   "limit": 10,
+   "mode": "hybrid",
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.42,
+     "latency_ms": {
+      "min": 6.8,
+      "p50": 10.6,
+      "p95": 12.8,
+      "p99": null,
+      "max": 14.8,
+      "mean": 10.4
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.46,
+      "memory_current_max": 103717576704,
+      "anon_max": 29555355648,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79125622784,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 1.5
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.41,
+     "latency_ms": {
+      "min": 7.5,
+      "p50": 10.6,
+      "p95": 16.5,
+      "p99": null,
+      "max": 21.9,
+      "mean": 11.0
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.46,
+      "memory_current_max": 103735607296,
+      "anon_max": 29573312512,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79037882368,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 1.0
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.41,
+     "latency_ms": {
+      "min": 7.8,
+      "p50": 9.9,
+      "p95": 12.1,
+      "p99": null,
+      "max": 14.6,
+      "mean": 10.2
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.45,
+      "memory_current_max": 103753502720,
+      "anon_max": 29591269376,
+      "file_cache_min": 73075937280,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79221452800,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.67
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid_year",
+   "kind": "search",
+   "layer": "adapter",
+   "description": "Hybrid + chunk yearIssued range filter",
+   "limit": 10,
+   "mode": "hybrid",
+   "filter": "year_range",
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.98,
+     "stopped_by": "requests",
+     "throughput_rps": 20.2,
+     "latency_ms": {
+      "min": 12.2,
+      "p50": 29.0,
+      "p95": 39.5,
+      "p99": null,
+      "max": 44.8,
+      "mean": 27.5
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 1.06,
+      "memory_current_max": 103861866496,
+      "anon_max": 30161948672,
+      "file_cache_min": 71968665600,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 78995005440,
+      "host_pressure_memory_some_avg10_max": 0.18,
+      "host_pressure_io_some_avg10_max": 0.37
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.98,
+     "stopped_by": "requests",
+     "throughput_rps": 20.23,
+     "latency_ms": {
+      "min": 11.1,
+      "p50": 28.2,
+      "p95": 37.8,
+      "p99": null,
+      "max": 43.5,
+      "mean": 26.7
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 1.03,
+      "memory_current_max": 103689736192,
+      "anon_max": 30663245824,
+      "file_cache_min": 71968665600,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79425892352,
+      "host_pressure_memory_some_avg10_max": 0.14,
+      "host_pressure_io_some_avg10_max": 0.24
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.98,
+     "stopped_by": "requests",
+     "throughput_rps": 20.2,
+     "latency_ms": {
+      "min": 11.5,
+      "p50": 29.2,
+      "p95": 39.6,
+      "p99": null,
+      "max": 42.9,
+      "mean": 27.3
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 1.05,
+      "memory_current_max": 103989452800,
+      "anon_max": 31188660224,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 77763219456,
+      "host_pressure_memory_some_avg10_max": 0.09,
+      "host_pressure_io_some_avg10_max": 0.16
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid_language",
+   "kind": "search",
+   "layer": "adapter",
+   "description": "Hybrid + chunk language filter",
+   "limit": 10,
+   "mode": "hybrid",
+   "filter": "language",
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 2.14,
+     "stopped_by": "requests",
+     "throughput_rps": 18.7,
+     "latency_ms": {
+      "min": 7.6,
+      "p50": 12.9,
+      "p95": 60.6,
+      "p99": null,
+      "max": 181.2,
+      "mean": 21.4
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.59,
+      "memory_current_max": 103358701568,
+      "anon_max": 31269457920,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 78820986880,
+      "host_pressure_memory_some_avg10_max": 0.06,
+      "host_pressure_io_some_avg10_max": 0.11
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.4,
+     "latency_ms": {
+      "min": 7.9,
+      "p50": 13.2,
+      "p95": 57.1,
+      "p99": null,
+      "max": 181.9,
+      "mean": 23.2
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 2.69,
+      "memory_current_max": 103379939328,
+      "anon_max": 31290613760,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 78809460736,
+      "host_pressure_memory_some_avg10_max": 0.04,
+      "host_pressure_io_some_avg10_max": 0.24
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.4,
+     "latency_ms": {
+      "min": 8.1,
+      "p50": 12.8,
+      "p95": 57.8,
+      "p99": null,
+      "max": 179.3,
+      "mean": 20.9
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.63,
+      "memory_current_max": 101073055744,
+      "anon_max": 28983914496,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 81022058496,
+      "host_pressure_memory_some_avg10_max": 0.02,
+      "host_pressure_io_some_avg10_max": 0.19
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid_document_type",
+   "kind": "search",
+   "layer": "adapter",
+   "description": "Hybrid + documentType filter through the document reference",
+   "limit": 10,
+   "mode": "hybrid",
+   "filter": "document_type",
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 6.3,
+     "stopped_by": "requests",
+     "throughput_rps": 6.35,
+     "latency_ms": {
+      "min": 2.9,
+      "p50": 8.2,
+      "p95": 1005.7,
+      "p99": null,
+      "max": 1119.9,
+      "mean": 131.2
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 8,
+      "cpu_cores_avg": 5.65,
+      "memory_current_max": 101421117440,
+      "anon_max": 29328932864,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80957620224,
+      "host_pressure_memory_some_avg10_max": 0.01,
+      "host_pressure_io_some_avg10_max": 0.13
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 3.05,
+     "stopped_by": "requests",
+     "throughput_rps": 13.09,
+     "latency_ms": {
+      "min": 3.8,
+      "p50": 10.7,
+      "p95": 1254.0,
+      "p99": null,
+      "max": 1395.1,
+      "mean": 170.1
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 5,
+      "cpu_cores_avg": 13.01,
+      "memory_current_max": 101352402944,
+      "anon_max": 29259370496,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80894947328,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.05
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 2.98,
+     "stopped_by": "requests",
+     "throughput_rps": 13.42,
+     "latency_ms": {
+      "min": 5.3,
+      "p50": 12.0,
+      "p95": 1305.1,
+      "p99": null,
+      "max": 1353.3,
+      "mean": 169.8
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 5,
+      "cpu_cores_avg": 14.53,
+      "memory_current_max": 101460553728,
+      "anon_max": 29368811520,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80720654336,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 2.38
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid_tag",
+   "kind": "search",
+   "layer": "adapter",
+   "description": "Hybrid + chunk tag reference filter (automatic or positive)",
+   "limit": 10,
+   "mode": "hybrid",
+   "filter": "tag",
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.49,
+     "latency_ms": {
+      "min": 1.5,
+      "p50": 2.2,
+      "p95": 4.1,
+      "p99": null,
+      "max": 7.0,
+      "mean": 2.6
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.06,
+      "memory_current_max": 101425795072,
+      "anon_max": 29336408064,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80714997760,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 1.31
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.49,
+     "latency_ms": {
+      "min": 1.6,
+      "p50": 1.9,
+      "p95": 3.8,
+      "p99": null,
+      "max": 6.5,
+      "mean": 2.3
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.06,
+      "memory_current_max": 101425807360,
+      "anon_max": 29336416256,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80724000768,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.87
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.48,
+     "latency_ms": {
+      "min": 1.7,
+      "p50": 2.4,
+      "p95": 6.1,
+      "p99": null,
+      "max": 7.7,
+      "mean": 2.8
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.07,
+      "memory_current_max": 101430415360,
+      "anon_max": 29341540352,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80729653248,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.77
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid_user_collection",
+   "kind": "search",
+   "layer": "adapter",
+   "description": "Hybrid within a user collection (reference filter)",
+   "limit": 10,
+   "mode": "hybrid",
+   "filter": "user_collection",
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.46,
+     "latency_ms": {
+      "min": 1.7,
+      "p50": 3.8,
+      "p95": 4.8,
+      "p99": null,
+      "max": 5.5,
+      "mean": 3.8
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.14,
+      "memory_current_max": 101430972416,
+      "anon_max": 29341585408,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80738942976,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.51
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.45,
+     "latency_ms": {
+      "min": 2.0,
+      "p50": 4.2,
+      "p95": 5.3,
+      "p99": null,
+      "max": 5.4,
+      "mean": 4.1
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.14,
+      "memory_current_max": 101431001088,
+      "anon_max": 29341618176,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80759595008,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.34
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.46,
+     "latency_ms": {
+      "min": 2.4,
+      "p50": 4.2,
+      "p95": 5.1,
+      "p99": null,
+      "max": 5.4,
+      "mean": 4.1
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.14,
+      "memory_current_max": 101431037952,
+      "anon_max": 29341638656,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80737169408,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.23
+     }
+    }
+   ]
+  },
+  {
+   "name": "bm25_direct",
+   "kind": "direct",
+   "layer": "direct",
+   "description": "BM25 without references (database-level)",
+   "limit": 10,
+   "mode": "text",
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.5,
+     "latency_ms": {
+      "min": 0.9,
+      "p50": 1.3,
+      "p95": 6.5,
+      "p99": null,
+      "max": 10.3,
+      "mean": 2.0
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.06,
+      "memory_current_max": 101454807040,
+      "anon_max": 29364609024,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80731594752,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.15
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.49,
+     "latency_ms": {
+      "min": 0.7,
+      "p50": 1.5,
+      "p95": 7.6,
+      "p99": null,
+      "max": 12.1,
+      "mean": 2.3
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.06,
+      "memory_current_max": 101480226816,
+      "anon_max": 29389275136,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80673280000,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.1
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.49,
+     "latency_ms": {
+      "min": 1.0,
+      "p50": 1.2,
+      "p95": 8.8,
+      "p99": null,
+      "max": 14.8,
+      "mean": 2.3
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.06,
+      "memory_current_max": 101505609728,
+      "anon_max": 29416222720,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80599281664,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.06
+     }
+    }
+   ]
+  },
+  {
+   "name": "vector_direct",
+   "kind": "direct",
+   "layer": "direct",
+   "description": "near_vector without references",
+   "limit": 10,
+   "mode": "vector",
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.48,
+     "latency_ms": {
+      "min": 1.8,
+      "p50": 2.7,
+      "p95": 3.2,
+      "p99": null,
+      "max": 3.4,
+      "mean": 2.6
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.06,
+      "memory_current_max": 101505617920,
+      "anon_max": 29416222720,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80595070976,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.04
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.48,
+     "latency_ms": {
+      "min": 1.8,
+      "p50": 2.6,
+      "p95": 3.4,
+      "p99": null,
+      "max": 3.5,
+      "mean": 2.6
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.06,
+      "memory_current_max": 101506121728,
+      "anon_max": 29416222720,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80571781120,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.03
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.48,
+     "latency_ms": {
+      "min": 1.7,
+      "p50": 2.4,
+      "p95": 3.1,
+      "p99": null,
+      "max": 3.2,
+      "mean": 2.4
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.05,
+      "memory_current_max": 101505347584,
+      "anon_max": 29416222720,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80593268736,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.01
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid_direct",
+   "kind": "direct",
+   "layer": "direct",
+   "description": "Hybrid without references",
+   "limit": 10,
+   "mode": "hybrid",
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.43,
+     "latency_ms": {
+      "min": 4.7,
+      "p50": 7.5,
+      "p95": 9.4,
+      "p99": null,
+      "max": 12.2,
+      "mean": 7.4
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.39,
+      "memory_current_max": 101558214656,
+      "anon_max": 29468372992,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80604028928,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.01
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.44,
+     "latency_ms": {
+      "min": 4.9,
+      "p50": 7.2,
+      "p95": 9.7,
+      "p99": null,
+      "max": 10.8,
+      "mean": 7.4
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 3,
+      "cpu_cores_avg": 0.38,
+      "memory_current_max": 101581873152,
+      "anon_max": 29492486144,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80598757376,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.0
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.44,
+     "latency_ms": {
+      "min": 4.8,
+      "p50": 7.2,
+      "p95": 9.9,
+      "p99": null,
+      "max": 14.7,
+      "mean": 7.4
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.39,
+      "memory_current_max": 101605289984,
+      "anon_max": 29515763712,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80585056256,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 1.81
+     }
+    }
+   ]
+  },
+  {
+   "name": "chunk_context",
+   "kind": "context",
+   "layer": "adapter",
+   "description": "Two chunks before and after a chunk (span chat / context)",
+   "limit": 10,
+   "mode": null,
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 9.09,
+     "stopped_by": "requests",
+     "throughput_rps": 4.4,
+     "latency_ms": {
+      "min": 121.2,
+      "p50": 134.6,
+      "p95": 278.0,
+      "p99": null,
+      "max": 1908.5,
+      "mean": 227.2
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 11,
+      "cpu_cores_avg": 1.22,
+      "memory_current_max": 102469193728,
+      "anon_max": 30377082880,
+      "file_cache_min": 71057997824,
+      "io_read_bytes": 3072000,
+      "io_read_ops": 65,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79788511232,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 1.21
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 2.69,
+     "stopped_by": "requests",
+     "throughput_rps": 14.89,
+     "latency_ms": {
+      "min": 151.0,
+      "p50": 184.5,
+      "p95": 376.2,
+      "p99": null,
+      "max": 2156.8,
+      "mean": 289.8
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 5,
+      "cpu_cores_avg": 6.48,
+      "memory_current_max": 102543552512,
+      "anon_max": 30452449280,
+      "file_cache_min": 71059533824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79621070848,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.36
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 2.63,
+     "stopped_by": "requests",
+     "throughput_rps": 15.18,
+     "latency_ms": {
+      "min": 142.6,
+      "p50": 199.5,
+      "p95": 433.3,
+      "p99": null,
+      "max": 2155.7,
+      "mean": 291.4
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 5,
+      "cpu_cores_avg": 6.76,
+      "memory_current_max": 102605082624,
+      "anon_max": 30513385472,
+      "file_cache_min": 71059533824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79573016576,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.24
+     }
+    }
+   ]
+  },
+  {
+   "name": "document_view",
+   "kind": "document_view",
+   "layer": "adapter",
+   "description": "Document view: all chunks of a document with collection membership",
+   "limit": 10,
+   "mode": null,
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 2.5,
+     "stopped_by": "requests",
+     "throughput_rps": 16.02,
+     "latency_ms": {
+      "min": 4.5,
+      "p50": 19.5,
+      "p95": 114.2,
+      "p99": null,
+      "max": 235.9,
+      "mean": 37.5
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.64,
+      "memory_current_max": 102513295360,
+      "anon_max": 30421422080,
+      "file_cache_min": 71059533824,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79612002304,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.16
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 2.12,
+     "stopped_by": "requests",
+     "throughput_rps": 18.89,
+     "latency_ms": {
+      "min": 4.6,
+      "p50": 27.2,
+      "p95": 129.8,
+      "p99": null,
+      "max": 221.8,
+      "mean": 40.3
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.77,
+      "memory_current_max": 102515138560,
+      "anon_max": 30421721088,
+      "file_cache_min": 71059533824,
+      "io_read_bytes": 2228224,
+      "io_read_ops": 34,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79733354496,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.08
+     }
+    }
+   ]
+  },
+  {
+   "name": "corpus_overview",
+   "kind": "aggregate",
+   "layer": "adapter",
+   "description": "Corpus overview aggregates over Documents (uncached)",
+   "limit": 10,
+   "mode": null,
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 11.2,
+     "stopped_by": "requests",
+     "throughput_rps": 3.57,
+     "latency_ms": {
+      "min": 266.0,
+      "p50": 276.2,
+      "p95": 291.6,
+      "p99": null,
+      "max": 373.3,
+      "mean": 279.9
+     },
+     "hit_requests": 0,
+     "resources": {
+      "samples": 13,
+      "cpu_cores_avg": 6.35,
+      "memory_current_max": 102513004544,
+      "anon_max": 30419648512,
+      "file_cache_min": 71060647936,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 79739244544,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.05
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 4.22,
+     "stopped_by": "requests",
+     "throughput_rps": 9.48,
+     "latency_ms": {
+      "min": 356.3,
+      "p50": 488.2,
+      "p95": 651.4,
+      "p99": null,
+      "max": 670.3,
+      "mean": 496.1
+     },
+     "hit_requests": 0,
+     "resources": {
+      "samples": 6,
+      "cpu_cores_avg": 22.85,
+      "memory_current_max": 101178101760,
+      "anon_max": 29084798976,
+      "file_cache_min": 71060647936,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80921210880,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.01
+     }
+    }
+   ]
+  },
+  {
+   "name": "mixed",
+   "kind": "mixed",
+   "layer": "mixed",
+   "description": "Interleaved user-like mix",
+   "limit": 10,
+   "mode": null,
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 2.53,
+     "stopped_by": "requests",
+     "throughput_rps": 15.84,
+     "latency_ms": {
+      "min": 2.4,
+      "p50": 10.9,
+      "p95": 144.3,
+      "p99": null,
+      "max": 157.9,
+      "mean": 33.9
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 0.74,
+      "memory_current_max": 101177655296,
+      "anon_max": 29084966912,
+      "file_cache_min": 71060647936,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80927727616,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 0.0
+     }
+    },
+    {
+     "concurrency": 5,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.45,
+     "latency_ms": {
+      "min": 2.5,
+      "p50": 12.8,
+      "p95": 162.8,
+      "p99": null,
+      "max": 223.5,
+      "mean": 38.0
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 2.81,
+      "memory_current_max": 101181726720,
+      "anon_max": 29089472512,
+      "file_cache_min": 71060647936,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80940429312,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 2.17
+     }
+    },
+    {
+     "concurrency": 10,
+     "requests": 40,
+     "ok": 40,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 1.96,
+     "stopped_by": "requests",
+     "throughput_rps": 20.45,
+     "latency_ms": {
+      "min": 2.6,
+      "p50": 12.4,
+      "p95": 164.8,
+      "p99": null,
+      "max": 176.1,
+      "mean": 36.7
+     },
+     "hit_requests": 40,
+     "resources": {
+      "samples": 4,
+      "cpu_cores_avg": 1.03,
+      "memory_current_max": 101181833216,
+      "anon_max": 29089488896,
+      "file_cache_min": 71060647936,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80842211328,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 1.96
+     }
+    }
+   ]
+  },
+  {
+   "name": "self_recall",
+   "kind": "self_recall",
+   "layer": "direct",
+   "description": "Recall check: each sampled chunk in the top 10 for its own vector",
+   "limit": 10,
+   "mode": null,
+   "filter": null,
+   "points": [
+    {
+     "concurrency": 1,
+     "requests": 100,
+     "ok": 100,
+     "errors": {},
+     "error_count": 0,
+     "timeouts": 0,
+     "wall_seconds": 4.95,
+     "stopped_by": "requests",
+     "throughput_rps": 20.19,
+     "latency_ms": {
+      "min": 1.5,
+      "p50": 2.6,
+      "p95": 3.3,
+      "p99": 3.5,
+      "max": 4.5,
+      "mean": 2.6
+     },
+     "hit_requests": 100,
+     "resources": {
+      "samples": 7,
+      "cpu_cores_avg": 0.05,
+      "memory_current_max": 101182054400,
+      "anon_max": 29089488896,
+      "file_cache_min": 71060647936,
+      "io_read_bytes": 0,
+      "io_read_ops": 0,
+      "io_write_bytes": 0,
+      "oom_kill_events": 0,
+      "host_mem_available_min": 80855298048,
+      "host_pressure_memory_some_avg10_max": 0.0,
+      "host_pressure_io_some_avg10_max": 1.44
+     }
+    }
+   ]
+  }
+ ]
+}
