@@ -115,7 +115,10 @@ class QuotaLedger:
     async def admit(self, principal_kind: str, principal_id: str, day: str, *, feature: str,
                     reserve_micro_usd: int, limit_micro_usd: int, now: datetime.datetime) -> Admission:
         """Reserve ``reserve_micro_usd`` of the day's allowance for a new operation when the
-        day's reserved and charged amounts leave room for it within ``limit_micro_usd``."""
+        day's reserved and charged amounts leave room for it within ``limit_micro_usd``. An
+        exhausted day admits nothing, not even a zero reservation."""
+        if reserve_micro_usd < 0:
+            raise ValueError("A quota reservation must not be negative")
         async with self.session_maker() as session, session.begin():
             # A write first, so SQLite takes its write lock (waiting for other writers)
             # before anything is read.
@@ -123,9 +126,10 @@ class QuotaLedger:
                 principal_kind=principal_kind, principal_id=principal_id, day=day,
                 reserved_micro_usd=0, charged_micro_usd=0))
             key = _day_key(principal_kind, principal_id, day)
+            used = QuotaDay.reserved_micro_usd + QuotaDay.charged_micro_usd
             reserved = await session.execute(
-                update(QuotaDay).where(*key).where(
-                    QuotaDay.reserved_micro_usd + QuotaDay.charged_micro_usd + reserve_micro_usd <= limit_micro_usd)
+                update(QuotaDay).where(*key).where(used < limit_micro_usd,
+                                                   used + reserve_micro_usd <= limit_micro_usd)
                 .values(reserved_micro_usd=QuotaDay.reserved_micro_usd + reserve_micro_usd))
             operation_id = None
             if reserved.rowcount == 1:
@@ -143,8 +147,12 @@ class QuotaLedger:
         cost is unknown it is at least the reservation, so unpriced work is never free.
 
         Returns the charge in micro-USD, or ``None`` when the operation is unknown or was
-        already settled (nothing is written then).
+        already settled (nothing is written then). Raises ``ValueError`` before writing
+        when a known cost is negative or not finite.
         """
+        for c in calls:
+            if c.cost_usd is not None and not 0 <= c.cost_usd < math.inf:
+                raise ValueError(f"A call cost must be a finite non-negative amount, not {c.cost_usd!r}")
         known = sum(usd_to_micro(c.cost_usd) for c in calls if c.cost_usd is not None)
         unknown = sum(1 for c in calls if c.cost_usd is None)
         charge = known
