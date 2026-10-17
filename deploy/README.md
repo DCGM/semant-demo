@@ -27,10 +27,10 @@ The stack is split across several compose files that are started independently a
 | `docker-compose.database.yml` | `weaviate` | `semant_demo_database` | Production Weaviate (REST :8080, gRPC :50051) |
 | `docker-compose.database-test.yml` | `weaviate` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
 | `docker-compose.embedder.yml` | `qwen-embedder` | `semant_demo_embedder` | Single GPU embedder (vLLM) shared by **production, all test instances and the vector backfill** (`http://qwen-embedder:8000/v1`; host loopback port 8002) |
-| `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder`, `semant_demo_topicer` | Production app instance; own `tasks.db` and `feedback/` mounted via `$SQL_DB_PATH` |
-| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_test_topicer` | One container per test instance (CI/CD managed); each has its own `tasks.db` and `feedback/` mounted via `$SQL_DB_PATH` |
+| `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder`, `semant_demo_topicer` | Production app instance; own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
+| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_test_topicer` | One container per test instance (CI/CD managed); each has its own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
 
-**`SQL_DB_PATH`** (set by `.github/workflows/ci-cd.yml`; the `tasks.db` file and the `feedback/` directory must exist, see [In-app feedback storage](#in-app-feedback-storage)):
+**`SQL_DB_PATH`** (set by `.github/workflows/ci-cd.yml`; the directory, its `tasks.db` file and the `feedback/` directory must exist, see [SQLite database directory](#sqlite-database-directory-406) and [In-app feedback storage](#in-app-feedback-storage)):
 - **Production:** `$SQL_DB_DIR` from the GitHub variables
 - **Test:** a unique subdirectory per instance under `$SQL_DB_DIR_TEST`:
   - `test-main`: `${SQL_DB_DIR_TEST}/test-main`
@@ -63,7 +63,7 @@ deployment-only values:
 | `COMMIT` | _(empty)_ | Full commit SHA to build. CI sets it to the commit the deploy run is for and copies the Dockerfile, Compose file and `.env` template from that same commit, so a later push cannot change the deployed source. Production: the tagged commit; test-main: the pushed `main` commit (both after the required checks pass on it). PR previews: the PR head, while the PR checks run on GitHub's merge commit. Empty builds the current tip of `BRANCH` |
 | `BACKEND_URL` | `https://demo.semant.cz` | Public backend URL baked into the frontend bundle at build time |
 | `DOMAIN` | `demo.semant.cz` | Traefik Host rule |
-| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Host directory whose `tasks.db` and `feedback/` are mounted into the container |
+| `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Host directory of the instance, mounted at `/app/sql_data`; the app opens `tasks.db` there (`SQL_DB_URL` is set in the Compose file) and writes the feedback log to its `feedback/` (also mounted at `/app/feedback`) |
 | `FEEDBACK_LOG_PATH` | `/app/feedback/feedback.log.jsonl` | In-app feedback log inside the mounted `feedback/` directory; keep this template value |
 | `GPU_DEVICE` | `0` | GPU of the embedding service |
 | `QWEN_EMBEDDER_PORT`, `QWEN_MAX_MODEL_LEN`, `QWEN_MAX_NUM_BATCHED_TOKENS`, `QWEN_GPU_MEMORY_UTILIZATION` | `8002`, `2048`, `16384`, `0.5` | Optional settings of the Qwen embedding service ([below](#qwen-embedding-service-385)) |
@@ -249,6 +249,79 @@ docker compose -p <project> -f <compose file> up -d --force-recreate app
 sudo tail -n 1 "$SQL_DB_PATH/feedback/feedback.log.jsonl"   # still shows the entry
 ```
 
+### SQLite database directory (#406)
+
+SQLite keeps a rollback journal, `tasks.db-journal`, beside the database while a write
+transaction runs, and deletes it at commit. If the process dies mid-write, the journal stays
+behind (a *hot journal*), and the next connection uses it to undo the partly written
+transaction. Without it, the database file keeps the uncommitted pages, and
+`integrity_check` does not necessarily notice.
+
+Both app Compose files therefore bind-mount the whole instance directory `${SQL_DB_PATH}` at
+`/app/sql_data` and set `SQL_DB_URL=sqlite+aiosqlite:////app/sql_data/tasks.db` in the
+Compose file itself (it overrides any `SQL_DB_URL` in `.env`). The database, its journal (and
+`-wal`/`-shm` files, should the journal mode ever change to WAL) are on host storage together, so a
+killed or recreated container leaves the journal for the next start, which rolls it back.
+Before #406 only the file `${SQL_DB_PATH}/tasks.db` was mounted at `/app/tasks.db`, so the
+journal was in the container's writable layer and was lost when the container was recreated.
+
+- **Paths.** The host file is unchanged (`${SQL_DB_PATH}/tasks.db`, production
+  `/mnt/ssd2/semant_demo_app_data/tasks.db`), and so is the [backup](#sqlite-backup-399) job. Each
+  test instance still has its own `${SQL_DB_DIR_TEST}/<instance>`. If the directory is
+  missing, `docker compose up` fails (`create_host_path: false`); the app does not fall back
+  to a new database inside the container.
+- **Permissions.** The backend runs as root in the container and creates the journal as root.
+  `runner` owns the directory, so PR teardown can still remove it. The app needs write access to
+  the directory, not only to the file.
+- **Journal mode.** The app does not set `journal_mode`, so it is SQLite's default rollback
+  journal (`DELETE`). The host backup only reads the database.
+- **After a crash.** Start the app again (or open the file read-write, e.g. `sudo sqlite3
+  "$SQL_DB_PATH/tasks.db" "PRAGMA integrity_check;"`). Never delete, move or copy
+  `tasks.db` without its `tasks.db-journal` while the journal exists.
+- **Tests.** `tests/test_deploy_sqlite_storage.py` checks the Compose mounts and kills a writer
+  mid-transaction: reopening the directory restores the committed rows, while the file alone
+  keeps the uncommitted ones. `test_sqlite_backup.sh` checks that the backup refuses a database with a hot journal.
+
+**Migration** (once, for the first production release with this change; CI-managed test
+instances switch on their next deploy). The old container's journal is only in its writable
+layer, which the deploy's `docker compose down` deletes. Stop the container first (stopping
+keeps the layer), check for a journal, and take a backup:
+
+```bash
+cd "$RUNNER_WORKDIR/$DEPLOY_SUBDIR"   # the production deploy directory
+docker compose -p semant-demo -f docker-compose.app.yaml stop app
+docker cp semant-demo-app-1:/app/tasks.db-journal /tmp/tasks.db-journal.406 && ls -l /tmp/tasks.db-journal.406
+```
+
+- **No journal** (`docker cp` reports that the path does not exist; normal after a clean stop):
+  continue.
+- **Journal present:** do not discard it. Copy it next to the host file as `tasks.db-journal`
+  before anything opens the database, then roll it back by opening the file read-write:
+  `sudo install -m 600 /tmp/tasks.db-journal.406 /mnt/ssd2/semant_demo_app_data/tasks.db-journal`,
+  then `sudo sqlite3 /mnt/ssd2/semant_demo_app_data/tasks.db "PRAGMA integrity_check;"` (prints `ok`;
+  the journal disappears).
+
+Then back up, verify and note the counts:
+
+```bash
+sudo BACKUP_MOUNT=/mnt/zfs1 /usr/local/sbin/semant-sqlite-backup /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
+sudo BACKUP_MOUNT=/mnt/zfs1 /usr/local/sbin/semant-sqlite-backup --check /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
+sudo sqlite3 -readonly /mnt/ssd2/semant_demo_app_data/tasks.db "SELECT count(*) FROM user; SELECT count(*) FROM rag_user_feedback;"
+```
+
+Deploy the release tag ([Production Deployment](#production-deployment)) and validate:
+
+```bash
+docker inspect semant-demo-app-1 --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'   # .../semant_demo_app_data -> /app/sql_data
+docker exec semant-demo-app-1 sh -c 'echo "$SQL_DB_URL"; ls -la /app/sql_data; test ! -e /app/tasks.db && echo "no in-container tasks.db"'
+sudo sqlite3 -readonly /mnt/ssd2/semant_demo_app_data/tasks.db "PRAGMA integrity_check; SELECT count(*) FROM user; SELECT count(*) FROM rag_user_feedback;"
+```
+
+The counts should match (or grow), an existing account can sign in, and the daily
+allowance is still shown. If the health check fails, the workflow rolls back to the previous
+image with the new Compose file; older releases also read `SQL_DB_URL`, so they open the same
+file.
+
 ### SQLite backup (#399)
 
 The production `tasks.db` (`$SQL_DB_PATH/tasks.db` = `/mnt/ssd2/semant_demo_app_data/tasks.db`)
@@ -259,8 +332,10 @@ RAID (`/dev/md1`), which has no snapshots, and none of the readable cron jobs or
 - **What.** `sqlite_backup.sh` copies the database with the SQLite online backup API
   (`sqlite3 .backup` on a read-only connection), so it waits for the app's locks rather than
   copying the file in the middle of a write. It runs `PRAGMA integrity_check` on the copy before
-  keeping it. The database uses the rollback journal (not WAL), so the single bind-mounted file
-  is the whole database.
+  keeping it. The database uses the rollback journal (not WAL): after a committed write the
+  file is the whole database. While a hot journal is left beside it (an interrupted write,
+  [#406](#sqlite-database-directory-406)), the read-only copy fails instead of copying
+  uncommitted pages; the next read-write open rolls the journal back.
 - **Where.** `/mnt/zfs1/semant_demo_app_data/sqlite_backups/tasks_<UTC timestamp>.db`, with
   `latest.db` pointing to the newest. This is a different disk pool from the live file, but the
   same server: it is not an off-site copy. The cron entry sets `BACKUP_MOUNT=/mnt/zfs1`, so a
@@ -309,12 +384,14 @@ sqlite3 -readonly "$T/tasks.db" "SELECT count(*) FROM llm_quota_day;"   # once a
 rm -r "$T"
 ```
 
-Restore into production: stop the app, keep the current file as evidence, copy a backup over
-the production file in place (the bind mount points to that file's inode, so do not replace it with `mv`),
-then start the app:
+Restore into production: stop the app, roll back any hot journal of the current file (a
+journal left beside the restored file would be applied to it), keep the current file as
+evidence, copy a backup over the production file, then start the app:
 
 ```bash
 cd deploy && ./update.sh app-down
+sudo ls -la /mnt/ssd2/semant_demo_app_data/   # with tasks.db-journal: roll it back first (next line), never delete it
+sudo sqlite3 /mnt/ssd2/semant_demo_app_data/tasks.db "PRAGMA integrity_check;"   # a read-write open rolls back a hot journal
 sudo cp -a /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/ssd2/semant_demo_app_data/tasks.db.before-restore
 sudo cp /mnt/zfs1/semant_demo_app_data/sqlite_backups/tasks_<timestamp>.db /mnt/ssd2/semant_demo_app_data/tasks.db
 ./update.sh app-up

@@ -135,7 +135,7 @@ A `Config` class that reads settings once, at construction, from the process env
 - **LLM providers** — `OPENAI_API_KEY` / `OPENAI_API_URL` (any OpenAI-compatible endpoint, OpenRouter by default), `OLLAMA_URLS` (only the first is used), `GOOGLE_API_KEY`, and `LLM_MODELS_CONFIG`, the tier catalog (see *LLM gateway* below). There are no per-feature model settings.
 - **Application** — port, CORS origin, static file path, `LOG_LEVEL`
 - **Observability** — `OTEL_ENABLED` (default off) and the `OTEL_*` / `DEPLOYMENT_ENVIRONMENT` export settings; see [OBSERVABILITY.md](OBSERVABILITY.md)
-- **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments mount it, so it is kept)
+- **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments keep it in a mounted host directory together with its rollback journal, so it is kept)
 - **Auth** — `JWT_SECRET` (override in production with a long random string); tokens are valid for 7 days (`users/auth.py`)
 - **Search vectors** — `SEARCH_VECTORS_CONFIG` (the configured Weaviate named vectors and their query embedding; see *Search vectors* below) and `EMBEDDING_API_KEY` (bearer key of OpenAI-compatible embedding endpoints; empty sends none); `EMBEDDING_SERVICE_HOST` / `_PORT` locate the embedding service
 - **RAG** — config directory path

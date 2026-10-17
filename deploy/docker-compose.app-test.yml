@@ -13,10 +13,15 @@ services:
     env_file:
       - path: .env
         required: true
+    environment:
+      # Set here, next to the mount, so a stale .env cannot point the app at another file.
+      SQL_DB_URL: sqlite+aiosqlite:////app/sql_data/tasks.db
     volumes:
+      # The whole instance directory, not only tasks.db: SQLite keeps its rollback journal
+      # (tasks.db-journal) beside the database and needs it after a crash (#406).
       - type: bind
-        source: ${SQL_DB_PATH}/tasks.db
-        target: /app/tasks.db
+        source: ${SQL_DB_PATH}
+        target: /app/sql_data
         bind:
           create_host_path: false
       # In-app feedback log (FEEDBACK_LOG_PATH in the .env template), kept across container recreation.

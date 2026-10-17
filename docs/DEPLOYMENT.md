@@ -155,7 +155,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 |---|---|---|
 | `WEAVIATE_HOST` / `WEAVIATE_REST_PORT` / `WEAVIATE_GRPC_PORT` | `localhost` / `8080` / `50051` | Weaviate endpoint |
 | `EMBEDDING_SERVICE_HOST` / `EMBEDDING_SERVICE_PORT` | `embedding-service` / `8001` | Embedding service endpoint |
-| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | User accounts, RAG answer feedback and the daily LLM allowance ledger; the default is `tasks.db` in the working directory (the name is historical) |
+| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | User accounts, RAG answer feedback and the daily LLM allowance ledger; the default is `tasks.db` in the working directory (the name is historical). The app Compose files set `sqlite+aiosqlite:////app/sql_data/tasks.db`, in the mounted instance directory that also holds the rollback journal ([deploy/README](../deploy/README.md#sqlite-database-directory-406)) |
 | `JWT_SECRET` | placeholder | **Must be overridden** with a long random string outside local development; tokens are valid for 7 days |
 | `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin of the frontend |
 | `PORT` | `8000` | Listen port of `run.py` and of the Docker image's uvicorn |
