@@ -76,7 +76,9 @@ async def test_an_operation_that_does_not_fit_is_refused_without_reserving(ledge
     with pytest.raises(QuotaExhausted) as refused:
         await service.admit(ledger, POLICY, GUEST, "rag", 0.06, now=NOON)
 
-    assert refused.value.status.used_micro_usd == 200_000
+    assert refused.value.status.used_micro_usd == 200_000 and not refused.value.status.exhausted
+    assert str(refused.value) == ("Insufficient remaining daily AI allowance for this operation; "
+                                  "it resets at 2026-10-18 00:00 UTC.")
     assert (await service.status(ledger, POLICY, GUEST, now=NOON)).used_micro_usd == 200_000
     # A smaller operation still fits, and the account's allowance is separate.
     await service.admit(ledger, POLICY, GUEST, "rag", 0.05, now=NOON)
@@ -91,6 +93,30 @@ async def test_an_admitted_operation_may_cross_the_allowance_and_later_ones_are_
     assert (status.charged_micro_usd, status.remaining_micro_usd, status.exhausted) == (300_000, 0, True)
     with pytest.raises(QuotaExhausted):
         await service.admit(ledger, POLICY, GUEST, "question", 0, now=NOON)
+
+
+async def test_a_used_up_allowance_refuses_even_a_zero_reservation(ledger):
+    operation_id = await service.admit(ledger, POLICY, GUEST, "rag", 0.05, now=NOON)
+    await service.settle(ledger, operation_id, [call(0.25)], now=NOON)  # used == limit exactly
+
+    with pytest.raises(QuotaExhausted) as refused:
+        await service.admit(ledger, POLICY, GUEST, "rag", 0, now=NOON)
+
+    assert refused.value.status.exhausted
+    assert (await service.status(ledger, POLICY, GUEST, now=NOON)).used_micro_usd == 250_000
+
+
+@pytest.mark.parametrize("cost", [-0.01, float("inf"), float("-inf"), float("nan")])
+async def test_an_invalid_call_cost_is_rejected_without_settling(ledger, cost):
+    operation_id = await service.admit(ledger, POLICY, GUEST, "rag", 0.05, now=NOON)
+
+    with pytest.raises(ValueError):
+        await service.settle(ledger, operation_id, [call(0.01), call(cost)], now=NOON)
+
+    # Nothing was written: the reservation stays, and a valid settlement still works.
+    status = await service.status(ledger, POLICY, GUEST, now=NOON)
+    assert (status.reserved_micro_usd, status.charged_micro_usd) == (50_000, 0)
+    assert await service.settle(ledger, operation_id, [call(0.01)], now=NOON) == 10_000
 
 
 @pytest.mark.parametrize("calls, charge", [
@@ -213,3 +239,9 @@ def test_micro_usd_rounds_up():
 async def test_an_invalid_reservation_is_rejected(ledger, reserve):
     with pytest.raises(ValueError):
         await service.admit(ledger, POLICY, GUEST, "rag", reserve, now=NOON)
+
+
+async def test_the_ledger_rejects_a_negative_reservation(ledger):
+    with pytest.raises(ValueError):
+        await ledger.admit("guest", GUEST.id, "2026-10-17", feature="rag", reserve_micro_usd=-1,
+                           limit_micro_usd=250_000, now=NOON)

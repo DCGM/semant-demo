@@ -77,12 +77,13 @@ class QuotaStatus:
 
 
 class QuotaExhausted(Exception):
-    """The principal's daily allowance has no room for another AI operation (HTTP 429)."""
+    """The principal's remaining daily allowance has no room for an AI operation (HTTP 429):
+    the allowance is used up, or the operation's reservation exceeds what is left."""
 
     code = "llm_quota_exhausted"
 
     def __init__(self, status: QuotaStatus):
-        super().__init__("The daily AI usage allowance is used up. It resets at "
+        super().__init__("Insufficient remaining daily AI allowance for this operation; it resets at "
                          f"{status.reset_at:%Y-%m-%d %H:%M} UTC.")
         self.status = status
 
@@ -127,8 +128,8 @@ async def status(ledger: QuotaLedger, policy: QuotaPolicy, principal: QuotaPrinc
 async def admit(ledger: QuotaLedger, policy: QuotaPolicy, principal: QuotaPrincipal, feature: str,
                 reserve_usd: float, now: datetime.datetime | None = None) -> str:
     """Reserve ``reserve_usd`` (a bounded upper estimate of the operation) and return the
-    operation id to settle. Raises ``QuotaExhausted`` when the day's used amount and the
-    reservation would exceed the allowance; nothing is reserved then."""
+    operation id to settle. Raises ``QuotaExhausted`` when the day's allowance is used up
+    or the used amount and the reservation would exceed it; nothing is reserved then."""
     if not 0 <= reserve_usd < float("inf"):
         raise ValueError("A quota reservation must be a finite non-negative amount")
     now = now or utc_now()

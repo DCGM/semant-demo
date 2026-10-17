@@ -132,6 +132,21 @@ async def test_an_exhausted_allowance_refuses_new_operations_with_429(quota_app)
     assert 0 < int(refused.headers["retry-after"]) <= 24 * 60 * 60
 
 
+async def test_an_operation_larger_than_the_remaining_allowance_is_refused_with_429(quota_app):
+    async with quota_app.client() as client:
+        token = _guest_cookie(await client.get(QUOTA_URL)).split(";")[0].split("=", 1)[1]
+        await quota_app.spend(guest_principal(token), 0.245)  # $0.005 left; the operation reserves $0.01
+
+        refused = await client.post("/api/test/ai-operation")
+        status = (await client.get(QUOTA_URL)).json()
+
+    assert refused.status_code == 429 and "retry-after" in refused.headers
+    body = QuotaExhaustedResponse.model_validate(refused.json())
+    assert body.detail.startswith("Insufficient remaining daily AI allowance for this operation; it resets at ")
+    assert (body.used_usd, body.limit_usd) == (0.245, 0.25)
+    assert (status["remaining_usd"], status["exhausted"]) == (0.005, False)
+
+
 @pytest.mark.parametrize("settings, secure", [
     ({"ALLOWED_ORIGIN": "https://demo.example"}, True),
     ({"ALLOWED_ORIGIN": "https://demo.example", "LLM_QUOTA_GUEST_COOKIE_SECURE": "false"}, False),
