@@ -2,4 +2,6 @@
 # Installed as /etc/cron.d/semant-sqlite-backup; see deploy/README.md#sqlite-backup-399.
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Fail instead of writing to the root filesystem when the ZFS pool is not mounted.
+BACKUP_MOUNT=/mnt/zfs1
 30 3 * * * root /usr/local/sbin/semant-sqlite-backup /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
