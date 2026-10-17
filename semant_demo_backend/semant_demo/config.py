@@ -55,6 +55,19 @@ class Config:
         # Most recent RAG history messages sent to the model; older ones are left out.
         self.RAG_HISTORY_LIMIT = int(env.get("RAG_HISTORY_LIMIT", 20))
 
+        # Daily LLM allowances (features/quota): USD-equivalent estimates per UTC calendar day,
+        # separately for guests (anonymous cookie) and signed-in accounts. Not a bill.
+        self.LLM_QUOTA_GUEST_DAILY_USD = float(env.get("LLM_QUOTA_GUEST_DAILY_USD", 0.25))
+        self.LLM_QUOTA_ACCOUNT_DAILY_USD = float(env.get("LLM_QUOTA_ACCOUNT_DAILY_USD", 1.00))
+        # Share of the allowance used from which the quota status reports near_limit.
+        self.LLM_QUOTA_NEAR_LIMIT_RATIO = float(env.get("LLM_QUOTA_NEAR_LIMIT_RATIO", 0.8))
+        # Lifetime of the guest identity cookie; clearing the cookie starts a new guest allowance.
+        self.LLM_QUOTA_GUEST_COOKIE_DAYS = int(env.get("LLM_QUOTA_GUEST_COOKIE_DAYS", 30))
+        # Send the guest cookie only over HTTPS; default: whether ALLOWED_ORIGIN is https.
+        secure = env.get("LLM_QUOTA_GUEST_COOKIE_SECURE")
+        self.LLM_QUOTA_GUEST_COOKIE_SECURE = (self.ALLOWED_ORIGIN.lower().startswith("https://") if secure is None
+                                              else secure.lower() in TRUE_VALUES)
+
         # SQL db
         # Default is relative to the backend working directory.
         self.SQL_DB_URL = env.get("SQL_DB_URL", "sqlite+aiosqlite:///tasks.db")

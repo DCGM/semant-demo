@@ -102,7 +102,7 @@ python run.py
 ```
 
 `run.py` starts `uvicorn` in reload mode on `PORT` (8000) for local development. The Docker image runs `python -m uvicorn semant_demo.main:app --host 0.0.0.0 --port $PORT` without the reloader. On startup the application:
-1. Creates missing SQL tables (`user`, `rag_user_feedback`); existing tables and rows are kept
+1. Creates missing SQL tables (`user`, `rag_user_feedback` and the LLM quota ledger `llm_quota_day`, `llm_quota_operation`, `llm_quota_call`); existing tables and rows are kept
 2. Connects to Weaviate (startup fails if it is not ready)
 3. Loads all RAG configurations from `RAG_CONFIGS_PATH` (default `configs/rag/demo_configs/*.yaml`)
 4. Mounts static files from `STATIC_PATH` if the directory exists
@@ -155,7 +155,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 |---|---|---|
 | `WEAVIATE_HOST` / `WEAVIATE_REST_PORT` / `WEAVIATE_GRPC_PORT` | `localhost` / `8080` / `50051` | Weaviate endpoint |
 | `EMBEDDING_SERVICE_HOST` / `EMBEDDING_SERVICE_PORT` | `embedding-service` / `8001` | Embedding service endpoint |
-| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | User accounts and RAG answer feedback; the default is `tasks.db` in the working directory (the name is historical) |
+| `SQL_DB_URL` | `sqlite+aiosqlite:///tasks.db` | User accounts, RAG answer feedback and the daily LLM allowance ledger; the default is `tasks.db` in the working directory (the name is historical) |
 | `JWT_SECRET` | placeholder | **Must be overridden** with a long random string outside local development; tokens are valid for 7 days |
 | `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin of the frontend |
 | `PORT` | `8000` | Listen port of `run.py` and of the Docker image's uvicorn |
@@ -167,6 +167,9 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `OLLAMA_URLS` | `http://localhost:11434` | Default endpoint of `ollama` tiers (only the first URL is used) |
 | `GOOGLE_API_KEY` | empty | Key of `google` tiers |
 | `RAG_CONFIGS_PATH` | `configs/rag/demo_configs` | Directory of the RAG configurations offered to users |
+| `LLM_QUOTA_GUEST_DAILY_USD` / `LLM_QUOTA_ACCOUNT_DAILY_USD` | `0.25` / `1.00` | Daily (UTC) LLM allowance of a guest and of a signed-in account, in USD-equivalent estimates, not a bill; provisional test values ([ARCHITECTURE.md](ARCHITECTURE.md#daily-llm-allowances-featuresquota-adapterssqlquotapy)). Must be positive |
+| `LLM_QUOTA_NEAR_LIMIT_RATIO` | `0.8` | Share of the allowance used from which `GET /api/quota` reports `near_limit` |
+| `LLM_QUOTA_GUEST_COOKIE_DAYS` / `LLM_QUOTA_GUEST_COOKIE_SECURE` | `30` / https `ALLOWED_ORIGIN` | Lifetime of the guest identity cookie (`semant_guest`); whether it is sent over HTTPS only |
 | `RAG_HISTORY_LIMIT` | `20` | Most recent RAG/Explain chat history messages sent to the model |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summary prompts, fallbacks, options and `max_generated_results` (results of one search that get titles and per-result summaries) |
 | `SEARCH_FILTERS_CONFIG` | `configs/search_filters.yaml` | Search filters ([SEARCH_FILTERS.md](SEARCH_FILTERS.md)) |
@@ -228,6 +231,6 @@ Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 1. **No reload mode** — `run.py` runs uvicorn with `reload=True` for development; outside Docker run `uvicorn semant_demo.main:app` instead, as the image does
 2. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
 3. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
-4. **One backend process** — chunk tag synchronization is serialized only within one process ([TODO.md](TODO.md#correctness-and-behavior)); SQLite holds only user accounts and RAG feedback
+4. **One backend process** — chunk tag synchronization is serialized only within one process ([TODO.md](TODO.md#correctness-and-behavior)); SQLite holds only user accounts, RAG feedback and the LLM quota ledger (its admissions are atomic across connections)
 5. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
 6. **Embedding service** — the deployed embedder is Qwen3-Embedding-0.6B on vLLM (`deploy/docker-compose.embedder.yml`, #385), reached through an `openai` search vector (`configs/search_vectors_qwen.yaml`); settings and cutover order: [deploy/README](../deploy/README.md#qwen-embedding-service-385). `EMBEDDING_SERVICE_HOST` / `EMBEDDING_SERVICE_PORT` locate the former Gemma service (`embedding_service/`, the `embedding_service` provider of the default `search_vectors.yaml`).

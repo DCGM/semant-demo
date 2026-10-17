@@ -46,6 +46,7 @@ import type {
   PostSpan,
   PostTag,
   QuestionRequest,
+  QuotaStatusResponse,
   RagRequestMain,
   RagResponse,
   RagRouteConfig,
@@ -127,6 +128,8 @@ import {
     PostTagToJSON,
     QuestionRequestFromJSON,
     QuestionRequestToJSON,
+    QuotaStatusResponseFromJSON,
+    QuotaStatusResponseToJSON,
     RagRequestMainFromJSON,
     RagRequestMainToJSON,
     RagResponseFromJSON,
@@ -1176,6 +1179,28 @@ export interface DefaultApiInterface {
      * Get Neighbour Chunk
      */
     getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet(requestParameters: GetNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionChunk>;
+
+    /**
+     * Creates request options for getQuotaStatusApiQuotaGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getQuotaStatusApiQuotaGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * Today\'s (UTC) AI usage allowance of the caller: the signed-in account, else the guest of the request\'s cookie (issued when missing). Amounts are estimates.
+     * @summary Get Quota Status
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getQuotaStatusApiQuotaGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<QuotaStatusResponse>>;
+
+    /**
+     * Today\'s (UTC) AI usage allowance of the caller: the signed-in account, else the guest of the request\'s cookie (issued when missing). Amounts are estimates.
+     * Get Quota Status
+     */
+    getQuotaStatusApiQuotaGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<QuotaStatusResponse>;
 
     /**
      * Creates request options for getTagApiTagsTagUuidGet without sending the request
@@ -3491,6 +3516,50 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet(requestParameters: GetNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionChunk> {
         const response = await this.getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getQuotaStatusApiQuotaGet without sending the request
+     */
+    async getQuotaStatusApiQuotaGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/quota`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Today\'s (UTC) AI usage allowance of the caller: the signed-in account, else the guest of the request\'s cookie (issued when missing). Amounts are estimates.
+     * Get Quota Status
+     */
+    async getQuotaStatusApiQuotaGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<QuotaStatusResponse>> {
+        const requestOptions = await this.getQuotaStatusApiQuotaGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => QuotaStatusResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Today\'s (UTC) AI usage allowance of the caller: the signed-in account, else the guest of the request\'s cookie (issued when missing). Amounts are estimates.
+     * Get Quota Status
+     */
+    async getQuotaStatusApiQuotaGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<QuotaStatusResponse> {
+        const response = await this.getQuotaStatusApiQuotaGetRaw(initOverrides);
         return await response.value();
     }
 

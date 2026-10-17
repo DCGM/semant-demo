@@ -48,6 +48,7 @@ export * from './PostSpan';
 export * from './PostTag';
 export * from './PublicationYearDistribution';
 export * from './QuestionRequest';
+export * from './QuotaStatusResponse';
 export * from './RagChatMessage';
 export * from './RagRequest';
 export * from './RagRequestMain';

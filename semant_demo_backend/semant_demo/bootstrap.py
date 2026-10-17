@@ -17,6 +17,7 @@ from semant_demo.adapters.embeddings.openai_compatible import OpenAICompatibleEm
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.llm.usage import LlmMetrics
+from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
@@ -28,6 +29,7 @@ from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
+from semant_demo.features.quota.service import QuotaPolicy
 from semant_demo.features.rag.registry import RagRegistry
 from semant_demo.features.search.vectors import (
     Embedder, EmbeddingSettings, SearchVectors, load_search_vectors_settings,
@@ -95,6 +97,8 @@ class AppResources:
     llm: LlmGateway
     span_chat: FeatureChat
     corpus_overview: OverviewCache
+    quota_ledger: QuotaLedger
+    quota_policy: QuotaPolicy
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
@@ -105,9 +109,11 @@ class AppResources:
                llm_transport: httpx.AsyncBaseTransport | None = None) -> "AppResources":
         """Construct resources without connecting to any external service.
 
-        Raises ``LlmConfigurationError`` when the model tier catalog is invalid, and
-        ``ValidationError`` when the search vector configuration is.
+        Raises ``LlmConfigurationError`` when the model tier catalog is invalid,
+        ``ValidationError`` when the search vector configuration is, and ``ValueError``
+        for invalid LLM quota settings.
         """
+        quota_policy = QuotaPolicy.from_config(config)
         llm = LlmGateway(ModelCatalog.load(config.LLM_MODELS_CONFIG), ProviderSettings.from_config(config),
                          llm_metrics, http_transport=llm_transport)
         engine = create_async_engine(config.SQL_DB_URL, pool_size=20, max_overflow=60)
@@ -118,7 +124,8 @@ class AppResources:
                    llm=llm,
                    span_chat=FeatureChat(llm, "span_chat", temperature=config.SPAN_CHAT_TEMPERATURE,
                                          max_tokens=config.SPAN_CHAT_MAX_TOKENS),
-                   corpus_overview=OverviewCache(config.CORPUS_OVERVIEW_MAX_AGE))
+                   corpus_overview=OverviewCache(config.CORPUS_OVERVIEW_MAX_AGE),
+                   quota_ledger=QuotaLedger(session_maker), quota_policy=quota_policy)
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
         """Open the application's Weaviate client; raises if it cannot be connected."""

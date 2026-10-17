@@ -52,6 +52,7 @@ docs/PostSpan.md
 docs/PostTag.md
 docs/PublicationYearDistribution.md
 docs/QuestionRequest.md
+docs/QuotaStatusResponse.md
 docs/RagChatMessage.md
 docs/RagRequest.md
 docs/RagRequestMain.md
@@ -139,6 +140,7 @@ models/PostSpan.ts
 models/PostTag.ts
 models/PublicationYearDistribution.ts
 models/QuestionRequest.ts
+models/QuotaStatusResponse.ts
 models/RagChatMessage.ts
 models/RagRequest.ts
 models/RagRequestMain.ts

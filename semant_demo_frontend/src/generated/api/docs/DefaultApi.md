@@ -35,6 +35,7 @@ All URIs are relative to *http://localhost*
 | [**getCollectionTagsApiUserCollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapiusercollectionscollectionidtagsget) | **GET** /api/user_collections/{collection_id}/tags | Get Collection Tags |
 | [**getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet**](DefaultApi.md#getdocumentstatsapiusercollectionscollectioniddocumentsdocumentidstatsget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/stats | Get Document Stats |
 | [**getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet**](DefaultApi.md#getneighbourchunkapiusercollectionscollectioniddocumentsdocumentidchunksneighbourget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks/neighbour | Get Neighbour Chunk |
+| [**getQuotaStatusApiQuotaGet**](DefaultApi.md#getquotastatusapiquotaget) | **GET** /api/quota | Get Quota Status |
 | [**getTagApiTagsTagUuidGet**](DefaultApi.md#gettagapitagstaguuidget) | **GET** /api/tags/{tag_uuid} | Get Tag |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
 | [**questionApiQuestionPost**](DefaultApi.md#questionapiquestionpost) | **POST** /api/question | Question |
@@ -2278,6 +2279,69 @@ example().catch(console.error);
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getQuotaStatusApiQuotaGet
+
+> QuotaStatusResponse getQuotaStatusApiQuotaGet()
+
+Get Quota Status
+
+Today\&#39;s (UTC) AI usage allowance of the caller: the signed-in account, else the guest of the request\&#39;s cookie (issued when missing). Amounts are estimates.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetQuotaStatusApiQuotaGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  try {
+    const data = await api.getQuotaStatusApiQuotaGet();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**QuotaStatusResponse**](QuotaStatusResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

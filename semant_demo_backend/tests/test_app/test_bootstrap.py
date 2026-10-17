@@ -204,10 +204,30 @@ def test_export_script_writes_schema_offline(tmp_path, no_external_connections):
     assert no_external_connections == []
 
 
-def test_sql_tables_are_users_and_rag_feedback():
+def test_sql_tables_are_users_rag_feedback_and_the_llm_quota_ledger():
     from semant_demo.adapters.sql.tables import Base
 
-    assert set(Base.metadata.tables) == {"user", "rag_user_feedback"}
+    assert set(Base.metadata.tables) == {"user", "rag_user_feedback", "llm_quota_day", "llm_quota_operation",
+                                         "llm_quota_call"}
+
+
+async def test_startup_adds_the_quota_ledger_to_an_existing_database(tmp_path, no_external_connections):
+    with sqlite3.connect(tmp_path / "test.db") as conn:
+        # The two tables of a database created before the quota ledger existed.
+        conn.execute("CREATE TABLE user (id VARCHAR(36) PRIMARY KEY, email VARCHAR NOT NULL)")
+        conn.execute("CREATE TABLE rag_user_feedback (id INTEGER PRIMARY KEY, response_id VARCHAR(36))")
+        conn.execute("INSERT INTO user VALUES ('u1', 'kept@example.com')")
+        conn.execute("INSERT INTO rag_user_feedback (response_id) VALUES ('r1')")
+
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    async with LifespanManager(app):
+        pass
+
+    with sqlite3.connect(tmp_path / "test.db") as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert {"llm_quota_day", "llm_quota_operation", "llm_quota_call"} <= tables
+        assert conn.execute("SELECT id, email FROM user").fetchall() == [("u1", "kept@example.com")]
+        assert conn.execute("SELECT response_id FROM rag_user_feedback").fetchall() == [("r1",)]
 
 
 async def test_startup_keeps_existing_users_and_feedback(tmp_path, no_external_connections):
