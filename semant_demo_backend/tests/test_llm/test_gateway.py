@@ -138,6 +138,7 @@ def test_deployed_openrouter_catalog_has_explicit_pricing_and_profiles():
     assert catalog.resolve("question").model == "anthropic/claude-haiku-5.5"
     assert catalog.resolve("rag").tier == "medium"
     assert catalog.resolve("rag", "large").model == "anthropic/claude-sonnet-5.5"
+    assert catalog.policy("rag").limits.max_calls == 20   # policy of the limited test deployment
 
 
 @pytest.mark.parametrize("reasoning", [
@@ -348,6 +349,10 @@ def test_a_feature_without_limits_gets_the_conservative_defaults():
     ({"tiers": {"tiny": {"provider": "ollama", "model": "m", "price_basis": "local_rate", "input_price": 0}}},
      "local_rate tier needs"),
     ({"tiers": {"tiny": {"provider": "openai", "model": "m", "input_price": -1, "output_price": 1}}}, "non-negative"),
+    ({"tiers": {"tiny": {"provider": "openai", "model": "m", "input_price": float("nan"), "output_price": 1}}},
+     "finite non-negative"),
+    ({"tiers": {"tiny": {"provider": "openai", "model": "m", "input_price": 1, "output_price": float("inf")}}},
+     "finite non-negative"),
     ({"tiers": {"tiny": {"provider": "openai", "model": "m", "price_basis": "invoice"}}}, "Invalid"),
 ])
 def test_invalid_limits_and_prices_are_rejected(change, message):
@@ -452,6 +457,19 @@ async def test_a_provider_reported_cost_is_preferred_to_the_tier_prices(transpor
         assert call["cost_usd"] != pytest.approx((call["input_tokens"] * 2 + call["output_tokens"] * 10) / 1e6)
 
 
+async def test_an_invalid_reported_cost_falls_back_to_the_tier_prices(transport, metrics):
+    catalog = {**LIMITED, "tiers": {**LIMITED["tiers"], "small": {
+        "provider": "openai", "model": "fake-negative-cost", "input_price": 2.0, "output_price": 10.0}}}
+    llm = gateway(transport, metrics, catalog=catalog)
+
+    await llm.complete("chat", messages("Krátce."), tier="small")
+    [d async for d in llm.stream("chat", messages("Krátce."), tier="small")]
+
+    for call in metrics.calls:
+        assert (call["attributes"]["usage_source"], call["attributes"]["cost_source"]) == ("provider", "price")
+        assert call["cost_usd"] == pytest.approx((call["input_tokens"] * 2 + call["output_tokens"] * 10) / 1e6)
+
+
 async def test_without_a_reported_cost_provider_tokens_times_prices_are_used(transport, metrics):
     await gateway(transport, metrics, catalog=LIMITED).complete("chat", messages("Krátce."))
 
@@ -510,6 +528,11 @@ async def test_failed_and_abandoned_calls_are_priced_from_estimates(transport, m
     ({"cost": 0.0001, "cost_details": {"upstream_inference_cost": 0.002}}, 0.0001),
     ({"prompt_tokens": 3}, None),
     ({"cost": "0.1"}, None),
+    ({"cost": -0.001}, None),
+    ({"cost": float("nan")}, None),
+    ({"cost": float("inf")}, None),
+    ({"cost": 0.0001, "is_byok": True, "cost_details": {"upstream_inference_cost": -0.002}}, None),
+    ({"cost": 0.0001, "is_byok": True, "cost_details": {"upstream_inference_cost": float("nan")}}, None),
     (None, None),
 ])
 def test_reported_cost_reads_openrouter_usage(usage, cost):

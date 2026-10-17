@@ -2,6 +2,7 @@
 against fake HTTP providers: the RAG pipelines (incl. agent tool subcalls), the question
 endpoint and search summaries. Also: RAG configurations choose only permitted tiers, and
 feature limits bound each feature's calls and operations (#397)."""
+import asyncio
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -378,6 +379,40 @@ async def test_the_adaptive_rag_passes_a_server_refusal_on(tmp_path, metrics):
     assert len(metrics.calls) == 1
 
 
+class GatedChain:
+    """Grading calls that stay in flight until cancelled; the call number ``refuse_at`` is refused."""
+
+    def __init__(self, refuse_at: int):
+        self.refuse_at, self.started, self.running, self.cancelled = refuse_at, 0, 0, 0
+
+    async def ainvoke(self, inputs):
+        self.started += 1
+        if self.started == self.refuse_at:
+            raise LlmOperationLimitExceeded("The request needs more language model calls than allowed.")
+        self.running += 1
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+        finally:
+            self.running -= 1
+
+
+async def test_a_refused_grading_call_cancels_the_graders_still_in_flight(tmp_path, llm):
+    rag = load_rag(tmp_path, llm, "IncrementalAdaptiveRagGenerator", tier="medium", web_search_enabled=False)
+    chain = GatedChain(refuse_at=4)
+    rag._create_chain = lambda model, prompt: chain
+    documents = [hit(f"passage {i}") for i in range(8)]
+
+    with pytest.raises(LlmOperationLimitExceeded):
+        await rag.node_grade_context({"documents": documents, "retrieval_iteration_counter": 2,
+                                      "question": QUESTION, "language": "ces"})
+
+    # The other graders, started alongside the refused one, are cancelled and awaited, not left running.
+    assert (chain.started, chain.running, chain.cancelled) == (8, 0, 7)
+
+
 async def test_an_oversized_rag_input_is_refused_by_the_basic_rag(tmp_path, metrics):
     llm = limited_llm(tmp_path, metrics, "rag", max_input_tokens=50)
     rag = load_rag(tmp_path, llm, "RagGenerator", tier="small")
@@ -401,7 +436,7 @@ async def test_rag_answers_and_explanations_get_only_the_recent_history():
 
 
 @pytest.mark.parametrize(("error", "status"), [
-    (LlmOperationLimitExceeded("The request needs more than the 60 language model calls allowed for it."), 503),
+    (LlmOperationLimitExceeded("The request needs more than the 20 language model calls allowed for it."), 503),
     (LlmInputTooLarge("The request is too large for the language model (about 24000 tokens are allowed)."), 413),
 ])
 async def test_rag_routes_answer_a_server_refusal_with_its_status_and_message(tmp_path, error, status):

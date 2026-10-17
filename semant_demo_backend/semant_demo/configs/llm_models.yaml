@@ -102,5 +102,6 @@ features:
     limits:
       max_output_tokens: 3072
       max_input_tokens: 24000
-      # Adaptive RAG: up to 3 retrieval rounds, each grading up to 10 documents.
-      max_calls: 60
+      # Policy of the limited test deployment. An agentic answer fits; adaptive RAG grading
+      # 10 documents in each later retrieval round can reach it and is then refused (503).
+      max_calls: 20
