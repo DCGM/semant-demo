@@ -28,7 +28,6 @@ for the 2026 refactor, in the [archive](archive/README.md).
 - [#234](https://github.com/DCGM/semant-demo/issues/234) — anonymous RAG, summary and question endpoints call paid providers; decide login/rate/cost limits.
 - [#319](https://github.com/DCGM/semant-demo/issues/319) — access tokens live 7 days without renewal, and the stateless JWT logout revokes nothing server-side: signing out only forgets the token in this browser (all its tabs).
 - [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI.
-- [#299](https://github.com/DCGM/semant-demo/issues/299) — Topicer compose files lack their Dockerfile; Topicer is deployed manually, not by CI/CD.
 - [#261](https://github.com/DCGM/semant-demo/issues/261) — reproducibility of the production frontend build. The backend Python packages are locked; the base images and the embedding service requirements are not ([DEPLOYMENT.md](DEPLOYMENT.md#docker--production-deployment)).
 - PR previews share the server and Docker daemon with CI and the other deployments; separate preview credentials limit, but do not isolate, them ([deploy/README](../deploy/README.md#pr-preview-credentials)). Host separation is out of scope.
 

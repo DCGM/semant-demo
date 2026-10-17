@@ -21,13 +21,14 @@ services:
     - './data:/app/data'
     restart: always
     command: "python run.py"
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    # CrossBERT and mDeBERTa topicer configs run on the GPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
 networks:
   semant_demo_topicer:
