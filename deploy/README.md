@@ -210,6 +210,8 @@ db_connection:
 
 `DefaultEmbeddingService` (the former Gemma service, 3,584 dimensions) cannot query the Qwen
 vector. Topicer `main` also requires `stride` (e.g. `32`) in `CrossBertTopicer` configs.
+
+semANT charges AI suggestions to the daily allowance from the usage Topicer reports and sends `max_chunks` (`TOPICER_MAX_CHUNKS_PER_TAG`, 40) with every optimized stream (#408). This needs Topicer with DCGM/topicer#81 (`main` since 2026-10-17, `06d32b9`); an older one ignores `max_chunks` and reports no usage, so every chunk or tag is charged its full reservation. A config's `max_chunks_ceiling` (default 200) must be at least `TOPICER_MAX_CHUNKS_PER_TAG`. For costs below the reservation, the provider must report cost (OpenRouter `usage.cost`) or the config must set `prices` per model; without either, cost is `unknown` and charged at least the reservation.
 Switched in production on 2026-10-17: `openai-xjuric` as above, `bert.yaml` with `stride: 32`
 (same spans as before on a synthetic check, now with confidences), `openai-xsucha`
 (`TagProposalV2`, no embeddings) unchanged.

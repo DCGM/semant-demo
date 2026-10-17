@@ -9,7 +9,9 @@ never settled (a crash, a lost callback) keeps its reservation charged; nothing 
 or is refunded.
 
 :class:`AllowanceBudget` is the request's allowance as the LLM gateway's operation budget
-(``LlmGateway.operation``): AI use cases admit and settle through it (#398).
+(``LlmGateway.operation``): AI use cases admit and settle through it (#398). Topicer
+suggestions, which run their models outside the gateway, admit through it and settle the
+usage Topicer reports (``settle_calls``, #408).
 """
 from __future__ import annotations
 
@@ -39,11 +41,13 @@ class QuotaPolicy:
     near_limit_ratio: float
     guest_cookie_max_age_seconds: int
     guest_cookie_secure: bool
+    topicer_reserve_usd_per_chunk: float = 0.005
+    """Reservation for one Topicer chunk evaluation (#408)."""
 
     @classmethod
     def from_config(cls, config: Config) -> QuotaPolicy:
-        """Raises ``ValueError`` for a non-positive allowance or cookie lifetime, or a
-        near-limit ratio outside (0, 1]."""
+        """Raises ``ValueError`` for a non-positive allowance, cookie lifetime or Topicer
+        reservation, or a near-limit ratio outside (0, 1]."""
         allowances = (config.LLM_QUOTA_GUEST_DAILY_USD, config.LLM_QUOTA_ACCOUNT_DAILY_USD)
         if not all(0 < usd < float("inf") for usd in allowances):
             raise ValueError("LLM_QUOTA_GUEST_DAILY_USD and LLM_QUOTA_ACCOUNT_DAILY_USD must be positive")
@@ -51,11 +55,14 @@ class QuotaPolicy:
             raise ValueError("LLM_QUOTA_NEAR_LIMIT_RATIO must be in (0, 1]")
         if config.LLM_QUOTA_GUEST_COOKIE_DAYS <= 0:
             raise ValueError("LLM_QUOTA_GUEST_COOKIE_DAYS must be positive")
+        if not 0 < config.TOPICER_RESERVE_USD_PER_CHUNK < float("inf"):
+            raise ValueError("TOPICER_RESERVE_USD_PER_CHUNK must be positive")
         return cls(guest_daily_micro_usd=usd_to_micro(config.LLM_QUOTA_GUEST_DAILY_USD),
                    account_daily_micro_usd=usd_to_micro(config.LLM_QUOTA_ACCOUNT_DAILY_USD),
                    near_limit_ratio=config.LLM_QUOTA_NEAR_LIMIT_RATIO,
                    guest_cookie_max_age_seconds=config.LLM_QUOTA_GUEST_COOKIE_DAYS * 24 * 60 * 60,
-                   guest_cookie_secure=config.LLM_QUOTA_GUEST_COOKIE_SECURE)
+                   guest_cookie_secure=config.LLM_QUOTA_GUEST_COOKIE_SECURE,
+                   topicer_reserve_usd_per_chunk=config.TOPICER_RESERVE_USD_PER_CHUNK)
 
     def daily_limit(self, principal: QuotaPrincipal) -> int:
         return self.account_daily_micro_usd if principal.kind == "account" else self.guest_daily_micro_usd
@@ -158,7 +165,8 @@ class AllowanceBudget:
 
     ``admit`` raises ``QuotaExhausted`` before any model call. ``settle`` records the
     operation's finished calls; a call that was still running counts as one of unknown
-    cost, so the operation is charged at least its reservation.
+    cost, so the operation is charged at least its reservation. ``settle_calls`` records
+    calls measured elsewhere (Topicer's reported usage).
     """
     ledger: QuotaLedger
     policy: QuotaPolicy
@@ -174,6 +182,15 @@ class AllowanceBudget:
                             cost_source=c.cost_source, cost_usd=c.cost_usd, input_tokens=c.input_tokens,
                             output_tokens=c.output_tokens) for c in operation.calls]
         unfinished = max(operation.started_calls - len(operation.calls), 0)
-        calls += [CallRecord(feature=operation.feature, tier="", provider="", model="", outcome="unfinished",
-                             usage_source="unavailable", cost_source="unknown", cost_usd=None)] * unfinished
+        calls += [unfinished_call(operation.feature)] * unfinished
+        await self.settle_calls(admission, calls)
+
+    async def settle_calls(self, admission: str, calls: list[CallRecord]) -> None:
         await settle(self.ledger, admission, calls, now=self.clock())
+
+
+def unfinished_call(feature: str) -> CallRecord:
+    """A call whose usage is unknown (still running, interrupted or never reported): it
+    charges its operation at least the reservation."""
+    return CallRecord(feature=feature, tier="", provider="", model="", outcome="unfinished",
+                      usage_source="unavailable", cost_source="unknown", cost_usd=None)

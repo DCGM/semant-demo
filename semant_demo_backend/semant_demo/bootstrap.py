@@ -111,7 +111,7 @@ class AppResources:
 
         Raises ``LlmConfigurationError`` when the model tier catalog is invalid,
         ``ValidationError`` when the search vector configuration is, and ``ValueError``
-        for invalid LLM quota settings.
+        for invalid LLM quota or Topicer limit settings.
         """
         quota_policy = QuotaPolicy.from_config(config)
         llm = LlmGateway(ModelCatalog.load(config.LLM_MODELS_CONFIG), ProviderSettings.from_config(config),
@@ -120,7 +120,8 @@ class AppResources:
         session_maker = async_sessionmaker(engine, autocommit=False, autoflush=True, expire_on_commit=False)
         return cls(config=config, engine=engine, session_maker=session_maker,
                    search_vectors=load_search_vectors(config),
-                   topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT),
+                   topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT,
+                                         config.TOPICER_MAX_CHUNKS_PER_TAG),
                    llm=llm,
                    span_chat=FeatureChat(llm, "span_chat", temperature=config.SPAN_CHAT_TEMPERATURE,
                                          max_tokens=config.SPAN_CHAT_MAX_TOKENS),

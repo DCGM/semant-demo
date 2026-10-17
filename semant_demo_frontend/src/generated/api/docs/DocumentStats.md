@@ -12,6 +12,7 @@ Name | Type
 `totalChunks` | number
 `annotationsCount` | number
 `distinctTagsCount` | number
+`aiMaxChunksPerTag` | number
 
 ## Example
 
@@ -26,6 +27,7 @@ const example = {
   "totalChunks": null,
   "annotationsCount": null,
   "distinctTagsCount": null,
+  "aiMaxChunksPerTag": null,
 } satisfies DocumentStats
 
 console.log(example)

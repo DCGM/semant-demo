@@ -13,7 +13,8 @@ from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.features.user_collections import service
-from semant_demo.routes.dependencies import get_user_collections, get_tags, get_user_lookup
+from semant_demo.adapters.topicer.client import TopicerClient
+from semant_demo.routes.dependencies import get_topicer, get_user_collections, get_tags, get_user_lookup
 from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag
@@ -201,12 +202,15 @@ async def get_collection_tags(collection_id: str, collections: UserCollectionRep
 
 @exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}/stats", response_model=DocumentStats)
 async def get_document_stats(collection_id: str, document_id: str, collections: UserCollectionRepository = Depends(get_user_collections),
+                             topicer: TopicerClient = Depends(get_topicer),
                              current_user: User = Depends(current_active_user)) -> DocumentStats:
     """
     Returns per-document statistics within the given collection:
-    chunks in collection / total, annotation count, distinct tag count.
+    chunks in collection / total, annotation count, distinct tag count, and the per-tag
+    chunk limit of optimized AI suggestions (for the size warning before a run).
     """
-    return await service.get_document_stats(collections, current_user, collection_id, document_id)
+    stats = await service.get_document_stats(collections, current_user, collection_id, document_id)
+    return stats.model_copy(update={"ai_max_chunks_per_tag": topicer.max_chunks_per_tag})
 
 
 @exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}/chunks", response_model=list[CollectionChunk], response_model_exclude_none=True)

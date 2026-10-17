@@ -2135,7 +2135,7 @@ example().catch(console.error);
 
 Get Document Stats
 
-Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count, and the per-tag chunk limit of optimized AI suggestions (for the size warning before a run).
 
 ### Example
 
@@ -3431,7 +3431,7 @@ example().catch(console.error);
 
 Suggest Spans Optimized
 
-Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:&#x60;SuggestSpansRunEnd&#x60;.
+Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most &#x60;&#x60;TOPICER_MAX_CHUNKS_PER_TAG&#x60;&#x60; chunks per tag (sent as &#x60;&#x60;max_chunks&#x60;&#x60;; never set by the caller). Results are streamed as they arrive, then a :class:&#x60;SuggestSpansRunEnd&#x60; that lists the tags that reached the limit.
 
 ### Example
 
@@ -3492,6 +3492,7 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Stream of SuggestSpansChunkResult, one JSON object per line, ended by one SuggestSpansRunEnd line (&#x60;&#x60;event &#x3D;&#x3D; \&#39;end\&#39;&#x60;&#x60;). |  -  |
+| **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -3564,6 +3565,7 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Stream of SuggestSpansChunkResult, one JSON object per line. One event per proposal (the persisted auto span, or &#x60;&#x60;unsaved&#x60;&#x60; with the reason); an event with empty &#x60;&#x60;spans&#x60;&#x60; and a populated &#x60;&#x60;error&#x60;&#x60; on Topicer failure; ended by one SuggestSpansRunEnd line (&#x60;&#x60;event &#x3D;&#x3D; \&#39;end\&#39;&#x60;&#x60;). |  -  |
+| **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -3636,6 +3638,7 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Stream of SuggestSpansChunkResult, one JSON object per line, ended by one SuggestSpansRunEnd line (&#x60;&#x60;event &#x3D;&#x3D; \&#39;end\&#39;&#x60;&#x60;). |  -  |
+| **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

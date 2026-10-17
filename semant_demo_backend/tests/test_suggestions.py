@@ -13,7 +13,7 @@ import anyio
 import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
-from semant_demo.adapters.topicer.client import TopicerError
+from semant_demo.adapters.topicer.client import TopicerError, TopicerProposals
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import suggestions
 from semant_demo.features.annotations.schemas import (
@@ -113,10 +113,15 @@ def proposal(tag, start, end, **extra):
 
 
 class FakeProvider:
-    """``answers[text]`` is a list of proposals, an exception, or an awaitable gate before the list."""
+    """``answers[text]`` is a list of proposals, an exception, or an awaitable gate before the list.
+    ``usage[text]`` is the usage reported with the answer (default: none, unknown)."""
 
-    def __init__(self, world: World, answers: dict | None = None, stream: dict | None = None):
+    max_chunks_per_tag = 40
+
+    def __init__(self, world: World, answers: dict | None = None, stream: dict | None = None,
+                 usage: dict | None = None):
         self.world = world
+        self.usage = usage or {}
         self.answers = answers or {}
         self.stream = stream or {}
         self.running = 0
@@ -138,7 +143,7 @@ class FakeProvider:
             await asyncio.sleep(0)
             if isinstance(answer, Exception):
                 raise answer
-            return answer
+            return TopicerProposals(proposals=answer, usage=self.usage.get(text))
         except asyncio.CancelledError:
             self.cancelled.append(text)
             if self.cancel_delay:

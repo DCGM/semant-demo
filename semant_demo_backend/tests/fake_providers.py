@@ -21,7 +21,7 @@ import json
 import re
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from tests.corpus import Corpus
@@ -107,6 +107,19 @@ def propose_spans(text: str, tags: list[dict[str, Any]]) -> list[dict[str, Any]]
     return proposals
 
 
+FAKE_TOPICER_CALL_COST_USD = 0.0001
+"""Reported cost of each fake Topicer model call."""
+FAKE_TOPICER_MAX_CHUNKS_CEILING = 200
+
+
+def fake_topicer_usage(calls: int) -> dict[str, Any]:
+    """Topicer's ``LLMUsage`` (DCGM/topicer#81) of ``calls`` successful, priced calls."""
+    call = {"provider": "fake", "model": "fake-topicer", "outcome": "success", "input_tokens": 100,
+            "output_tokens": 10, "usage_source": "reported", "cost_usd": FAKE_TOPICER_CALL_COST_USD,
+            "cost_source": "reported"}
+    return {"attempted_calls": calls, "completed_calls": calls, "failed_calls": 0, "calls": [call] * calls}
+
+
 def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastAPI:
     """``stream_delay``: seconds the Topicer stream waits after each chunk event, so a
     browser test can act (cancel, navigate) while a suggestion run is still under way."""
@@ -130,10 +143,13 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
     @app.post("/v1/tags/propose/texts")
     async def propose_texts(body: dict):
         chunk = body["text_chunk"]
-        return {"text_chunk": chunk, "tag_span_proposals": propose_spans(chunk["text"], body["tags"])}
+        return {"text_chunk": chunk, "tag_span_proposals": propose_spans(chunk["text"], body["tags"]),
+                "usage": fake_topicer_usage(1)}
 
     @app.post("/v1/tags/propose/db/stream")
-    async def propose_db_stream(body: dict):
+    async def propose_db_stream(body: dict, max_chunks: int | None = None):
+        if max_chunks is not None and not 0 < max_chunks <= FAKE_TOPICER_MAX_CHUNKS_CEILING:
+            raise HTTPException(422, "max_chunks out of range")
         # The real Topicer reads chunks from the database; the fake reads the corpus.
         request = body["db_request"]
         collection_key = next(
@@ -145,13 +161,23 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
             key=lambda c: c["order"],
         )
 
+        # As Topicer: at most max_chunks chunks, then the terminal usage summary.
+        limit = max_chunks if max_chunks is not None else len(chunks)
+        processed = chunks[:limit]
+
         async def lines():
-            for index, chunk in enumerate(chunks):
+            for index, chunk in enumerate(processed):
                 if index and stream_delay:
                     await asyncio.sleep(stream_delay)
                 event = {"id": chunk["id"], "text": chunk["text"],
                          "tag_span_proposals": propose_spans(chunk["text"], [body["tag"]])}
                 yield json.dumps(event, ensure_ascii=False) + "\n"
+            summary = {"event": "usage_summary", "status": "complete", "tag_id": body["tag"]["id"],
+                       "max_chunks": max_chunks, "max_chunks_source": "request" if max_chunks is not None else None,
+                       "processed_chunks": len(processed),
+                       "limit_reached": max_chunks is not None and len(processed) >= max_chunks,
+                       "candidates_truncated": len(chunks) > limit, "usage": fake_topicer_usage(len(processed))}
+            yield json.dumps(summary) + "\n"
 
         return StreamingResponse(lines(), media_type="application/x-ndjson")
 

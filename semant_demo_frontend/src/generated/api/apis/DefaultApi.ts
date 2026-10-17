@@ -1137,7 +1137,7 @@ export interface DefaultApiInterface {
     getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRequestOpts(requestParameters: GetDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count, and the per-tag chunk limit of optimized AI suggestions (for the size warning before a run).
      * @summary Get Document Stats
      * @param {string} collectionId 
      * @param {string} documentId 
@@ -1148,7 +1148,7 @@ export interface DefaultApiInterface {
     getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRaw(requestParameters: GetDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentStats>>;
 
     /**
-     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count, and the per-tag chunk limit of optimized AI suggestions (for the size warning before a run).
      * Get Document Stats
      */
     getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet(requestParameters: GetDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentStats>;
@@ -1587,7 +1587,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequestOpts(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * @summary Suggest Spans Optimized
      * @param {SuggestSpansRequest} suggestSpansRequest 
      * @param {*} [options] Override http request option.
@@ -1597,7 +1597,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -3422,7 +3422,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count, and the per-tag chunk limit of optimized AI suggestions (for the size warning before a run).
      * Get Document Stats
      */
     async getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRaw(requestParameters: GetDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentStats>> {
@@ -3433,7 +3433,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count.
+     * Returns per-document statistics within the given collection: chunks in collection / total, annotation count, distinct tag count, and the per-tag chunk limit of optimized AI suggestions (for the size warning before a run).
      * Get Document Stats
      */
     async getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet(requestParameters: GetDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentStats> {
@@ -4443,7 +4443,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -4454,7 +4454,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
+     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {

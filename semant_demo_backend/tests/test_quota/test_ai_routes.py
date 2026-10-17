@@ -16,6 +16,7 @@ import yaml
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
+from semant_demo.features.documents.schemas import DocumentStats
 from semant_demo.features.quota import service
 from semant_demo.features.quota.principal import GUEST_COOKIE, guest_principal
 from semant_demo.features.quota.schemas import QuotaExhaustedResponse
@@ -23,7 +24,7 @@ from semant_demo.features.quota.service import QuotaPrincipal
 from semant_demo.features.search.service import SUMMARY_QUOTA_WARNING
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_annotation_store, get_documents, get_search_backends, \
-    get_user_collections
+    get_topicer, get_user_collections
 from tests.app_support import make_test_config, offline_weaviate
 from tests.auth_support import auth_headers, register
 from tests.corpus import load_corpus
@@ -34,6 +35,7 @@ from tests.test_quota.test_ledger import call
 from tests.test_search_service import backends as search_backends
 from tests.test_span_chat import FakeStore, span
 from tests.test_summarization import test_document_service as documents
+from tests import test_suggestions as suggestion_fakes
 
 PASSWORD = "StrongPassw0rd!"
 SEARCH_RESPONSE = {"results": [], "search_request": {"query": "Novák", "tag_uuids": [], "positive": False,
@@ -283,9 +285,96 @@ def test_ai_routes_declare_the_429_and_search_does_not(tmp_path):
     paths = create_app(make_test_config(tmp_path)).openapi()["paths"]
 
     for path in ("/api/rag", "/api/rag/explain", "/api/question", "/api/summarize/{summary_type}",
-                 "/api/ai/discuss_span",
+                 "/api/ai/discuss_span", "/api/ai/suggest_spans/thorough", "/api/ai/suggest_spans/optimized",
+                 "/api/ai/suggest_spans/selection",
                  "/api/user_collections/{collection_id}/documents/{document_id}/summary"):
         refused = paths[path]["post"]["responses"]["429"]
         assert refused["content"]["application/json"]["schema"]["$ref"].endswith("/QuotaExhaustedResponse")
         assert "Retry-After" in refused["headers"]
     assert "429" not in paths["/api/search"]["post"]["responses"]
+
+
+def suggestion_world(user_id: str) -> suggestion_fakes.World:
+    """One-chunk document in a collection owned by ``user_id``."""
+    world = suggestion_fakes.World("Jan Novák")
+
+    async def read_access_record(collection_id):
+        return (UUID(user_id), set()) if collection_id == suggestion_fakes.COLLECTION else None
+
+    world.read_access_record = read_access_record
+    return world
+
+
+def suggestion_bodies(world) -> dict[str, dict]:
+    document = {"collection_id": str(suggestion_fakes.COLLECTION), "document_id": str(suggestion_fakes.DOCUMENT),
+                "tag_ids": [str(suggestion_fakes.PERSON)]}
+    selection = {**document, "chunk_ids": [str(world.chunks[0].id)], "selection_start": 0, "selection_end": 3}
+    return {"thorough": document, "optimized": document, "selection": selection}
+
+
+def use_suggestion_fakes(ai, world, provider) -> None:
+    ai.app.dependency_overrides[get_annotation_store] = lambda: world.store()
+    ai.app.dependency_overrides[get_topicer] = lambda: provider
+
+
+@pytest.mark.parametrize("mode", ["thorough", "optimized", "selection"])
+async def test_suggestions_are_refused_before_streaming_for_an_exhausted_account(ai, mode):
+    account, headers = await ai.account()
+    world = suggestion_world(account.id)
+    provider = suggestion_fakes.FakeProvider(world)
+    use_suggestion_fakes(ai, world, provider)
+    await ai.exhaust(account)
+
+    response = await ai.client.post(f"/api/ai/suggest_spans/{mode}", json=suggestion_bodies(world)[mode],
+                                    headers=headers)
+
+    assert_refused(response, "account")
+    assert provider.calls == [] and world.log == []
+
+
+async def test_suggestion_access_is_checked_before_admission(ai):
+    account, headers = await ai.account()
+    world = suggestion_world(str(suggestion_fakes.OTHER.id))  # someone else's collection
+    provider = suggestion_fakes.FakeProvider(world)
+    use_suggestion_fakes(ai, world, provider)
+
+    response = await ai.client.post("/api/ai/suggest_spans/thorough", json=suggestion_bodies(world)["thorough"],
+                                    headers=headers)
+
+    assert response.status_code == 404
+    assert ai.rows("SELECT count(*) FROM llm_quota_operation") == [(0,)]
+
+
+async def test_a_suggestion_run_settles_each_chunk_on_the_account(ai):
+    account, headers = await ai.account()
+    world = suggestion_world(account.id)
+    provider = suggestion_fakes.FakeProvider(world, {"Jan Novák": [suggestion_fakes.proposal(
+        suggestion_fakes.PERSON, 0, 3)]})  # no reported usage: charged the reservation
+    use_suggestion_fakes(ai, world, provider)
+
+    response = await ai.client.post("/api/ai/suggest_spans/thorough", json=suggestion_bodies(world)["thorough"],
+                                    headers=headers)
+
+    end = json.loads(response.text.splitlines()[-1])
+    assert (end["event"], end["outcome"], end["units_processed"], end["stop_reason"]) == ("end", "complete", 1, None)
+    assert ai.rows("SELECT feature, status FROM llm_quota_operation") == [("topicer_thorough", "settled")]
+    status = await ai.status(headers)
+    assert (status["reserved_usd"], status["charged_usd"]) == (0, 0.005)
+
+
+async def test_document_stats_carry_the_optimized_chunk_limit(ai):
+    account, headers = await ai.account()
+    collections, _ = summary_stores(account.id)
+
+    async def read_document_stats(collection_id, document_id):
+        return DocumentStats(document_id=str(document_id), collection_id=str(collection_id), chunks_in_collection=2,
+                             total_chunks=3, annotations_count=0, distinct_tags_count=0)
+
+    collections.read_document_stats = read_document_stats
+    ai.app.dependency_overrides[get_user_collections] = lambda: collections
+
+    response = await ai.client.get(f"/api/user_collections/{documents.COLLECTION}/documents/{documents.DOCUMENT}"
+                                   "/stats", headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert (response.json()["chunks_in_collection"], response.json()["ai_max_chunks_per_tag"]) == (2, 40)
