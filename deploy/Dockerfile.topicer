@@ -1,0 +1,38 @@
+# Topicer API (https://github.com/DCGM/topicer), cloned from BRANCH_NAME at build time.
+# Docker caches the clone: build with --no-cache (update.sh topicer-build) to get the branch tip.
+FROM node:18 AS git_stage
+WORKDIR /app
+RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/apt/lists/*
+
+ARG BRANCH_NAME=main
+ARG NOW
+
+
+# Make git strictly non-interactive and ignore any credential prompting
+ENV GIT_TERMINAL_PROMPT=0
+
+RUN git clone --branch "$BRANCH_NAME" https://github.com/DCGM/topicer.git
+
+WORKDIR /app/topicer
+
+
+FROM python:3.12-slim AS base
+RUN apt-get update && apt-get install -y libgl1 libpq-dev libgeos-dev libglib2.0-0 && apt-get purge -y --auto-remove  && rm -rf /var/lib/apt/lists/*
+
+
+##################################################################
+FROM base AS server
+WORKDIR /app
+
+COPY --from=git_stage app/topicer/requirements.txt ./requirements.txt
+RUN pip install -r requirements.txt
+
+COPY --from=git_stage app/topicer/topicer_api/requirements.txt ./requirements_api.txt
+RUN pip install -r requirements_api.txt
+
+COPY --from=git_stage app/topicer/ /app/topicer
+
+ENV PYTHONPATH=/app:/app/topicer
+WORKDIR /app/topicer/topicer_api/
+
+

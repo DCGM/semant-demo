@@ -10,7 +10,8 @@ This folder holds the Docker Compose files, Dockerfiles and environment template
 | `docker-compose.app-test.yml` | Test app for `test-main` and PR previews (CI/CD managed) |
 | `docker-compose.database.yml` / `docker-compose.database-test.yml` | Weaviate for production / for all test instances |
 | `docker-compose.embedder.yml` | GPU embedding service: Qwen3-Embedding-0.6B on vLLM (#385) |
-| `docker-compose.topicer.yml` / `docker-compose.topicer-test.yml` | Topicer service, started manually with `update.sh` (CI/CD does not deploy it, but the app compose files require its external networks). They build from a `Dockerfile.topicer` that is not in this repository ([#299](https://github.com/DCGM/semant-demo/issues/299)) |
+| `docker-compose.topicer.yml` / `docker-compose.topicer-test.yml` | Topicer service, started manually with `update.sh` (CI/CD does not deploy it, but the app compose files require its external networks); see [Topicer](#topicer) |
+| `Dockerfile.topicer` | Build of the Topicer API from a branch of [DCGM/topicer](https://github.com/DCGM/topicer) |
 | `Dockerfile` | Multi-stage build of backend + frontend (`npm ci` and the committed generated API client, not regenerated) |
 | `Dockerfile.embedder` | Build of the former Gemma embedding service (`embedding_service/`); no longer used by `docker-compose.embedder.yml` |
 | `update.sh` | Named shortcuts for the `docker compose` commands below |
@@ -83,7 +84,7 @@ them when called without one:
 | `./update.sh database-up` / `database-down` | production Weaviate (`docker-compose.database.yml`) |
 | `./update.sh test-database-up` / `test-database-down` | test Weaviate (`docker-compose.database-test.yml`, project `semant-demo-test`) |
 | `./update.sh embedder-up` / `embedder-down` / `embedder-pull` | Qwen embedding service (pulls the pinned vLLM image) |
-| `./update.sh topicer-*` / `test-topicer-*` | Topicer (see the note in [Contents](#contents)) |
+| `./update.sh topicer-up` / `topicer-down` / `topicer-build` (`test-topicer-*` likewise) | Topicer ([below](#topicer)); `build` runs with `--no-cache` |
 
 Other operations use `docker compose` with the same project and file, for example:
 
@@ -173,6 +174,44 @@ Done on the shared test Weaviate on 2026-10-16 (filesystem backup
 seconds; dropping two vectors took ~15 s, restored GraphQL, kept 28 properties and the
 document references and shrank the chunk data from 289 to 57 MB. Not rehearsed at
 production size (startup and drop duration unknown).
+
+### Topicer
+
+`Dockerfile.topicer` clones [DCGM/topicer](https://github.com/DCGM/topicer) at the compose
+file's `BRANCH_NAME` (both files: `main`; production built from `semant-debug` until
+2026-10-17). Docker caches the clone, so `./update.sh topicer-build` builds with `--no-cache`;
+check `git log origin/main` of Topicer before rebuilding, since the build takes its tip. The
+production service reserves a GPU (CrossBERT and mDeBERTa configs); the test one does not.
+
+The server's `deploy/data/` is mounted at `/app/data`. At startup the API loads every
+`*.yaml` in `TOPICER_API_CONFIGS_DIR` (`/app/data/topicer`) as a config named after the file;
+the apps choose one with `TOPICER_CONFIG_NAME` (`openai-xjuric`). **A config that fails to load
+is only logged as a warning** (`Failed to load topicer config ...`) and is then missing; after
+a rebuild or a config change, check that the log line `Loaded topicer configurations: [...]`
+lists all of them. Config files hold provider keys and are not in this repository.
+
+Configs that use embeddings (vector pre-filtering of `POST /v1/tags/propose/db/stream`, topic
+discovery) must embed queries with the model of the Weaviate vector they search (#385):
+
+```yaml
+embedding_service:
+  cls: OpenAIEmbeddingService            # Topicer main since DCGM/topicer#80
+  config:
+    base_url: "http://qwen-embedder:8000/v1"
+    model: "Qwen/Qwen3-Embedding-0.6B"   # Qwen query instruction and truncation are defaults
+    timeout: 30
+db_connection:
+  cls: WeaviateService
+  config:
+    # host, ports, chunks_limit as before
+    vector_name: "Qwen3_Embedding_0_6B"  # default "default", which no longer exists
+```
+
+`DefaultEmbeddingService` (the former Gemma service, 3,584 dimensions) cannot query the Qwen
+vector. Topicer `main` also requires `stride` (e.g. `32`) in `CrossBertTopicer` configs.
+Switched in production on 2026-10-17: `openai-xjuric` as above, `bert.yaml` with `stride: 32`
+(same spans as before on a synthetic check, now with confidences), `openai-xsucha`
+(`TagProposalV2`, no embeddings) unchanged.
 
 ### In-app feedback storage
 

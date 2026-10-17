@@ -33,14 +33,14 @@ case "$CMD" in
   topicer-down)
     docker compose -p semant-demo -f ./docker-compose.topicer.yml down ;;
   topicer-build)
-    docker compose -p semant-demo -f ./docker-compose.topicer.yml build ;;
+    docker compose -p semant-demo -f ./docker-compose.topicer.yml build --no-cache ;;
   
   test-topicer-up)
     docker compose -p semant-demo -f ./docker-compose.topicer-test.yml up -d ;;
   test-topicer-down)
     docker compose -p semant-demo -f ./docker-compose.topicer-test.yml down ;;
   test-topicer-build)
-    docker compose -p semant-demo -f ./docker-compose.topicer-test.yml build ;;
+    docker compose -p semant-demo -f ./docker-compose.topicer-test.yml build --no-cache ;;
   *)
     echo "Usage: $0 <command>"
     echo ""
