@@ -613,8 +613,13 @@ const explainSelection = async () => {
     }) as { explanation?: string }
     if (isCurrent()) explanationDialog.value.text = response.explanation ?? ''
   } catch (error) {
-    if (isCurrent()) explanationDialog.value.text = 'Sorry, this part can not be explained.'
+    if (!isCurrent()) return
+    // Refused for the daily AI allowance: say why and when it resets; nothing is retried.
+    const refusal = await quotaRefusalOf(error)
+    if (!isCurrent()) return
+    explanationDialog.value.text = refusal ? quotaRefusalMessage(refusal) : 'Sorry, this part can not be explained.'
   } finally {
+    reportAiOperation()
     if (isCurrent()) explanationDialog.value.loading = false
   }
 }

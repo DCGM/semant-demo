@@ -28,7 +28,8 @@ import { formatQuotaReset } from 'src/shared/api'
 import { useQuotaStore } from './quotaStore'
 
 // A subtle warning once the near-limit share of the daily AI allowance is used, and a notice
-// when it is used up (#234). Dismissing hides it until the level, principal or day changes.
+// when it is used up (#234). Dismissing hides it until the level, day or followed principal
+// changes (the store's epoch, so also on a switch to another account).
 // Guests are offered Log in / Register; signed-in users are not asked to register.
 const emit = defineEmits<{
   login: []
@@ -36,12 +37,12 @@ const emit = defineEmits<{
 }>()
 
 const quota = useQuotaStore()
-const { status, level, usedPercent } = storeToRefs(quota)
+const { status, level, usedPercent, epoch } = storeToRefs(quota)
 
 const exhausted = computed(() => level.value === 'exhausted')
 const guest = computed(() => status.value?.principal === 'guest')
 const key = computed(() => status.value && level.value !== 'ok'
-  ? `${status.value.principal}:${status.value.day}:${level.value}`
+  ? `${epoch.value}:${status.value.day}:${level.value}`
   : null)
 const dismissed = ref<string | null>(null)
 const visible = computed(() => key.value !== null && key.value !== dismissed.value)
