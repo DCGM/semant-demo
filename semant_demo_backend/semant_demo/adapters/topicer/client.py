@@ -10,6 +10,13 @@ Topicer exposes:
 Proposals are returned as Topicer sends them (``tag_span_proposals`` dicts with ``tag``,
 ``span_start``, ``span_end``, ``reason``, ``confidence``); validating them against the
 request is the caller's job (``features/annotations/suggestions.py``).
+
+Usage (DCGM/topicer#81): Topicer reports every provider attempt it made for a request
+(``usage`` of a ``/texts`` response; the terminal ``usage_summary`` line of a stream).
+It is parsed into :class:`TopicerUsage`; usage that is missing or malformed is ``None``,
+which callers must treat as unknown, never as zero. The optimized stream sends the
+backend's ``max_chunks`` (``TOPICER_MAX_CHUNKS_PER_TAG``); Topicer answers 422 when it is
+above its own safety ceiling.
 """
 from __future__ import annotations
 
@@ -38,7 +45,15 @@ class TopicerTag:
 
 class TopicerError(RuntimeError):
     """A failed Topicer call. The message is safe for logs and suggestion events: the error
-    class and HTTP status only, never Topicer's URL, its response or the request text."""
+    class and HTTP status only, never Topicer's URL, its response or the request text.
+
+    ``no_work``: Topicer certainly ran no model for the request (it could not be connected
+    to, or refused the request before inference with 422); otherwise its usage is unknown.
+    """
+
+    def __init__(self, message: str, *, no_work: bool = False):
+        super().__init__(message)
+        self.no_work = no_work
 
 
 def _failure(e: Exception) -> str:
@@ -47,30 +62,122 @@ def _failure(e: Exception) -> str:
     return type(e).__name__
 
 
+def _error(e: Exception) -> TopicerError:
+    refused = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 422
+    return TopicerError(_failure(e), no_work=refused or isinstance(e, httpx.ConnectError))
+
+
+@dataclass(frozen=True)
+class TopicerCall:
+    """One provider attempt that Topicer reports (a retried request is several)."""
+    provider: str
+    model: str
+    outcome: str
+    """``success``, ``error`` or ``cancelled``."""
+    usage_source: str
+    """``reported`` or ``unknown``."""
+    cost_source: str
+    """``reported`` (by the provider), ``estimated`` (tokens times Topicer's prices) or ``unknown``."""
+    cost_usd: float | None
+    """``None``: unknown, never zero."""
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
+@dataclass(frozen=True)
+class TopicerUsage:
+    calls: list[TopicerCall]
+    attempted_calls: int
+    """Attempts Topicer counted; more than ``len(calls)`` means some are not itemized."""
+
+
+def _optional_int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _usage(raw: Any) -> TopicerUsage | None:
+    """Topicer's ``LLMUsage``, or ``None`` when it is missing or malformed (unknown usage)."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("calls"), list):
+        return None
+    calls = []
+    for call in raw["calls"]:
+        if not isinstance(call, dict):
+            return None
+        cost = call.get("cost_usd")
+        if cost is not None and (isinstance(cost, bool) or not isinstance(cost, int | float)
+                                 or not 0 <= cost < float("inf")):
+            return None
+        calls.append(TopicerCall(
+            provider=str(call.get("provider") or ""), model=str(call.get("model") or ""),
+            outcome=str(call.get("outcome") or "unknown"), usage_source=str(call.get("usage_source") or "unknown"),
+            cost_source=str(call.get("cost_source") or "unknown") if cost is not None else "unknown",
+            cost_usd=None if cost is None else float(cost),
+            input_tokens=_optional_int(call.get("input_tokens")), output_tokens=_optional_int(call.get("output_tokens"))))
+    attempted = _optional_int(raw.get("attempted_calls"))
+    return TopicerUsage(calls=calls, attempted_calls=max(attempted or 0, len(calls)))
+
+
+@dataclass(frozen=True)
+class TopicerProposals:
+    """A ``/texts`` answer: the proposals and the usage of the request (``None``: unknown)."""
+    proposals: list[dict[str, Any]]
+    usage: TopicerUsage | None
+
+
+@dataclass(frozen=True)
+class TopicerStreamSummary:
+    """The terminal ``usage_summary`` line of a database stream (Topicer ``TagProposalUsageSummary``)."""
+    status: str
+    """``complete``, ``partial`` (some chunks failed) or ``failed``."""
+    max_chunks: int | None
+    processed_chunks: int
+    limit_reached: bool
+    """``processed_chunks`` reached ``max_chunks`` (also when no candidate was left out)."""
+    candidates_truncated: bool
+    """More candidate chunks existed than ``max_chunks``; they were excluded."""
+    usage: TopicerUsage | None
+
+
+def _stream_summary(event: dict[str, Any]) -> TopicerStreamSummary | None:
+    status, processed = event.get("status"), _optional_int(event.get("processed_chunks"))
+    usage = _usage(event.get("usage"))
+    if status not in ("complete", "partial", "failed") or processed is None or usage is None:
+        return None
+    return TopicerStreamSummary(status=status, max_chunks=_optional_int(event.get("max_chunks")),
+                                processed_chunks=processed, limit_reached=event.get("limit_reached") is True,
+                                candidates_truncated=event.get("candidates_truncated") is True, usage=usage)
+
+
 class TopicerClient:
     """Topicer at ``base_url`` with the named Topicer config.
 
     Built once per application by bootstrap from its config; holds no connection (each
-    call opens its own). ``transport`` replaces the network in tests. HTTP and protocol
-    errors raise ``TopicerError``.
+    call opens its own). ``max_chunks_per_tag`` is sent as ``max_chunks`` with every
+    database stream (semANT's policy, ``TOPICER_MAX_CHUNKS_PER_TAG``; never a caller's
+    value). ``transport`` replaces the network in tests. HTTP and protocol errors raise
+    ``TopicerError``.
     """
 
-    def __init__(self, base_url: str, config_name: str, timeout: float,
+    def __init__(self, base_url: str, config_name: str, timeout: float, max_chunks_per_tag: int = 40,
                  transport: httpx.AsyncBaseTransport | None = None):
+        """Raises ``ValueError`` when ``max_chunks_per_tag`` is not a positive integer."""
+        if isinstance(max_chunks_per_tag, bool) or not isinstance(max_chunks_per_tag, int) or max_chunks_per_tag <= 0:
+            raise ValueError("TOPICER_MAX_CHUNKS_PER_TAG must be a positive integer")
         self.base_url = base_url
         self.config_name = config_name
         self.timeout = timeout
+        self.max_chunks_per_tag = max_chunks_per_tag
         self.transport = transport
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=self.base_url, timeout=httpx.Timeout(self.timeout, connect=10.0),
                                  transport=self.transport)
 
-    async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag]) -> list[dict[str, Any]]:
+    async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag]) -> TopicerProposals:
         """
         Call ``POST /v1/tags/propose/texts`` for a single text + a list of tags.
 
-        Returns the list of ``tag_span_proposals`` from Topicer's response.
+        Returns the ``tag_span_proposals`` of Topicer's response and its ``usage``.
         """
         body = {
             "text_chunk": {"id": str(chunk_id), "text": text},
@@ -84,23 +191,26 @@ class TopicerClient:
                 data = resp.json()
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("Topicer POST %s failed for chunk %s: %s", path, chunk_id, _failure(e))
-            raise TopicerError(_failure(e)) from e
-        proposals = data.get("tag_span_proposals") if isinstance(data, dict) else None
-        if proposals is None:
-            return []
-        if not isinstance(proposals, list):
+            raise _error(e) from e
+        if not isinstance(data, dict):
+            data = {}
+        proposals = data.get("tag_span_proposals")
+        if proposals is not None and not isinstance(proposals, list):
             raise TopicerError("tag_span_proposals is not a list")
-        return proposals
+        return TopicerProposals(proposals=proposals or [], usage=_usage(data.get("usage")))
 
-    async def propose_for_db_stream(self, *, tag: TopicerTag, collection_id: str,
-                                    document_id: str) -> AsyncGenerator[dict[str, Any], None]:
+    async def propose_for_db_stream(self, *, tag: TopicerTag, collection_id: str, document_id: str
+                                    ) -> AsyncGenerator[dict[str, Any] | TopicerStreamSummary, None]:
         """
-        Call ``POST /v1/tags/propose/db/stream`` and yield each NDJSON object as it
-        arrives. Each yielded object is a ``TextChunkWithTagSpanProposals`` dict::
+        Call ``POST /v1/tags/propose/db/stream?max_chunks=<max_chunks_per_tag>`` and yield
+        each chunk result as it arrives, a ``TextChunkWithTagSpanProposals`` dict::
 
             {"id": "<chunk_id>", "text": "...", "tag_span_proposals": [...]}
 
-        Lines that are not JSON objects are logged and skipped.
+        and the terminal ``usage_summary`` line as a :class:`TopicerStreamSummary`. A stream
+        that ends without it (an older Topicer, an interruption) has unknown usage. Lines
+        that are not JSON objects, a malformed summary and other events are logged and
+        skipped, never yielded as chunks.
         """
         body = {
             "tag": tag.payload(),
@@ -109,8 +219,8 @@ class TopicerClient:
         path = "/v1/tags/propose/db/stream"
         try:
             async with self._client() as client:
-                async with client.stream("POST", path, params={"config_name": self.config_name},
-                                         json=body) as resp:
+                params = {"config_name": self.config_name, "max_chunks": self.max_chunks_per_tag}
+                async with client.stream("POST", path, params=params, json=body) as resp:
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
                         if not line or not line.strip():
@@ -123,7 +233,13 @@ class TopicerClient:
                             logger.warning("Topicer stream produced a line that is not a JSON object "
                                            "(%d characters)", len(line))
                             continue
-                        yield event
+                        if "event" not in event:
+                            yield event
+                        elif event["event"] == "usage_summary" and (summary := _stream_summary(event)):
+                            yield summary
+                        else:
+                            logger.warning("Topicer stream produced an unknown or malformed event line "
+                                           "(%d characters)", len(line))
         except httpx.HTTPError as e:
             logger.warning("Topicer POST %s failed (tag=%s, doc=%s): %s", path, tag.id, document_id, _failure(e))
-            raise TopicerError(_failure(e)) from e
+            raise _error(e) from e

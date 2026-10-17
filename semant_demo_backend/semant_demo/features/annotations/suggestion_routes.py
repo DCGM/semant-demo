@@ -13,8 +13,11 @@ render suggestions progressively: ``SuggestSpansChunkResult`` lines (``"event":
 - ``POST /api/ai/suggest_spans/selection`` — one user-selected passage.
 
 Access is checked before the stream starts (404/401/403 as for other annotation writes,
-400 for invalid requests). Closing the connection stops the remaining work; stored
-suggestions remain.
+400 for invalid requests). Each chunk, tag or selection is then one operation of the
+account's daily AI allowance (#408): the first is admitted before the stream starts (a
+refusal is the structured 429), later ones as the run proceeds; a later refusal stops the
+run with ``stop_reason == "quota_exhausted"`` in its end line. Closing the connection
+stops the remaining work; stored suggestions remain.
 """
 from __future__ import annotations
 
@@ -30,6 +33,9 @@ from semant_demo.features.annotations.schemas import (
     DeleteAutoSpansRequest, DeleteAutoSpansResponse, SuggestSpansRequest, SuggestSpansSelectionRequest,
 )
 from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.features.quota.principal import get_allowance_budget
+from semant_demo.features.quota.schemas import QUOTA_EXHAUSTED_RESPONSES
+from semant_demo.features.quota.service import AllowanceBudget
 from semant_demo.routes.dependencies import get_annotation_store, get_topicer
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
@@ -62,7 +68,7 @@ class _RunResponse(StreamingResponse):
 
 
 def _stream_responses(description: str) -> dict:
-    return {200: {"description": description, "content": {_NDJSON_MEDIA_TYPE: {}}}}
+    return {200: {"description": description, "content": {_NDJSON_MEDIA_TYPE: {}}}, **QUOTA_EXHAUSTED_RESPONSES}
 
 
 _STREAM_DESCRIPTION = (
@@ -81,6 +87,7 @@ async def suggest_spans_thorough(
     store: AnnotationStore = Depends(get_annotation_store),
     provider: TopicerClient = Depends(get_topicer),
     current_user: User = Depends(current_active_user),
+    budget: AllowanceBudget = Depends(get_allowance_budget),
 ):
     """
     Thorough AI span suggestion: every collection chunk in the document is sent
@@ -90,7 +97,7 @@ async def suggest_spans_thorough(
     streams NDJSON lines (``application/x-ndjson``): one
     :class:`SuggestSpansChunkResult` per chunk, then a :class:`SuggestSpansRunEnd`.
     """
-    run = await suggestions.prepare_document_run(store, provider, current_user, body, "thorough")
+    run = await suggestions.prepare_document_run(store, provider, current_user, body, "thorough", budget)
     return _RunResponse(run)
 
 
@@ -104,13 +111,16 @@ async def suggest_spans_optimized(
     store: AnnotationStore = Depends(get_annotation_store),
     provider: TopicerClient = Depends(get_topicer),
     current_user: User = Depends(current_active_user),
+    budget: AllowanceBudget = Depends(get_allowance_budget),
 ):
     """
     Optimized AI span suggestion: per tag, the Topicer service uses vector
     similarity to pre-filter only the most relevant chunks before invoking the
-    LLM. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd`.
+    LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as
+    ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a
+    :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
     """
-    run = await suggestions.prepare_document_run(store, provider, current_user, body, "optimized")
+    run = await suggestions.prepare_document_run(store, provider, current_user, body, "optimized", budget)
     return _RunResponse(run)
 
 
@@ -129,6 +139,7 @@ async def suggest_spans_selection(
     store: AnnotationStore = Depends(get_annotation_store),
     provider: TopicerClient = Depends(get_topicer),
     current_user: User = Depends(current_active_user),
+    budget: AllowanceBudget = Depends(get_allowance_budget),
 ):
     """
     Run AI span suggestion on a single user-selected passage that may
@@ -145,7 +156,7 @@ async def suggest_spans_selection(
     *start* offset (mirroring how non-AI cross-chunk spans are stored),
     not on the first chunk of the selection.
     """
-    run = await suggestions.prepare_selection_run(store, provider, current_user, body)
+    run = await suggestions.prepare_selection_run(store, provider, current_user, body, budget)
     return _RunResponse(run)
 
 

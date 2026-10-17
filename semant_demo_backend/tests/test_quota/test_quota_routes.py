@@ -205,6 +205,7 @@ async def test_cookie_security_and_lifetime_follow_the_settings(tmp_path, settin
 @pytest.mark.parametrize("setting, value", [
     ("LLM_QUOTA_GUEST_DAILY_USD", "0"), ("LLM_QUOTA_ACCOUNT_DAILY_USD", "-1"), ("LLM_QUOTA_ACCOUNT_DAILY_USD", "inf"),
     ("LLM_QUOTA_NEAR_LIMIT_RATIO", "0"), ("LLM_QUOTA_NEAR_LIMIT_RATIO", "1.5"), ("LLM_QUOTA_GUEST_COOKIE_DAYS", "0"),
+    ("TOPICER_RESERVE_USD_PER_CHUNK", "0"), ("TOPICER_MAX_CHUNKS_PER_TAG", "0"), ("TOPICER_MAX_CHUNKS_PER_TAG", "-5"),
 ])
 async def test_invalid_quota_settings_fail_startup(tmp_path, setting, value):
     app = await _start(tmp_path, **{setting: value})

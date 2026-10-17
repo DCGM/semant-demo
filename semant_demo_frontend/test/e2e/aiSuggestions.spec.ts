@@ -64,3 +64,22 @@ test('leaving the document during a run shows nothing of it in the next view', a
   await sidebarPanelButton(page, 'AI assist').click()
   await expect(suggestionCards(page)).toHaveCount(1)
 })
+
+test('a run that may evaluate more than 50 chunks asks first, and Cancel starts nothing', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI assist').click()
+  await page.locator('.ai-assist-panel').getByRole('button', { name: 'All' }).click()
+
+  // Optimized: 2 tags × the backend's default limit of 40 chunks per tag.
+  await page.getByRole('button', { name: 'Run AI' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Large AI run')).toBeVisible()
+  await expect(dialog.getByText('up to 80 chunks (2 tag(s) × at most 40 chunks per tag)', { exact: false })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Start tagging' })).toBeVisible()
+
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Run AI' })).toBeVisible()
+  await expect(page.getByText('Processed', { exact: false })).toHaveCount(0)
+})

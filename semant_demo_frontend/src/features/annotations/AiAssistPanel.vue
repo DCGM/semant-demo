@@ -81,6 +81,7 @@
         icon="auto_awesome"
         label="Run AI"
         no-caps
+        :loading="isPreparingRun"
         :disable="!selectedAiTagIds.length"
         @click="onRunAi"
       />
@@ -150,6 +151,16 @@
 
     <div v-if="aiAssist.lastError.value" class="ai-error q-mb-xs">
       {{ aiAssist.lastError.value }}
+    </div>
+
+    <div
+      v-for="notice in aiAssist.lastNotices.value"
+      :key="notice"
+      class="ai-notice q-mb-xs"
+      data-testid="ai-run-notice"
+    >
+      <q-icon name="info" size="16px" class="q-mr-xs" />
+      <span>{{ notice }}</span>
     </div>
 
     <q-separator class="q-my-xs" />
@@ -293,7 +304,7 @@ import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
 import { useApi } from 'src/shared/api'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useTagsStore } from './tagsStore'
-import useAiAssistance, { type AiAssistanceMode } from './useAiAssistance'
+import useAiAssistance, { largeRunWarning, type AiAssistanceMode } from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
 import useTagSpans from './useTagSpans'
 
@@ -317,6 +328,7 @@ const aiModeOptions = [
   { label: 'Thorough (every chunk in collection)', value: 'thorough' }
 ]
 const selectedAiTagIds = ref<string[]>([])
+const isPreparingRun = ref(false)
 const busyAutoSpanIds = ref<Set<string>>(new Set())
 const isBulkDeleting = ref(false)
 const lastDeletedCount = ref<number | null>(null)
@@ -371,14 +383,53 @@ function clearAiTags() {
   selectedAiTagIds.value = []
 }
 
+function confirmDialog(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    $q.dialog({
+      title: 'Large AI run',
+      message,
+      persistent: true,
+      cancel: { label: 'Cancel', flat: true, noCaps: true },
+      ok: { label: 'Start tagging', color: 'primary', noCaps: true }
+    }).onOk(() => resolve(true)).onCancel(() => resolve(false))
+  })
+}
+
+// Asks before a run that would evaluate more than LARGE_RUN_CHUNKS chunks (a confirmation,
+// not a cap). The size comes from the document's stats: its chunks in the collection and
+// the backend's per-tag limit of optimized mode. Without them the run starts unasked.
+async function confirmLargeRun(collectionId: string, documentId: string, tagCount: number,
+  mode: AiAssistanceMode): Promise<boolean> {
+  let warning: string | null = null
+  try {
+    const stats = await api.getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet({
+      collectionId, documentId
+    })
+    warning = largeRunWarning(mode, stats.chunksInCollection, tagCount, stats.aiMaxChunksPerTag ?? 0)
+  } catch (e) {
+    console.warn('Could not read the document size before an AI run', e)
+  }
+  return !warning || await confirmDialog(warning)
+}
+
 async function onRunAi() {
-  if (!selectedAiTagIds.value.length) return
-  await aiAssist.run({
+  if (!selectedAiTagIds.value.length || isPreparingRun.value) return
+  const req = {
     collectionId: props.collectionId,
     documentId: props.documentId,
     tagIds: [...selectedAiTagIds.value],
     mode: aiMode.value
-  })
+  }
+  isPreparingRun.value = true
+  let confirmed = false
+  try {
+    confirmed = await confirmLargeRun(req.collectionId, req.documentId, req.tagIds.length, req.mode)
+  } finally {
+    isPreparingRun.value = false
+  }
+  // Not for another document opened meanwhile.
+  if (!confirmed || req.collectionId !== props.collectionId || req.documentId !== props.documentId) return
+  await aiAssist.run(req)
 }
 
 interface AutoSpanEntry {
@@ -681,6 +732,16 @@ watch(
   display: flex;
   align-items: center;
   color: #475569;
+}
+
+.ai-notice {
+  display: flex;
+  align-items: flex-start;
+  color: #1e3a8a;
+  font-size: 0.85rem;
+  background: rgba(37, 99, 235, 0.08);
+  border-radius: 6px;
+  padding: 6px 8px;
 }
 
 .ai-error {

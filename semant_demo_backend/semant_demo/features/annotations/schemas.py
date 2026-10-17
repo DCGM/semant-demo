@@ -3,9 +3,10 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from semant_demo.core.outcomes import WriteResult
+from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 
 
 class AnnotationChunk(BaseModel):
@@ -214,11 +215,28 @@ class SuggestionRunOutcome(str, Enum):
     reported to callers of the workflow and in the log."""
 
 
+class SuggestTagLimit(BaseModel):
+    """An optimized-mode tag whose Topicer stream reached the per-tag chunk limit."""
+    tag_id: str
+    tag_name: str
+    max_chunks: int
+    """The limit applied (``TOPICER_MAX_CHUNKS_PER_TAG``)."""
+    processed_chunks: int
+    candidates_truncated: bool
+    """More candidate chunks than ``max_chunks`` existed; they were excluded. False when
+    the limit was reached exactly."""
+
+
 class SuggestSpansRunEnd(BaseModel):
     """
     The last NDJSON event of an AI suggestion stream (``event == "end"``): a summary of
     the run. A stream that ends without it was interrupted; spans already announced
     are saved, nothing more is.
+
+    A run is made of units charged to the daily AI allowance one by one: the document's
+    chunks (thorough), the tags (optimized) or the one selection. A unit whose admission
+    is refused is not started, nor any after it (``stop_reason == "quota_exhausted"``);
+    units already started finish and their suggestions are kept.
     """
     event: Literal["end"] = "end"
     outcome: SuggestionRunOutcome = SuggestionRunOutcome.complete
@@ -234,6 +252,19 @@ class SuggestSpansRunEnd(BaseModel):
     """Provider calls that failed (their chunks or tags got no proposals)."""
     error: str | None = None
     """Why the run did not complete, if it did not."""
+    unit: Literal["chunk", "tag", "selection"] = "chunk"
+    units_total: int = 0
+    """Units the run would process (document chunks, tags, or 1)."""
+    units_processed: int = 0
+    """Units admitted and sent to Topicer."""
+    stop_reason: Literal["quota_exhausted"] | None = None
+    """Why the remaining units were not started."""
+    quota_exhausted: QuotaExhaustedResponse | None = None
+    """The refusal that stopped the run (its ``reset_at``), with ``stop_reason``."""
+    max_chunks_per_tag: int | None = None
+    """Optimized mode: the per-tag chunk limit sent to Topicer."""
+    tag_limits: list[SuggestTagLimit] = Field(default_factory=list)
+    """Optimized mode: the tags that reached ``max_chunks_per_tag``."""
 
 
 class DeleteAutoSpansRequest(BaseModel):

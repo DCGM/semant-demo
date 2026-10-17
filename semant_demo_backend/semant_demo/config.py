@@ -84,6 +84,12 @@ class Config:
         self.TOPICER_URL = env.get("TOPICER_URL", "http://topicer:8089")
         self.TOPICER_CONFIG_NAME = env.get("TOPICER_CONFIG_NAME", "openai")
         self.TOPICER_TIMEOUT = float(env.get("TOPICER_TIMEOUT", 600.0))
+        # Most chunks one optimized suggestion stream evaluates per tag, sent to Topicer as
+        # max_chunks (semANT's policy; must not exceed Topicer's own max_chunks_ceiling).
+        self.TOPICER_MAX_CHUNKS_PER_TAG = int(env.get("TOPICER_MAX_CHUNKS_PER_TAG", 40))
+        # Daily-allowance reservation (USD-equivalent) for one Topicer chunk evaluation: a
+        # thorough chunk or a selection chunk; an optimized tag reserves it per allowed chunk.
+        self.TOPICER_RESERVE_USD_PER_CHUNK = float(env.get("TOPICER_RESERVE_USD_PER_CHUNK", 0.005))
 
         # Span discussion chat; its model is the span_chat feature's tier (LLM_MODELS_CONFIG).
         self.SPAN_CHAT_TEMPERATURE = float(env.get("SPAN_CHAT_TEMPERATURE", 0.4))

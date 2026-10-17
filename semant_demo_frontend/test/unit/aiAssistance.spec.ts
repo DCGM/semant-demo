@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-import { readNdjson } from 'src/shared/api'
-import useAiAssistance, { describeRunEnd } from 'src/features/annotations/useAiAssistance'
+import { onAiOperation, readNdjson } from 'src/shared/api'
+import useAiAssistance, {
+  describeRunEnd, describeTagLimits, largeRunWarning
+} from 'src/features/annotations/useAiAssistance'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
 
 vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
@@ -173,6 +175,105 @@ describe('useAiAssistance', () => {
     await running
 
     expect([ai.lastStatus.value, ai.lastError.value, ai.isRunning.value]).toEqual(['cancelled', null, false])
+  })
+
+  it('refreshes the allowance after every run, also a cancelled or refused one', async () => {
+    const reported = vi.fn()
+    const unsubscribe = onAiOperation(reported)
+    const ai = useAiAssistance()
+
+    const completed = ai.run(request('d1'))
+    await flush()
+    streams[0].push(end('complete'))
+    streams[0].close()
+    await completed
+    const cancelled = ai.run(request('d1'))
+    await flush()
+    ai.cancel()
+    await cancelled
+    const selection = ai.runOnSelection({
+      collectionId: 'c', documentId: 'd1', chunkIds: ['x'], selectionStart: 0, selectionEnd: 3, tagIds: ['t']
+    })
+    await flush()
+    streams[2].push(end('complete'))
+    streams[2].close()
+    await selection
+    unsubscribe()
+
+    expect(reported).toHaveBeenCalledTimes(3)
+  })
+
+  it('shows a refusal for the daily allowance with its reset time and does not retry', async () => {
+    const resetAt = new Date(Date.now() + 3_600_000).toISOString()
+    const refusal = {
+      detail: 'Insufficient remaining daily AI allowance',
+      code: 'llm_quota_exhausted',
+      principal: 'account',
+      reset_at: resetAt,
+      limit_usd: 1,
+      used_usd: 1
+    }
+    globalThis.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify(refusal), { status: 429 })))
+    const ai = useAiAssistance()
+
+    await ai.run(request('d1'))
+
+    expect(ai.lastError.value).toMatch(/^Today's AI allowance has no room for this request, so nothing was generated. It resets/)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports an early stop for the allowance and the tags that reached the chunk limit', async () => {
+    const ai = useAiAssistance()
+    const running = ai.run({ ...request('d1'), mode: 'optimized' })
+    await flush()
+
+    streams[0].push(end('partial', {
+      saved: 3,
+      unit: 'tag',
+      units_total: 3,
+      units_processed: 2,
+      stop_reason: 'quota_exhausted',
+      quota_exhausted: { reset_at: new Date(Date.now() + 3_600_000).toISOString(), principal: 'account' },
+      max_chunks_per_tag: 40,
+      tag_limits: [{ tag_id: 't', tag_name: 'Person', max_chunks: 40, processed_chunks: 40, candidates_truncated: true }]
+    }))
+    streams[0].close()
+    await running
+
+    expect(ai.lastError.value).toMatch(
+      /^Today's AI allowance ran out, so AI suggestions stopped early: 2 of 3 tags processed, 3 suggestion\(s\) saved. It resets /)
+    expect(ai.lastNotices.value).toEqual(['Tag "Person" reached the limit of 40 chunks per tag; additional candidate chunks were excluded.'])
+    ai.reset()
+    expect(ai.lastNotices.value).toEqual([])
+  })
+})
+
+describe('largeRunWarning', () => {
+  it('asks above 50 thorough chunks only', () => {
+    expect(largeRunWarning('thorough', 50, 3, 40)).toBeNull()
+    expect(largeRunWarning('thorough', 51, 1, 40)).toMatch(/all 51 chunks/)
+  })
+
+  it('asks when the optimized maximum, tags times the backend limit, exceeds 50', () => {
+    expect(largeRunWarning('optimized', 500, 1, 40)).toBeNull()
+    expect(largeRunWarning('optimized', 500, 5, 10)).toBeNull() // exactly 50
+    expect(largeRunWarning('optimized', 1, 2, 40)).toMatch(/up to 80 chunks \(2 tag\(s\) × at most 40 chunks per tag\)/)
+    expect(largeRunWarning('optimized', 1, 2, 20)).toBeNull()
+    expect(largeRunWarning('optimized', 1, 3, 20)).toMatch(/up to 60 chunks/)
+  })
+})
+
+describe('describeTagLimits', () => {
+  it('says that candidates were excluded only when they were', () => {
+    const limit = { tag_id: 't', tag_name: 'Place', max_chunks: 20, processed_chunks: 20 }
+    expect(describeTagLimits({
+      ...JSON.parse(end('complete')),
+      tag_limits: [{ ...limit, candidates_truncated: false }, { ...limit, tag_name: 'Person', candidates_truncated: true }]
+    })).toEqual([
+      'Tag "Place" reached the limit of 20 chunks per tag.',
+      'Tag "Person" reached the limit of 20 chunks per tag; additional candidate chunks were excluded.'
+    ])
+    expect(describeTagLimits(null)).toEqual([])
   })
 })
 

@@ -89,6 +89,9 @@ class DocumentStats(BaseModel):
     total_chunks: int
     annotations_count: int
     distinct_tags_count: int
+    ai_max_chunks_per_tag: int | None = None
+    """The most chunks one tag of optimized AI suggestions evaluates (``TOPICER_MAX_CHUNKS_PER_TAG``),
+    for workload warnings; thorough suggestions evaluate ``chunks_in_collection``."""
 
 
 class DocumentViewChunk(DocumentChunk):

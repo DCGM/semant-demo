@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { TagSpan, SpanType } from 'src/generated/api'
 import { useTagSpansStore } from './tagSpansStore'
-import { isAbortError, postNdjson } from 'src/shared/api'
+import { aiErrorMessage, formatQuotaReset, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
 
 /**
  * Streamed AI span suggestion (NDJSON) helper.
@@ -14,6 +14,11 @@ import { isAbortError, postNdjson } from 'src/shared/api'
  * Each run belongs to the document/collection it was started for. `reset()` (called
  * when the document or collection changes) aborts it and makes its late events, errors
  * and loading-state changes no-ops, so they cannot alter the new context.
+ *
+ * Runs are charged to the daily AI allowance chunk by chunk (thorough), tag by tag
+ * (optimized) or as one selection (#408): a refusal before the start is a 429 shown with
+ * the reset time, a later one ends the run early (`stop_reason: 'quota_exhausted'`), and
+ * the shown allowance is refreshed after every run, whatever its outcome.
  */
 
 export type AiAssistanceMode = 'thorough' | 'optimized'
@@ -33,6 +38,16 @@ export interface AiAssistanceChunkEvent {
   unsaved: number
 }
 
+/** An optimized-mode tag whose stream reached the per-tag chunk limit. */
+export interface AiTagLimit {
+  tag_id: string
+  tag_name: string
+  max_chunks: number
+  processed_chunks: number
+  /** More candidate chunks existed and were excluded (false when the limit was met exactly). */
+  candidates_truncated: boolean
+}
+
 /** The final `SuggestSpansRunEnd` line of a suggestion stream. */
 export interface AiRunEnd {
   event: 'end'
@@ -43,6 +58,44 @@ export interface AiRunEnd {
   search_tag_failures: number
   provider_failures: number
   error?: string | null
+  unit?: 'chunk' | 'tag' | 'selection'
+  units_total?: number
+  units_processed?: number
+  stop_reason?: 'quota_exhausted' | null
+  quota_exhausted?: { reset_at: string, principal: 'guest' | 'account' } | null
+  max_chunks_per_tag?: number | null
+  tag_limits?: AiTagLimit[]
+}
+
+/** Above this many chunk evaluations a document run asks for confirmation first. */
+export const LARGE_RUN_CHUNKS = 50
+
+/**
+ * The confirmation text for a large document run, or null when it is small enough.
+ * Thorough sends every chunk of the document in the collection; optimized evaluates at
+ * most `maxChunksPerTag` (the backend's limit) chunks per selected tag.
+ */
+export function largeRunWarning (
+  mode: AiAssistanceMode, chunksInCollection: number, tagCount: number, maxChunksPerTag: number
+): string | null {
+  if (mode === 'thorough') {
+    if (chunksInCollection <= LARGE_RUN_CHUNKS) return null
+    return `Thorough mode will send all ${chunksInCollection} chunks of this document to the AI, one request ` +
+      'per chunk, each counted against today\'s AI allowance.'
+  }
+  const evaluations = tagCount * maxChunksPerTag
+  if (evaluations <= LARGE_RUN_CHUNKS) return null
+  return `Optimized mode may evaluate up to ${evaluations} chunks (${tagCount} tag(s) × at most ` +
+    `${maxChunksPerTag} chunks per tag), counted against today's AI allowance.`
+}
+
+const UNIT_NAMES = { chunk: 'chunks', tag: 'tags', selection: 'selections' } as const
+
+/** One notice per tag that reached the per-tag chunk limit. */
+export function describeTagLimits (end: AiRunEnd | null): string[] {
+  return (end?.tag_limits ?? []).map((limit) =>
+    `Tag "${limit.tag_name}" reached the limit of ${limit.max_chunks} chunks per tag` +
+    (limit.candidates_truncated ? '; additional candidate chunks were excluded.' : '.'))
 }
 
 /** How the last run ended; `interrupted`: the stream ended without its final line. */
@@ -56,17 +109,29 @@ interface ResultLine {
   unsaved?: number
 }
 
+function failuresOf (end: AiRunEnd): string[] {
+  const problems: string[] = []
+  if (end.provider_failures) problems.push(`${end.provider_failures} AI request(s) failed`)
+  if (end.save_failures) problems.push(`${end.save_failures} suggestion(s) could not be saved`)
+  if (end.search_tag_failures) problems.push(`${end.search_tag_failures} saved suggestion(s) not yet findable by tag search`)
+  if (end.error) problems.push(end.error)
+  return problems
+}
+
 /** A readable message for a run that did not complete, or null. */
 export function describeRunEnd (end: AiRunEnd | null): string | null {
   if (!end) {
     return 'AI suggestions stopped before completion. Suggestions saved so far are kept.'
   }
   if (end.outcome === 'complete') return null
-  const problems: string[] = []
-  if (end.provider_failures) problems.push(`${end.provider_failures} AI request(s) failed`)
-  if (end.save_failures) problems.push(`${end.save_failures} suggestion(s) could not be saved`)
-  if (end.search_tag_failures) problems.push(`${end.search_tag_failures} saved suggestion(s) not yet findable by tag search`)
-  if (end.error) problems.push(end.error)
+  const problems = failuresOf(end)
+  if (end.stop_reason === 'quota_exhausted') {
+    const units = UNIT_NAMES[end.unit ?? 'chunk']
+    const reset = end.quota_exhausted ? ` It resets ${formatQuotaReset(new Date(end.quota_exhausted.reset_at))}.` : ''
+    return 'Today\'s AI allowance ran out, so AI suggestions stopped early: ' +
+      `${end.units_processed ?? 0} of ${end.units_total ?? 0} ${units} processed, ${end.saved} suggestion(s) saved.` +
+      reset + (problems.length ? ` Also: ${problems.join('; ')}.` : '')
+  }
   const head = end.outcome === 'failed' ? 'AI suggestions failed' : 'AI suggestions were only partly completed'
   return `${head} (${end.saved} saved): ${problems.join('; ')}.`
 }
@@ -78,6 +143,7 @@ function isRunEnd (value: unknown): value is AiRunEnd {
 const isRunning = ref(false)
 const lastError = ref<string | null>(null)
 const lastStatus = ref<AiRunStatus | null>(null)
+const lastNotices = ref<string[]>([])
 const processedChunkIds = ref<Set<string>>(new Set())
 const totalSpansAdded = ref(0)
 const totalUnsaved = ref(0)
@@ -219,6 +285,7 @@ export function useAiAssistance() {
     isRunning.value = true
     lastError.value = null
     lastStatus.value = null
+    lastNotices.value = []
     processedChunkIds.value = new Set()
     totalSpansAdded.value = 0
     totalUnsaved.value = 0
@@ -250,20 +317,24 @@ export function useAiAssistance() {
       })
       if (!isCurrent()) return
       lastStatus.value = end ? end.outcome : 'interrupted'
+      lastNotices.value = describeTagLimits(end)
       const summary = describeRunEnd(end)
       if (summary) lastError.value = summary
     } catch (e: unknown) {
       if (!isCurrent()) return
-      const err = e as { message?: string }
       if (isAbortError(e)) {
         // Cancelled by user — not an error.
         lastStatus.value = 'cancelled'
       } else {
         console.error('AI assistance failed', e)
+        // A refusal for the daily allowance (429) gets its reset time; nothing is retried.
+        const message = await aiErrorMessage(e, 'AI assistance request failed')
+        if (!isCurrent()) return
         lastStatus.value = 'interrupted'
-        lastError.value = err?.message || 'AI assistance request failed'
+        lastError.value = message
       }
     } finally {
+      reportAiOperation()
       if (isCurrent()) {
         activeAbort = null
         isRunning.value = false
@@ -348,15 +419,17 @@ export function useAiAssistance() {
       return collected
     } catch (e: unknown) {
       if (!isCurrent()) return null
-      const err = e as { message?: string }
       if (isAbortError(e)) {
         // Cancelled by user — not an error.
         return null
       }
       console.error('AI selection assistance failed', e)
-      lastSelectionError.value = err?.message || 'AI selection request failed'
+      const message = await aiErrorMessage(e, 'AI selection request failed')
+      if (!isCurrent()) return null
+      lastSelectionError.value = message
       return collected
     } finally {
+      reportAiOperation()
       if (isCurrent()) {
         activeSelectionAbort = null
         isSelectionRunning.value = false
@@ -386,6 +459,7 @@ export function useAiAssistance() {
     isSelectionRunning.value = false
     lastError.value = null
     lastStatus.value = null
+    lastNotices.value = []
     lastSelectionError.value = null
     processedChunkIds.value = new Set()
     totalSpansAdded.value = 0
@@ -403,6 +477,8 @@ export function useAiAssistance() {
     isSelectionRunning: computed(() => isSelectionRunning.value),
     lastError: computed(() => lastError.value),
     lastStatus: computed(() => lastStatus.value),
+    /** Information about the last document run, such as tags that reached the chunk limit. */
+    lastNotices: computed(() => lastNotices.value),
     lastSelectionError: computed(() => lastSelectionError.value),
     processedChunkCount: computed(() => processedChunkIds.value.size),
     totalSpansAdded: computed(() => totalSpansAdded.value),
