@@ -2,17 +2,21 @@
 users rate the answers.
 
 Pipelines are loaded at startup into a :class:`RagRegistry` (``registry.py``); their model
-calls go through the LLM gateway. Logs carry the configuration id, never questions,
-answers or retrieved text.
+calls go through the LLM gateway. One answer or explanation is one LLM operation, whose
+model calls the ``rag`` feature's ``max_calls`` caps. Logs carry the configuration id,
+never questions, answers or retrieved text.
 """
 import logging
+from contextlib import nullcontext
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from semant_demo.adapters.sql import feedback as feedback_store
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.rag.registry import BaseRag, RagRegistry
-from semant_demo.features.rag.schemas import ExplainRequest, FeedbackRequest, RagRequestMain, RagResponse, RagRouteConfig
+from semant_demo.features.rag.schemas import (
+    ExplainRequest, FeedbackRequest, RagChatMessage, RagRequestMain, RagResponse, RagRouteConfig,
+)
 from semant_demo.features.search import service as search_service
 from semant_demo.features.search.service import SearchBackends
 
@@ -29,26 +33,45 @@ def _pipeline(registry: RagRegistry, rag_id: str, purpose: str = "") -> BaseRag:
     return registry.instances[rag_id]
 
 
-async def answer(registry: RagRegistry, backends: SearchBackends, request: RagRequestMain) -> RagResponse:
+def _operation(pipeline: BaseRag):
+    return pipeline.llm.operation("rag") if pipeline.llm is not None else nullcontext()
+
+
+def _recent(history: list[RagChatMessage] | None, limit: int) -> list[RagChatMessage] | None:
+    """The last ``limit`` messages of ``history``; the earlier turns are not sent to the model."""
+    return history[-max(1, limit):] if history else history
+
+
+async def answer(registry: RagRegistry, backends: SearchBackends, request: RagRequestMain,
+                 history_limit: int = 20) -> RagResponse:
     """The answer of the chosen configuration, with its sources.
 
     RAG requests carry no collection or tags: retrieval covers the public corpus. Every
     retrieval uses the requested search vector (default: the configured default), the
     same way a direct search does; an unknown vector is refused before the pipeline runs.
+    Only the last ``history_limit`` history messages reach the pipeline.
     """
     pipeline = _pipeline(registry, request.rag_id)
     vector = backends.vectors.resolve(request.vector)
+    rag_request = request.rag_request.model_copy(
+        update={"history": _recent(request.rag_request.history, history_limit)})
     logger.info("RAG request", extra={"rag.id": request.rag_id, "rag.vector": vector.id,
                                       "rag.history_messages": len(request.rag_request.history or [])})
-    return await pipeline.rag_request(request=request.rag_request,
-                                      retrieve=search_service.public_retriever(backends, vector.id))
+    with _operation(pipeline):
+        return await pipeline.rag_request(request=rag_request,
+                                          retrieve=search_service.public_retriever(backends, vector.id))
 
 
-async def explain(registry: RagRegistry, request: ExplainRequest):
-    """An explanation of a selected part of an answer, by the configuration that gave it."""
+async def explain(registry: RagRegistry, request: ExplainRequest, history_limit: int = 20):
+    """An explanation of a selected part of an answer, by the configuration that gave it.
+
+    Only the last ``history_limit`` history messages reach the pipeline.
+    """
     pipeline = _pipeline(registry, request.rag_id, " used for explaining")
     logger.info("RAG explain request", extra={"rag.id": request.rag_id})
-    return await pipeline.explain_selection(request=request)
+    with _operation(pipeline):
+        return await pipeline.explain_selection(
+            request=request.model_copy(update={"history": _recent(request.history, history_limit)}))
 
 
 async def save_feedback(session: AsyncSession, request: FeedbackRequest) -> None:

@@ -453,3 +453,33 @@ async def test_retrieval_failure_propagates():
     with pytest.raises(RuntimeError):
         await service.search(backends(Broken()), RecordingSummarizer(), OWNER, request())
 
+
+
+async def test_titles_and_result_summaries_are_generated_for_the_first_results_only():
+    llm = FakeLlm("ok")
+    summarizer = TemplatedSearchResultsSummarizer(
+        gen_title_model_options=ModelOptions(), gen_results_summary_model_options=ModelOptions(),
+        gen_query_summary_model_options=ModelOptions(), max_generated_results=2)
+    summarizer.llm = llm
+    chunks = FakeChunks(hits=[hit(t) for t in "abcd"])
+
+    response = await service.search(backends(chunks), summarizer, OWNER, request())
+
+    assert [r.query_title for r in response.results] == ["ok", "ok", None, None]
+    assert [r.query_summary for r in response.results] == ["ok", "ok", None, None]
+    assert response.results_summary == "ok"   # one call over all results
+    assert len(llm.calls) == 2 + 2 + 1 and llm.operations == ["search_summary"]
+    assert response.warnings == [service.SUMMARY_LIMITED_WARNING]
+
+
+async def test_the_results_limit_is_not_reported_without_per_result_generation():
+    summarizer = TemplatedSearchResultsSummarizer(
+        gen_title_model_options=ModelOptions(), gen_results_summary_model_options=ModelOptions(),
+        gen_query_summary_model_options=ModelOptions(), max_generated_results=1)
+    summarizer.llm = FakeLlm("ok")
+    chunks = FakeChunks(hits=[hit("a"), hit("b")])
+
+    response = await service.search(backends(chunks), summarizer, OWNER,
+                                    request(search_title_generate=False, search_summary_generate=False))
+
+    assert response.warnings == [] and response.results_summary == "ok"

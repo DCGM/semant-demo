@@ -1,4 +1,5 @@
 # Search titles and summaries. The model is the search_summary feature's tier (LLM_MODELS_CONFIG).
+max_generated_results: 10 # Results of one search that get a generated title and per-result summary; later results get none, and the search response says so in a warning. Keep within the search_summary max_calls limit (two calls per result plus the results summary).
 gen_title_model_options: # Model options for title generation.
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.

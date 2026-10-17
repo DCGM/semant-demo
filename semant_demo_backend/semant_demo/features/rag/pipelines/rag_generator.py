@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 import logging
 
+from semant_demo.adapters.llm.usage import LlmRequestRefused
 from semant_demo.features.rag.registry import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchType
@@ -180,6 +181,9 @@ class RagGenerator(BaseRag):
             )
             time_spent = time() - t1
 
+        except LlmRequestRefused:
+            # Refused by the server before sending (missing key, oversized input, call limit).
+            raise
         except (openai.AuthenticationError, langchain_google_genai.chat_models.ChatGoogleGenerativeAIError) as e:
             logger.warning("RAG provider rejected the API key: %s", type(e).__name__)
             raise HTTPException(status_code=401, detail="Invalid API key.")

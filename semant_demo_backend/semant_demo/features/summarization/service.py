@@ -11,7 +11,7 @@ import time
 from uuid import UUID
 
 from semant_demo.adapters.llm.gateway import LlmGateway
-from semant_demo.adapters.llm.usage import LlmNotConfigured
+from semant_demo.adapters.llm.usage import LlmRequestRefused
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.core.errors import InvalidRequestError
@@ -43,8 +43,9 @@ class SafeLlmFailure(Exception):
     the client.
 
     Provider exception messages may echo the request, endpoints or credentials, so only a
-    fixed per-feature message, or the server-authored :class:`LlmNotConfigured` one, is ever
-    passed on. A generation failure is reported as a failed request rather than a 200 whose
+    fixed per-feature message, or the server-authored one of an :class:`LlmRequestRefused`
+    (a missing provider key, an oversized input), is ever passed on, with ``status_code``
+    (502, or the refusal's). A generation failure is reported as a failed request rather than a 200 whose
     content is quietly the configured fallback text — the question endpoint has nothing else
     to answer with, and a document summary has no other content to fall back on.
 
@@ -52,6 +53,16 @@ class SafeLlmFailure(Exception):
     call site (and their tests) already use (#358 review: the two were structurally
     identical, differing only in which fixed message their raiser passes in).
     """
+
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = status_code
+
+    @classmethod
+    def of(cls, error: Exception, fixed_message: str) -> "SafeLlmFailure":
+        if isinstance(error, LlmRequestRefused):
+            return cls(str(error), error.status_code)
+        return cls(fixed_message)
 
 
 QuestionFailed = SafeLlmFailure
@@ -86,7 +97,7 @@ async def answer_question(llm: LlmGateway, question: str, search_response: Searc
         summary_text = await llm.complete("question", messages, temperature=0.0, max_tokens=300)
     except Exception as e:
         logger.error("Question answering failed: %s", type(e).__name__)
-        raise QuestionFailed(str(e) if isinstance(e, LlmNotConfigured) else QUESTION_FAILED_MESSAGE) from e
+        raise QuestionFailed.of(e, QUESTION_FAILED_MESSAGE) from e
     return SummaryResponse(summary=summary_text.strip(), time_spent=search_response.time_spent)
 
 
@@ -129,8 +140,7 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
     summary = await document_summarizer.gen_document_summary(truncated, document_title=detail.document.title,
                                                               on_error=capture_failure)
     if failure is not None:
-        message = str(failure) if isinstance(failure, LlmNotConfigured) else DOCUMENT_SUMMARY_FAILED_MESSAGE
-        raise DocumentSummaryFailed(message) from failure
+        raise DocumentSummaryFailed.of(failure, DOCUMENT_SUMMARY_FAILED_MESSAGE) from failure
     citations = [
         DocumentSummaryCitation(chunk_id=chunk.id, order=chunk.order, from_page=chunk.from_page,
                                 to_page=chunk.to_page)

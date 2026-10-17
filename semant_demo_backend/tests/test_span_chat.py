@@ -224,3 +224,12 @@ async def test_failed_context_reads_log_only_the_error_class(caplog):
 
     assert [r.getMessage().rsplit(": ", 1)[1] for r in caplog.records] == ["RuntimeError"] * 3
     assert SECRET not in caplog.text and "Novák" not in caplog.text
+
+
+async def test_a_server_refusal_reaches_the_client_with_its_safe_message():
+    from semant_demo.adapters.llm.usage import LlmInputTooLarge
+
+    refusal = LlmInputTooLarge("The request is too large for the language model (about 16000 tokens are allowed).")
+    events = await _events(FakeStore(span(0, 3)), FakeStreamingChat([], error=refusal))
+
+    assert events == [{"error": str(refusal)}]

@@ -32,6 +32,7 @@ from semant_demo.features.search.vectors import SearchVector, SearchVectors
 logger = logging.getLogger(__name__)
 
 SUMMARY_FAILED_WARNING = "Some titles or summaries could not be generated."
+SUMMARY_LIMITED_WARNING = "Titles and result summaries were generated only for the first results."
 
 Retriever = Callable[[SearchRequest], Awaitable[SearchResponse]]
 
@@ -99,7 +100,9 @@ async def search(backends: SearchBackends, summarizer: Summarizer, user: Princip
 
     When a title or summary cannot be generated (the summarizer reports it and keeps its
     fallback text) or the summarizer fails altogether, the hits and the summaries made so
-    far are kept and ``SUMMARY_FAILED_WARNING`` is added. Retrieval errors propagate.
+    far are kept and ``SUMMARY_FAILED_WARNING`` is added. When only the first results got
+    titles and summaries (the summarizer's ``results_limit``), ``SUMMARY_LIMITED_WARNING``
+    is added. Retrieval errors propagate.
     """
     start = time()
     response = await retrieve(backends, user, request, filter_definitions)
@@ -108,6 +111,9 @@ async def search(backends: SearchBackends, summarizer: Summarizer, user: Princip
     except Exception as e:
         logger.error("Search summary generation failed: %s", type(e).__name__)
         failed = ["summarizer"]
+    if "results_limit" in failed:
+        response.warnings.append(SUMMARY_LIMITED_WARNING)
+        failed = [kind for kind in failed if kind != "results_limit"]
     if failed:
         logger.warning("Search summaries failed: %s", ", ".join(sorted(set(failed))))
         response.warnings.append(SUMMARY_FAILED_WARNING)

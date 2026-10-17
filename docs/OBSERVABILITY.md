@@ -285,32 +285,35 @@ Every backend-owned model call goes through the LLM gateway (`adapters/llm/`, se
 
 Each finished call writes one structured log, `LLM call finished` (`INFO`; `WARNING` when it failed or was cancelled), with:
 
-- `llm.feature` (`search_summary`, `question`, `span_chat`, `rag`), `llm.tier`, `llm.provider`, `llm.model`;
+- `llm.feature` (`search_summary`, `document_summary`, `question`, `span_chat`, `rag`), `llm.tier`, `llm.provider`, `llm.model`;
 - `llm.outcome`: `success`, `error` or `cancelled` (a stream its client abandoned), plus `error.type` (the exception class only);
 - `llm.usage_source`: `provider` when the provider reported the tokens, `estimated` when it did not (or the call failed or was abandoned) and they were estimated from the text length (about 4 characters per token);
-- `llm.input_tokens`, `llm.output_tokens`, `llm.total_tokens`, `llm.estimated_cost_usd` (from the tier's configured prices; absent when a price is unknown), `llm.duration_ms`;
+- `llm.input_tokens`, `llm.output_tokens`, `llm.total_tokens`, `llm.cost_usd` (absent when unknown), `llm.duration_ms`;
+- `llm.cost_source`: `provider` (the cost OpenRouter reported for the call), `price` (the tokens — see `llm.usage_source` — times the tier's configured list prices), `local_rate` (a self-hosted tier's configured USD-equivalent rate) or `unknown` (no price; never counted as zero);
 - `request.id` of the HTTP request that made the call.
+
+A user-visible operation with several calls (a search's summaries, a RAG answer or Explain) also logs `LLM operation finished` with `llm.feature`, `llm.operation.calls` (started), `llm.operation.finished_calls`, `llm.operation.max_calls`, `llm.operation.cost_usd` (sum of the known costs), `llm.operation.unknown_cost_calls` and `llm.operation.cost_sources`. A call refused before sending because its input is above the feature's `max_input_tokens` or its operation has no calls left logs `LLM call refused` (`WARNING`, with `error.type`) instead of a call record; a call refused for a missing provider key is not logged by the gateway.
 
 Prompts, messages, generated text, document snippets and API keys are never recorded. A non-streamed call cancelled by a client disconnect is not recorded (LangChain reports no end for it).
 
 The RAG, search summary, question, span chat, AI suggestion and feedback code logs only configuration ids, counts, modes and exception classes, never questions, answers, retrieved or span text, provider exception messages or webhook URLs; pipeline progress is at `DEBUG`. Errors returned to clients by the question endpoint and the span chat stream are fixed messages for the same reason. An exception that no handler catches is logged with its class and a message-free traceback (see above). Weaviate write failures (`Write step ... failed`, `Deleting ... stopped at step ...`) and Topicer failures log the exception class, the step or Topicer path and object IDs; a Topicer error that reaches a suggestion `error` event names only the class or HTTP status, and an invalid Topicer stream line is logged by length. httpx's own `INFO` request log (`HTTP Request: POST <url> ...`) still shows the configured service URLs of outgoing calls. The OpenAI SDK's `openai` logger, which logs whole request bodies at `DEBUG`, is held at `INFO` or above at startup (`main.py`, `limit_provider_sdk_logs`).
 
-With telemetry enabled, the same calls are exported as metrics with the low-cardinality attributes `feature`, `tier`, `provider`, `model` (from the server-side catalog) and `usage_source`:
+With telemetry enabled, the same calls are exported as metrics with the low-cardinality attributes `feature`, `tier`, `provider`, `model` (from the server-side catalog), `usage_source` and `cost_source`:
 
 | Metric (Prometheus name) | Extra attributes | Meaning |
 |---|---|---|
 | `semant_demo_llm_calls_total` | `outcome` | Finished calls |
 | `semant_demo_llm_call_duration_seconds_*` | `outcome` | Call duration histogram |
 | `semant_demo_llm_tokens_total` | `token_type` (`input`/`output`) | Tokens; filter `usage_source="provider"` for provider-reported counts only |
-| `semant_demo_llm_cost_USD_total` | — | Estimated cost in USD; only calls whose tier has prices |
+| `semant_demo_llm_cost_USD_total` | — | Cost in USD; only calls with a known cost; filter `cost_source="provider"` for provider-reported costs only |
 
-The exact normalized names depend on the metrics backend; locate them in the metric browser. For example, estimated cost per feature over a day:
+The exact normalized names depend on the metrics backend; locate them in the metric browser. For example, cost per feature over a day:
 
 ```promql
 sum by (feature) (increase(semant_demo_llm_cost_USD_total{service_name="semant-demo-app", deployment_environment_name=~"$environment"}[1d]))
 ```
 
-These records are for monitoring; they do not enforce spending limits.
+These records are for monitoring and are best-effort, not invoice-grade ([ARCHITECTURE.md](ARCHITECTURE.md#llm-gateway-adaptersllm)); they do not enforce spending limits. The per-feature limits bound one operation's work; the provider account's spending caps remain the backstop.
 
 ## Extending telemetry
 

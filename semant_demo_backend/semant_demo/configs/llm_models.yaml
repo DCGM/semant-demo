@@ -3,7 +3,9 @@
 # endpoint is OPENAI_API_URL (default: https://openrouter.ai/api/v1).
 # Prices are estimated USD per million input/output tokens, not quota enforcement.
 # These are currently listed base prices; routed-provider pricing, long-context
-# surcharges, reasoning output and promotional discounts may change.
+# surcharges, reasoning output and promotional discounts may change. A cost reported
+# by OpenRouter for a call (usage.cost) is preferred to them. A self-hosted tier sets
+# `price_basis: local_rate` and both prices: a USD-equivalent accounting rate, not a bill.
 # See docs/LLM_MODEL_SELECTION_2026-10.md for evidence and trade-offs.
 #
 # The tier also defines OpenRouter's reasoning request field (enabled/effort/exclude).
@@ -55,19 +57,50 @@ tiers:
 
 # Feature defaults are server-controlled. RAG YAML configurations may select a
 # permitted tier; browsers cannot select arbitrary models. Topicer is separate.
+#
+# limits (server-side; clients cannot raise them):
+#   max_output_tokens: cap of one call's max_tokens, reasoning tokens included
+#   max_input_tokens:  one call's input estimated at ~4 characters per token;
+#                      a larger call is refused before it is sent
+#   max_calls:         model calls of one user-visible operation (a search's
+#                      titles/summaries, one RAG answer or explanation)
 features:
   search_summary:
     default: tiny
     allowed: [tiny]
+    limits:
+      max_output_tokens: 1024
+      # The results summary may cover all (up to 50) shown results.
+      max_input_tokens: 32000
+      # Titles and per-result summaries of up to 10 results, plus the results summary.
+      max_calls: 21
   document_summary:
     default: tiny
     allowed: [tiny]
+    limits:
+      max_output_tokens: 1536
+      # Up to chunk_limit (40) chunks of one document.
+      max_input_tokens: 48000
+      max_calls: 1
   question:
     default: small
     allowed: [small]
+    limits:
+      max_output_tokens: 512
+      max_input_tokens: 32000
+      max_calls: 1
   span_chat:
     default: medium
     allowed: [medium]
+    limits:
+      max_output_tokens: 1536
+      max_input_tokens: 16000
+      max_calls: 1
   rag:
     default: medium
     allowed: [small, medium, large]
+    limits:
+      max_output_tokens: 3072
+      max_input_tokens: 24000
+      # Adaptive RAG: up to 3 retrieval rounds, each grading up to 10 documents.
+      max_calls: 60

@@ -155,7 +155,7 @@ class OpenTelemetry:
         """Record one finished LLM call. Unknown token counts and costs are not recorded.
 
         ``attributes`` are the low-cardinality call labels: feature, tier, provider,
-        model and usage_source.
+        model, usage_source and cost_source.
         """
         self.llm_call_counter.add(1, attributes={**attributes, "outcome": outcome})
         self.llm_call_duration_histogram.record(duration_seconds, attributes={**attributes, "outcome": outcome})
@@ -376,7 +376,7 @@ def initialize_opentelemetry(config: Config) -> OpenTelemetry | None:
     llm_cost_counter = meter.create_counter(
         "semant_demo.llm.cost",
         unit="USD",
-        description="Estimated LLM cost from configured tier prices.",
+        description="LLM cost: provider-reported, or estimated from tier prices or local rates (see cost_source).",
     )
 
     log_exporter = OTLPLogExporter(
