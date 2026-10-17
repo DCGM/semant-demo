@@ -15,7 +15,7 @@ This folder holds the Docker Compose files, Dockerfiles and environment template
 | `Dockerfile` | Multi-stage build of backend + frontend (`npm ci` and the committed generated API client, not regenerated) |
 | `Dockerfile.embedder` | Build of the former Gemma embedding service (`embedding_service/`); no longer used by `docker-compose.embedder.yml` |
 | `update.sh` | Named shortcuts for the `docker compose` commands below |
-| `sqlite_backup.sh` / `semant-sqlite-backup.cron` | Daily backup of the production `tasks.db` (host cron); see [SQLite backup](#sqlite-backup-399) |
+| `sqlite_backup.sh` / `semant-sqlite-backup.cron` / `test_sqlite_backup.sh` | Daily backup of the production `tasks.db` (host cron) and its tests; see [SQLite backup](#sqlite-backup-399) |
 | `.env.example` / `.env.test.example` | Environment templates for production / test instances |
 
 ## Services
@@ -263,15 +263,19 @@ RAID (`/dev/md1`), which has no snapshots, and none of the readable cron jobs or
   is the whole database.
 - **Where.** `/mnt/zfs1/semant_demo_app_data/sqlite_backups/tasks_<UTC timestamp>.db`, with
   `latest.db` pointing to the newest. This is a different disk pool from the live file, but the
-  same server: it is not an off-site copy.
+  same server: it is not an off-site copy. The cron entry sets `BACKUP_MOUNT=/mnt/zfs1`, so a
+  run fails (and does not create the directory on the root filesystem) when the pool is not
+  mounted.
 - **Schedule and retention.** Daily at 03:30 server time (`semant-sqlite-backup.cron`); the
   newest 30 backups are kept (`KEEP`). The database is about 4 MB.
 - **Permissions.** The job runs as root with `umask 077`: the directory is `700` and the
   backups are `600`, because they contain password hashes and e-mail addresses. Reading them
   needs `sudo`.
 - **Failure visibility.** Every run logs to syslog (tag `semant-sqlite-backup`) and to
-  `backup.log`, and writes one line (`OK …` or `FAILED: …`) to `last_status`. A successful run
-  prints nothing; a failed one prints an error, which cron mails to root.
+  `backup.log`. It writes `RUNNING` to `last_status` when it starts and replaces it with
+  `OK <backup>` only after every step succeeded; any failure, including an unexpected command
+  error, writes `FAILED: …`. A successful run prints nothing; a failed one prints an error,
+  which cron mails to root.
 
 Install or update (copy the script; the cron entry does not depend on a checkout):
 
@@ -279,17 +283,22 @@ Install or update (copy the script; the cron entry does not depend on a checkout
 sudo install -m 755 deploy/sqlite_backup.sh /usr/local/sbin/semant-sqlite-backup
 sudo install -m 644 deploy/semant-sqlite-backup.cron /etc/cron.d/semant-sqlite-backup
 # First backup now, instead of waiting for 03:30
-sudo /usr/local/sbin/semant-sqlite-backup /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
+sudo BACKUP_MOUNT=/mnt/zfs1 /usr/local/sbin/semant-sqlite-backup /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
 ```
 
-Did the most recent backup succeed? `--check` exits 1 when the last run failed, the newest
-backup is older than 26 h (`MAX_AGE_HOURS`), or the newest backup fails `integrity_check`:
+Did the most recent backup succeed? `--check` exits 1 unless `last_status` is `OK` for the
+newest backup (so a failed, unfinished or missing status fails), and also when the newest
+backup is older than 26 h (`MAX_AGE_HOURS`), fails `integrity_check`, or `BACKUP_MOUNT` is set
+and not mounted:
 
 ```bash
-sudo /usr/local/sbin/semant-sqlite-backup --check /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
+sudo BACKUP_MOUNT=/mnt/zfs1 /usr/local/sbin/semant-sqlite-backup --check /mnt/ssd2/semant_demo_app_data/tasks.db /mnt/zfs1/semant_demo_app_data/sqlite_backups
 sudo tail -n 5 /mnt/zfs1/semant_demo_app_data/sqlite_backups/backup.log
 journalctl -t semant-sqlite-backup --since -2d
 ```
+
+The script's tests use a synthetic database in a temporary directory and need only `bash` and
+`sqlite3`: `bash deploy/test_sqlite_backup.sh`.
 
 Restore test (into a separate path; never write over the production file while testing):
 
