@@ -23,6 +23,11 @@ interface QuotaStoreState {
   status: QuotaStatusResponse | null
   /** The last refresh failed; `status`, if any, is the last one read. */
   failed: boolean
+  /**
+   * Changes on every `follow()`, also between two accounts, which `status.principal`
+   * does not tell apart: UI state kept for one principal (a dismissed warning) uses it.
+   */
+  epoch: number
 }
 
 /**
@@ -32,7 +37,7 @@ interface QuotaStoreState {
  * kept: following another one forgets the shown allowance at once.
  */
 export const useQuotaStore = defineStore('quota', {
-  state: (): QuotaStoreState => ({ principal: null, status: null, failed: false }),
+  state: (): QuotaStoreState => ({ principal: null, status: null, failed: false, epoch: 0 }),
 
   getters: {
     /** Share of the day's allowance used, 0–100 (more is shown as 100). */
@@ -61,6 +66,7 @@ export const useQuotaStore = defineStore('quota', {
       inFlight = null
       refreshAgain = false
       this.principal = principal
+      this.epoch++
       this.status = null
       this.failed = false
       return principal ? this.refresh() : Promise.resolve()

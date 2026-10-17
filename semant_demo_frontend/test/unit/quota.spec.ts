@@ -318,6 +318,28 @@ describe('daily AI allowance', () => {
       expect(banner.text()).toContain('used up')
     })
 
+    it('shows a warning dismissed by one account again to another account at the same level', async () => {
+      const userStore = useUserStore()
+      const scope = effectScope()
+      scope.run(() => useQuotaScope())
+      await answer(statusBody({ principal: 'guest' }))
+      setAuthToken('token-a')
+      userStore.token = 'token-a'
+      userStore.user = { id: 'uA', email: 'a@example.com', username: 'a', name: 'A' } as never
+      await answer(statusBody({ principal: 'account', limit_usd: 1, used_usd: 0.9, near_limit: true }))
+      const banner = mountWithQuasar(QuotaBanner)
+      await banner.findAll('button').at(-1)!.trigger('click')
+      expect(banner.find('[data-testid="quota-banner"]').exists()).toBe(false)
+
+      // Another account, the same day and level: its own warning is not dismissed.
+      setAuthToken('token-b')
+      userStore.token = 'token-b'
+      userStore.user = { id: 'uB', email: 'b@example.com', username: 'b', name: 'B' } as never
+      await answer(statusBody({ principal: 'account', limit_usd: 1, used_usd: 0.85, near_limit: true }))
+      expect(banner.text()).toContain('You have used 85% of today\'s AI allowance.')
+      scope.stop()
+    })
+
     it('shows the share left in the header', async () => {
       await showStatus({ principal: 'guest', used_usd: 0.05 })
       const indicator = mountWithQuasar(QuotaIndicator)
