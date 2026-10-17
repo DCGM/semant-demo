@@ -15,7 +15,8 @@ not_ok() { echo "FAIL - $1"; failures=$((failures + 1)); }
 expect_success() { local name=$1; shift; if "$@" >"$T/out" 2>&1; then ok "$name"; else not_ok "$name"; cat "$T/out"; fi; }
 expect_failure() { local name=$1; shift; if "$@" >"$T/out" 2>&1; then not_ok "$name"; cat "$T/out"; else ok "$name"; fi; }
 run() { bash "$SCRIPT" "$@"; }
-status_is() { case "$(cat "$B/last_status" 2>/dev/null)" in *"$1"*) ok "last_status contains '$1'" ;; *) not_ok "last_status contains '$1' (got: $(cat "$B/last_status" 2>/dev/null))" ;; esac; }
+status_is_in() { case "$(cat "$1/last_status" 2>/dev/null)" in *"$2"*) ok "last_status contains '$2'" ;; *) not_ok "last_status contains '$2' (got: $(cat "$1/last_status" 2>/dev/null))" ;; esac; }
+status_is() { status_is_in "$B" "$1"; }
 
 sqlite3 "$DB" "CREATE TABLE user(id INTEGER PRIMARY KEY, email TEXT); INSERT INTO user(email) VALUES ('a@example.org'), ('b@example.org');"
 
@@ -67,6 +68,21 @@ expect_failure "check rejects a stale backup" run --check "$DB" "$B"
 touch "$newest"
 printf 'garbage' | dd of="$newest" bs=1 seek=100 conv=notrunc status=none
 expect_failure "check rejects a corrupt backup" run --check "$DB" "$B"
+
+# A hot journal (writer killed mid-transaction, #406): the read-only backup must refuse to copy
+# the uncommitted pages and leave the journal for SQLite to roll back.
+H="$T/hot"
+mkdir "$H"
+sqlite3 "$H/tasks.db" "CREATE TABLE item(id INTEGER PRIMARY KEY, value TEXT); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000) INSERT INTO item(value) SELECT 'committed' || printf('%.500c', 'x') FROM n;"
+(sqlite3 "$H/tasks.db" "PRAGMA cache_size=10; BEGIN; UPDATE item SET value = 'uncommitted';" '.system kill -9 $PPID'; true) 2>/dev/null
+[ -s "$H/tasks.db-journal" ] && ok "hot journal created" || not_ok "hot journal created"
+expect_failure "backup fails while a hot journal exists" run "$H/tasks.db" "$H/backups"
+status_is_in "$H/backups" "FAILED: sqlite3 .backup"
+[ -s "$H/tasks.db-journal" ] && ok "hot journal is kept" || not_ok "hot journal is kept"
+sqlite3 "$H/tasks.db" "PRAGMA integrity_check;" >/dev/null   # a read-write open rolls the journal back
+expect_success "backup succeeds after the rollback" run "$H/tasks.db" "$H/backups"
+[ "$(sqlite3 "$H/backups/latest.db" "SELECT count(*) FROM item WHERE value LIKE 'committed%';")" = 2000 ] \
+  && ok "backup has only committed rows" || not_ok "backup has only committed rows"
 
 # BACKUP_MOUNT: an unmounted pool must not lead to backups on the parent filesystem.
 mkdir "$T/pool"
