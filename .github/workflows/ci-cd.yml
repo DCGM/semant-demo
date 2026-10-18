@@ -8,8 +8,10 @@ on:
     types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
+# PR events are grouped by PR number: when a PR is merged, the closing event's github.ref is
+# refs/heads/main, and in the main group the merge's push run replaced the pending teardown.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' && github.event.action != 'closed' }}
 
 jobs:
