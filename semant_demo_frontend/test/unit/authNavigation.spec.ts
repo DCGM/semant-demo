@@ -217,6 +217,29 @@ describe('MainLayout navigation', () => {
   const drawerLabels = (wrapper: Awaited<ReturnType<typeof mountLayout>>['wrapper']) =>
     wrapper.findAll('.drawer-item .item-label').map((item) => item.text())
 
+  describe('on first load', () => {
+    const originalWidth = window.innerWidth
+    afterEach(() => { window.innerWidth = originalWidth })
+
+    const menuButton = (wrapper: Awaited<ReturnType<typeof mountLayout>>['wrapper']) =>
+      wrapper.find('button[aria-label$="navigation"]')
+
+    it('keeps the navigation closed at phone width', async () => {
+      window.innerWidth = 375
+      const { wrapper } = await mountLayout()
+
+      expect(menuButton(wrapper).attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('.q-drawer__backdrop:not(.hidden)').exists()).toBe(false)
+    })
+
+    it('docks the navigation open on a desktop screen', async () => {
+      window.innerWidth = 1280
+      const { wrapper } = await mountLayout()
+
+      expect(menuButton(wrapper).attributes('aria-expanded')).toBe('true')
+    })
+  })
+
   it('shows Log in and Register, not protected pages or account actions, when signed out', async () => {
     const { wrapper } = await mountLayout()
 
