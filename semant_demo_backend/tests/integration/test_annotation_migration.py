@@ -247,6 +247,14 @@ async def test_the_backup_must_hold_the_source_collections(seeded_store, collect
         await migration.check_backup(seeded_store, names, "no-such-backup")
     await migration.check_backup(seeded_store, names, full)
 
+    # Production names the spans through an alias (Span -> Span_test); a backup holds the collection.
+    alias = "SpanAlias327"
+    await seeded_store.alias.create(alias_name=alias, target_collection=names.span_collection_name)
+    try:
+        await migration.check_backup(seeded_store, names.model_copy(update={"span_collection_name": alias}), full)
+    finally:
+        await seeded_store.alias.delete(alias_name=alias)
+
 
 async def test_tenant_ids_are_collection_uuids(migration_store, legacy, ids, seeded_store, collection_names,
                                                tmp_path):

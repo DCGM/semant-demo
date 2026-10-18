@@ -373,8 +373,9 @@ def verify_ok(report: dict) -> bool:
 
 async def check_backup(client, names, backup_id: str) -> None:
     """Raises ``LookupError`` unless ``backup_id`` is a successful filesystem backup of the
-    legacy spans, tags, chunks and user collections."""
-    from semant_demo.adapters.weaviate.document_cleanup import filesystem_backups
+    legacy spans, tags, chunks and user collections (aliases resolved: a backup holds the
+    collections themselves)."""
+    from semant_demo.adapters.weaviate.document_cleanup import filesystem_backups, resolve_collection
     try:
         backups = await filesystem_backups(client)
     except Exception as e:
@@ -382,8 +383,9 @@ async def check_backup(client, names, backup_id: str) -> None:
     backup = next((b for b in backups if b.id == backup_id), None)
     if backup is None or backup.status != "SUCCESS":
         raise LookupError(f"No successful filesystem backup {backup_id!r}")
-    needed = {names.span_collection_name, names.tag_collection_name, names.chunks_collection_name,
-              names.user_collection_name}
+    needed = {await resolve_collection(client, name) for name in (
+        names.span_collection_name, names.tag_collection_name, names.chunks_collection_name,
+        names.user_collection_name)}
     missing = needed - set(backup.collections)
     if missing:
         raise LookupError(f"Backup {backup_id} does not hold {', '.join(sorted(missing))}")
