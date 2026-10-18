@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import {
-  annotation, chunkText, deleteAddedSpans, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk, selectText,
-  sidebarPanelButton
+  annotation, chunkText, deleteAddedSpans, deleteAddedTags, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk,
+  selectText, sidebarPanelButton
 } from './support'
 
 // Document viewer interactions: text selection and annotation editing, the span gutter,
@@ -9,6 +9,7 @@ import {
 
 test.afterEach(async ({ request }) => {
   await deleteAddedSpans(request, 'owner', 'chronicles')
+  await deleteAddedTags(request, 'owner', 'chronicles')
   await deleteSuggestions(request, 'owner', 'chronicles', 'chronicle', 'person')
   await removeChunk(request, 'owner', 'newspapers', 'chronicle_2')
 })
@@ -74,6 +75,47 @@ test('a clicked marker quick-tags the next selection until Escape', async ({ pag
   await page.keyboard.press('Escape')
   await expect(popover(page)).toHaveCount(0)
   await expect(page.locator('.tag-card.is-active')).toHaveCount(0)
+})
+
+// #379: closing the popover while the create-tag dialog is open must keep the selection
+// the new tag is created for.
+for (const [how, closePopover] of [
+  ['its close button', (page: Page) => popover(page).locator('.popover-close').click()],
+  ['Escape', (page: Page) => page.keyboard.press('Escape')]
+] as const) {
+  test(`a new tag created from a selection tags it after the popover is closed with ${how}`, async ({ page }) => {
+    await ensureLoggedIn(page, 'owner')
+    await openDocument(page, 'chronicles', 'chronicle')
+    await expect(page.locator('.gutter-item')).toHaveCount(2)
+
+    const start = fixture.chunk('chronicle_1').text.indexOf('hostinci')
+    const end = start + 'hostinci'.length
+    await selectText(page, 'chronicle_1', start, 'chronicle_1', end)
+    await popover(page).getByText('Create new tag').click()
+    const dialog = page.locator('.q-dialog')
+    await expect(dialog.getByLabel('Tag Name')).toBeVisible()
+
+    await closePopover(page)
+    await dialog.getByLabel('Tag Name').fill('Inn')
+    await dialog.getByLabel('Tag Shorthand').fill('INN')
+    await dialog.getByRole('button', { name: 'Create' }).click()
+
+    await expect(taggedSegment(page, 'chronicle_1', start, end)).toBeVisible()
+    await expect(popover(page)).toHaveCount(0)
+  })
+}
+
+test('closing the popover without an open dialog discards the selection', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+
+  const start = fixture.chunk('chronicle_1').text.indexOf('hostinci')
+  await selectText(page, 'chronicle_1', start, 'chronicle_1', start + 'hostinci'.length)
+  await expect(popover(page).getByText('Create new tag')).toBeVisible()
+
+  await popover(page).locator('.popover-close').click()
+  await expect(popover(page)).toHaveCount(0)
 })
 
 test('the tags panel hides tags, steps through their annotations and is searched with Ctrl+F', async ({ page }) => {

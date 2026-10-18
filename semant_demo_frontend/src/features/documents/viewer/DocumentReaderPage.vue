@@ -142,7 +142,7 @@
         :editing-auto="!!editingAutoSpan"
         :approve-reject-busy="approveRejectBusy"
         :ai-selection-running="aiAssist.isSelectionRunning.value"
-        @close="endQuickTagging"
+        @close="onPopoverClose"
         @pick-tag="onTagClick"
         @create-tag="onCreateTagClick"
         @run-ai="onRunAiOnSelection"
@@ -626,8 +626,18 @@ const onClickOutside = (e: MouseEvent) => {
   endQuickTagging()
 }
 
+// A dialog opened from the popover (create/edit tag, discuss) is still open. The
+// popover stays above it, so its close button and Escape must not clear the selection
+// the dialog's onOk handler still needs (#379).
+const dialogOpen = () => document.querySelector('.q-dialog') !== null
+
+const onPopoverClose = () => {
+  if (dialogOpen()) return
+  endQuickTagging()
+}
+
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && (annotations.hasSelection.value || quickTagId.value)) {
+  if (e.key === 'Escape' && (annotations.hasSelection.value || quickTagId.value) && !dialogOpen()) {
     endQuickTagging()
   }
 }
