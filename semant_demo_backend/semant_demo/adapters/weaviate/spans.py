@@ -32,6 +32,7 @@ from weaviate.exceptions import WeaviateBaseError
 
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
+from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import NoProgressError
 from semant_demo.features.annotations.schemas import PatchSpan, PostSpan, SpanType, TagSpan
@@ -61,9 +62,12 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
 
     No tenant is created here. Vectors are self-provided under ``default`` (flat index,
     unused yet); #328 adds the contextual vector as another named vector (``add_vector``,
-    supported on 1.40 for an existing collection).
+    supported on 1.40 for an existing collection). A reference cannot target an alias, so
+    when the chunk collection name is an alias (production: ``Chunks`` -> ``Chunks_test``)
+    the reference targets the collection it names.
     """
     uuid = DataType.UUID
+    chunk_target = await resolve_collection(client, names.chunks_collection_name)
     await client.collections.create(
         names.annotation_collection_name,
         multi_tenancy_config=Configure.multi_tenancy(
@@ -81,7 +85,7 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
             Property(name="reason", data_type=DataType.TEXT),
             Property(name="confidence", data_type=DataType.NUMBER),
         ],
-        references=[ReferenceProperty(name="text_chunk", target_collection=names.chunks_collection_name)],
+        references=[ReferenceProperty(name="text_chunk", target_collection=chunk_target)],
     )
 
 

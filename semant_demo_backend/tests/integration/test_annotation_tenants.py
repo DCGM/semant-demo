@@ -1,6 +1,7 @@
 """Annotation tenants against real Weaviate (#327): one tenant per user collection.
 
-Lazy creation (a read never creates a tenant), isolation between tenants, inactive
+Creation of the collection when the chunks are reached through an alias (as in
+production), lazy creation (a read never creates a tenant), isolation between tenants, inactive
 tenants (activated on access), the recorded tenant use and the idle deactivation, the
 collection deletion that removes the tenant (with failures and retry), and a backup and
 restore of active and inactive tenants. The migration is in test_annotation_migration.py.
@@ -18,7 +19,7 @@ from weaviate.collections.tenants.async_ import _TenantsAsync
 
 from semant_demo.adapters.sql.tables import create_tables
 from semant_demo.adapters.sql.tenant_activity import TenantActivity
-from semant_demo.adapters.weaviate.spans import SpanRepository
+from semant_demo.adapters.weaviate.spans import SpanRepository, create_annotation_collection
 from semant_demo.features.annotations.schemas import PostSpan, SpanType
 from semant_demo.maintenance.annotation_tenants import deactivate_idle, tenant_status
 
@@ -42,6 +43,32 @@ async def deactivate(annotations, collection_id) -> None:
 
 def span_body(ids, chunk, tag, start=0, end=4, type_="pos"):
     return {"chunkId": ids.chunk[chunk], "tagId": ids.tag[tag], "start": start, "end": end, "type": type_}
+
+
+# ── Collection creation ───────────────────────────────────────────────────
+
+async def test_the_collection_references_the_chunks_also_through_an_alias(seeded_store, collection_names, ids):
+    # Production reaches Chunks_test through the alias Chunks; a reference to an alias is refused.
+    alias, annotation = "ChunksAlias327", "AnnotationAlias327"
+    names = collection_names.model_copy(update={"chunks_collection_name": alias,
+                                                "annotation_collection_name": annotation})
+    await seeded_store.alias.create(alias_name=alias, target_collection=collection_names.chunks_collection_name)
+    try:
+        await create_annotation_collection(seeded_store, names)
+        config = await seeded_store.collections.get(annotation).config.get()
+        assert [(r.name, r.target_collections) for r in config.references] == [
+            ("text_chunk", [collection_names.chunks_collection_name])]
+
+        spans = SpanRepository(seeded_store, names)
+        notes = UUID(ids.col["outsider_notes"])
+        span = PostSpan(chunkId=ids.chunk["gazette_1"], tagId=ids.tag["outsider_tag"], start=0, end=5, type=SpanType.pos)
+        span_id = await spans.insert(notes, span, UUID(ids.doc["gazette"]))
+        assert [s.id for s in await spans.read_by_collection(notes)] == [str(span_id)]
+        assert await spans.count_approved(notes) == 1  # filters through the text_chunk reference
+    finally:
+        if await seeded_store.collections.exists(annotation):
+            await seeded_store.collections.delete(annotation)
+        await seeded_store.alias.delete(alias_name=alias)
 
 
 # ── Lazy creation ─────────────────────────────────────────────────────────

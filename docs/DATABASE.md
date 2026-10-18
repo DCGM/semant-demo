@@ -262,7 +262,7 @@ References:
 
 | Reference | Target | Cardinality | Description |
 |---|---|---|---|
-| `text_chunk` | Chunks | 1 | The anchor chunk; only for filters (statistics count spans whose chunk is still in the collection). Weaviate 1.40 does not return references of a multi-tenant object to a collection without tenants. |
+| `text_chunk` | Chunks (the collection behind the alias, e.g. `Chunks_test` in production) | 1 | The anchor chunk; only for filters (statistics count spans whose chunk is still in the collection). Weaviate 1.40 does not return references of a multi-tenant object to a collection without tenants. |
 
 Vectors: an unused self-provided `default` named vector (flat index). The contextual
 annotation vector of #328 is added as another named vector (`config.add_vector`, supported

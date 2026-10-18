@@ -168,8 +168,12 @@ spans without a legacy original. The module docstring (`--help`) is the referenc
 
 ### Cutover (production, test store)
 
-Needs explicit authorization for the store. The deployed Weaviate compose files do not enable
-the `backup-filesystem` module, so the backup is an offline copy of the data directory.
+Needs explicit authorization for the store. The deployed Weaviate instances enable the
+`backup-filesystem` module (`--backup-id`); an offline copy of the data directory, or an
+existing backup recorded with `--offline-backup`, also qualifies. Production serves `Chunks`,
+`Tag`, `Documents`, `UserCollection` and `Span` as aliases of `*_test` collections: the
+backfill creates `Annotation` itself (no alias), with its `text_chunk` reference targeting the
+collection behind `Chunks`, since Weaviate refuses a reference to an alias.
 
 1. Before the pause, on the running store: `backfill --state dry.json` and
    `chunk_tag_audit --report audit-before.json`. Review the skipped records, the tag inventory
