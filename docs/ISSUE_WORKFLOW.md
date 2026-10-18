@@ -12,7 +12,8 @@ constraint.
 
 ## Lifecycle
 
-1. **[Draft]** — Capture an idea, problem or request, even if incomplete.
+1. **[User draft] / [Draft]** — Capture user feedback or an idea, problem or
+   request, even if incomplete.
 2. **Implementation proposal** — The developer and AI agent investigate the
    repository, refine requirements, identify decisions and propose a suitably
    scoped task. **Normally update the original issue**, preserving its discussion
@@ -20,7 +21,7 @@ constraint.
 3. **Consultation (if needed)** — Ask a maintainer to resolve significant product,
    architectural or operational questions; record decisions in the issue.
 4. **Ready → work** — Once the [readiness checklist](#readiness-checklist) is met,
-   remove the `[Draft]` prefix. The developer takes ownership and implements the
+   remove the `[Draft]` or `[User draft]` prefix. The developer takes ownership and implements the
    agreed scope. **Readiness is the developer's responsibility**, not a mandatory
    administrator approval step.
 5. **PR → review → merge** — Open a focused PR, request human review, address
@@ -29,6 +30,20 @@ constraint.
 
 A proposal can return to draft/refinement if implementation reveals a material
 missing requirement. Being ready does not imply scheduling or prioritization.
+
+## User feedback: `[User draft]`
+
+Reports from researchers, librarians and annotators use the `[User draft]`
+prefix. The [user-facing guide](USER_FEEDBACK_ISSUES.md) asks about the goal,
+current experience, desired change and relevant examples or screenshots. **Do
+not require technical details, tests or acceptance criteria from reporters.**
+
+A developer takes responsibility for triage: clarify the reported need, check
+existing work and refine the **original issue** rather than replacing it.
+Change the prefix to `[Draft]` if technical refinement is still needed, or
+remove it when implementation-ready. For a larger request, retain the original
+report as a parent and link implementation subissues. Preserve the user's
+examples and motivation; feedback is not itself an implementation commitment.
 
 ## Draft issues
 
