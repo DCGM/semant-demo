@@ -19,14 +19,25 @@ without a tenant returns nothing and creates none. Tenants may be inactive
 (``auto_tenant_activation``). This repository only reads and writes spans; the chunk tag
 references derived from them are updated by ``chunk_tags.ChunkTagRepository`` and the
 order of these writes is decided by the Annotations service.
+
+Derived fields (#328, ``features/annotations/derivation.py`` and ``enrichment.py``) live
+on the same objects: ``revision`` counts boundary changes; ``text``, the contexts and
+positions with ``enrichmentStatus``, ``enrichedRevision`` and ``derivationVersion``; the
+contextual named vector with ``vectorStatus``, ``vectorRevision`` and ``vectorConfig``.
+Derived data is current only for the revision it names, so a late or stale write is
+recognizable instead of trusted. They are written only when the service passes them
+(the collection holds them, ``enrichment_schema``); ``add_enrichment_schema`` adds them
+to an existing collection on the operator's request.
 """
+import asyncio
 import logging
+import weakref
 from typing import Awaitable, Callable, TypeVar
 from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty, Tokenization
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, MetadataQuery
 from weaviate.classes.tenants import Tenant, TenantActivityStatus
 from weaviate.exceptions import WeaviateBaseError
 
@@ -35,13 +46,14 @@ from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import NoProgressError
-from semant_demo.features.annotations.schemas import PatchSpan, PostSpan, SpanType, TagSpan
+from semant_demo.features.annotations.schemas import AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
 _PROPERTIES = ["start", "end", "type", "reason", "confidence", "tagId", "chunkId"]
+DEFAULT_VECTOR_NAME = "contextual"
 # Deleting the spans of a tag repeats delete_many until none match; it removes at most
 # QUERY_MAXIMUM_RESULTS objects per call.
 _MAX_DELETE_ROUNDS = 1000
@@ -57,23 +69,64 @@ def is_tenant_not_found(exc: Exception) -> bool:
     return isinstance(exc, WeaviateBaseError) and "tenant not found" in str(exc)
 
 
-async def create_annotation_collection(client: WeaviateAsyncClient, names: CollectionNames) -> None:
+def _searchable(name: str) -> Property:
+    return Property(name=name, data_type=DataType.TEXT)
+
+
+def _status(name: str) -> Property:
+    return Property(name=name, data_type=DataType.TEXT, tokenization=Tokenization.FIELD, index_searchable=False)
+
+
+def _position(name: str) -> Property:
+    return Property(name=name, data_type=DataType.INT, index_range_filters=True)
+
+
+ENRICHMENT_PROPERTIES: list[Property] = [
+    Property(name="revision", data_type=DataType.INT),
+    _searchable("text"), _searchable("leftContext"), _searchable("rightContext"),
+    Property(name="positionSegment", data_type=DataType.INT),
+    _position("documentStartChar"), _position("documentEndChar"),
+    _position("documentStartWord"), _position("documentEndWord"),
+    _status("enrichmentStatus"),
+    Property(name="enrichedRevision", data_type=DataType.INT),
+    Property(name="derivationVersion", data_type=DataType.INT),
+    _status("vectorStatus"),
+    Property(name="vectorRevision", data_type=DataType.INT),
+    _status("vectorConfig"),
+]
+"""Derived properties of #328, in the order ``add_enrichment_schema`` adds them."""
+
+_ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "enrichmentStatus",
+        "enrichedRevision", "derivationVersion", "vectorStatus", "vectorRevision", "vectorConfig", "text",
+        "leftContext", "rightContext", "positionSegment", "documentStartChar", "documentEndChar",
+        "documentStartWord", "documentEndWord"]
+
+
+def _contextual_vector(name: str):
+    # A flat index per tenant: tenants hold a collection's annotations, few enough to scan.
+    return Configure.Vectors.self_provided(name=name, vector_index_config=Configure.VectorIndex.flat())
+
+
+async def create_annotation_collection(client: WeaviateAsyncClient, names: CollectionNames,
+                                       annotation_vector: str | None = DEFAULT_VECTOR_NAME) -> None:
     """Create the empty multi-tenant annotation collection (the migration's ``--create-schema``).
 
-    No tenant is created here. Vectors are self-provided under ``default`` (flat index,
-    unused yet); #328 adds the contextual vector as another named vector (``add_vector``,
-    supported on 1.40 for an existing collection). A reference cannot target an alias, so
-    when the chunk collection name is an alias (production: ``Chunks`` -> ``Chunks_test``)
-    the reference targets the collection it names.
+    No tenant is created here. Vectors are self-provided: ``default`` (flat index, unused)
+    and the contextual vector ``annotation_vector`` (#328; ``None``: none). The derived
+    properties of #328 are included. A reference cannot target an alias, so when the chunk
+    collection name is an alias (production: ``Chunks`` -> ``Chunks_test``) the reference
+    targets the collection it names.
     """
     uuid = DataType.UUID
     chunk_target = await resolve_collection(client, names.chunks_collection_name)
+    vectors = [Configure.Vectors.self_provided(name="default", vector_index_config=Configure.VectorIndex.flat())]
+    if annotation_vector is not None:
+        vectors.append(_contextual_vector(annotation_vector))
     await client.collections.create(
         names.annotation_collection_name,
         multi_tenancy_config=Configure.multi_tenancy(
             enabled=True, auto_tenant_creation=False, auto_tenant_activation=True),
-        vector_config=Configure.Vectors.self_provided(
-            name="default", vector_index_config=Configure.VectorIndex.flat()),
+        vector_config=vectors,
         properties=[
             Property(name="tagId", data_type=uuid),
             Property(name="chunkId", data_type=uuid),
@@ -84,9 +137,36 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
                      index_searchable=False),
             Property(name="reason", data_type=DataType.TEXT),
             Property(name="confidence", data_type=DataType.NUMBER),
+            *ENRICHMENT_PROPERTIES,
         ],
         references=[ReferenceProperty(name="text_chunk", target_collection=chunk_target)],
     )
+
+
+async def enrichment_schema(client: WeaviateAsyncClient, names: CollectionNames,
+                            annotation_vector: str | None) -> tuple[list[str], bool]:
+    """The derived properties the annotation collection lacks, and whether it holds the
+    named vector ``annotation_vector`` (False for ``None``)."""
+    config = await client.collections.get(names.annotation_collection_name).config.get()
+    present = {p.name for p in config.properties}
+    missing = [p.name for p in ENRICHMENT_PROPERTIES if p.name not in present]
+    return missing, annotation_vector is not None and annotation_vector in (config.vector_config or {})
+
+
+async def add_enrichment_schema(client: WeaviateAsyncClient, names: CollectionNames,
+                                annotation_vector: str | None) -> list[str]:
+    """Add the missing derived properties and the named vector to the existing annotation
+    collection; returns what was added. Existing objects and vectors are not changed."""
+    missing, has_vector = await enrichment_schema(client, names, annotation_vector)
+    config = client.collections.get(names.annotation_collection_name).config
+    for prop in ENRICHMENT_PROPERTIES:
+        if prop.name in missing:
+            await config.add_property(prop)
+    added = list(missing)
+    if annotation_vector is not None and not has_vector:
+        await config.add_vector(vector_config=_contextual_vector(annotation_vector))
+        added.append(f"vector:{annotation_vector}")
+    return added
 
 
 def _uuid(value) -> UUID | None:
@@ -109,6 +189,12 @@ def to_span(obj) -> TagSpan:
     )
 
 
+def to_row(obj) -> AnnotationRow:
+    props = obj.properties
+    distance = getattr(obj.metadata, "distance", None)
+    return AnnotationRow(id=obj.uuid, distance=distance, **{k: props.get(k) for k in _ROW})
+
+
 def pair_of(span: TagSpan) -> ChunkTag:
     """The (chunk, tag) pair whose chunk tag references the span backs."""
     return ChunkTag.of(span.chunkId, span.tagId)
@@ -120,6 +206,16 @@ class SpanRepository:
         self.collectionNames = collectionNames
         # Tenants this process created or saw; a removed tenant is forgotten by ``remove_tenant``.
         self._known_tenants: set[str] = set()
+        # A lock exists while some write holds or waits for it.
+        self._locks: weakref.WeakValueDictionary[UUID, asyncio.Lock] = weakref.WeakValueDictionary()
+
+    def lock(self, span_id: UUID) -> asyncio.Lock:
+        """Serializes, within the process, the writes of one span's revision and derived data:
+        a boundary edit and the vector written for an earlier revision cannot interleave."""
+        lock = self._locks.get(span_id)
+        if lock is None:
+            lock = self._locks[span_id] = asyncio.Lock()
+        return lock
 
     def _collection(self):
         return self.client.collections.get(self.collectionNames.annotation_collection_name)
@@ -177,11 +273,13 @@ class SpanRepository:
 
     # ── Spans ─────────────────────────────────────────────────────────────
 
-    async def insert(self, collection_id: UUID, span: PostSpan, document_id: UUID | None) -> UUID:
-        """Stores the span in the collection's tenant (created if needed) and returns its id."""
+    async def insert(self, collection_id: UUID, span: PostSpan, document_id: UUID | None,
+                     derived: dict | None = None) -> UUID:
+        """Stores the span in the collection's tenant (created if needed) and returns its id.
+        ``derived``: derived properties written with it (#328)."""
         await self.ensure_tenant(collection_id)
         properties: dict = {"start": span.start, "end": span.end, "type": span.type.value,
-                            "tagId": UUID(span.tagId), "chunkId": UUID(span.chunkId)}
+                            "tagId": UUID(span.tagId), "chunkId": UUID(span.chunkId), **(derived or {})}
         if document_id is not None:
             properties["documentId"] = document_id
         # AI metadata only when present.
@@ -242,10 +340,10 @@ class SpanRepository:
                 result[span.chunkId].append(span)
         return result
 
-    async def update(self, collection_id: UUID, span_id: UUID, patch: PatchSpan) -> None:
-        """Sets the patched offsets, type and tag in one write."""
+    async def update(self, collection_id: UUID, span_id: UUID, patch: PatchSpan, derived: dict | None = None) -> None:
+        """Sets the patched offsets, type and tag, and the ``derived`` properties, in one write."""
         fields = patch.model_dump(exclude_none=True)
-        properties: dict = {k: fields[k] for k in ("start", "end") if k in fields}
+        properties: dict = {k: fields[k] for k in ("start", "end") if k in fields} | (derived or {})
         if patch.type is not None:
             properties["type"] = patch.type.value
         if patch.tagId is not None:
@@ -255,6 +353,64 @@ class SpanRepository:
 
     async def delete(self, collection_id: UUID, span_id: UUID) -> None:
         await self._tenant(collection_id).data.delete_by_id(span_id)
+
+    # ── Derived data (#328) ───────────────────────────────────────────────
+
+    async def read_row(self, collection_id: UUID, span_id: UUID) -> AnnotationRow | None:
+        """The collection's span with its revision and derived fields, or None."""
+        async def read():
+            obj = await self._tenant(collection_id).query.fetch_object_by_id(span_id, return_properties=_ROW)
+            return to_row(obj) if obj is not None else None
+        return await self._read(collection_id, read, None)
+
+    async def write_derived(self, collection_id: UUID, span_id: UUID, derived: dict,
+                            vector: tuple[str, list[float]] | None = None) -> None:
+        """Writes derived properties only (never the span's own fields), with the named vector
+        ``(name, vector)`` when given."""
+        await self._tenant(collection_id).data.update(
+            uuid=span_id, properties=derived, vector={vector[0]: vector[1]} if vector is not None else None)
+
+    async def read_rows(self, collection_id: UUID, *, tag_ids: list[UUID] | None = None,
+                        document_id: UUID | None = None, limit: int = 100, offset: int = 0) -> list[AnnotationRow]:
+        """One page of the collection's spans with their derived fields, optionally of some
+        tags or one document. No source chunks are read."""
+        conditions = []
+        if tag_ids:
+            conditions.append(Filter.by_property("tagId").contains_any(list(tag_ids)))
+        if document_id is not None:
+            conditions.append(Filter.by_property("documentId").equal(document_id))
+
+        async def read():
+            response = await self._tenant(collection_id).query.fetch_objects(
+                filters=Filter.all_of(conditions) if conditions else None, limit=limit, offset=offset,
+                return_properties=_ROW)
+            return [to_row(o) for o in response.objects]
+        return await self._read(collection_id, read, [])
+
+    async def near_vector(self, collection_id: UUID, target_vector: str, vector: list[float], config_id: str,
+                          limit: int, tag_ids: list[UUID] | None = None) -> list[AnnotationRow]:
+        """The collection's spans nearest to ``vector`` among those whose vector is ``ready``
+        and of configuration ``config_id``, nearest first, with ``distance``. The caller
+        still checks that each vector belongs to the span's current revision."""
+        filters = (Filter.by_property("vectorStatus").equal("ready")
+                   & Filter.by_property("vectorConfig").equal(config_id))
+        if tag_ids:
+            filters = filters & Filter.by_property("tagId").contains_any(list(tag_ids))
+
+        async def read():
+            response = await self._tenant(collection_id).query.near_vector(
+                near_vector=vector, target_vector=target_vector, limit=limit, filters=filters,
+                return_properties=_ROW, return_metadata=MetadataQuery(distance=True))
+            return [to_row(o) for o in response.objects]
+        return await self._read(collection_id, read, [])
+
+    async def iterate_rows(self, collection_id: UUID):
+        """Every span of the collection with its revision and derived data (cursor order;
+        nothing when the collection has no tenant)."""
+        if not await self.tenant_exists(collection_id):
+            return
+        async for obj in self._tenant(collection_id).iterator(return_properties=_ROW):
+            yield to_row(obj)
 
     async def list_in_document(self, collection_id: UUID, document_id: UUID, tag_ids: list[UUID],
                                span_type: SpanType) -> dict[UUID, set[ChunkTag]]:

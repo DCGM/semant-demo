@@ -26,10 +26,11 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
-from semant_demo.adapters.weaviate.spans import SpanRepository
+from semant_demo.adapters.weaviate.spans import SpanRepository, enrichment_schema
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
+from semant_demo.features.annotations.enrichment import AnnotationVector, Enrichment, load_annotation_vector_settings
 from semant_demo.features.quota.service import QuotaPolicy
 from semant_demo.features.rag.registry import RagRegistry
 from semant_demo.features.search.vectors import (
@@ -84,10 +85,44 @@ def create_embedder(settings: EmbeddingSettings, config: Config,
         transport=transport)
 
 
+def load_annotation_vector(config: Config, transport: httpx.AsyncBaseTransport | None = None
+                           ) -> AnnotationVector | None:
+    """The configured contextual annotation vector (``ANNOTATION_VECTOR_CONFIG``) with its embedder."""
+    settings = load_annotation_vector_settings(config.ANNOTATION_VECTOR_CONFIG)
+    if settings is None:
+        return None
+    return AnnotationVector(settings, create_embedder(settings.embedding, config, transport))
+
+
 def load_search_vectors(config: Config, transport: httpx.AsyncBaseTransport | None = None) -> SearchVectors:
     """The configured search vectors (``SEARCH_VECTORS_CONFIG``) with their embedders."""
     return SearchVectors.build(load_search_vectors_settings(config.SEARCH_VECTORS_CONFIG),
                                lambda settings: create_embedder(settings, config, transport))
+
+
+async def detect_enrichment(client: WeaviateAsyncClient, config: Config,
+                            vector: AnnotationVector | None) -> Enrichment:
+    """The annotation enrichment (#328) the annotation collection's schema supports.
+
+    Derived properties that the collection lacks are never written (Weaviate's
+    auto-schema would add them with guessed types); the operator adds them with
+    ``python -m semant_demo.maintenance.annotation_enrichment add-schema``.
+    """
+    try:
+        missing, has_vector = await enrichment_schema(
+            client, config.collectionNames, vector.target_vector if vector else None)
+    except Exception as e:
+        logger.warning("Could not read the annotation schema; annotation enrichment is off: %s", type(e).__name__)
+        return Enrichment.disabled()
+    if missing:
+        logger.error("The annotation collection lacks the derived properties of #328 (%s): annotation text, "
+                     "positions and vectors are not stored until python -m "
+                     "semant_demo.maintenance.annotation_enrichment add-schema adds them.", ", ".join(missing))
+        return Enrichment.disabled()
+    if vector is not None and not has_vector:
+        logger.error("The annotation collection has no named vector %s: contextual annotation vectors are not "
+                     "stored until annotation_enrichment add-schema adds it.", vector.target_vector)
+    return Enrichment(derived=True, vector=vector if has_vector else None)
 
 
 @dataclass
@@ -103,6 +138,10 @@ class AppResources:
     quota_ledger: QuotaLedger
     quota_policy: QuotaPolicy
     tenant_activity: TenantActivity
+    annotation_vector: AnnotationVector | None = None
+    """The configured contextual annotation vector; used only when the store holds it."""
+    annotation_enrichment: Enrichment = field(default_factory=Enrichment.disabled)
+    """What span writes derive, decided by the annotation collection's schema at connect."""
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
@@ -114,7 +153,7 @@ class AppResources:
         """Construct resources without connecting to any external service.
 
         Raises ``LlmConfigurationError`` when the model tier catalog is invalid,
-        ``ValidationError`` when the search vector configuration is, and ``ValueError``
+        ``ValidationError`` when the search or annotation vector configuration is, and ``ValueError``
         for invalid LLM quota or Topicer limit settings.
         """
         quota_policy = QuotaPolicy.from_config(config)
@@ -124,6 +163,7 @@ class AppResources:
         session_maker = async_sessionmaker(engine, autocommit=False, autoflush=True, expire_on_commit=False)
         return cls(config=config, engine=engine, session_maker=session_maker,
                    search_vectors=load_search_vectors(config),
+                   annotation_vector=load_annotation_vector(config),
                    topicer=TopicerClient(config.TOPICER_URL, config.TOPICER_CONFIG_NAME, config.TOPICER_TIMEOUT,
                                          config.TOPICER_MAX_CHUNKS_PER_TAG),
                    llm=llm,
@@ -138,7 +178,8 @@ class AppResources:
 
         Logs an error when the multi-tenant annotation collection does not exist (#327):
         span reads and writes then fail until the operator has run the migration. The
-        application never creates or migrates it itself.
+        application never creates or migrates it itself. Annotation enrichment (#328) is
+        enabled as far as the collection's schema supports it (``detect_enrichment``).
         """
         client = await connector(self.config)
         try:
@@ -156,6 +197,8 @@ class AppResources:
             logger.error("The annotation collection %s does not exist: annotations cannot be read or saved until "
                          "it is created and filled by python -m semant_demo.maintenance.annotation_migration "
                          "(docs/DATA_MAINTENANCE.md).", name)
+            return
+        self.annotation_enrichment = await detect_enrichment(client, self.config, self.annotation_vector)
 
     def get_summarizer(self) -> TemplatedSearchResultsSummarizer:
         if self._summarizer is None:

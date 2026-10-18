@@ -20,6 +20,7 @@ from semant_demo.features.annotations import suggestions
 from semant_demo.features.annotations.schemas import (
     SuggestSpansRequest, SuggestSpansSelectionRequest, Tag,
 )
+from semant_demo.features.annotations.enrichment import Enrichment
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations.suggestion_routes import _RunResponse
 from semant_demo.features.user_collections.access import AuthenticationRequired
@@ -47,6 +48,8 @@ class World:
         self.inserted = 0
         self.stored: dict[UUID, object] = {}
         self.holds: list = []  # tenant activity: (event, collection, spans inserted so far)
+        self.chunk_text_reads = 0
+        self.chunk_texts_fail = False
 
     def by_id(self, chunk_id):
         return next((c for c in self.chunks if c.id == chunk_id), None)
@@ -75,7 +78,7 @@ class World:
                    examples=[])
 
     # spans
-    async def insert(self, cid, span, document_id):
+    async def insert(self, cid, span, document_id, derived=None):
         assert (cid, document_id) == (COLLECTION, DOCUMENT)  # the run's tenant and the chunk's document
         self.inserted += 1
         number = self.inserted
@@ -99,6 +102,12 @@ class World:
     async def read_chunk_text(self, chunk_id):
         c = self.by_id(chunk_id)
         return AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text) if c else None
+
+    async def read_chunk_texts(self, document_id):
+        self.chunk_text_reads += 1
+        if self.chunk_texts_fail:
+            raise ConnectionError("chunk texts unavailable")
+        return [AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text) for c in self.chunks]
 
     async def read_following_chunk_texts(self, document_id, after_order, limit):
         self.log.append(("read_following", after_order, limit))
@@ -284,6 +293,35 @@ async def test_saved_span_without_chunk_tag_is_partial():
 
     assert len(event.spans) == 1 and "not yet findable by tag search" in event.error
     assert (end.outcome.value, end.search_tag_failures) == ("partial", 1)
+
+
+def with_derived_data(world: World) -> World:
+    store = world.store()
+    store.enrichment = Enrichment(derived=True)
+    world.store = lambda: store
+    return world
+
+
+async def test_a_run_reads_its_documents_text_once_for_the_derived_data_of_its_spans():
+    world = with_derived_data(World("Jan Novák", "Karel Čapek"))
+    provider = FakeProvider(world, {"Jan Novák": [proposal(PERSON, 0, 3), proposal(PERSON, 4, 9)],
+                                    "Karel Čapek": [proposal(PERSON, 0, 5)]})
+
+    events, end = await run_all(await thorough(world, provider))
+
+    assert (end.outcome.value, end.saved, end.enrichment_failures) == ("complete", 3, 0)
+    assert world.chunk_text_reads == 1
+
+
+async def test_saved_span_without_derived_text_counts_as_an_enrichment_failure():
+    world = with_derived_data(World("Jan Novák"))
+    world.chunk_texts_fail = True
+    provider = FakeProvider(world, {"Jan Novák": [proposal(PERSON, 0, 3)]})
+
+    [event], end = await run_all(await thorough(world, provider))
+
+    assert len(event.spans) == 1 and "without current search text or vector" in event.error
+    assert (end.outcome.value, end.enrichment_failures, end.search_tag_failures) == ("partial", 1, 0)
 
 
 # ── Validation of provider output ──────────────────────────────────────────

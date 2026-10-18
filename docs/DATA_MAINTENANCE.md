@@ -212,6 +212,44 @@ application writes, an offline copy of a migrated store with active and inactive
 rehearsed at production size; the production span count and duration are unknown until the
 dry run.
 
+## Annotation derived data (`annotation_enrichment`, #328)
+
+Span creates and offset changes store the span's text, context, positions and contextual
+vector ([DATABASE.md](DATABASE.md#collection-annotation-multi-tenant-327)) once the
+`Annotation` collection has the derived properties. Spans saved before, spans whose
+derivation or embedding failed, and vectors of another `ANNOTATION_VECTOR_CONFIG` `id` are
+completed by this explicit command.
+
+```bash
+python -m semant_demo.maintenance.annotation_enrichment add-schema                      # dry run: what is missing
+python -m semant_demo.maintenance.annotation_enrichment add-schema --execute --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.annotation_enrichment status [--collection ID ...]     # read-only counts
+python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--collection ID ...] \
+  [--no-vectors] --execute --confirm-endpoint HOST:PORT                                 # without --execute: status
+```
+
+- `add-schema` adds the missing derived properties and the named vector (`target_vector` of
+  the configured vector) to the existing collection; it changes no object and is idempotent.
+  Restart the backend afterwards: it decides at startup what it stores and logs an error while
+  properties or the vector are missing.
+- `status` counts each tenant's spans by text state (`current`, `outdated` derivation policy,
+  `missing`, `failed`, `invalid`) and vector state (`current`, `pending`, `failed`, `stale`),
+  and `incomplete` (what a backfill would write). Reading a tenant activates it.
+- `backfill` writes only derived properties of at most `--limit` incomplete spans, never offsets,
+  chunk, tag, type or revision, and deletes nothing; `remaining` counts what is left for the next
+  run. A span edited meanwhile keeps its newer derivation (`superseded`). Each document is read
+  once per tenant; each vector is one call to the configured embedding provider (with
+  `--no-vectors`, none). `invalid` spans (offsets that no longer describe the document's text,
+  or whose chunk is gone) are recorded once and left for review, not repaired. Exits 1 when
+  steps failed (`failed`); run it again to retry.
+
+Rollout on an existing store (needs authorization for that store): back up, `add-schema
+--execute`, restart the backend, then `backfill` in bounded runs until `status` reports
+`incomplete: 0`. Rolling back the release needs no data change (older releases ignore the
+derived properties). Rehearsed only on disposable Weaviate 1.40.1
+(`tests/integration/test_annotation_enrichment.py`); production counts and duration are unknown
+until `status` runs there.
+
 ## Annotation tenants (`annotation_tenants`, #327)
 
 Lists the annotation tenants with their status and last recorded use, and deactivates idle

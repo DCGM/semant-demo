@@ -30,14 +30,20 @@ export function requireComplete<T extends WriteResult> (result: T, what: string)
 
 /**
  * A single span write saves the span first and then updates the chunk tag that
- * tag-filtered search uses. When only the second step failed the span change stands;
- * this returns the warning to show (or null when the write was complete).
+ * tag-filtered search uses and, for a new span or changed offsets, the span's stored
+ * search text and similarity vector (#328). When only those later steps failed the span
+ * change stands; this returns the warning to show (or null when the write was complete).
  */
-export function searchTagWarning (result: WriteResult, action: 'saved' | 'deleted'): string | null {
+export function spanWriteWarning (result: WriteResult, action: 'saved' | 'deleted'): string | null {
   if (result.outcome === WriteOutcome.complete) return null
-  return action === 'saved'
-    ? 'The annotation was saved, but tag search was not updated for it. Save the annotation again to retry.'
-    : 'The annotation was deleted, but tag search may still find its passage.'
+  if (action === 'deleted') return 'The annotation was deleted, but tag search may still find its passage.'
+  const steps = new Set((result.failed ?? []).map((f) => f.step))
+  const enrichment = steps.has('derive_annotation') || steps.has('embed_annotation')
+  const tagSearch = steps.has('update_chunk_tags') || !enrichment
+  const missed = tagSearch && enrichment
+    ? 'tag search and its search text or similarity vector were'
+    : tagSearch ? 'tag search was' : 'its search text or similarity vector was'
+  return `The annotation was saved, but ${missed} not updated for it. Save the annotation again to retry.`
 }
 
 /** The span part of a span write result, without the outcome fields. */

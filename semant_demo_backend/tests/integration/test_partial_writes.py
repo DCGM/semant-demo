@@ -211,8 +211,8 @@ async def test_ai_storage_failures_are_reported(api_client, login, ids, store, c
     assert all(e["spans"] == [] and "storage failure" in e["error"] for e in events)
     assert end_of(response) == {
         "event": "end", "outcome": "failed", "saved": 0, "rejected": 0, "save_failures": 2,
-        "search_tag_failures": 0, "provider_failures": 0, "error": None, "unit": "chunk", "units_total": 2,
-        "units_processed": 2, "stop_reason": None, "quota_exhausted": None, "max_chunks_per_tag": None,
+        "search_tag_failures": 0, "enrichment_failures": 0, "provider_failures": 0, "error": None, "unit": "chunk",
+        "units_total": 2, "units_processed": 2, "stop_reason": None, "quota_exhausted": None, "max_chunks_per_tag": None,
         "tag_limits": []}
     assert await store.span_count() == spans_before
 
