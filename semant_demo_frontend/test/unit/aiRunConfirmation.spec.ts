@@ -9,11 +9,13 @@ import useAiAssistance from 'src/features/annotations/useAiAssistance'
 
 // A document run that would evaluate more than 50 chunks asks first (#408): thorough
 // counts the document's chunks in the collection, optimized the selected tags times the
-// backend's per-tag limit (from the document stats, not a frontend constant).
+// backend's per-tag limit (from the document stats, not a frontend constant). When the
+// stats cannot be read or lack those values the size is unknown, and the run asks too.
 
 const tag = (id: string, name: string) => ({ id, name, color: '#000', shorthand: id, collectionId: 'c1' })
-const stats = { chunksInCollection: 10, aiMaxChunksPerTag: 40 as number | undefined }
-const dialogs: { message: string, ok: () => void, cancel: () => void }[] = []
+const stats = { chunksInCollection: 10 as number | undefined, aiMaxChunksPerTag: 40 as number | undefined }
+let statsFail = false
+const dialogs: { title: string, message: string, ok: () => void, cancel: () => void }[] = []
 
 vi.mock('src/features/annotations/useTagsRepository', () => ({
   useTagsRepository: () => ({ getAllByCollection: async () => [tag('t1', 'Person'), tag('t2', 'Place')] })
@@ -22,7 +24,12 @@ vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRe
 vi.mock('src/shared/api', async () => ({
   ...(await vi.importActual<typeof import('src/shared/api')>('src/shared/api')),
   useApi: () => ({
-    default: { getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet: async () => ({ ...stats }) }
+    default: {
+      getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet: async () => {
+        if (statsFail) throw new Error('stats unavailable')
+        return { ...stats }
+      }
+    }
   })
 }))
 vi.mock('quasar', async () => {
@@ -31,8 +38,10 @@ vi.mock('quasar', async () => {
     ...actual,
     useQuasar: () => ({
       notify: vi.fn(),
-      dialog: (options: { message: string }) => {
-        const dialog: (typeof dialogs)[number] = { message: options.message, ok: () => undefined, cancel: () => undefined }
+      dialog: (options: { title: string, message: string }) => {
+        const dialog: (typeof dialogs)[number] = {
+          title: options.title, message: options.message, ok: () => undefined, cancel: () => undefined
+        }
         dialogs.push(dialog)
         const chain = {
           onOk: (fn: () => void) => { dialog.ok = fn; return chain },
@@ -54,6 +63,7 @@ describe('confirmation before a large AI run', () => {
     dialogs.length = 0
     requested = []
     Object.assign(stats, { chunksInCollection: 10, aiMaxChunksPerTag: 40 })
+    statsFail = false
     const end = JSON.stringify({ event: 'end', outcome: 'complete', saved: 0, rejected: 0, save_failures: 0, search_tag_failures: 0, provider_failures: 0 })
     globalThis.fetch = vi.fn((url: Parameters<typeof fetch>[0]) => {
       requested.push(String(url))
@@ -111,6 +121,41 @@ describe('confirmation before a large AI run', () => {
     await runAi(2, 'thorough')
 
     expect(dialogs.map((d) => d.message)).toEqual([expect.stringMatching(/all 51 chunks/)])
+    expect(requested).toEqual([expect.stringMatching(/\/ai\/suggest_spans\/thorough$/)])
+  })
+
+  it('asks when the document stats cannot be read, and cancelling runs nothing', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    statsFail = true
+    await runAi(1)
+
+    expect(dialogs.map((d) => [d.title, d.message])).toEqual([
+      ['AI run of unknown size', expect.stringMatching(/could not be determined/)]])
+    dialogs[0].cancel()
+    await flushPromises()
+    expect(requested).toEqual([])
+  })
+
+  it('starts a run of unknown size only once confirmed', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    statsFail = true
+    await runAi(1, 'thorough')
+    expect(requested).toEqual([])
+
+    dialogs[0].ok()
+    await flushPromises()
+    expect(requested).toEqual([expect.stringMatching(/\/ai\/suggest_spans\/thorough$/)])
+  })
+
+  it('asks when the stats lack the size the mode needs', async () => {
+    stats.aiMaxChunksPerTag = undefined
+    await runAi(1) // optimized without the per-tag limit
+    await runAi(1, 'thorough') // thorough only needs the chunk count
+    stats.chunksInCollection = undefined
+    stats.aiMaxChunksPerTag = 40
+    await runAi(1, 'thorough')
+
+    expect(dialogs.map((d) => d.title)).toEqual(['AI run of unknown size', 'AI run of unknown size'])
     expect(requested).toEqual([expect.stringMatching(/\/ai\/suggest_spans\/thorough$/)])
   })
 })
