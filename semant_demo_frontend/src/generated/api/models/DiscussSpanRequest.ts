@@ -26,11 +26,18 @@ import {
  * 
  * The frontend sends the full chat history each call (the new user turn is
  * the last message). The backend resolves span / document / tag / chunk
- * context server-side and prepends it as a system message.
+ * context server-side and prepends it as a system message. The span must belong to
+ * ``collection_id``.
  * @export
  * @interface DiscussSpanRequest
  */
 export interface DiscussSpanRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof DiscussSpanRequest
+     */
+    collectionId: string;
     /**
      * 
      * @type {string}
@@ -49,6 +56,7 @@ export interface DiscussSpanRequest {
  * Check if a given object implements the DiscussSpanRequest interface.
  */
 export function instanceOfDiscussSpanRequest(value: object): value is DiscussSpanRequest {
+    if (!('collectionId' in value) || value['collectionId'] === undefined) return false;
     if (!('spanId' in value) || value['spanId'] === undefined) return false;
     if (!('messages' in value) || value['messages'] === undefined) return false;
     return true;
@@ -64,6 +72,7 @@ export function DiscussSpanRequestFromJSONTyped(json: any, ignoreDiscriminator: 
     }
     return {
         
+        'collectionId': json['collection_id'],
         'spanId': json['span_id'],
         'messages': ((json['messages'] as Array<any>).map(SpanChatMessageFromJSON)),
     };
@@ -80,6 +89,7 @@ export function DiscussSpanRequestToJSONTyped(value?: DiscussSpanRequest | null,
 
     return {
         
+        'collection_id': value['collectionId'],
         'span_id': value['spanId'],
         'messages': ((value['messages'] as Array<any>).map(SpanChatMessageToJSON)),
     };

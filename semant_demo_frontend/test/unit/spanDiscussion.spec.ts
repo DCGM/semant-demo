@@ -38,7 +38,7 @@ describe('useSpanDiscussion', () => {
 
   it('streams the reply and sends the history without the placeholder', async () => {
     const chat = useSpanDiscussion()
-    chat.reset({ spanId: 's1' })
+    chat.reset({ collectionId: 'c1', spanId: 's1' })
     const sending = chat.send('Why?')
     await flush()
     streams[0].delta('Be')
@@ -46,18 +46,18 @@ describe('useSpanDiscussion', () => {
     streams[0].close()
     await sending
 
-    expect(bodies[0]).toEqual({ span_id: 's1', messages: [{ role: 'user', content: 'Why?' }] })
+    expect(bodies[0]).toEqual({ collection_id: 'c1', span_id: 's1', messages: [{ role: 'user', content: 'Why?' }] })
     expect(chat.messages.value).toEqual([{ role: 'user', content: 'Why?' }, { role: 'assistant', content: 'Because.' }])
     expect(chat.isStreaming.value).toBe(false)
   })
 
   it('keeps a late reply of the previous span out of the new conversation', async () => {
     const chat = useSpanDiscussion()
-    chat.reset({ spanId: 's1' })
+    chat.reset({ collectionId: 'c1', spanId: 's1' })
     const old = chat.send('About s1')
     await flush()
 
-    chat.reset({ spanId: 's2' }) // dialog reopened for another span
+    chat.reset({ collectionId: 'c1', spanId: 's2' }) // dialog reopened for another span
     const current = chat.send('About s2')
     await flush()
     streams[0].delta('late answer about s1')
@@ -83,7 +83,7 @@ describe('useSpanDiscussion', () => {
       used_usd: 0.25
     }), { status: 429 }))) as typeof fetch
     const chat = useSpanDiscussion()
-    chat.reset({ spanId: 's1' })
+    chat.reset({ collectionId: 'c1', spanId: 's1' })
 
     await chat.send('Why?')
 
@@ -94,7 +94,7 @@ describe('useSpanDiscussion', () => {
 
   it('drops deltas after cancel and keeps what arrived before', async () => {
     const chat = useSpanDiscussion()
-    chat.reset({ spanId: 's1' })
+    chat.reset({ collectionId: 'c1', spanId: 's1' })
     const sending = chat.send('Q1')
     await flush()
     streams[0].delta('partial')

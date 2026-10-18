@@ -35,9 +35,11 @@ def to_tag(obj) -> Tag:
 
 
 class TagRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames, spans):
         self.client = client
         self.collectionNames = collectionNames
+        self.spans = spans
+        """The ``SpanRepository``: deleting a tag deletes its spans in its collection's tenant."""
 
     def _tags(self):
         return self.client.collections.get(self.collectionNames.tag_collection_name)
@@ -129,11 +131,12 @@ class TagRepository:
             raise NotFoundError("Tag not found")
         return updated
 
-    async def delete(self, tag_id: UUID) -> None:
+    async def delete(self, tag_id: UUID, collection_id: UUID) -> None:
         """
-        Deletes the tag after its chunk tag references and spans. Raises ``NotFoundError``
-        if the tag does not exist and ``IncompleteWriteError`` if a step fails.
+        Deletes the tag after its chunk tag references and its spans in the collection's
+        tenant. Raises ``NotFoundError`` if the tag does not exist and
+        ``IncompleteWriteError`` if a step fails.
         """
         if await self._tags().query.fetch_object_by_id(tag_id, return_properties=[]) is None:
             raise NotFoundError("Tag not found")
-        await delete_tag_cascade(self.client, self.collectionNames, tag_id)
+        await delete_tag_cascade(self.client, self.collectionNames, self.spans, tag_id, collection_id)

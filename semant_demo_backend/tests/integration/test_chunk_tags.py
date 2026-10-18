@@ -6,6 +6,8 @@ span with tag ``T`` is anchored on that chunk. Every test goes through the HTTP 
 checks the result with a real tag-filtered search and the stored references. The seeded
 corpus satisfies the contract (see ``test_seeded_corpus_is_consistent``).
 """
+from uuid import UUID
+
 import pytest
 from weaviate.classes.query import QueryReference
 from weaviate.collections.data.async_ import _DataCollectionAsync
@@ -13,6 +15,7 @@ from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.weaviate import chunk_tags as chunk_tags_module
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, audit_chunk_tags, sync_chunk_tags
+from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.maintenance.chunk_tag_audit import apply_report, build_report
 
 pytestmark = pytest.mark.integration
@@ -89,7 +92,7 @@ async def test_approve_moves_the_chunk_from_automatic_to_positive(api_client, ow
     chunk, lhota = ids.chunk["chronicle_1"], ids.span["lhota_automatic"]
     assert await search("Lhoty", "place", automatic=True) == {chunk}
 
-    response = await api_client.patch(f"/api/tag_spans/{lhota}", headers=await owner(), json={"type": "pos"})
+    response = await api_client.patch(f"/api/tag_spans/{lhota}", headers=await owner(), params={"collection_id": ids.col["chronicles"]}, json={"type": "pos"})
 
     assert response.status_code == 200 and response.json()["outcome"] == "complete"
     assert await search("Lhoty", "place", positive=True) == {chunk}
@@ -102,7 +105,7 @@ async def test_reject_removes_the_automatic_tag_and_records_the_negative(api_cli
     chunk, praha = ids.chunk["letters_1"], ids.span["praha_automatic"]
     assert await search("Prahy", "place", automatic=True) == {chunk}
 
-    response = await api_client.patch(f"/api/tag_spans/{praha}", headers=await owner(), json={"type": "neg"})
+    response = await api_client.patch(f"/api/tag_spans/{praha}", headers=await owner(), params={"collection_id": ids.col["chronicles"]}, json={"type": "neg"})
 
     assert response.json()["outcome"] == "complete"
     assert await search("Prahy", "place", automatic=True, positive=True) == set()
@@ -113,7 +116,7 @@ async def test_delete_removes_the_searchable_tag(api_client, owner, ids, search,
     chunk = ids.chunk["chronicle_1"]
     assert await search("Novák", "person", positive=True) == {chunk}
 
-    response = await api_client.delete(f"/api/tag_spans/{ids.span['novak_manual']}", headers=await owner())
+    response = await api_client.delete(f"/api/tag_spans/{ids.span['novak_manual']}", headers=await owner(), params={"collection_id": ids.col["chronicles"]})
 
     assert response.status_code == 200
     assert response.json() == {"outcome": "complete", "succeeded": [ids.span["novak_manual"]],
@@ -129,11 +132,11 @@ async def test_tag_stays_while_another_span_backs_it_and_goes_with_the_last(api_
     second = await create_span(api_client, await owner(), chunk, person, 26, 33)
     assert (await chunk_refs(chunk))["positiveTag"] == [person]  # not added twice
 
-    await api_client.delete(f"/api/tag_spans/{ids.span['novak_manual']}", headers=await owner())
+    await api_client.delete(f"/api/tag_spans/{ids.span['novak_manual']}", headers=await owner(), params={"collection_id": ids.col["chronicles"]})
     assert await search("Novák", "person", positive=True) == {chunk}
     assert (await chunk_refs(chunk))["positiveTag"] == [person]
 
-    await api_client.delete(f"/api/tag_spans/{second['id']}", headers=await owner())
+    await api_client.delete(f"/api/tag_spans/{second['id']}", headers=await owner(), params={"collection_id": ids.col["chronicles"]})
     assert await search("Novák", "person", positive=True) == set()
     assert (await chunk_refs(chunk))["positiveTag"] == []
 
@@ -142,7 +145,7 @@ async def test_approving_one_of_two_suggestions_keeps_the_automatic_tag(api_clie
     chunk, place = ids.chunk["chronicle_1"], ids.tag["place"]
     await create_span(api_client, await owner(), chunk, place, 69, 85, "auto")  # "U Zlatého jelena"
 
-    await api_client.patch(f"/api/tag_spans/{ids.span['lhota_automatic']}", headers=await owner(), json={"type": "pos"})
+    await api_client.patch(f"/api/tag_spans/{ids.span['lhota_automatic']}", headers=await owner(), params={"collection_id": ids.col["chronicles"]}, json={"type": "pos"})
 
     assert await search("Lhoty", "place", automatic=True) == {chunk}
     assert await search("Lhoty", "place", positive=True) == {chunk}
@@ -151,7 +154,7 @@ async def test_approving_one_of_two_suggestions_keeps_the_automatic_tag(api_clie
 async def test_tag_reassignment_moves_the_chunk_tag(api_client, owner, ids, search, chunk_refs):
     chunk, novak = ids.chunk["chronicle_1"], ids.span["novak_manual"]
 
-    response = await api_client.patch(f"/api/tag_spans/{novak}", headers=await owner(),
+    response = await api_client.patch(f"/api/tag_spans/{novak}", headers=await owner(), params={"collection_id": ids.col["chronicles"]},
                                       json={"tagId": ids.tag["place"]})
 
     assert response.json()["outcome"] == "complete"
@@ -163,7 +166,7 @@ async def test_tag_reassignment_moves_the_chunk_tag(api_client, owner, ids, sear
 
 
 async def test_offset_change_keeps_the_chunk_tag(api_client, owner, ids, search):
-    await api_client.patch(f"/api/tag_spans/{ids.span['novak_manual']}", headers=await owner(),
+    await api_client.patch(f"/api/tag_spans/{ids.span['novak_manual']}", headers=await owner(), params={"collection_id": ids.col["chronicles"]},
                            json={"start": 38})
 
     assert await search("Novák", "person", positive=True) == {ids.chunk["chronicle_1"]}
@@ -173,7 +176,7 @@ async def test_bulk_approve_updates_every_chunk(api_client, owner, ids, search, 
     spans = [ids.span["lhota_automatic"], ids.span["praha_automatic"]]
 
     result = (await api_client.post("/api/tag_spans/bulk_update", headers=await owner(),
-                                    json={"span_ids": spans, "update": {"type": "pos"}})).json()
+                                    json={"collection_id": ids.col["chronicles"], "span_ids": spans, "update": {"type": "pos"}})).json()
 
     assert result["outcome"] == "complete"
     assert await search("Lhoty Prahy", "place", automatic=True) == set()
@@ -222,7 +225,7 @@ async def test_failed_chunk_tag_write_on_create_is_partial_and_a_resave_fixes_it
 
     # Saving the span again re-derives its chunk tag.
     monkeypatch.undo()
-    again = await api_client.patch(f"/api/tag_spans/{result['id']}", headers=await owner(), json={"type": "pos"})
+    again = await api_client.patch(f"/api/tag_spans/{result['id']}", headers=await owner(), params={"collection_id": ids.col["chronicles"]}, json={"type": "pos"})
     assert again.json()["outcome"] == "complete"
     assert await search("Marie", "person", positive=True) == {marie}
 
@@ -238,13 +241,13 @@ async def test_offset_only_resave_repairs_a_failed_chunk_tag_write(
     assert await search("Marie", "person", positive=True) == set()
 
     # While the reference write still fails, an offset-only save reports it, not "complete".
-    still_failing = (await api_client.patch(f"/api/tag_spans/{created['id']}", headers=await owner(),
+    still_failing = (await api_client.patch(f"/api/tag_spans/{created['id']}", headers=await owner(), params={"collection_id": ids.col["chronicles"]},
                                             json={"end": 9})).json()
     assert still_failing["outcome"] == "partial"
     assert [f["step"] for f in still_failing["failed"]] == ["update_chunk_tags"]
 
     monkeypatch.undo()
-    repaired = (await api_client.patch(f"/api/tag_spans/{created['id']}", headers=await owner(),
+    repaired = (await api_client.patch(f"/api/tag_spans/{created['id']}", headers=await owner(), params={"collection_id": ids.col["chronicles"]},
                                        json={"start": 4, "end": 10})).json()
 
     assert repaired["outcome"] == "complete" and repaired["failed"] == []
@@ -257,7 +260,7 @@ async def test_failed_chunk_tag_write_on_delete_is_partial(api_client, owner, id
     chunk, novak = ids.chunk["chronicle_1"], ids.span["novak_manual"]
     fail_writes("reference_delete", [chunk], collection="Chunks")
 
-    result = (await api_client.delete(f"/api/tag_spans/{novak}", headers=await owner())).json()
+    result = (await api_client.delete(f"/api/tag_spans/{novak}", headers=await owner(), params={"collection_id": ids.col["chronicles"]})).json()
 
     assert result["outcome"] == "partial"
     assert result["succeeded"] == [novak]
@@ -277,7 +280,7 @@ async def test_chunk_tags_follow_a_timed_out_update_that_was_applied(api_client,
         raise WeaviateTimeoutError("timed out")
     monkeypatch.setattr(_DataCollectionAsync, "update", applied_then_timeout)
 
-    response = await api_client.patch(f"/api/tag_spans/{lhota}", headers=await owner(), json={"type": "pos"})
+    response = await api_client.patch(f"/api/tag_spans/{lhota}", headers=await owner(), params={"collection_id": ids.col["chronicles"]}, json={"type": "pos"})
 
     assert response.status_code == 500
     assert (await store.span(lhota))["type"] == "pos"
@@ -291,7 +294,8 @@ async def test_failed_span_read_is_a_failure_not_absence(seeded_store, collectio
     monkeypatch.setattr(chunk_tags_module, "required_refs", unreadable)
     pair = ChunkTag.of(ids.chunk["chronicle_1"], ids.tag["person"])
 
-    done, failed = await sync_chunk_tags(seeded_store, collection_names, [pair])
+    done, failed = await sync_chunk_tags(seeded_store, collection_names, SpanRepository(seeded_store, collection_names),
+                                         UUID(ids.col["chronicles"]), [pair])
 
     assert done == [] and [f.step for f in failed] == ["update_chunk_tags"]
     assert ids.tag["person"] in (await chunk_refs(ids.chunk["chronicle_1"]))["positiveTag"]

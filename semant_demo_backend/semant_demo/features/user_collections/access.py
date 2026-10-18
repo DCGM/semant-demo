@@ -15,10 +15,13 @@ read, write or provider call. Rights:
 
 Users who cannot read a collection get "not found", so ids of other users' collections
 are not confirmed. There is no admin bypass: admins have the explicit admin-only routes
-(changing a collection's owner) and otherwise the same rights as anyone else. Tags and
-spans resolve to their single owning collection; a tag referencing no collection or
-several collections is treated as inaccessible rather than guessed. Collection+document
-requests also need the document to be linked to that collection.
+(changing a collection's owner) and otherwise the same rights as anyone else. Tags
+resolve to their single owning collection; a tag referencing no collection or several
+collections is treated as inaccessible rather than guessed. Spans live in the annotation
+tenant of their collection (#327): span requests name the collection, which is checked
+first, and the spans are then looked up only in its tenant, so a span id is never a
+credential and an id of another collection is "not found". Collection+document requests
+also need the document to be linked to that collection.
 
 Each function takes the repository it reads (collections, tags, spans), so callers do
 not need the transitional ``WeaviateAbstraction`` facade.
@@ -33,6 +36,7 @@ from semant_demo.adapters.weaviate.user_collections import UserCollectionReposit
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.core.errors import NotFoundError
+from semant_demo.features.annotations.schemas import TagSpan
 
 
 class Principal(Protocol):
@@ -199,16 +203,14 @@ async def require_chunks_in_collection(collections: UserCollectionRepository, ch
     return ids
 
 
-async def collection_of_spans(spans: SpanRepository, tags: TagRepository, span_ids: Iterable[str | UUID]) -> UUID:
-    """The one collection all given spans belong to (via their tag); not found otherwise."""
+async def require_spans_in_collection(spans: SpanRepository, span_ids: Iterable[str | UUID],
+                                      collection_id: UUID) -> dict[UUID, TagSpan]:
+    """The spans in request order, read from the tenant of ``collection_id`` (already
+    authorized by the caller); "not found" unless every id is a span of that collection."""
     ids = list(dict.fromkeys(parse_id(s, "Span") for s in span_ids))
     if not ids:
         raise ResourceNotFound("Span not found")
-    refs = await spans.read_refs(ids)
-    tag_ids = set()
-    for sid in ids:
-        span_refs = refs.get(sid)
-        if span_refs is None or len(span_refs[0]) != 1:
-            raise ResourceNotFound("Span not found")
-        tag_ids.add(span_refs[0][0])
-    return await collection_of_tags(tags, tag_ids)
+    found = await spans.read_many(collection_id, ids)
+    if any(i not in found for i in ids):
+        raise ResourceNotFound("Span not found")
+    return {i: found[i] for i in ids}

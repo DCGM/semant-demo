@@ -1,12 +1,13 @@
 
 # DiscussSpanRequest
 
-Request body for ``POST /api/ai/discuss_span``.  The frontend sends the full chat history each call (the new user turn is the last message). The backend resolves span / document / tag / chunk context server-side and prepends it as a system message.
+Request body for ``POST /api/ai/discuss_span``.  The frontend sends the full chat history each call (the new user turn is the last message). The backend resolves span / document / tag / chunk context server-side and prepends it as a system message. The span must belong to ``collection_id``.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
+`collectionId` | string
 `spanId` | string
 `messages` | [Array&lt;SpanChatMessage&gt;](SpanChatMessage.md)
 
@@ -17,6 +18,7 @@ import type { DiscussSpanRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
+  "collectionId": null,
   "spanId": null,
   "messages": null,
 } satisfies DiscussSpanRequest

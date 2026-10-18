@@ -106,7 +106,9 @@ class BulkUpdateSpansRequest(BaseModel):
     Request body for bulk-applying the same :class:`PatchSpan` patch to many
     spans in a single round-trip. Used by the AI-assist "Approve / Reject all
     selected" action so the frontend doesn't have to fan out N PATCH calls.
+    All spans must belong to ``collection_id``.
     """
+    collection_id: str
     span_ids: list[str]
     update: PatchSpan
 
@@ -294,8 +296,10 @@ class DiscussSpanRequest(BaseModel):
 
     The frontend sends the full chat history each call (the new user turn is
     the last message). The backend resolves span / document / tag / chunk
-    context server-side and prepends it as a system message.
+    context server-side and prepends it as a system message. The span must belong to
+    ``collection_id``.
     """
+    collection_id: str
     span_id: str
     messages: list[SpanChatMessage]
 

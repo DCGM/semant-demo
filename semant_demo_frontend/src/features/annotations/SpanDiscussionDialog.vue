@@ -164,7 +164,7 @@ const SUGGESTED_PROMPTS: { icon: string; label: string; prompt: string }[] = [
 ]
 
 onMounted(() => {
-  reset({ spanId: props.spanId })
+  reset({ collectionId: props.collectionId, spanId: props.spanId })
 })
 
 onBeforeUnmount(() => {

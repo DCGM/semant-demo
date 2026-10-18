@@ -78,8 +78,13 @@ async def seeded_store(weaviate_client, collection_names, corpus, store_token, c
 
 
 @pytest.fixture
-def collections(seeded_store, collection_names) -> UserCollectionRepository:
-    return UserCollectionRepository(seeded_store, collection_names)
+def spans(seeded_store, collection_names) -> SpanRepository:
+    return SpanRepository(seeded_store, collection_names)
+
+
+@pytest.fixture
+def collections(seeded_store, collection_names, spans) -> UserCollectionRepository:
+    return UserCollectionRepository(seeded_store, collection_names, spans)
 
 
 @pytest.fixture
@@ -88,13 +93,8 @@ def documents(seeded_store, collection_names) -> DocumentRepository:
 
 
 @pytest.fixture
-def tags(seeded_store, collection_names) -> TagRepository:
-    return TagRepository(seeded_store, collection_names)
-
-
-@pytest.fixture
-def spans(seeded_store, collection_names) -> SpanRepository:
-    return SpanRepository(seeded_store, collection_names)
+def tags(seeded_store, collection_names, spans) -> TagRepository:
+    return TagRepository(seeded_store, collection_names, spans)
 
 
 @pytest.fixture
@@ -223,6 +223,7 @@ def ids(corpus):
 def store(seeded_store, collection_names):
     """Read-back helpers for asserting what was (not) written."""
     names = collection_names
+    annotations = seeded_store.collections.get(names.annotation_collection_name)
 
     class Store:
         async def collections_of_chunk(self, chunk_id):
@@ -237,13 +238,25 @@ def store(seeded_store, collection_names):
             refs = obj.references.get("collection") if obj.references else None
             return [str(r.uuid) for r in (refs.objects if refs else [])]
 
-        async def span(self, span_id):
-            obj = await seeded_store.collections.get(names.span_collection_name).query.fetch_object_by_id(span_id)
-            return obj.properties if obj else None
+        async def tenants(self):
+            return list((await annotations.tenants.get()).keys())
+
+        async def span(self, span_id, collection_id=None):
+            """The span's properties, from the tenant of ``collection_id`` or (test-only
+            convenience; the application never scans tenants) from any tenant."""
+            for tenant in [str(collection_id)] if collection_id else await self.tenants():
+                if await annotations.tenants.get_by_name(tenant) is None:
+                    continue
+                obj = await annotations.with_tenant(tenant).query.fetch_object_by_id(span_id)
+                if obj:
+                    return obj.properties
+            return None
 
         async def span_count(self):
-            agg = await seeded_store.collections.get(names.span_collection_name).aggregate.over_all(total_count=True)
-            return agg.total_count
+            total = 0
+            for tenant in await self.tenants():
+                total += (await annotations.with_tenant(tenant).aggregate.over_all(total_count=True)).total_count
+            return total
 
         async def tag(self, tag_id):
             obj = await seeded_store.collections.get(names.tag_collection_name).query.fetch_object_by_id(tag_id)

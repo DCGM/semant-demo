@@ -11,8 +11,17 @@ pytestmark = pytest.mark.integration
 
 
 async def _counts(client) -> dict[str, int]:
-    names = [c for c in await client.collections.list_all(simple=True)]
-    return {n: (await client.collections.get(n).aggregate.over_all(total_count=True)).total_count for n in names}
+    """Objects per collection; per tenant for multi-tenant collections (the annotations)."""
+    counts = {}
+    for name, config in (await client.collections.list_all(simple=False)).items():
+        collection = client.collections.get(name)
+        if config.multi_tenancy_config.enabled:
+            for tenant in await collection.tenants.get():
+                counts[f"{name}/{tenant}"] = (
+                    await collection.with_tenant(tenant).aggregate.over_all(total_count=True)).total_count
+        else:
+            counts[name] = (await collection.aggregate.over_all(total_count=True)).total_count
+    return counts
 
 
 def _target(store_endpoint) -> list[str]:

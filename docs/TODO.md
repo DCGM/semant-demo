@@ -16,6 +16,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Data
 
+- [#327](https://github.com/DCGM/semant-demo/issues/327) — annotations moved to one tenant per collection: the deployed stores (production, the shared test store) are not migrated yet; each needs the [cutover](DATA_MAINTENANCE.md#cutover-production-test-store) before a release with #327 runs on it. Idle tenant deactivation stays disabled (no memory benefit measured yet). The legacy `Span` collection is kept for rollback.
 - [#376](https://github.com/DCGM/semant-demo/issues/376) — chunk context reads (and sorts) every chunk of the document; 0.14–0.2 s p50, up to 2.4 s ([audit](WEAVIATE_AUDIT_2026-10-17.md#376-chunk-context-and-document-reads)).
 - [#259](https://github.com/DCGM/semant-demo/issues/259) — Kramerius metadata import: unresolved libraries and mirror rows without MODS (no author/publisher).
 - [#281](https://github.com/DCGM/semant-demo/issues/281) — documents without text chunks: audit and gated removal ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#documents-without-chunks-document_cleanup-281)).

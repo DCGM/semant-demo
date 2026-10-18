@@ -113,10 +113,14 @@ async def read_tag_spans_batch(
     return await service.list_spans_by_chunks(store, current_user, body.collection_id, body.chunk_ids)
 
 
+_SPAN_COLLECTION = Query(description="Collection of the span; a span of another collection is not found")
+
+
 @span_router.patch("/api/tag_spans/{span_id}", response_model=TagSpanWriteResult)
 async def update_tag_span(
     span_id: str,
     body: PatchSpan,
+    collection_id: str = _SPAN_COLLECTION,
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ):
@@ -126,7 +130,7 @@ async def update_tag_span(
     retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated
     but the chunk tags could not be.
     """
-    return await service.update_span(store, current_user, span_id, body)
+    return await service.update_span(store, current_user, collection_id, span_id, body)
 
 
 @span_router.post(
@@ -144,17 +148,18 @@ async def bulk_update_tag_spans(
     Used by the AI-assist "Approve / Reject all selected" action — collapses
     N PATCH calls into one and lets the server fan them out concurrently.
 
-    All spans must belong to one collection the user may annotate; otherwise nothing
-    is updated. Updates are best effort: ``spans`` holds the updated spans and
+    All spans must belong to ``collection_id``, which the user may annotate; otherwise
+    nothing is updated. Updates are best effort: ``spans`` holds the updated spans and
     ``failed`` the spans that could not be updated (``update_span``) and the chunk tag
     updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
     """
-    return await service.bulk_update_spans(store, current_user, body.span_ids, body.update)
+    return await service.bulk_update_spans(store, current_user, body.collection_id, body.span_ids, body.update)
 
 
 @span_router.delete("/api/tag_spans/{span_id}", response_model=WriteResult)
 async def delete_tag_span(
     span_id: str,
+    collection_id: str = _SPAN_COLLECTION,
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> WriteResult:
@@ -162,7 +167,7 @@ async def delete_tag_span(
     Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is
     ``partial`` when the span was deleted but the chunk tag could not be updated.
     """
-    return await service.delete_span(store, current_user, span_id)
+    return await service.delete_span(store, current_user, collection_id, span_id)
 
 
 @span_router.post(

@@ -230,6 +230,7 @@ export interface DeleteTagApiTagsTagUuidDeleteRequest {
 
 export interface DeleteTagSpanApiTagSpansSpanIdDeleteRequest {
     spanId: string;
+    collectionId: string;
 }
 
 export interface DiscussSpanApiAiDiscussSpanPostRequest {
@@ -403,6 +404,7 @@ export interface UpdateTagApiTagsTagUuidPatchRequest {
 
 export interface UpdateTagSpanApiTagSpansSpanIdPatchRequest {
     spanId: string;
+    collectionId: string;
     patchSpan: PatchSpan;
 }
 
@@ -514,7 +516,7 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePostRequestOpts(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
      * @summary Bulk Update Tag Spans
      * @param {BulkUpdateSpansRequest} bulkUpdateSpansRequest 
      * @param {*} [options] Override http request option.
@@ -524,7 +526,7 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>>;
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
      * Bulk Update Tag Spans
      */
     bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse>;
@@ -748,6 +750,7 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for deleteTagSpanApiTagSpansSpanIdDelete without sending the request
      * @param {string} spanId 
+     * @param {string} collectionId Collection of the span; a span of another collection is not found
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -757,6 +760,7 @@ export interface DefaultApiInterface {
      * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated.
      * @summary Delete Tag Span
      * @param {string} spanId 
+     * @param {string} collectionId Collection of the span; a span of another collection is not found
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1808,6 +1812,7 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for updateTagSpanApiTagSpansSpanIdPatch without sending the request
      * @param {string} spanId 
+     * @param {string} collectionId Collection of the span; a span of another collection is not found
      * @param {PatchSpan} patchSpan 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1818,6 +1823,7 @@ export interface DefaultApiInterface {
      * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
      * @summary Update Tag Span
      * @param {string} spanId 
+     * @param {string} collectionId Collection of the span; a span of another collection is not found
      * @param {PatchSpan} patchSpan 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -2073,7 +2079,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
      * Bulk Update Tag Spans
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>> {
@@ -2084,7 +2090,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
      * Bulk Update Tag Spans
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse> {
@@ -2576,7 +2582,18 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             );
         }
 
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling deleteTagSpanApiTagSpansSpanIdDelete().'
+            );
+        }
+
         const queryParameters: any = {};
+
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
@@ -4944,6 +4961,13 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             );
         }
 
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling updateTagSpanApiTagSpansSpanIdPatch().'
+            );
+        }
+
         if (requestParameters['patchSpan'] == null) {
             throw new runtime.RequiredError(
                 'patchSpan',
@@ -4952,6 +4976,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         }
 
         const queryParameters: any = {};
+
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 

@@ -9,6 +9,7 @@ from fastapi_users.password import PasswordHelper
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.data import DataObject
+from weaviate.classes.tenants import Tenant
 
 from semant_demo.adapters.sql.tables import create_tables
 from semant_demo.adapters.weaviate.names import CollectionNames
@@ -27,7 +28,8 @@ async def _insert(client: WeaviateAsyncClient, collection: str, objects: list[Da
 
 
 async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus, token: str) -> None:
-    """Insert the corpus into the (already created, empty) application collections."""
+    """Insert the corpus into the (already created, empty) application collections. The
+    spans go to the annotation tenants; the legacy ``Span`` collection stays empty."""
     await claim_store(client, token)
     users, collections, tags, chunks = corpus.users, corpus.collections, corpus.tags, corpus.chunks
 
@@ -99,20 +101,43 @@ async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, cor
         ))
     await _insert(client, names.chunks_collection_name, chunk_objects)
 
-    await _insert(client, names.span_collection_name, [
-        DataObject(
-            uuid=span["id"],
-            properties={
-                "start": span["start"],
-                "end": span["end"],
-                "type": span["type"],
-                **({"reason": span["reason"]} if "reason" in span else {}),
-                **({"confidence": span["confidence"]} if "confidence" in span else {}),
-            },
-            references={"tag": tags[span["tag"]]["id"], "text_chunk": chunks[span["chunk"]]["id"]},
-        )
-        for span in corpus.spans.values()
-    ])
+    await seed_annotations(client, names, corpus)
+
+
+def _span_object(corpus: Corpus, span: dict, *, legacy: bool) -> DataObject:
+    tag, chunk = corpus.tags[span["tag"]], corpus.chunks[span["chunk"]]
+    properties = {
+        "start": span["start"],
+        "end": span["end"],
+        "type": span["type"],
+        **({"reason": span["reason"]} if "reason" in span else {}),
+        **({"confidence": span["confidence"]} if "confidence" in span else {}),
+    }
+    if legacy:
+        return DataObject(uuid=span["id"], properties=properties,
+                          references={"tag": tag["id"], "text_chunk": chunk["id"]})
+    properties |= {"tagId": tag["id"], "chunkId": chunk["id"], "documentId": corpus.documents[chunk["document"]]["id"]}
+    return DataObject(uuid=span["id"], properties=properties, references={"text_chunk": chunk["id"]})
+
+
+async def seed_annotations(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
+    """The corpus spans in the annotation tenants of their tags' collections (#327)."""
+    by_collection: dict[str, list[DataObject]] = {}
+    for span in corpus.spans.values():
+        collection = corpus.collections[corpus.tags[span["tag"]]["collection"]]["id"]
+        by_collection.setdefault(collection, []).append(_span_object(corpus, span, legacy=False))
+    annotations = client.collections.get(names.annotation_collection_name)
+    await annotations.tenants.create([Tenant(name=str(UUID(c))) for c in by_collection])
+    for collection, objects in by_collection.items():
+        result = await annotations.with_tenant(str(UUID(collection))).data.insert_many(objects)
+        if result.has_errors:
+            raise RuntimeError(f"Seeding the annotations of {collection} failed: {result.errors}")
+
+
+async def seed_legacy_spans(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
+    """The corpus spans in the legacy single-tenant ``Span`` collection (migration tests)."""
+    await _insert(client, names.span_collection_name,
+                  [_span_object(corpus, span, legacy=True) for span in corpus.spans.values()])
 
 
 @cache

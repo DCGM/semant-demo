@@ -11,7 +11,8 @@ import { createScope } from 'src/shared/api'
  * can be in several collections, each with its own annotations): loading spans for
  * another collection, or `clearAll()` (document change, logout), starts a new scope.
  * Responses and write results of the old scope do not change the new one; the writes
- * themselves are kept by the backend.
+ * themselves are kept by the backend. Span updates and deletions name the scope's
+ * collection, since the backend finds a span only within its own collection.
  */
 export const useTagSpansStore = defineStore('tagSpans', () => {
   const repo = useTagSpansRepository()
@@ -72,6 +73,13 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     }
   }
 
+  /** The collection of the loaded spans, which span updates and deletions address. */
+  const currentCollection = (): string => {
+    const collectionId = scope.key
+    if (!collectionId) throw new Error('No collection is loaded for the spans')
+    return collectionId
+  }
+
   /** Show a warning when a span write was kept but its search tag update failed. */
   const warnIfSearchTagFailed = (warning: string | null) => {
     if (warning) warningNotification(warning)
@@ -96,7 +104,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   const updateSpan = async (spanId: string, chunkId: string, update: PatchSpan) => {
     const isCurrent = scope.capture()
     try {
-      const result = await repo.update(spanId, update)
+      const result = await repo.update(spanId, currentCollection(), update)
       warnIfSearchTagFailed(searchTagWarning(result, 'saved'))
       if (!isCurrent()) return
       const updatedSpan = spanOf(result)
@@ -123,7 +131,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     if (spanIds.length === 0) return
     const isCurrent = scope.capture()
     try {
-      const result = await repo.bulkUpdate(spanIds, update)
+      const result = await repo.bulkUpdate(spanIds, currentCollection(), update)
       if (!isCurrent()) {
         requireComplete(result, 'Updating the selected suggestions')
         return
@@ -161,7 +169,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   const deleteSpan = async (spanId: string, chunkId: string) => {
     const isCurrent = scope.capture()
     try {
-      const result = await repo.delete(spanId)
+      const result = await repo.delete(spanId, currentCollection())
       warnIfSearchTagFailed(searchTagWarning(result, 'deleted'))
       if (!isCurrent()) return
       spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).filter((s) => s.id !== spanId)

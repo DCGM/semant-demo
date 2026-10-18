@@ -91,6 +91,16 @@ class Config:
         # thorough chunk or a selection chunk; an optimized tag reserves it per allowed chunk.
         self.TOPICER_RESERVE_USD_PER_CHUNK = float(env.get("TOPICER_RESERVE_USD_PER_CHUNK", 0.005))
 
+        # Annotation tenants (#327): the backend records when each collection's annotation
+        # tenant was last used (at most once per this many seconds per process; long
+        # operations repeat it), so that ``maintenance.annotation_tenants`` deactivates
+        # only idle tenants. Deactivation stays off until it is enabled explicitly
+        # (after the active/inactive backup and restore rehearsal, docs/DATA_MAINTENANCE.md).
+        self.ANNOTATION_TENANT_TOUCH_SECONDS = float(env.get("ANNOTATION_TENANT_TOUCH_SECONDS", 60.0))
+        self.ANNOTATION_TENANT_IDLE_SECONDS = float(env.get("ANNOTATION_TENANT_IDLE_SECONDS", 3600.0))
+        self.ANNOTATION_TENANT_DEACTIVATION_ENABLED = (
+            env.get("ANNOTATION_TENANT_DEACTIVATION_ENABLED", str(False)).lower() in TRUE_VALUES)
+
         # Span discussion chat; its model is the span_chat feature's tier (LLM_MODELS_CONFIG).
         self.SPAN_CHAT_TEMPERATURE = float(env.get("SPAN_CHAT_TEMPERATURE", 0.4))
         self.SPAN_CHAT_MAX_TOKENS = int(env.get("SPAN_CHAT_MAX_TOKENS", 1024))
@@ -124,6 +134,7 @@ class Config:
             user_collection_name = "UserCollection",
             document_collection_name= "Documents",
             span_collection_name = "Span",
+            annotation_collection_name = "Annotation",
             user_collection_link_name = "userCollection",
             tag_to_user_collection_link_name= "tagToUserCollection",
         )

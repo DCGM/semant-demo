@@ -69,7 +69,8 @@ def get_corpus_overview_cache(connection: HTTPConnection) -> OverviewCache:
 async def get_annotation_store(connection: HTTPConnection) -> AnnotationStore:
     weaviate = _weaviate(connection)
     return AnnotationStore(collections=weaviate.user_collections, tags=weaviate.tags, spans=weaviate.spans,
-                           chunk_tags=weaviate.chunk_tags, documents=weaviate.documents)
+                           chunk_tags=weaviate.chunk_tags, documents=weaviate.documents,
+                           activity=get_resources(connection).tenant_activity)
 
 async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
     weaviate = _weaviate(connection)

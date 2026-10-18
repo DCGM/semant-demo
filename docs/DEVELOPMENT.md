@@ -47,6 +47,19 @@ For normal development:
 
 The local snapshot is intended for realistic manual and exploratory development.
 
+A snapshot taken before #327 holds its annotations only in the legacy `Span` collection; the
+backend then shows none and logs an error at startup. Migrate the local copy once, with the
+local Weaviate running (the data directory copy you started from is the backup):
+
+```bash
+cd semant_demo_backend
+../.venv/bin/python -m semant_demo.maintenance.annotation_migration backfill --state local-migration.json \
+  --execute --confirm-endpoint localhost:8080 --offline-backup "the original snapshot"
+../.venv/bin/python -m semant_demo.maintenance.annotation_migration verify
+```
+
+See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-migration-annotation_migration-327).
+
 Automated fast tests must not depend on this snapshot. Automated integration tests should create and clean up test-owned data, as described in [ADR 0005](adr/0005-testing-contract.md).
 
 ## 3. Start local Weaviate
@@ -330,6 +343,7 @@ make test-e2e           # Playwright smoke suite against the deterministic app p
 They never use the development container or `local_data/`:
 
 - `scripts/with-test-weaviate.sh` starts a uniquely named Weaviate container with no volume
+  (with the `backup-filesystem` module; its backups stay inside the container)
   on random loopback ports, passes them to the tests as `SEMANT_TEST_WEAVIATE_HOST`,
   `SEMANT_TEST_WEAVIATE_REST_PORT` and `SEMANT_TEST_WEAVIATE_GRPC_PORT` together with a
   fresh random `SEMANT_TEST_STORE_TOKEN`, and removes the container afterwards. The
@@ -344,7 +358,8 @@ They never use the development container or `local_data/`:
 - Before every integration test the application collections are emptied and seeded with
   the synthetic corpus in `semant_demo_backend/tests/fixtures/corpus.json` (users, three
   collections incl. a shared one, documents in several collections, partial chunk
-  membership, manual/automatic/rejected annotations and chunk tag references, Czech
+  membership, manual/automatic/rejected annotations in their collections' annotation tenants
+  (the legacy `Span` collection is created empty, for the migration tests) and chunk tag references, Czech
   diacritics, a combining mark and a non-BMP character). The collections are created once
   per run and are dropped and recreated only when their configuration no longer matches
   (e.g. a test dropped one or auto-schema added a property); dropping and recreating them

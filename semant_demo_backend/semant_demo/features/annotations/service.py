@@ -5,8 +5,11 @@ before any other read or write, so callers outside HTTP get the same rules: read
 needs collection read access, span writes need annotation-edit access, tag definition
 writes need tag-definition-edit access (owner and shared users for all three). Spans
 belong to the collection of their tag and are placed only on chunks of that collection.
-``user`` is the authenticated user or ``None``; ids may be strings or UUIDs, malformed
-ids are "not found".
+They are stored in that collection's annotation tenant (#327): span reads and writes
+name the collection, it is authorized first, and only then is its tenant used, so span
+ids of other collections are "not found". Each use of a tenant is recorded for the idle
+deactivation (``store.activity``). ``user`` is the authenticated user or ``None``; ids
+may be strings or UUIDs, malformed ids are "not found".
 
 Span writes are followed by the re-derivation of the chunk tag references that
 tag-filtered search uses (ADR 0004, ``adapters/weaviate/chunk_tags.py``) for every
@@ -19,23 +22,24 @@ unresolved AI suggestion, ``neg`` a rejected suggestion kept as a negative examp
 Approving or rejecting is a type change (``auto`` -> ``pos`` / ``neg``).
 """
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from semant_demo.features.annotations.schemas import SpanType, TagSpan
+from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, ChunkTagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.adapters.weaviate.spans import SpanRepository
+from semant_demo.adapters.weaviate.spans import SpanRepository, pair_of
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.annotations.offsets import InvalidSpanRange, check_span_range
 from semant_demo.features.annotations.schemas import (
-    BulkUpdateSpansResponse, PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanWriteResult,
+    AnnotationChunk, BulkUpdateSpansResponse, PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanWriteResult,
 )
 from semant_demo.features.user_collections import access
-from semant_demo.features.user_collections.access import Principal
+from semant_demo.features.user_collections.access import CollectionGrant, Principal
 from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 
 Id = str | UUID
@@ -52,6 +56,15 @@ class AnnotationStore:
     spans: SpanRepository
     chunk_tags: ChunkTagRepository
     documents: DocumentRepository
+    activity: TenantActivity | NoTenantActivity = field(default_factory=NoTenantActivity)
+    """Records each use of a collection's annotation tenant (idle deactivation)."""
+
+
+async def use_tenant(store: AnnotationStore, grant: CollectionGrant) -> UUID:
+    """The authorized collection whose annotation tenant the caller uses next, after
+    recording the use."""
+    await store.activity.touch(grant.collection_id)
+    return grant.collection_id
 
 
 ########
@@ -117,8 +130,8 @@ async def delete_tag(store: AnnotationStore, user: Principal | None, tag_id: Id)
     ``IncompleteWriteError`` naming it and the completed steps; deleting again continues.
     """
     collection_id = await access.collection_of_tags(store.tags, [tag_id])
-    await access.require_tag_definition_edit(store.collections, user, collection_id)
-    await store.tags.delete(access.parse_id(tag_id, "Tag"))
+    grant = await access.require_tag_definition_edit(store.collections, user, collection_id)
+    await store.tags.delete(access.parse_id(tag_id, "Tag"), await use_tenant(store, grant))
 
 
 #########
@@ -130,7 +143,7 @@ async def list_spans(store: AnnotationStore, user: Principal | None, collection_
     """The collection's spans, optionally only those starting on one chunk."""
     grant = await access.require_collection_read(store.collections, user, collection_id)
     chunk = access.parse_id(chunk_id, "Chunk") if chunk_id is not None else None
-    return await store.spans.read_by_collection(grant.collection_id, chunk)
+    return await store.spans.read_by_collection(await use_tenant(store, grant), chunk)
 
 
 async def list_spans_by_chunks(store: AnnotationStore, user: Principal | None, collection_id: Id,
@@ -140,12 +153,12 @@ async def list_spans_by_chunks(store: AnnotationStore, user: Principal | None, c
     if not chunk_ids:
         return {}
     by_id = await store.spans.read_by_chunks(
-        grant.collection_id, list(dict.fromkeys(access.parse_id(c, "Chunk") for c in chunk_ids)))
+        await use_tenant(store, grant), list(dict.fromkeys(access.parse_id(c, "Chunk") for c in chunk_ids)))
     return {str(c): by_id.get(str(access.parse_id(c, "Chunk")), []) for c in chunk_ids}
 
 
-async def _check_range(store: AnnotationStore, chunk_id: UUID, start: int, end: int) -> None:
-    """The offsets must describe text of the chunk's document (``offsets.py``)."""
+async def _check_range(store: AnnotationStore, chunk_id: UUID, start: int, end: int) -> AnnotationChunk:
+    """The offsets must describe text of the chunk's document (``offsets.py``); returns the chunk."""
     anchor = await store.documents.read_chunk_text(chunk_id)
     if anchor is None:
         raise NotFoundError("Chunk not found")
@@ -153,7 +166,7 @@ async def _check_range(store: AnnotationStore, chunk_id: UUID, start: int, end: 
     while True:
         try:
             check_span_range(chunks, start, end)
-            return
+            return anchor
         except InvalidSpanRange as e:
             if e.code != "past_end" or anchor.document_id is None:
                 raise
@@ -169,24 +182,21 @@ def _write_result(span: TagSpan, failed: list[StepFailure]) -> TagSpanWriteResul
                               succeeded=[str(span.id)], failed=failed)
 
 
-async def _pairs_of_spans(store: AnnotationStore, span_ids: list[UUID]) -> set[ChunkTag]:
-    refs = await store.spans.read_refs(span_ids)
-    return {ChunkTag(c, t) for tags, chunks in refs.values() for t in tags for c in chunks}
-
-
-async def save_span(store: AnnotationStore, span: PostSpan) -> TagSpanWriteResult:
+async def save_span(store: AnnotationStore, collection_id: UUID, document_id: UUID | None,
+                    span: PostSpan) -> TagSpanWriteResult:
     """
-    Stores a span and re-derives its chunk tag. No access or offset check: the caller has
-    checked annotation-edit access, the tag and the chunk scope (``create_span``, or the
-    AI suggestion route for validated provider proposals).
+    Stores a span in the collection's tenant (``document_id``: its chunk's document) and
+    re-derives its chunk tag. No access or offset check: the caller has checked
+    annotation-edit access to the collection, the tag and the chunk scope
+    (``create_span``, or the AI suggestion run for validated provider proposals).
     """
     pairs = {ChunkTag.of(span.chunkId, span.tagId)}
     try:
-        span_id = await store.spans.insert(span)
+        span_id = await store.spans.insert(collection_id, span, document_id)
     except Exception:
-        await store.chunk_tags.sync(pairs)
+        await store.chunk_tags.sync(collection_id, pairs)
         raise
-    failed = await store.chunk_tags.sync(pairs)
+    failed = await store.chunk_tags.sync(collection_id, pairs)
     return _write_result(TagSpan(id=str(span_id), **span.model_dump()), failed)
 
 
@@ -198,100 +208,101 @@ async def create_span(store: AnnotationStore, user: Principal | None, span: Post
     ``outcome`` is ``partial`` when the span was saved but its chunk tag was not.
     """
     collection_id = await access.collection_of_tags(store.tags, [span.tagId])
-    await access.require_annotation_edit(store.collections, user, collection_id)
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
     [chunk_id] = await access.require_chunks_in_collection(store.collections, [span.chunkId], collection_id)
-    await _check_range(store, chunk_id, span.start, span.end)
-    return await save_span(store, span)
+    anchor = await _check_range(store, chunk_id, span.start, span.end)
+    return await save_span(store, await use_tenant(store, grant), anchor.document_id, span)
 
 
-async def _authorize_span_patch(store: AnnotationStore, user: Principal | None, span_ids: list[UUID],
-                                patch: PatchSpan) -> None:
+async def _authorize_span_patch(store: AnnotationStore, user: Principal | None, collection_id: Id,
+                                span_ids: list[Id], patch: PatchSpan) -> tuple[UUID, dict[UUID, TagSpan]]:
+    """The authorized collection and its spans to patch, after every check."""
     if not patch.model_dump(exclude_none=True):
         raise InvalidRequestError("No fields provided for update")
-    collection_id = await access.collection_of_spans(store.spans, store.tags, span_ids)
-    await access.require_annotation_edit(store.collections, user, collection_id)
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
+    spans = await access.require_spans_in_collection(store.spans, span_ids, grant.collection_id)
     if patch.tagId is not None:
-        await access.require_tags_in_collection(store.tags, [patch.tagId], collection_id)
+        await access.require_tags_in_collection(store.tags, [patch.tagId], grant.collection_id)
+    return await use_tenant(store, grant), spans
 
 
-async def _check_patched_ranges(store: AnnotationStore, span_ids: list[UUID], patch: PatchSpan) -> None:
+async def _check_patched_ranges(store: AnnotationStore, spans: dict[UUID, TagSpan], patch: PatchSpan) -> None:
     """Offsets resulting from an offset patch must be valid for every span; checked before any write."""
     if patch.start is None and patch.end is None:
         return
-    for span_id in span_ids:
-        span = await store.spans.read(span_id)
-        if span is None:
-            raise NotFoundError("Span not found")
+    for span in spans.values():
         await _check_range(store, access.parse_id(span.chunkId, "Chunk"),
                            span.start if patch.start is None else patch.start,
                            span.end if patch.end is None else patch.end)
 
 
-async def _pairs_touched_by(store: AnnotationStore, span_ids: list[UUID], patch: PatchSpan) -> set[ChunkTag]:
+def _pairs_touched_by(spans: dict[UUID, TagSpan], patch: PatchSpan) -> set[ChunkTag]:
     """The spans' current (chunk, tag) pairs and, on a tag change, the new tag's pairs."""
-    pairs = await _pairs_of_spans(store, span_ids)
+    pairs = {pair_of(span) for span in spans.values()}
     if patch.tagId is not None:
         pairs |= {ChunkTag.of(p.chunk_id, patch.tagId) for p in pairs}
     return pairs
 
 
-async def _update_and_read(store: AnnotationStore, span_id: UUID, patch: PatchSpan) -> TagSpan:
-    await store.spans.update(span_id, patch)
-    span = await store.spans.read(span_id)
+async def _update_and_read(store: AnnotationStore, collection_id: UUID, span_id: UUID, patch: PatchSpan) -> TagSpan:
+    await store.spans.update(collection_id, span_id, patch)
+    span = await store.spans.read(collection_id, span_id)
     if span is None:
         raise NotFoundError("Span not found")
     return span
 
 
-async def update_span(store: AnnotationStore, user: Principal | None, span_id: Id,
+async def update_span(store: AnnotationStore, user: Principal | None, collection_id: Id, span_id: Id,
                       patch: PatchSpan) -> TagSpanWriteResult:
     """
-    Updates offsets, type (approve: ``auto`` -> ``pos``, reject: -> ``neg``) or tag, then
-    re-derives the span's (chunk, tag) pair and, on a tag change, the new pair. This runs
-    for every patch, also offset-only, so saving a span again retries a chunk tag update
-    that failed before. Changed offsets are validated like on creation; offsets that are
-    not sent are not re-checked (approving an old span works whatever its offsets).
+    Updates offsets, type (approve: ``auto`` -> ``pos``, reject: -> ``neg``) or tag of a
+    span of the collection, then re-derives the span's (chunk, tag) pair and, on a tag
+    change, the new pair. This runs for every patch, also offset-only, so saving a span
+    again retries a chunk tag update that failed before. Changed offsets are validated
+    like on creation; offsets that are not sent are not re-checked (approving an old
+    span works whatever its offsets).
     """
-    sid = access.parse_id(span_id, "Span")
-    await _authorize_span_patch(store, user, [sid], patch)
-    await _check_patched_ranges(store, [sid], patch)
-    pairs = await _pairs_touched_by(store, [sid], patch)
+    cid, spans = await _authorize_span_patch(store, user, collection_id, [span_id], patch)
+    await _check_patched_ranges(store, spans, patch)
+    pairs = _pairs_touched_by(spans, patch)
+    [sid] = spans
     try:
-        span = await _update_and_read(store, sid, patch)
+        span = await _update_and_read(store, cid, sid, patch)
     except Exception:
         # The update may have been partly applied (or applied despite a timeout).
-        await store.chunk_tags.sync(pairs)
+        await store.chunk_tags.sync(cid, pairs)
         raise
-    return _write_result(span, await store.chunk_tags.sync(pairs))
+    return _write_result(span, await store.chunk_tags.sync(cid, pairs))
 
 
-async def bulk_update_spans(store: AnnotationStore, user: Principal | None, span_ids: list[Id],
+async def bulk_update_spans(store: AnnotationStore, user: Principal | None, collection_id: Id, span_ids: list[Id],
                             patch: PatchSpan) -> BulkUpdateSpansResponse:
     """
-    Applies the same patch to many spans (the AI panel's "approve/reject all selected").
+    Applies the same patch to many spans of the collection (the AI panel's
+    "approve/reject all selected").
 
-    All spans must belong to one collection the user may annotate and the whole batch is
-    validated before any write; otherwise nothing is updated. Updates are best effort:
-    ``spans`` holds the updated spans and ``failed`` the spans that could not be updated
-    (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``).
-    Chunk tags are re-derived once per touched pair after all span updates, also for
-    spans whose update failed.
+    Every span must be a span of the collection, which the user may annotate, and the
+    whole batch is validated before any write; otherwise nothing is updated. Updates are
+    best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not
+    be updated (``update_span``) and the chunk tag updates that failed
+    (``update_chunk_tags``). Chunk tags are re-derived once per touched pair after all
+    span updates, also for spans whose update failed.
     """
     if not span_ids:
         return BulkUpdateSpansResponse(outcome=outcome_of(0, 0), spans=[])
-    ids = list(dict.fromkeys(access.parse_id(s, "Span") for s in span_ids))
-    await _authorize_span_patch(store, user, ids, patch)
-    await _check_patched_ranges(store, ids, patch)
-    pairs = await _pairs_touched_by(store, ids, patch)
+    cid, spans = await _authorize_span_patch(store, user, collection_id, span_ids, patch)
+    await _check_patched_ranges(store, spans, patch)
+    pairs = _pairs_touched_by(spans, patch)
 
     updated: list[TagSpan] = []
     failed: list[StepFailure] = []
-    for sid, res in zip(ids, await _gather(*(_update_and_read(store, sid, patch) for sid in ids))):
+    ids = list(spans)
+    for sid, res in zip(ids, await _gather(*(_update_and_read(store, cid, sid, patch) for sid in ids))):
         if isinstance(res, Exception):
             failed.append(step_failure("update_span", sid, res))
         else:
             updated.append(res)
-    failed += await store.chunk_tags.sync(pairs)
+    failed += await store.chunk_tags.sync(cid, pairs)
     return BulkUpdateSpansResponse(outcome=outcome_of(len(updated), len(failed)),
                                    succeeded=[s.id for s in updated], failed=failed, spans=updated)
 
@@ -305,22 +316,24 @@ async def _gather(*aws):
     return results
 
 
-async def delete_span(store: AnnotationStore, user: Principal | None, span_id: Id) -> WriteResult:
+async def delete_span(store: AnnotationStore, user: Principal | None, collection_id: Id, span_id: Id) -> WriteResult:
     """
-    Deletes a span, then removes chunk tag references no other span backs. ``outcome`` is
-    ``partial`` when the span was deleted but the chunk tag could not be updated.
+    Deletes a span of the collection, then removes chunk tag references no other span
+    backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could
+    not be updated.
     """
-    sid = access.parse_id(span_id, "Span")
-    collection_id = await access.collection_of_spans(store.spans, store.tags, [sid])
-    await access.require_annotation_edit(store.collections, user, collection_id)
-    pairs = await _pairs_of_spans(store, [sid])
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
+    spans = await access.require_spans_in_collection(store.spans, [span_id], grant.collection_id)
+    cid = await use_tenant(store, grant)
+    [(sid, span)] = spans.items()
+    pairs = {pair_of(span)}
     try:
-        await store.spans.delete(sid)
+        await store.spans.delete(cid, sid)
     except Exception:
         # A timed-out delete may still have been applied.
-        await store.chunk_tags.sync(pairs)
+        await store.chunk_tags.sync(cid, pairs)
         raise
-    failed = await store.chunk_tags.sync(pairs)
+    failed = await store.chunk_tags.sync(cid, pairs)
     return WriteResult(outcome=outcome_of(1, len(failed)), succeeded=[str(sid)], failed=failed)
 
 
@@ -331,18 +344,19 @@ async def _delete_in_document(store: AnnotationStore, user: Principal | None, co
     if not tag_ids:
         return WriteResult(outcome=outcome_of(0, 0))
     tags = await access.require_tags_in_collection(store.tags, tag_ids, grant.collection_id)
+    cid = await use_tenant(store, grant)
 
-    spans = await store.spans.list_in_document(grant.collection_id, document, tags, span_type)
+    spans = await store.spans.list_in_document(cid, document, tags, span_type)
     deleted: list[str] = []
     failed: list[StepFailure] = []
     for sid in spans:
         try:
-            await store.spans.delete(sid)
+            await store.spans.delete(cid, sid)
             deleted.append(str(sid))
         except Exception as e:
             failed.append(step_failure("delete_span", sid, e))
     # Re-derived after all deletions, also for spans whose deletion failed.
-    tag_failures = await store.chunk_tags.sync(set().union(*spans.values()) if spans else set())
+    tag_failures = await store.chunk_tags.sync(cid, set().union(*spans.values()) if spans else set())
     return WriteResult(outcome=outcome_of(len(deleted), len(failed) + len(tag_failures)),
                        succeeded=deleted, failed=failed + tag_failures)
 
