@@ -8,8 +8,10 @@ on:
     types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
+# PR events are grouped by PR number: when a PR is merged, the closing event's github.ref is
+# refs/heads/main, and in the main group the merge's push run replaced the pending teardown.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' && github.event.action != 'closed' }}
 
 jobs:
@@ -123,6 +125,10 @@ jobs:
           AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
           PERSISTENCE_DATA_PATH: /var/lib/weaviate
           DEFAULT_VECTORIZER_MODULE: none
+          # Backup/restore tests of active and inactive annotation tenants (#327); the
+          # backups stay inside the volume-less service container.
+          ENABLE_MODULES: backup-filesystem
+          BACKUP_FILESYSTEM_PATH: /var/lib/weaviate-backups
           CLUSTER_HOSTNAME: node1
           DISABLE_TELEMETRY: "true"
     env:

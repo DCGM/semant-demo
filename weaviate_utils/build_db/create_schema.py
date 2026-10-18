@@ -5,6 +5,9 @@ from weaviate.classes.config import DataType, Property, ReferenceProperty
 # Drop in reverse-dependency order so removing a target doesn't fail because
 # some other collection still references it.
 COLLECTIONS_IN_DROP_ORDER = [
+    # Multi-tenant span annotations (#327); references Chunks. Not created here: the backend's
+    # `python -m semant_demo.maintenance.annotation_migration backfill --execute` creates it.
+    "Annotation",
     "Span",
     "Chunks",
     "Documents",
@@ -162,8 +165,9 @@ def main() -> None:
         create_span(client)
 
         print("Schema created:")
-        for name in reversed(COLLECTIONS_IN_DROP_ORDER):
+        for name in reversed(COLLECTIONS_IN_DROP_ORDER[1:]):
             print(f"  - {name}")
+        print("Create the Annotation collection with semant_demo.maintenance.annotation_migration.")
     finally:
         client.close()
 

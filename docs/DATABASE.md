@@ -84,8 +84,12 @@ erDiagram
         datetime updated_at
     }
 
-    Span {
-        uuid id PK
+    Annotation {
+        uuid id PK "unique within its tenant"
+        text tenant "user collection UUID"
+        uuid tagId
+        uuid chunkId "anchor chunk"
+        uuid documentId
         int start
         int end
         text type "pos | neg | auto"
@@ -99,9 +103,13 @@ erDiagram
     Chunks }o--o{ Tag : "negativeTag (many:many)"
     Chunks }o--o{ UserCollection : "userCollection (many:many)"
     Tag }o--o{ UserCollection : "userCollection (many:many)"
-    Span }o--|| Tag : "tag (many:1)"
-    Span }o--|| Chunks : "text_chunk (many:1)"
+    Annotation }o--|| Chunks : "text_chunk (many:1)"
+    Annotation }o--|| UserCollection : "tenant = collection UUID"
 ```
+
+The legacy single-tenant `Span` collection (same span properties; references `tag` → Tag and
+`text_chunk` → Chunks) is no longer read by the application; it is the source of the
+annotation migration and kept for rollback ([below](#legacy-collection-span)).
 
 ### Collection: `Documents`
 
@@ -200,8 +208,9 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 | `userCollection` | UserCollection | many | User collections containing this chunk |
 
 The three tag references are what tag-filtered search uses. They are derived from the
-`Span` collection: a chunk holds a tag reference exactly when at least one span of the
-matching type with that tag is anchored on the chunk (its `text_chunk` reference). The
+`Annotation` collection: a chunk holds a tag reference exactly when at least one span of the
+matching type with that tag is anchored on the chunk (its `chunkId`), in the tenant of the
+tag's collection. The
 lists follow the spans' current type: approving a suggestion (`auto` → `pos`) moves its
 tag from `automaticTag` to `positiveTag` unless another `auto` span of that tag remains;
 `automaticTag` does not record that the AI once proposed an approved tag. Span
@@ -227,30 +236,56 @@ Named collections of chunks per user:
 - `color` — UI color identifier
 - `created_at`, `updated_at` — timestamps managed by backend
 
-### Collection: `Span`
+### Collection: `Annotation` (multi-tenant, #327)
 
-Character-level annotations of a tag inside a single chunk. Spans drive both the manual highlighting UI and the AI-assisted tagging workflow.
+Character-level annotations of a tag, one **tenant per user collection**: the tenant name is
+the collection's UUID (canonical lowercase form), never a user id. Sharing uses the same
+tenant; renaming or changing the owner does not change it. Spans drive the manual
+highlighting UI, the AI-assisted tagging workflow and the chunk tag projection. Multi-tenancy:
+`auto_tenant_creation` off (the backend creates a tenant on a collection's first span write),
+`auto_tenant_activation` on (an inactive tenant is activated by the next read or write).
 
 Properties:
-- `start` (`INT`) — character offset (inclusive) inside the chunk text
-- `end` (`INT`) — character offset (exclusive)
-- `type` (`TEXT`, enum `SpanType`) — one of:
-  - `pos` — manually confirmed positive span
-  - `neg` — manually rejected span (negative example)
-  - `auto` — AI-proposed span awaiting review
-- `reason` (`TEXT`, optional) — natural-language justification produced by the AI tagger; only set on `auto` spans
-- `confidence` (`NUMBER`, optional) — model self-reported confidence in `[0, 1]`; only set on `auto` spans
+- `tagId` (`UUID`) — the tag; always a tag of the tenant's collection
+- `chunkId` (`UUID`) — the anchor chunk, where the span starts
+- `documentId` (`UUID`) — the anchor chunk's document (filters of the document view)
+- `start` (`INT`) — UTF-16 code-unit offset (inclusive) from the start of the anchor chunk's text
+- `end` (`INT`) — offset (exclusive); may exceed the anchor chunk for a cross-chunk span
+- `type` (`TEXT`, field tokenization, enum `SpanType`) — one of:
+  - `pos` — manual or approved annotation
+  - `neg` — rejected suggestion kept as a negative example
+  - `auto` — AI proposal awaiting review
+- `reason` (`TEXT`, optional) — natural-language justification produced by the AI tagger
+- `confidence` (`NUMBER`, optional) — model self-reported confidence in `[0, 1]`
 
 References:
 
 | Reference | Target | Cardinality | Description |
 |---|---|---|---|
-| `tag` | Tag | 1 | The tag this span instantiates |
-| `text_chunk` | Chunks | 1 | The chunk inside which the span lives |
+| `text_chunk` | Chunks (the collection behind the alias, e.g. `Chunks_test` in production) | 1 | The anchor chunk; only for filters (statistics count spans whose chunk is still in the collection). Weaviate 1.40 does not return references of a multi-tenant object to a collection without tenants. |
 
-> **Lazy schema migration.** Older deployments created the `Span` collection without `reason` / `confidence`. The backend (`SpanRepository._ensure_ai_properties` in `adapters/weaviate/spans.py`) idempotently adds these properties on first AI-write, so no manual migration is required.
+Vectors: an unused self-provided `default` named vector (flat index). The contextual
+annotation vector of #328 is added as another named vector (`config.add_vector`, supported
+on 1.40 for an existing collection).
 
-> **Cascade on tag delete.** Deleting a Tag (also as part of deleting its collection) first removes the chunk tag references to it, then its Spans, then the Tag; this is done by the backend (`adapters/weaviate/writes.py`) rather than by Weaviate itself. It is not atomic: a failed step keeps the completed deletions and is reported, and deleting again continues.
+The application never creates the collection; the migration does
+(`python -m semant_demo.maintenance.annotation_migration backfill --execute`,
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-migration-annotation_migration-327)).
+
+> **Cascades.** Deleting a Tag first removes the chunk tag references to it, then its spans in
+> its collection's tenant (`delete_many`), then the Tag. Deleting a collection removes its
+> chunk/document links, its tags (with their chunk tag references), then its tenant (all its
+> spans at once), then the collection; the tenant counts as removed only when a lookup no
+> longer finds it. Done by the backend (`adapters/weaviate/writes.py`), not atomic: a failed
+> step keeps the completed deletions and is reported, and deleting again continues.
+
+### Legacy collection: `Span`
+
+The single-tenant span store before #327: `start`, `end`, `type`, `reason`, `confidence`
+and the references `tag` → Tag and `text_chunk` → Chunks; a span's collection was its
+tag's collection. Only `annotation_migration` reads it; nothing writes it. Keep it until the
+migration is verified and the rollback window has passed; removing it is a separate,
+reviewed data change.
 
 ---
 
@@ -259,8 +294,9 @@ References:
 The SQL database (`SQL_DB_URL`, SQLite file `tasks.db` by default — the name is historical)
 holds the application tables, declared on `adapters/sql/base.Base` and created at startup by
 `adapters/sql/tables.create_tables` when missing: `user` (below), `rag_user_feedback` (likes /
-dislikes of RAG answers, `adapters/sql/feedback.py`) and the LLM quota ledger (below,
-`adapters/sql/quota.py`). Startup never drops or alters existing tables or rows.
+dislikes of RAG answers, `adapters/sql/feedback.py`), the LLM quota ledger (below,
+`adapters/sql/quota.py`) and `annotation_tenant_activity` (below). Startup never drops or
+alters existing tables or rows.
 
 Databases created before the refactor may also contain a `tasks` table from the removed
 background tagging jobs. Nothing reads or writes it any more; it is left in place (dropping it
@@ -330,6 +366,20 @@ CREATE TABLE llm_quota_call (
     recorded_at     DATETIME
 );
 ```
+
+### `annotation_tenant_activity` — last use of each annotation tenant (#327)
+
+```sql
+CREATE TABLE annotation_tenant_activity (
+    tenant        VARCHAR(64) PRIMARY KEY,   -- a user collection UUID (the tenant name)
+    last_used_at  DATETIME NOT NULL          -- UTC
+);
+```
+
+Written by the backend at most once per `ANNOTATION_TENANT_TOUCH_SECONDS` per tenant and
+process (and by long operations with a heartbeat), read by the idle deactivation
+(`maintenance.annotation_tenants`). Advisory: a failed write is logged and never fails a
+request. Rows of removed tenants are dropped by the deactivation command.
 
 ---
 

@@ -557,6 +557,7 @@ const onDiscussSpan = () => {
   if (!sel?.editingSpanId) return
   const tag = sel.tagId ? tags.value.find((t) => t.id === sel.tagId) : undefined
   openSpanDiscussionDialog({
+    collectionId: props.collectionId,
     spanId: sel.editingSpanId,
     spanText: selectionText(sel, [...displayChunks.value, ...hiddenPreviewChunks.value]),
     tagName: tag?.name,

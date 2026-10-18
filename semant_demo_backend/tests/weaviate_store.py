@@ -32,6 +32,7 @@ from weaviate.classes.query import Filter
 
 from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.adapters.weaviate.names import CollectionNames
+from semant_demo.adapters.weaviate.spans import create_annotation_collection
 from tests.fakes import SECOND_VECTOR
 
 MARKER_COLLECTION = "SemantTestStoreMarker"
@@ -147,6 +148,7 @@ async def claim_store(client: WeaviateAsyncClient, token: str) -> None:
 
 def _app_collections_in_drop_order(names: CollectionNames) -> list[str]:
     return [
+        names.annotation_collection_name,
         names.span_collection_name,
         names.chunks_collection_name,
         names.document_collection_name,
@@ -186,7 +188,11 @@ async def reset_app_collections(
         created.clear()
         created.update(await _app_schema(client, names))
         return
-    for name in _app_collections_in_drop_order(names):
+    annotations = client.collections.get(names.annotation_collection_name)
+    tenants = list((await annotations.tenants.get()).keys())
+    if tenants:
+        await annotations.tenants.remove(tenants)
+    for name in _app_collections_in_drop_order(names)[1:]:
         await _delete_all_objects(client.collections.get(name))
 
 
@@ -302,6 +308,8 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
             ReferenceProperty(name="automaticTag", target_collection=names.tag_collection_name),
         ],
     )
+    await create_annotation_collection(client, names)
+    # The legacy single-tenant spans: the annotation migration's source (#327).
     await client.collections.create(
         names.span_collection_name,
         vector_config=vectors,

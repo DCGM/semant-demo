@@ -2,6 +2,8 @@
 
 Status: chunk-based storage and search adopted; consistency implemented in #204–#206.
 Broader search redesign and existing-data repair remain separate reviewed work.
+Span annotations themselves moved to one tenant per user collection in #327
+([ADR 0008](0008-multi-tenant-annotation-storage.md)); the chunk tag search is unchanged.
 Date: 2026-10-07. Updated after the Q2 clarification; supersedes the initial proposal
 for approved-only defaults and historical whole-chunk compatibility.
 

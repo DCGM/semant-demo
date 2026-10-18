@@ -76,7 +76,10 @@ async def test_reset_empties_collections_without_recreating_them(
 
     await reset_app_collections(seeded_store, collection_names, store_token, created_app_schema)
 
-    for name in _app_collections_in_drop_order(collection_names):
+    annotations, *others = _app_collections_in_drop_order(collection_names)
+    # The multi-tenant annotations are emptied by removing their tenants.
+    assert await seeded_store.collections.get(annotations).tenants.get() == {}
+    for name in others:
         total = (await seeded_store.collections.get(name).aggregate.over_all(total_count=True)).total_count
         assert total == 0, name
     after = (await seeded_store.collections.list_all(simple=False))[collection_names.chunks_collection_name]

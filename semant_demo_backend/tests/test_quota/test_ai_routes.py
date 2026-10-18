@@ -33,7 +33,7 @@ from tests.test_llm.test_features import AGENT_PARAMS, hit
 from tests.test_llm.test_gateway import CountingTransport
 from tests.test_quota.test_ledger import call
 from tests.test_search_service import backends as search_backends
-from tests.test_span_chat import FakeStore, span
+from tests.test_span_chat import COLLECTION as SPAN_COLLECTION, FakeStore, span
 from tests.test_summarization import test_document_service as documents
 from tests import test_suggestions as suggestion_fakes
 
@@ -221,7 +221,8 @@ def span_store(user_id: str) -> FakeStore:
 
 
 def discuss_body(store: FakeStore) -> dict:
-    return {"span_id": store.span.id, "messages": [{"role": "user", "content": "Fits?"}]}
+    return {"collection_id": str(SPAN_COLLECTION), "span_id": store.span.id,
+            "messages": [{"role": "user", "content": "Fits?"}]}
 
 
 async def test_span_chat_is_refused_before_streaming_for_an_exhausted_account(ai):

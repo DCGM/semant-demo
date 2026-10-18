@@ -18,6 +18,7 @@ from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway, ProviderSe
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.llm.usage import LlmMetrics
 from semant_demo.adapters.sql.quota import QuotaLedger
+from semant_demo.adapters.sql.tenant_activity import TenantActivity
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
@@ -51,6 +52,7 @@ class WeaviateRepositories:
     user_collections: UserCollectionRepository
     search: ChunkSearchRepository
     spans: SpanRepository
+    """Annotation spans, one tenant per user collection (#327); its known-tenant cache is per application."""
     chunk_tags: ChunkTagRepository
     """Chunk tag re-derivation; its per-pair locks are shared by all requests of the application."""
     analytics: CorpusAnalyticsRepository
@@ -58,14 +60,15 @@ class WeaviateRepositories:
     @classmethod
     def create(cls, client: WeaviateAsyncClient, config: Config) -> "WeaviateRepositories":
         names = config.collectionNames
+        spans = SpanRepository(client, names)
         return cls(
             client=client,
             documents=DocumentRepository(client, names),
-            tags=TagRepository(client, names),
-            user_collections=UserCollectionRepository(client, names),
+            tags=TagRepository(client, names, spans),
+            user_collections=UserCollectionRepository(client, names, spans),
             search=ChunkSearchRepository(client, names),
-            spans=SpanRepository(client, names),
-            chunk_tags=ChunkTagRepository(client, names),
+            spans=spans,
+            chunk_tags=ChunkTagRepository(client, names, spans),
             analytics=CorpusAnalyticsRepository(client, names),
         )
 
@@ -99,6 +102,7 @@ class AppResources:
     corpus_overview: OverviewCache
     quota_ledger: QuotaLedger
     quota_policy: QuotaPolicy
+    tenant_activity: TenantActivity
     rag: RagRegistry = field(default_factory=RagRegistry)
     weaviate: WeaviateRepositories | None = None
     _summarizer: TemplatedSearchResultsSummarizer | None = None
@@ -126,16 +130,32 @@ class AppResources:
                    span_chat=FeatureChat(llm, "span_chat", temperature=config.SPAN_CHAT_TEMPERATURE,
                                          max_tokens=config.SPAN_CHAT_MAX_TOKENS),
                    corpus_overview=OverviewCache(config.CORPUS_OVERVIEW_MAX_AGE),
-                   quota_ledger=QuotaLedger(session_maker), quota_policy=quota_policy)
+                   quota_ledger=QuotaLedger(session_maker), quota_policy=quota_policy,
+                   tenant_activity=TenantActivity(session_maker, config.ANNOTATION_TENANT_TOUCH_SECONDS))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
-        """Open the application's Weaviate client; raises if it cannot be connected."""
+        """Open the application's Weaviate client; raises if it cannot be connected.
+
+        Logs an error when the multi-tenant annotation collection does not exist (#327):
+        span reads and writes then fail until the operator has run the migration. The
+        application never creates or migrates it itself.
+        """
         client = await connector(self.config)
         try:
             self.weaviate = WeaviateRepositories.create(client, self.config)
         except Exception:
             await client.close()
             raise
+        name = self.config.collectionNames.annotation_collection_name
+        try:
+            exists = await client.collections.exists(name)
+        except Exception as e:
+            logger.warning("Could not check the annotation collection %s: %s", name, type(e).__name__)
+            return
+        if not exists:
+            logger.error("The annotation collection %s does not exist: annotations cannot be read or saved until "
+                         "it is created and filled by python -m semant_demo.maintenance.annotation_migration "
+                         "(docs/DATA_MAINTENANCE.md).", name)
 
     def get_summarizer(self) -> TemplatedSearchResultsSummarizer:
         if self._summarizer is None:

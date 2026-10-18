@@ -347,7 +347,9 @@ export async function deleteAddedSpans (request: APIRequestContext, userKey: str
   expect(response.ok()).toBe(true)
   for (const span of await response.json() as { id: string }[]) {
     if (fixtureIds.has(span.id)) continue
-    expect((await request.delete(`/api/tag_spans/${span.id}`, { headers })).ok()).toBe(true)
+    // A span is addressed within its collection (annotation tenants, #327).
+    const params = { collection_id: fixture.collection(collectionKey).id }
+    expect((await request.delete(`/api/tag_spans/${span.id}`, { headers, params })).ok()).toBe(true)
   }
 }
 
