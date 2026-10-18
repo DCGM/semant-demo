@@ -117,6 +117,7 @@ class FakeProvider:
     ``usage[text]`` is the usage reported with the answer (default: none, unknown)."""
 
     max_chunks_per_tag = 40
+    config_name = "fake-config"
 
     def __init__(self, world: World, answers: dict | None = None, stream: dict | None = None,
                  usage: dict | None = None):

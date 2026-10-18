@@ -89,6 +89,10 @@ export function largeRunWarning (
     `${maxChunksPerTag} chunks per tag), counted against today's AI allowance.`
 }
 
+/** The confirmation text when the size of a document run could not be determined. */
+export const UNKNOWN_RUN_SIZE_WARNING = 'The size of this AI run could not be determined, so it may evaluate ' +
+  'many chunks, each counted against today\'s AI allowance.'
+
 const UNIT_NAMES = { chunk: 'chunks', tag: 'tags', selection: 'selections' } as const
 
 /** One notice per tag that reached the per-tag chunk limit. */
@@ -128,7 +132,8 @@ export function describeRunEnd (end: AiRunEnd | null): string | null {
   if (end.stop_reason === 'quota_exhausted') {
     const units = UNIT_NAMES[end.unit ?? 'chunk']
     const reset = end.quota_exhausted ? ` It resets ${formatQuotaReset(new Date(end.quota_exhausted.reset_at))}.` : ''
-    return 'Today\'s AI allowance ran out, so AI suggestions stopped early: ' +
+    return 'Today\'s remaining AI allowance is not enough for the next AI operation, so AI suggestions ' +
+      'stopped early: ' +
       `${end.units_processed ?? 0} of ${end.units_total ?? 0} ${units} processed, ${end.saved} suggestion(s) saved.` +
       reset + (problems.length ? ` Also: ${problems.join('; ')}.` : '')
   }

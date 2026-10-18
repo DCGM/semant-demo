@@ -304,7 +304,7 @@ import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
 import { useApi } from 'src/shared/api'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useTagsStore } from './tagsStore'
-import useAiAssistance, { largeRunWarning, type AiAssistanceMode } from './useAiAssistance'
+import useAiAssistance, { largeRunWarning, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode } from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
 import useTagSpans from './useTagSpans'
 
@@ -383,10 +383,10 @@ function clearAiTags() {
   selectedAiTagIds.value = []
 }
 
-function confirmDialog(message: string): Promise<boolean> {
+function confirmDialog(title: string, message: string): Promise<boolean> {
   return new Promise((resolve) => {
     $q.dialog({
-      title: 'Large AI run',
+      title,
       message,
       persistent: true,
       cancel: { label: 'Cancel', flat: true, noCaps: true },
@@ -397,19 +397,26 @@ function confirmDialog(message: string): Promise<boolean> {
 
 // Asks before a run that would evaluate more than LARGE_RUN_CHUNKS chunks (a confirmation,
 // not a cap). The size comes from the document's stats: its chunks in the collection and
-// the backend's per-tag limit of optimized mode. Without them the run starts unasked.
+// the backend's per-tag limit of optimized mode. Without them (a failed lookup, missing
+// values) the size is unknown and the run also asks first.
 async function confirmLargeRun(collectionId: string, documentId: string, tagCount: number,
   mode: AiAssistanceMode): Promise<boolean> {
-  let warning: string | null = null
+  let chunks: number | null = null
+  let perTag: number | null = null
   try {
     const stats = await api.getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet({
       collectionId, documentId
     })
-    warning = largeRunWarning(mode, stats.chunksInCollection, tagCount, stats.aiMaxChunksPerTag ?? 0)
+    chunks = typeof stats.chunksInCollection === 'number' ? stats.chunksInCollection : null
+    perTag = typeof stats.aiMaxChunksPerTag === 'number' && stats.aiMaxChunksPerTag > 0 ? stats.aiMaxChunksPerTag : null
   } catch (e) {
     console.warn('Could not read the document size before an AI run', e)
   }
-  return !warning || await confirmDialog(warning)
+  if (mode === 'thorough' ? chunks === null : perTag === null) {
+    return await confirmDialog('AI run of unknown size', UNKNOWN_RUN_SIZE_WARNING)
+  }
+  const warning = largeRunWarning(mode, chunks ?? 0, tagCount, perTag ?? 0)
+  return !warning || await confirmDialog('Large AI run', warning)
 }
 
 async function onRunAi() {

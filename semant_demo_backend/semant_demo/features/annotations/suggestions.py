@@ -14,9 +14,11 @@ stored, then a final ``SuggestSpansRunEnd`` with the outcome.
   before it is sent (the first one by ``prepare_*``, so a refusal is an HTTP 429) and
   settled with the usage Topicer reports when it ends. A refused admission starts no
   further unit; running units finish and the end event says ``quota_exhausted``. Usage
-  that is missing (an error, a cancellation, an older Topicer, a stream without its
-  summary) is unknown and charges at least the reservation; only a request Topicer
-  certainly did not process (connection refused, 422) is free. The reservation is
+  that is missing (an error, a cancellation, an older Topicer's text answer) is unknown
+  and charges at least the reservation; only a request Topicer certainly did not process
+  (connection refused, 422) is free. A tag stream that ends normally without a usable
+  usage summary is charged ``FALLBACK_SHARE`` of its reservation as a fallback estimate
+  (cost source ``fallback``) and logged as a warning. The reservation is
   ``TOPICER_RESERVE_USD_PER_CHUNK`` per chunk the unit may evaluate (an optimized tag:
   ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks).
 - Validation (provider output is not trusted): the proposal's tag must be one of the
@@ -72,6 +74,9 @@ logger = logging.getLogger(__name__)
 # Topicer's internal OpenAI semaphore is set to 10, so we match that to
 # saturate it without overshooting.
 PROVIDER_CONCURRENCY = 10
+
+FALLBACK_SHARE = 0.25
+"""Share of its reservation charged for a tag stream that ended without usable usage."""
 
 SuggestionEvent = SuggestSpansChunkResult | SuggestSpansRunEnd
 Unit = Literal["chunk", "tag", "selection"]
@@ -312,10 +317,22 @@ class _Allowance:
 
         return admit
 
-    async def settle(self, admission: str | None, usage: TopicerUsage | None, *, no_work: bool = False) -> None:
-        """Charge the unit's usage; finishes even when the caller is cancelled meanwhile."""
+    async def settle(self, admission: str | None, usage: TopicerUsage | None, *, no_work: bool = False,
+                     fallback: bool = False) -> None:
+        """Charge the unit's usage; finishes even when the caller is cancelled meanwhile.
+
+        ``fallback``: the unit ended without usage information; charge ``FALLBACK_SHARE``
+        of its reservation, recorded as an estimate rather than consumption.
+        """
         if self.budget is not None and admission is not None:
-            await _uninterrupted(self._settle(admission, [] if no_work else _call_records(self.feature, usage)))
+            calls = [] if no_work else [self._fallback_call()] if fallback else _call_records(self.feature, usage)
+            await _uninterrupted(self._settle(admission, calls))
+
+    def _fallback_call(self) -> CallRecord:
+        # No provider, model or tokens: nothing was reported.
+        return CallRecord(feature=self.feature, tier="topicer", provider="", model="", outcome="usage_missing",
+                          usage_source="unavailable", cost_source="fallback",
+                          cost_usd=self.reserve_usd * FALLBACK_SHARE)
 
     async def _settle(self, admission: str, calls: list[CallRecord]) -> None:
         try:
@@ -491,6 +508,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
             save_failed = False
             summary: TopicerStreamSummary | None = None
             failure: TopicerError | None = None
+            ended = False  # the stream ended normally (not failed, cancelled or closed)
             try:
                 stream = provider.propose_for_db_stream(tag=tag, collection_id=str(collection_id),
                                                         document_id=str(document_id))
@@ -524,11 +542,13 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                                         utf16_offset(text, proposal.start), utf16_offset(text, proposal.end))
                         save_failed = save_failed or event.save_failed
                         yield event.result()
+                ended = True
             except TopicerError as e:
                 failure = e
             finally:
                 await allowance.settle(admission, summary.usage if summary else None,
-                                       no_work=failure is not None and failure.no_work and summary is None)
+                                       no_work=failure is not None and failure.no_work and summary is None,
+                                       fallback=ended and summary is None)
             if summary is not None and summary.limit_reached:
                 tally.tag_limits.append(SuggestTagLimit(
                     tag_id=tag.id, tag_name=tag.name, max_chunks=summary.max_chunks or provider.max_chunks_per_tag,
@@ -540,8 +560,9 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                 yield event.result()
                 continue
             if summary is None:
-                logger.warning("Topicer stream of tag %s ended without its usage summary; charged as unknown usage",
-                               tag.id)
+                logger.warning("Topicer stream of tag %s (document %s, config %s) ended without a usable usage "
+                               "summary (missing or malformed); charged %d%% of its reservation as a fallback "
+                               "estimate", tag.id, document_id, provider.config_name, FALLBACK_SHARE * 100)
             if not save_failed:
                 tally.completed_calls += 1
 
