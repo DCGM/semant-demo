@@ -4,6 +4,9 @@ The **`main` branch is the canonical base and pull-request target** for routine
 development. These guidelines apply to human- and agent-authored changes. [ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the implementation;
 [TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md) records continuing design constraints.
 New contributors can begin with [START_HERE.md](docs/START_HERE.md).
+For drafting, refining and taking ownership of issues, see the
+[issue workflow](docs/ISSUE_WORKFLOW.md); this document governs implementation
+and PR requirements.
 
 ## 1. Working on a change
 
