@@ -1,7 +1,8 @@
 """Audit, and on explicit request correct, chunk tag references against their spans (#204).
 
 Chunk ``automaticTag`` / ``positiveTag`` / ``negativeTag`` references must be backed by a
-span of the matching type and tag anchored on that chunk (ADR 0004). References without
+span of the matching type and tag anchored on that chunk (ADR 0004), stored in the
+annotation tenant of the tag's collection (#327). References without
 one are data inconsistencies, not a supported legacy feature; spans whose reference is
 missing are invisible to tag-filtered search.
 
@@ -18,7 +19,9 @@ The Weaviate endpoint comes from ``WEAVIATE_HOST`` / ``WEAVIATE_REST_PORT`` /
 ``WEAVIATE_GRPC_PORT``. Applying refuses to run unless ``--confirm-endpoint`` and the
 report's endpoint both equal the configured one. Every listed pair is re-derived from the
 spans stored at that moment, so references backed by spans created after the audit are
-kept, and a failed read stops that pair instead of being taken as "no spans". Nothing
+kept, and a failed read stops that pair instead of being taken as "no spans". Reports
+written before the annotation tenants (without ``collection_id``) are refused: audit
+again. The audit reads every annotation tenant, which activates inactive ones. Nothing
 here runs at startup or during requests.
 """
 import argparse
@@ -34,6 +37,7 @@ from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagIssue, apply_chunk_tag_fixes, audit_chunk_tags
+from semant_demo.adapters.weaviate.spans import SpanRepository
 
 
 def _counts(issues: list[ChunkTagIssue]) -> dict[str, int]:
@@ -46,18 +50,23 @@ async def build_report(client: WeaviateAsyncClient, names: CollectionNames, endp
         "endpoint": endpoint,
         "created": datetime.now(timezone.utc).isoformat(),
         "counts": _counts(issues),
-        "issues": [{"chunk_id": str(i.chunk_id), "tag_id": str(i.tag_id), "ref": i.ref, "kind": i.kind}
+        "issues": [{"chunk_id": str(i.chunk_id), "tag_id": str(i.tag_id), "ref": i.ref, "kind": i.kind,
+                    "collection_id": str(i.collection_id) if i.collection_id else None}
                    for i in issues],
     }
 
 
 def issues_of(report: dict) -> list[ChunkTagIssue]:
-    return [ChunkTagIssue(UUID(i["chunk_id"]), UUID(i["tag_id"]), i["ref"], i["kind"]) for i in report["issues"]]
+    if any("collection_id" not in i for i in report["issues"]):
+        raise ValueError("The report predates the annotation tenants (no collection_id); audit again")
+    return [ChunkTagIssue(UUID(i["chunk_id"]), UUID(i["tag_id"]), i["ref"], i["kind"],
+                          UUID(i["collection_id"]) if i["collection_id"] else None)
+            for i in report["issues"]]
 
 
 async def apply_report(client: WeaviateAsyncClient, names: CollectionNames, report: dict,
                        *, remove_unbacked: bool, add_missing: bool) -> dict:
-    done, failed = await apply_chunk_tag_fixes(client, names, issues_of(report),
+    done, failed = await apply_chunk_tag_fixes(client, names, SpanRepository(client, names), issues_of(report),
                                                remove_unbacked=remove_unbacked, add_missing=add_missing)
     return {
         "corrected_pairs": len(done),

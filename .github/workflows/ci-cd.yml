@@ -123,6 +123,10 @@ jobs:
           AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
           PERSISTENCE_DATA_PATH: /var/lib/weaviate
           DEFAULT_VECTORIZER_MODULE: none
+          # Backup/restore tests of active and inactive annotation tenants (#327); the
+          # backups stay inside the volume-less service container.
+          ENABLE_MODULES: backup-filesystem
+          BACKUP_FILESYSTEM_PATH: /var/lib/weaviate-backups
           CLUSTER_HOSTNAME: node1
           DISABLE_TELEMETRY: "true"
     env:

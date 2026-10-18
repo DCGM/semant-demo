@@ -95,7 +95,7 @@ NEW_TAG = PostTag(name="Nový", shorthand="N", color="red", pictogram="x", defin
 MISSING_ID_OPERATIONS = {
     "create tag in unknown collection": lambda t, c, k: t.find_same(UNKNOWN, NEW_TAG),
     "update unknown tag": lambda t, c, k: t.update(UNKNOWN, PatchTag(name="x")),
-    "delete unknown tag": lambda t, c, k: t.delete(UNKNOWN),
+    "delete unknown tag": lambda t, c, k: t.delete(UNKNOWN, UNKNOWN),
     "update unknown collection": lambda t, c, k: c.update(UNKNOWN, PatchCollection(name="x")),
     "set owner of unknown collection": lambda t, c, k: c.set_owner(UNKNOWN, OWNER_ID, "x"),
     "delete unknown collection": lambda t, c, k: c.delete(UNKNOWN),
@@ -325,18 +325,24 @@ async def test_tag_delete_removes_more_than_a_page_of_references_and_spans(
     chunks = seeded_store.collections.get(names.chunks_collection_name)
     for chunk_id in tagged:
         await chunks.data.reference_add(from_uuid=chunk_id, from_property="positiveTag", to=place)
-    await insert(seeded_store, names.span_collection_name, [
-        DataObject(properties={"start": 0, "end": 8, "type": SpanType.pos},
-                   references={"tag": str(place), "text_chunk": str(chunk_id)})
+    chronicles = UUID(corpus.collections["chronicles"]["id"])
+    tenant = seeded_store.collections.get(names.annotation_collection_name).with_tenant(str(chronicles))
+    result = await tenant.data.insert_many([
+        DataObject(properties={"start": 0, "end": 8, "type": SpanType.pos, "tagId": place, "chunkId": chunk_id},
+                   references={"text_chunk": str(chunk_id)})
         for chunk_id in tagged
     ])
-    spans_before = await count(seeded_store, names.span_collection_name)
+    assert not result.has_errors
 
-    await tags.delete(place)
+    async def tenant_count():
+        return (await tenant.aggregate.over_all(total_count=True)).total_count
+    spans_before = await tenant_count()
+
+    await tags.delete(place, chronicles)
 
     assert await tags.read(place) is None
     place_corpus_spans = sum(1 for s in corpus.spans.values() if s["tag"] == "place")
-    assert await count(seeded_store, names.span_collection_name) == spans_before - 150 - place_corpus_spans
+    assert await tenant_count() == spans_before - 150 - place_corpus_spans
     assert all([await ref_list(seeded_store, names.chunks_collection_name, c, "positiveTag") == []
                 for c in (tagged[0], tagged[99], tagged[100], tagged[-1])])
     assert await ref_list(seeded_store, names.chunks_collection_name, corpus.chunks["chronicle_1"]["id"],

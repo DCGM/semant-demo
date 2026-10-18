@@ -16,6 +16,13 @@ from semant_demo.maintenance.document_cleanup import (
 
 pytestmark = pytest.mark.integration
 
+
+async def annotation_count(client, names) -> int:
+    """Spans in all annotation tenants."""
+    annotations = client.collections.get(names.annotation_collection_name)
+    return sum([(await annotations.with_tenant(t).aggregate.over_all(total_count=True)).total_count
+                for t in await annotations.tenants.get()])
+
 LONELY, MEMBER, TWO, DANGLING = (UUID(f"5e3a0000-0000-4000-8000-0000000de00{n}") for n in range(1, 5))
 MISSING_COLLECTION = UUID("5e3a0000-0000-4000-8000-0000000c0099")
 
@@ -36,7 +43,7 @@ async def test_audit_and_delete_documents_without_chunks(seeded_store, collectio
     await user_collections.data.delete_by_id(MISSING_COLLECTION)  # leaves the reference dangling
     before = {k: await collections.read_collection_stats(i) for k, i in c.items()}
     tags_before = await store.total_count(seeded_store, collection_names.tag_collection_name)
-    spans_before = await store.total_count(seeded_store, collection_names.span_collection_name)
+    spans_before = await annotation_count(seeded_store, collection_names)
     checkpoint = tmp_path / "audit.json"
 
     summary = await audit(seeded_store, collection_names, checkpoint=checkpoint, endpoint="test",
@@ -79,7 +86,7 @@ async def test_audit_and_delete_documents_without_chunks(seeded_store, collectio
         listed = {d.id for d in await collections.read_all_documents(collection_id)}
         assert not listed & {LONELY, MEMBER, TWO, DANGLING}
     assert await store.total_count(seeded_store, collection_names.tag_collection_name) == tags_before
-    assert await store.total_count(seeded_store, collection_names.span_collection_name) == spans_before
+    assert await annotation_count(seeded_store, collection_names) == spans_before
 
 
 async def test_aliases_are_resolved_like_the_deployment(seeded_store, collection_names):

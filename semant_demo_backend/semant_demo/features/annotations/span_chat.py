@@ -21,6 +21,7 @@ from uuid import UUID
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.annotations.offsets import code_point_offset, text_length
 from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanChatMessage, Tag, TagSpan, AnnotationChunk
+from semant_demo.features.annotations import service
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
@@ -246,6 +247,7 @@ class SpanDiscussion:
     """An authorized span discussion; ``deltas()`` reads its context and streams the reply."""
     store: AnnotationStore
     provider: ChatProvider
+    collection_id: UUID
     span_id: UUID
     messages: list[SpanChatMessage]
     context_chars: int
@@ -253,7 +255,7 @@ class SpanDiscussion:
 
     async def deltas(self) -> AsyncGenerator[str, None]:
         """Plain text deltas of the reply; raises if the span or the provider fails."""
-        span = await self.store.spans.read(self.span_id)
+        span = await self.store.spans.read(self.collection_id, self.span_id)
         if span is None:
             raise ValueError(f"span {self.span_id} not found")
 
@@ -271,15 +273,15 @@ async def prepare_discussion(store: AnnotationStore, user: Principal | None, req
                              provider: ChatProvider, *, context_chars: int,
                              history_limit: int) -> SpanDiscussion:
     """
-    Validate the request and check that the user may read the span's collection
-    (404/401 otherwise) before anything is streamed.
+    Validate the request and check that the user may read the collection and that the
+    span is one of its spans (404/401 otherwise) before anything is streamed.
     """
     if not request.messages:
         raise InvalidRequestError("messages must not be empty")
     if request.messages[-1].role != "user":
         raise InvalidRequestError("last message must be from the user")
-    collection_id = await access.collection_of_spans(store.spans, store.tags, [request.span_id])
-    await access.require_collection_read(store.collections, user, collection_id)
-    return SpanDiscussion(store=store, provider=provider, span_id=access.parse_id(request.span_id, "Span"),
-                          messages=list(request.messages), context_chars=context_chars,
+    grant = await access.require_collection_read(store.collections, user, request.collection_id)
+    [span_id] = await access.require_spans_in_collection(store.spans, [request.span_id], grant.collection_id)
+    return SpanDiscussion(store=store, provider=provider, collection_id=await service.use_tenant(store, grant),
+                          span_id=span_id, messages=list(request.messages), context_chars=context_chars,
                           history_limit=history_limit)

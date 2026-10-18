@@ -6,6 +6,7 @@ provider calls without cutting a write. The HTTP stream and real Weaviate are co
 tests/integration/test_suggestions.py.
 """
 import asyncio
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -45,6 +46,7 @@ class World:
         self.insert_gate: asyncio.Event | None = None
         self.inserted = 0
         self.stored: dict[UUID, object] = {}
+        self.holds: list = []  # tenant activity: (event, collection, spans inserted so far)
 
     def by_id(self, chunk_id):
         return next((c for c in self.chunks if c.id == chunk_id), None)
@@ -73,7 +75,8 @@ class World:
                    examples=[])
 
     # spans
-    async def insert(self, span):
+    async def insert(self, cid, span, document_id):
+        assert (cid, document_id) == (COLLECTION, DOCUMENT)  # the run's tenant and the chunk's document
         self.inserted += 1
         number = self.inserted
         self.log.append(("insert_start", span.chunkId, span.start, span.end))
@@ -87,7 +90,8 @@ class World:
         return span_id
 
     # chunk tags
-    async def sync(self, pairs):
+    async def sync(self, cid, pairs):
+        assert cid == COLLECTION
         self.log.append(("sync", frozenset(pairs)))
         return list(self.sync_failures)
 
@@ -105,7 +109,19 @@ class World:
         spans = SimpleNamespace(insert=self.insert)
         tags = SimpleNamespace(read_collection_ids=self.read_collection_ids, read=self.read)
         return AnnotationStore(collections=self, tags=tags, spans=spans,
-                               chunk_tags=SimpleNamespace(sync=self.sync), documents=self)
+                               chunk_tags=SimpleNamespace(sync=self.sync), documents=self, activity=self)
+
+    # tenant activity: the run holds its collection's tenant in use
+    async def touch(self, cid, *, force=False):
+        self.holds.append(("touch", cid, self.inserted))
+
+    @asynccontextmanager
+    async def in_use(self, cid):
+        self.holds.append(("in_use", cid, self.inserted))
+        try:
+            yield
+        finally:
+            self.holds.append(("released", cid, self.inserted))
 
 
 def proposal(tag, start, end, **extra):
@@ -177,6 +193,20 @@ async def thorough(world, provider, user=OWNER, req=None):
 
 
 # ── Progressive persistence and outcomes ───────────────────────────────────
+
+
+async def test_a_run_holds_its_collections_tenant_in_use_while_it_runs():
+    # The idle deactivation (#327) must not deactivate a tenant a run is writing to.
+    world = World("Jan Novák v Brně", "Brno a Jan")
+    provider = FakeProvider(world, {"Jan Novák v Brně": [proposal(PERSON, 0, 9)],
+                                    "Brno a Jan": [proposal(PERSON, 7, 10)]})
+    run = await thorough(world, provider)
+    assert world.holds == []  # preparing does not use the tenant yet
+
+    [event async for event in run.events()]
+
+    assert world.holds == [("in_use", COLLECTION, 0), ("released", COLLECTION, 2)]
+
 
 
 async def test_each_event_follows_its_stored_span():

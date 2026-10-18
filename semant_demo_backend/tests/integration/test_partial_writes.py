@@ -11,6 +11,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from weaviate.classes.data import DataObject
+from weaviate.collections.classes.batch import DeleteManyReturn
+from weaviate.collections.data.async_ import _DataCollectionAsync
 from weaviate.exceptions import WeaviateTimeoutError
 
 
@@ -88,7 +90,7 @@ async def test_bulk_span_update_reports_failed_spans(api_client, login, ids, sto
     fail_writes("update", [praha])
 
     response = await api_client.post("/api/tag_spans/bulk_update", headers=await login("annotator"),
-                                     json={"span_ids": [lhota, praha], "update": {"type": "pos"}})
+                                     json={"collection_id": ids.col["chronicles"], "span_ids": [lhota, praha], "update": {"type": "pos"}})
 
     result = response.json()
     assert result["outcome"] == "partial"
@@ -114,17 +116,24 @@ async def test_scoped_span_delete_reports_failed_spans(api_client, login, ids, s
     assert await store.span(ids.span["brno_manual"]) is None
 
 
+async def extra_place_spans(seeded_store, collection_names, ids, count, type_):
+    """``count`` more ``place`` spans on chronicle_1, in the chronicles tenant."""
+    tenant = seeded_store.collections.get(collection_names.annotation_collection_name).with_tenant(
+        ids.col["chronicles"])
+    extra = await tenant.data.insert_many([
+        DataObject(properties={"start": 0, "end": 4, "type": type_, "tagId": ids.tag["place"],
+                               "chunkId": ids.chunk["chronicle_1"], "documentId": ids.doc["chronicle"]},
+                   references={"text_chunk": ids.chunk["chronicle_1"]})
+        for _ in range(count)
+    ])
+    assert not extra.has_errors
+
+
 async def test_deletion_terminates_when_a_full_page_keeps_failing(
         api_client, login, ids, seeded_store, collection_names, fail_writes):
     # More failing spans than one 500-object page: the old loop refetched the same page forever.
-    spans = seeded_store.collections.get(collection_names.span_collection_name)
-    extra = await spans.data.insert_many([
-        DataObject(properties={"start": 0, "end": 4, "type": "auto"},
-                   references={"tag": ids.tag["place"], "text_chunk": ids.chunk["chronicle_1"]})
-        for _ in range(501)
-    ])
-    assert not extra.has_errors
-    fail_writes("delete_by_id", collection="Span")
+    await extra_place_spans(seeded_store, collection_names, ids, 501, "auto")
+    fail_writes("delete_by_id", collection=collection_names.annotation_collection_name)
     body = {"collection_id": ids.col["chronicles"], "document_id": ids.doc["chronicle"], "tag_ids": [ids.tag["place"]]}
 
     response = await asyncio.wait_for(
@@ -136,18 +145,23 @@ async def test_deletion_terminates_when_a_full_page_keeps_failing(
     assert len(result["failed"]) == 502  # the 501 extra spans and the corpus' lhota_automatic
 
 
+def delete_many_returning(monkeypatch, collection: str, **counts):
+    """Make ``delete_many`` on ``collection`` report ``counts`` without deleting anything."""
+    original = _DataCollectionAsync.delete_many
+
+    async def reported(self, *args, **kwargs):
+        if self.name != collection:
+            return await original(self, *args, **kwargs)
+        return DeleteManyReturn(objects=None, **counts)
+    monkeypatch.setattr(_DataCollectionAsync, "delete_many", reported)
+
+
 async def test_cascade_stops_when_deletes_do_not_take_effect(
-        api_client, login, ids, store, seeded_store, collection_names, fail_writes):
-    # A delete that reports success but leaves the span in place must not loop forever.
-    # The cascade refetches its first 100-span page, so the guard matters for a full page.
-    spans = seeded_store.collections.get(collection_names.span_collection_name)
-    extra = await spans.data.insert_many([
-        DataObject(properties={"start": 0, "end": 4, "type": "pos"},
-                   references={"tag": ids.tag["place"], "text_chunk": ids.chunk["chronicle_1"]})
-        for _ in range(100)
-    ])
-    assert not extra.has_errors
-    fail_writes("delete_by_id", collection="Span", no_op=True)
+        api_client, login, ids, store, seeded_store, collection_names, monkeypatch):
+    # A delete that reports nothing deleted while spans still match must not loop forever.
+    await extra_place_spans(seeded_store, collection_names, ids, 100, "pos")
+    delete_many_returning(monkeypatch, collection_names.annotation_collection_name, matches=102, successful=0,
+                          failed=0)
 
     response = await asyncio.wait_for(
         api_client.delete(f"/api/tags/{ids.tag['place']}", headers=await login("owner")), timeout=60)
@@ -158,11 +172,9 @@ async def test_cascade_stops_when_deletes_do_not_take_effect(
     assert await store.tag(ids.tag["place"]) is not None
 
 
-
-async def test_cascade_stops_when_deletes_on_a_short_page_do_not_take_effect(
-        api_client, login, ids, store, collection_names, fail_writes):
-    # Only the corpus' few `place` spans match: a short last page must also be re-queried.
-    fail_writes("delete_by_id", collection=collection_names.span_collection_name, no_op=True)
+async def test_cascade_stops_when_span_deletions_fail(api_client, login, ids, store, collection_names, monkeypatch):
+    delete_many_returning(monkeypatch, collection_names.annotation_collection_name, matches=3, successful=2,
+                          failed=1)
 
     response = await asyncio.wait_for(
         api_client.delete(f"/api/tags/{ids.tag['place']}", headers=await login("owner")), timeout=60)
@@ -171,6 +183,7 @@ async def test_cascade_stops_when_deletes_on_a_short_page_do_not_take_effect(
     assert response.json()["step"] == "delete_span"
     assert await store.tag(ids.tag["place"]) is not None
     assert await store.span(ids.span["brno_manual"]) is not None
+
 
 # ── AI suggestions ─────────────────────────────────────────────────────────
 
@@ -185,9 +198,10 @@ def end_of(response):
     return json.loads(response.text.splitlines()[-1])
 
 
-async def test_ai_storage_failures_are_reported(api_client, login, ids, store, fake_topicer, fail_writes):
+async def test_ai_storage_failures_are_reported(api_client, login, ids, store, collection_names, fake_topicer,
+                                                fail_writes):
     spans_before = await store.span_count()
-    fail_writes("insert", collection="Span")
+    fail_writes("insert", collection=collection_names.annotation_collection_name)
     body = {"collection_id": ids.col["chronicles"], "document_id": ids.doc["chronicle"], "tag_ids": [ids.tag["person"]]}
 
     response = await api_client.post("/api/ai/suggest_spans/thorough", headers=await login("annotator"), json=body)

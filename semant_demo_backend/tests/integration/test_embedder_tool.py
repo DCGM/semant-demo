@@ -20,6 +20,7 @@ from weaviate.classes.config import Configure, DataType, Property
 from weaviate.classes.query import QueryReference
 
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
+from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.bootstrap import load_search_vectors
@@ -148,8 +149,9 @@ async def test_a_filled_vector_keeps_the_chunk_data_and_is_searchable(tool_store
          "embedding": {"provider": "openai", "base_url": "http://fake/openai/v1", "model": "fake-small"}}]}))
     vectors = load_search_vectors(Config(environ={"SEARCH_VECTORS_CONFIG": str(path)}),
                                   ASGITransport(app=fake_provider))
-    backends = SearchBackends(ChunkSearchRepository(tool_store, names), UserCollectionRepository(tool_store, names),
-                              TagRepository(tool_store, names), vectors)
+    spans = SpanRepository(tool_store, names)
+    backends = SearchBackends(ChunkSearchRepository(tool_store, names), UserCollectionRepository(tool_store, names, spans),
+                              TagRepository(tool_store, names, spans), vectors)
     target = corpus.chunks["gazette_1"]
     queries = {"tool": f"{target['title']}: {target['text']}", "original": target["text"]}
     for vector, query in queries.items():

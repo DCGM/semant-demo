@@ -21,7 +21,8 @@ class FakeStore:
     def __init__(self, fail=False):
         records = {COLLECTION: (OWNER.id, {SHARED.id}), OTHER_COLLECTION: (OTHER.id, set())}
         tags = {TAG: [COLLECTION], OTHER_TAG: [OTHER_COLLECTION], ORPHAN_TAG: [], DOUBLE_TAG: [COLLECTION, OTHER_COLLECTION]}
-        spans = {SPAN: ([TAG], [CHUNK]), OTHER_SPAN: ([OTHER_TAG], [FOREIGN_CHUNK])}
+        # Spans by the collection whose annotation tenant holds them (#327).
+        spans = {COLLECTION: {SPAN}, OTHER_COLLECTION: {OTHER_SPAN}}
         members = {COLLECTION: {CHUNK}}
         documents = {COLLECTION: {DOCUMENT}, OTHER_COLLECTION: {FOREIGN_DOCUMENT}}
 
@@ -39,14 +40,14 @@ class FakeStore:
         async def read_collection_ids(ids):
             return {t: tags[t] for t in ids if t in tags}
 
-        async def read_refs(ids):
-            return {s: spans[s] for s in ids if s in spans}
+        async def read_many(cid, ids):
+            return {s: f"span {s}" for s in ids if s in spans.get(cid, set())}
 
         self.collections = SimpleNamespace(read_access_record=read_access_record,
                                               chunk_ids_in_collection=chunk_ids_in_collection,
                                               document_in_collection=document_in_collection)
         self.tags = SimpleNamespace(read_collection_ids=read_collection_ids)
-        self.spans = SimpleNamespace(read_refs=read_refs)
+        self.spans = SimpleNamespace(read_many=read_many)
 
 
 SHARED_RIGHTS = [access.require_collection_read, access.require_annotation_edit, access.require_tag_definition_edit]
@@ -97,9 +98,10 @@ async def test_store_errors_do_not_grant_access():
         await access.require_collection_read(FakeStore(fail=True).collections, OWNER, COLLECTION)
 
 
-async def test_tag_and_span_resolve_to_their_collection():
+async def test_tag_resolves_to_its_collection_and_spans_are_read_from_theirs():
     assert await access.collection_of_tags(FakeStore().tags, [str(TAG)]) == COLLECTION
-    assert await access.collection_of_spans(FakeStore().spans, FakeStore().tags, [SPAN]) == COLLECTION
+    assert await access.require_spans_in_collection(FakeStore().spans, [str(SPAN)], COLLECTION) == {
+        SPAN: f"span {SPAN}"}
 
 
 @pytest.mark.parametrize("tags", [[ORPHAN_TAG], [DOUBLE_TAG], [uuid4()], [TAG, OTHER_TAG], []],
@@ -109,9 +111,12 @@ async def test_ambiguous_or_mixed_tags_are_not_found(tags):
         await access.collection_of_tags(FakeStore().tags, tags)
 
 
-async def test_spans_from_different_collections_are_rejected():
+@pytest.mark.parametrize("spans", [[SPAN, OTHER_SPAN], [OTHER_SPAN], [uuid4()], ["not-a-uuid"], []],
+                         ids=["mixed", "other-collection", "unknown", "malformed", "empty"])
+async def test_spans_outside_the_named_collection_are_not_found(spans):
+    # A span id of another collection is not a credential: it is not even looked up there.
     with pytest.raises(ResourceNotFound):
-        await access.collection_of_spans(FakeStore().spans, FakeStore().tags, [SPAN, OTHER_SPAN])
+        await access.require_spans_in_collection(FakeStore().spans, spans, COLLECTION)
 
 
 async def test_tags_and_chunks_must_belong_to_the_collection():

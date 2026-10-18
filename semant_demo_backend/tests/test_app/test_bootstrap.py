@@ -204,11 +204,11 @@ def test_export_script_writes_schema_offline(tmp_path, no_external_connections):
     assert no_external_connections == []
 
 
-def test_sql_tables_are_users_rag_feedback_and_the_llm_quota_ledger():
+def test_sql_tables_are_users_rag_feedback_the_llm_quota_ledger_and_tenant_activity():
     from semant_demo.adapters.sql.tables import Base
 
     assert set(Base.metadata.tables) == {"user", "rag_user_feedback", "llm_quota_day", "llm_quota_operation",
-                                         "llm_quota_call"}
+                                         "llm_quota_call", "annotation_tenant_activity"}
 
 
 async def test_startup_adds_the_quota_ledger_to_an_existing_database(tmp_path, no_external_connections):
@@ -247,3 +247,35 @@ async def test_startup_keeps_existing_users_and_feedback(tmp_path, no_external_c
     assert _user_emails(tmp_path / "test.db") == ["kept@example.com"]
     with sqlite3.connect(tmp_path / "test.db") as conn:
         assert conn.execute("SELECT response_id FROM rag_user_feedback").fetchall() == [("r1",)]
+
+
+class _AnnotationStore(OfflineWeaviate):
+    """A client whose only answer is whether the annotation collection exists (#327)."""
+
+    def __init__(self, exists):
+        super().__init__()
+        self.exists = exists
+
+        async def collection_exists(name):
+            if isinstance(self.exists, Exception):
+                raise self.exists
+            return self.exists
+        self.collections.exists = collection_exists
+
+
+@pytest.mark.parametrize("exists, level", [(False, "ERROR"), (ConnectionError("down"), "WARNING"), (True, None)],
+                         ids=["missing", "unknown", "present"])
+async def test_startup_reports_a_missing_annotation_collection_without_creating_it(tmp_path, caplog, exists, level):
+    resources = AppResources.create(make_test_config(tmp_path))
+
+    async def connector(config):
+        return _AnnotationStore(exists)
+    try:
+        with caplog.at_level("WARNING", logger="semant_demo.bootstrap"):
+            await resources.connect_weaviate(connector)
+    finally:
+        await resources.close()
+
+    records = [r for r in caplog.records if "annotation collection" in r.getMessage()]
+    assert [r.levelname for r in records] == ([level] if level else [])
+    assert resources.weaviate is None  # closed; startup itself was not refused

@@ -3,7 +3,8 @@
 #
 #   scripts/with-test-weaviate.sh <command> [args...]
 #
-# Starts a uniquely named container with no volume (data lives only in the container)
+# Starts a uniquely named container with no volume (data and the backups of the backup
+# tests, #327, live only in the container)
 # on random loopback ports, exports SEMANT_TEST_WEAVIATE_HOST/_REST_PORT/_GRPC_PORT and a
 # fresh per-run ownership token SEMANT_TEST_STORE_TOKEN for the command, and removes the
 # container afterwards, also on failure or Ctrl-C. It never touches the development
@@ -41,6 +42,8 @@ docker run -d --rm \
   -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true \
   -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
   -e DEFAULT_VECTORIZER_MODULE=none \
+  -e ENABLE_MODULES=backup-filesystem \
+  -e BACKUP_FILESYSTEM_PATH=/var/lib/weaviate-backups \
   -e CLUSTER_HOSTNAME=node1 \
   -e DISABLE_TELEMETRY=true \
   "$IMAGE" --host 0.0.0.0 --port 8080 --scheme http >/dev/null

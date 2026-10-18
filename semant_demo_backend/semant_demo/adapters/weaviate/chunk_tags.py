@@ -3,12 +3,12 @@
 Search filters chunks by their ``automaticTag`` / ``positiveTag`` / ``negativeTag``
 references. These are a projection of the spans: a chunk references tag ``T`` through
 the property of span type ``X`` exactly when at least one span of type ``X`` with tag
-``T`` is anchored on that chunk (its ``text_chunk`` reference; a cross-chunk span is
-anchored on its first chunk). Tags belong to one collection, so a (chunk, tag) pair
-needs no further scope.
+``T`` is anchored on that chunk (its ``chunkId``; a cross-chunk span is anchored on its
+first chunk). Tags belong to one collection, so the spans of a (chunk, tag) pair are in
+that collection's annotation tenant (#327), which callers name.
 
 ``sync_chunk_tags`` re-derives the references of the given (chunk, tag) pairs from the
-spans currently stored. Span writes call it for every pair they touched, after the span
+spans currently stored in the collection's tenant. Span writes call it for every pair they touched, after the span
 write, so it is safe to repeat and keeps a reference while another span still backs it.
 It is not atomic with the span write: a failure is returned as a ``StepFailure`` and the
 span write is kept (ADR 0002).
@@ -32,11 +32,10 @@ from typing import Callable, Iterable
 from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter, QueryReference
+from weaviate.classes.query import QueryReference
 
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.features.annotations.schemas import SpanType
-from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.outcomes import StepFailure
 
@@ -69,16 +68,15 @@ def _ref_ids(obj, prop: str) -> list[UUID]:
     return [UUID(str(r.uuid)) for r in (block.objects if block else [])]
 
 
-async def required_refs(client: WeaviateAsyncClient, names: CollectionNames, pair: ChunkTag) -> set[str]:
-    """Reference properties the spans of ``pair`` require on its chunk."""
-    spans = client.collections.get(names.span_collection_name)
-    objs = await fetch_all(
-        spans,
-        filters=(Filter.by_ref("tag").by_id().equal(pair.tag_id)
-                 & Filter.by_ref("text_chunk").by_id().equal(pair.chunk_id)),
-        return_properties=["type"],
-    )
-    return {REF_BY_TYPE[o.properties.get("type")] for o in objs if o.properties.get("type") in REF_BY_TYPE}
+async def required_refs(spans, collection_id: UUID | None, pair: ChunkTag) -> set[str]:
+    """Reference properties the spans of ``pair`` require on its chunk.
+
+    ``spans`` is the ``SpanRepository``; ``collection_id`` the collection of the pair's
+    tag, ``None`` for a tag without exactly one collection, which has no spans.
+    """
+    if collection_id is None:
+        return set()
+    return {REF_BY_TYPE[t] for t in await spans.types_on_pair(collection_id, pair) if t in REF_BY_TYPE}
 
 
 async def _chunk_refs(client: WeaviateAsyncClient, names: CollectionNames, chunk_id: UUID):
@@ -90,9 +88,9 @@ async def _chunk_refs(client: WeaviateAsyncClient, names: CollectionNames, chunk
     )
 
 
-async def _sync_pair(client: WeaviateAsyncClient, names: CollectionNames, pair: ChunkTag,
-                     *, add: bool, remove: bool) -> None:
-    required = await required_refs(client, names, pair)
+async def _sync_pair(client: WeaviateAsyncClient, names: CollectionNames, spans, collection_id: UUID | None,
+                     pair: ChunkTag, *, add: bool, remove: bool) -> None:
+    required = await required_refs(spans, collection_id, pair)
     chunk = await _chunk_refs(client, names, pair.chunk_id)
     if chunk is None:
         # No chunk, no searchable state; a span on a missing chunk is a separate problem.
@@ -106,11 +104,12 @@ async def _sync_pair(client: WeaviateAsyncClient, names: CollectionNames, pair: 
             await data.reference_delete(from_uuid=pair.chunk_id, from_property=prop, to=pair.tag_id)
 
 
-async def sync_chunk_tags(client: WeaviateAsyncClient, names: CollectionNames,
+async def sync_chunk_tags(client: WeaviateAsyncClient, names: CollectionNames, spans, collection_id: UUID | None,
                           pairs: Iterable[ChunkTag], *, add: bool = True, remove: bool = True,
                           lock_for: Callable[[ChunkTag], asyncio.Lock] | None = None,
                           ) -> tuple[list[ChunkTag], list[StepFailure]]:
-    """Make the chunk tag references of ``pairs`` match their spans.
+    """Make the chunk tag references of ``pairs`` match their spans in the collection's
+    tenant (``spans``: the ``SpanRepository``; ``collection_id`` as in ``required_refs``).
 
     Returns the pairs that were brought in line (including those already consistent)
     and a ``update_chunk_tags`` failure for each pair whose read or write failed. A failed
@@ -124,10 +123,10 @@ async def sync_chunk_tags(client: WeaviateAsyncClient, names: CollectionNames,
     async def one(pair: ChunkTag):
         async with sem:
             if lock_for is None:
-                await _sync_pair(client, names, pair, add=add, remove=remove)
+                await _sync_pair(client, names, spans, collection_id, pair, add=add, remove=remove)
             else:
                 async with lock_for(pair):
-                    await _sync_pair(client, names, pair, add=add, remove=remove)
+                    await _sync_pair(client, names, spans, collection_id, pair, add=add, remove=remove)
 
     results = await asyncio.gather(*(one(p) for p in pairs), return_exceptions=True)
     done: list[ChunkTag] = []
@@ -145,9 +144,11 @@ async def sync_chunk_tags(client: WeaviateAsyncClient, names: CollectionNames,
 class ChunkTagRepository:
     """Chunk tag re-derivation for span writes, one pair at a time within the process."""
 
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames, spans):
         self.client = client
         self.collectionNames = collectionNames
+        self.spans = spans
+        """The ``SpanRepository`` the pairs' spans are read from."""
         # A lock exists while some sync holds or waits for it.
         self._locks: weakref.WeakValueDictionary[ChunkTag, asyncio.Lock] = weakref.WeakValueDictionary()
 
@@ -157,9 +158,11 @@ class ChunkTagRepository:
             lock = self._locks[pair] = asyncio.Lock()
         return lock
 
-    async def sync(self, pairs: Iterable[ChunkTag]) -> list[StepFailure]:
-        """Re-derive the pairs' references; returns a ``update_chunk_tags`` failure per failed pair."""
-        _, failed = await sync_chunk_tags(self.client, self.collectionNames, pairs, lock_for=self._lock)
+    async def sync(self, collection_id: UUID, pairs: Iterable[ChunkTag]) -> list[StepFailure]:
+        """Re-derive the references of the pairs of the collection's tags; returns a
+        ``update_chunk_tags`` failure per failed pair."""
+        _, failed = await sync_chunk_tags(self.client, self.collectionNames, self.spans, collection_id, pairs,
+                                          lock_for=self._lock)
         return failed
 
 
@@ -175,15 +178,30 @@ class ChunkTagIssue:
     kind: str
     """``unbacked``: the chunk holds the reference but no span of that type and tag is
     anchored on it. ``missing``: such a span exists but the chunk lacks the reference."""
+    collection_id: UUID | None = None
+    """The tag's collection, whose tenant holds the pair's spans; ``None`` when the tag
+    does not belong to exactly one collection (it then has no spans)."""
 
     @property
     def pair(self) -> ChunkTag:
         return ChunkTag(self.chunk_id, self.tag_id)
 
 
+async def tag_collections(client: WeaviateAsyncClient, names: CollectionNames) -> dict[UUID, UUID | None]:
+    """The collection of every tag: ``None`` for a tag referencing no or several collections."""
+    result: dict[UUID, UUID | None] = {}
+    async for obj in client.collections.get(names.tag_collection_name).iterator(
+            return_properties=[], return_references=[QueryReference(link_on="userCollection", return_properties=[])]):
+        owners = _ref_ids(obj, "userCollection")
+        result[UUID(str(obj.uuid))] = owners[0] if len(owners) == 1 else None
+    return result
+
+
 async def audit_chunk_tags(client: WeaviateAsyncClient, names: CollectionNames) -> list[ChunkTagIssue]:
     """Every chunk tag reference without a backing span and every span-required reference
-    that is missing. Read-only. Reads all chunks and spans (iterator, no result limit)."""
+    that is missing. Read-only. Reads all chunks, tags and the spans of every annotation
+    tenant (iterators, no result limit); reading a tenant activates it when inactive."""
+    owner_of = await tag_collections(client, names)
     present: set[tuple[UUID, UUID, str]] = set()
     chunks = client.collections.get(names.chunks_collection_name)
     async for obj in chunks.iterator(
@@ -195,32 +213,41 @@ async def audit_chunk_tags(client: WeaviateAsyncClient, names: CollectionNames) 
                 present.add((chunk_id, tag_id, prop))
 
     required: set[tuple[UUID, UUID, str]] = set()
-    spans = client.collections.get(names.span_collection_name)
-    async for obj in spans.iterator(
-            return_properties=["type"],
-            return_references=[QueryReference(link_on="tag", return_properties=[]),
-                               QueryReference(link_on="text_chunk", return_properties=[])]):
-        prop = REF_BY_TYPE.get(obj.properties.get("type"))
-        if prop is None:
-            continue
-        for chunk_id in _ref_ids(obj, "text_chunk"):
-            for tag_id in _ref_ids(obj, "tag"):
-                required.add((chunk_id, tag_id, prop))
+    annotations = client.collections.get(names.annotation_collection_name)
+    for name in (await annotations.tenants.get()).keys():
+        async for obj in annotations.with_tenant(name).iterator(return_properties=["type", "tagId", "chunkId"]):
+            prop = REF_BY_TYPE.get(obj.properties.get("type"))
+            tag_id, chunk_id = obj.properties.get("tagId"), obj.properties.get("chunkId")
+            # A span counts for its tag only in the tag's own collection's tenant.
+            if prop is None or tag_id is None or chunk_id is None or str(owner_of.get(UUID(str(tag_id)))) != name:
+                continue
+            required.add((UUID(str(chunk_id)), UUID(str(tag_id)), prop))
 
-    issues = [ChunkTagIssue(c, t, p, "unbacked") for c, t, p in present - required]
-    issues += [ChunkTagIssue(c, t, p, "missing") for c, t, p in required - present]
+    issues = [ChunkTagIssue(c, t, p, "unbacked", owner_of.get(t)) for c, t, p in present - required]
+    issues += [ChunkTagIssue(c, t, p, "missing", owner_of.get(t)) for c, t, p in required - present]
     return sorted(issues)
 
 
-async def apply_chunk_tag_fixes(client: WeaviateAsyncClient, names: CollectionNames,
+async def apply_chunk_tag_fixes(client: WeaviateAsyncClient, names: CollectionNames, spans,
                                 issues: Iterable[ChunkTagIssue], *, remove_unbacked: bool, add_missing: bool,
                                 ) -> tuple[list[ChunkTag], list[StepFailure]]:
     """Re-check and correct the pairs of reported issues of the selected kinds.
 
-    Each pair is re-derived from the spans stored now, not from the report, so a span
-    created since the audit keeps its reference. A pair is corrected in both selected
-    directions, which may also fix a reference the report did not list for that pair.
+    Each pair is re-derived from the spans stored now in its tag's collection tenant, not
+    from the report, so a span created since the audit keeps its reference. A pair is
+    corrected in both selected directions, which may also fix a reference the report did
+    not list for that pair.
     """
     kinds = {k for k, on in (("unbacked", remove_unbacked), ("missing", add_missing)) if on}
-    pairs = {i.pair for i in issues if i.kind in kinds}
-    return await sync_chunk_tags(client, names, pairs, add=add_missing, remove=remove_unbacked)
+    by_collection: dict[UUID | None, set[ChunkTag]] = {}
+    for issue in issues:
+        if issue.kind in kinds:
+            by_collection.setdefault(issue.collection_id, set()).add(issue.pair)
+    done: list[ChunkTag] = []
+    failed: list[StepFailure] = []
+    for collection_id, pairs in by_collection.items():
+        d, f = await sync_chunk_tags(client, names, spans, collection_id, pairs, add=add_missing,
+                                     remove=remove_unbacked)
+        done += d
+        failed += f
+    return done, failed

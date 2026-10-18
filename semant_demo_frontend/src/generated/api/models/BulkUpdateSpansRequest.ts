@@ -25,10 +25,17 @@ import {
  * Request body for bulk-applying the same :class:`PatchSpan` patch to many
  * spans in a single round-trip. Used by the AI-assist "Approve / Reject all
  * selected" action so the frontend doesn't have to fan out N PATCH calls.
+ * All spans must belong to ``collection_id``.
  * @export
  * @interface BulkUpdateSpansRequest
  */
 export interface BulkUpdateSpansRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof BulkUpdateSpansRequest
+     */
+    collectionId: string;
     /**
      * 
      * @type {Array<string>}
@@ -47,6 +54,7 @@ export interface BulkUpdateSpansRequest {
  * Check if a given object implements the BulkUpdateSpansRequest interface.
  */
 export function instanceOfBulkUpdateSpansRequest(value: object): value is BulkUpdateSpansRequest {
+    if (!('collectionId' in value) || value['collectionId'] === undefined) return false;
     if (!('spanIds' in value) || value['spanIds'] === undefined) return false;
     if (!('update' in value) || value['update'] === undefined) return false;
     return true;
@@ -62,6 +70,7 @@ export function BulkUpdateSpansRequestFromJSONTyped(json: any, ignoreDiscriminat
     }
     return {
         
+        'collectionId': json['collection_id'],
         'spanIds': json['span_ids'],
         'update': PatchSpanFromJSON(json['update']),
     };
@@ -78,6 +87,7 @@ export function BulkUpdateSpansRequestToJSONTyped(value?: BulkUpdateSpansRequest
 
     return {
         
+        'collection_id': value['collectionId'],
         'span_ids': value['spanIds'],
         'update': PatchSpanToJSON(value['update']),
     };
