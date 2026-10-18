@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { PostSpan, TagSpan, PatchSpan } from 'src/generated/api'
 import { useTagSpansRepository } from './useTagSpansRepository'
-import { requireComplete, searchTagWarning, spanOf } from 'src/shared/writeOutcome'
+import { requireComplete, spanWriteWarning, spanOf } from 'src/shared/writeOutcome'
 import { warningNotification } from 'src/shared/notification'
 import { createScope } from 'src/shared/api'
 
@@ -81,7 +81,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   }
 
   /** Show a warning when a span write was kept but its search tag update failed. */
-  const warnIfSearchTagFailed = (warning: string | null) => {
+  const warnIfIncomplete = (warning: string | null) => {
     if (warning) warningNotification(warning)
   }
 
@@ -89,7 +89,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     const isCurrent = scope.capture()
     try {
       const result = await repo.create(span)
-      warnIfSearchTagFailed(searchTagWarning(result, 'saved'))
+      warnIfIncomplete(spanWriteWarning(result, 'saved'))
       if (!isCurrent()) return
       spansByChunkId.value[span.chunkId] = [...(spansByChunkId.value[span.chunkId] || []), spanOf(result)]
       spansVersion.value++
@@ -105,7 +105,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     const isCurrent = scope.capture()
     try {
       const result = await repo.update(spanId, currentCollection(), update)
-      warnIfSearchTagFailed(searchTagWarning(result, 'saved'))
+      warnIfIncomplete(spanWriteWarning(result, 'saved'))
       if (!isCurrent()) return
       const updatedSpan = spanOf(result)
       spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).map((s) => (s.id === spanId ? updatedSpan : s))
@@ -170,7 +170,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     const isCurrent = scope.capture()
     try {
       const result = await repo.delete(spanId, currentCollection())
-      warnIfSearchTagFailed(searchTagWarning(result, 'deleted'))
+      warnIfIncomplete(spanWriteWarning(result, 'deleted'))
       if (!isCurrent()) return
       spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).filter((s) => s.id !== spanId)
       spansVersion.value++

@@ -1,9 +1,10 @@
-"""Production and the test instances search the Qwen vector (#385)."""
+"""Production and the test instances search the Qwen vector (#385) and embed annotations with it (#328)."""
 from pathlib import PurePosixPath
 
 import pytest
 
 from semant_demo.config import SCRIPT_PATH
+from semant_demo.features.annotations.enrichment import load_annotation_vector_settings
 from semant_demo.features.search.vectors import load_search_vectors_settings
 from tests.test_deploy_feedback_storage import _env_value
 
@@ -19,3 +20,15 @@ def test_instances_select_the_qwen_search_vectors_shipped_in_the_image(template)
     [vector] = settings.vectors
     assert source.name == "search_vectors_qwen.yaml" and settings.default == vector.id
     assert vector.embedding.base_url == "http://qwen-embedder:8000/v1"
+
+
+@pytest.mark.parametrize("template", [".env.example", ".env.test.example"])
+def test_instances_embed_annotations_with_the_qwen_embedder_shipped_in_the_image(template):
+    # The Gemma embedding service is stopped there (#385); the annotation vector (#328) uses Qwen too.
+    path = PurePosixPath(_env_value(template, "ANNOTATION_VECTOR_CONFIG"))
+    settings = load_annotation_vector_settings(SCRIPT_PATH.parent / path.relative_to(APP_ROOT))
+
+    assert path.name == "annotation_vector_qwen.yaml"
+    assert settings.embedding.base_url == "http://qwen-embedder:8000/v1"
+    assert settings.embedding.model == load_search_vectors_settings(
+        SCRIPT_PATH / "configs" / "search_vectors_qwen.yaml").vectors[0].embedding.model

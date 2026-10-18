@@ -1,0 +1,22 @@
+# Contextual vector of span annotations (#328): loaded at startup from
+# ANNOTATION_VECTOR_CONFIG (an empty value configures none); fields:
+# features/annotations/enrichment.py.
+#
+# Each annotation's vector embeds `template` with its left context, annotated text and
+# right context (features/annotations/derivation.py), so the span is marked within its
+# neighborhood; tag, type and AI metadata are not embedded. Queries use the same model's
+# query embedding.
+#
+# `id` is stored with every vector. Change it whenever the model, its dimensions or
+# prefixes, or the template change: vectors of another id are not current, semantic search
+# leaves them out and `annotation_enrichment backfill` replaces them.
+#
+# Nothing is stored until the annotation collection has the derived properties and the
+# named vector `target_vector` (`python -m semant_demo.maintenance.annotation_enrichment
+# add-schema`, docs/DATA_MAINTENANCE.md).
+
+id: bge-gemma2-context-v1
+target_vector: contextual
+template: "{left}<<<{text}>>>{right}"
+embedding:
+  provider: embedding_service  # EMBEDDING_SERVICE_HOST / EMBEDDING_SERVICE_PORT

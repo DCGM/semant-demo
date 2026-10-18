@@ -56,6 +56,7 @@ export interface AiRunEnd {
   rejected: number
   save_failures: number
   search_tag_failures: number
+  enrichment_failures?: number
   provider_failures: number
   error?: string | null
   unit?: 'chunk' | 'tag' | 'selection'
@@ -122,6 +123,7 @@ function failuresOf (end: AiRunEnd): string[] {
   if (end.provider_failures) problems.push(`${end.provider_failures} AI request(s) failed`)
   if (end.save_failures) problems.push(`${end.save_failures} suggestion(s) could not be saved`)
   if (end.search_tag_failures) problems.push(`${end.search_tag_failures} saved suggestion(s) not yet findable by tag search`)
+  if (end.enrichment_failures) problems.push(`${end.enrichment_failures} saved suggestion(s) without current search text or similarity vector`)
   if (end.error) problems.push(end.error)
   return problems
 }
