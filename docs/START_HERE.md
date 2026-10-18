@@ -16,6 +16,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces connect and [DATABASE.
 | I want to… | Read first |
 |---|---|
 | Understand what the application is for | [Vision](VISION.md) and the root [README](../README.md) |
+| Choose or refine an issue | [Issue workflow](ISSUE_WORKFLOW.md): drafts, readiness and consultation |
 | Change the UI or backend | [Contributing](../CONTRIBUTING.md), then the relevant feature directory below |
 | Run the application with real development data | [Local development](DEVELOPMENT.md) |
 | Understand deployment or environment settings | [Deployment guide](DEPLOYMENT.md) and [Compose operations](../deploy/README.md) |
