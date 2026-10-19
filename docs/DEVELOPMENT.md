@@ -71,7 +71,7 @@ say nothing about model quality. To use a real service, see [section 6](#6-real-
 | `make dev-down` | Stop Weaviate. Data (yours and the seed) and accounts are kept. |
 | `make dev-status` | Container state, object counts, users and whether Weaviate and SQLite belong together. |
 | `make dev-verify` | Compare the stores with the seeded corpus (ids, collection owners and shares, users, annotations); non-zero exit when your edits differ from it. |
-| `make dev-reset` | Show what would be destroyed, then ask you to type `reset`. Non-interactively (agents) use `make dev-reset CONFIRM=yes`. Drops everything in both development stores and reseeds the identical corpus. Refuses while the backend runs. |
+| `make dev-reset` | Show what would be destroyed, then ask you to type `reset`. Non-interactively (agents) use `make dev-reset CONFIRM=yes`. Drops everything in both development stores and reseeds the identical corpus. Refuses while the backend runs, and refuses stores that are not this checkout's pair (see below). |
 
 Where the data lives:
 
@@ -83,28 +83,36 @@ Where the data lives:
 The backend gets explicit settings (`python -m tests.local_dev environ` prints them), not
 the relative `tasks.db` default. The container is removed by `make dev-down`, so while it
 is stopped `docker volume prune -a` would delete the volume; `make dev-up` then refuses the
-unpaired SQLite file and `make dev-reset` reseeds both.
+unpaired SQLite file, which you move away yourself (it may hold accounts you registered).
 
 **Ownership checks.** `make dev-up` creates the volume and container with the label
 `org.semant.purpose=local-development`, and the first initialization writes a random token
 into both stores (the `SemantLocalDevMarker` collection and the `semant_local_dev_marker`
 table). Every writing command first checks that the container and volume carry the label,
-that the container publishes the configured port on loopback, and that both stores carry
-the development marker with the same token (`semant_demo_backend/tests/local_dev.py`).
-Initialization writes only into an empty Weaviate with no SQLite file. Anything else is
-refused without a change: a snapshot, an automated-test store (which has its own marker and
-token), a store from another initialization, a stray SQLite file or a partially initialized
-pair. `local_data/` and the containers of `make test-integration`, `make test-e2e` and
+that the container publishes the configured REST and gRPC ports on loopback, and that both
+stores carry the development marker with the same token
+(`semant_demo_backend/tests/local_dev.py`). Initialization writes only into an empty
+Weaviate with no SQLite file. A reset destroys only this checkout's pair (the same token in
+both stores) or an interrupted initialization (see below). Anything else is refused without
+a change, even with `CONFIRM=yes`: a snapshot, an automated-test store (which has its own
+marker and token), another checkout's Weaviate, a SQLite file from another initialization
+or without its Weaviate, or a file without the marker. The Docker volume is machine-wide
+but `.dev-data/` belongs to one checkout, so an unpaired store may be someone's work and is
+never discarded automatically. `local_data/` and the containers of `make test-integration`, `make test-e2e` and
 `make e2e-dev-*` are never used; those tools refuse the development store in turn.
 
 Repeated resets give the same logical data: fixed ids, timestamps and fake vectors (only
 the password hashes differ). An interrupted initialization or reset leaves a marker in
-state `initializing`; `make dev-up` then refuses and `make dev-reset` starts over.
+state `initializing`; `make dev-up` then refuses and `make dev-reset` starts over (it
+accepts such a marker with this checkout's token, or with no SQLite file created yet).
 
 **One instance per machine.** The container, volume and ports are fixed, so several
 checkouts or agents share one development instance; `.dev-data/` belongs to the checkout
-that ran `make dev-up`, and another checkout's `make dev-up` refuses the pair as not its
-own. Run one checkout's environment at a time (`make dev-down` there first). Ports can be
+that ran `make dev-up`, and another checkout's `make dev-up`, `dev-backend`, `dev-verify`
+and `dev-reset` refuse the pair as not its own. Run one checkout's environment at a time:
+work in the owning checkout, or, to give the instance to another checkout, discard its
+Weaviate data deliberately there first (`make dev-down`, `docker volume rm
+semant-local-weaviate`). Ports can be
 moved with `SEMANT_DEV_WEAVIATE_REST_PORT`, `SEMANT_DEV_WEAVIATE_GRPC_PORT`,
 `SEMANT_DEV_PROVIDER_PORT` and `SEMANT_DEV_BACKEND_PORT` (the frontend stays on :9000);
 use the same values for every command.
@@ -119,7 +127,9 @@ stores (`make test-integration`, `make test-e2e`, `make e2e-dev-*`) for automate
 | `port 8180 or 50151 is already in use` | Another service (e.g. a snapshot Weaviate moved there) holds the port; stop it or set the `SEMANT_DEV_*` ports. |
 | `port 8000 is already in use` / `port 9000 ...` | An older backend or frontend is still running; stop it. Quasar would otherwise move to another port the backend does not allow. |
 | `refused: ... holds data without the local development marker` | The configured port reaches a store that is not the development store; nothing was changed. |
-| `refused: Weaviate is empty but .dev-data/semant.db exists` or `not the same development pair` | The volume or `.dev-data/` was removed or comes from another checkout. `make dev-reset` reseeds both. |
+| `refused: Weaviate is empty but .dev-data/semant.db exists` | The Weaviate volume was removed. Move the unpaired database away yourself (e.g. `mv .dev-data/semant.db .dev-data/semant.db.unpaired`), then `make dev-up`. |
+| `refused: ... is missing` or `not the same development pair` | The Weaviate data belongs to another checkout (or this checkout's `.dev-data/` was removed). Work in the owning checkout, or discard the Weaviate data deliberately: `make dev-down`, `docker volume rm semant-local-weaviate`, then `make dev-up`. Reset never does this for you. |
+| `publishes REST/gRPC on ..., not 127.0.0.1:...` | The container was started with other ports; `make dev-down`, then `make dev-up` with the same `SEMANT_DEV_*` ports as the other commands. |
 | `refused: ... has no valid development marker` (SQLite) | `.dev-data/semant.db` is not a development database; move it away yourself. |
 | `A previous initialization or reset did not finish` | `make dev-reset`. |
 | Requests fail with CORS errors | Open `http://localhost:9000`, not `127.0.0.1:9000`. |

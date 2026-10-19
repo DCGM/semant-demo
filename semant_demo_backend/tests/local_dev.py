@@ -21,8 +21,11 @@ Ownership. The pair is paired by a random token that ``init`` writes into both s
 ``SemantLocalDevMarker`` collection in Weaviate and the ``semant_local_dev_marker`` table in
 SQLite. It differs from the automated-test marker (``tests/weaviate_store.py``), so neither
 tooling accepts the other's store. ``init`` writes only into an empty Weaviate with no
-SQLite file; ``reset`` drops data only from stores that carry the development marker (or
-are empty) and refuses anything else, e.g. a snapshot or a test store. Weaviate is reached
+SQLite file; ``reset`` drops data only from a pair with the same token (or an interrupted
+initialization that has not created its SQLite file yet) and refuses anything else, e.g. a
+snapshot, a test store, another checkout's Weaviate or an unpaired SQLite file. The Docker
+volume is machine-wide while ``.dev-data/`` belongs to a checkout, so an unpaired store may
+hold someone's work: it is never discarded automatically. Weaviate is reached
 on loopback only; the SQLite file is always ``.dev-data/semant.db`` of this checkout,
 never ``local_data/``.
 """
@@ -295,6 +298,34 @@ async def seed_weaviate(client, profile: Profile, corpus) -> None:
     await derive_annotations(client, profile, corpus)
 
 
+# --- Pairing --------------------------------------------------------------------------
+
+def pairing_refusal(state: WeaviateState, token: str | None, path: Path) -> str | None:
+    """Why Weaviate and the SQLite file at ``path`` are not one development pair of this
+    checkout; ``None`` when they are: both empty, the same token, or an interrupted
+    initialization (marker ``initializing``, no SQLite file created yet). Only such a pair
+    may be initialized, used or reset from here."""
+    discard = ("To discard the development Weaviate deliberately: make dev-down && "
+               "docker volume rm semant-local-weaviate, then make dev-up.")
+    if not state.owned:
+        if token is None:
+            return None
+        return (f"Weaviate is empty but {path} exists (its Weaviate volume was removed?). The unpaired "
+                "database may hold accounts you registered and is never deleted automatically; move it "
+                "away yourself (e.g. mv .dev-data/semant.db .dev-data/semant.db.unpaired), then make dev-up.")
+    if token == state.marker["token"]:
+        return None
+    if token is None and state.marker["state"] == INITIALIZING:
+        return None
+    if token is None:
+        return (f"Weaviate holds an initialized development store but {path} is missing: the store belongs "
+                "to another checkout's .dev-data/, or this checkout's .dev-data/ was removed. Nothing is "
+                "changed from here; use the checkout that owns it. " + discard)
+    return (f"Weaviate and {path} are not the same development pair (SQLite from another initialization, "
+            "e.g. the Weaviate belongs to another checkout). Nothing is changed from here; use the checkout "
+            "that owns the Weaviate data. " + discard)
+
+
 # --- Commands -------------------------------------------------------------------------
 
 def _say(message: str) -> None:
@@ -326,26 +357,25 @@ async def cmd_init(profile: Profile, initialize_empty: bool = True) -> int:
     try:
         state = await weaviate_state(client)
         token = sqlite_token(profile.sqlite_path)
-        if state.empty:
+        if problem := pairing_refusal(state, token, profile.sqlite_path):
+            raise Refused(problem)
+        if not state.owned:
             if not initialize_empty:
                 raise Refused("The development stores are not initialized; run: make dev-up")
-            if token is not None:
-                raise Refused(f"Weaviate is empty but {profile.sqlite_path} exists (its Weaviate volume was "
-                              "removed?). Restore both with: make dev-reset")
             await initialize(client, profile)
             return 0
-        if state.marker["state"] != READY:
-            raise Refused("A previous initialization or reset did not finish (marker state "
-                          f"{state.marker['state']!r}). Start again with: make dev-reset")
-        if token != state.marker["token"]:
-            raise Refused(f"Weaviate and {profile.sqlite_path} are not the same development pair "
-                          f"(SQLite {'missing' if token is None else 'from another initialization'}). "
-                          "Restore both with: make dev-reset")
+        _require_ready(state)
         if initialize_empty:
             _say("the development stores are initialized; keeping their data (make dev-reset reseeds)")
         return 0
     finally:
         await client.close()
+
+
+def _require_ready(state: WeaviateState) -> None:
+    if state.marker["state"] != READY:
+        raise Refused("A previous initialization or reset did not finish (marker state "
+                      f"{state.marker['state']!r}). Start again with: make dev-reset")
 
 
 async def _counts(client, state: WeaviateState) -> list[str]:
@@ -429,8 +459,11 @@ async def cmd_verify(profile: Profile) -> int:
     client = await connect(profile)
     try:
         state = await weaviate_state(client)
-        if not state.owned or sqlite_token(profile.sqlite_path) is None:
+        if problem := pairing_refusal(state, sqlite_token(profile.sqlite_path), profile.sqlite_path):
+            raise Refused(problem)
+        if not state.owned:
             raise Refused("The development stores are not initialized (make dev-up).")
+        _require_ready(state)
         problems = await verify(client, profile)
     finally:
         await client.close()
@@ -444,9 +477,11 @@ async def cmd_verify(profile: Profile) -> int:
 async def cmd_reset(profile: Profile, yes: bool) -> int:
     client = await connect(profile)
     try:
-        # Both checks before anything is deleted: either store may refuse.
+        # All checks before anything is deleted: either store, or their pairing, may refuse.
         state = await weaviate_state(client)
         token = sqlite_token(profile.sqlite_path)
+        if problem := pairing_refusal(state, token, profile.sqlite_path):
+            raise Refused(problem)
         print(f"Reset destroys the local development data and reseeds the fixture corpus:\n"
               f"  Weaviate {profile.endpoint}: "
               + (", ".join(await _counts(client, state)) if state.collections else "empty")

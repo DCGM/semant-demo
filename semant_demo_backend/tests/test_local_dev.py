@@ -214,6 +214,66 @@ def test_reset_refuses_a_foreign_sqlite_file_before_dropping_anything(profile, u
     assert profile.sqlite_path.exists()
 
 
+# Another checkout's Weaviate (the volume is machine-wide, .dev-data/ is per checkout) or a
+# database left without its Weaviate: refused even when confirmed, before the dry-run plan.
+UNPAIRED = pytest.mark.parametrize("marker, sqlite_token, message", [
+    (_dev_marker("abc"), None, "is missing"),
+    (_dev_marker("abc"), "other", "not the same development pair"),
+    (_dev_marker("abc", local_dev.INITIALIZING), "other", "not the same development pair"),
+    (None, "abc", "Weaviate is empty"),
+], ids=["no-sqlite", "other-token", "partial-other-token", "sqlite-without-weaviate"])
+
+
+@UNPAIRED
+@pytest.mark.parametrize("yes", [True, False], ids=["confirmed", "dry-run"])
+def test_reset_refuses_an_unpaired_store_without_changing_either(profile, use_client, marker, sqlite_token,
+                                                                message, yes):
+    client = use_client(_Client({MARKER_COLLECTION: [marker], "Chunks": [{}]} if marker else {}))
+    if sqlite_token:
+        _sqlite(profile.sqlite_path, token=sqlite_token)
+    feedback = profile.data_dir / "feedback.log.jsonl"
+    feedback.parent.mkdir(parents=True, exist_ok=True)
+    feedback.write_text("{}\n")
+    before = profile.sqlite_path.read_bytes() if sqlite_token else None
+
+    with pytest.raises(Refused, match=message):
+        asyncio.run(local_dev.cmd_reset(profile, yes=yes))
+
+    assert client.writes == []
+    assert (profile.sqlite_path.read_bytes() if sqlite_token else None) == before
+    assert not sqlite_token or local_dev.sqlite_token(profile.sqlite_path) == sqlite_token
+    assert feedback.read_text() == "{}\n"
+
+
+@pytest.mark.parametrize("marker, sqlite_token", [
+    (None, None),                                              # nothing yet
+    (_dev_marker("abc", local_dev.INITIALIZING), None),        # interrupted before the SQLite file
+    (_dev_marker("abc", local_dev.INITIALIZING), "abc"),       # interrupted reset or late initialization
+], ids=["empty", "partial-no-sqlite", "partial-paired"])
+def test_reset_recovers_an_empty_or_interrupted_pair(profile, use_client, marker, sqlite_token):
+    client = use_client(_Client({MARKER_COLLECTION: [marker], "Chunks": [{}]} if marker else {}))
+    if sqlite_token:
+        _sqlite(profile.sqlite_path, token=sqlite_token)
+
+    assert asyncio.run(local_dev.cmd_reset(profile, yes=True)) == 0
+
+    assert client.writes[-1] == ("initialize",)
+    assert not profile.sqlite_path.exists()
+
+
+@UNPAIRED
+def test_verify_refuses_an_unpaired_store(profile, use_client, monkeypatch, marker, sqlite_token, message):
+    client = use_client(_Client({MARKER_COLLECTION: [marker], "Chunks": [{}]} if marker else {}))
+    if sqlite_token:
+        _sqlite(profile.sqlite_path, token=sqlite_token)
+    monkeypatch.setattr(local_dev, "verify", lambda *args: pytest.fail("compared unpaired stores"))
+
+    with pytest.raises(Refused, match=message):
+        asyncio.run(local_dev.cmd_verify(profile))
+
+    assert client.writes == []
+
+
 def test_reset_without_confirmation_changes_nothing(profile, use_client):
     client = use_client(_Client({MARKER_COLLECTION: [_dev_marker()], "Chunks": [{}]}))
     _sqlite(profile.sqlite_path)
@@ -269,9 +329,10 @@ def test_check_does_not_initialize_an_empty_store(profile, use_client):
 @pytest.mark.parametrize("marker, sqlite_token, message", [
     (None, "abc", "Weaviate is empty"),                                    # volume removed, SQLite kept
     (_dev_marker("abc", local_dev.INITIALIZING), "abc", "did not finish"),  # interrupted init or reset
-    (_dev_marker("abc"), None, "SQLite missing"),
-    (_dev_marker("abc"), "other", "another initialization"),
-], ids=["empty-weaviate", "partial", "no-sqlite", "unpaired"])
+    (_dev_marker("abc", local_dev.INITIALIZING), None, "did not finish"),   # interrupted before SQLite
+    (_dev_marker("abc"), None, "is missing"),
+    (_dev_marker("abc"), "other", "not the same development pair"),
+], ids=["empty-weaviate", "partial", "partial-no-sqlite", "no-sqlite", "unpaired"])
 def test_init_refuses_an_inconsistent_pair_without_writing(profile, use_client, marker, sqlite_token, message):
     client = use_client(_Client({MARKER_COLLECTION: [marker], "Chunks": [{}]} if marker else {}))
     if sqlite_token:

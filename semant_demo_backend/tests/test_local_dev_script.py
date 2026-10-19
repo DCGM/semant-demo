@@ -23,7 +23,8 @@ case "$*" in
   "container inspect --format {{ index .Config.Labels"*) echo "$STUB_CONTAINER_LABEL" ;;
   "container inspect --format {{range"*) echo semant-local-weaviate ;;
   "container inspect "*) [ -n "$STUB_CONTAINER_LABEL" ] || exit 1 ;;
-  "port "*) echo "$STUB_PORT" ;;
+  "port "*" 8080/tcp") echo "$STUB_PORT" ;;
+  "port "*" 50051/tcp") echo "$STUB_GRPC_PORT" ;;
 esac
 exit 0
 """
@@ -50,7 +51,8 @@ def launcher(tmp_path):
     base_env.update(PATH=f"{bin_dir}:{os.environ['PATH']}", CALLS=str(calls), PYTHON=str(python),
                     SEMANT_DEV_WEAVIATE_REST_PORT=str(ports[0]), SEMANT_DEV_WEAVIATE_GRPC_PORT=str(ports[1]),
                     SEMANT_DEV_BACKEND_PORT=str(ports[2]),
-                    STUB_VOLUME_LABEL=LABEL, STUB_CONTAINER_LABEL=LABEL, STUB_PORT=f"127.0.0.1:{ports[0]}")
+                    STUB_VOLUME_LABEL=LABEL, STUB_CONTAINER_LABEL=LABEL, STUB_PORT=f"127.0.0.1:{ports[0]}",
+                    STUB_GRPC_PORT=f"127.0.0.1:{ports[1]}")
 
     def run(*args, **env):
         result = subprocess.run([str(SCRIPT), *args], env={**base_env, **env}, cwd=ROOT, stdin=subprocess.DEVNULL,
@@ -105,6 +107,15 @@ def test_commands_refuse_a_container_on_another_port(launcher, command):
     assert result.returncode == 1
     assert "not 127.0.0.1:" in result.stderr
     assert "python" not in result.calls
+
+
+@pytest.mark.parametrize("command", ["up", "backend", "verify", "reset"])
+def test_commands_refuse_a_container_publishing_grpc_elsewhere(launcher, command):
+    result = launcher(command, STUB_GRPC_PORT="127.0.0.1:50051", CONFIRM="yes")
+
+    assert result.returncode == 1
+    assert "publishes gRPC on '127.0.0.1:50051'" in result.stderr
+    assert "python" not in result.calls and _changes(result.calls) == []
 
 
 def test_reset_without_confirmation_and_terminal_only_shows_the_plan(launcher):

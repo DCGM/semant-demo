@@ -2,8 +2,9 @@
 
 This document is the backend configuration reference and describes a manual standalone setup.
 The Docker Compose stacks, CI/CD, previews, Topicer deployment and server setup are documented in
-[deploy/README.md](../deploy/README.md). For local development, including the local Weaviate
-and SQLite snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
+[deploy/README.md](../deploy/README.md). For local development (the seeded local application
+started with `make dev-up`, and the optional advanced snapshot workflow), see
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Prerequisites
 
@@ -39,22 +40,24 @@ The backend image installs `semant_demo_backend/requirements-runtime.lock` with 
 
 ## Manual Standalone Setup
 
-For local development and test-owned database rules, see [DEVELOPMENT.md](DEVELOPMENT.md).
-
-The steps below describe how to construct a standalone environment from scratch.
+This section builds a standalone environment from scratch, e.g. to construct a corpus database
+on a server. It is not needed for development: run the application locally with the seeded
+environment (`make dev-up`, [DEVELOPMENT.md](DEVELOPMENT.md#1-quick-start-the-seeded-local-application)),
+which also covers test-owned stores. Working against a copy of real data is the separate,
+explicitly authorized [snapshot workflow](DEVELOPMENT.md#5-advanced-an-authorized-realistic-snapshot).
 
 ### 1. Weaviate
 
-For normal development, use the local database snapshot under `local_data/` and start Weaviate as described in [DEVELOPMENT.md](DEVELOPMENT.md).
-
-The standalone setup below creates a separate development Weaviate instance from scratch:
+Start an empty Weaviate for building a database:
 
 ```bash
 cd weaviate_utils
 docker compose up -d
 ```
 
-Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures HNSW indexing. It pins Weaviate **1.30.2**; the deployments and test stores use **1.34.4**.
+Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures
+HNSW indexing. It pins Weaviate **1.40.1**, the version of the deployments, the test stores and
+the local development environment.
 
 To verify:
 
@@ -62,7 +65,8 @@ To verify:
 curl http://localhost:8080/v1/.well-known/ready
 ```
 
-Do not use this empty standalone database when the realistic `local_data/weaviate_semant_test/` development snapshot is required.
+It publishes the default ports 8080/50051, which a running snapshot Weaviate also uses; the
+development Weaviate of `make dev-up` uses 8180/50151 and does not conflict.
 
 ### 2. Data Ingestion
 
