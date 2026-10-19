@@ -136,6 +136,7 @@
         :visible="annotations.hasSelection.value && !quickTagging"
         :tags="tags"
         :selection="annotations.selection.value"
+        :selected-text="selectedSpanText"
         :selected-tag-id="annotations.selection.value?.tagId ?? null"
         :is-editing="annotations.isEditing.value"
         :position-changed="annotations.positionChanged.value"
@@ -500,6 +501,13 @@ const onDeleteSpan = async () => {
   quickTagId.value = null
   await annotations.deleteSpan()
 }
+
+// The text of the current selection, used by the popover to suggest a likely tag first.
+const selectedSpanText = computed(() => {
+  const sel = annotations.selection.value
+  if (!sel) return ''
+  return selectionText(sel, [...displayChunks.value, ...hiddenPreviewChunks.value])
+})
 
 // ── Suggest tags via AI for the highlighted selection ──
 const onRunAiOnSelection = async (tagIds: string[]) => {

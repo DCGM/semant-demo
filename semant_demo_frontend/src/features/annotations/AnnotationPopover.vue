@@ -83,7 +83,8 @@
             :class="{
               'is-active': showAiTagPicker
                 ? aiTagPickerSelected.has(tag.id)
-                : selectedTagId === tag.id
+                : selectedTagId === tag.id,
+              'is-suggested': isSuggested(tag.id)
             }"
             @click="showAiTagPicker ? toggleAiPickerTag(tag.id) : emit('pickTag', tag.id)"
           >
@@ -96,6 +97,14 @@
               @click.stop
               @update:model-value="toggleAiPickerTag(tag.id)"
             />
+            <q-icon
+              v-if="isSuggested(tag.id)"
+              name="auto_awesome"
+              size="12px"
+              class="tag-suggested-icon"
+            >
+              <q-tooltip>Likely match for the selected text</q-tooltip>
+            </q-icon>
             <span class="tag-dot" :style="{ backgroundColor: tag.color }"></span>
             <span class="tag-name">{{ tag.name }}</span>
             <span class="tag-shorthand">{{ tag.shorthand }}</span>
@@ -195,6 +204,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Tag } from 'src/generated/api'
+import { suggestTagIds } from './tagSuggestion'
 
 // The popover for a text selection or an edited span: tag picker, AI tag picker
 // ("Suggest tags") and the span actions. The page decides what each action does.
@@ -203,6 +213,8 @@ const props = defineProps<{
   tags: Tag[]
   /** Changes whenever the selection does; resets the AI tag picker and re-positions. */
   selection: unknown
+  /** The text currently highlighted, used to suggest a likely tag first. */
+  selectedText: string
   selectedTagId: string | null
   isEditing: boolean
   positionChanged: boolean
@@ -230,13 +242,30 @@ const tagSearch = ref('')
 
 const selectedTag = computed(() => props.tags.find((t) => t.id === props.selectedTagId) ?? null)
 
+const sortedTags = computed(() =>
+  [...props.tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+)
+
+// Computed lazily (only once the tag list is actually rendered), so this never delays the
+// popover opening even for collections with many tags.
+const suggestedTagIds = computed(() => suggestTagIds(props.selectedText, props.tags))
+const isSuggested = (tagId: string) => suggestedTagIds.value.includes(tagId)
+
 const filteredTags = computed(() => {
   const q = (tagSearch.value ?? '').toLowerCase().trim()
-  if (!q) return props.tags
-  return props.tags.filter(t =>
-    t.name.toLowerCase().includes(q) ||
-    (t.shorthand && t.shorthand.toLowerCase().includes(q))
-  )
+  const base = q
+    ? sortedTags.value.filter((t) =>
+      t.name.toLowerCase().includes(q) || (t.shorthand && t.shorthand.toLowerCase().includes(q))
+    )
+    : sortedTags.value
+
+  const suggested = suggestedTagIds.value
+    .map((id) => base.find((t) => t.id === id))
+    .filter((t): t is Tag => !!t)
+  if (!suggested.length) return base
+
+  const suggestedSet = new Set(suggested.map((t) => t.id))
+  return [...suggested, ...base.filter((t) => !suggestedSet.has(t.id))]
 })
 
 // ── Popover positioning ──
@@ -497,6 +526,16 @@ defineExpose({ moveTo, showMode })
 
 .tag-row.is-active {
   background: #e0f2fe;
+}
+
+.tag-row.is-suggested {
+  border-left: 2px solid #f59e0b;
+  padding-left: 6px;
+}
+
+.tag-suggested-icon {
+  color: #f59e0b;
+  flex-shrink: 0;
 }
 
 .tag-row--create {
