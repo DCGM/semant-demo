@@ -195,6 +195,56 @@ test('a delete that finishes late keeps the newer selection open', async ({ page
   await expect(popover(page).getByText('Select tag')).toBeVisible()
 })
 
+/** Makes span requests with the given method fail with a 500. */
+async function failSpanRequests (page: Page, method: string) {
+  await page.route('**/api/tag_spans**', (route) => route.request().method() === method
+    ? route.fulfill({ status: 500, body: 'Internal Server Error' })
+    : route.fallback())
+}
+
+/** Errors the page did not handle, such as an uncaught promise rejection. */
+function collectPageErrors (page: Page): Error[] {
+  const errors: Error[] = []
+  page.on('pageerror', (err) => errors.push(err))
+  return errors
+}
+
+test('a tag that fails to save is reported and keeps the selection open', async ({ page }) => {
+  const pageErrors = collectPageErrors(page)
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+  await failSpanRequests(page, 'POST')
+
+  await selectText(page, 'chronicle_2', 0, 'chronicle_2', 8)
+  await popover(page).locator('.tag-row').filter({ hasText: fixture.tag('place').name }).click()
+
+  await expect(page.locator('.q-notification').filter({ hasText: 'The tag could not be saved.' })).toBeVisible()
+  await expect(popover(page).getByText('Select tag')).toBeVisible()
+  await expect(popover(page)).not.toHaveClass(/is-busy/)
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+  expect(pageErrors).toEqual([])
+})
+
+test('a retag that fails is reported and keeps the span\'s tag', async ({ page }) => {
+  const pageErrors = collectPageErrors(page)
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await failSpanRequests(page, 'PATCH')
+  const person = fixture.tag('person')
+
+  // The Jan Novák marker in the first chunk.
+  await page.locator('.gutter-item').first().click()
+  await popover(page).getByRole('button', { name: 'Change tag' }).click()
+  await popover(page).locator('.tag-row').filter({ hasText: fixture.tag('place').name }).click()
+
+  await expect(page.locator('.q-notification').filter({ hasText: 'The tag could not be changed.' })).toBeVisible()
+  await expect(popover(page).locator('.tag-row.is-active')).toContainText(person.name)
+  await expect(page.locator('.tag-card.is-active')).toContainText(person.name)
+  await expect(page.locator('.gutter-item').first()).toContainText(person.shorthand)
+  expect(pageErrors).toEqual([])
+})
+
 test('the tags panel hides tags, steps through their annotations and is searched with Ctrl+F', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')

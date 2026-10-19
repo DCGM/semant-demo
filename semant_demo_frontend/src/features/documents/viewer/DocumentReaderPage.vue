@@ -148,12 +148,12 @@
         @pick-tag="onTagClick"
         @create-tag="onCreateTagClick"
         @run-ai="onRunAiOnSelection"
-        @save-position="annotations.updateSpanPosition()"
+        @save-position="onSavePosition"
         @approve="changeEditingSpanType(SpanType.pos)"
         @reject="changeEditingSpanType(SpanType.neg)"
         @tag-details="onOpenTagDetails"
         @discuss="onDiscussSpan"
-        @delete="annotations.deleteSpan()"
+        @delete="onDeleteSpan"
       />
 
       <ChunkSelectionBar
@@ -177,6 +177,8 @@ import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { SpanType } from 'src/generated/api'
+import { apiErrorMessage } from 'src/shared/api'
+import { errorNotification } from 'src/shared/notification'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import AnnotationGutter from 'src/features/annotations/AnnotationGutter.vue'
 import type { SpanMarker } from 'src/features/annotations/AnnotationGutterTypes'
@@ -393,10 +395,26 @@ const editingAutoSpan = computed(() => {
   return span && span.type === SpanType.auto ? span : null
 })
 
+/**
+ * Run a span request from the popover. A failed one leaves its selection open and tells the
+ * user it was not saved. Returns the request's result, or null when it failed.
+ */
+async function runSpanRequest<T>(request: () => Promise<T>, failure: string): Promise<T | null> {
+  try {
+    return await request()
+  } catch (err) {
+    errorNotification(await apiErrorMessage(err, failure))
+    return null
+  }
+}
+
 async function changeEditingSpanType(type: SpanType) {
   const span = editingAutoSpan.value
   if (!span || !span.id) return
-  await annotations.applyToSelection(() => aiAssist.resolveAutoSpan(span, type))
+  await runSpanRequest(
+    () => annotations.applyToSelection(() => aiAssist.resolveAutoSpan(span, type)),
+    type === SpanType.pos ? 'The suggestion could not be approved.' : 'The suggestion could not be rejected.'
+  )
 }
 
 // The AI-panel highlight this page set for a selected auto span. A new text selection clears
@@ -474,11 +492,17 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
 const onTagClick = async (tagId: string) => {
   const applied = annotations.isEditing.value
-    ? await annotations.updateSpanTag(tagId)
-    : await annotations.createSpan(tagId)
+    ? await runSpanRequest(() => annotations.updateSpanTag(tagId), 'The tag could not be changed.')
+    : await runSpanRequest(() => annotations.createSpan(tagId), 'The tag could not be saved.')
   // Only a tag that really went onto a span becomes the last-used suggestion.
   if (applied) recordTagUsage(tagId)
 }
+
+const onSavePosition = () =>
+  runSpanRequest(() => annotations.updateSpanPosition(), 'The new position could not be saved.')
+
+const onDeleteSpan = () =>
+  runSpanRequest(() => annotations.deleteSpan(), 'The tag could not be removed.')
 
 const onCreateTagClick = () => {
   tagEditing.createTag((newTag) => onTagClick(newTag.id))
