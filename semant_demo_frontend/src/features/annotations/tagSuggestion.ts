@@ -32,6 +32,9 @@ function similarity(a: string, b: string): number {
 const MAX_CANDIDATE_LENGTH = 60
 const MAX_SELECTION_WORDS = 5
 const MIN_SCORE = 0.5
+// With few enough tags, finding the right one is not a problem a suggestion needs to solve —
+// below this, the popover shows the plain alphabetical list and nothing else.
+const MIN_TAGS_FOR_SUGGESTIONS = 6
 
 /**
  * Strings to compare tag names against: the whole selection, each word, and each adjacent
@@ -80,7 +83,8 @@ export function suggestTagIds(selectedText: string | null | undefined, tags: Tag
 
 /**
  * The popover's full suggestion list: the collection's last-used tag first (if it still exists),
- * then any text-similarity matches not already included, best match first.
+ * then any text-similarity matches not already included, best match first. Empty once the
+ * collection has too few tags for a suggestion to be worth showing at all.
  */
 export function buildTagSuggestions(
   selectedText: string | null | undefined,
@@ -88,6 +92,8 @@ export function buildTagSuggestions(
   lastUsedTagId: string | null | undefined,
   limit = 3
 ): string[] {
+  if (tags.length < MIN_TAGS_FOR_SUGGESTIONS) return []
+
   const result: string[] = []
   if (lastUsedTagId && tags.some((t) => t.id === lastUsedTagId)) result.push(lastUsedTagId)
   for (const id of suggestTagIds(selectedText, tags, limit)) {
