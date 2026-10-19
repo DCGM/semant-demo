@@ -59,6 +59,7 @@ describe('AnnotationPopover tag list', () => {
     const rows = new DOMWrapper(document.body).findAll('.tag-row:not(.tag-row--create)')
     expect(rows[0].text()).toContain('Novák')
     expect(rows[0].classes()).toContain('is-suggested')
+    expect(rows[0].find('.tag-suggested-icon').exists()).toBe(true)
     expect(rows[0].find('.tag-suggested-score').text()).toBe('100% match')
     // The rest stays alphabetical and unmarked.
     const rest = rows.slice(1)
@@ -73,15 +74,16 @@ describe('AnnotationPopover tag list', () => {
     expect(new DOMWrapper(document.body).find('.tag-row.is-suggested').exists()).toBe(false)
   })
 
-  it('suggests the last-used tag first (with no match percentage shown) for an unrelated, long selection', async () => {
+  it('labels a pure last-used suggestion "Last used" with no AI icon or match percentage', async () => {
     const wrapper = mountPopover('a long and entirely unrelated highlighted passage', 'b')
     await wrapper.vm.$nextTick()
 
     const rows = new DOMWrapper(document.body).findAll('.tag-row:not(.tag-row--create)')
     expect(rows[0].text()).toContain('Babička')
     expect(rows[0].classes()).toContain('is-suggested')
-    // Suggested purely because it was last used — there is no similarity score to show.
-    expect(rows[0].find('.tag-suggested-score').exists()).toBe(false)
+    // Suggested purely because it was last used — no text match, so no "AI-ish" icon or percentage.
+    expect(rows[0].find('.tag-suggested-icon').exists()).toBe(false)
+    expect(rows[0].find('.tag-suggested-score').text()).toBe('Last used')
   })
 
   it('suggests nothing when the collection has 5 or fewer tags', async () => {
