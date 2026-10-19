@@ -60,6 +60,17 @@ cd semant_demo_backend
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-migration-annotation_migration-327).
 
+An `Annotation` collection created before #328 lacks the derived annotation properties: the
+backend logs an error and stores no annotation text, positions or vectors. Add them to the local
+copy and derive the existing spans (`--no-vectors` when no embedding service is running locally;
+set `ANNOTATION_VECTOR_CONFIG=` to an empty value to disable vectors in the backend too):
+
+```bash
+../.venv/bin/python -m semant_demo.maintenance.annotation_enrichment add-schema --execute --confirm-endpoint localhost:8080
+../.venv/bin/python -m semant_demo.maintenance.annotation_enrichment backfill --limit 100000 --no-vectors \
+  --execute --confirm-endpoint localhost:8080
+```
+
 Automated fast tests must not depend on this snapshot. Automated integration tests should create and clean up test-owned data, as described in [ADR 0005](adr/0005-testing-contract.md).
 
 ## 3. Start local Weaviate

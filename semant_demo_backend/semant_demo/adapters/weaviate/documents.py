@@ -88,6 +88,24 @@ class DocumentRepository:
         )
         return [_to_chunk_text(o) for o in response.objects]
 
+    async def read_chunk_texts(self, document_id: UUID) -> list[AnnotationChunk]:
+        """Order and text of every chunk of the document, in order (annotation derivation, #328)."""
+        objects = await fetch_all(
+            self._chunks(), filters=Filter.by_ref("document").by_id().equal(document_id), page_size=500,
+            return_properties=["order", "text"])
+        return sorted((AnnotationChunk(id=o.uuid, document_id=document_id, order=o.properties["order"],
+                                       text=o.properties.get("text") or "") for o in objects),
+                      key=lambda c: c.order)
+
+    async def read_many(self, document_ids: list[UUID]) -> dict[UUID, Document]:
+        """The existing documents among ``document_ids``."""
+        if not document_ids:
+            return {}
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        response = await documents.query.fetch_objects(
+            filters=Filter.by_id().contains_any(list(document_ids)), limit=len(document_ids))
+        return {UUID(str(o.uuid)): Document(id=o.uuid, **o.properties) for o in response.objects}
+
     async def read_chunk(self, chunk_id: UUID) -> DocumentChunk | None:
         """The chunk with its stored properties, or None if it (or its document link) does not exist."""
         obj = await self._chunks().query.fetch_object_by_id(

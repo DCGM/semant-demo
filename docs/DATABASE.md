@@ -95,6 +95,12 @@ erDiagram
         text type "pos | neg | auto"
         text reason "AI-only, optional"
         number confidence "AI-only, optional"
+        int revision "boundary changes (#328)"
+        text text "derived (#328)"
+        text leftContext "derived"
+        text rightContext "derived"
+        int documentStartChar "derived, segment-relative"
+        int documentStartWord "derived, segment-relative"
     }
 
     Chunks }o--|| Documents : "document (many:1)"
@@ -258,15 +264,43 @@ Properties:
 - `reason` (`TEXT`, optional) — natural-language justification produced by the AI tagger
 - `confidence` (`NUMBER`, optional) — model self-reported confidence in `[0, 1]`
 
+Derived properties (#328; `features/annotations/derivation.py` defines them, the span's own
+fields above stay authoritative). Absent on spans saved before #328 until the backfill
+([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-derived-data-annotation_enrichment-328)):
+- `revision` (`INT`) — 1 at creation, +1 on every offset change; absent (= 0) before #328.
+  Type, tag and AI metadata changes keep it
+- `text` (`TEXT`, searchable) — exactly the canonical text `start`/`end` select, also across chunks
+- `leftContext` / `rightContext` (`TEXT`, searchable) — up to 200 code points around the span
+  within its segment, not ending inside a word
+- `positionSegment` (`INT`) — `order` of the first chunk of the span's gap-free run of chunks;
+  positions are comparable only within the same document and segment
+- `documentStartChar` / `documentEndChar` (`INT`, range filters) — half-open UTF-16 offsets from
+  the segment start (chunks outside the collection count)
+- `documentStartWord` / `documentEndWord` (`INT`, range filters) — half-open word range from the
+  segment start; partially covered words are included
+- `enrichmentStatus` (`TEXT`, field: `ready` / `failed` / `invalid`), `enrichedRevision` (`INT`),
+  `derivationVersion` (`INT`) — the state of the derived text; it is current only when
+  `ready`, `enrichedRevision` equals `revision` and `derivationVersion` is the application's
+  `DERIVATION_VERSION`
+- `vectorStatus` (`TEXT`, field: `pending` / `ready` / `failed`), `vectorRevision` (`INT`),
+  `vectorConfig` (`TEXT`, field) — the state of the contextual vector; it is current only when
+  `ready`, `vectorRevision` equals `revision`, `vectorConfig` is the configured id and the
+  derived text is current (every re-derivation of the text sets it `pending`)
+
+Document metadata (title, year) is not copied onto annotations: reads join it per page of rows.
+
 References:
 
 | Reference | Target | Cardinality | Description |
 |---|---|---|---|
 | `text_chunk` | Chunks (the collection behind the alias, e.g. `Chunks_test` in production) | 1 | The anchor chunk; only for filters (statistics count spans whose chunk is still in the collection). Weaviate 1.40 does not return references of a multi-tenant object to a collection without tenants. |
 
-Vectors: an unused self-provided `default` named vector (flat index). The contextual
-annotation vector of #328 is added as another named vector (`config.add_vector`, supported
-on 1.40 for an existing collection).
+Vectors: an unused self-provided `default` named vector (flat index) and the contextual
+annotation vector `contextual` (#328, self-provided, flat index per tenant; its name is the
+`target_vector` of `ANNOTATION_VECTOR_CONFIG`). On a collection created before #328, the
+derived properties and the vector are added by `annotation_enrichment add-schema`
+(`config.add_property` / `config.add_vector`, supported on 1.40); the backend writes them only
+when they exist, so Weaviate's auto-schema never guesses their types.
 
 The application never creates the collection; the migration does
 (`python -m semant_demo.maintenance.annotation_migration backfill --execute`,
