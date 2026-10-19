@@ -1,3 +1,6 @@
+# Standalone Weaviate for building a corpus database with the scripts in this directory
+# (README.md, "On server"). Not the local development environment: run the application
+# locally with `make dev-up` (docs/DEVELOPMENT.md). Version: as deployed (docs/DEPLOYMENT.md).
 services:
   weaviate:
     command:
@@ -7,7 +10,7 @@ services:
     - '8080'
     - --scheme
     - http
-    image: cr.weaviate.io/semitechnologies/weaviate:1.30.2
+    image: cr.weaviate.io/semitechnologies/weaviate:1.40.1
     ports:
     - 8080:8080
     - 50051:50051

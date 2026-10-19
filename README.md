@@ -102,8 +102,9 @@ behavior and Weaviate/SQL access.
 
 New to the repository? [Start here](docs/START_HERE.md) explains how the parts fit together, which files to read and how to run tests without project data.
 
-- **Local development** (local Weaviate snapshot, backend, frontend):
-  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). `make setup` installs the pinned dependencies.
+- **Local development**: `make setup`, then `make dev-up`, `make dev-backend` and
+  `make dev-frontend` run the application with a seeded synthetic corpus, hot reload and fake AI
+  providers; see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 - **Checks** (see [CONTRIBUTING.md](CONTRIBUTING.md#2-setup-and-commands)):
 
   ```bash

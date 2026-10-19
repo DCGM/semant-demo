@@ -1,357 +1,151 @@
 # Local Development
 
-This document describes the standard local development environment for SemANT.
-
-Normal development should use local database state under `local_data/`. Shared server test databases and production databases are not normal development targets.
+This document describes the standard local development environment for SemANT: a
+**seeded, persistent local application** on your machine, with hot reload and fake AI
+providers. It needs no database snapshot, server access, GPU or AI credentials.
 
 For deployment and server configuration, see [DEPLOYMENT.md](DEPLOYMENT.md).
 If you are new to the project, start with [START_HERE.md](START_HERE.md).
 
-**A database snapshot is not required to contribute or run tests.** With Python 3.12,
-Node.js 22 and Make, run `make setup` and `make check` from the repository root.
-Integration and browser tests use disposable, synthetic data (Docker required; see
-[section 11](#11-testing-versus-development-data)). To use the interactive application
-with realistic documents, obtain an authorized, consistent **development** snapshot,
-then place it under `local_data/` as shown below. Never use the shared server test store
-or production data for ordinary development.
+Shared server test databases and production databases are never development targets. A
+realistic database snapshot is an optional, explicitly authorized advanced workflow
+([section 5](#5-advanced-an-authorized-realistic-snapshot)), not a prerequisite.
 
-## 1. Local database layout
+## 1. Quick start: the seeded local application
 
-From the repository root, the expected development data is:
-
-```text
-local_data/
-├── tasks.db
-└── weaviate_semant_test/
-```
-
-- `tasks.db` is a local copy of the test SQLite database.
-- `weaviate_semant_test/` is a local copy of the test Weaviate persistence directory.
-
-Both are **mutable development data**. They must not be committed.
-
-The copied Weaviate data should originate from a consistent snapshot and should initially be opened with the same Weaviate version used by the server test environment.
-
-The current test deployment uses **Weaviate 1.40.1** (#312).
-
-## 2. Development safety rules
-
-For normal development:
-
-- use `local_data/tasks.db`;
-- use `local_data/weaviate_semant_test/`;
-- do not connect the backend to production databases;
-- do not use the shared server test Weaviate for automated or destructive development work;
-- do not run destructive schema/data scripts until the configured Weaviate endpoint has been verified;
-- do not commit database files or copied user data.
-
-The local snapshot is intended for realistic manual and exploratory development.
-
-A snapshot taken before #327 holds its annotations only in the legacy `Span` collection; the
-backend then shows none and logs an error at startup. Migrate the local copy once, with the
-local Weaviate running (the data directory copy you started from is the backup):
+Prerequisites (Linux; tested on Ubuntu 22.04 with Docker 27): **Python 3.12, Node.js 22, npm, Make,
+Docker** (your user can run `docker`) and `curl`. From the repository root:
 
 ```bash
-cd semant_demo_backend
-../.venv/bin/python -m semant_demo.maintenance.annotation_migration backfill --state local-migration.json \
-  --execute --confirm-endpoint localhost:8080 --offline-backup "the original snapshot"
-../.venv/bin/python -m semant_demo.maintenance.annotation_migration verify
+make setup          # once, and after dependency changes: .venv and node_modules
+make dev-up         # start the development Weaviate; seed it and SQLite on first use only
+make dev-backend    # terminal 1: fake AI providers + backend with --reload on :8000
+make dev-frontend   # terminal 2: Quasar dev server with hot module replacement on :9000
 ```
 
-See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-migration-annotation_migration-327).
+Open <http://localhost:9000> (use `localhost`, not `127.0.0.1`: the backend allows only
+the origin `http://localhost:9000`) and log in with one of the seeded accounts:
 
-An `Annotation` collection created before #328 lacks the derived annotation properties: the
-backend logs an error and stores no annotation text, positions or vectors. Add them to the local
-copy and derive the existing spans (`--no-vectors` when no embedding service is running locally;
-set `ANNOTATION_VECTOR_CONFIG=` to an empty value to disable vectors in the backend too):
+| Login (username or e-mail) | Password | What the account sees |
+|---|---|---|
+| `owner` / `owner@example.com` | `owner-password-1` | owns *Kroniky a dopisy* (shared with `annotator`) and *Noviny* |
+| `annotator` / `annotator@example.com` | `annotator-password-1` | *Kroniky a dopisy* as a shared member: may annotate, not change documents or membership |
+| `outsider` / `outsider@example.com` | `outsider-password-1` | owns only *Outsider notes*; no access to the other collections |
+| `admin` / `admin@example.com` | `admin-password-1` | superuser |
 
-```bash
-../.venv/bin/python -m semant_demo.maintenance.annotation_enrichment add-schema --execute --confirm-endpoint localhost:8080
-../.venv/bin/python -m semant_demo.maintenance.annotation_enrichment backfill --limit 100000 --no-vectors \
-  --execute --confirm-endpoint localhost:8080
-```
+`make dev-frontend` also tries to open a browser window (Quasar's `devServer.open`).
+The data is the synthetic fixture corpus of the automated tests,
+`semant_demo_backend/tests/fixtures/corpus.json`: three documents with seven Czech chunks
+(diacritics, a combining mark, a non-BMP character), four tags, manual/automatic/rejected
+annotations with their derived text, positions and vectors (#328), chunk tag references and
+search classifications. Search for e.g. `Jan Novák`; open *Kroniky a dopisy* to see the
+annotated Document view. This small corpus is for checking workflows, not search quality.
 
-Automated fast tests must not depend on this snapshot. Automated integration tests should create and clean up test-owned data, as described in [ADR 0005](adr/0005-testing-contract.md).
+**Hot reload.** Saving a Vue/TypeScript file updates the open page through Vite HMR. Saving
+a Python file under `semant_demo_backend/semant_demo/` restarts the backend (Uvicorn
+`--reload`); the databases are not touched. Changes to `semant_demo_backend/tests/`
+(fixtures, fake providers) take effect after restarting `make dev-backend`; a changed
+fixture corpus reaches the stores only through `make dev-reset`.
 
-## 3. Start local Weaviate
+**Simulated AI.** `make dev-backend` starts the deterministic fake providers of the browser
+tests (`semant_demo_backend/tests/fake_providers.py`) on `127.0.0.1:8009` and points every
+provider setting at them, with no API keys:
 
-Run Weaviate from the repository root:
-
-```bash
-docker run --rm \
-  --name semant-weaviate-dev \
-  --stop-timeout 120 \
-  -p 127.0.0.1:8080:8080 \
-  -p 127.0.0.1:50051:50051 \
-  --mount type=bind,source="$(pwd)/local_data/weaviate_semant_test",target=/var/lib/weaviate \
-  -e QUERY_DEFAULTS_LIMIT=25 \
-  -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true \
-  -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
-  -e ENABLE_API_BASED_MODULES=true \
-  -e CLUSTER_HOSTNAME=node1 \
-  -e DISK_USE_READONLY_PERCENTAGE=90 \
-  -e DISK_USE_WARNING_PERCENTAGE=50 \
-  cr.weaviate.io/semitechnologies/weaviate:1.40.1 \
-  --host 0.0.0.0 \
-  --port 8080 \
-  --scheme http
-```
-
-This runs Weaviate in the foreground. Stop it with `Ctrl-C`.
-
-The local ports intentionally match the backend defaults:
-
-| Interface | Local endpoint |
+| Feature | Fake behaviour |
 |---|---|
-| REST | `http://localhost:8080` |
-| gRPC | `localhost:50051` |
-
-Verify readiness:
-
-```bash
-curl http://localhost:8080/v1/.well-known/ready
-```
-
-The response should indicate that Weaviate is ready before starting the backend.
-
-To inspect container logs from another terminal:
-
-```bash
-docker logs semant-weaviate-dev
-```
-
-### Starting in the background
-
-If needed, add `-d` to the `docker run` command.
-
-Then stop it with:
-
-```bash
-docker stop semant-weaviate-dev
-```
-
-## 4. Local SQLite database
-
-The backend reads the SQL database URL from `SQL_DB_URL`. The default is:
-
-```text
-sqlite+aiosqlite:///tasks.db
-```
-
-relative to the backend working directory. To use the local development database, either point `SQL_DB_URL` at it (four slashes: absolute path), for example from `semant_demo_backend/`:
-
-```bash
-export SQL_DB_URL="sqlite+aiosqlite:///$(realpath ../local_data/tasks.db)"
-```
-
-or keep the default and use a symlink from the backend directory. From the repository root:
-
-```bash
-ln -s ../local_data/tasks.db semant_demo_backend/tasks.db
-```
-
-Do not overwrite an existing `semant_demo_backend/tasks.db` without first checking what it contains.
-
-Verify the link:
-
-```bash
-ls -l semant_demo_backend/tasks.db
-```
-
-It should point to:
-
-```text
-../local_data/tasks.db
-```
-
-Optionally verify the copied SQLite database:
-
-```bash
-sqlite3 local_data/tasks.db "PRAGMA quick_check;"
-```
-
-A healthy database should return:
-
-```text
-ok
-```
-
-Check which database a running backend uses before relying on its contents: an unset `SQL_DB_URL` without the symlink silently creates a new empty `tasks.db`.
-
-## 5. Backend setup
-
-Python 3.12 or newer is required.
-
-From the repository root:
-
-```bash
-python3.12 -m venv .venv
-. .venv/bin/activate
-
-python -m pip install -r semant_demo_backend/requirements-dev.lock
-python -m pip install --no-deps -e semant_demo_backend
-```
-
-`make setup` runs the same installation (and `npm ci` for the frontend).
-
-Start the backend from `semant_demo_backend/` so the current relative SQLite path resolves correctly:
-
-```bash
-cd semant_demo_backend
-
-python -m uvicorn semant_demo.main:app \
-  --reload \
-  --host 127.0.0.1 \
-  --port 8000
-```
-
-With the local Weaviate running on ports `8080` and `50051`, no Weaviate environment-variable overrides are required.
-
-The API should then be available at:
-
-```text
-http://localhost:8000
-```
-
-Swagger UI:
-
-```text
-http://localhost:8000/docs
-```
-
-Health endpoint:
-
-```bash
-curl http://localhost:8000/health
-```
-
-## 6. Frontend setup
-
-From another terminal:
-
-```bash
-cd semant_demo_frontend
-npm ci
-npm run dev
-```
-
-The development frontend normally runs on:
-
-```text
-http://localhost:9000
-```
-
-When `BACKEND_URL` is not set, the frontend sends its requests to the backend origin
-`http://localhost:8000` (`/api/...`), so no additional configuration is normally required for
-local development.
-
-## 7. Embedding service
-
-Vector and hybrid search require an embedding service.
-
-It can be run locally according to [the embedding service README](../embedding_service/README.md).
-
-When using an explicitly authorized server-hosted development embedding service, an SSH tunnel can be used:
-
-```bash
-ssh -N \
-  -L 8001:localhost:8001 \
-  xlogin00@semant.fit.vutbr.cz
-```
-
-Then start the backend with:
-
-```bash
-EMBEDDING_SERVICE_HOST=localhost \
-EMBEDDING_SERVICE_PORT=8001 \
-python -m uvicorn semant_demo.main:app --reload
-```
-
-A live embedding service is not required for ordinary fast tests. Tests should use fixed vectors where the embedding model itself is not under test.
-
-## 8. AI services
-
-AI-assisted tagging, summarization, RAG, and chat may require Topicer, Ollama, OpenAI-compatible APIs, Gemini, or other configured providers.
-
-These services are optional for routine code changes unless the assigned issue specifically requires them.
-
-Required automated tests should use deterministic fake providers wherever practical. Do not use paid or production AI services merely to make routine tests pass.
-
-## 9. Resetting local database state
-
-The databases under `local_data/` are development copies and may be modified by the application.
-
-Stop Weaviate before replacing its persistence directory:
-
-```bash
-docker stop semant-weaviate-dev
-```
-
-Then replace:
-
-```text
-local_data/weaviate_semant_test/
-```
-
-with a fresh consistent copy when a clean realistic snapshot is required.
-
-Likewise, replace:
-
-```text
-local_data/tasks.db
-```
-
-with a fresh SQLite snapshot when needed.
-
-Do not copy a new Weaviate persistence directory over a running Weaviate instance.
-
-## 10. Destructive database utilities and data maintenance
-
-Some utilities under `weaviate_utils/` drop collections or delete data (for example
-`db_insert_jsonl.py --delete-old` and schema reset/build scripts). Before using such a command:
-
-1. verify that local Weaviate is running;
-2. verify the configured endpoint is `localhost`;
-3. confirm that the operation is intended for the local development copy;
-4. stop if the command could reach a shared server or production database.
-
-Agents must not infer that an endpoint is safe merely because it is described as "test".
-
-The reviewed audit/repair commands (chunk tag audit, documents without chunks, Kramerius
-metadata sync) and how to practise them on a copy of the snapshot are described in
-[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md).
-
-## 11. Testing versus development data
-
-There are two different uses of Weaviate during development:
-
-### Realistic development snapshot
-
-```text
-local_data/weaviate_semant_test/
-```
-
-Use this for:
-
-- manual development;
-- exploratory testing;
-- reproducing behavior against realistic data;
-- explicit data-compatibility checks when changing schemas or storage adapters.
-
-### Automated integration-test data
-
-Automated integration tests must create or reset the specific data they require.
-
-Tests must not rely on arbitrary existing documents, users, collections, tags, or annotations in `local_data/`.
-
-Two commands run automated tests against real stores (both need Docker):
+| Vector/hybrid search, annotation vectors | hash-based 16-dimension embeddings: identical text matches, nothing else is semantically meaningful |
+| AI tag suggestions (Topicer) | proposes a span wherever a tag example occurs in a chunk; streamed with a 0.5 s pause per chunk |
+| Search titles/summaries, RAG, span chat, document summaries | a fixed "Fake summary of N passage(s)" text with token usage; the agentic RAG calls its tools once |
+| RAG web search | switched off in the development RAG configurations (it would query a live search engine) |
+| Anything else | the fake answers HTTP 501, so the feature fails visibly instead of reaching a live service |
+
+Fake answers check wiring, streaming, persistence, permissions and quota accounting; they
+say nothing about model quality. To use a real service, see [section 6](#6-real-embedding-and-ai-services).
+
+## 2. Lifecycle, reset and safety
+
+| Command | Effect |
+|---|---|
+| `make dev-up` | Start Weaviate. On the first run (empty store, no SQLite file) create the schema, seed both stores and verify them; afterwards keep all data, never reseed. |
+| `make dev-backend` / `make dev-frontend` | Foreground servers; stop with Ctrl-C. Refuse to start when their ports are taken or the stores are not initialized. |
+| `make dev-down` | Stop Weaviate. Data (yours and the seed) and accounts are kept. |
+| `make dev-status` | Container state, object counts, users and whether Weaviate and SQLite belong together. |
+| `make dev-verify` | Compare the stores with the seeded corpus (ids, collection owners and shares, users, annotations); non-zero exit when your edits differ from it. |
+| `make dev-reset` | Show what would be destroyed, then ask you to type `reset`. Non-interactively (agents) use `make dev-reset CONFIRM=yes`. Drops everything in both development stores and reseeds the identical corpus. Refuses while the backend runs. |
+
+Where the data lives:
+
+| Store | Location |
+|---|---|
+| Weaviate 1.40.1 | Docker container `semant-weaviate-local` on the Docker volume `semant-local-weaviate`; REST `127.0.0.1:8180`, gRPC `127.0.0.1:50151` |
+| SQLite (accounts, RAG feedback, quota ledger) | `.dev-data/semant.db` (ignored by git), also generated configuration in `.dev-data/config/` and `feedback.log.jsonl` |
+
+The backend gets explicit settings (`python -m tests.local_dev environ` prints them), not
+the relative `tasks.db` default. The container is removed by `make dev-down`, so while it
+is stopped `docker volume prune -a` would delete the volume; `make dev-up` then refuses the
+unpaired SQLite file and `make dev-reset` reseeds both.
+
+**Ownership checks.** `make dev-up` creates the volume and container with the label
+`org.semant.purpose=local-development`, and the first initialization writes a random token
+into both stores (the `SemantLocalDevMarker` collection and the `semant_local_dev_marker`
+table). Every writing command first checks that the container and volume carry the label,
+that the container publishes the configured port on loopback, and that both stores carry
+the development marker with the same token (`semant_demo_backend/tests/local_dev.py`).
+Initialization writes only into an empty Weaviate with no SQLite file. Anything else is
+refused without a change: a snapshot, an automated-test store (which has its own marker and
+token), a store from another initialization, a stray SQLite file or a partially initialized
+pair. `local_data/` and the containers of `make test-integration`, `make test-e2e` and
+`make e2e-dev-*` are never used; those tools refuse the development store in turn.
+
+Repeated resets give the same logical data: fixed ids, timestamps and fake vectors (only
+the password hashes differ). An interrupted initialization or reset leaves a marker in
+state `initializing`; `make dev-up` then refuses and `make dev-reset` starts over.
+
+**One instance per machine.** The container, volume and ports are fixed, so several
+checkouts or agents share one development instance; `.dev-data/` belongs to the checkout
+that ran `make dev-up`, and another checkout's `make dev-up` refuses the pair as not its
+own. Run one checkout's environment at a time (`make dev-down` there first). Ports can be
+moved with `SEMANT_DEV_WEAVIATE_REST_PORT`, `SEMANT_DEV_WEAVIATE_GRPC_PORT`,
+`SEMANT_DEV_PROVIDER_PORT` and `SEMANT_DEV_BACKEND_PORT` (the frontend stays on :9000);
+use the same values for every command.
+
+Coding agents use exactly these targets for interactive work, and disposable test-owned
+stores (`make test-integration`, `make test-e2e`, `make e2e-dev-*`) for automated tests.
+
+## 3. Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `port 8180 or 50151 is already in use` | Another service (e.g. a snapshot Weaviate moved there) holds the port; stop it or set the `SEMANT_DEV_*` ports. |
+| `port 8000 is already in use` / `port 9000 ...` | An older backend or frontend is still running; stop it. Quasar would otherwise move to another port the backend does not allow. |
+| `refused: ... holds data without the local development marker` | The configured port reaches a store that is not the development store; nothing was changed. |
+| `refused: Weaviate is empty but .dev-data/semant.db exists` or `not the same development pair` | The volume or `.dev-data/` was removed or comes from another checkout. `make dev-reset` reseeds both. |
+| `refused: ... has no valid development marker` (SQLite) | `.dev-data/semant.db` is not a development database; move it away yourself. |
+| `A previous initialization or reset did not finish` | `make dev-reset`. |
+| Requests fail with CORS errors | Open `http://localhost:9000`, not `127.0.0.1:9000`. |
+| A feature reports a provider error | It uses a provider route the fakes do not implement (HTTP 501); see the table above. |
+| `make dev-backend` says the stores are not initialized | Run `make dev-up` first. |
+
+`make dev-status` shows the state of both stores; `scripts/local-dev.sh logs` the
+Weaviate log. Removing everything by hand (only if you want to): `make dev-down`,
+`docker volume rm semant-local-weaviate`, `rm -r .dev-data`.
+
+## 4. Testing versus development data
+
+The development stores of sections 1–2 are for interactive work. Automated tests never read
+or change them; each creates and removes its own test-owned data. Tests must not rely on
+arbitrary existing documents, users, collections, tags or annotations of any development
+store (see [ADR 0005](adr/0005-testing-contract.md)).
+
+`make check` needs no database at all. Two commands run automated tests against real
+stores (both need Docker); they run independently of `make dev-up`:
 
 ```bash
 make test-integration   # pytest -m integration against a throwaway Weaviate
 make test-e2e           # Playwright smoke suite against the deterministic app profile
 ```
 
-They never use the development container or `local_data/`:
+They never use the development container, `.dev-data/` or `local_data/`:
 
 - `scripts/with-test-weaviate.sh` starts a uniquely named Weaviate container with no volume
   (with the `backup-filesystem` module; its backups stay inside the container)
@@ -467,18 +261,318 @@ The loop is for iteration only: run `make test-e2e` (fresh build, store and seed
 asking for a PR merge. Without the script, `E2E_REUSE_SERVER=1 npx playwright test` still
 reuses a profile you started by hand on port 8765 (built with that `BACKEND_URL`).
 
-## 12. Normal local startup sequence
+## 5. Advanced: an authorized realistic snapshot
 
-A typical development session is:
+Only with explicit authorization to use a **development** snapshot of the Weaviate data
+directory and the matching SQLite database (both from one consistent point in time).
+Snapshots are **not** created, validated or upgraded by the seeded environment, and the
+seeded commands never read or change them. A snapshot must suit the current schema and
+Weaviate 1.40.1; older snapshots need the migrations below. Never point this workflow at
+the shared server test store or production.
+
+The snapshot Weaviate uses the backend's default ports 8080/50051 and the container name
+`semant-weaviate-dev`, so it can run next to the seeded environment (8180/50151,
+`semant-weaviate-local`). Start the backend by hand (section 5.5) with `SQL_DB_URL`
+pointing at the snapshot's SQLite file; `make dev-backend` always uses the seeded stores.
+
+### 5.1 Snapshot layout
+
+From the repository root, the expected snapshot is:
 
 ```text
-1. Start local Weaviate from local_data/weaviate_semant_test
-2. Verify /v1/.well-known/ready
-3. Set SQL_DB_URL to local_data/tasks.db, or ensure semant_demo_backend/tasks.db points to it
-4. Activate the Python environment
-5. Start the backend from semant_demo_backend/
-6. Start the frontend
-7. Start/tunnel optional embedding or AI services only when needed
+local_data/
+├── tasks.db
+└── weaviate_semant_test/
 ```
 
-No SSH access to the database server is required for ordinary local development.
+- `tasks.db` is a local copy of the test SQLite database.
+- `weaviate_semant_test/` is a local copy of the test Weaviate persistence directory.
+
+Both are **mutable development data**. They must not be committed.
+
+The copied Weaviate data should originate from a consistent snapshot and should initially be opened with the same Weaviate version used by the server test environment.
+
+The current test deployment uses **Weaviate 1.40.1** (#312).
+
+### 5.2 Snapshot safety rules and migrations
+
+When working with a snapshot:
+
+- use `local_data/tasks.db` and `local_data/weaviate_semant_test/` only;
+- do not connect the backend to production databases;
+- do not use the shared server test Weaviate for automated or destructive development work;
+- do not run destructive schema/data scripts until the configured Weaviate endpoint has been verified;
+- do not commit database files or copied user data.
+
+The snapshot is intended for realistic manual and exploratory checks, e.g. data
+compatibility of a schema or storage change; the seeded environment covers ordinary work.
+
+A snapshot taken before #327 holds its annotations only in the legacy `Span` collection; the
+backend then shows none and logs an error at startup. Migrate the local copy once, with the
+local Weaviate running (the data directory copy you started from is the backup):
+
+```bash
+cd semant_demo_backend
+../.venv/bin/python -m semant_demo.maintenance.annotation_migration backfill --state local-migration.json \
+  --execute --confirm-endpoint localhost:8080 --offline-backup "the original snapshot"
+../.venv/bin/python -m semant_demo.maintenance.annotation_migration verify
+```
+
+See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-migration-annotation_migration-327).
+
+An `Annotation` collection created before #328 lacks the derived annotation properties: the
+backend logs an error and stores no annotation text, positions or vectors. Add them to the local
+copy and derive the existing spans (`--no-vectors` when no embedding service is running locally;
+set `ANNOTATION_VECTOR_CONFIG=` to an empty value to disable vectors in the backend too):
+
+```bash
+../.venv/bin/python -m semant_demo.maintenance.annotation_enrichment add-schema --execute --confirm-endpoint localhost:8080
+../.venv/bin/python -m semant_demo.maintenance.annotation_enrichment backfill --limit 100000 --no-vectors \
+  --execute --confirm-endpoint localhost:8080
+```
+
+Automated tests never depend on this snapshot (section 4).
+
+### 5.3 Start the snapshot Weaviate
+
+Run Weaviate from the repository root:
+
+```bash
+docker run --rm \
+  --name semant-weaviate-dev \
+  --stop-timeout 120 \
+  -p 127.0.0.1:8080:8080 \
+  -p 127.0.0.1:50051:50051 \
+  --mount type=bind,source="$(pwd)/local_data/weaviate_semant_test",target=/var/lib/weaviate \
+  -e QUERY_DEFAULTS_LIMIT=25 \
+  -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true \
+  -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
+  -e ENABLE_API_BASED_MODULES=true \
+  -e CLUSTER_HOSTNAME=node1 \
+  -e DISK_USE_READONLY_PERCENTAGE=90 \
+  -e DISK_USE_WARNING_PERCENTAGE=50 \
+  cr.weaviate.io/semitechnologies/weaviate:1.40.1 \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --scheme http
+```
+
+This runs Weaviate in the foreground. Stop it with `Ctrl-C`.
+
+The local ports intentionally match the backend defaults:
+
+| Interface | Local endpoint |
+|---|---|
+| REST | `http://localhost:8080` |
+| gRPC | `localhost:50051` |
+
+Verify readiness:
+
+```bash
+curl http://localhost:8080/v1/.well-known/ready
+```
+
+The response should indicate that Weaviate is ready before starting the backend.
+
+To inspect container logs from another terminal:
+
+```bash
+docker logs semant-weaviate-dev
+```
+
+#### Starting in the background
+
+If needed, add `-d` to the `docker run` command.
+
+Then stop it with:
+
+```bash
+docker stop semant-weaviate-dev
+```
+
+### 5.4 Snapshot SQLite database
+
+The backend reads the SQL database URL from `SQL_DB_URL`. The default is:
+
+```text
+sqlite+aiosqlite:///tasks.db
+```
+
+relative to the backend working directory. To use the local development database, either point `SQL_DB_URL` at it (four slashes: absolute path), for example from `semant_demo_backend/`:
+
+```bash
+export SQL_DB_URL="sqlite+aiosqlite:///$(realpath ../local_data/tasks.db)"
+```
+
+or keep the default and use a symlink from the backend directory. From the repository root:
+
+```bash
+ln -s ../local_data/tasks.db semant_demo_backend/tasks.db
+```
+
+Do not overwrite an existing `semant_demo_backend/tasks.db` without first checking what it contains.
+
+Verify the link:
+
+```bash
+ls -l semant_demo_backend/tasks.db
+```
+
+It should point to:
+
+```text
+../local_data/tasks.db
+```
+
+Optionally verify the copied SQLite database:
+
+```bash
+sqlite3 local_data/tasks.db "PRAGMA quick_check;"
+```
+
+A healthy database should return:
+
+```text
+ok
+```
+
+Check which database a running backend uses before relying on its contents: an unset `SQL_DB_URL` without the symlink silently creates a new empty `tasks.db`.
+
+### 5.5 Backend and frontend by hand
+
+After `make setup` (see [CONTRIBUTING.md](../CONTRIBUTING.md#2-setup-and-commands) for the
+same installation without Make), start the backend from `semant_demo_backend/` so the current relative SQLite path resolves correctly:
+
+```bash
+cd semant_demo_backend
+. ../.venv/bin/activate
+python -m uvicorn semant_demo.main:app \
+  --reload \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
+With the snapshot Weaviate running on ports `8080` and `50051`, no Weaviate environment-variable overrides are required.
+This backend uses the configured real providers (`semant_demo/configs/`): without them, AI
+features and vector search fail (section 6).
+
+The API should then be available at:
+
+```text
+http://localhost:8000
+```
+
+Swagger UI:
+
+```text
+http://localhost:8000/docs
+```
+
+Health endpoint:
+
+```bash
+curl http://localhost:8000/health
+```
+
+#### Frontend
+
+From another terminal:
+
+```bash
+cd semant_demo_frontend
+npm run dev
+```
+
+The development frontend normally runs on:
+
+```text
+http://localhost:9000
+```
+
+When `BACKEND_URL` is not set, the frontend sends its requests to the backend origin
+`http://localhost:8000` (`/api/...`), so no additional configuration is normally required for
+local development.
+
+### 5.6 Replacing the snapshot
+
+The databases under `local_data/` are copies and may be modified by the application. No
+`make dev-*` command resets or replaces them.
+
+Stop Weaviate before replacing its persistence directory:
+
+```bash
+docker stop semant-weaviate-dev
+```
+
+Then replace:
+
+```text
+local_data/weaviate_semant_test/
+```
+
+with a fresh consistent copy when a clean realistic snapshot is required.
+
+Likewise, replace:
+
+```text
+local_data/tasks.db
+```
+
+with a fresh SQLite snapshot when needed.
+
+Do not copy a new Weaviate persistence directory over a running Weaviate instance.
+
+## 6. Real embedding and AI services
+
+The seeded environment uses fakes (section 1). With explicit authorization, a backend
+started by hand (section 5.5) can use real services instead.
+
+### Embedding service
+
+Vector and hybrid search require an embedding service.
+
+It can be run locally according to [the embedding service README](../embedding_service/README.md).
+
+When using an explicitly authorized server-hosted development embedding service, an SSH tunnel can be used:
+
+```bash
+ssh -N \
+  -L 8001:localhost:8001 \
+  xlogin00@semant.fit.vutbr.cz
+```
+
+Then start the backend with:
+
+```bash
+EMBEDDING_SERVICE_HOST=localhost \
+EMBEDDING_SERVICE_PORT=8001 \
+python -m uvicorn semant_demo.main:app --reload
+```
+
+A live embedding service is not required for ordinary fast tests. Tests should use fixed vectors where the embedding model itself is not under test.
+
+### AI services
+
+AI-assisted tagging, summarization, RAG, and chat may require Topicer, Ollama, OpenAI-compatible APIs, Gemini, or other configured providers.
+
+These services are optional for routine code changes unless the assigned issue specifically requires them.
+
+Required automated tests should use deterministic fake providers wherever practical. Do not use paid or production AI services merely to make routine tests pass.
+
+## 7. Destructive database utilities and data maintenance
+
+Some utilities under `weaviate_utils/` drop collections or delete data (for example
+`db_insert_jsonl.py --delete-old` and schema reset/build scripts). Before using such a command:
+
+1. verify that the intended local Weaviate is running;
+2. verify the configured endpoint is `localhost` and the intended port (8080 snapshot, 8180 seeded environment);
+3. confirm that the operation is intended for that local copy;
+4. stop if the command could reach a shared server or production database.
+
+Agents must not infer that an endpoint is safe merely because it is described as "test".
+To return the seeded environment to its initial state, use `make dev-reset`, not these
+utilities.
+
+The reviewed audit/repair commands (chunk tag audit, documents without chunks, Kramerius
+metadata sync) and how to practise them on a copy of the snapshot are described in
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md).

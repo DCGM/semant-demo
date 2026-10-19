@@ -8,6 +8,7 @@ PY := $(if $(findstring /,$(PYTHON)),$(abspath $(PYTHON)),$(PYTHON))
 FAST_TESTS := not integration and not live and not benchmark
 
 .PHONY: setup check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e \
+	dev-up dev-down dev-backend dev-frontend dev-reset dev-status dev-verify \
 	e2e-dev-start e2e-dev-test e2e-dev-capture e2e-dev-rebuild e2e-dev-restart e2e-dev-stop e2e-dev-status
 
 ## Install pinned development dependencies (backend venv and frontend node_modules).
@@ -16,6 +17,31 @@ setup:
 	$(PY) -m pip install -r semant_demo_backend/requirements-dev.lock
 	$(PY) -m pip install --no-deps -e semant_demo_backend
 	cd semant_demo_frontend && npm ci
+
+## Seeded local development environment (scripts/local-dev.sh; docs/DEVELOPMENT.md). Needs
+## Docker. `dev-up` starts the development Weaviate and seeds it and .dev-data/semant.db on
+## first use only; run `dev-backend` and `dev-frontend` in their own terminals.
+dev-up:
+	PYTHON="$(PY)" scripts/local-dev.sh up
+
+dev-down:
+	scripts/local-dev.sh down
+
+dev-backend:
+	PYTHON="$(PY)" scripts/local-dev.sh backend
+
+dev-frontend:
+	scripts/local-dev.sh frontend
+
+## Destroys the development data and reseeds it; a dry run unless confirmed (CONFIRM=yes).
+dev-reset:
+	PYTHON="$(PY)" CONFIRM="$(CONFIRM)" scripts/local-dev.sh reset
+
+dev-status:
+	PYTHON="$(PY)" scripts/local-dev.sh status
+
+dev-verify:
+	PYTHON="$(PY)" scripts/local-dev.sh verify
 
 ## Fast offline checks: lint, types, unit tests and generated-client drift.
 check: check-backend check-frontend api-check

@@ -330,7 +330,7 @@ Never run a writing step against the only copy of `local_data/weaviate_semant_te
    ```
 
 2. Restart the development Weaviate and start the copy as a second instance with the
-   [DEVELOPMENT.md](DEVELOPMENT.md#3-start-local-weaviate) command, changing only
+   [DEVELOPMENT.md](DEVELOPMENT.md#53-start-the-snapshot-weaviate) command, changing only
    `--name semant-weaviate-maintenance-copy -p 127.0.0.1:18080:8080 -p 127.0.0.1:15051:50051`
    and the mount source `"$COPY"`. Check `curl localhost:18080/v1/.well-known/ready` and the
    object counts.

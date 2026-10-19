@@ -18,7 +18,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces connect and [DATABASE.
 | Understand what the application is for | [Vision](VISION.md) and the root [README](../README.md) |
 | Choose or refine an issue | [Issue workflow](ISSUE_WORKFLOW.md): drafts, readiness and consultation |
 | Change the UI or backend | [Contributing](../CONTRIBUTING.md), then the relevant feature directory below |
-| Run the application with real development data | [Local development](DEVELOPMENT.md) |
+| Run the application locally | [Seeded local environment](DEVELOPMENT.md#1-quick-start-the-seeded-local-application) (`make dev-up`) |
+| Work with an authorized realistic snapshot | [Advanced: snapshot](DEVELOPMENT.md#5-advanced-an-authorized-realistic-snapshot) |
 | Understand deployment or environment settings | [Deployment guide](DEPLOYMENT.md) and [Compose operations](../deploy/README.md) |
 | Inspect or repair data | [Data maintenance](DATA_MAINTENANCE.md) — read the safety rules first |
 | Measure Weaviate size and query performance | [DB benchmark tool](DB_BENCHMARK.md) and the production audits [before](WEAVIATE_AUDIT_2026-10.md) and [after](WEAVIATE_AUDIT_2026-10-17.md) the Qwen migration |
@@ -33,9 +34,21 @@ make setup   # installs Python and frontend dependencies; needs internet access
 make check   # lint, type checks, fast tests and API-client check; runs offline
 ```
 
-Neither command needs a corpus snapshot, a GPU, LLM credentials or running databases. To test real Weaviate behavior or browser interactions against **synthetic test data**, use `make test-integration` or `make test-e2e` (Docker required). The browser suite launches a temporary application with fake AI providers; see [testing the sample app](DEVELOPMENT.md#11-testing-versus-development-data) to inspect it interactively.
+Neither command needs a corpus snapshot, a GPU, LLM credentials or running databases. To test real Weaviate behavior or browser interactions against **synthetic test data**, use `make test-integration` or `make test-e2e` (Docker required); see [testing versus development data](DEVELOPMENT.md#4-testing-versus-development-data).
 
-`local_data/` is not included in the repository. For manual development against a realistic corpus, obtain an **authorized, consistent development snapshot** of Weaviate and SQLite, then follow [DEVELOPMENT.md](DEVELOPMENT.md). Do not point local tooling at production or the shared server test database.
+## Run the application
+
+The canonical way to run semANT locally is the seeded development environment (Docker required):
+
+```bash
+make dev-up         # start a local Weaviate; seed it and SQLite with a small synthetic corpus on first use
+make dev-backend    # terminal 1: backend on :8000 with auto-reload and fake AI providers
+make dev-frontend   # terminal 2: frontend on :9000 with hot reload
+```
+
+Open <http://localhost:9000> and log in as `owner` / `owner-password-1` (other accounts: [DEVELOPMENT.md](DEVELOPMENT.md#1-quick-start-the-seeded-local-application)). Your edits survive restarts and `make dev-down`; `make dev-reset` restores the seeded data after showing what it destroys. AI answers come from deterministic fakes, so they check wiring, not quality. No database snapshot, server access or credentials are needed.
+
+A realistic snapshot (`local_data/`, not in the repository) is an optional, **explicitly authorized** advanced workflow; see [DEVELOPMENT.md](DEVELOPMENT.md#5-advanced-an-authorized-realistic-snapshot). Do not point local tooling at production or the shared server test database.
 
 ## Follow one feature: Search
 

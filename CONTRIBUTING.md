@@ -37,6 +37,7 @@ only for regenerating the API client. From the repository root:
 | `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. `make api-check` fails if the committed client differs from a fresh generation. |
 | `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. |
 | `make test-e2e` | Build the frontend and run the Playwright smoke suite against the deterministic backend profile (throwaway Weaviate, fixture corpus, fake AI providers). Needs Docker; installs Playwright's Chromium on first use. |
+| `make dev-up` / `dev-backend` / `dev-frontend` | The interactive application: a persistent, seeded development Weaviate and SQLite (initialized on first use only), the backend with `--reload` and fake AI providers, the Quasar dev server with hot reload. `make dev-down` stops Weaviate and keeps the data; `make dev-reset` (confirmation required) reseeds. Needs Docker. See [DEVELOPMENT.md](docs/DEVELOPMENT.md#1-quick-start-the-seeded-local-application). |
 | `make e2e-dev-start` / `e2e-dev-test ARGS=...` / `e2e-dev-stop` | Optional fast loop for browser-test work: keep one seeded profile running and rerun selected specs against it (`scripts/e2e-dev.sh`, see [DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop)). Not a substitute for `make test-e2e` before a PR. |
 
 Set `PYTHON=...` to use another interpreter. Without Make, run the same commands:
@@ -62,6 +63,9 @@ scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/pyth
 # make test-e2e
 (cd semant_demo_frontend && npx playwright install --only-shell chromium)
 scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON=../.venv/bin/python npm run test:e2e'
+
+# make dev-up / dev-backend / dev-frontend / dev-down / dev-reset
+scripts/local-dev.sh up | backend | frontend | down | reset
 ```
 
 Backend dependencies (`semant_demo_backend/`, target CPython 3.12 on Linux x86_64):
@@ -99,22 +103,24 @@ Known legacy findings are recorded, not hidden:
   Widen the rule set as code is cleaned up rather than adding blanket ignores.
 - ESLint warnings are reported but do not fail the check; errors do.
 
-Run the backend from `semant_demo_backend` using
-`python -m uvicorn semant_demo.main:app --reload` and the frontend with `npm run dev`.
-SQL defaults to a relative `tasks.db`; set `SQL_DB_URL` to use another database. Tests
-build apps with `create_app(Config(environ=...))`.
+Run the application with the seeded local environment: `make dev-up` once per session,
+then `make dev-backend` and `make dev-frontend` in two terminals, and open
+<http://localhost:9000> (e.g. `owner` / `owner-password-1`). It needs no snapshot, server
+access or AI credentials; AI providers are deterministic fakes. Its data lives in a Docker
+volume and `.dev-data/` (ignored by git) and survives restarts; `make dev-reset` restores the
+fixture corpus after showing what it destroys. Humans and coding agents use the same
+targets; there is no separate agent environment. Tests build apps with
+`create_app(Config(environ=...))` and never use the development stores.
 
-For normal development, use the local development databases described in
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Mutable development database state
-belongs under `local_data/` and must not be committed.
-
-Fast tests must not depend on this database snapshot. Real-store automated tests
+A realistic database snapshot under `local_data/` is an optional, explicitly authorized
+workflow ([DEVELOPMENT.md](docs/DEVELOPMENT.md#5-advanced-an-authorized-realistic-snapshot)).
+Fast tests must not depend on any development data. Real-store automated tests
 must use test-owned data as described in the testing contract.
 
 Do not use shared server or production databases unless the task explicitly
 requires it.
 
-`make dev` does not exist; start the backend and frontend separately as above. Report actual commands, not assumed passes.
+`make dev` does not exist; use the `dev-*` targets above. Report actual commands, not assumed passes.
 
 ## 3. Code and API rules
 
@@ -173,7 +179,7 @@ and use a throwaway Weaviate with synthetic data from
 `tests/fixtures/corpus.json`. Tests clear and reseed application data; the schema is
 recreated only when necessary. The Playwright smoke suite in
 `semant_demo_frontend/test/e2e` reads the same corpus. See
-[DEVELOPMENT.md](docs/DEVELOPMENT.md#11-testing-versus-development-data) for the store
+[DEVELOPMENT.md](docs/DEVELOPMENT.md#4-testing-versus-development-data) for the store
 ownership rules. Detailed fixtures, regression cases, async guidance, and evaluation rules
 live in [ADR 0005](docs/adr/0005-testing-contract.md).
 

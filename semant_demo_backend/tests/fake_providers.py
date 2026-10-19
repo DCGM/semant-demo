@@ -19,16 +19,54 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from pathlib import Path
 from typing import Any
 
+import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from tests.corpus import Corpus
-from tests.fakes import fake_embedding, second_embedding
+from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
 
 FAKE_REASON = "fake provider: tag example found in text"
 FAKE_COST_PER_TOKEN = 3e-6
+# Read without importing semant_demo, whose settings must see the profile's environment.
+DEFAULT_LLM_MODELS_CONFIG = Path(__file__).parents[1] / "semant_demo" / "configs" / "llm_models.yaml"
+
+
+def fake_provider_environ(config_dir: Path, fake_url: str, fake_port: int) -> dict[str, str]:
+    """Application settings that point every AI provider at the fakes served on
+    ``fake_url`` (port ``fake_port``), with no API keys, so no live or paid provider can be
+    reached (tiers on keyed providers are refused before any request). Writes the model tier
+    catalog and the search vectors they use into ``config_dir``. Used by the browser-test
+    profile (``tests/e2e_server.py``) and the local development profile (``tests/local_dev.py``)."""
+    # The default model tiers without per-tier endpoints: every tier uses the fake provider.
+    catalog = yaml.safe_load(DEFAULT_LLM_MODELS_CONFIG.read_text())
+    for tier in catalog["tiers"].values():
+        tier.pop("base_url", None)
+    llm_models_path = config_dir / "llm_models.yaml"
+    llm_models_path.write_text(yaml.safe_dump(catalog))
+    # Both named chunk vectors of the fixture store (#217), embedded by the fake providers.
+    search_vectors_path = config_dir / "search_vectors.yaml"
+    search_vectors_path.write_text(yaml.safe_dump({"default": "fake-default", "vectors": [
+        {"id": "fake-default", "name": "Fake default", "description": "The test store's default vector.",
+         "target_vector": "default", "embedding": {"provider": "embedding_service"}},
+        {"id": "fake-small", "name": "Fake small", "description": "The test store's second vector.",
+         "target_vector": SECOND_VECTOR, "embedding": {"provider": "openai", "base_url": f"{fake_url}/openai/v1",
+                                                 "model": "fake-small"}},
+    ]}))
+    return {
+        "LLM_MODELS_CONFIG": str(llm_models_path),
+        "SEARCH_VECTORS_CONFIG": str(search_vectors_path),
+        "EMBEDDING_SERVICE_HOST": "127.0.0.1",
+        "EMBEDDING_SERVICE_PORT": str(fake_port),
+        "TOPICER_URL": fake_url,
+        "OPENAI_API_URL": f"{fake_url}/openai/v1",
+        "OLLAMA_URLS": f"{fake_url}/ollama",
+        "OPENAI_API_KEY": "e2e-fake-openrouter-key",
+        "GOOGLE_API_KEY": "",
+    }
 
 
 def fake_chat_answer(messages: list[dict[str, Any]]) -> str:
