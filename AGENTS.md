@@ -4,6 +4,21 @@ These instructions supplement [CONTRIBUTING.md](CONTRIBUTING.md) for ordinary
 development. Base new work on the latest `origin/main` and open pull requests
 against protected `main`.
 
+## Preparing issues
+
+When creating or refining an issue, follow [ISSUE_WORKFLOW.md](docs/ISSUE_WORKFLOW.md).
+Search related issues/PRs and planned work; inspect the relevant code, tests,
+architecture and ADRs. Identify scope, acceptance criteria, dependencies and
+important decisions, distinguishing verified facts from assumptions. Normally
+refine the existing draft or user-feedback issue rather than replacing it; consult
+maintainers
+when the proposed behavior or technical design requires a significant decision.
+For `[User draft]` feedback, follow the
+[user-feedback guide](docs/USER_FEEDBACK_ISSUES.md), preserve the reporter's
+use case, and perform technical refinement yourself rather than requesting
+technical specifications from the user.
+Do not start implementation while material decisions remain unresolved.
+
 ## Before editing
 
 Read [ARCHITECTURE.md](docs/ARCHITECTURE.md), the relevant

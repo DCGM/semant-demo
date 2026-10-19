@@ -94,6 +94,10 @@ export function largeRunWarning (
 export const UNKNOWN_RUN_SIZE_WARNING = 'The size of this AI run could not be determined, so it may evaluate ' +
   'many chunks, each counted against today\'s AI allowance.'
 
+/** The message for an approve (`pos`) or reject (`neg`) of an AI suggestion that failed. */
+export const resolveAutoSpanFailure = (type: SpanType): string =>
+  type === SpanType.pos ? 'The suggestion could not be approved.' : 'The suggestion could not be rejected.'
+
 const UNIT_NAMES = { chunk: 'chunks', tag: 'tags', selection: 'selections' } as const
 
 /** One notice per tag that reached the per-tag chunk limit. */

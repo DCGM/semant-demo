@@ -5,6 +5,7 @@
       v-if="visible"
       ref="popoverEl"
       class="annotation-popover"
+      :class="{ 'is-busy': busy }"
       :style="popoverStyle"
       @mousedown.stop
     >
@@ -15,6 +16,7 @@
         class="popover-close"
         @click="emit('close')"
       />
+      <q-linear-progress v-if="busy" indeterminate size="2px" color="primary" class="popover-progress" />
 
       <!-- Tag picker mode (plain single-pick, or AI multi-select sub-mode) -->
       <template v-if="showTagPicker">
@@ -83,7 +85,8 @@
             :class="{
               'is-active': showAiTagPicker
                 ? aiTagPickerSelected.has(tag.id)
-                : selectedTagId === tag.id
+                : selectedTagId === tag.id,
+              'is-suggested': !!suggestionFor(tag.id)
             }"
             @click="showAiTagPicker ? toggleAiPickerTag(tag.id) : emit('pickTag', tag.id)"
           >
@@ -96,8 +99,20 @@
               @click.stop
               @update:model-value="toggleAiPickerTag(tag.id)"
             />
+            <q-icon
+              v-if="suggestionFor(tag.id)?.score != null"
+              name="auto_awesome"
+              size="12px"
+              class="tag-suggested-icon"
+            >
+              <q-tooltip>{{ matchPercent(suggestionFor(tag.id)!.score!) }}% match with the selected text</q-tooltip>
+            </q-icon>
             <span class="tag-dot" :style="{ backgroundColor: tag.color }"></span>
             <span class="tag-name">{{ tag.name }}</span>
+            <span v-if="suggestionFor(tag.id)?.score != null" class="tag-suggested-score">
+              {{ matchPercent(suggestionFor(tag.id)!.score!) }}% match
+            </span>
+            <span v-else-if="suggestionFor(tag.id)" class="tag-suggested-score">Last used</span>
             <span class="tag-shorthand">{{ tag.shorthand }}</span>
           </div>
           <div v-if="filteredTags.length === 0" class="tag-row-empty">No tags found</div>
@@ -127,6 +142,7 @@
             label="Save position"
             color="primary"
             class="popover-btn"
+            :disable="busy"
             @click="emit('savePosition')"
           />
           <!-- Approve / reject shortcut for auto spans (AI suggestions) -->
@@ -137,7 +153,7 @@
               label="Approve"
               color="positive"
               class="popover-btn"
-              :disable="approveRejectBusy"
+              :disable="busy"
               @click="emit('approve')"
             />
             <q-btn
@@ -146,7 +162,7 @@
               label="Reject"
               color="negative"
               class="popover-btn"
-              :disable="approveRejectBusy"
+              :disable="busy"
               @click="emit('reject')"
             />
           </template>
@@ -184,6 +200,7 @@
             label="Delete"
             color="negative"
             class="popover-btn"
+            :disable="busy"
             @click="emit('delete')"
           />
         </div>
@@ -195,6 +212,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Tag } from 'src/generated/api'
+import { buildTagSuggestions } from './tagSuggestion'
 
 // The popover for a text selection or an edited span: tag picker, AI tag picker
 // ("Suggest tags") and the span actions. The page decides what each action does.
@@ -203,12 +221,17 @@ const props = defineProps<{
   tags: Tag[]
   /** Changes whenever the selection does; resets the AI tag picker and re-positions. */
   selection: unknown
+  /** The text currently highlighted, used to suggest a likely tag first. */
+  selectedText: string
+  /** The last tag applied in this collection, suggested first regardless of selectedText. */
+  lastUsedTagId: string | null
   selectedTagId: string | null
   isEditing: boolean
   positionChanged: boolean
   /** The edited span is an AI suggestion: offer approve and reject. */
   editingAuto: boolean
-  approveRejectBusy: boolean
+  /** A span request for this selection is being saved: tags and actions are disabled. */
+  busy: boolean
   aiSelectionRunning: boolean
 }>()
 
@@ -230,13 +253,34 @@ const tagSearch = ref('')
 
 const selectedTag = computed(() => props.tags.find((t) => t.id === props.selectedTagId) ?? null)
 
+const sortedTags = computed(() =>
+  [...props.tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+)
+
+// Computed lazily (only once the tag list is actually rendered), so this never delays the
+// popover opening even for collections with many tags.
+const suggestions = computed(() =>
+  buildTagSuggestions(props.selectedText, props.tags, props.lastUsedTagId)
+)
+const suggestionFor = (tagId: string) => suggestions.value.find((s) => s.id === tagId)
+const matchPercent = (score: number) => Math.round(score * 100)
+
 const filteredTags = computed(() => {
   const q = (tagSearch.value ?? '').toLowerCase().trim()
-  if (!q) return props.tags
-  return props.tags.filter(t =>
-    t.name.toLowerCase().includes(q) ||
-    (t.shorthand && t.shorthand.toLowerCase().includes(q))
-  )
+  const base = q
+    ? sortedTags.value.filter((t) =>
+      t.name.toLowerCase().includes(q) || (t.shorthand && t.shorthand.toLowerCase().includes(q))
+    )
+    : sortedTags.value
+
+  const suggestedIds = suggestions.value.map((s) => s.id)
+  const suggested = suggestedIds
+    .map((id) => base.find((t) => t.id === id))
+    .filter((t): t is Tag => !!t)
+  if (!suggested.length) return base
+
+  const suggestedSet = new Set(suggested.map((t) => t.id))
+  return [...suggested, ...base.filter((t) => !suggestedSet.has(t.id))]
 })
 
 // ── Popover positioning ──
@@ -495,8 +539,40 @@ defineExpose({ moveTo, showMode })
   background: #f1f5f9;
 }
 
+/* While the span is being saved, a second pick would be ignored: show the rows as unavailable. */
+.annotation-popover.is-busy .tag-row {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.popover-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-radius: 10px 10px 0 0;
+}
+
 .tag-row.is-active {
   background: #e0f2fe;
+}
+
+.tag-row.is-suggested {
+  border-left: 2px solid #f59e0b;
+  padding-left: 6px;
+}
+
+.tag-suggested-icon {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.tag-suggested-score {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #b45309;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tag-row--create {
@@ -527,6 +603,10 @@ defineExpose({ moveTo, showMode })
   font-weight: 500;
   color: #1e293b;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-shorthand {
