@@ -133,7 +133,7 @@
 
       <AnnotationPopover
         ref="popoverRef"
-        :visible="annotations.hasSelection.value && !quickTagging"
+        :visible="annotations.hasSelection.value"
         :tags="tags"
         :selection="annotations.selection.value"
         :selected-text="selectedSpanText"
@@ -144,7 +144,7 @@
         :editing-auto="!!editingAutoSpan"
         :approve-reject-busy="approveRejectBusy"
         :ai-selection-running="aiAssist.isSelectionRunning.value"
-        @close="endQuickTagging"
+        @close="annotations.clearSelection()"
         @pick-tag="onTagClick"
         @create-tag="onCreateTagClick"
         @run-ai="onRunAiOnSelection"
@@ -354,7 +354,7 @@ watch(highlightedAutoSpanId, (spanId) => {
 // window first (chunkWindow.loadUntil, #249 review) if it isn't shown yet — the summary
 // covers the whole document, but the reader only displays a bounded window by default. This
 // is otherwise an orthogonal, read-only navigation action: it must not touch
-// annotations/tagEditing/quickTagId state (no selection clearing, no popover changes, no span
+// annotations/tagEditing state (no selection clearing, no popover changes, no span
 // highlight changes) or navigate, only scroll/load — so tag-editing state in progress is left
 // exactly as it was.
 watch(() => documentSummary.requestedCitation.value, async (citation) => {
@@ -370,18 +370,6 @@ watch(() => documentSummary.requestedCitation.value, async (citation) => {
 
 // ── Annotation editing ──
 const popoverRef = ref<InstanceType<typeof AnnotationPopover> | null>(null)
-// The tag of the span whose marker was last clicked. While set, drag-selecting
-// new text quick-tags it with this same tag (see handleDocumentMouseUp) —
-// stays active across multiple selections until explicitly ended.
-const quickTagId = ref<string | null>(null)
-// True for the brief window between a quick-tag selection and its span
-// being created — suppresses the popover entirely so "Add tag" never flashes.
-const quickTagging = ref(false)
-
-const endQuickTagging = () => {
-  quickTagId.value = null
-  annotations.clearSelection()
-}
 
 // The last tag actually applied to a span in this collection — suggested first in the popover,
 // ahead of any text-similarity match. Re-read whenever collectionId changes, like the other
@@ -414,7 +402,7 @@ async function changeEditingSpanType(type: SpanType) {
     await aiAssist.resolveAutoSpan(span, type)
   } finally {
     approveRejectBusy.value = false
-    endQuickTagging()
+    annotations.clearSelection()
   }
 }
 
@@ -432,7 +420,6 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
     start: item.start,
     end: item.end
   })
-  quickTagId.value = item.tagId
   popoverRef.value?.moveTo(e)
   popoverRef.value?.showMode('actions')
 
@@ -473,21 +460,6 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
   popoverRef.value?.moveTo(e)
   domSelection.removeAllRanges()
 
-  // A marker's tag stays "active" (see quickTagId) until explicitly ended,
-  // so every subsequent selection here quick-tags that new text with it
-  // instead of opening the picker — repositioning the original span is
-  // still done via its drag handles.
-  if (quickTagId.value) {
-    const tagId = quickTagId.value
-    quickTagging.value = true
-    void annotations.createSpan(tagId)
-      .then(() => recordTagUsage(tagId))
-      .finally(() => {
-        quickTagging.value = false
-      })
-    return
-  }
-
   // Fresh selections open straight into the tag picker, as if "Add tag" had
   // already been clicked.
   popoverRef.value?.showMode('picker')
@@ -495,7 +467,6 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
 const onTagClick = async (tagId: string) => {
   if (annotations.isEditing.value) {
-    quickTagId.value = null
     await annotations.updateSpanTag(tagId)
   } else {
     await annotations.createSpan(tagId)
@@ -517,7 +488,6 @@ const onBoundaryDrag = (payload: { chunkId: string; handle: 'start' | 'end'; cha
 }
 
 const onDeleteSpan = async () => {
-  quickTagId.value = null
   await annotations.deleteSpan()
 }
 
@@ -622,20 +592,16 @@ watch(
 // When prev/next expand-rows appear/disappear they shift the text — remeasure
 watch([chunkWindow.hasPrev, chunkWindow.hasNext], () => nextTick(() => requestAnimationFrame(relayout)))
 
-// While quick-tagging is active, keep the tag highlighted in the right-hand
-// panel regardless of the selection briefly clearing between instances.
+// Highlight the selected span's tag in the right-hand panel.
 watch(
-  [() => annotations.selection.value?.tagId, quickTagId],
-  ([selectionTagId, activeQuickTagId]) => tagNav.setActiveTagId(activeQuickTagId ?? selectionTagId ?? null)
+  () => annotations.selection.value?.tagId,
+  (tagId) => tagNav.setActiveTagId(tagId ?? null)
 )
 
 // ── Dismiss on click-outside / Escape ──
 
 const onClickOutside = (e: MouseEvent) => {
-  // quickTagId can stay active with no current selection — createSpan()
-  // clears the selection right after each quick-tag, but fast-labeling
-  // mode itself keeps going until explicitly ended.
-  if (!annotations.hasSelection.value && !quickTagId.value) return
+  if (!annotations.hasSelection.value) return
   const target = e.target as HTMLElement
   // Don't dismiss if clicking inside the popover, the document text area,
   // a Quasar dialog opened from the popover (e.g. the create/edit-tag
@@ -645,18 +611,18 @@ const onClickOutside = (e: MouseEvent) => {
   // sidebar (#249): switching tools there (checking tags, AI suggestions,
   // document metadata, or the document summary and its citations) is a
   // normal part of annotating and must not silently discard an open
-  // popover or an in-progress quick-tag selection either.
+  // popover either.
   const popover = document.querySelector('.annotation-popover')
   if (popover?.contains(target)) return
   if (documentTextRef.value?.contains(target)) return
   if (target.closest('.q-dialog')) return
   if (target.closest('.q-drawer--right')) return
-  endQuickTagging()
+  annotations.clearSelection()
 }
 
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && (annotations.hasSelection.value || quickTagId.value)) {
-    endQuickTagging()
+  if (e.key === 'Escape' && annotations.hasSelection.value) {
+    annotations.clearSelection()
   }
 }
 

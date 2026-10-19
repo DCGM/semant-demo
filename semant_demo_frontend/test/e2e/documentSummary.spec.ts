@@ -21,8 +21,7 @@ test('summarizing shows citations, and interacting with the summary sidebar (swi
 
   // Open the annotation popover of the fixture span on this chunk *before* touching the
   // Summary panel at all, mirroring review feedback: switching to the Summary panel,
-  // clicking Summarize, and clicking a citation must each leave an open popover (and any
-  // in-progress quick-tag selection) alone — none of them are "outside" the editing
+  // clicking Summarize, and clicking a citation must each leave an open popover alone — none of them are "outside" the editing
   // context, even though the document-level click-outside handler would otherwise treat
   // them that way (DocumentReaderPage.vue's onClickOutside exempts the whole right sidebar).
   await page.locator('.gutter-item').first().click()

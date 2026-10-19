@@ -55,21 +55,22 @@ test('a selection across two chunks is tagged, marked in the gutter and deleted 
   await expect(annotation(page, 'novak_manual')).toBeVisible()
 })
 
-test('a clicked marker quick-tags the next selection until Escape', async ({ page }) => {
+test('a selection after clicking a marker opens the tag picker instead of reusing its tag', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
 
-  // The Jan Novák marker in the first chunk: its tag becomes the quick tag.
+  // The Jan Novák marker in the first chunk.
   await page.locator('.gutter-item').first().click()
   await expect(popover(page).getByRole('button', { name: 'Change tag' })).toBeVisible()
+  await expect(page.locator('.tag-card.is-active')).toContainText(fixture.tag('person').name)
 
   const text = fixture.chunk('chronicle_2').text
   const start = text.indexOf('Jan Novák')
   await selectText(page, 'chronicle_2', start, 'chronicle_2', start + 'Jan Novák'.length)
 
-  await expect(taggedSegment(page, 'chronicle_2', start, start + 'Jan Novák'.length)).toBeVisible()
-  await expect(popover(page).getByText('Select tag')).toHaveCount(0)
-  await expect(page.locator('.tag-card.is-active')).toContainText(fixture.tag('person').name)
+  await expect(popover(page).getByText('Select tag')).toBeVisible()
+  await expect(taggedSegment(page, 'chronicle_2', start, start + 'Jan Novák'.length)).toHaveCount(0)
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
 
   await page.keyboard.press('Escape')
   await expect(popover(page)).toHaveCount(0)
