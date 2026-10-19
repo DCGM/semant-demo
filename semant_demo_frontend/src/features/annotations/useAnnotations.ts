@@ -37,6 +37,14 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   const selection = ref<GlobalSelection | null>(null)
   /** Stores the original position when editing starts, to detect changes */
   const originalPosition = ref<{ chunkId: string; start: number; end: number } | null>(null)
+  /**
+   * Identifies the current selection: bumped whenever a new selection replaces it or it is
+   * cleared, but not when its boundaries or tag change. A span request uses it to tell whether
+   * the selection it was made for is still the open one once it finishes.
+   */
+  let selectionId = 0
+  /** The selection a create/retag request is in flight for, so a second pick on it is ignored. */
+  let pendingSelectionId: number | null = null
 
   // ── Computed helpers ──
 
@@ -199,6 +207,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   // ── Selection handling ──
 
   const setSelection = (chunkId: string, start: number, end: number, editingSpanId?: string, tagId?: string) => {
+    selectionId++
     if (start >= end) {
       selection.value = null
       return
@@ -218,6 +227,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     const startIndex = chunkIndexById.value[startChunkId]
     const endIndex = chunkIndexById.value[endChunkId]
     if (startIndex === undefined || endIndex === undefined) return
+    selectionId++
 
     // Ensure start comes before end
     let firstChunkId = startChunkId
@@ -260,6 +270,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   }
 
   const editSpan = (span: TagSpan) => {
+    selectionId++
     selection.value = {
       chunkId: span.chunkId,
       start: span.start,
@@ -275,6 +286,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   }
 
   const clearSelection = () => {
+    selectionId++
     selection.value = null
     originalPosition.value = null
   }
@@ -325,34 +337,50 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
   // ── CRUD actions ──
 
-  const createSpan = async (tagId: string) => {
-    if (!selection.value) return
+  /**
+   * Run a span request for the current selection, then close that selection — unless the user
+   * has already moved on to a newer one, which stays open. While it is in flight, callers ignore
+   * further picks on the same selection (`isPending`), so a double-click creates one span.
+   */
+  const isPending = () => pendingSelectionId === selectionId
+
+  const applyToSelection = async (request: () => Promise<void>): Promise<boolean> => {
+    const id = selectionId
+    pendingSelectionId = id
+    try {
+      await request()
+    } finally {
+      if (pendingSelectionId === id) pendingSelectionId = null
+    }
+    if (selectionId === id) clearSelection()
+    return true
+  }
+
+  /** Create a span with the given tag over the current selection. Returns whether one was created. */
+  const createSpan = async (tagId: string): Promise<boolean> => {
+    if (!selection.value || isPending()) return false
 
     const normalized = normalizeSelectionToStartChunk(selection.value)
-    if (!normalized) return
+    if (!normalized) return false
 
-    await store.createSpan({
+    return applyToSelection(() => store.createSpan({
       chunkId: normalized.chunkId,
       tagId,
       start: normalized.start,
       end: normalized.end,
       type: SpanType.pos
-    })
-    clearSelection()
+    }))
   }
 
-  const updateSpanTag = async (tagId: string) => {
-    if (!selection.value?.editingSpanId) return
+  /** Retag the span being edited. Returns whether it was retagged. */
+  const updateSpanTag = async (tagId: string): Promise<boolean> => {
+    const sel = selection.value
+    if (!sel?.editingSpanId || isPending()) return false
 
     // Update visual highlight immediately
-    selection.value = { ...selection.value, tagId }
+    selection.value = { ...sel, tagId }
 
-    await store.updateSpan(
-      selection.value.editingSpanId!,
-      selection.value.chunkId,
-      { tagId }
-    )
-    clearSelection()
+    return applyToSelection(() => store.updateSpan(sel.editingSpanId!, sel.chunkId, { tagId }))
   }
 
   const updateSpanPosition = async () => {
