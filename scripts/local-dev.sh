@@ -50,19 +50,23 @@ container_exists() { docker container inspect "$NAME" >/dev/null 2>&1; }
 container_running() { [[ "$(docker container inspect --format '{{.State.Running}}' "$NAME" 2>/dev/null)" == true ]]; }
 ready() { curl -fsS "http://127.0.0.1:$REST/v1/.well-known/ready" >/dev/null 2>&1; }
 
-# The container and its volume are ours, and the container is what answers on $REST.
+# The container and its volume are ours, and the container is what answers on $REST and
+# on the gRPC port (the client uses both).
 check_owned() {
   [[ "$(label_of volume Labels "$VOLUME")" == local-development ]] \
     || die "Docker volume $VOLUME is missing or has no $LABEL label; refusing to use it"
   container_running || die "the development Weaviate is not running; start it with: make dev-up"
   [[ "$(label_of container Config.Labels "$NAME")" == local-development ]] \
     || die "container $NAME has no $LABEL label; refusing to use it"
-  local mount port
+  local mount port grpc
   mount="$(docker container inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/weaviate"}}{{.Name}}{{end}}{{end}}' "$NAME")"
   [[ "$mount" == "$VOLUME" ]] || die "container $NAME does not store its data on volume $VOLUME; refusing to use it"
   port="$(docker port "$NAME" 8080/tcp 2>/dev/null | head -n1)"
   [[ "$port" == "127.0.0.1:$REST" ]] \
     || die "container $NAME publishes REST on '${port:-nothing}', not 127.0.0.1:$REST; run make dev-down, then make dev-up"
+  grpc="$(docker port "$NAME" 50051/tcp 2>/dev/null | head -n1)"
+  [[ "$grpc" == "127.0.0.1:$SEMANT_DEV_WEAVIATE_GRPC_PORT" ]] \
+    || die "container $NAME publishes gRPC on '${grpc:-nothing}', not 127.0.0.1:$SEMANT_DEV_WEAVIATE_GRPC_PORT; run make dev-down, then make dev-up"
 }
 
 start_weaviate() {
