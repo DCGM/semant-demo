@@ -172,3 +172,28 @@ async def test_reset_repeats_partial_batches_until_empty(
 
     assert (await chunks.aggregate.over_all(total_count=True)).total_count == 0
     assert len(calls) == len(corpus.chunks) + 1
+
+
+async def test_the_local_development_reset_refuses_a_test_store(seeded_store, weaviate_client, collection_names,
+                                                                corpus, tmp_path, monkeypatch):
+    """The persistent development tooling (#438) never drops a store it did not create."""
+    from tests import local_dev
+
+    class Unclosed:
+        collections = weaviate_client.collections
+
+        async def close(self):
+            pass
+
+    async def connect(profile):
+        return Unclosed()
+
+    monkeypatch.setattr(local_dev, "connect", connect)
+    before = set((await weaviate_client.collections.list_all(simple=True)).keys())
+
+    with pytest.raises(local_dev.Refused, match="without the local development marker"):
+        await local_dev.cmd_reset(local_dev.Profile(data_dir=tmp_path), yes=True)
+
+    assert set((await weaviate_client.collections.list_all(simple=True)).keys()) == before
+    chunks = weaviate_client.collections.get(collection_names.chunks_collection_name)
+    assert (await chunks.aggregate.over_all(total_count=True)).total_count == len(corpus.chunks)

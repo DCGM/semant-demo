@@ -28,9 +28,17 @@ async def _insert(client: WeaviateAsyncClient, collection: str, objects: list[Da
 
 
 async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus, token: str) -> None:
-    """Insert the corpus into the (already created, empty) application collections. The
-    spans go to the annotation tenants; the legacy ``Span`` collection stays empty."""
+    """Insert the corpus into the (already created, empty) application collections of a
+    test-owned store (``token``, verified first)."""
     await claim_store(client, token)
+    await insert_corpus(client, names, corpus)
+
+
+async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
+    """Insert the corpus into the (already created, empty) application collections. The
+    spans go to the annotation tenants; the legacy ``Span`` collection stays empty. The
+    caller has verified that it owns the store (tests: ``seed_weaviate``; the persistent
+    local development store: ``tests.local_dev``)."""
     users, collections, tags, chunks = corpus.users, corpus.collections, corpus.tags, corpus.chunks
 
     await _insert(client, names.user_collection_name, [

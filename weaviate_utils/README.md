@@ -4,6 +4,11 @@
 > before running them; never against a shared or production store without explicit authorization.
 
 ## Setup weaviate
+
+These instructions build a corpus database from prepared files. To run the application
+locally, use the seeded development environment instead (`make dev-up`,
+[DEVELOPMENT.md](../docs/DEVELOPMENT.md)); its Weaviate listens on port 8180 and is reset
+only with `make dev-reset`, never with these scripts.
 #### Connect
 To server with postgresql:
 ```
