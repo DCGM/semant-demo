@@ -301,7 +301,7 @@ import { storeToRefs } from 'pinia'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
-import { useApi } from 'src/shared/api'
+import { apiErrorMessage, useApi } from 'src/shared/api'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useTagsStore } from './tagsStore'
 import useAiAssistance, { largeRunWarning, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode } from './useAiAssistance'
@@ -498,6 +498,9 @@ async function resolveSuggestion(span: TagSpan, type: SpanType) {
   busyAutoSpanIds.value.add(span.id)
   try {
     await aiAssist.resolveAutoSpan(span, type)
+  } catch (e: unknown) {
+    const failure = type === SpanType.pos ? 'The suggestion could not be approved.' : 'The suggestion could not be rejected.'
+    $q.notify({ type: 'negative', message: await apiErrorMessage(e, failure) })
   } finally {
     busyAutoSpanIds.value.delete(span.id)
   }

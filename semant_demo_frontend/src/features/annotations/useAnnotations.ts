@@ -379,15 +379,26 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     }))
   }
 
-  /** Retag the span being edited. Returns whether it was retagged. */
+  /**
+   * Retag the span being edited. Returns whether it was retagged. A failed retag restores the
+   * selection's previous tag, unless the user has moved on to another selection meanwhile.
+   */
   const updateSpanTag = async (tagId: string): Promise<boolean> => {
     const sel = selection.value
     if (!sel?.editingSpanId || saving.value) return false
 
     // Update visual highlight immediately
+    const isCurrent = selectionGuard.capture()
     selection.value = { ...sel, tagId }
 
-    return applyToSelection(() => store.updateSpan(sel.editingSpanId!, sel.chunkId, { tagId }))
+    try {
+      return await applyToSelection(() => store.updateSpan(sel.editingSpanId!, sel.chunkId, { tagId }))
+    } catch (err) {
+      if (isCurrent() && selection.value?.tagId === tagId) {
+        selection.value = { ...selection.value, tagId: sel.tagId }
+      }
+      throw err
+    }
   }
 
   const updateSpanPosition = async () => {
