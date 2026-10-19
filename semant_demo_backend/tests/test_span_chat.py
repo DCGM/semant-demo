@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from semant_demo.adapters.sql.tenant_activity import NoTenantActivity
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import span_chat
 from semant_demo.features.annotations.schemas import DiscussSpanRequest, SpanType, Tag, TagSpan, AnnotationChunk
@@ -17,6 +18,7 @@ from tests.fakes import FakeStreamingChat
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
 COLLECTION, DOCUMENT, TAG = uuid4(), uuid4(), uuid4()
+OTHER_COLLECTION = uuid4()
 CHUNKS = [AnnotationChunk(id=uuid4(), document_id=DOCUMENT, order=i, text=t)
           for i, t in enumerate(["Before. ", "Jan Nov", "ák went home. ", "After."])]
 
@@ -33,22 +35,24 @@ class FakeStore:
         self.reads: list[str] = []
         self.collections = SimpleNamespace(read_access_record=self._access)
         self.tags = SimpleNamespace(read_collection_ids=self._tag_collections, read=self._tag)
-        self.spans = SimpleNamespace(read_refs=self._span_refs, read=self._span)
+        self.spans = SimpleNamespace(read_many=self._spans_of, read=self._span)
+        self.activity = NoTenantActivity()
         self.documents = SimpleNamespace(read_chunk_text=self._chunk, read=self._document,
                                          read_following_chunk_texts=self._following)
 
     async def _access(self, cid):
-        return (OWNER.id, {SHARED.id}) if cid == COLLECTION else None
+        return {COLLECTION: (OWNER.id, {SHARED.id}), OTHER_COLLECTION: (OWNER.id, set())}.get(cid)
 
     async def _tag_collections(self, ids):
         return {t: [COLLECTION] for t in ids if t == TAG}
 
-    async def _span_refs(self, ids):
-        return {i: ([TAG], [self.span.chunkId]) for i in ids if str(i) == self.span.id}
+    async def _spans_of(self, cid, ids):
+        # The span is stored in COLLECTION's tenant only.
+        return {i: self.span for i in ids if str(i) == self.span.id and cid == COLLECTION}
 
-    async def _span(self, span_id):
+    async def _span(self, cid, span_id):
         self.reads.append("span")
-        return self.span if str(span_id) == self.span.id else None
+        return self.span if str(span_id) == self.span.id and cid == COLLECTION else None
 
     async def _tag(self, tag_id):
         self.reads.append("tag")
@@ -70,7 +74,8 @@ class FakeStore:
 
 def request(stored: TagSpan, *messages: tuple[str, str]) -> DiscussSpanRequest:
     turns = messages or (("user", "Fits?"),)
-    return DiscussSpanRequest(span_id=stored.id, messages=[{"role": r, "content": c} for r, c in turns])
+    return DiscussSpanRequest(collection_id=str(COLLECTION), span_id=stored.id,
+                              messages=[{"role": r, "content": c} for r, c in turns])
 
 
 async def run(store, provider, user=OWNER, req=None, context_chars=5, history_limit=20) -> list[str]:
@@ -92,16 +97,29 @@ async def test_denied_discussion_reads_no_context_and_calls_no_provider(user, er
 
 async def test_unknown_span_is_not_found():
     store = FakeStore(span(0, 3))
-    req = DiscussSpanRequest(span_id=str(uuid4()), messages=[{"role": "user", "content": "?"}])
+    req = DiscussSpanRequest(collection_id=str(COLLECTION), span_id=str(uuid4()),
+                             messages=[{"role": "user", "content": "?"}])
 
     with pytest.raises(NotFoundError):
         await span_chat.prepare_discussion(store, OWNER, req, FakeStreamingChat(), context_chars=5, history_limit=20)
 
 
+async def test_span_named_with_another_readable_collection_is_not_found():
+    # The owner can read OTHER_COLLECTION too, but the span is not one of its spans.
+    store = FakeStore(span(0, 3))
+    req = DiscussSpanRequest(collection_id=str(OTHER_COLLECTION), span_id=store.span.id,
+                             messages=[{"role": "user", "content": "?"}])
+
+    with pytest.raises(NotFoundError):
+        await span_chat.prepare_discussion(store, OWNER, req, FakeStreamingChat(), context_chars=5, history_limit=20)
+    assert store.reads == []
+
+
 @pytest.mark.parametrize("messages", [(), (("user", "a"), ("assistant", "b"))])
 async def test_invalid_history_is_refused_before_access(messages):
     store = FakeStore(span(0, 3))
-    req = DiscussSpanRequest(span_id=store.span.id, messages=[{"role": r, "content": c} for r, c in messages])
+    req = DiscussSpanRequest(collection_id=str(COLLECTION), span_id=store.span.id,
+                             messages=[{"role": r, "content": c} for r, c in messages])
 
     with pytest.raises(InvalidRequestError):
         await span_chat.prepare_discussion(store, None, req, FakeStreamingChat(), context_chars=5, history_limit=20)

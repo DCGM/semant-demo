@@ -1,0 +1,17 @@
+# Contextual annotation vector (#328) with the Qwen embedder of the Qwen search vector
+# (#385): for instances whose SEARCH_VECTORS_CONFIG is search_vectors_qwen.yaml, where the
+# Gemma embedding service is stopped. Selected by
+# ANNOTATION_VECTOR_CONFIG=/app/semant_demo/configs/annotation_vector_qwen.yaml.
+# Fields and the meaning of `id`: annotation_vector.yaml.
+
+id: qwen3-embedding-0.6b-context-v1
+target_vector: contextual
+template: "{left}<<<{text}>>>{right}"
+embedding:
+  provider: openai
+  base_url: http://qwen-embedder:8000/v1
+  model: Qwen/Qwen3-Embedding-0.6B
+  # The query format of search_vectors_qwen.yaml; annotation contexts have no instruction.
+  query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+  document_prefix: ""
+  timeout: 36.0

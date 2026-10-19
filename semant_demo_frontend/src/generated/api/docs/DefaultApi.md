@@ -316,7 +316,7 @@ example().catch(console.error);
 
 Bulk Update Tag Spans
 
-Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to one collection the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated (&#x60;&#x60;update_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;).
+Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to &#x60;&#x60;collection_id&#x60;&#x60;, which the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated (&#x60;&#x60;update_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;).
 
 ### Example
 
@@ -1018,7 +1018,7 @@ example().catch(console.error);
 
 ## deleteTagSpanApiTagSpansSpanIdDelete
 
-> WriteResult deleteTagSpanApiTagSpansSpanIdDelete(spanId)
+> WriteResult deleteTagSpanApiTagSpansSpanIdDelete(spanId, collectionId)
 
 Delete Tag Span
 
@@ -1044,6 +1044,8 @@ async function example() {
   const body = {
     // string
     spanId: spanId_example,
+    // string | Collection of the span; a span of another collection is not found
+    collectionId: collectionId_example,
   } satisfies DeleteTagSpanApiTagSpansSpanIdDeleteRequest;
 
   try {
@@ -1064,6 +1066,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **spanId** | `string` |  | [Defaults to `undefined`] |
+| **collectionId** | `string` | Collection of the span; a span of another collection is not found | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -4096,7 +4099,7 @@ example().catch(console.error);
 
 ## updateTagSpanApiTagSpansSpanIdPatch
 
-> TagSpanWriteResult updateTagSpanApiTagSpansSpanIdPatch(spanId, patchSpan)
+> TagSpanWriteResult updateTagSpanApiTagSpansSpanIdPatch(spanId, collectionId, patchSpan)
 
 Update Tag Span
 
@@ -4122,6 +4125,8 @@ async function example() {
   const body = {
     // string
     spanId: spanId_example,
+    // string | Collection of the span; a span of another collection is not found
+    collectionId: collectionId_example,
     // PatchSpan
     patchSpan: ...,
   } satisfies UpdateTagSpanApiTagSpansSpanIdPatchRequest;
@@ -4144,6 +4149,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **spanId** | `string` |  | [Defaults to `undefined`] |
+| **collectionId** | `string` | Collection of the span; a span of another collection is not found | [Defaults to `undefined`] |
 | **patchSpan** | [PatchSpan](PatchSpan.md) |  | |
 
 ### Return type

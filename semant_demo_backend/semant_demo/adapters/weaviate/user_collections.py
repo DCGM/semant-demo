@@ -18,7 +18,6 @@ from semant_demo.core.errors import NotFoundError
 from semant_demo.features.user_collections.schemas import CollectionChunk, Collection, CollectionStats, PatchCollection, PostCollection
 from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
-from semant_demo.features.annotations.schemas import SpanType
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +60,12 @@ def to_chunk(obj, in_collection: bool) -> CollectionChunk:
 
 
 class UserCollectionRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames, spans):
         self.client = client
         self.collectionNames = collectionNames
         self.link = collectionNames.user_collection_link_name
+        self.spans = spans
+        """The ``SpanRepository``: statistics count, and deletion removes, the collection's tenant."""
 
     def _collections(self):
         return self.client.collections.get(self.collectionNames.user_collection_name)
@@ -74,9 +75,6 @@ class UserCollectionRepository:
 
     def _chunks(self):
         return self.client.collections.get(self.collectionNames.chunks_collection_name)
-
-    def _spans(self):
-        return self.client.collections.get(self.collectionNames.span_collection_name)
 
     async def _require(self, collection_id: UUID, properties: list[str] | None = None):
         obj = await self._collections().query.fetch_object_by_id(collection_id, return_properties=properties)
@@ -160,12 +158,12 @@ class UserCollectionRepository:
 
     async def delete(self, collection_id: UUID) -> None:
         """
-        Deletes the collection with its tags and their annotations, after removing all
+        Deletes the collection with its tags and its annotation tenant, after removing all
         chunk and document links. Raises ``NotFoundError`` for an unknown collection and
         ``IncompleteWriteError`` if a step fails.
         """
         await self._require(collection_id, [])
-        await delete_collection_cascade(self.client, self.collectionNames, collection_id)
+        await delete_collection_cascade(self.client, self.collectionNames, self.spans, collection_id)
 
     ###########
     # Sharing #
@@ -206,18 +204,13 @@ class UserCollectionRepository:
             return (await collection.aggregate.over_all(total_count=True, filters=filters)).total_count or 0
 
         tags = self.client.collections.get(names.tag_collection_name)
-        # One annotation = one approved span whose chunk and tag both belong to the collection.
-        spans_filters = (
-            Filter.by_ref("text_chunk").by_ref(names.user_collection_name).by_id().equal(collection_id)
-            & Filter.by_ref("tag").by_ref(names.user_collection_name).by_id().equal(collection_id)
-            & Filter.by_property("type").equal(SpanType.pos)
-        )
+        # One annotation = one approved span of the collection whose chunk belongs to it.
         return CollectionStats(
             collection_id=collection_id,
             documents_count=await count(self._documents(), Filter.by_ref("collection").by_id().equal(collection_id)),
             chunks_count=await count(self._chunks(), Filter.by_ref(self.link).by_id().equal(collection_id)),
             tags_count=await count(tags, Filter.by_ref("userCollection").by_id().equal(collection_id)),
-            annotations_count=await count(self._spans(), spans_filters),
+            annotations_count=await self.spans.count_approved(collection_id),
         )
 
     async def read_all_documents(self, collection_id: UUID) -> list[Document]:
@@ -305,28 +298,15 @@ class UserCollectionRepository:
     async def read_document_stats(self, collection_id: UUID, document_id: UUID) -> DocumentStats:
         """
         Per-document statistics within the collection: chunks in the collection, all
-        chunks, approved annotations whose chunk and tag belong to the collection, and the
+        chunks, approved annotations of the collection whose chunk belongs to it, and the
         number of distinct tags they use.
         """
-        names = self.collectionNames
-
         async def count(collection, filters) -> int:
             return (await collection.aggregate.over_all(filters=filters, total_count=True)).total_count or 0
 
         document_filter = Filter.by_ref("document").by_id().equal(document_id)
-        spans_filter = (
-            Filter.by_ref("text_chunk").by_ref("document").by_id().equal(document_id)
-            & Filter.by_ref("text_chunk").by_ref(self.link).by_id().equal(collection_id)
-            & Filter.by_ref("tag").by_ref(names.user_collection_name).by_id().equal(collection_id)
-            & Filter.by_property("type").equal(SpanType.pos)
-        )
-        annotations_count = await count(self._spans(), spans_filter)
-        distinct_tags: set[UUID] = set()
-        if annotations_count > 0:
-            spans = await fetch_all(self._spans(), filters=spans_filter, page_size=500, return_properties=[],
-                                    return_references=[QueryReference(link_on="tag")])
-            for span in spans:
-                distinct_tags |= _ref_ids(span, "tag")
+        annotations_count = await self.spans.count_approved(collection_id, document_id)
+        distinct_tags = await self.spans.approved_tag_ids(collection_id, document_id) if annotations_count else set()
 
         return DocumentStats(
             document_id=str(document_id),

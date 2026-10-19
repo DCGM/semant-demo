@@ -136,6 +136,182 @@ answers year-filtered searches with an error), and again after ingesting chunks 
 document years (for example after `metadata_sync`) until ingestion keeps the copy itself
 ([#313](https://github.com/DCGM/semant-demo/issues/313)).
 
+## Annotation migration (`annotation_migration`, #327)
+
+Copies the spans of the legacy single-tenant `Span` collection into the multi-tenant
+`Annotation` collection, one tenant per user collection, keeping every span's UUID, tag,
+anchor chunk, offsets, type and AI metadata ([DATABASE.md](DATABASE.md#collection-annotation-multi-tenant-327)).
+A release with #327 reads and writes **only** `Annotation`: deployed on a store that was not
+migrated, it shows no annotations and cannot save any (startup logs an error). The legacy
+collection is only read and stays unchanged for rollback.
+
+```bash
+python -m semant_demo.maintenance.annotation_migration backfill --state dry.json          # read-only
+python -m semant_demo.maintenance.annotation_migration backfill --state run.json --execute \
+  --confirm-endpoint HOST:PORT --offline-backup /path/of/the/copy    # or --backup-id BACKUP
+python -m semant_demo.maintenance.annotation_migration verify --report verify.json        # read-only
+```
+
+The dry run is the inventory: legacy and per-collection counts (`would_copy`,
+`anchor_not_in_collection`), skipped records by reason (no or several tag/chunk references —
+Weaviate 1.40 returns no reference to a deleted object, so spans of deleted tags or chunks
+appear here —, tags without exactly one collection, chunks without a document, unknown types,
+offsets that are not `0 <= start < end`) with their ids, and the tag inventory. Skipped spans
+are never assigned to a guessed collection; review them before the cutover. Their chunk tag
+references become unbacked and are then reported by `chunk_tag_audit`.
+
+`--execute` creates `Annotation` when missing and the tenants it needs, inserts only spans
+absent from their tenant (a differing copy is a reported `conflict`, never overwritten), saves
+its cursor after every batch and resumes from `STATE`; run the same command again after an
+interruption. `verify` compares every valid legacy span with its copy and lists the tenants'
+spans without a legacy original. The module docstring (`--help`) is the reference.
+
+### Cutover (production, test store)
+
+Needs explicit authorization for the store. The deployed Weaviate instances enable the
+`backup-filesystem` module (`--backup-id`); an offline copy of the data directory, or an
+existing backup recorded with `--offline-backup`, also qualifies. Production serves `Chunks`,
+`Tag`, `Documents`, `UserCollection` and `Span` as aliases of `*_test` collections: the
+backfill creates `Annotation` itself (no alias), with its `text_chunk` reference targeting the
+collection behind `Chunks`, since Weaviate refuses a reference to an alias.
+
+1. Before the pause, on the running store: `backfill --state dry.json` and
+   `chunk_tag_audit --report audit-before.json`. Review the skipped records, the tag inventory
+   and the counts; expect the pause to take about as long as the dry run plus writing (the
+   rehearsal wrote ~16,000 spans/s into existing tenants and created ~16 tenants/s).
+2. **Write pause:** stop the backend (`./update.sh app-down`, for the test store every app
+   instance that uses it: `test-main` and the PR previews). Topicer and maintenance commands
+   must not write either. The release with #327 must not be started before the backfill
+   finished: until then it cannot read annotations, and once `Annotation` exists it writes there.
+3. Back up: stop Weaviate (`./update.sh database-down`), copy its data directory, start it again.
+4. With the new release's code (its image or a checkout with its `.venv`) and `WEAVIATE_*` set
+   to the store: `backfill --state run.json --execute --confirm-endpoint HOST:PORT
+   --offline-backup PATH`, until it exits 0 (`failed` and `conflict` empty).
+5. `verify --report verify.json` must report no `missing`, `different`, `target_only` or
+   `orphan_tenants`; `chunk_tag_audit --report audit-after.json` must report what
+   `audit-before.json` reported plus the references of skipped spans.
+6. Deploy and start the new release. Check the document view (annotations, AI suggestions,
+   approve/reject), collection statistics, tag-filtered search and a span discussion.
+7. Keep `Span`, the copy, the state, the reports and the audits; record counts, the copy
+   and the outcome on the issue.
+
+**Rollback.** Before any annotation was written in the new store, redeploy the previous
+release: it reads `Span`, which the migration did not change (`Annotation` can stay; the old
+release ignores it). After writes in the new store, switching back would lose them: run
+`verify --report`, which lists the spans created (`target_only`), changed (`different`) and
+deleted (`missing`) since the cutover, and reconcile them into `Span` in a separately reviewed
+step (no tool is provided), or roll forward. The chunk tag references follow the new store's
+writes, so run `chunk_tag_audit` against whichever store is current. Restoring the offline
+copy also returns to the pre-migration state, losing every later write in all collections.
+
+**Rehearsed** on disposable Weaviate 1.40.1 (2026-10-18; `tests/integration/test_annotation_migration.py`
+and a command-line run on a bind-mounted store): dry run, refusal without a backup, execute,
+idempotent rerun, interrupted and resumed backfill, conflicts, verify before and after
+application writes, an offline copy of a migrated store with active and inactive tenants
+(restored with their statuses and spans), and the pre-migration copy as rollback target. Not
+rehearsed at production size; the production span count and duration are unknown until the
+dry run.
+
+## Annotation derived data (`annotation_enrichment`, #328)
+
+Span creates and offset changes store the span's text, context, positions and contextual
+vector ([DATABASE.md](DATABASE.md#collection-annotation-multi-tenant-327)) once the
+`Annotation` collection has the derived properties. Spans saved before, spans whose
+derivation or embedding failed, and vectors of another `ANNOTATION_VECTOR_CONFIG` `id` are
+completed by this explicit command.
+
+```bash
+python -m semant_demo.maintenance.annotation_enrichment add-schema                      # dry run: what is missing
+python -m semant_demo.maintenance.annotation_enrichment add-schema --execute --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.annotation_enrichment status [--collection ID ...]     # read-only counts
+python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--collection ID ...] \
+  [--no-vectors] --execute --confirm-endpoint HOST:PORT                                 # without --execute: status
+```
+
+- `add-schema` adds the missing derived properties and the named vector (`target_vector` of
+  the configured vector) to the existing collection; it changes no object and is idempotent.
+  Restart the backend afterwards: it decides at startup what it stores and logs an error while
+  properties or the vector are missing.
+- `status` counts each tenant's spans by text state (`current`, `outdated` derivation policy,
+  `missing`, `failed`, `invalid`) and vector state (`current`, `pending`, `failed`, `stale`),
+  and `incomplete` (what a backfill would write). Reading a tenant activates it.
+- `backfill` writes only derived properties of at most `--limit` incomplete spans, never offsets,
+  chunk, tag, type or revision, and deletes nothing. It reports `processed`, `text_written`,
+  `vector_written`, `not_processed` (incomplete spans skipped because of `--limit`),
+  `remaining_incomplete` (every span still incomplete for the configured vector when the run
+  ended, read again afterwards: not processed ones, failed steps and, with `--no-vectors`, vectors
+  still to embed) and `failed`. Text re-derived under a new derivation policy marks its vector
+  `pending`, so `--no-vectors` never leaves an old vector counted as current. Each document is read
+  once per tenant; each vector is one call to the configured embedding provider (with
+  `--no-vectors`, none). `invalid` spans (offsets that no longer describe the document's text,
+  or whose chunk is gone) are recorded once and left for review, not repaired. Exits 1 when
+  steps failed (`failed`); run it again to retry.
+- The revision check before each backfill write is atomic only within the command's own process,
+  not against a running backend (`superseded` counts only the changes it happens to see). **Run
+  `backfill` only while nothing else writes the annotation store.**
+
+Rollout on an existing store (needs authorization for that store). The application stays
+**stopped for the whole procedure**:
+
+1. Stop every writer of the target annotation store: all backend instances (also other app or
+   preview instances configured for the same Weaviate), Topicer-driven suggestion runs and any
+   other background job or script. Confirm that none is running.
+2. Back up the store (`backup-filesystem` backup or an offline copy, [safety rules](#safety-rules-all-commands))
+   and record the backup id or path.
+3. `add-schema` (dry run), then `add-schema --execute --confirm-endpoint HOST:PORT` if anything is
+   missing.
+4. `status`, then `backfill --limit N --execute --confirm-endpoint HOST:PORT` **with vectors**
+   (not `--no-vectors`) in bounded runs until it reports `remaining_incomplete: 0` and no
+   `failed`; retry failed steps by running it again.
+5. Verify with `status`: `incomplete: 0` for every tenant; review any `invalid` spans separately.
+6. Only then start the new application release.
+
+The same procedure applies to a later change of `DERIVATION_VERSION` or of the vector
+configuration `id`: readers treat older derived data as absent until the backfill has completed.
+Rolling back the release needs no data change (older releases ignore the
+derived properties). Rehearsed only on disposable Weaviate 1.40.1
+(`tests/integration/test_annotation_enrichment.py`); production counts and duration are unknown
+until `status` runs there.
+
+## Annotation tenants (`annotation_tenants`, #327)
+
+Lists the annotation tenants with their status and last recorded use, and deactivates idle
+ones. An inactive tenant keeps its data on disk; the next read or write activates it again.
+
+```bash
+python -m semant_demo.maintenance.annotation_tenants status [--counts]       # read-only
+python -m semant_demo.maintenance.annotation_tenants deactivate-idle         # dry run
+python -m semant_demo.maintenance.annotation_tenants deactivate-idle --execute --confirm-endpoint HOST:PORT
+```
+
+The backend and the maintenance commands record each tenant use in the SQL table
+`annotation_tenant_activity`, so the command needs the application's `SQL_DB_URL` (the same
+SQLite file as the backend). `--execute` is refused unless
+`ANNOTATION_TENANT_DEACTIVATION_ENABLED=true` and the idle time
+(`ANNOTATION_TENANT_IDLE_SECONDS`, default 3600, or `--idle-seconds`) is at least three
+`ANNOTATION_TENANT_TOUCH_SECONDS`. A tenant without a record gets one and is deactivated only a
+full idle time later; each candidate's record is read again right before it is deactivated; a
+request that starts in that instant can still meet a deactivating tenant (it fails or waits for
+the activation and can be repeated). `status --counts` activates every tenant it counts.
+
+**Keep deactivation disabled** until backup and restore of active and inactive tenants have
+been rehearsed on the deployed store's version and a measurement shows a benefit. Rehearsed on
+disposable Weaviate 1.40.1 (2026-10-18, 32 cores; `tests/integration/test_annotation_tenants.py`
+and the `benchmark` test `test_annotation_tenant_rehearsal.py`, `-m benchmark`):
+
+- filesystem backup and restore keep active and inactive tenants with their spans and
+  statuses (1,007 tenants, 953 inactive, 42,007 spans: backup 2.0 s, restore 1.0 s); an
+  offline data-directory copy does too (above);
+- reads and writes activate an inactive tenant: first read 10–21 ms for tenants of 0 to 30,000
+  spans, 50 concurrent activations of small tenants 196 ms median, 368 ms max; deactivation
+  15–98 ms;
+- creating a tenant takes 60–150 ms (~16/s in batches of 100);
+- container memory grew from ~120 MiB (5 tenants, 41,000 spans) to ~357 MiB with 1,000 more
+  small active tenants and did **not** decrease within 20 s after deactivating them.
+
+These are single-machine measurements, not capacity limits; no claim is made for many more
+tenants (for example 100,000) from them.
+
 ## Practising on a copy of the development snapshot
 
 Never run a writing step against the only copy of `local_data/weaviate_semant_test/`.

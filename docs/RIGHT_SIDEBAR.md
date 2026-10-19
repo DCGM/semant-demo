@@ -244,15 +244,15 @@ window and the target (extending the window at whichever edge is closer, or fill
 partial-membership gap via the existing `loadGapAll` when the target falls inside the
 displayed range), never the rest of the document. Only then does it call its own
 `scrollToChunk(chunkId)` — a whole-chunk sibling of `scrollToSpan` that only scrolls, never
-touches `annotations`/`tagEditing`/`quickTagId` state, so in-progress tag editing is left
+touches `annotations`/`tagEditing` state, so in-progress tag editing is left
 exactly as it was. If the chunk still can't be found afterwards (a malformed citation, or
 `order` missing), `scrollToChunk` is a silent, documented no-op — a narrow fallback, not the
 primary behavior.
 
 Interacting with the right sidebar at all — switching to the Summary panel, clicking
-*Summarize Document*, or clicking a citation — must not discard an open annotation popover or
-an in-progress quick-tag selection either (#358 review): `DocumentReaderPage.vue`'s
-`onClickOutside` (the handler that ends quick-tagging on a click outside the editing context)
+*Summarize Document*, or clicking a citation — must not discard an open annotation popover
+either (#358 review): `DocumentReaderPage.vue`'s `onClickOutside` (the handler that dismisses
+the popover on a click outside the editing context)
 exempts any click inside `.q-drawer--right`, the same way it already exempts the popover, the
 document text and a Quasar dialog opened from the popover. This covers every panel (Tags, AI
 assist, Document, Summary), not just Summary, since switching to any of them is equally not

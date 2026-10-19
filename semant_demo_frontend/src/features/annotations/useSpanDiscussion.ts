@@ -22,6 +22,8 @@ export interface SpanChatMessage {
 }
 
 export interface SpanChatStartArgs {
+  /** The span's collection: the backend finds the span only within it. */
+  collectionId: string
   spanId: string
 }
 
@@ -87,7 +89,8 @@ export function useSpanDiscussion() {
     activeAbort = abort
 
     try {
-      await postNdjson('/ai/discuss_span', { span_id: context.value.spanId, messages: history }, {
+      const body = { collection_id: context.value.collectionId, span_id: context.value.spanId, messages: history }
+      await postNdjson('/ai/discuss_span', body, {
         signal: abort.signal,
         onValue: (value) => {
           if (!isCurrentTurn()) return

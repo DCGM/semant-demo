@@ -50,7 +50,9 @@ vi.mock('src/features/annotations/useTagSpansRepository', () => ({
     getByChunkIdsInCollection: (chunkIds: string[], collectionId: string) => request(`spans:${collectionId}`),
     getByChunkIdInCollection: (chunkId: string, collectionId: string) => request(`span:${collectionId}:${chunkId}`),
     create: () => request('create'),
-    delete: () => request('delete')
+    update: (spanId: string, collectionId: string) => request(`update:${collectionId}:${spanId}`),
+    bulkUpdate: (spanIds: string[], collectionId: string) => request(`bulk:${collectionId}:${spanIds.join(',')}`),
+    delete: (spanId: string, collectionId: string) => request(`delete:${collectionId}:${spanId}`)
   })
 }))
 vi.mock('src/features/annotations/useTagsRepository', () => ({
@@ -140,6 +142,34 @@ describe('span store scope', () => {
     await saving
 
     expect(store.spansByChunkId).toEqual({})
+  })
+
+  it('addresses span changes to the collection of the loaded spans', async () => {
+    // The backend finds a span only within its own collection (annotation tenants, #327).
+    const store = useTagSpansStore()
+    const loading = store.fetchSpansForChunksInCollection(['c1'], 'B')
+    answer('spans:B', { c1: [span('s1', 'c1')] })
+    await loading
+
+    const updating = store.updateSpan('s1', 'c1', { type: 'neg' })
+    answer('update:B:s1', { ...span('s1', 'c1'), ...complete })
+    await updating
+    const bulk = store.bulkUpdateSpans(['s1'], { type: 'pos' })
+    answer('bulk:B:s1', { ...complete, spans: [span('s1', 'c1')] })
+    await bulk
+    const deleting = store.deleteSpan('s1', 'c1')
+    answer('delete:B:s1', complete)
+    await deleting
+
+    expect(store.spansByChunkId).toEqual({ c1: [] })
+  })
+
+  it('refuses a span change when no collection is loaded', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const store = useTagSpansStore()
+
+    await expect(store.deleteSpan('s1', 'c1')).rejects.toThrow('No collection')
+    expect(pending.size).toBe(0)
   })
 })
 

@@ -1,12 +1,13 @@
 
 # BulkUpdateSpansRequest
 
-Request body for bulk-applying the same :class:`PatchSpan` patch to many spans in a single round-trip. Used by the AI-assist \"Approve / Reject all selected\" action so the frontend doesn\'t have to fan out N PATCH calls.
+Request body for bulk-applying the same :class:`PatchSpan` patch to many spans in a single round-trip. Used by the AI-assist \"Approve / Reject all selected\" action so the frontend doesn\'t have to fan out N PATCH calls. All spans must belong to ``collection_id``.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
+`collectionId` | string
 `spanIds` | Array&lt;string&gt;
 `update` | [PatchSpan](PatchSpan.md)
 
@@ -17,6 +18,7 @@ import type { BulkUpdateSpansRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
+  "collectionId": null,
   "spanIds": null,
   "update": null,
 } satisfies BulkUpdateSpansRequest

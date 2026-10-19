@@ -1,8 +1,10 @@
 """Annotations service (features/annotations/service.py) called directly, with in-memory fakes.
 
 The service enforces access, validates offsets and orders the span write before the chunk
-tag re-derivation; denied or invalid calls must not reach any write. Storage behavior is
-covered against real Weaviate in tests/integration/test_annotations.py.
+tag re-derivation; denied or invalid calls must not reach any write. Spans are kept per
+collection like the annotation tenants (#327): a span id is only found in its own
+collection. Storage behavior is covered against real Weaviate in
+tests/integration/test_annotations.py and test_annotation_tenants.py.
 """
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -21,6 +23,8 @@ from semant_demo.core.outcomes import StepFailure
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
 COLLECTION, DOCUMENT = uuid4(), uuid4()
+# Another collection of the same owner, with a span of its own.
+SECOND_COLLECTION, SECOND_TAG, SPAN_C = uuid4(), uuid4(), uuid4()
 CHUNK_1, CHUNK_2, OUTSIDE_CHUNK = uuid4(), uuid4(), uuid4()
 TAG, OTHER_TAG = uuid4(), uuid4()
 SPAN_A, SPAN_B = uuid4(), uuid4()
@@ -29,7 +33,7 @@ TEXTS = {CHUNK_1: (0, "Jan Novák"), CHUNK_2: (1, " a Brno 😀")}  # 9 and 10 U
 
 class FakeCollections:
     async def read_access_record(self, cid):
-        return (OWNER.id, {SHARED.id}) if cid == COLLECTION else None
+        return {COLLECTION: (OWNER.id, {SHARED.id}), SECOND_COLLECTION: (OWNER.id, set())}.get(cid)
 
     async def chunk_ids_in_collection(self, ids, cid, document=None):
         return {i for i in ids if i in TEXTS} if cid == COLLECTION else set()
@@ -52,7 +56,8 @@ class Recorder:
 
 class FakeTags(Recorder):
     async def read_collection_ids(self, ids):
-        return {t: [COLLECTION] for t in ids if t in (TAG, OTHER_TAG)}
+        owners = {TAG: [COLLECTION], OTHER_TAG: [COLLECTION], SECOND_TAG: [SECOND_COLLECTION]}
+        return {t: owners[t] for t in ids if t in owners}
 
     async def find_same(self, cid, tag):
         return None
@@ -73,50 +78,78 @@ class FakeTags(Recorder):
     async def update(self, tag_id, patch):
         await self._write("update_tag", tag_id)
 
-    async def delete(self, tag_id):
-        await self._write("delete_tag", tag_id)
+    async def delete(self, tag_id, cid):
+        await self._write("delete_tag", tag_id, cid)
 
 
 class FakeSpans(Recorder):
     def __init__(self, writes):
         super().__init__(writes)
         self.stored = {
-            SPAN_A: TagSpan(id=str(SPAN_A), chunkId=str(CHUNK_1), tagId=str(TAG), start=0, end=3,
-                            type=SpanType.auto),
-            # Stored with offsets that are no longer valid (before validation existed).
-            SPAN_B: TagSpan(id=str(SPAN_B), chunkId=str(CHUNK_2), tagId=str(TAG), start=5, end=99,
-                            type=SpanType.auto),
+            COLLECTION: {
+                SPAN_A: TagSpan(id=str(SPAN_A), chunkId=str(CHUNK_1), tagId=str(TAG), start=0, end=3,
+                                type=SpanType.auto),
+                # Stored with offsets that are no longer valid (before validation existed).
+                SPAN_B: TagSpan(id=str(SPAN_B), chunkId=str(CHUNK_2), tagId=str(TAG), start=5, end=99,
+                                type=SpanType.auto),
+            },
+            SECOND_COLLECTION: {
+                SPAN_C: TagSpan(id=str(SPAN_C), chunkId=str(CHUNK_1), tagId=str(SECOND_TAG), start=0, end=3,
+                                type=SpanType.auto),
+            },
         }
+        self.inserted_documents = []
 
-    async def read_refs(self, ids):
-        return {i: ([UUID(self.stored[i].tagId)], [UUID(self.stored[i].chunkId)]) for i in ids if i in self.stored}
+    def _tenant(self, cid):
+        return self.stored.get(cid, {})
 
-    async def read(self, span_id):
-        return self.stored.get(span_id)
+    async def read_many(self, cid, ids):
+        return {i: self._tenant(cid)[i] for i in ids if i in self._tenant(cid)}
 
-    async def insert(self, span):
+    async def read(self, cid, span_id):
+        return self._tenant(cid).get(span_id)
+
+    async def read_by_collection(self, cid, chunk_id=None):
+        return list(self._tenant(cid).values())
+
+    async def read_by_chunks(self, cid, chunk_ids):
+        return {str(c): [s for s in self._tenant(cid).values() if s.chunkId == str(c)] for c in chunk_ids}
+
+    async def insert(self, cid, span, document_id, derived=None):
         await self._write("insert_span", span.chunkId)
+        self.inserted_documents.append((cid, document_id))
         return UUID(int=2)
 
-    async def update(self, span_id, patch):
+    async def update(self, cid, span_id, patch, derived=None):
         await self._write("update_span", span_id)
-        self.stored[span_id] = self.stored[span_id].model_copy(update=patch.model_dump(exclude_none=True))
+        tenant = self.stored[cid]
+        tenant[span_id] = tenant[span_id].model_copy(update=patch.model_dump(exclude_none=True))
 
-    async def delete(self, span_id):
+    async def delete(self, cid, span_id):
         await self._write("delete_span", span_id)
 
     async def list_in_document(self, cid, document, tags, span_type):
-        return {i: {ChunkTag.of(s.chunkId, s.tagId)} for i, s in self.stored.items() if s.type == span_type}
+        return {i: {ChunkTag.of(s.chunkId, s.tagId)} for i, s in self._tenant(cid).items() if s.type == span_type}
 
 
 class FakeChunkTags:
     def __init__(self, writes):
         self.writes = writes
         self.failures: list[StepFailure] = []
+        self.collections = []
 
-    async def sync(self, pairs):
+    async def sync(self, cid, pairs):
         self.writes.append(("sync", frozenset(pairs)))
+        self.collections.append(cid)
         return list(self.failures)
+
+
+class FakeActivity:
+    def __init__(self):
+        self.touched = []
+
+    async def touch(self, cid, *, force=False):
+        self.touched.append(cid)
 
 
 class FakeDocuments:
@@ -142,7 +175,7 @@ def writes():
 @pytest.fixture
 def store(writes):
     return AnnotationStore(collections=FakeCollections(), tags=FakeTags(writes), spans=FakeSpans(writes),
-                           chunk_tags=FakeChunkTags(writes), documents=FakeDocuments())
+                           chunk_tags=FakeChunkTags(writes), documents=FakeDocuments(), activity=FakeActivity())
 
 
 def post_span(start=0, end=3, chunk=CHUNK_1, **kw):
@@ -156,9 +189,9 @@ WRITES = [
     lambda s, u: service.update_tag(s, u, TAG, PatchTag(name="x")),
     lambda s, u: service.delete_tag(s, u, TAG),
     lambda s, u: service.create_span(s, u, post_span()),
-    lambda s, u: service.update_span(s, u, SPAN_A, PatchSpan(type=SpanType.pos)),
-    lambda s, u: service.bulk_update_spans(s, u, [SPAN_A, SPAN_B], PatchSpan(type=SpanType.neg)),
-    lambda s, u: service.delete_span(s, u, SPAN_A),
+    lambda s, u: service.update_span(s, u, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos)),
+    lambda s, u: service.bulk_update_spans(s, u, COLLECTION, [SPAN_A, SPAN_B], PatchSpan(type=SpanType.neg)),
+    lambda s, u: service.delete_span(s, u, COLLECTION, SPAN_A),
     lambda s, u: service.delete_approved_spans_in_document(s, u, COLLECTION, DOCUMENT, [TAG]),
     lambda s, u: service.delete_suggestions_in_document(s, u, COLLECTION, DOCUMENT, [TAG]),
 ]
@@ -176,6 +209,56 @@ async def test_users_without_access_reach_no_write(call, user, error, store, wri
     with pytest.raises(error):
         await call(store, user)
     assert writes == []
+    assert store.activity.touched == []
+
+
+@pytest.mark.parametrize("call", WRITES[2:] + READS[1:])
+async def test_each_use_of_a_tenant_is_recorded_for_its_collection(call, store):
+    await call(store, OWNER)
+    assert set(store.activity.touched) == {COLLECTION}
+
+
+# ── Tenant isolation: a span id is found only in its own collection ───────
+
+SECOND_COLLECTION_SPAN_CALLS = [
+    lambda s: service.update_span(s, OWNER, COLLECTION, SPAN_C, PatchSpan(type=SpanType.pos)),
+    lambda s: service.delete_span(s, OWNER, COLLECTION, SPAN_C),
+    # A mixed batch: the whole batch is refused before any write.
+    lambda s: service.bulk_update_spans(s, OWNER, COLLECTION, [SPAN_A, SPAN_C], PatchSpan(type=SpanType.neg)),
+]
+
+
+@pytest.mark.parametrize("call", SECOND_COLLECTION_SPAN_CALLS)
+async def test_a_span_of_another_collection_is_not_found_even_for_its_owner(call, store, writes):
+    with pytest.raises(NotFoundError):
+        await call(store)
+    assert writes == []
+
+
+async def test_a_span_is_changed_through_its_own_collection(store, writes):
+    result = await service.update_span(store, OWNER, SECOND_COLLECTION, SPAN_C, PatchSpan(type=SpanType.pos))
+
+    assert result.type == SpanType.pos
+    assert store.chunk_tags.collections == [SECOND_COLLECTION]
+
+
+async def test_bulk_results_follow_the_request_order(store):
+    result = await service.bulk_update_spans(store, OWNER, COLLECTION, [SPAN_B, SPAN_A], PatchSpan(type=SpanType.pos))
+
+    assert result.succeeded == [str(SPAN_B), str(SPAN_A)]
+
+
+async def test_retagging_to_a_tag_of_another_collection_is_not_found(store, writes):
+    with pytest.raises(NotFoundError):
+        await service.update_span(store, OWNER, COLLECTION, SPAN_A, PatchSpan(tagId=str(SECOND_TAG)))
+    assert writes == []
+
+
+async def test_a_new_span_is_stored_in_its_tags_collection_with_its_document(store):
+    await service.create_span(store, OWNER, post_span())
+
+    assert store.spans.inserted_documents == [(COLLECTION, DOCUMENT)]
+    assert store.chunk_tags.collections == [COLLECTION]
 
 
 @pytest.mark.parametrize("call", WRITES)
@@ -298,25 +381,25 @@ async def test_span_on_a_chunk_outside_the_collection_is_not_found(store, writes
 
 async def test_empty_patch_is_rejected(store, writes):
     with pytest.raises(InvalidRequestError):
-        await service.update_span(store, OWNER, SPAN_A, PatchSpan())
+        await service.update_span(store, OWNER, COLLECTION, SPAN_A, PatchSpan())
     assert writes == []
 
 
 async def test_approving_a_span_with_old_invalid_offsets_works(store):
     # Offsets are validated only when they change.
-    result = await service.update_span(store, OWNER, SPAN_B, PatchSpan(type=SpanType.pos))
+    result = await service.update_span(store, OWNER, COLLECTION, SPAN_B, PatchSpan(type=SpanType.pos))
 
     assert result.type == SpanType.pos and result.end == 99
 
 
 async def test_invalid_offset_patch_writes_nothing(store, writes):
     with pytest.raises(InvalidSpanRange):
-        await service.update_span(store, OWNER, SPAN_A, PatchSpan(end=50))
+        await service.update_span(store, OWNER, COLLECTION, SPAN_A, PatchSpan(end=50))
     assert writes == []
 
 
 async def test_tag_change_syncs_the_old_and_the_new_pair(store, writes):
-    await service.update_span(store, OWNER, SPAN_A, PatchSpan(tagId=str(OTHER_TAG)))
+    await service.update_span(store, OWNER, COLLECTION, SPAN_A, PatchSpan(tagId=str(OTHER_TAG)))
 
     assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_1, OTHER_TAG)}))
 
@@ -324,7 +407,7 @@ async def test_tag_change_syncs_the_old_and_the_new_pair(store, writes):
 async def test_bulk_update_keeps_completed_updates_and_reports_failed_ones(store, writes):
     store.spans.fail[f"update_span:{SPAN_B}"] = RuntimeError("boom")
 
-    result = await service.bulk_update_spans(store, OWNER, [SPAN_A, SPAN_B], PatchSpan(type=SpanType.pos))
+    result = await service.bulk_update_spans(store, OWNER, COLLECTION, [SPAN_A, SPAN_B], PatchSpan(type=SpanType.pos))
 
     assert result.outcome == "partial"
     assert result.succeeded == [str(SPAN_A)] == [s.id for s in result.spans]
@@ -337,7 +420,7 @@ async def test_bulk_update_keeps_completed_updates_and_reports_failed_ones(store
 async def test_bulk_offset_patch_is_validated_for_every_span_before_writing(store, writes):
     # Valid for SPAN_A (chunk 1, 9 units + 10 following), past the end for SPAN_B (chunk 2).
     with pytest.raises(InvalidSpanRange):
-        await service.bulk_update_spans(store, OWNER, [SPAN_A, SPAN_B], PatchSpan(end=12))
+        await service.bulk_update_spans(store, OWNER, COLLECTION, [SPAN_A, SPAN_B], PatchSpan(end=12))
     assert writes == []
 
 

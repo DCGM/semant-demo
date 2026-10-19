@@ -92,12 +92,69 @@ class PatchSpan(BaseModel):
     tagId: str | None = None
 
 
+class EnrichmentStatus(str, Enum):
+    """State of a span's derived text, context and positions (#328)."""
+    ready = "ready"
+    failed = "failed"
+    """Derivation was attempted and could not read the source text; retrying may succeed."""
+    invalid = "invalid"
+    """The stored offsets do not describe the document's text (e.g. older data); only an
+    edit of the span can fix it."""
+
+
+class VectorStatus(str, Enum):
+    """State of a span's contextual vector (#328)."""
+    pending = "pending"
+    """No vector for the current revision yet (none configured, or not attempted)."""
+    ready = "ready"
+    failed = "failed"
+    """Embedding or storing the vector failed; the backfill or saving again retries."""
+
+
+class AnnotationRow(BaseModel):
+    """Internal, not an HTTP model yet: a span with its derived fields (#328), as read for
+    concordance (KWIC) rows and semantic search, without reading its source chunks.
+
+    Stored values, including derived data of an older revision; the Annotations service
+    hides derived fields that are not current (``service.list_annotation_rows``)."""
+    id: UUID
+    chunkId: UUID | None = None
+    tagId: UUID | None = None
+    documentId: UUID | None = None
+    start: int | None = None
+    end: int | None = None
+    type: SpanType | None = None
+    revision: int | None = None
+    """Boundary changes counted from creation (1); ``None`` for spans saved before #328 (0)."""
+    text: str | None = None
+    leftContext: str | None = None
+    rightContext: str | None = None
+    positionSegment: int | None = None
+    documentStartChar: int | None = None
+    documentEndChar: int | None = None
+    documentStartWord: int | None = None
+    documentEndWord: int | None = None
+    enrichmentStatus: EnrichmentStatus | None = None
+    enrichedRevision: int | None = None
+    derivationVersion: int | None = None
+    vectorStatus: VectorStatus | None = None
+    vectorRevision: int | None = None
+    vectorConfig: str | None = None
+    distance: float | None = None
+    """Vector distance, for semantic search results."""
+    documentTitle: str | None = None
+    documentYear: int | None = None
+    """Joined from the document per page of rows (not copied onto annotations)."""
+
+
 class TagSpanWriteResult(TagSpan, WriteResult):
     """
     A created or updated span with the outcome of the write. ``succeeded`` holds the span
-    id. ``failed`` lists chunk tag updates (``update_chunk_tags``) that did not complete:
-    the span is saved, but tag-filtered search does not reflect it until the span is
-    saved again.
+    id. ``failed`` lists the later steps that did not complete; the span is saved either
+    way, and saving it again retries them: ``update_chunk_tags`` (tag-filtered search
+    does not reflect the span), ``derive_annotation`` (its stored text, context and
+    positions could not be updated) and ``embed_annotation`` (its contextual vector could
+    not be computed or stored; semantic search leaves the span out).
     """
 
 
@@ -106,7 +163,9 @@ class BulkUpdateSpansRequest(BaseModel):
     Request body for bulk-applying the same :class:`PatchSpan` patch to many
     spans in a single round-trip. Used by the AI-assist "Approve / Reject all
     selected" action so the frontend doesn't have to fan out N PATCH calls.
+    All spans must belong to ``collection_id``.
     """
+    collection_id: str
     span_ids: list[str]
     update: PatchSpan
 
@@ -194,7 +253,8 @@ class SuggestSpansChunkResult(BaseModel):
     error: str | None = None
     """Set if processing this chunk failed, or if some proposals could not be saved
     (then ``spans`` holds the ones that were saved and ``unsaved`` counts the rest), or
-    if the chunk tag of a saved span (used by tag-filtered search) could not be updated."""
+    if the chunk tag of a saved span (used by tag-filtered search) or its derived text or
+    vector could not be updated."""
 
     unsaved: int = 0
     """Proposals returned by the provider that were not saved: storage failures or
@@ -248,6 +308,8 @@ class SuggestSpansRunEnd(BaseModel):
     """Valid proposals whose storage write failed (a timed-out write may have landed)."""
     search_tag_failures: int = 0
     """Saved spans whose chunk tag (tag-filtered search) could not be updated."""
+    enrichment_failures: int = 0
+    """Saved spans whose derived text or contextual vector (#328) could not be stored."""
     provider_failures: int = 0
     """Provider calls that failed (their chunks or tags got no proposals)."""
     error: str | None = None
@@ -294,8 +356,10 @@ class DiscussSpanRequest(BaseModel):
 
     The frontend sends the full chat history each call (the new user turn is
     the last message). The backend resolves span / document / tag / chunk
-    context server-side and prepends it as a system message.
+    context server-side and prepends it as a system message. The span must belong to
+    ``collection_id``.
     """
+    collection_id: str
     span_id: str
     messages: list[SpanChatMessage]
 

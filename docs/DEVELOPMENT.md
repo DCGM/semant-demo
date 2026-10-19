@@ -47,6 +47,30 @@ For normal development:
 
 The local snapshot is intended for realistic manual and exploratory development.
 
+A snapshot taken before #327 holds its annotations only in the legacy `Span` collection; the
+backend then shows none and logs an error at startup. Migrate the local copy once, with the
+local Weaviate running (the data directory copy you started from is the backup):
+
+```bash
+cd semant_demo_backend
+../.venv/bin/python -m semant_demo.maintenance.annotation_migration backfill --state local-migration.json \
+  --execute --confirm-endpoint localhost:8080 --offline-backup "the original snapshot"
+../.venv/bin/python -m semant_demo.maintenance.annotation_migration verify
+```
+
+See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-migration-annotation_migration-327).
+
+An `Annotation` collection created before #328 lacks the derived annotation properties: the
+backend logs an error and stores no annotation text, positions or vectors. Add them to the local
+copy and derive the existing spans (`--no-vectors` when no embedding service is running locally;
+set `ANNOTATION_VECTOR_CONFIG=` to an empty value to disable vectors in the backend too):
+
+```bash
+../.venv/bin/python -m semant_demo.maintenance.annotation_enrichment add-schema --execute --confirm-endpoint localhost:8080
+../.venv/bin/python -m semant_demo.maintenance.annotation_enrichment backfill --limit 100000 --no-vectors \
+  --execute --confirm-endpoint localhost:8080
+```
+
 Automated fast tests must not depend on this snapshot. Automated integration tests should create and clean up test-owned data, as described in [ADR 0005](adr/0005-testing-contract.md).
 
 ## 3. Start local Weaviate
@@ -330,6 +354,7 @@ make test-e2e           # Playwright smoke suite against the deterministic app p
 They never use the development container or `local_data/`:
 
 - `scripts/with-test-weaviate.sh` starts a uniquely named Weaviate container with no volume
+  (with the `backup-filesystem` module; its backups stay inside the container)
   on random loopback ports, passes them to the tests as `SEMANT_TEST_WEAVIATE_HOST`,
   `SEMANT_TEST_WEAVIATE_REST_PORT` and `SEMANT_TEST_WEAVIATE_GRPC_PORT` together with a
   fresh random `SEMANT_TEST_STORE_TOKEN`, and removes the container afterwards. The
@@ -344,7 +369,8 @@ They never use the development container or `local_data/`:
 - Before every integration test the application collections are emptied and seeded with
   the synthetic corpus in `semant_demo_backend/tests/fixtures/corpus.json` (users, three
   collections incl. a shared one, documents in several collections, partial chunk
-  membership, manual/automatic/rejected annotations and chunk tag references, Czech
+  membership, manual/automatic/rejected annotations in their collections' annotation tenants
+  (the legacy `Span` collection is created empty, for the migration tests) and chunk tag references, Czech
   diacritics, a combining mark and a non-BMP character). The collections are created once
   per run and are dropped and recreated only when their configuration no longer matches
   (e.g. a test dropped one or auto-schema added a property); dropping and recreating them

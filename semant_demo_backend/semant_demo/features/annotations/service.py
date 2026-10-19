@@ -5,8 +5,11 @@ before any other read or write, so callers outside HTTP get the same rules: read
 needs collection read access, span writes need annotation-edit access, tag definition
 writes need tag-definition-edit access (owner and shared users for all three). Spans
 belong to the collection of their tag and are placed only on chunks of that collection.
-``user`` is the authenticated user or ``None``; ids may be strings or UUIDs, malformed
-ids are "not found".
+They are stored in that collection's annotation tenant (#327): span reads and writes
+name the collection, it is authorized first, and only then is its tenant used, so span
+ids of other collections are "not found". Each use of a tenant is recorded for the idle
+deactivation (``store.activity``). ``user`` is the authenticated user or ``None``; ids
+may be strings or UUIDs, malformed ids are "not found".
 
 Span writes are followed by the re-derivation of the chunk tag references that
 tag-filtered search uses (ADR 0004, ``adapters/weaviate/chunk_tags.py``) for every
@@ -14,29 +17,45 @@ tag-filtered search uses (ADR 0004, ``adapters/weaviate/chunk_tags.py``) for eve
 have landed). That second write is best effort (ADR 0002): its failure keeps the span
 write and is reported as step ``update_chunk_tags``.
 
+Span creates and boundary (offset) edits also store the span's derived text, context
+and positions in the same write and then its contextual vector (#328,
+``enrichment.py``): the edit is kept when deriving or embedding fails, which is reported
+as step ``derive_annotation`` / ``embed_annotation`` and recorded in the span's status.
+Each boundary change increments the span's ``revision``; a vector is stored only while
+the span still has the revision it was computed for (``SpanRepository.lock`` within the
+process), and reads treat derived data of another revision as absent. Type, tag and AI
+metadata changes keep the revision and never call the embedding provider. Saving the same
+offsets again retries derived data that is not current.
+
 Span types keep their meaning: ``pos`` a manual or approved annotation, ``auto`` an
 unresolved AI suggestion, ``neg`` a rejected suggestion kept as a negative example.
 Approving or rejecting is a type change (``auto`` -> ``pos`` / ``neg``).
 """
 import asyncio
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from uuid import UUID
 
-from semant_demo.features.annotations.schemas import SpanType, TagSpan
+from semant_demo.features.annotations.schemas import AnnotationRow, EnrichmentStatus, SpanType, TagSpan, VectorStatus
+from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, ChunkTagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.adapters.weaviate.spans import SpanRepository
+from semant_demo.adapters.weaviate.spans import SpanRepository, pair_of
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
+from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, DocumentText
+from semant_demo.features.annotations.enrichment import Enrichment, text_current, vector_current
 from semant_demo.features.annotations.offsets import InvalidSpanRange, check_span_range
 from semant_demo.features.annotations.schemas import (
-    BulkUpdateSpansResponse, PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanWriteResult,
+    AnnotationChunk, BulkUpdateSpansResponse, PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanWriteResult,
 )
 from semant_demo.features.user_collections import access
-from semant_demo.features.user_collections.access import Principal
+from semant_demo.features.user_collections.access import CollectionGrant, Principal
 from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
+
+logger = logging.getLogger(__name__)
 
 Id = str | UUID
 
@@ -52,6 +71,17 @@ class AnnotationStore:
     spans: SpanRepository
     chunk_tags: ChunkTagRepository
     documents: DocumentRepository
+    activity: TenantActivity | NoTenantActivity = field(default_factory=NoTenantActivity)
+    """Records each use of a collection's annotation tenant (idle deactivation)."""
+    enrichment: Enrichment = field(default_factory=Enrichment.disabled)
+    """Which derived data span writes store (#328)."""
+
+
+async def use_tenant(store: AnnotationStore, grant: CollectionGrant) -> UUID:
+    """The authorized collection whose annotation tenant the caller uses next, after
+    recording the use."""
+    await store.activity.touch(grant.collection_id)
+    return grant.collection_id
 
 
 ########
@@ -117,8 +147,8 @@ async def delete_tag(store: AnnotationStore, user: Principal | None, tag_id: Id)
     ``IncompleteWriteError`` naming it and the completed steps; deleting again continues.
     """
     collection_id = await access.collection_of_tags(store.tags, [tag_id])
-    await access.require_tag_definition_edit(store.collections, user, collection_id)
-    await store.tags.delete(access.parse_id(tag_id, "Tag"))
+    grant = await access.require_tag_definition_edit(store.collections, user, collection_id)
+    await store.tags.delete(access.parse_id(tag_id, "Tag"), await use_tenant(store, grant))
 
 
 #########
@@ -130,7 +160,7 @@ async def list_spans(store: AnnotationStore, user: Principal | None, collection_
     """The collection's spans, optionally only those starting on one chunk."""
     grant = await access.require_collection_read(store.collections, user, collection_id)
     chunk = access.parse_id(chunk_id, "Chunk") if chunk_id is not None else None
-    return await store.spans.read_by_collection(grant.collection_id, chunk)
+    return await store.spans.read_by_collection(await use_tenant(store, grant), chunk)
 
 
 async def list_spans_by_chunks(store: AnnotationStore, user: Principal | None, collection_id: Id,
@@ -140,12 +170,12 @@ async def list_spans_by_chunks(store: AnnotationStore, user: Principal | None, c
     if not chunk_ids:
         return {}
     by_id = await store.spans.read_by_chunks(
-        grant.collection_id, list(dict.fromkeys(access.parse_id(c, "Chunk") for c in chunk_ids)))
+        await use_tenant(store, grant), list(dict.fromkeys(access.parse_id(c, "Chunk") for c in chunk_ids)))
     return {str(c): by_id.get(str(access.parse_id(c, "Chunk")), []) for c in chunk_ids}
 
 
-async def _check_range(store: AnnotationStore, chunk_id: UUID, start: int, end: int) -> None:
-    """The offsets must describe text of the chunk's document (``offsets.py``)."""
+async def _check_range(store: AnnotationStore, chunk_id: UUID, start: int, end: int) -> AnnotationChunk:
+    """The offsets must describe text of the chunk's document (``offsets.py``); returns the chunk."""
     anchor = await store.documents.read_chunk_text(chunk_id)
     if anchor is None:
         raise NotFoundError("Chunk not found")
@@ -153,7 +183,7 @@ async def _check_range(store: AnnotationStore, chunk_id: UUID, start: int, end: 
     while True:
         try:
             check_span_range(chunks, start, end)
-            return
+            return anchor
         except InvalidSpanRange as e:
             if e.code != "past_end" or anchor.document_id is None:
                 raise
@@ -169,24 +199,29 @@ def _write_result(span: TagSpan, failed: list[StepFailure]) -> TagSpanWriteResul
                               succeeded=[str(span.id)], failed=failed)
 
 
-async def _pairs_of_spans(store: AnnotationStore, span_ids: list[UUID]) -> set[ChunkTag]:
-    refs = await store.spans.read_refs(span_ids)
-    return {ChunkTag(c, t) for tags, chunks in refs.values() for t in tags for c in chunks}
-
-
-async def save_span(store: AnnotationStore, span: PostSpan) -> TagSpanWriteResult:
+async def save_span(store: AnnotationStore, collection_id: UUID, document_id: UUID | None,
+                    span: PostSpan, texts: dict[UUID, DocumentText] | None = None) -> TagSpanWriteResult:
     """
-    Stores a span and re-derives its chunk tag. No access or offset check: the caller has
-    checked annotation-edit access, the tag and the chunk scope (``create_span``, or the
-    AI suggestion route for validated provider proposals).
+    Stores a span in the collection's tenant (``document_id``: its chunk's document) with
+    its derived fields, re-derives its chunk tag, then stores its contextual vector. No
+    access or offset check: the caller has checked annotation-edit access to the
+    collection, the tag and the chunk scope (``create_span``, or the AI suggestion run for
+    validated provider proposals). ``texts`` caches document texts across the saves of
+    one run (source text is immutable).
     """
     pairs = {ChunkTag.of(span.chunkId, span.tagId)}
+    refresh = None
+    if store.enrichment.derived:
+        refresh = await derive_refresh(store, document_id, span.chunkId, span.start, span.end, 1, texts=texts)
     try:
-        span_id = await store.spans.insert(span)
+        span_id = await store.spans.insert(collection_id, span, document_id,
+                                           refresh.properties(reset_vector=True) if refresh else None)
     except Exception:
-        await store.chunk_tags.sync(pairs)
+        await store.chunk_tags.sync(collection_id, pairs)
         raise
-    failed = await store.chunk_tags.sync(pairs)
+    failed = await store.chunk_tags.sync(collection_id, pairs)
+    if refresh is not None:
+        failed += refresh.failures + await refresh_vector(store, collection_id, span_id, refresh)
     return _write_result(TagSpan(id=str(span_id), **span.model_dump()), failed)
 
 
@@ -198,102 +233,247 @@ async def create_span(store: AnnotationStore, user: Principal | None, span: Post
     ``outcome`` is ``partial`` when the span was saved but its chunk tag was not.
     """
     collection_id = await access.collection_of_tags(store.tags, [span.tagId])
-    await access.require_annotation_edit(store.collections, user, collection_id)
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
     [chunk_id] = await access.require_chunks_in_collection(store.collections, [span.chunkId], collection_id)
-    await _check_range(store, chunk_id, span.start, span.end)
-    return await save_span(store, span)
+    anchor = await _check_range(store, chunk_id, span.start, span.end)
+    return await save_span(store, await use_tenant(store, grant), anchor.document_id, span)
 
 
-async def _authorize_span_patch(store: AnnotationStore, user: Principal | None, span_ids: list[UUID],
-                                patch: PatchSpan) -> None:
+async def _authorize_span_patch(store: AnnotationStore, user: Principal | None, collection_id: Id,
+                                span_ids: list[Id], patch: PatchSpan) -> tuple[UUID, dict[UUID, TagSpan]]:
+    """The authorized collection and its spans to patch, after every check."""
     if not patch.model_dump(exclude_none=True):
         raise InvalidRequestError("No fields provided for update")
-    collection_id = await access.collection_of_spans(store.spans, store.tags, span_ids)
-    await access.require_annotation_edit(store.collections, user, collection_id)
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
+    spans = await access.require_spans_in_collection(store.spans, span_ids, grant.collection_id)
     if patch.tagId is not None:
-        await access.require_tags_in_collection(store.tags, [patch.tagId], collection_id)
+        await access.require_tags_in_collection(store.tags, [patch.tagId], grant.collection_id)
+    return await use_tenant(store, grant), spans
 
 
-async def _check_patched_ranges(store: AnnotationStore, span_ids: list[UUID], patch: PatchSpan) -> None:
+async def _check_patched_ranges(store: AnnotationStore, spans: dict[UUID, TagSpan], patch: PatchSpan) -> None:
     """Offsets resulting from an offset patch must be valid for every span; checked before any write."""
     if patch.start is None and patch.end is None:
         return
-    for span_id in span_ids:
-        span = await store.spans.read(span_id)
-        if span is None:
-            raise NotFoundError("Span not found")
+    for span in spans.values():
         await _check_range(store, access.parse_id(span.chunkId, "Chunk"),
                            span.start if patch.start is None else patch.start,
                            span.end if patch.end is None else patch.end)
 
 
-async def _pairs_touched_by(store: AnnotationStore, span_ids: list[UUID], patch: PatchSpan) -> set[ChunkTag]:
+def _pairs_touched_by(spans: dict[UUID, TagSpan], patch: PatchSpan) -> set[ChunkTag]:
     """The spans' current (chunk, tag) pairs and, on a tag change, the new tag's pairs."""
-    pairs = await _pairs_of_spans(store, span_ids)
+    pairs = {pair_of(span) for span in spans.values()}
     if patch.tagId is not None:
         pairs |= {ChunkTag.of(p.chunk_id, patch.tagId) for p in pairs}
     return pairs
 
 
-async def _update_and_read(store: AnnotationStore, span_id: UUID, patch: PatchSpan) -> TagSpan:
-    await store.spans.update(span_id, patch)
-    span = await store.spans.read(span_id)
+async def _update_and_read(store: AnnotationStore, collection_id: UUID, span_id: UUID,
+                           patch: PatchSpan) -> tuple[TagSpan, "Refresh | None"]:
+    """Applies the patch (with the span's new derived fields when its offsets are sent) and
+    reads the span back; the refresh tells which vector to store next."""
+    refresh = None
+    if store.enrichment.derived and (patch.start is not None or patch.end is not None):
+        async with store.spans.lock(span_id):
+            refresh = await _patch_with_derived(store, collection_id, span_id, patch)
+    else:
+        await store.spans.update(collection_id, span_id, patch)
+    span = await store.spans.read(collection_id, span_id)
     if span is None:
         raise NotFoundError("Span not found")
-    return span
+    return span, refresh
 
 
-async def update_span(store: AnnotationStore, user: Principal | None, span_id: Id,
+async def _patch_with_derived(store: AnnotationStore, collection_id: UUID, span_id: UUID,
+                              patch: PatchSpan) -> "Refresh | None":
+    """An offset patch (under the span's lock): a changed range is a new revision with new
+    derived fields; the same range re-derives only what is not current (a retry)."""
+    row = await store.spans.read_row(collection_id, span_id)
+    if row is None:
+        raise NotFoundError("Span not found")
+    start = row.start if patch.start is None else patch.start
+    end = row.end if patch.end is None else patch.end
+    moved = (start, end) != (row.start, row.end)
+    vector = store.enrichment.vector
+    stale_vector = vector is not None and not vector_current(row, vector.id)
+    if not moved and text_current(row) and not stale_vector:
+        await store.spans.update(collection_id, span_id, patch)
+        return None
+    # Re-derived text (also under a changed policy) invalidates the vector embedded from the old one.
+    refresh = await derive_refresh(store, row.documentId, row.chunkId, start, end, (row.revision or 0) + moved)
+    await store.spans.update(collection_id, span_id, patch, refresh.properties(reset_vector=True))
+    return refresh
+
+
+async def update_span(store: AnnotationStore, user: Principal | None, collection_id: Id, span_id: Id,
                       patch: PatchSpan) -> TagSpanWriteResult:
     """
-    Updates offsets, type (approve: ``auto`` -> ``pos``, reject: -> ``neg``) or tag, then
-    re-derives the span's (chunk, tag) pair and, on a tag change, the new pair. This runs
-    for every patch, also offset-only, so saving a span again retries a chunk tag update
-    that failed before. Changed offsets are validated like on creation; offsets that are
-    not sent are not re-checked (approving an old span works whatever its offsets).
+    Updates offsets, type (approve: ``auto`` -> ``pos``, reject: -> ``neg``) or tag of a
+    span of the collection, then re-derives the span's (chunk, tag) pair and, on a tag
+    change, the new pair. This runs for every patch, also offset-only, so saving a span
+    again retries a chunk tag update that failed before. Changed offsets are validated
+    like on creation; offsets that are not sent are not re-checked (approving an old
+    span works whatever its offsets).
     """
-    sid = access.parse_id(span_id, "Span")
-    await _authorize_span_patch(store, user, [sid], patch)
-    await _check_patched_ranges(store, [sid], patch)
-    pairs = await _pairs_touched_by(store, [sid], patch)
+    cid, spans = await _authorize_span_patch(store, user, collection_id, [span_id], patch)
+    await _check_patched_ranges(store, spans, patch)
+    pairs = _pairs_touched_by(spans, patch)
+    [sid] = spans
     try:
-        span = await _update_and_read(store, sid, patch)
+        span, refresh = await _update_and_read(store, cid, sid, patch)
     except Exception:
         # The update may have been partly applied (or applied despite a timeout).
-        await store.chunk_tags.sync(pairs)
+        await store.chunk_tags.sync(cid, pairs)
         raise
-    return _write_result(span, await store.chunk_tags.sync(pairs))
+    failed = await store.chunk_tags.sync(cid, pairs)
+    if refresh is not None:
+        failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
+    return _write_result(span, failed)
 
 
-async def bulk_update_spans(store: AnnotationStore, user: Principal | None, span_ids: list[Id],
+async def bulk_update_spans(store: AnnotationStore, user: Principal | None, collection_id: Id, span_ids: list[Id],
                             patch: PatchSpan) -> BulkUpdateSpansResponse:
     """
-    Applies the same patch to many spans (the AI panel's "approve/reject all selected").
+    Applies the same patch to many spans of the collection (the AI panel's
+    "approve/reject all selected").
 
-    All spans must belong to one collection the user may annotate and the whole batch is
-    validated before any write; otherwise nothing is updated. Updates are best effort:
-    ``spans`` holds the updated spans and ``failed`` the spans that could not be updated
-    (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``).
-    Chunk tags are re-derived once per touched pair after all span updates, also for
-    spans whose update failed.
+    Every span must be a span of the collection, which the user may annotate, and the
+    whole batch is validated before any write; otherwise nothing is updated. Updates are
+    best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not
+    be updated (``update_span``) and the chunk tag updates that failed
+    (``update_chunk_tags``). Chunk tags are re-derived once per touched pair after all
+    span updates, also for spans whose update failed.
     """
     if not span_ids:
         return BulkUpdateSpansResponse(outcome=outcome_of(0, 0), spans=[])
-    ids = list(dict.fromkeys(access.parse_id(s, "Span") for s in span_ids))
-    await _authorize_span_patch(store, user, ids, patch)
-    await _check_patched_ranges(store, ids, patch)
-    pairs = await _pairs_touched_by(store, ids, patch)
+    cid, spans = await _authorize_span_patch(store, user, collection_id, span_ids, patch)
+    await _check_patched_ranges(store, spans, patch)
+    pairs = _pairs_touched_by(spans, patch)
 
     updated: list[TagSpan] = []
     failed: list[StepFailure] = []
-    for sid, res in zip(ids, await _gather(*(_update_and_read(store, sid, patch) for sid in ids))):
+    refreshes: dict[UUID, Refresh] = {}
+    ids = list(spans)
+    for sid, res in zip(ids, await _gather(*(_update_and_read(store, cid, sid, patch) for sid in ids))):
         if isinstance(res, Exception):
             failed.append(step_failure("update_span", sid, res))
         else:
-            updated.append(res)
-    failed += await store.chunk_tags.sync(pairs)
+            updated.append(res[0])
+            if res[1] is not None:
+                refreshes[sid] = res[1]
+    failed += await store.chunk_tags.sync(cid, pairs)
+    for sid, refresh in refreshes.items():
+        failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
     return BulkUpdateSpansResponse(outcome=outcome_of(len(updated), len(failed)),
                                    succeeded=[s.id for s in updated], failed=failed, spans=updated)
+
+
+@dataclass
+class Refresh:
+    """Derived fields computed for one revision of a span, and what is still to store
+    (also used by the backfill, ``backfill.py``)."""
+    revision: int
+    derived: DerivedText | None
+    status: EnrichmentStatus
+    failures: list[StepFailure] = field(default_factory=list)
+    needs_vector: bool = True
+    vector_stored: bool = False
+    """Set by ``refresh_vector`` when the vector was written."""
+
+    def properties(self, *, reset_vector: bool, with_revision: bool = True) -> dict:
+        """The derived fields (when derived) and their state; with ``reset_vector`` the
+        vector is marked pending. ``with_revision`` adds the revision itself, which only
+        the span's own write (create, boundary edit) may set: a write of derived data
+        alone must never move the revision back."""
+        props: dict = {"enrichmentStatus": self.status.value, "enrichedRevision": self.revision,
+                       "derivationVersion": DERIVATION_VERSION}
+        if with_revision:
+            props["revision"] = self.revision
+        if reset_vector:
+            props["vectorStatus"] = VectorStatus.pending.value
+        d = self.derived
+        if d is not None:
+            props |= {"text": d.text, "leftContext": d.left_context, "rightContext": d.right_context,
+                      "positionSegment": d.segment, "documentStartChar": d.start_char,
+                      "documentEndChar": d.end_char, "documentStartWord": d.start_word,
+                      "documentEndWord": d.end_word}
+        return props
+
+
+async def derive_refresh(store: AnnotationStore, document_id: UUID | None, chunk_id: Id, start: int, end: int,
+                         revision: int, text: DocumentText | None = None,
+                         texts: dict[UUID, DocumentText] | None = None) -> Refresh:
+    """The derived fields of a span from its document's text (``text``: already read;
+    ``texts``: a cache by document to read from and fill); a failed read is a
+    ``derive_annotation`` failure, offsets that describe no text (or a missing anchor chunk
+    or document) are ``invalid``."""
+    try:
+        if text is None:
+            if document_id is None:
+                anchor = await store.documents.read_chunk_text(access.parse_id(chunk_id, "Chunk"))
+                document_id = anchor.document_id if anchor is not None else None
+            if document_id is None:
+                return Refresh(revision, None, EnrichmentStatus.invalid)
+            text = (texts or {}).get(document_id)
+            if text is None:
+                text = DocumentText(await store.documents.read_chunk_texts(document_id))
+                if texts is not None:
+                    texts[document_id] = text
+        return Refresh(revision, text.derive(chunk_id, start, end), EnrichmentStatus.ready)
+    except InvalidSpanRange:
+        return Refresh(revision, None, EnrichmentStatus.invalid)
+    except Exception as e:
+        return Refresh(revision, None, EnrichmentStatus.failed, [step_failure("derive_annotation", chunk_id, e)])
+
+
+async def write_if_revision(store: AnnotationStore, collection_id: UUID, span_id: UUID, revision: int,
+                            properties: dict, vector: tuple[str, list[float]] | None = None,
+                            *, unless_vector: str | None = None) -> bool:
+    """Writes derived data computed for ``revision`` unless the span has another revision
+    by now (then the write is dropped: a newer edit has its own derivation), or, with
+    ``unless_vector``, already has a current vector of that configuration."""
+    async with store.spans.lock(span_id):
+        row = await store.spans.read_row(collection_id, span_id)
+        if row is None or (row.revision or 0) != revision:
+            return False
+        if unless_vector is not None and vector_current(row, unless_vector):
+            return False
+        await store.spans.write_derived(collection_id, span_id, properties, vector)
+        return True
+
+
+def _embedding_failure(span_id: UUID, exc: Exception) -> StepFailure:
+    logger.warning("Embedding annotation %s failed: %s", span_id, type(exc).__name__)
+    return StepFailure(item_id=str(span_id), step="embed_annotation",
+                       message=f"{type(exc).__name__}: the contextual vector could not be computed")
+
+
+async def refresh_vector(store: AnnotationStore, collection_id: UUID, span_id: UUID,
+                         refresh: Refresh) -> list[StepFailure]:
+    """Embeds the span's derived text and stores the vector for its revision; returns an
+    ``embed_annotation`` failure when that fails (the span is then marked ``failed``)."""
+    vector = store.enrichment.vector
+    if vector is None or refresh.derived is None or not refresh.needs_vector:
+        return []
+    state = {"vectorRevision": refresh.revision, "vectorConfig": vector.id}
+    try:
+        embedding = await vector.embed(refresh.derived)
+    except Exception as e:
+        failure = _embedding_failure(span_id, e)
+        try:
+            await write_if_revision(store, collection_id, span_id, refresh.revision,
+                                    state | {"vectorStatus": VectorStatus.failed.value}, unless_vector=vector.id)
+        except Exception as mark:
+            logger.warning("Marking the vector of annotation %s failed: %s", span_id, type(mark).__name__)
+        return [failure]
+    try:
+        refresh.vector_stored = await write_if_revision(
+            store, collection_id, span_id, refresh.revision, state | {"vectorStatus": VectorStatus.ready.value},
+            (vector.target_vector, embedding))
+    except Exception as e:
+        return [step_failure("embed_annotation", span_id, e)]
+    return []
 
 
 async def _gather(*aws):
@@ -305,22 +485,24 @@ async def _gather(*aws):
     return results
 
 
-async def delete_span(store: AnnotationStore, user: Principal | None, span_id: Id) -> WriteResult:
+async def delete_span(store: AnnotationStore, user: Principal | None, collection_id: Id, span_id: Id) -> WriteResult:
     """
-    Deletes a span, then removes chunk tag references no other span backs. ``outcome`` is
-    ``partial`` when the span was deleted but the chunk tag could not be updated.
+    Deletes a span of the collection, then removes chunk tag references no other span
+    backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could
+    not be updated.
     """
-    sid = access.parse_id(span_id, "Span")
-    collection_id = await access.collection_of_spans(store.spans, store.tags, [sid])
-    await access.require_annotation_edit(store.collections, user, collection_id)
-    pairs = await _pairs_of_spans(store, [sid])
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
+    spans = await access.require_spans_in_collection(store.spans, [span_id], grant.collection_id)
+    cid = await use_tenant(store, grant)
+    [(sid, span)] = spans.items()
+    pairs = {pair_of(span)}
     try:
-        await store.spans.delete(sid)
+        await store.spans.delete(cid, sid)
     except Exception:
         # A timed-out delete may still have been applied.
-        await store.chunk_tags.sync(pairs)
+        await store.chunk_tags.sync(cid, pairs)
         raise
-    failed = await store.chunk_tags.sync(pairs)
+    failed = await store.chunk_tags.sync(cid, pairs)
     return WriteResult(outcome=outcome_of(1, len(failed)), succeeded=[str(sid)], failed=failed)
 
 
@@ -331,18 +513,19 @@ async def _delete_in_document(store: AnnotationStore, user: Principal | None, co
     if not tag_ids:
         return WriteResult(outcome=outcome_of(0, 0))
     tags = await access.require_tags_in_collection(store.tags, tag_ids, grant.collection_id)
+    cid = await use_tenant(store, grant)
 
-    spans = await store.spans.list_in_document(grant.collection_id, document, tags, span_type)
+    spans = await store.spans.list_in_document(cid, document, tags, span_type)
     deleted: list[str] = []
     failed: list[StepFailure] = []
     for sid in spans:
         try:
-            await store.spans.delete(sid)
+            await store.spans.delete(cid, sid)
             deleted.append(str(sid))
         except Exception as e:
             failed.append(step_failure("delete_span", sid, e))
     # Re-derived after all deletions, also for spans whose deletion failed.
-    tag_failures = await store.chunk_tags.sync(set().union(*spans.values()) if spans else set())
+    tag_failures = await store.chunk_tags.sync(cid, set().union(*spans.values()) if spans else set())
     return WriteResult(outcome=outcome_of(len(deleted), len(failed) + len(tag_failures)),
                        succeeded=deleted, failed=failed + tag_failures)
 
@@ -363,3 +546,68 @@ async def delete_suggestions_in_document(store: AnnotationStore, user: Principal
                                          document_id: Id, tag_ids: list[Id]) -> WriteResult:
     """Like ``delete_approved_spans_in_document`` for unresolved AI suggestions (``auto``)."""
     return await _delete_in_document(store, user, collection_id, document_id, tag_ids, SpanType.auto)
+
+
+#############################
+# Annotation rows (#328)    #
+#############################
+
+_MAX_ROWS = 1000
+_HIDDEN_WHEN_STALE = ("text", "leftContext", "rightContext", "positionSegment", "documentStartChar",
+                      "documentEndChar", "documentStartWord", "documentEndWord")
+
+
+def _check_limit(limit: int, offset: int = 0) -> None:
+    if not 1 <= limit <= _MAX_ROWS or offset < 0:
+        raise InvalidRequestError(f"limit must be between 1 and {_MAX_ROWS} and offset not negative")
+
+
+async def _visible(store: AnnotationStore, rows: list[AnnotationRow]) -> list[AnnotationRow]:
+    """Rows without derived fields that are not current, with their document's title and
+    year (one read per page of rows)."""
+    documents = await store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
+    result = []
+    for row in rows:
+        update: dict = {} if text_current(row) else dict.fromkeys(_HIDDEN_WHEN_STALE)
+        document = documents.get(row.documentId) if row.documentId is not None else None
+        if document is not None:
+            update |= {"documentTitle": document.title, "documentYear": document.yearIssued}
+        result.append(row.model_copy(update=update))
+    return result
+
+
+async def list_annotation_rows(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
+                               tag_ids: list[Id] | None = None, document_id: Id | None = None,
+                               limit: int = 100, offset: int = 0) -> list[AnnotationRow]:
+    """
+    One page of the collection's annotations as concordance rows: stored text, context
+    and positions, read from the annotations only (no source chunks). A row whose derived
+    data is missing or belongs to an older revision has none (``text`` is ``None``).
+    """
+    grant = await access.require_collection_read(store.collections, user, collection_id)
+    _check_limit(limit, offset)
+    tags = [access.parse_id(t, "Tag") for t in tag_ids] if tag_ids else None
+    document = access.parse_id(document_id, "Document") if document_id is not None else None
+    rows = await store.spans.read_rows(await use_tenant(store, grant), tag_ids=tags, document_id=document,
+                                       limit=limit, offset=offset)
+    return await _visible(store, rows)
+
+
+async def similar_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, query: str, *,
+                              tag_ids: list[Id] | None = None, limit: int = 20) -> list[AnnotationRow]:
+    """
+    The collection's annotations nearest in meaning to ``query`` (its query embedding
+    against the contextual vectors), nearest first. Only vectors of the span's current
+    revision and of the configured vector count: a span whose vector is pending, failed,
+    stale or of another configuration is left out, so fewer than ``limit`` may return.
+    """
+    grant = await access.require_collection_read(store.collections, user, collection_id)
+    _check_limit(limit)
+    vector = store.enrichment.vector
+    if vector is None:
+        raise InvalidRequestError("Semantic annotation search is not configured.")
+    tags = [access.parse_id(t, "Tag") for t in tag_ids] if tag_ids else None
+    cid = await use_tenant(store, grant)
+    rows = await store.spans.near_vector(cid, vector.target_vector, await vector.embed_query(query), vector.id,
+                                         limit, tags)
+    return await _visible(store, [r for r in rows if vector_current(r, vector.id) and text_current(r)])

@@ -40,6 +40,8 @@ def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
         "LLM_MODELS_CONFIG": str(llm_models_path),
         "STATIC_PATH": str(tmp_dir / "no_static"),
         "FEEDBACK_LOG_PATH": str(tmp_dir / "feedback.log.jsonl"),
+        # No contextual annotation vector: its embedder would be a live provider (#328).
+        "ANNOTATION_VECTOR_CONFIG": "",
     }
     environ.update(overrides)
     return Config(environ=environ)

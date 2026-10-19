@@ -144,6 +144,14 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 | [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | `main`-based PR workflow, checks and agent instructions |
 | [docs/archive/](docs/archive/README.md) | Historical plans, review notes and maintenance run records |
 
+## Feedback and feature requests
+
+Librarians, researchers and annotators can report problems or suggest
+improvements without technical knowledge. See the
+[user-feedback issue guide](docs/USER_FEEDBACK_ISSUES.md) for a short explanation
+of what helps developers understand a request. Begin the GitHub issue title
+with `[User draft]`.
+
 ## Contribution Guidelines
 
 Branch from the latest `origin/main`, keep the change focused, include tests and documentation,

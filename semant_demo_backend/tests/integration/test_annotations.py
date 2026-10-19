@@ -111,7 +111,8 @@ async def test_invalid_offset_patch_leaves_the_span_unchanged(api_client, login,
     novak = ids.span["novak_manual"]
     before = await store.span(novak)
 
-    response = await api_client.patch(f"/api/tag_spans/{novak}", headers=await login("owner"), json={"end": 1000})
+    response = await api_client.patch(f"/api/tag_spans/{novak}", headers=await login("owner"),
+                                      params={"collection_id": ids.col["chronicles"]}, json={"end": 1000})
 
     assert response.status_code == 400
     assert await store.span(novak) == before
@@ -119,10 +120,11 @@ async def test_invalid_offset_patch_leaves_the_span_unchanged(api_client, login,
 
 async def test_approval_and_rejection_reload_from_storage(api_client, login, ids):
     annotator = await login("annotator")
+    c = {"collection_id": ids.col["chronicles"]}
     lhota = ids.span["lhota_automatic"]
-    approve = await api_client.patch(f"/api/tag_spans/{lhota}", headers=annotator, json={"type": "pos"})
+    approve = await api_client.patch(f"/api/tag_spans/{lhota}", headers=annotator, params=c, json={"type": "pos"})
     praha = ids.span["praha_automatic"]
-    reject = await api_client.patch(f"/api/tag_spans/{praha}", headers=annotator, json={"type": "neg"})
+    reject = await api_client.patch(f"/api/tag_spans/{praha}", headers=annotator, params=c, json={"type": "neg"})
 
     assert (approve.status_code, reject.status_code) == (200, 200)
     assert (await spans_of(api_client, annotator, ids, "chronicle_1"))[lhota]["type"] == "pos"
@@ -207,9 +209,9 @@ async def test_creating_the_tag_again_after_a_failed_link_succeeds(api_client, l
 # ── Deletion that stops part way ──────────────────────────────────────────
 
 async def test_tag_deletion_failing_part_way_keeps_completed_steps_and_can_be_repeated(
-        api_client, login, ids, store, fail_writes, monkeypatch, chunk_tag_ids):
+        api_client, login, ids, store, collection_names, fail_writes, monkeypatch, chunk_tag_ids):
     place, brno = ids.tag["place"], ids.span["brno_manual"]
-    fail_writes("delete_by_id", [brno])
+    fail_writes("delete_many", collection=collection_names.annotation_collection_name)
     owner = await login("owner")
 
     response = await api_client.delete(f"/api/tags/{place}", headers=owner)
@@ -242,10 +244,11 @@ async def test_collection_deletion_failing_part_way_keeps_completed_steps_and_ca
     assert response.status_code == 500
     body = response.json()
     assert body["step"] == "delete_tag"
-    assert body["completed"]["unlink_chunk"] >= 1 and body["completed"]["delete_span"] == 1
+    assert body["completed"]["unlink_chunk"] >= 1 and "delete_annotation_tenant" not in body["completed"]
     assert await store.collection(newspapers) is not None
     assert newspapers not in await store.collections_of_chunk(ids.chunk["chronicle_3"])
-    assert await store.span(ids.span["pozar_manual"]) is None
+    # The tenant (with the spans of all tags) is removed after the tags.
+    assert await store.span(ids.span["pozar_manual"], newspapers) is not None
 
     monkeypatch.undo()
     retry = await api_client.delete(f"/api/user_collections/{newspapers}", headers=owner)
@@ -253,6 +256,7 @@ async def test_collection_deletion_failing_part_way_keeps_completed_steps_and_ca
     assert retry.status_code == 204
     assert await store.collection(newspapers) is None
     assert await store.tag(event) is None
+    assert newspapers not in await store.tenants()
 
 
 @pytest.fixture
@@ -284,8 +288,8 @@ async def test_concurrent_writes_on_one_pair_leave_its_chunk_tag_consistent(
     calls = {"required": 0, "sync": 0}
     original_required, original_sync = chunk_tags_module.required_refs, ChunkTagRepository.sync
 
-    async def required_refs(client, names, pair):
-        result = await original_required(client, names, pair)
+    async def required_refs(spans, collection_id, pair):
+        result = await original_required(spans, collection_id, pair)
         calls["required"] += 1
         if calls["required"] == 1:
             held.set()
@@ -295,10 +299,10 @@ async def test_concurrent_writes_on_one_pair_leave_its_chunk_tag_consistent(
                 pass  # the second sync is waiting for this one
         return result
 
-    async def sync(self, pairs):
+    async def sync(self, collection_id, pairs):
         calls["sync"] += 1
         number = calls["sync"]
-        failed = await original_sync(self, pairs)
+        failed = await original_sync(self, collection_id, pairs)
         if number == 2:
             second_sync_done.set()
         return failed
@@ -306,7 +310,8 @@ async def test_concurrent_writes_on_one_pair_leave_its_chunk_tag_consistent(
     monkeypatch.setattr(chunk_tags_module, "required_refs", required_refs)
     monkeypatch.setattr(ChunkTagRepository, "sync", sync)
 
-    delete = asyncio.create_task(api_client.delete(f"/api/tag_spans/{ids.span['novak_manual']}", headers=owner))
+    delete = asyncio.create_task(api_client.delete(f"/api/tag_spans/{ids.span['novak_manual']}", headers=owner,
+                                                   params={"collection_id": ids.col["chronicles"]}))
     await asyncio.wait_for(held.wait(), timeout=10)
     create = asyncio.create_task(api_client.post("/api/tag_spans", headers=owner,
                                                  json=span_body(ids, "chronicle_1", 34, 37)))

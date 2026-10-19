@@ -142,16 +142,17 @@ async def test_owner_adds_a_chunk_and_its_document(api_client, login, ids, store
 
 async def test_shared_user_edits_annotations_without_changing_membership(api_client, login, ids, store):
     headers = await login("annotator")
+    c = {"collection_id": ids.col["chronicles"]}
     membership_before = await store.collections_of_chunk(ids.chunk["chronicle_2"])
 
     created = await api_client.post("/api/tag_spans", headers=headers, json={
         "start": 0, "end": 8, "type": "pos", "chunkId": ids.chunk["chronicle_2"], "tagId": ids.tag["place"]})
     span_id = created.json()["id"]
-    patched = await api_client.patch(f"/api/tag_spans/{span_id}", headers=headers,
+    patched = await api_client.patch(f"/api/tag_spans/{span_id}", headers=headers, params=c,
                                      json={"tagId": ids.tag["person"], "end": 9})
     bulk = await api_client.post("/api/tag_spans/bulk_update", headers=headers, json={
-        "span_ids": [ids.span["lhota_automatic"], span_id], "update": {"type": "pos"}})
-    deleted = await api_client.delete(f"/api/tag_spans/{span_id}", headers=headers)
+        **c, "span_ids": [ids.span["lhota_automatic"], span_id], "update": {"type": "pos"}})
+    deleted = await api_client.delete(f"/api/tag_spans/{span_id}", headers=headers, params=c)
 
     assert [created.status_code, patched.status_code, bulk.status_code, deleted.status_code] == [200, 200, 200, 200]
     assert [r.json()["outcome"] for r in (created, patched, bulk, deleted)] == ["complete"] * 4
@@ -183,10 +184,11 @@ async def test_unrelated_users_cannot_touch_annotations_or_tags(api_client, logi
     responses = [
         await api_client.post("/api/tag_spans", headers=headers, json={
             "start": 0, "end": 4, "type": "pos", "chunkId": ids.chunk["chronicle_1"], "tagId": ids.tag["person"]}),
-        await api_client.patch(f"/api/tag_spans/{novak}", headers=headers, json={"type": "neg"}),
+        await api_client.patch(f"/api/tag_spans/{novak}", headers=headers, params={"collection_id": c},
+                               json={"type": "neg"}),
         await api_client.post("/api/tag_spans/bulk_update", headers=headers,
-                              json={"span_ids": [novak], "update": {"type": "neg"}}),
-        await api_client.delete(f"/api/tag_spans/{novak}", headers=headers),
+                              json={"collection_id": c, "span_ids": [novak], "update": {"type": "neg"}}),
+        await api_client.delete(f"/api/tag_spans/{novak}", headers=headers, params={"collection_id": c}),
         await api_client.post("/api/tag_spans/in_document/delete", headers=headers, json={
             "collection_id": c, "document_id": ids.doc["chronicle"], "tag_ids": [ids.tag["person"]]}),
         await api_client.post("/api/ai/auto_spans/delete", headers=headers, json={
@@ -208,9 +210,10 @@ async def test_mixed_scope_batches_are_rejected_without_writes(api_client, login
     headers = await login("owner")
     novak, pozar = ids.span["novak_manual"], ids.span["pozar_manual"]
 
+    c = ids.col["chronicles"]
     bulk = await api_client.post("/api/tag_spans/bulk_update", headers=headers,
-                                 json={"span_ids": [novak, pozar], "update": {"type": "neg"}})
-    foreign_tag = await api_client.patch(f"/api/tag_spans/{novak}", headers=headers,
+                                 json={"collection_id": c, "span_ids": [novak, pozar], "update": {"type": "neg"}})
+    foreign_tag = await api_client.patch(f"/api/tag_spans/{novak}", headers=headers, params={"collection_id": c},
                                          json={"tagId": ids.tag["event"]})
     # chronicle_3 belongs to the newspapers collection, the tag to chronicles.
     foreign_chunk = await api_client.post("/api/tag_spans", headers=headers, json={
@@ -219,6 +222,42 @@ async def test_mixed_scope_batches_are_rejected_without_writes(api_client, login
     assert [bulk.status_code, foreign_tag.status_code, foreign_chunk.status_code] == [404, 404, 404]
     assert (await store.span(novak))["type"] == "pos"
     assert (await store.span(pozar))["type"] == "pos"
+
+
+@pytest.mark.parametrize("user, collection", [("owner", "newspapers"), ("outsider", "outsider_notes")],
+                         ids=["owner-of-both", "outsider-with-own-collection"])
+async def test_a_span_named_with_another_accessible_collection_is_not_found(
+        api_client, login, ids, store, user, collection):
+    # A span id is no credential (#327): it is looked up only in the named collection's tenant.
+    headers = await login(user)
+    c, novak = {"collection_id": ids.col[collection]}, ids.span["novak_manual"]
+    novak_before = await store.span(novak)
+
+    responses = [
+        await api_client.patch(f"/api/tag_spans/{novak}", headers=headers, params=c, json={"type": "neg"}),
+        await api_client.post("/api/tag_spans/bulk_update", headers=headers,
+                              json={**c, "span_ids": [novak], "update": {"type": "neg"}}),
+        await api_client.delete(f"/api/tag_spans/{novak}", headers=headers, params=c),
+        await api_client.post("/api/ai/discuss_span", headers=headers, json={
+            **c, "span_id": novak, "messages": [{"role": "user", "content": "Fits?"}]}),
+    ]
+
+    assert [r.status_code for r in responses] == [404] * 4
+    assert await store.span(novak) == novak_before
+
+
+async def test_span_routes_require_the_collection(api_client, login, ids):
+    headers = await login("owner")
+    novak = ids.span["novak_manual"]
+
+    responses = [
+        await api_client.patch(f"/api/tag_spans/{novak}", headers=headers, json={"type": "neg"}),
+        await api_client.delete(f"/api/tag_spans/{novak}", headers=headers),
+        await api_client.post("/api/tag_spans/bulk_update", headers=headers,
+                              json={"span_ids": [novak], "update": {"type": "neg"}}),
+    ]
+
+    assert [r.status_code for r in responses] == [422] * 3
 
 
 # ── Collection metadata, deletion and sharing: owner only ─────────────────
@@ -281,7 +320,8 @@ async def test_denied_ai_requests_make_no_provider_call(api_client, login, ids, 
         await api_client.post("/api/ai/suggest_spans/selection", headers=headers, json={
             **suggest_body(ids), "chunk_ids": [ids.chunk["chronicle_1"]], "selection_start": 0, "selection_end": 20}),
         await api_client.post("/api/ai/discuss_span", headers=headers, json={
-            "span_id": ids.span["novak_manual"], "messages": [{"role": "user", "content": "Fits?"}]}),
+            "collection_id": ids.col["chronicles"], "span_id": ids.span["novak_manual"],
+            "messages": [{"role": "user", "content": "Fits?"}]}),
     ]
 
     assert [r.status_code for r in responses] == [404] * 4

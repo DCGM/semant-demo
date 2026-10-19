@@ -16,6 +16,8 @@ work in [TODO.md](../TODO.md), and historical design evidence, including the pre
 | [0005 - Testing contract](0005-testing-contract.md) | Implemented baseline; detailed test guidance supporting CONTRIBUTING. |
 | [0006 - Context and text](0006-context-and-text.md) | Search context/line-level roadmap agreed; mapping implementation left open. |
 | [0007 - Access and collaboration](0007-access-and-collaboration.md) | Implemented shared annotation editing, owner-only membership and local progressive UI. |
+| [0008 - Multi-tenant annotation storage](0008-multi-tenant-annotation-storage.md) | Implemented one annotation tenant per collection and the migration tooling; store migration and idle deactivation pending. |
+| [0009 - Derived annotation data](0009-derived-annotation-data.md) | Proposed with #328: annotation text, context, segment positions and a revision-guarded contextual vector; store rollout pending. |
 
 ## Confirmed decisions
 

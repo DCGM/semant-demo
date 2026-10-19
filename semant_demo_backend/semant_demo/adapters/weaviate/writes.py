@@ -93,14 +93,18 @@ async def _delete_references_to(collection, from_property: str, target_id: UUID,
     await _drain(collection, Filter.by_ref(from_property).by_id().equal(target_id), unlink, progress, step)
 
 
-async def _tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, tag_id: UUID,
-                       progress: _Progress) -> None:
+async def _tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, spans, tag_id: UUID,
+                       collection_id: UUID | None, progress: _Progress) -> None:
+    """Unlink the tag from chunks, delete its spans (in ``collection_id``'s tenant; skipped
+    when ``None``: the tenant was removed already), then the tag."""
     chunks = client.collections.get(names.chunks_collection_name)
     for prop in ("automaticTag", "positiveTag", "negativeTag"):
         await _delete_references_to(chunks, prop, tag_id, progress, "unlink_chunk_tag")
 
-    spans = client.collections.get(names.span_collection_name)
-    await _drain(spans, Filter.by_ref("tag").by_id().equal(tag_id), spans.data.delete_by_id, progress, "delete_span")
+    if collection_id is not None:
+        progress.at("delete_span")
+        deleted = await spans.delete_by_tag(collection_id, tag_id)
+        progress.completed["delete_span"] = progress.completed.get("delete_span", 0) + deleted
 
     progress.at("delete_tag")
     await client.collections.get(names.tag_collection_name).data.delete_by_id(tag_id)
@@ -119,8 +123,11 @@ def _incomplete(what: str, progress: _Progress, exc: Exception) -> IncompleteWri
         step=progress.step, completed=progress.completed, uncertain=_is_timeout(exc))
 
 
-async def delete_tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, tag_id: UUID) -> None:
-    """Delete a tag after its chunk tag references and its spans.
+async def delete_tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, spans, tag_id: UUID,
+                             collection_id: UUID | None) -> None:
+    """Delete a tag after its chunk tag references and its spans (``spans``: the
+    ``SpanRepository``; ``collection_id``: the tag's collection, whose tenant holds them;
+    ``None`` for a tag of no single collection, which has no spans).
 
     Best effort without rollback: a failure stops the cascade, keeps what was done and
     raises ``IncompleteWriteError`` naming the failed step and the completed steps
@@ -130,18 +137,21 @@ async def delete_tag_cascade(client: WeaviateAsyncClient, names: CollectionNames
     logger.info("Performing cascade deletion of tag %s", tag_id)
     progress = _Progress()
     try:
-        await _tag_cascade(client, names, tag_id, progress)
+        await _tag_cascade(client, names, spans, tag_id, collection_id, progress)
     except Exception as exc:
         raise _incomplete("tag", progress, exc) from exc
 
 
-async def delete_collection_cascade(client: WeaviateAsyncClient, names: CollectionNames,
+async def delete_collection_cascade(client: WeaviateAsyncClient, names: CollectionNames, spans,
                                     collection_id: UUID) -> None:
-    """Delete a collection after its chunk/document links and its tags (with their spans).
+    """Delete a collection after its chunk/document links, its tags and its annotation
+    tenant (with all its spans).
 
     Best effort without rollback: a failure stops the cascade, keeps what was done and
     raises ``IncompleteWriteError`` (steps ``unlink_chunk``, ``unlink_document``, the tag
-    steps for each tag, ``delete_collection``). Repeating the deletion is safe.
+    steps for each tag, ``delete_annotation_tenant``, ``delete_collection``). The tenant
+    counts as removed only when a lookup afterwards no longer finds it. Repeating the
+    deletion is safe and continues with what is left.
     """
     logger.info("Performing cascade deletion of user collection %s", collection_id)
     progress = _Progress()
@@ -162,7 +172,12 @@ async def delete_collection_cascade(client: WeaviateAsyncClient, names: Collecti
                 break
             guard_progress(seen, [o.uuid for o in response.objects])
             for obj in response.objects:
-                await _tag_cascade(client, names, obj.uuid, progress)
+                # The tenant removal below deletes the spans of all tags at once.
+                await _tag_cascade(client, names, spans, obj.uuid, None, progress)
+
+        progress.at("delete_annotation_tenant")
+        await spans.remove_tenant(collection_id)
+        progress.done()
 
         progress.at("delete_collection")
         await client.collections.get(names.user_collection_name).data.delete_by_id(collection_id)

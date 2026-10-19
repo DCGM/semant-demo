@@ -458,6 +458,10 @@ of the deploy jobs.
 | `ci-cd.yml` | PR opened or updated | Deploy/update ephemeral `test-pr-<N>` preview with telemetry enabled |
 | `ci-cd.yml` | PR closed | Tear down `test-pr-<N>` preview and remove its database |
 
+Runs are serialized per PR (`test-pr-<N>`) and per ref otherwise (`main`, tags). A new push to a
+PR cancels its running checks; the teardown of a closed or merged PR is not cancelled by runs on `main` or other PRs and waits
+for that PR's running deploy. Before this grouping (#419), merged PRs often kept their preview.
+
 ### Required GitHub Variables
 
 Set these in **Settings → Secrets and variables → Actions → Variables**:

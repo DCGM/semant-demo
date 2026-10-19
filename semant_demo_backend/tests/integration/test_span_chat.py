@@ -18,13 +18,13 @@ def chat(api_app):
     return provider
 
 
-async def discuss(api_client, headers, span_id):
+async def discuss(api_client, headers, span_id, collection_id):
     return await api_client.post("/api/ai/discuss_span", headers=headers, json={
-        "span_id": span_id, "messages": [{"role": "user", "content": "Sedí to?"}]})
+        "collection_id": collection_id, "span_id": span_id, "messages": [{"role": "user", "content": "Sedí to?"}]})
 
 
 async def test_shared_user_discusses_a_stored_span(api_client, login, ids, chat):
-    response = await discuss(api_client, await login("annotator"), ids.span["novak_manual"])
+    response = await discuss(api_client, await login("annotator"), ids.span["novak_manual"], ids.col["chronicles"])
 
     assert response.status_code == 200, response.text
     assert [json.loads(line) for line in response.text.splitlines()] == [{"delta": "Fits"}, {"delta": "."},
@@ -41,7 +41,7 @@ async def test_shared_user_discusses_a_stored_span(api_client, login, ids, chat)
 async def test_discussion_streams_through_the_span_chat_tier(api_app, api_client, login, ids, fake_llm):
     api_app.dependency_overrides[get_span_chat] = lambda: FeatureChat(fake_llm, "span_chat", max_tokens=64)
 
-    response = await discuss(api_client, await login("annotator"), ids.span["novak_manual"])
+    response = await discuss(api_client, await login("annotator"), ids.span["novak_manual"], ids.col["chronicles"])
 
     assert response.status_code == 200, response.text
     events = [json.loads(line) for line in response.text.splitlines()]
@@ -59,7 +59,7 @@ async def test_cross_chunk_span_text_is_read_from_the_following_chunk(api_client
         "type": "pos"})
     assert created.status_code == 200, created.text
 
-    response = await discuss(api_client, owner, created.json()["id"])
+    response = await discuss(api_client, owner, created.json()["id"], ids.col["chronicles"])
 
     assert response.status_code == 200, response.text
     assert 'SPAN TEXT (verbatim, 14 chars): "elena.Kronikář"' in chat.calls[0][0]
@@ -67,7 +67,7 @@ async def test_cross_chunk_span_text_is_read_from_the_following_chunk(api_client
 
 @pytest.mark.parametrize("user, status", [(None, 401), ("outsider", 404)])
 async def test_denied_discussion_makes_no_provider_call(api_client, login, ids, chat, user, status):
-    response = await discuss(api_client, await login(user), ids.span["novak_manual"])
+    response = await discuss(api_client, await login(user), ids.span["novak_manual"], ids.col["chronicles"])
 
     assert response.status_code == status
     assert chat.calls == []

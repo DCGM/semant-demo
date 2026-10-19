@@ -25,18 +25,24 @@ export function useTagSpansRepository() {
       })
     },
 
-    /** The updated span; ``outcome`` is partial when its search tag could not be updated. */
-    update: async (spanId: string, tagSpan: PatchSpan): Promise<TagSpanWriteResult> => {
+    /**
+     * The updated span; ``outcome`` is partial when its search tag could not be updated.
+     * Spans are addressed within their collection: the same id in another collection is
+     * not found.
+     */
+    update: async (spanId: string, collectionId: string, tagSpan: PatchSpan): Promise<TagSpanWriteResult> => {
       return api.updateTagSpanApiTagSpansSpanIdPatch({
         spanId,
+        collectionId,
         patchSpan: tagSpan
       })
     },
 
     /** Best effort: ``spans`` holds the updated spans, ``failed`` the rest. */
-    bulkUpdate: async (spanIds: string[], patch: PatchSpan): Promise<BulkUpdateSpansResponse> => {
+    bulkUpdate: async (spanIds: string[], collectionId: string, patch: PatchSpan): Promise<BulkUpdateSpansResponse> => {
       return api.bulkUpdateTagSpansApiTagSpansBulkUpdatePost({
         bulkUpdateSpansRequest: {
+          collectionId,
           spanIds,
           update: patch
         }
@@ -44,8 +50,8 @@ export function useTagSpansRepository() {
     },
 
     /** ``outcome`` is partial when the span was deleted but its search tag was not updated. */
-    delete: async (spanId: string): Promise<WriteResult> => {
-      return api.deleteTagSpanApiTagSpansSpanIdDelete({ spanId })
+    delete: async (spanId: string, collectionId: string): Promise<WriteResult> => {
+      return api.deleteTagSpanApiTagSpansSpanIdDelete({ spanId, collectionId })
     }
   }
 }

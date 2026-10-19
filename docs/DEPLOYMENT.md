@@ -102,8 +102,8 @@ python run.py
 ```
 
 `run.py` starts `uvicorn` in reload mode on `PORT` (8000) for local development. The Docker image runs `python -m uvicorn semant_demo.main:app --host 0.0.0.0 --port $PORT` without the reloader. On startup the application:
-1. Creates missing SQL tables (`user`, `rag_user_feedback` and the LLM quota ledger `llm_quota_day`, `llm_quota_operation`, `llm_quota_call`); existing tables and rows are kept
-2. Connects to Weaviate (startup fails if it is not ready)
+1. Creates missing SQL tables (`user`, `rag_user_feedback`, the LLM quota ledger `llm_quota_day`, `llm_quota_operation`, `llm_quota_call`, and `annotation_tenant_activity`); existing tables and rows are kept
+2. Connects to Weaviate (startup fails if it is not ready) and logs an error when the multi-tenant `Annotation` collection does not exist; it never creates or migrates it ([annotation migration](DATA_MAINTENANCE.md#annotation-migration-annotation_migration-327))
 3. Loads all RAG configurations from `RAG_CONFIGS_PATH` (default `configs/rag/demo_configs/*.yaml`)
 4. Mounts static files from `STATIC_PATH` if the directory exists
 
@@ -174,10 +174,13 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summary prompts, fallbacks, options and `max_generated_results` (results of one search that get titles and per-result summaries) |
 | `SEARCH_FILTERS_CONFIG` | `configs/search_filters.yaml` | Search filters ([SEARCH_FILTERS.md](SEARCH_FILTERS.md)) |
 | `SEARCH_VECTORS_CONFIG` | `configs/search_vectors.yaml` | Weaviate named vectors Search and RAG may query, their query embedding and the default ([ARCHITECTURE.md](ARCHITECTURE.md#search-pipeline)); validated at startup. List a vector only after it is populated in the chunk collection |
+| `ANNOTATION_VECTOR_CONFIG` | `configs/annotation_vector.yaml` | Contextual vector of span annotations (#328): its `id`, Weaviate `target_vector`, input template and embedding ([ARCHITECTURE.md](ARCHITECTURE.md#annotation-derived-data-328)); validated at startup; empty configures none. Used only once the annotation collection has the vector ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-derived-data-annotation_enrichment-328)) |
 | `EMBEDDING_API_KEY` | (empty) | Bearer key sent to the OpenAI-compatible embedding endpoints of search vectors; empty sends none |
 | `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service; deployed separately ([Topicer deployment](../deploy/README.md#topicer)) |
 | `TOPICER_MAX_CHUNKS_PER_TAG` | `40` | Most chunks one optimized AI suggestion run evaluates per tag, sent to Topicer as `max_chunks` (backend policy; the frontend reads it from document stats for its size warning). Positive integer; must not exceed the Topicer config's `max_chunks_ceiling` (default 200), which Topicer answers with 422 |
 | `TOPICER_RESERVE_USD_PER_CHUNK` | `0.005` | Daily-allowance reservation for one Topicer chunk evaluation (a thorough chunk; an optimized tag reserves it × `TOPICER_MAX_CHUNKS_PER_TAG`); unknown Topicer usage is charged at least this. Must be positive ([ARCHITECTURE.md](ARCHITECTURE.md#daily-llm-allowances-featuresquota-adapterssqlquotapy)) |
+| `ANNOTATION_TENANT_TOUCH_SECONDS` | `60` | How often (at most, per tenant and process) a use of a collection's annotation tenant is recorded in `annotation_tenant_activity`; long operations repeat it at this interval |
+| `ANNOTATION_TENANT_IDLE_SECONDS` / `ANNOTATION_TENANT_DEACTIVATION_ENABLED` | `3600` / `false` | Idle time after which `maintenance.annotation_tenants deactivate-idle` deactivates a tenant, and whether it may (keep `false` until rehearsed, [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-tenants-annotation_tenants-327)) |
 | `SPAN_CHAT_TEMPERATURE` / `SPAN_CHAT_MAX_TOKENS` | `0.4` / `1024` | Span discussion replies (`span_chat` tier; the tokens are capped by its `max_output_tokens`) |
 | `SPAN_CHAT_CONTEXT_CHARS` / `SPAN_CHAT_HISTORY_LIMIT` | `1500` / `20` | Context window around the span; chat messages forwarded |
 | `CORPUS_OVERVIEW_MAX_AGE` | `600` | Seconds a computed corpus overview (`/api/analytics/corpus/overview`) is served again before it is recomputed; `0` computes it on every request |
@@ -233,7 +236,8 @@ Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 1. **No reload mode** — `run.py` runs uvicorn with `reload=True` for development; outside Docker run `uvicorn semant_demo.main:app` instead, as the image does
 2. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
 3. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
-4. **One backend process** — chunk tag synchronization is serialized only within one process ([TODO.md](TODO.md#correctness-and-behavior)); SQLite holds only user accounts, RAG feedback and the LLM quota ledger (its admissions are atomic across connections)
+4. **One backend process** — chunk tag synchronization is serialized only within one process ([TODO.md](TODO.md#correctness-and-behavior)); SQLite holds only user accounts, RAG feedback, the LLM quota ledger (its admissions are atomic across connections) and the annotation tenant activity record
 5. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
-6. **SQLite backups** — back up `tasks.db` (users, feedback, LLM quota) separately; production uses a daily host cron job with `sqlite3 .backup` ([deploy/README](../deploy/README.md#sqlite-backup-399))
-7. **Embedding service** — the deployed embedder is Qwen3-Embedding-0.6B on vLLM (`deploy/docker-compose.embedder.yml`, #385), reached through an `openai` search vector (`configs/search_vectors_qwen.yaml`); settings and cutover order: [deploy/README](../deploy/README.md#qwen-embedding-service-385). `EMBEDDING_SERVICE_HOST` / `EMBEDDING_SERVICE_PORT` locate the former Gemma service (`embedding_service/`, the `embedding_service` provider of the default `search_vectors.yaml`).
+6. **Annotation migration before #327** — the first release with multi-tenant annotation storage reads and writes only `Annotation`. Every store it runs on (production, the shared test store of `test-main` and the PR previews) needs the operator-run migration during a write pause first ([cutover](DATA_MAINTENANCE.md#cutover-production-test-store)); otherwise annotations appear empty and cannot be saved
+7. **SQLite backups** — back up `tasks.db` (users, feedback, LLM quota) separately; production uses a daily host cron job with `sqlite3 .backup` ([deploy/README](../deploy/README.md#sqlite-backup-399))
+8. **Embedding service** — the deployed embedder is Qwen3-Embedding-0.6B on vLLM (`deploy/docker-compose.embedder.yml`, #385), reached through an `openai` search vector (`configs/search_vectors_qwen.yaml`); settings and cutover order: [deploy/README](../deploy/README.md#qwen-embedding-service-385). `EMBEDDING_SERVICE_HOST` / `EMBEDDING_SERVICE_PORT` locate the former Gemma service (`embedding_service/`, the `embedding_service` provider of the default `search_vectors.yaml`).
