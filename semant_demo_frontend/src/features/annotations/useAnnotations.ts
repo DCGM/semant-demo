@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { useTagSpansStore } from './tagSpansStore'
 import { SpanType, TagSpan, CollectionChunk } from 'src/generated/api'
 import { localRange, offsetBetween } from './spanOffsets'
+import { createContextGuard } from 'src/shared/api'
 
 // ── Types ──────────────────────────────────────────────
 
@@ -38,13 +39,18 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   /** Stores the original position when editing starts, to detect changes */
   const originalPosition = ref<{ chunkId: string; start: number; end: number } | null>(null)
   /**
-   * Identifies the current selection: bumped whenever a new selection replaces it or it is
+   * Identifies the current selection: entered whenever a new selection replaces it or it is
    * cleared, but not when its boundaries or tag change. A span request uses it to tell whether
    * the selection it was made for is still the open one once it finishes.
    */
-  let selectionId = 0
-  /** The selection a create/retag request is in flight for, so a second pick on it is ignored. */
-  let pendingSelectionId: number | null = null
+  const selectionGuard = createContextGuard()
+  /** A span request for the current selection is in flight; the popover shows it as busy. */
+  const saving = ref(false)
+  /** Starts a new selection (or none): earlier span requests no longer own what is open. */
+  const enterSelection = () => {
+    selectionGuard.enter()
+    saving.value = false
+  }
 
   // ── Computed helpers ──
 
@@ -207,7 +213,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   // ── Selection handling ──
 
   const setSelection = (chunkId: string, start: number, end: number, editingSpanId?: string, tagId?: string) => {
-    selectionId++
+    enterSelection()
     if (start >= end) {
       selection.value = null
       return
@@ -227,7 +233,6 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     const startIndex = chunkIndexById.value[startChunkId]
     const endIndex = chunkIndexById.value[endChunkId]
     if (startIndex === undefined || endIndex === undefined) return
-    selectionId++
 
     // Ensure start comes before end
     let firstChunkId = startChunkId
@@ -250,6 +255,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
       if (firstIndex === undefined) return
       const firstChunkLength = chunks.value[firstIndex].text.length
       if (firstOffset >= firstChunkLength) return
+      enterSelection()
       selection.value = {
         chunkId: firstChunkId,
         start: firstOffset,
@@ -260,6 +266,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
       return
     }
 
+    enterSelection()
     selection.value = {
       chunkId: firstChunkId,
       start: firstOffset,
@@ -270,7 +277,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   }
 
   const editSpan = (span: TagSpan) => {
-    selectionId++
+    enterSelection()
     selection.value = {
       chunkId: span.chunkId,
       start: span.start,
@@ -286,7 +293,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   }
 
   const clearSelection = () => {
-    selectionId++
+    enterSelection()
     selection.value = null
     originalPosition.value = null
   }
@@ -339,26 +346,26 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
   /**
    * Run a span request for the current selection, then close that selection — unless the user
-   * has already moved on to a newer one, which stays open. While it is in flight, callers ignore
-   * further picks on the same selection (`isPending`), so a double-click creates one span.
+   * has moved on to a newer one by then, which stays open. While a request for the selection is
+   * in flight (`saving`), further requests on it are ignored, so a double-click runs only one.
+   * Returns whether the request ran; a request that fails throws and leaves the selection open.
    */
-  const isPending = () => pendingSelectionId === selectionId
-
   const applyToSelection = async (request: () => Promise<void>): Promise<boolean> => {
-    const id = selectionId
-    pendingSelectionId = id
+    if (saving.value) return false
+    const isCurrent = selectionGuard.capture()
+    saving.value = true
     try {
       await request()
     } finally {
-      if (pendingSelectionId === id) pendingSelectionId = null
+      if (isCurrent()) saving.value = false
     }
-    if (selectionId === id) clearSelection()
+    if (isCurrent()) clearSelection()
     return true
   }
 
   /** Create a span with the given tag over the current selection. Returns whether one was created. */
   const createSpan = async (tagId: string): Promise<boolean> => {
-    if (!selection.value || isPending()) return false
+    if (!selection.value) return false
 
     const normalized = normalizeSelectionToStartChunk(selection.value)
     if (!normalized) return false
@@ -375,7 +382,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   /** Retag the span being edited. Returns whether it was retagged. */
   const updateSpanTag = async (tagId: string): Promise<boolean> => {
     const sel = selection.value
-    if (!sel?.editingSpanId || isPending()) return false
+    if (!sel?.editingSpanId || saving.value) return false
 
     // Update visual highlight immediately
     selection.value = { ...sel, tagId }
@@ -384,7 +391,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   }
 
   const updateSpanPosition = async () => {
-    if (!selection.value?.editingSpanId) return
+    if (!selection.value?.editingSpanId || saving.value) return
 
     const normalized = normalizeSelectionToStartChunk(selection.value)
     if (!normalized?.editingSpanId) return
@@ -395,23 +402,24 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     const spanId = normalized.editingSpanId
     const ownerChunkId = findSpanOwnerChunkId(spanId)
 
-    if (ownerChunkId && ownerChunkId !== normalized.chunkId) {
-      // Span moved to a different chunk → delete + create
-      await store.deleteSpan(spanId, ownerChunkId)
-      await store.createSpan({
-        chunkId: normalized.chunkId,
-        tagId: normalized.tagId!,
-        start: normalized.start,
-        end: normalized.end,
-        type: SpanType.pos
-      })
-    } else {
-      await store.updateSpan(spanId, normalized.chunkId, {
-        start: normalized.start,
-        end: normalized.end
-      })
-    }
-    clearSelection()
+    await applyToSelection(async () => {
+      if (ownerChunkId && ownerChunkId !== normalized.chunkId) {
+        // Span moved to a different chunk → delete + create
+        await store.deleteSpan(spanId, ownerChunkId)
+        await store.createSpan({
+          chunkId: normalized.chunkId,
+          tagId: normalized.tagId!,
+          start: normalized.start,
+          end: normalized.end,
+          type: SpanType.pos
+        })
+      } else {
+        await store.updateSpan(spanId, normalized.chunkId, {
+          start: normalized.start,
+          end: normalized.end
+        })
+      }
+    })
   }
 
   const deleteSpan = async () => {
@@ -419,8 +427,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
     const spanId = selection.value.editingSpanId
     const ownerChunkId = findSpanOwnerChunkId(spanId) || selection.value.chunkId
-    await store.deleteSpan(spanId, ownerChunkId)
-    clearSelection()
+    await applyToSelection(() => store.deleteSpan(spanId, ownerChunkId))
   }
 
   // ── Helpers ──
@@ -498,6 +505,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     // State
     selection,
     loading,
+    saving,
     isEditing,
     hasSelection,
     positionChanged,
@@ -520,6 +528,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     getProjectedSpans,
 
     // CRUD
+    applyToSelection,
     createSpan,
     updateSpanTag,
     updateSpanPosition,

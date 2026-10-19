@@ -5,6 +5,7 @@
       v-if="visible"
       ref="popoverEl"
       class="annotation-popover"
+      :class="{ 'is-busy': busy }"
       :style="popoverStyle"
       @mousedown.stop
     >
@@ -15,6 +16,7 @@
         class="popover-close"
         @click="emit('close')"
       />
+      <q-linear-progress v-if="busy" indeterminate size="2px" color="primary" class="popover-progress" />
 
       <!-- Tag picker mode (plain single-pick, or AI multi-select sub-mode) -->
       <template v-if="showTagPicker">
@@ -140,6 +142,7 @@
             label="Save position"
             color="primary"
             class="popover-btn"
+            :disable="busy"
             @click="emit('savePosition')"
           />
           <!-- Approve / reject shortcut for auto spans (AI suggestions) -->
@@ -150,7 +153,7 @@
               label="Approve"
               color="positive"
               class="popover-btn"
-              :disable="approveRejectBusy"
+              :disable="busy"
               @click="emit('approve')"
             />
             <q-btn
@@ -159,7 +162,7 @@
               label="Reject"
               color="negative"
               class="popover-btn"
-              :disable="approveRejectBusy"
+              :disable="busy"
               @click="emit('reject')"
             />
           </template>
@@ -197,6 +200,7 @@
             label="Delete"
             color="negative"
             class="popover-btn"
+            :disable="busy"
             @click="emit('delete')"
           />
         </div>
@@ -226,7 +230,8 @@ const props = defineProps<{
   positionChanged: boolean
   /** The edited span is an AI suggestion: offer approve and reject. */
   editingAuto: boolean
-  approveRejectBusy: boolean
+  /** A span request for this selection is being saved: tags and actions are disabled. */
+  busy: boolean
   aiSelectionRunning: boolean
 }>()
 
@@ -532,6 +537,20 @@ defineExpose({ moveTo, showMode })
 
 .tag-row:hover {
   background: #f1f5f9;
+}
+
+/* While the span is being saved, a second pick would be ignored: show the rows as unavailable. */
+.annotation-popover.is-busy .tag-row {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.popover-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-radius: 10px 10px 0 0;
 }
 
 .tag-row.is-active {

@@ -78,26 +78,26 @@ test('a selection after clicking a marker opens the tag picker instead of reusin
 })
 
 /**
- * Holds span-creating POSTs until `release` is called, and counts them.
- * Lets a test act while a request it started is still in flight.
+ * Holds span requests with the given method (POST creates, DELETE deletes) until `release`
+ * is called, and counts them. Lets a test act while a request it started is still in flight.
  */
-async function holdSpanCreation (page: Page): Promise<{ count: () => number, release: () => void }> {
-  let posts = 0
+async function holdSpanRequests (page: Page, method = 'POST'): Promise<{ count: () => number, release: () => void }> {
+  let requests = 0
   let release!: () => void
   const released = new Promise<void>((resolve) => { release = resolve })
-  await page.route('**/api/tag_spans', async (route) => {
-    if (route.request().method() !== 'POST') return route.fallback()
-    posts++
+  await page.route('**/api/tag_spans**', async (route) => {
+    if (route.request().method() !== method) return route.fallback()
+    requests++
     await released
     await route.continue()
   })
-  return { count: () => posts, release }
+  return { count: () => requests, release }
 }
 
 test('a tag request that finishes late keeps the newer selection open', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  const held = await holdSpanCreation(page)
+  const held = await holdSpanRequests(page)
 
   await selectText(page, 'chronicle_2', 0, 'chronicle_2', 8)
   await popover(page).locator('.tag-row').filter({ hasText: fixture.tag('place').name }).click()
@@ -122,11 +122,13 @@ test('a double-click on a tag row creates one span', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await expect(page.locator('.gutter-item')).toHaveCount(2)
-  const held = await holdSpanCreation(page)
+  const held = await holdSpanRequests(page)
 
   await selectText(page, 'chronicle_2', 0, 'chronicle_2', 8)
   await popover(page).locator('.tag-row').filter({ hasText: fixture.tag('place').name }).dblclick()
   await expect.poll(held.count).toBe(1)
+  // While the span is saved, the picker shows it is busy instead of taking another pick.
+  await expect(popover(page)).toHaveClass(/is-busy/)
 
   held.release()
   await expect(taggedSegment(page, 'chronicle_2', 0, 8)).toBeVisible()
@@ -147,6 +149,50 @@ test('a new selection clears the AI suggestion highlighted from its marker', asy
   await selectText(page, 'chronicle_2', 0, 'chronicle_2', 8)
   await expect(popover(page).getByText('Select tag')).toBeVisible()
   await expect(card).not.toHaveClass(/is-highlighted/)
+})
+
+test('a new selection keeps the AI suggestion reached with the panel arrows', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI assist').click()
+  const card = page.locator('.auto-span-card').filter({ hasText: fixture.tag('place').name })
+  const nav = page.locator('.ai-tag-nav')
+
+  await nav.locator('.q-btn').last().click()
+  await expect(nav.locator('.ai-tag-nav-counter')).toHaveText('1/1')
+  await expect(card).toHaveClass(/is-highlighted/)
+
+  await selectText(page, 'chronicle_2', 0, 'chronicle_2', 8)
+  await expect(popover(page).getByText('Select tag')).toBeVisible()
+  await expect(card).toHaveClass(/is-highlighted/)
+  await expect(nav.locator('.ai-tag-nav-counter')).toHaveText('1/1')
+})
+
+test('a delete that finishes late keeps the newer selection open', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await selectText(page, 'chronicle_2', 0, 'chronicle_2', 8)
+  const person = fixture.tag('person')
+  await popover(page).locator('.tag-row').filter({ hasText: person.name }).click()
+  // Its marker is the lower of the two person markers: the fixture one is in the first chunk.
+  const personMarkers = page.locator('.gutter-item').filter({ hasText: person.shorthand })
+  await expect(personMarkers).toHaveCount(2)
+  const [first, second] = [personMarkers.first(), personMarkers.last()]
+  const marker = (await first.boundingBox())!.y > (await second.boundingBox())!.y ? first : second
+  const held = await holdSpanRequests(page, 'DELETE')
+
+  await marker.click()
+  await popover(page).getByRole('button', { name: 'Delete' }).click()
+  await expect.poll(held.count).toBe(1)
+
+  const text = fixture.chunk('chronicle_2').text
+  const start = text.indexOf('Jan Novák')
+  await selectText(page, 'chronicle_2', start, 'chronicle_2', start + 'Jan Novák'.length)
+  await expect(popover(page).getByText('Select tag')).toBeVisible()
+
+  held.release()
+  await expect(personMarkers).toHaveCount(1)
+  await expect(popover(page).getByText('Select tag')).toBeVisible()
 })
 
 test('the tags panel hides tags, steps through their annotations and is searched with Ctrl+F', async ({ page }) => {
