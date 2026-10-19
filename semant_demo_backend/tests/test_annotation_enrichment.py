@@ -16,6 +16,7 @@ import pytest
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.core.outcomes import WriteOutcome
 from semant_demo.features.annotations import backfill, service
+from semant_demo.features.annotations.derivation import DERIVATION_VERSION
 from semant_demo.features.annotations.enrichment import (
     AnnotationVector, AnnotationVectorSettings, Enrichment, text_current, vector_current,
 )
@@ -239,6 +240,33 @@ async def test_saving_the_same_offsets_again_changes_nothing_when_current(store,
     assert len(embedder.documents) == 1
 
 
+async def older_policy(store):
+    """A span whose text, context and vector were derived under an older derivation policy."""
+    sid, _ = await create(store)
+    store.spans.objects[sid] |= {"derivationVersion": DERIVATION_VERSION - 1, "leftContext": "old policy "}
+    return sid
+
+
+async def test_derived_data_of_an_older_policy_is_not_current_and_not_returned(store, embedder):
+    sid = await older_policy(store)
+
+    row = await store.spans.read_row(COLLECTION, sid)
+    assert not text_current(row) and not vector_current(row, CONFIG_ID)
+    [listed] = await service.list_annotation_rows(store, OWNER, COLLECTION)
+    assert listed.text is None and listed.leftContext is None
+    assert await service.similar_annotations(store, OWNER, COLLECTION, "hejtman") == []
+
+
+async def test_saving_again_rederives_an_older_policy_and_reembeds(store, embedder):
+    sid = await older_policy(store)
+
+    await service.update_span(store, OWNER, COLLECTION, sid, PatchSpan(start=25, end=34))
+
+    row = await store.spans.read_row(COLLECTION, sid)
+    assert (row.revision, row.derivationVersion, row.leftContext) == (1, DERIVATION_VERSION, "Roku 1848 přijel hejtman ")
+    assert text_current(row) and vector_current(row, CONFIG_ID) and len(embedder.documents) == 2
+
+
 async def test_provider_failure_keeps_the_edit_and_marks_the_vector_failed(store, embedder):
     sid, _ = await create(store)
     embedder.fail = True
@@ -395,9 +423,32 @@ async def test_backfill_is_bounded_and_reports_the_remaining_spans(store):
 
     result = await backfill.backfill(store, [COLLECTION], limit=2)
 
-    assert (result.processed, result.remaining) == (2, 1)
+    assert (result.processed, result.not_processed, result.remaining_incomplete) == (2, 1, 1)
     [report] = await backfill.status(store, [COLLECTION])
     assert report.incomplete == 1
+
+
+async def test_backfill_counts_failed_embeddings_as_remaining_incomplete(store, embedder):
+    legacy(store, 25, 34)
+    embedder.fail = True
+
+    result = await backfill.backfill(store, [COLLECTION], limit=10)
+
+    assert (result.text_written, result.not_processed, result.remaining_incomplete) == (1, 0, 1)
+    assert [f.step for f in result.failed] == ["embed_annotation"]
+
+
+async def test_backfill_rederives_an_older_policy_and_replaces_its_vector(store, embedder):
+    sid = await older_policy(store)
+    [report] = await backfill.status(store, [COLLECTION])
+    assert (report.text, report.vector, report.incomplete) == ({"outdated": 1}, {"stale": 1}, 1)
+
+    result = await backfill.backfill(store, [COLLECTION], limit=10)
+
+    assert (result.text_written, result.vector_written, result.remaining_incomplete) == (1, 1, 0)
+    row = await store.spans.read_row(COLLECTION, sid)
+    assert row.derivationVersion == DERIVATION_VERSION and vector_current(row, CONFIG_ID)
+    assert embedder.documents[-1] == "Roku 1848 přijel hejtman <<<Jan Novák>>> a ubytoval se v Brně."
 
 
 async def test_backfill_replaces_vectors_of_another_configuration_from_the_stored_text(store, embedder):
@@ -435,6 +486,18 @@ async def test_backfill_without_vectors_calls_no_embedder(store, embedder):
     result = await backfill.backfill(store, [COLLECTION], limit=10, vectors=False)
 
     assert (result.text_written, result.vector_written) == (1, 0) and embedder.documents == []
+    assert (result.not_processed, result.remaining_incomplete) == (0, 1)  # the vector is still to embed
+
+
+async def test_backfill_without_vectors_marks_the_vector_of_an_older_policy_pending(store, embedder):
+    sid = await older_policy(store)
+
+    result = await backfill.backfill(store, [COLLECTION], limit=10, vectors=False)
+
+    row = await store.spans.read_row(COLLECTION, sid)
+    assert text_current(row) and row.vectorStatus == "pending" and not vector_current(row, CONFIG_ID)
+    assert result.remaining_incomplete == 1
+    assert await service.similar_annotations(store, OWNER, COLLECTION, "hejtman") == []
 
 
 # ── Configuration ─────────────────────────────────────────────────────────

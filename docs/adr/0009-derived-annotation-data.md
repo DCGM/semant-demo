@@ -2,7 +2,8 @@
 
 Status: proposed with #328 (implementation in review); store rollout pending an operator step.
 Date: 2026-10-18. Refines ADR 0006 (canonical text) and ADR 0008 (annotation storage) for the
-collection workspace (#311, #323); prerequisite of the concordance and semantic features (#324).
+collection workspace (#311, #323); prerequisite of the basic KWIC API (#329, Stage 1 #323) and of
+lexical/semantic/hybrid annotation search (#332, Stage 2 #324).
 
 ## Context
 
@@ -27,9 +28,10 @@ outside a collection are still part of the document.
 - One contextual named vector embeds the context with the span marked (`{left}<<<{text}>>>{right}`);
   tag, type and AI metadata are not embedded, so changing them never re-embeds. Its configuration
   `id` is stored per vector; span-only vectors are later evaluation.
-- Freshness: `revision` counts offset changes; derived data names the revision (and vector config)
-  it was computed for and counts only while it matches. A vector is written only if the revision
-  is unchanged (per-span lock within the process). Provider or read failures keep the edit with an
+- Freshness: `revision` counts offset changes; derived data names the revision, derivation policy
+  (`derivationVersion`) and vector config it was computed for and counts only while they match; a
+  vector also only while the text is current, and re-deriving the text marks the vector pending.
+  A vector is written only if the revision is unchanged (per-span lock within the process). Provider or read failures keep the edit with an
   explicit `failed` status and a `partial` write result (ADR 0002); saving again or the bounded
   operator backfill retries. No background job, watcher or automatic repair.
 - Document metadata (title, year) is joined per page of rows, not copied, so it needs no refresh path.
@@ -40,8 +42,10 @@ outside a collection are still part of the document.
 
 Span writes read the document's chunk texts (as #376 measures) and call the embedder; reads of rows
 and vectors need no chunk reads. With several backend processes a late vector can still land, but
-it is recognizable as stale and never returned. Spans saved before #328 have no derived data until
-the backfill. Corpus re-ingestion is not required.
+it is recognizable as stale and never returned. The revision check is not atomic across processes,
+so store-wide backfills (rollout, a policy or vector configuration change) run with every backend and
+other writer stopped; no cross-process conditional write is implemented. Spans saved before #328
+have no derived data until the backfill. Corpus re-ingestion is not required.
 
 ## Verification
 

@@ -297,12 +297,12 @@ async def _patch_with_derived(store: AnnotationStore, collection_id: UUID, span_
     moved = (start, end) != (row.start, row.end)
     vector = store.enrichment.vector
     stale_vector = vector is not None and not vector_current(row, vector.id)
-    if not moved and text_current(row) and row.derivationVersion == DERIVATION_VERSION and not stale_vector:
+    if not moved and text_current(row) and not stale_vector:
         await store.spans.update(collection_id, span_id, patch)
         return None
+    # Re-derived text (also under a changed policy) invalidates the vector embedded from the old one.
     refresh = await derive_refresh(store, row.documentId, row.chunkId, start, end, (row.revision or 0) + moved)
-    refresh.needs_vector = moved or stale_vector
-    await store.spans.update(collection_id, span_id, patch, refresh.properties(reset_vector=refresh.needs_vector))
+    await store.spans.update(collection_id, span_id, patch, refresh.properties(reset_vector=True))
     return refresh
 
 

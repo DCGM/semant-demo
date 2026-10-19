@@ -22,7 +22,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from semant_demo.features.annotations.derivation import DerivedText, render_vector_input
+from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, render_vector_input
 from semant_demo.features.annotations.schemas import AnnotationRow, EnrichmentStatus, VectorStatus
 from semant_demo.features.search.vectors import Embedder, EmbeddingSettings
 
@@ -86,11 +86,15 @@ class Enrichment:
 
 
 def text_current(row: AnnotationRow) -> bool:
-    """The row's stored text, context and positions describe its current revision."""
-    return row.enrichmentStatus == EnrichmentStatus.ready and (row.enrichedRevision or 0) == (row.revision or 0)
+    """The row's stored text, context and positions describe its current revision under the
+    current derivation policy (``DERIVATION_VERSION``)."""
+    return (row.enrichmentStatus == EnrichmentStatus.ready and (row.enrichedRevision or 0) == (row.revision or 0)
+            and row.derivationVersion == DERIVATION_VERSION)
 
 
 def vector_current(row: AnnotationRow, config_id: str | None) -> bool:
-    """The row's contextual vector belongs to its current revision and configuration ``config_id``."""
+    """The row's contextual vector belongs to its current revision and configuration
+    ``config_id``, and its text is current (every re-derivation marks the vector pending,
+    so a vector of an older policy's text is never current)."""
     return (config_id is not None and row.vectorStatus == VectorStatus.ready and row.vectorConfig == config_id
-            and (row.vectorRevision or 0) == (row.revision or 0))
+            and (row.vectorRevision or 0) == (row.revision or 0) and text_current(row))

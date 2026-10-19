@@ -25,10 +25,15 @@ Backfill at most ``--limit`` incomplete spans (a dry run reports the status)::
     python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--collection ID ...] \\
         [--no-vectors] --execute --confirm-endpoint localhost:8080
 
+Stop every backend and other writer of the store first (docs/DATA_MAINTENANCE.md): the
+revision check before each write is not atomic against a running backend.
+
 Only derived properties are written, never a span's offsets, chunk, tag, type or revision;
-nothing is deleted. A span edited while it is backfilled keeps its newer derivation.
-``remaining`` counts incomplete spans left for the next run. Embedding calls the configured
-provider once per span. Exits 1 when some steps failed (listed in ``failed``).
+nothing is deleted. ``not_processed`` counts incomplete spans skipped by ``--limit``;
+``remaining_incomplete`` (read again after the run) counts every span still incomplete for
+the configured vector, including failed steps and, with ``--no-vectors``, vectors still to
+embed. Embedding calls the configured provider once per span. Exits 1 when some steps
+failed (listed in ``failed``).
 """
 import argparse
 import asyncio
