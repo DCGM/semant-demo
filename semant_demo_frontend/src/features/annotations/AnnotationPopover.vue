@@ -84,7 +84,7 @@
               'is-active': showAiTagPicker
                 ? aiTagPickerSelected.has(tag.id)
                 : selectedTagId === tag.id,
-              'is-suggested': isSuggested(tag.id)
+              'is-suggested': !!suggestionFor(tag.id)
             }"
             @click="showAiTagPicker ? toggleAiPickerTag(tag.id) : emit('pickTag', tag.id)"
           >
@@ -98,15 +98,24 @@
               @update:model-value="toggleAiPickerTag(tag.id)"
             />
             <q-icon
-              v-if="isSuggested(tag.id)"
+              v-if="suggestionFor(tag.id)"
               name="auto_awesome"
               size="12px"
               class="tag-suggested-icon"
             >
-              <q-tooltip>Likely match for the selected text</q-tooltip>
+              <q-tooltip>
+                {{
+                  suggestionFor(tag.id)!.score != null
+                    ? `${matchPercent(suggestionFor(tag.id)!.score!)}% match with the selected text`
+                    : 'Last used tag'
+                }}
+              </q-tooltip>
             </q-icon>
             <span class="tag-dot" :style="{ backgroundColor: tag.color }"></span>
             <span class="tag-name">{{ tag.name }}</span>
+            <span v-if="suggestionFor(tag.id)?.score != null" class="tag-suggested-score">
+              {{ matchPercent(suggestionFor(tag.id)!.score!) }}% match
+            </span>
             <span class="tag-shorthand">{{ tag.shorthand }}</span>
           </div>
           <div v-if="filteredTags.length === 0" class="tag-row-empty">No tags found</div>
@@ -250,10 +259,11 @@ const sortedTags = computed(() =>
 
 // Computed lazily (only once the tag list is actually rendered), so this never delays the
 // popover opening even for collections with many tags.
-const suggestedTagIds = computed(() =>
+const suggestions = computed(() =>
   buildTagSuggestions(props.selectedText, props.tags, props.lastUsedTagId)
 )
-const isSuggested = (tagId: string) => suggestedTagIds.value.includes(tagId)
+const suggestionFor = (tagId: string) => suggestions.value.find((s) => s.id === tagId)
+const matchPercent = (score: number) => Math.round(score * 100)
 
 const filteredTags = computed(() => {
   const q = (tagSearch.value ?? '').toLowerCase().trim()
@@ -263,7 +273,8 @@ const filteredTags = computed(() => {
     )
     : sortedTags.value
 
-  const suggested = suggestedTagIds.value
+  const suggestedIds = suggestions.value.map((s) => s.id)
+  const suggested = suggestedIds
     .map((id) => base.find((t) => t.id === id))
     .filter((t): t is Tag => !!t)
   if (!suggested.length) return base
@@ -542,6 +553,14 @@ defineExpose({ moveTo, showMode })
   flex-shrink: 0;
 }
 
+.tag-suggested-score {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #b45309;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .tag-row--create {
   color: #2563eb;
   font-weight: 600;
@@ -570,6 +589,10 @@ defineExpose({ moveTo, showMode })
   font-weight: 500;
   color: #1e293b;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-shorthand {

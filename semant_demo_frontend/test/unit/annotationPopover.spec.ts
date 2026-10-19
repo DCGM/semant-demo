@@ -52,16 +52,18 @@ describe('AnnotationPopover tag list', () => {
     expect(names).toEqual(['Aleš', 'Babička', 'Čapek', 'Hrabal', 'Jirásek', 'Novák'])
   })
 
-  it('surfaces a likely-match tag first and marks it as suggested', async () => {
+  it('surfaces a likely-match tag first, marks it as suggested and shows its match percentage', async () => {
     const wrapper = mountPopover('Novák')
     await wrapper.vm.$nextTick()
 
     const rows = new DOMWrapper(document.body).findAll('.tag-row:not(.tag-row--create)')
     expect(rows[0].text()).toContain('Novák')
     expect(rows[0].classes()).toContain('is-suggested')
-    // The rest stays alphabetical.
-    const restNames = rows.slice(1).map((r) => r.find('.tag-name').text())
-    expect(restNames).toEqual(['Aleš', 'Babička', 'Čapek', 'Hrabal', 'Jirásek'])
+    expect(rows[0].find('.tag-suggested-score').text()).toBe('100% match')
+    // The rest stays alphabetical and unmarked.
+    const rest = rows.slice(1)
+    expect(rest.map((r) => r.find('.tag-name').text())).toEqual(['Aleš', 'Babička', 'Čapek', 'Hrabal', 'Jirásek'])
+    expect(rest.every((r) => !r.find('.tag-suggested-score').exists())).toBe(true)
   })
 
   it('does not suggest anything when nothing resembles the selection and there is no last-used tag', async () => {
@@ -71,13 +73,15 @@ describe('AnnotationPopover tag list', () => {
     expect(new DOMWrapper(document.body).find('.tag-row.is-suggested').exists()).toBe(false)
   })
 
-  it('suggests the last-used tag first even for an unrelated, long selection', async () => {
+  it('suggests the last-used tag first (with no match percentage shown) for an unrelated, long selection', async () => {
     const wrapper = mountPopover('a long and entirely unrelated highlighted passage', 'b')
     await wrapper.vm.$nextTick()
 
     const rows = new DOMWrapper(document.body).findAll('.tag-row:not(.tag-row--create)')
     expect(rows[0].text()).toContain('Babička')
     expect(rows[0].classes()).toContain('is-suggested')
+    // Suggested purely because it was last used — there is no similarity score to show.
+    expect(rows[0].find('.tag-suggested-score').exists()).toBe(false)
   })
 
   it('suggests nothing when the collection has 5 or fewer tags', async () => {

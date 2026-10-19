@@ -51,24 +51,32 @@ describe('buildTagSuggestions', () => {
     tag('d', 'Fourth'), tag('e', 'Fifth'), tag('f', 'Sixth')
   ]
 
-  it('puts the last-used tag first even when it does not match the selection text', () => {
-    expect(buildTagSuggestions('Unrelated', tags, 'a')).toEqual(['a', 'c'])
+  it('puts the last-used tag first, with a null score when it does not match the selection text', () => {
+    expect(buildTagSuggestions('Unrelated', tags, 'a')).toEqual([
+      { id: 'a', score: null },
+      { id: 'c', score: 1 }
+    ])
   })
 
-  it('still suggests the last-used tag for a long (prose) selection with no similarity matches', () => {
-    expect(buildTagSuggestions('a long highlighted passage of several sentences', tags, 'a')).toEqual(['a'])
+  it('still suggests the last-used tag (with a null score) for a prose selection with no similarity matches', () => {
+    expect(buildTagSuggestions('a long highlighted passage of several sentences', tags, 'a'))
+      .toEqual([{ id: 'a', score: null }])
   })
 
-  it('does not duplicate the last-used tag when it is also the best similarity match', () => {
-    expect(buildTagSuggestions('Novák', tags, 'a')).toEqual(['a'])
+  it('carries the similarity score when the last-used tag is also the best match', () => {
+    expect(buildTagSuggestions('Novák', tags, 'a')).toEqual([{ id: 'a', score: 1 }])
+  })
+
+  it('reports a fractional score for a near, but not exact, match', () => {
+    expect(buildTagSuggestions('Novak', tags, null)).toEqual([{ id: 'a', score: 0.8 }])
   })
 
   it('ignores a last-used tag id that no longer exists in this collection', () => {
-    expect(buildTagSuggestions('Novák', tags, 'deleted-tag-id')).toEqual(['a'])
+    expect(buildTagSuggestions('Novák', tags, 'deleted-tag-id')).toEqual([{ id: 'a', score: 1 }])
   })
 
   it('falls back to similarity alone when there is no last-used tag', () => {
-    expect(buildTagSuggestions('Novák', tags, null)).toEqual(['a'])
+    expect(buildTagSuggestions('Novák', tags, null)).toEqual([{ id: 'a', score: 1 }])
   })
 
   it('suggests nothing at all once the collection has 5 or fewer tags', () => {
