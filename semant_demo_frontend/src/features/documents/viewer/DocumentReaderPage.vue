@@ -459,6 +459,8 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
   popoverRef.value?.moveTo(e)
   domSelection.removeAllRanges()
+  // A new selection is unrelated to any AI suggestion highlighted from an earlier marker click.
+  aiAssist.highlightedAutoSpanId.value = null
 
   // Fresh selections open straight into the tag picker, as if "Add tag" had
   // already been clicked.
@@ -466,12 +468,11 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 }
 
 const onTagClick = async (tagId: string) => {
-  if (annotations.isEditing.value) {
-    await annotations.updateSpanTag(tagId)
-  } else {
-    await annotations.createSpan(tagId)
-  }
-  recordTagUsage(tagId)
+  const applied = annotations.isEditing.value
+    ? await annotations.updateSpanTag(tagId)
+    : await annotations.createSpan(tagId)
+  // Only a tag that really went onto a span becomes the last-used suggestion.
+  if (applied) recordTagUsage(tagId)
 }
 
 const onCreateTagClick = () => {
