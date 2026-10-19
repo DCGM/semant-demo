@@ -28,7 +28,7 @@ function mountPopover (selectedText = '', lastUsedTagId: string | null = null, t
       isEditing: false,
       positionChanged: false,
       editingAuto: false,
-      approveRejectBusy: false,
+      busy: false,
       aiSelectionRunning: false
     },
     global: { plugins: [[Quasar, {}]] },

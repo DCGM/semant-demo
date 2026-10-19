@@ -142,7 +142,7 @@
         :is-editing="annotations.isEditing.value"
         :position-changed="annotations.positionChanged.value"
         :editing-auto="!!editingAutoSpan"
-        :approve-reject-busy="approveRejectBusy"
+        :busy="annotations.saving.value"
         :ai-selection-running="aiAssist.isSelectionRunning.value"
         @close="annotations.clearSelection()"
         @pick-tag="onTagClick"
@@ -385,7 +385,6 @@ const recordTagUsage = (tagId: string) => {
 }
 
 // The span being edited when it is an AI suggestion: the popover offers approve/reject.
-const approveRejectBusy = ref(false)
 const editingAutoSpan = computed(() => {
   const sel = annotations.selection.value
   if (!sel?.editingSpanId) return null
@@ -397,19 +396,22 @@ const editingAutoSpan = computed(() => {
 async function changeEditingSpanType(type: SpanType) {
   const span = editingAutoSpan.value
   if (!span || !span.id) return
-  approveRejectBusy.value = true
-  try {
-    await aiAssist.resolveAutoSpan(span, type)
-  } finally {
-    approveRejectBusy.value = false
-    annotations.clearSelection()
-  }
+  await annotations.applyToSelection(() => aiAssist.resolveAutoSpan(span, type))
+}
+
+// The AI-panel highlight this page set for a selected auto span. A new text selection clears
+// the highlight only while it is still this one, so a card the user moved to in the AI panel
+// (its prev/next position) is kept.
+let highlightFromSelection: string | null = null
+const highlightAutoSpan = (spanId: string) => {
+  aiAssist.highlightedAutoSpanId.value = spanId
+  highlightFromSelection = spanId
 }
 
 // When the user selects an auto span (from its gutter marker), mirror that into the
 // AI panel highlight so the matching suggestion card lights up.
 watch(editingAutoSpan, (span) => {
-  if (span?.id) aiAssist.highlightedAutoSpanId.value = span.id
+  if (span?.id) highlightAutoSpan(span.id)
 })
 
 const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
@@ -430,7 +432,7 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
   // should make its corresponding suggestion card light up (and scroll into
   // view inside the panel).
   if (item.isAuto) {
-    aiAssist.highlightedAutoSpanId.value = item.spanId
+    highlightAutoSpan(item.spanId)
   }
 }
 
@@ -459,8 +461,11 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
   popoverRef.value?.moveTo(e)
   domSelection.removeAllRanges()
-  // A new selection is unrelated to any AI suggestion highlighted from an earlier marker click.
-  aiAssist.highlightedAutoSpanId.value = null
+  // A new selection is unrelated to an AI suggestion highlighted by selecting it earlier.
+  if (highlightFromSelection && aiAssist.highlightedAutoSpanId.value === highlightFromSelection) {
+    aiAssist.highlightedAutoSpanId.value = null
+  }
+  highlightFromSelection = null
 
   // Fresh selections open straight into the tag picker, as if "Add tag" had
   // already been clicked.
