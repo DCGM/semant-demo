@@ -51,6 +51,31 @@ export function groupParagraphs (chunks: CollectionChunk[]): ChunkParagraph[] {
   return paragraphs
 }
 
+/** The number of chunks missing in the gap a paragraph ends at; 0 when it ends at none. */
+export function gapSize (paragraph: ChunkParagraph): number {
+  if (paragraph.gapAfter === null || paragraph.gapBefore === null) return 0
+  return paragraph.gapBefore - paragraph.gapAfter - 1
+}
+
+/** The text of the divider at a gap of `count` missing chunks. */
+export function missingChunksText (count: number): string {
+  return count === 1 ? '1 chunk not shown' : `${count} chunks not shown`
+}
+
+/**
+ * The span a click on tagged text opens: the shortest one, an approved span before an AI
+ * suggestion of the same length, then the earlier one.
+ */
+export function shortestMarker<T extends { start: number, end: number, isAuto: boolean }> (markers: T[]): T | null {
+  let best: T | null = null
+  for (const m of markers) {
+    if (!best) { best = m; continue }
+    const diff = (m.end - m.start) - (best.end - best.start)
+    if (diff < 0 || (diff === 0 && (Number(m.isAuto) - Number(best.isAuto) || m.start - best.start) < 0)) best = m
+  }
+  return best
+}
+
 /** Displayed and hidden chunks without duplicates, in document order. */
 export function knownChunksInOrder (displayed: CollectionChunk[], hidden: CollectionChunk[]): CollectionChunk[] {
   return [...displayed, ...hidden]
