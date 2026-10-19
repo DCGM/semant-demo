@@ -1,6 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import {
-  annotation, answerChat, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, sidebarPanelButton
+  annotation, answerChat, answerGuestQuota, askChat, chatSource, ensureLoggedIn, fixture, search, sidebarPanelButton
 } from '../e2e/support'
 
 // UI review captures (`scripts/e2e-dev.sh capture`), not part of `make test-e2e`. The
@@ -42,7 +42,6 @@ test('search results', async ({ page }, testInfo) => {
 test('search vector selection', async ({ page }, testInfo) => {
   // The browser-test profile configures two search vectors (#217).
   await page.goto('/#/search')
-  await closePhoneNavigation(page)
   await page.getByRole('textbox').first().fill('Lhota')
   await page.getByRole('button', { name: 'Search filters' }).click()
   const select = page.getByTestId('search-vector-select')
@@ -64,7 +63,6 @@ test('document view', async ({ page }, testInfo) => {
   await page.reload() // without the sign-in notification
   await expect(annotation(page, 'novak_manual')).toBeVisible()
   await expect(page.locator('.gutter-item')).toHaveCount(2)
-  await closePhoneNavigation(page)
   await expectSidebarsOpen(page, testInfo)
   await save(page, testInfo, 'document-view')
 })
@@ -74,7 +72,6 @@ test('document view - summary panel (#249)', async ({ page }, testInfo) => {
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
   await page.reload() // without the sign-in notification
   await expect(annotation(page, 'novak_manual')).toBeVisible()
-  await closePhoneNavigation(page)
   await expectSidebarsOpen(page, testInfo)
   // On phone the right sidebar is a closed overlay by default; open it to reach the panel.
   if (testInfo.project.name === 'phone') {
@@ -96,14 +93,12 @@ test('corpus overview', async ({ page }, testInfo) => {
     await route.fulfill({ response, json: body })
   })
   await page.goto('/#/corpus')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('corpus-libraries').locator('svg').first()).toBeVisible()
   await save(page, testInfo, 'corpus-overview')
 })
 
 test('corpus overview without libraries', async ({ page }, testInfo) => {
   await page.goto('/#/corpus')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
   await page.getByTestId('corpus-libraries').scrollIntoViewIfNeeded()
   await save(page, testInfo, 'corpus-overview-unavailable')
@@ -121,7 +116,6 @@ test('chat sources', async ({ page }, testInfo) => {
     }
   ])
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
   await askChat(page, 'What happened in Lhota?')
   await askChat(page, 'What is in the gazette?')
   // One click on a citation selects its source: expanded in the list, all its citations marked.
@@ -142,7 +136,6 @@ test('chat sources', async ({ page }, testInfo) => {
 // and a refused chat question (the allowance answered by the test, see answerGuestQuota).
 test('ai allowance details', async ({ page }, testInfo) => {
   await page.goto('/#/search')
-  await closePhoneNavigation(page)
   await page.getByRole('button', { name: /^AI allowance:/ }).click()
   await expect(page.getByTestId('quota-details')).toBeVisible()
   await expect(page.locator('.q-menu')).toHaveCSS('opacity', '1') // faded in
@@ -152,7 +145,6 @@ test('ai allowance details', async ({ page }, testInfo) => {
 test('ai allowance near the limit', async ({ page }, testInfo) => {
   await answerGuestQuota(page, 0.21)
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('quota-banner')).toBeVisible()
   await save(page, testInfo, 'ai-allowance-near-limit')
 })
@@ -171,7 +163,6 @@ test('ai allowance used up', async ({ page }, testInfo) => {
     }
   }))
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
   const input = page.getByPlaceholder('Vaše otázka?')
   await input.fill('What happened in Lhota?')
   await input.press('Enter')

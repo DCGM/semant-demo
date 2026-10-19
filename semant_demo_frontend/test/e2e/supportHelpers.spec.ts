@@ -48,11 +48,11 @@ test('a stored token the backend rejects is replaced by a new sign-in', async ({
   expect(await signedInUsername(page)).toBe(fixture.user('owner').username)
 })
 
-test('the helpers work on a phone, where navigation starts as an overlay (#271)', async ({ page }) => {
+test('the helpers work on a phone, where navigation is an overlay', async ({ page }) => {
   await useViewport(page, 'phone')
 
   await ensureLoggedIn(page, 'owner')
-  await page.reload() // the overlay opens again on load
+  await page.reload()
   await logOut(page)
 
   expect(await storedToken(page)).toBeNull()
