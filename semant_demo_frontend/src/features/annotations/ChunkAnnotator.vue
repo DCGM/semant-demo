@@ -8,7 +8,8 @@
         'is-tagged': segment.tags.length > 0,
         'is-selected': segment.isSelected,
         'is-auto': segment.isAuto,
-        'is-highlighted': segment.isHighlighted
+        'is-highlighted': segment.isHighlighted,
+        'has-deep-stack': segment.hasDeepStack
       }"
       :style="segment.style"
       :data-start="segment.start"
@@ -33,6 +34,7 @@
 import { computed, ref, onBeforeUnmount } from 'vue'
 import type { ProjectedSpan, LocalSelection } from './useAnnotations'
 import type { Tag } from 'src/generated/api'
+import { assignLanes } from './spanLanes'
 
 interface TextSegment {
   text: string
@@ -42,10 +44,20 @@ interface TextSegment {
   isSelected: boolean
   isAuto: boolean
   isHighlighted: boolean
+  /** The underlines reach the next line of text, so the line gets extra space below. */
+  hasDeepStack: boolean
   isSelectionStart: boolean
   isSelectionEnd: boolean
   style: Record<string, string>
 }
+
+// Underlines: a 2px line per span (3px for the highlighted one), one lane every 3px below
+// the text. From DEEP_STACK lanes on they would touch the next line of text.
+const LINE_H = 2
+const LANE_STEP = 3
+const DEEP_STACK = 4
+const NEW_SELECTION_COLOR = '#d5dfec'
+const NEW_SELECTION_HANDLE_COLOR = '#334155'
 
 const props = defineProps<{
   chunkId: string
@@ -74,8 +86,10 @@ const handleColor = computed(() => {
   if (props.selection?.tagId) {
     return tagColorMap.value[props.selection.tagId] || '#3b82f6'
   }
-  return '#f59e0b'
+  return NEW_SELECTION_HANDLE_COLOR
 })
+
+const laneBySpanId = computed(() => assignLanes(props.spans))
 
 /**
  * Split the chunk text into segments where each segment has a consistent
@@ -120,6 +134,7 @@ const renderedSegments = computed((): TextSegment[] => {
       ? activeTags.some(t => t.id === props.highlightSpanId)
       : false
 
+    const style = computeSegmentStyle(isSelected, activeTags)
     segments.push({
       text: text.slice(start, end),
       start,
@@ -128,9 +143,10 @@ const renderedSegments = computed((): TextSegment[] => {
       isSelected,
       isAuto,
       isHighlighted,
+      hasDeepStack: '--stack-height' in style,
       isSelectionStart: isSelected && start === props.selection?.start && (props.selection?.showStartHandle ?? true),
       isSelectionEnd: isSelected && end === props.selection?.end && (props.selection?.showEndHandle ?? true),
-      style: computeSegmentStyle(isSelected, activeTags, isHighlighted, isAuto)
+      style
     })
   }
 
@@ -274,13 +290,9 @@ onBeforeUnmount(() => {
   stopDrag()
 })
 
-const computeSegmentStyle = (
-  isSelected: boolean,
-  tags: ProjectedSpan[],
-  isHighlighted: boolean,
-  isAuto: boolean
-) => {
+const computeSegmentStyle = (isSelected: boolean, tags: ProjectedSpan[]) => {
   const style: Record<string, string> = {}
+  const highlighted = tags.find(t => t.id === props.highlightSpanId)
 
   if (isSelected) {
     if (props.selection?.editingSpanId) {
@@ -288,34 +300,39 @@ const computeSegmentStyle = (
       const color = props.selection.tagId
         ? (tagColorMap.value[props.selection.tagId] || '#3b82f6')
         : (tags.length > 0 ? tagColorMap.value[tags[0].tagId] || '#3b82f6' : '#3b82f6')
-      style.backgroundColor = hexToRgba(color, 0.35)
+      style.backgroundColor = hexToRgba(color, 0.22)
     } else {
-      // New selection — always yellow
-      style.backgroundColor = '#ffe082'
+      // New selection — neutral, so it can't be mistaken for a tag colour
+      style.backgroundColor = NEW_SELECTION_COLOR
     }
-  } else if (isHighlighted && tags.length > 0) {
-    // Find the hovered span's tag color specifically
-    const hovered = tags.find(t => t.id === props.highlightSpanId)
-    const color = hovered
-      ? (tagColorMap.value[hovered.tagId] || '#3b82f6')
-      : (tagColorMap.value[tags[0].tagId] || '#3b82f6')
-    style.backgroundColor = hexToRgba(color, 0.25)
-    style.borderBottom = isAuto ? `2px dashed ${color}` : `2px solid ${color}`
-  } else if (tags.length > 0) {
-    // Stack underlines for each tag via layered background gradients
-    const LINE_H = 2 // line thickness
-    const GAP = 1 // gap between lines
-    const step = LINE_H + GAP
-    const totalH = tags.length * LINE_H + (tags.length - 1) * GAP
-    const gradients = tags.map((tag, i) => {
+  } else if (highlighted) {
+    const color = tagColorMap.value[highlighted.tagId] || '#3b82f6'
+    style.backgroundColor = hexToRgba(color, highlighted.type === 'auto' ? 0.12 : 0.2)
+  }
+
+  if (tags.length > 0) {
+    // One line per span in its own lane: solid for approved spans, dashed for AI
+    // suggestions. Lane k starts 1 + k * LANE_STEP px below the text.
+    const lanes = tags.map(tag => laneBySpanId.value.get(tag.id ?? '') ?? 0)
+    const stackH = LANE_STEP * (Math.max(...lanes) + 1) + 1
+    const images: string[] = []
+    const sizes: string[] = []
+    const positions: string[] = []
+    tags.forEach((tag, i) => {
       const c = tagColorMap.value[tag.tagId] || '#3b82f6'
-      const isDashed = tag.type === 'auto'
-      const rgba = hexToRgba(c, isDashed ? 0.35 : 0.6)
-      const top = i * step
-      return `linear-gradient(${rgba}, ${rgba}) 0 calc(100% - ${totalH - top}px) / 100% ${LINE_H}px no-repeat`
+      const lineH = tag === highlighted ? LINE_H + 1 : LINE_H
+      images.push(tag.type === 'auto'
+        ? `repeating-linear-gradient(90deg, ${c} 0 5px, transparent 5px 8px)`
+        : `linear-gradient(${c}, ${c})`)
+      sizes.push(`100% ${lineH}px`)
+      positions.push(`0 calc(100% - ${stackH - 1 - LANE_STEP * lanes[i] - lineH}px)`)
     })
-    style.background = gradients.join(', ')
-    style.paddingBottom = `${totalH + 2}px`
+    style.backgroundImage = images.join(', ')
+    style.backgroundSize = sizes.join(', ')
+    style.backgroundPosition = positions.join(', ')
+    style.backgroundRepeat = 'no-repeat'
+    style.paddingBottom = `${stackH}px`
+    if (Math.max(...lanes) + 1 >= DEEP_STACK) style['--stack-height'] = `${stackH}px`
   }
 
   return style
@@ -344,8 +361,20 @@ const hexToRgba = (hex: string, alpha: number): string => {
   position: relative;
 }
 
-.text-segment.is-tagged:hover {
-  filter: brightness(0.92);
+.text-segment.is-tagged {
+  cursor: pointer;
+}
+
+/* Underlines that would reach the next line of text: a zero-width strut at both ends
+   of the segment makes its line box taller below the text, so only this line gets the
+   extra space. */
+.text-segment.has-deep-stack::before,
+.text-segment.has-deep-stack::after {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: calc(0.9em + var(--stack-height));
+  vertical-align: text-top;
 }
 
 .text-segment.is-highlighted {
