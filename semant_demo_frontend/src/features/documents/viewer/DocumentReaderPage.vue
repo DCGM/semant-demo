@@ -177,7 +177,7 @@ import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { SpanType } from 'src/generated/api'
-import { apiErrorMessage } from 'src/shared/api'
+import { apiErrorMessage, createContextGuard, isAbortError } from 'src/shared/api'
 import { errorNotification } from 'src/shared/notification'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import AnnotationGutter from 'src/features/annotations/AnnotationGutter.vue'
@@ -185,8 +185,8 @@ import type { SpanMarker } from 'src/features/annotations/AnnotationGutterTypes'
 import AnnotationPopover from 'src/features/annotations/AnnotationPopover.vue'
 import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
-import useAiAssistance from 'src/features/annotations/useAiAssistance'
-import { useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
+import useAiAssistance, { resolveAutoSpanFailure } from 'src/features/annotations/useAiAssistance'
+import { SpanMoveLostError, useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
 import useSpanDiscussionDialog from 'src/features/annotations/useSpanDiscussionDialog'
 import { useTagEditing } from 'src/features/annotations/useTagEditing'
 import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
@@ -395,15 +395,22 @@ const editingAutoSpan = computed(() => {
   return span && span.type === SpanType.auto ? span : null
 })
 
+// Span requests of this reader's document: entered when the reader moves to another document
+// or collection, or closes, so a failure that arrives later is not reported here.
+const spanRequests = createContextGuard()
+watch(() => [props.collectionId, props.documentId], () => spanRequests.enter())
+
 /**
  * Run a span request from the popover. A failed one leaves its selection open and tells the
  * user it was not saved. Returns the request's result, or null when it failed.
  */
 async function runSpanRequest<T>(request: () => Promise<T>, failure: string): Promise<T | null> {
+  const isCurrent = spanRequests.capture()
   try {
     return await request()
   } catch (err) {
-    errorNotification(await apiErrorMessage(err, failure))
+    if (!isCurrent() || isAbortError(err)) return null
+    errorNotification(err instanceof SpanMoveLostError ? err.message : await apiErrorMessage(err, failure))
     return null
   }
 }
@@ -413,7 +420,7 @@ async function changeEditingSpanType(type: SpanType) {
   if (!span || !span.id) return
   await runSpanRequest(
     () => annotations.applyToSelection(() => aiAssist.resolveAutoSpan(span, type)),
-    type === SpanType.pos ? 'The suggestion could not be approved.' : 'The suggestion could not be rejected.'
+    resolveAutoSpanFailure(type)
   )
 }
 
@@ -673,6 +680,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  spanRequests.enter()
   resizeObserver?.disconnect()
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)

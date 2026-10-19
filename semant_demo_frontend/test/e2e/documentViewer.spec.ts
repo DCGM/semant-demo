@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page, type Request } from '@playwright/test'
 import {
   annotation, chunkText, deleteAddedSpans, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk, selectText,
   sidebarPanelButton
@@ -78,7 +78,17 @@ test('a selection after clicking a marker opens the tag picker instead of reusin
 })
 
 /**
- * Holds span requests with the given method (POST creates, DELETE deletes) until `release`
+ * A request with the given method that writes one span: `POST /api/tag_spans` creates it,
+ * `PATCH` and `DELETE /api/tag_spans/{id}` change or delete it. Not a span load
+ * (`POST /api/tag_spans/batch`), which the reader may send at any time.
+ */
+function isSpanWrite (request: Request, method: string): boolean {
+  const path = method === 'POST' ? /\/api\/tag_spans$/ : /\/api\/tag_spans\/[^/]+$/
+  return request.method() === method && path.test(new URL(request.url()).pathname)
+}
+
+/**
+ * Holds span writes with the given method (POST creates, DELETE deletes) until `release`
  * is called, and counts them. Lets a test act while a request it started is still in flight.
  */
 async function holdSpanRequests (page: Page, method = 'POST'): Promise<{ count: () => number, release: () => void }> {
@@ -86,7 +96,7 @@ async function holdSpanRequests (page: Page, method = 'POST'): Promise<{ count: 
   let release!: () => void
   const released = new Promise<void>((resolve) => { release = resolve })
   await page.route('**/api/tag_spans**', async (route) => {
-    if (route.request().method() !== method) return route.fallback()
+    if (!isSpanWrite(route.request(), method)) return route.fallback()
     requests++
     await released
     await route.continue()
@@ -195,9 +205,9 @@ test('a delete that finishes late keeps the newer selection open', async ({ page
   await expect(popover(page).getByText('Select tag')).toBeVisible()
 })
 
-/** Makes span requests with the given method fail with a 500. */
+/** Makes span writes with the given method fail with a 500; span loads still work. */
 async function failSpanRequests (page: Page, method: string) {
-  await page.route('**/api/tag_spans**', (route) => route.request().method() === method
+  await page.route('**/api/tag_spans**', (route) => isSpanWrite(route.request(), method)
     ? route.fulfill({ status: 500, body: 'Internal Server Error' })
     : route.fallback())
 }
