@@ -88,6 +88,13 @@ const gutterHeight = computed(() => {
   border-right: 1px solid #dde3ec;
 }
 
+/* Two columns on a phone. */
+@media (max-width: 599px) {
+  .span-gutter-wrapper {
+    width: 120px;
+  }
+}
+
 .span-gutter-wrapper::-webkit-scrollbar {
   height: 6px;
 }
