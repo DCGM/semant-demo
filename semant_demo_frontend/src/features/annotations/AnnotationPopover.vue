@@ -98,24 +98,19 @@
               @update:model-value="toggleAiPickerTag(tag.id)"
             />
             <q-icon
-              v-if="suggestionFor(tag.id)"
+              v-if="suggestionFor(tag.id)?.score != null"
               name="auto_awesome"
               size="12px"
               class="tag-suggested-icon"
             >
-              <q-tooltip>
-                {{
-                  suggestionFor(tag.id)!.score != null
-                    ? `${matchPercent(suggestionFor(tag.id)!.score!)}% match with the selected text`
-                    : 'Last used tag'
-                }}
-              </q-tooltip>
+              <q-tooltip>{{ matchPercent(suggestionFor(tag.id)!.score!) }}% match with the selected text</q-tooltip>
             </q-icon>
             <span class="tag-dot" :style="{ backgroundColor: tag.color }"></span>
             <span class="tag-name">{{ tag.name }}</span>
             <span v-if="suggestionFor(tag.id)?.score != null" class="tag-suggested-score">
               {{ matchPercent(suggestionFor(tag.id)!.score!) }}% match
             </span>
+            <span v-else-if="suggestionFor(tag.id)" class="tag-suggested-score">Last used</span>
             <span class="tag-shorthand">{{ tag.shorthand }}</span>
           </div>
           <div v-if="filteredTags.length === 0" class="tag-row-empty">No tags found</div>
