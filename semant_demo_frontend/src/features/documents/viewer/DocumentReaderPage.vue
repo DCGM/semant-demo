@@ -153,7 +153,7 @@
         @reject="changeEditingSpanType(SpanType.neg)"
         @tag-details="onOpenTagDetails"
         @discuss="onDiscussSpan"
-        @delete="onDeleteSpan"
+        @delete="annotations.deleteSpan()"
       />
 
       <ChunkSelectionBar
@@ -487,10 +487,6 @@ const onBoundaryDrag = (payload: { chunkId: string; handle: 'start' | 'end'; cha
   annotations.adjustSelectionBoundary(payload.handle, payload.chunkId, payload.charOffset)
 }
 
-const onDeleteSpan = async () => {
-  await annotations.deleteSpan()
-}
-
 // The text of the current selection, used by the popover to suggest a likely tag first.
 const selectedSpanText = computed(() => {
   const sel = annotations.selection.value
@@ -650,6 +646,9 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)
+  // activeTagId is module-level state in useTagNavigation; don't carry this reader's
+  // highlighted tag into the next one.
+  tagNav.setActiveTagId(null)
 })
 </script>
 
