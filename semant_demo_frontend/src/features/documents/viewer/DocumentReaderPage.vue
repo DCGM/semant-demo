@@ -186,7 +186,7 @@ import AnnotationPopover from 'src/features/annotations/AnnotationPopover.vue'
 import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance, { resolveAutoSpanFailure } from 'src/features/annotations/useAiAssistance'
-import { SpanMoveLostError, useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
+import { SpanMoveIncompleteError, useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
 import useSpanDiscussionDialog from 'src/features/annotations/useSpanDiscussionDialog'
 import { useTagEditing } from 'src/features/annotations/useTagEditing'
 import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
@@ -401,16 +401,22 @@ const spanRequests = createContextGuard()
 watch(() => [props.collectionId, props.documentId], () => spanRequests.enter())
 
 /**
- * Run a span request from the popover. A failed one leaves its selection open and tells the
- * user it was not saved. Returns the request's result, or null when it failed.
+ * Run a span request from the popover. A failed one tells the user it was not saved and, unless
+ * a move left the span at two positions, leaves its selection open. Returns the request's
+ * result, or null when it failed.
  */
 async function runSpanRequest<T>(request: () => Promise<T>, failure: string): Promise<T | null> {
   const isCurrent = spanRequests.capture()
   try {
     return await request()
   } catch (err) {
+    // A span left at two positions is reported even after the reader has moved on.
+    if (err instanceof SpanMoveIncompleteError) {
+      errorNotification(err.message)
+      return null
+    }
     if (!isCurrent() || isAbortError(err)) return null
-    errorNotification(err instanceof SpanMoveLostError ? err.message : await apiErrorMessage(err, failure))
+    errorNotification(await apiErrorMessage(err, failure))
     return null
   }
 }
