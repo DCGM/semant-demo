@@ -236,16 +236,39 @@ python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--
   `missing`, `failed`, `invalid`) and vector state (`current`, `pending`, `failed`, `stale`),
   and `incomplete` (what a backfill would write). Reading a tenant activates it.
 - `backfill` writes only derived properties of at most `--limit` incomplete spans, never offsets,
-  chunk, tag, type or revision, and deletes nothing; `remaining` counts what is left for the next
-  run. A span edited meanwhile keeps its newer derivation (`superseded`). Each document is read
+  chunk, tag, type or revision, and deletes nothing. It reports `processed`, `text_written`,
+  `vector_written`, `not_processed` (incomplete spans skipped because of `--limit`),
+  `remaining_incomplete` (every span still incomplete for the configured vector when the run
+  ended, read again afterwards: not processed ones, failed steps and, with `--no-vectors`, vectors
+  still to embed) and `failed`. Text re-derived under a new derivation policy marks its vector
+  `pending`, so `--no-vectors` never leaves an old vector counted as current. Each document is read
   once per tenant; each vector is one call to the configured embedding provider (with
   `--no-vectors`, none). `invalid` spans (offsets that no longer describe the document's text,
   or whose chunk is gone) are recorded once and left for review, not repaired. Exits 1 when
   steps failed (`failed`); run it again to retry.
+- The revision check before each backfill write is atomic only within the command's own process,
+  not against a running backend (`superseded` counts only the changes it happens to see). **Run
+  `backfill` only while nothing else writes the annotation store.**
 
-Rollout on an existing store (needs authorization for that store): back up, `add-schema
---execute`, restart the backend, then `backfill` in bounded runs until `status` reports
-`incomplete: 0`. Rolling back the release needs no data change (older releases ignore the
+Rollout on an existing store (needs authorization for that store). The application stays
+**stopped for the whole procedure**:
+
+1. Stop every writer of the target annotation store: all backend instances (also other app or
+   preview instances configured for the same Weaviate), Topicer-driven suggestion runs and any
+   other background job or script. Confirm that none is running.
+2. Back up the store (`backup-filesystem` backup or an offline copy, [safety rules](#safety-rules-all-commands))
+   and record the backup id or path.
+3. `add-schema` (dry run), then `add-schema --execute --confirm-endpoint HOST:PORT` if anything is
+   missing.
+4. `status`, then `backfill --limit N --execute --confirm-endpoint HOST:PORT` **with vectors**
+   (not `--no-vectors`) in bounded runs until it reports `remaining_incomplete: 0` and no
+   `failed`; retry failed steps by running it again.
+5. Verify with `status`: `incomplete: 0` for every tenant; review any `invalid` spans separately.
+6. Only then start the new application release.
+
+The same procedure applies to a later change of `DERIVATION_VERSION` or of the vector
+configuration `id`: readers treat older derived data as absent until the backfill has completed.
+Rolling back the release needs no data change (older releases ignore the
 derived properties). Rehearsed only on disposable Weaviate 1.40.1
 (`tests/integration/test_annotation_enrichment.py`); production counts and duration are unknown
 until `status` runs there.

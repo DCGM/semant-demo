@@ -280,10 +280,12 @@ fields above stay authoritative). Absent on spans saved before #328 until the ba
   segment start; partially covered words are included
 - `enrichmentStatus` (`TEXT`, field: `ready` / `failed` / `invalid`), `enrichedRevision` (`INT`),
   `derivationVersion` (`INT`) — the state of the derived text; it is current only when
-  `ready` and `enrichedRevision` equals `revision`
+  `ready`, `enrichedRevision` equals `revision` and `derivationVersion` is the application's
+  `DERIVATION_VERSION`
 - `vectorStatus` (`TEXT`, field: `pending` / `ready` / `failed`), `vectorRevision` (`INT`),
   `vectorConfig` (`TEXT`, field) — the state of the contextual vector; it is current only when
-  `ready`, `vectorRevision` equals `revision` and `vectorConfig` is the configured id
+  `ready`, `vectorRevision` equals `revision`, `vectorConfig` is the configured id and the
+  derived text is current (every re-derivation of the text sets it `pending`)
 
 Document metadata (title, year) is not copied onto annotations: reads join it per page of rows.
 

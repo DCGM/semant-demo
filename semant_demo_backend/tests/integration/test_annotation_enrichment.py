@@ -213,7 +213,7 @@ async def test_schema_is_added_to_an_existing_collection_and_the_backfill_derive
         assert (report.spans, report.incomplete, dict(report.text)) == (3, 3, {"missing": 3})
 
         result = await backfill.backfill(store, [collection], limit=2)
-        assert (result.processed, result.remaining, result.failed) == (2, 1, [])
+        assert (result.processed, result.not_processed, result.failed) == (2, 1, [])
         result = await backfill.backfill(store, [collection], limit=10)
         assert (result.processed, result.text_written, result.vector_written) == (1, 1, 1)
 

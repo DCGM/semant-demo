@@ -3,9 +3,11 @@
 
 The backfill writes only derived properties (text, context, positions, their state and
 the contextual vector), never a span's offsets, chunk, tag, type or revision, and deletes
-nothing. Each write is guarded by the revision it was computed for: a span edited
-meanwhile keeps its own, newer derivation (``service.write_if_revision``). It is bounded
-by ``limit`` spans per run; running it again continues with what is still incomplete.
+nothing. It is meant to run while no backend or other writer uses the store
+(``docs/DATA_MAINTENANCE.md``): each write is checked against the revision it was
+computed for (``service.write_if_revision``), but that check and the write are atomic only
+within this process, not against edits of a running backend. It is bounded by ``limit``
+spans per run; running it again continues with what is still incomplete.
 Spans whose offsets do not describe the document text are recorded ``invalid`` once and
 then left alone (a data inconsistency to review, not something to repair here).
 """
@@ -14,7 +16,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from semant_demo.core.outcomes import StepFailure
-from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, DocumentText
+from semant_demo.features.annotations.derivation import DerivedText, DocumentText
 from semant_demo.features.annotations.enrichment import text_current, vector_current
 from semant_demo.features.annotations.schemas import AnnotationRow, EnrichmentStatus, VectorStatus
 from semant_demo.features.annotations.service import (
@@ -27,16 +29,19 @@ def text_state(row: AnnotationRow) -> str:
     """``current``, ``outdated`` (older derivation policy), ``failed``, ``invalid`` or
     ``missing`` (never derived, or derived for another revision)."""
     if text_current(row):
-        return "current" if row.derivationVersion == DERIVATION_VERSION else "outdated"
-    if (row.enrichedRevision or 0) == (row.revision or 0) and row.enrichmentStatus in (
-            EnrichmentStatus.failed, EnrichmentStatus.invalid):
-        return row.enrichmentStatus.value
+        return "current"
+    if (row.enrichedRevision or 0) == (row.revision or 0):
+        if row.enrichmentStatus == EnrichmentStatus.ready:
+            return "outdated"
+        if row.enrichmentStatus in (EnrichmentStatus.failed, EnrichmentStatus.invalid):
+            return row.enrichmentStatus.value
     return "missing"
 
 
 def vector_state(row: AnnotationRow, config_id: str | None) -> str:
-    """``current``, ``failed`` (for the current revision), ``stale`` (another revision or
-    configuration) or ``pending``; ``unconfigured`` without a vector configuration."""
+    """``current``, ``failed`` (for the current revision), ``stale`` (another revision,
+    configuration or derivation policy) or ``pending``; ``unconfigured`` without a vector
+    configuration."""
     if config_id is None:
         return "unconfigured"
     if vector_current(row, config_id):
@@ -53,6 +58,10 @@ def _needs_text(row: AnnotationRow) -> bool:
 
 def _needs_vector(row: AnnotationRow, config_id: str | None) -> bool:
     return config_id is not None and vector_state(row, config_id) != "current" and text_state(row) != "invalid"
+
+
+def _incomplete(row: AnnotationRow, config_id: str | None) -> bool:
+    return _needs_text(row) or _needs_vector(row, config_id)
 
 
 @dataclass
@@ -83,7 +92,7 @@ async def status(store: AnnotationStore, collection_ids: list[UUID]) -> list[Ten
             report.spans += 1
             report.text[text_state(row)] += 1
             report.vector[vector_state(row, vector.id if vector else None)] += 1
-            report.incomplete += _needs_text(row) or _needs_vector(row, vector.id if vector else None)
+            report.incomplete += _incomplete(row, vector.id if vector else None)
         reports.append(report)
     return reports
 
@@ -94,15 +103,21 @@ class BackfillResult:
     text_written: int = 0
     vector_written: int = 0
     superseded: int = 0
-    """Spans edited while being backfilled: their newer derivation was kept."""
-    remaining: int = 0
-    """Incomplete spans left for a later run (``limit`` reached)."""
+    """Spans whose revision changed while being backfilled (an edit in this process): the
+    derived data computed for the old revision was dropped."""
+    not_processed: int = 0
+    """Incomplete spans not attempted in this run (``limit`` reached)."""
+    remaining_incomplete: int = 0
+    """Spans still incomplete when the run ended, read again afterwards: the not processed
+    ones, failed steps and, with ``vectors=False``, vectors still to embed. ``0`` means
+    the tenants are complete for the configured vector."""
     failed: list[StepFailure] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {"processed": self.processed, "text_written": self.text_written,
                 "vector_written": self.vector_written, "superseded": self.superseded,
-                "remaining": self.remaining, "failed": [f.model_dump() for f in self.failed]}
+                "not_processed": self.not_processed, "remaining_incomplete": self.remaining_incomplete,
+                "failed": [f.model_dump() for f in self.failed]}
 
 
 def _stored(row: AnnotationRow) -> DerivedText:
@@ -114,20 +129,22 @@ def _stored(row: AnnotationRow) -> DerivedText:
 async def backfill(store: AnnotationStore, collection_ids: list[UUID], *, limit: int,
                    vectors: bool = True) -> BackfillResult:
     """Derive the missing, failed, stale or outdated text and (with ``vectors``) vectors
-    of at most ``limit`` spans; each document is read once per tenant."""
-    vector = store.enrichment.vector if vectors else None
-    config_id = vector.id if vector else None
+    of at most ``limit`` spans; each document is read once per tenant. Afterwards every
+    tenant is read again for ``remaining_incomplete``."""
+    configured = store.enrichment.vector.id if store.enrichment.vector else None
+    config_id = configured if vectors else None
     result = BackfillResult()
     for cid in collection_ids:
-        todo = [r for r in await _rows(store, cid)
-                if _needs_text(r) or _needs_vector(r, config_id)]
+        todo = [r for r in await _rows(store, cid) if _incomplete(r, config_id)]
         take, rest = todo[:max(0, limit - result.processed)], todo[max(0, limit - result.processed):]
-        result.remaining += len(rest)
+        result.not_processed += len(rest)
         by_document: dict[UUID | None, list[AnnotationRow]] = defaultdict(list)
         for row in take:
             by_document[row.documentId].append(row)
         for document_id, rows in by_document.items():
             await _backfill_document(store, cid, document_id, rows, config_id, result)
+    for cid in collection_ids:
+        result.remaining_incomplete += sum(_incomplete(r, configured) for r in await _rows(store, cid))
     return result
 
 
@@ -151,7 +168,7 @@ async def _backfill_document(store: AnnotationStore, cid: UUID, document_id: UUI
             try:
                 written = await write_if_revision(
                     store, cid, row.id, revision,
-                    refresh.properties(reset_vector=config_id is not None, with_revision=False))
+                    refresh.properties(reset_vector=True, with_revision=False))
             except Exception as e:
                 result.failed.append(step_failure("derive_annotation", row.id, e))
                 continue
