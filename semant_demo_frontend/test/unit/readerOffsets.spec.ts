@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { CollectionChunk } from 'src/generated/api'
 import {
-  assignColumns, groupParagraphs, knownChunksInOrder, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText
+  assignColumns, gapSize, groupParagraphs, knownChunksInOrder, missingChunksText, resolveSelectionEndpoint,
+  selectionInDisplayedChunks, selectionText, shortestMarker
 } from 'src/features/documents/viewer/readerOffsets'
 
 const chunk = (id: string, order: number, text: string, endParagraph = false) =>
@@ -21,6 +22,38 @@ describe('groupParagraphs', () => {
       { chunks: [e], gapAfter: null, gapBefore: null }
     ])
     expect(groupParagraphs([])).toEqual([])
+  })
+})
+
+describe('gap divider', () => {
+  it('counts the chunks missing between two paragraphs', () => {
+    const [first, second, last] = groupParagraphs([a, b, c, e])
+    expect(gapSize(first)).toBe(0)
+    expect(gapSize(second)).toBe(1)
+    expect(gapSize(last)).toBe(0)
+    expect(gapSize({ chunks: [], gapAfter: 3, gapBefore: 7 })).toBe(3)
+  })
+
+  it('says how many chunks are not shown', () => {
+    expect(missingChunksText(1)).toBe('1 chunk not shown')
+    expect(missingChunksText(3)).toBe('3 chunks not shown')
+  })
+})
+
+describe('shortestMarker', () => {
+  const marker = (spanId: string, start: number, end: number, isAuto = false) => ({ spanId, start, end, isAuto })
+
+  it('picks the shortest span', () => {
+    expect(shortestMarker([marker('long', 0, 20), marker('short', 5, 9), marker('mid', 2, 12)])?.spanId).toBe('short')
+  })
+
+  it('prefers an approved span, then the earlier one, at the same length', () => {
+    expect(shortestMarker([marker('ai', 0, 4, true), marker('approved', 3, 7)])?.spanId).toBe('approved')
+    expect(shortestMarker([marker('later', 6, 10), marker('earlier', 2, 6)])?.spanId).toBe('earlier')
+  })
+
+  it('returns null without markers', () => {
+    expect(shortestMarker([])).toBeNull()
   })
 })
 

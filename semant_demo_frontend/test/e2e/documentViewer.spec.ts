@@ -19,6 +19,8 @@ const popover = (page: Page) => page.locator('.annotation-popover')
 const taggedSegment = (page: Page, chunkKey: string, start: number, end: number) =>
   chunkText(page, chunkKey).locator(`.text-segment.is-tagged[data-start="${start}"][data-end="${end}"]`)
 
+const showChunkGutter = (page: Page) => page.locator('button[title="Show/hide chunk gutter"]').click()
+
 /** The tallest span marker: a span across two chunks covers more lines than a word. */
 async function tallestMarker (page: Page): Promise<Locator> {
   const markers = page.locator('.gutter-item')
@@ -53,6 +55,16 @@ test('a selection across two chunks is tagged, marked in the gutter and deleted 
   await expect(page.locator('.gutter-item')).toHaveCount(2)
   await expect(chunkText(page, 'chronicle_2').locator('.text-segment[data-start="0"]')).not.toHaveClass(/is-tagged/)
   await expect(annotation(page, 'novak_manual')).toBeVisible()
+})
+
+test('a click on tagged text opens its span like its gutter label', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+
+  await annotation(page, 'novak_manual').click()
+  await expect(popover(page).getByRole('button', { name: 'Change tag' })).toBeVisible()
+  await expect(page.locator('.tag-card.is-active')).toContainText(fixture.tag('person').name)
 })
 
 test('a selection after clicking a marker opens the tag picker instead of reusing its tag', async ({ page }) => {
@@ -321,6 +333,8 @@ test('the owner adds a preview chunk to the collection and removes it with the b
 
   await page.getByRole('button', { name: 'Load previous', exact: true }).first().click()
   await expect(chunkText(page, 'chronicle_2')).toHaveClass(/chunk-preview/)
+  // The chunk gutter starts hidden on every visit.
+  await showChunkGutter(page)
   await chunkText(page, 'chronicle_2').hover()
   await page.locator('button[title="Add to collection"]').click()
   await expect(chunkText(page, 'chronicle_2')).not.toHaveClass(/chunk-preview/)
@@ -329,6 +343,7 @@ test('the owner adds a preview chunk to the collection and removes it with the b
   await expect(chunkText(page, 'chronicle_2')).toBeVisible()
   await expect(chunkText(page, 'chronicle_2')).not.toHaveClass(/chunk-preview/)
 
+  await showChunkGutter(page)
   await page.locator('.chunk-checkbox-item').first().click()
   await expect(page.locator('.bulk-action-bar')).toContainText('1 selected')
   await page.locator('.bulk-action-bar').getByRole('button', { name: 'Remove' }).click()
