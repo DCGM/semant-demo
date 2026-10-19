@@ -18,7 +18,7 @@
         @click.stop="emit('select', item, $event)"
       >
         <div class="gutter-label">
-          <q-icon :name="item.isAuto ? 'auto_awesome' : tagInfo(item.tagId).pictogram" size="10px" class="gutter-icon" />
+          <q-icon v-if="item.isAuto" name="auto_awesome" size="10px" class="gutter-icon" />
           <span class="gutter-shorthand">{{ tagInfo(item.tagId).shorthand }}</span>
         </div>
         <div class="gutter-line"></div>
@@ -50,12 +50,12 @@ const emit = defineEmits<{
 
 const COLUMN_WIDTH = 56
 const GUTTER_PADDING = 4
-const UNKNOWN_TAG = { name: 'Unknown tag', color: '#3b82f6', shorthand: '?', pictogram: 'label' }
+const UNKNOWN_TAG = { name: 'Unknown tag', color: '#3b82f6', shorthand: '?' }
 
 const tagInfoMap = computed(() => {
-  const map: Record<string, { name: string; color: string; shorthand: string; pictogram: string }> = {}
+  const map: Record<string, { name: string; color: string; shorthand: string }> = {}
   for (const tag of props.tags) {
-    map[tag.id] = { name: tag.name, color: tag.color, shorthand: tag.shorthand || tag.name.slice(0, 3), pictogram: tag.pictogram || 'label' }
+    map[tag.id] = { name: tag.name, color: tag.color, shorthand: tag.shorthand || tag.name.slice(0, 3) }
   }
   return map
 })
@@ -84,8 +84,8 @@ const gutterHeight = computed(() => {
   overflow-x: auto;
   overflow-y: hidden;
   direction: rtl;
-  background: #f4f6fa;
-  border-right: 1px solid #dde3ec;
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
 }
 
 /* Two columns on a phone. */
@@ -146,27 +146,27 @@ const gutterHeight = computed(() => {
   width: 4px;
 }
 
-/* Fixed width; a long shorthand is cut off. */
+/* Fixed width, shorthand centred; a long shorthand is cut off. */
 .gutter-label {
   position: absolute;
   left: 0;
   top: 0;
   width: 44px;
+  height: 22px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 2px;
-  font-size: 0.65rem;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 2px 4px;
+  letter-spacing: 0.04em;
+  padding: 0 5px;
   border: 1.5px solid var(--tag-color);
-  border-radius: 4px;
+  border-radius: 6px;
   background-color: var(--tag-color);
   color: #fff;
   white-space: nowrap;
-  line-height: 1.4;
-  opacity: 0.85;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
   transition: opacity 0.15s, box-shadow 0.15s;
 }
 
@@ -183,8 +183,7 @@ const gutterHeight = computed(() => {
 
 .gutter-item:hover .gutter-label,
 .gutter-item.is-active .gutter-label {
-  opacity: 1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 2px #f8fafc, 0 0 0 4px color-mix(in srgb, var(--tag-color) 55%, transparent);
 }
 
 /* ── AI suggestions: the tag colour, dashed. ── */
@@ -209,7 +208,6 @@ const gutterHeight = computed(() => {
    ring its marker. The same class is added when the user clicks an auto span in the
    text or gutter so the panel mirrors the choice. */
 .gutter-item.is-highlighted .gutter-label {
-  opacity: 1;
-  box-shadow: 0 0 0 2px #f4f6fa, 0 0 0 4px var(--tag-color);
+  box-shadow: 0 0 0 2px #f8fafc, 0 0 0 4px var(--tag-color);
 }
 </style>
