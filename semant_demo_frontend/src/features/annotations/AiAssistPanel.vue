@@ -304,7 +304,9 @@ import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
 import { apiErrorMessage, useApi } from 'src/shared/api'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useTagsStore } from './tagsStore'
-import useAiAssistance, { largeRunWarning, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode } from './useAiAssistance'
+import useAiAssistance, {
+  largeRunWarning, resolveAutoSpanFailure, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode
+} from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
 import useTagSpans from './useTagSpans'
 
@@ -499,8 +501,7 @@ async function resolveSuggestion(span: TagSpan, type: SpanType) {
   try {
     await aiAssist.resolveAutoSpan(span, type)
   } catch (e: unknown) {
-    const failure = type === SpanType.pos ? 'The suggestion could not be approved.' : 'The suggestion could not be rejected.'
-    $q.notify({ type: 'negative', message: await apiErrorMessage(e, failure) })
+    $q.notify({ type: 'negative', message: await apiErrorMessage(e, resolveAutoSpanFailure(type)) })
   } finally {
     busyAutoSpanIds.value.delete(span.id)
   }

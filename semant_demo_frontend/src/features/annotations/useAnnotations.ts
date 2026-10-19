@@ -28,6 +28,17 @@ export interface GlobalSelection {
 /** A tag span projected into a specific chunk's local coordinate space */
 export type ProjectedSpan = TagSpan
 
+/**
+ * Moving a span to another chunk removed it from its old chunk, but saving it in the new one
+ * failed: the span is gone. The message says so, for the user.
+ */
+export class SpanMoveLostError extends Error {
+  constructor (readonly cause: unknown) {
+    super('The tag was removed from its old position, but could not be saved at the new one.')
+    this.name = 'SpanMoveLostError'
+  }
+}
+
 // ── Composable ─────────────────────────────────────────
 
 export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksRef: () => CollectionChunk[] = () => []) {
@@ -412,18 +423,25 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
     const spanId = normalized.editingSpanId
     const ownerChunkId = findSpanOwnerChunkId(spanId)
+    const isCurrent = selectionGuard.capture()
 
     await applyToSelection(async () => {
       if (ownerChunkId && ownerChunkId !== normalized.chunkId) {
         // Span moved to a different chunk → delete + create
         await store.deleteSpan(spanId, ownerChunkId)
-        await store.createSpan({
-          chunkId: normalized.chunkId,
-          tagId: normalized.tagId!,
-          start: normalized.start,
-          end: normalized.end,
-          type: SpanType.pos
-        })
+        try {
+          await store.createSpan({
+            chunkId: normalized.chunkId,
+            tagId: normalized.tagId!,
+            start: normalized.start,
+            end: normalized.end,
+            type: SpanType.pos
+          })
+        } catch (err) {
+          // The selection still edits the deleted span; there is nothing left to retry on.
+          if (isCurrent()) clearSelection()
+          throw new SpanMoveLostError(err)
+        }
       } else {
         await store.updateSpan(spanId, normalized.chunkId, {
           start: normalized.start,
