@@ -44,7 +44,12 @@ describe('suggestTagIds', () => {
 })
 
 describe('buildTagSuggestions', () => {
-  const tags = [tag('a', 'Novák'), tag('b', 'Zebra'), tag('c', 'Unrelated')]
+  // At least 6 tags — below that, suggestions are switched off entirely (see the "few tags"
+  // tests below), regardless of how well something would otherwise match.
+  const tags = [
+    tag('a', 'Novák'), tag('b', 'Zebra'), tag('c', 'Unrelated'),
+    tag('d', 'Fourth'), tag('e', 'Fifth'), tag('f', 'Sixth')
+  ]
 
   it('puts the last-used tag first even when it does not match the selection text', () => {
     expect(buildTagSuggestions('Unrelated', tags, 'a')).toEqual(['a', 'c'])
@@ -64,5 +69,11 @@ describe('buildTagSuggestions', () => {
 
   it('falls back to similarity alone when there is no last-used tag', () => {
     expect(buildTagSuggestions('Novák', tags, null)).toEqual(['a'])
+  })
+
+  it('suggests nothing at all once the collection has 5 or fewer tags', () => {
+    const fewTags = tags.slice(0, 5)
+    expect(buildTagSuggestions('Novák', fewTags, 'a')).toEqual([])
+    expect(buildTagSuggestions('Unrelated', fewTags, 'a')).toEqual([])
   })
 })

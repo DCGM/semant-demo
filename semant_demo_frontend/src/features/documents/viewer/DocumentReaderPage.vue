@@ -384,8 +384,13 @@ const endQuickTagging = () => {
 }
 
 // The last tag actually applied to a span in this collection — suggested first in the popover,
-// ahead of any text-similarity match.
+// ahead of any text-similarity match. Re-read whenever collectionId changes, like the other
+// per-collection state on this page (useChunkWindow, useChunkMembership, useTagEditing), in case
+// a future route ever reuses this component instance across collections.
 const lastUsedTagId = ref<string | null>(getLastUsedTagId(props.collectionId))
+watch(() => props.collectionId, (collectionId) => {
+  lastUsedTagId.value = getLastUsedTagId(collectionId)
+})
 const recordTagUsage = (tagId: string) => {
   lastUsedTagId.value = tagId
   setLastUsedTagId(props.collectionId, tagId)
@@ -473,11 +478,13 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
   // instead of opening the picker — repositioning the original span is
   // still done via its drag handles.
   if (quickTagId.value) {
+    const tagId = quickTagId.value
     quickTagging.value = true
-    recordTagUsage(quickTagId.value)
-    void annotations.createSpan(quickTagId.value).finally(() => {
-      quickTagging.value = false
-    })
+    void annotations.createSpan(tagId)
+      .then(() => recordTagUsage(tagId))
+      .finally(() => {
+        quickTagging.value = false
+      })
     return
   }
 

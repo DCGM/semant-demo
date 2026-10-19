@@ -8,15 +8,19 @@ import type { Tag } from 'src/generated/api'
 const tag = (id: string, name: string, shorthand = ''): Tag =>
   ({ id, name, shorthand, color: '#000', pictogram: '', definition: '', examples: [] })
 
-const TAGS = [tag('c', 'Čapek'), tag('a', 'Aleš'), tag('n', 'Novák'), tag('b', 'Babička')]
+// At least 6 tags — below that, suggestions are switched off entirely regardless of match quality.
+const TAGS = [
+  tag('c', 'Čapek'), tag('a', 'Aleš'), tag('n', 'Novák'), tag('b', 'Babička'),
+  tag('d', 'Jirásek'), tag('e', 'Hrabal')
+]
 
 // The tag list is rendered through a `<Teleport to="body">`, so it lands in `document.body`
 // rather than under the mounted wrapper's own root — queried here with a fresh DOMWrapper.
-function mountPopover (selectedText = '', lastUsedTagId: string | null = null) {
+function mountPopover (selectedText = '', lastUsedTagId: string | null = null, tags: Tag[] = TAGS) {
   const wrapper = mount(AnnotationPopover, {
     props: {
       visible: true,
-      tags: TAGS,
+      tags,
       selection: {},
       selectedText,
       lastUsedTagId,
@@ -45,7 +49,7 @@ describe('AnnotationPopover tag list', () => {
     await wrapper.vm.$nextTick()
 
     const names = new DOMWrapper(document.body).findAll('.tag-row:not(.tag-row--create) .tag-name').map((n) => n.text())
-    expect(names).toEqual(['Aleš', 'Babička', 'Čapek', 'Novák'])
+    expect(names).toEqual(['Aleš', 'Babička', 'Čapek', 'Hrabal', 'Jirásek', 'Novák'])
   })
 
   it('surfaces a likely-match tag first and marks it as suggested', async () => {
@@ -57,7 +61,7 @@ describe('AnnotationPopover tag list', () => {
     expect(rows[0].classes()).toContain('is-suggested')
     // The rest stays alphabetical.
     const restNames = rows.slice(1).map((r) => r.find('.tag-name').text())
-    expect(restNames).toEqual(['Aleš', 'Babička', 'Čapek'])
+    expect(restNames).toEqual(['Aleš', 'Babička', 'Čapek', 'Hrabal', 'Jirásek'])
   })
 
   it('does not suggest anything when nothing resembles the selection and there is no last-used tag', async () => {
@@ -74,5 +78,12 @@ describe('AnnotationPopover tag list', () => {
     const rows = new DOMWrapper(document.body).findAll('.tag-row:not(.tag-row--create)')
     expect(rows[0].text()).toContain('Babička')
     expect(rows[0].classes()).toContain('is-suggested')
+  })
+
+  it('suggests nothing when the collection has 5 or fewer tags', async () => {
+    const wrapper = mountPopover('Novák', 'b', TAGS.slice(0, 5))
+    await wrapper.vm.$nextTick()
+
+    expect(new DOMWrapper(document.body).find('.tag-row.is-suggested').exists()).toBe(false)
   })
 })
