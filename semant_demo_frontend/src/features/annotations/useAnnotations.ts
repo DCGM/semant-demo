@@ -29,13 +29,13 @@ export interface GlobalSelection {
 export type ProjectedSpan = TagSpan
 
 /**
- * Moving a span to another chunk removed it from its old chunk, but saving it in the new one
- * failed: the span is gone. The message says so, for the user.
+ * Moving a span to another chunk saved it in the new chunk, but removing it from the old one
+ * failed: the span is now at both positions. The message says so, for the user.
  */
-export class SpanMoveLostError extends Error {
-  constructor (readonly cause: unknown) {
-    super('The tag was removed from its old position, but could not be saved at the new one.')
-    this.name = 'SpanMoveLostError'
+export class SpanMoveIncompleteError extends Error {
+  constructor (cause: unknown) {
+    super('The tag was saved at its new position, but could not be removed from the old one.', { cause })
+    this.name = 'SpanMoveIncompleteError'
   }
 }
 
@@ -398,12 +398,16 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     const sel = selection.value
     if (!sel?.editingSpanId || saving.value) return false
 
+    // A boundary drag may have moved the selection's anchor off the chunk that holds the span.
+    const spanId = sel.editingSpanId
+    const ownerChunkId = findSpanOwnerChunkId(spanId) || sel.chunkId
+
     // Update visual highlight immediately
     const isCurrent = selectionGuard.capture()
     selection.value = { ...sel, tagId }
 
     try {
-      return await applyToSelection(() => store.updateSpan(sel.editingSpanId!, sel.chunkId, { tagId }))
+      return await applyToSelection(() => store.updateSpan(spanId, ownerChunkId, { tagId }))
     } catch (err) {
       if (isCurrent() && selection.value?.tagId === tagId) {
         selection.value = { ...selection.value, tagId: sel.tagId }
@@ -427,20 +431,24 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
     await applyToSelection(async () => {
       if (ownerChunkId && ownerChunkId !== normalized.chunkId) {
-        // Span moved to a different chunk → delete + create
-        await store.deleteSpan(spanId, ownerChunkId)
+        // A span's chunk can't be changed in place: save it in the new chunk, then remove it
+        // from the old one. A failure leaves the old span or, at worst, both; never neither.
+        const original = spansByChunkId.value[ownerChunkId]?.find((s) => s.id === spanId)
+        await store.createSpan({
+          chunkId: normalized.chunkId,
+          tagId: normalized.tagId!,
+          start: normalized.start,
+          end: normalized.end,
+          type: original?.type ?? SpanType.pos,
+          reason: original?.reason,
+          confidence: original?.confidence
+        })
         try {
-          await store.createSpan({
-            chunkId: normalized.chunkId,
-            tagId: normalized.tagId!,
-            start: normalized.start,
-            end: normalized.end,
-            type: SpanType.pos
-          })
+          await store.deleteSpan(spanId, ownerChunkId)
         } catch (err) {
-          // The selection still edits the deleted span; there is nothing left to retry on.
+          // The selection edits the old span, which no longer matches the saved position.
           if (isCurrent()) clearSelection()
-          throw new SpanMoveLostError(err)
+          throw new SpanMoveIncompleteError(err)
         }
       } else {
         await store.updateSpan(spanId, normalized.chunkId, {
