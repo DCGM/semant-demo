@@ -137,6 +137,7 @@
         :tags="tags"
         :selection="annotations.selection.value"
         :selected-text="selectedSpanText"
+        :last-used-tag-id="lastUsedTagId"
         :selected-tag-id="annotations.selection.value?.tagId ?? null"
         :is-editing="annotations.isEditing.value"
         :position-changed="annotations.positionChanged.value"
@@ -196,6 +197,7 @@ import ChunkMembershipGutter from './ChunkMembershipGutter.vue'
 import ChunkSelectionBar from './ChunkSelectionBar.vue'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import ReaderToolbar from './ReaderToolbar.vue'
+import { getLastUsedTagId, setLastUsedTagId } from 'src/features/annotations/lastUsedTag'
 import { groupParagraphs, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText } from './readerOffsets'
 import { useChunkMembership } from './useChunkMembership'
 import { useChunkWindow } from './useChunkWindow'
@@ -381,6 +383,14 @@ const endQuickTagging = () => {
   annotations.clearSelection()
 }
 
+// The last tag actually applied to a span in this collection — suggested first in the popover,
+// ahead of any text-similarity match.
+const lastUsedTagId = ref<string | null>(getLastUsedTagId(props.collectionId))
+const recordTagUsage = (tagId: string) => {
+  lastUsedTagId.value = tagId
+  setLastUsedTagId(props.collectionId, tagId)
+}
+
 // The span being edited when it is an AI suggestion: the popover offers approve/reject.
 const approveRejectBusy = ref(false)
 const editingAutoSpan = computed(() => {
@@ -464,6 +474,7 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
   // still done via its drag handles.
   if (quickTagId.value) {
     quickTagging.value = true
+    recordTagUsage(quickTagId.value)
     void annotations.createSpan(quickTagId.value).finally(() => {
       quickTagging.value = false
     })
@@ -482,6 +493,7 @@ const onTagClick = async (tagId: string) => {
   } else {
     await annotations.createSpan(tagId)
   }
+  recordTagUsage(tagId)
 }
 
 const onCreateTagClick = () => {

@@ -204,7 +204,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Tag } from 'src/generated/api'
-import { suggestTagIds } from './tagSuggestion'
+import { buildTagSuggestions } from './tagSuggestion'
 
 // The popover for a text selection or an edited span: tag picker, AI tag picker
 // ("Suggest tags") and the span actions. The page decides what each action does.
@@ -215,6 +215,8 @@ const props = defineProps<{
   selection: unknown
   /** The text currently highlighted, used to suggest a likely tag first. */
   selectedText: string
+  /** The last tag applied in this collection, suggested first regardless of selectedText. */
+  lastUsedTagId: string | null
   selectedTagId: string | null
   isEditing: boolean
   positionChanged: boolean
@@ -248,7 +250,9 @@ const sortedTags = computed(() =>
 
 // Computed lazily (only once the tag list is actually rendered), so this never delays the
 // popover opening even for collections with many tags.
-const suggestedTagIds = computed(() => suggestTagIds(props.selectedText, props.tags))
+const suggestedTagIds = computed(() =>
+  buildTagSuggestions(props.selectedText, props.tags, props.lastUsedTagId)
+)
 const isSuggested = (tagId: string) => suggestedTagIds.value.includes(tagId)
 
 const filteredTags = computed(() => {

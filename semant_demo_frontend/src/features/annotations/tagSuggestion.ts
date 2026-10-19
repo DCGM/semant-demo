@@ -30,17 +30,14 @@ function similarity(a: string, b: string): number {
 }
 
 const MAX_CANDIDATE_LENGTH = 60
-const MAX_WORDS = 12
+const MAX_SELECTION_WORDS = 5
 const MIN_SCORE = 0.5
 
 /**
  * Strings to compare tag names against: the whole selection, each word, and each adjacent
- * word pair — covers multi-word tag names (e.g. "Jan Novák") without the cost of diffing the
- * whole (possibly long) selection against every tag.
+ * word pair — covers multi-word tag names (e.g. "Jan Novák").
  */
-function candidatesFrom(text: string): string[] {
-  const trimmed = text.trim().slice(0, 500)
-  const words = trimmed.split(/\s+/).filter(Boolean).slice(0, MAX_WORDS)
+function candidatesFrom(words: string[], trimmed: string): string[] {
   const candidates = [trimmed, ...words]
   for (let i = 0; i < words.length - 1; i++) candidates.push(`${words[i]} ${words[i + 1]}`)
   return candidates.filter((c) => c.length > 0 && c.length <= MAX_CANDIDATE_LENGTH)
@@ -51,11 +48,17 @@ function candidatesFrom(text: string): string[] {
  * client-side stand-in for "is this tag likely what the user just highlighted", good enough for
  * short tag names without any usage-tracking state. Returns ids scoring above a minimum
  * similarity, best match first.
+ *
+ * Only runs for short selections (at most `MAX_SELECTION_WORDS` words): beyond that, a highlighted
+ * passage is prose rather than something resembling a tag name, so the comparison stops being
+ * meaningful and isn't worth the (still cheap, but pointless) extra work.
  */
 export function suggestTagIds(selectedText: string | null | undefined, tags: Tag[], limit = 3): string[] {
-  const text = selectedText?.trim()
-  if (!text || !tags.length) return []
-  const candidates = candidatesFrom(text)
+  const trimmed = selectedText?.trim()
+  if (!trimmed || !tags.length) return []
+  const words = trimmed.split(/\s+/).filter(Boolean)
+  if (words.length > MAX_SELECTION_WORDS) return []
+  const candidates = candidatesFrom(words, trimmed)
 
   return tags
     .map((tag) => {
@@ -73,4 +76,23 @@ export function suggestTagIds(selectedText: string | null | undefined, tags: Tag
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((t) => t.id)
+}
+
+/**
+ * The popover's full suggestion list: the collection's last-used tag first (if it still exists),
+ * then any text-similarity matches not already included, best match first.
+ */
+export function buildTagSuggestions(
+  selectedText: string | null | undefined,
+  tags: Tag[],
+  lastUsedTagId: string | null | undefined,
+  limit = 3
+): string[] {
+  const result: string[] = []
+  if (lastUsedTagId && tags.some((t) => t.id === lastUsedTagId)) result.push(lastUsedTagId)
+  for (const id of suggestTagIds(selectedText, tags, limit)) {
+    if (result.length >= limit) break
+    if (!result.includes(id)) result.push(id)
+  }
+  return result
 }

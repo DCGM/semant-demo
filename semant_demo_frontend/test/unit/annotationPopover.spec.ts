@@ -12,13 +12,14 @@ const TAGS = [tag('c', 'Čapek'), tag('a', 'Aleš'), tag('n', 'Novák'), tag('b'
 
 // The tag list is rendered through a `<Teleport to="body">`, so it lands in `document.body`
 // rather than under the mounted wrapper's own root — queried here with a fresh DOMWrapper.
-function mountPopover (selectedText = '') {
+function mountPopover (selectedText = '', lastUsedTagId: string | null = null) {
   const wrapper = mount(AnnotationPopover, {
     props: {
       visible: true,
       tags: TAGS,
       selection: {},
       selectedText,
+      lastUsedTagId,
       selectedTagId: null,
       isEditing: false,
       positionChanged: false,
@@ -59,10 +60,19 @@ describe('AnnotationPopover tag list', () => {
     expect(restNames).toEqual(['Aleš', 'Babička', 'Čapek'])
   })
 
-  it('does not suggest anything when nothing resembles the selection', async () => {
+  it('does not suggest anything when nothing resembles the selection and there is no last-used tag', async () => {
     const wrapper = mountPopover('something entirely unrelated')
     await wrapper.vm.$nextTick()
 
     expect(new DOMWrapper(document.body).find('.tag-row.is-suggested').exists()).toBe(false)
+  })
+
+  it('suggests the last-used tag first even for an unrelated, long selection', async () => {
+    const wrapper = mountPopover('a long and entirely unrelated highlighted passage', 'b')
+    await wrapper.vm.$nextTick()
+
+    const rows = new DOMWrapper(document.body).findAll('.tag-row:not(.tag-row--create)')
+    expect(rows[0].text()).toContain('Babička')
+    expect(rows[0].classes()).toContain('is-suggested')
   })
 })
