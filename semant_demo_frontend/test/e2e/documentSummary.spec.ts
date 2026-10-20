@@ -155,3 +155,24 @@ test('a user without collection read access cannot request a document summary', 
   // ADR 0007: a collection the user cannot read answers "not found", not "forbidden".
   expect(response.status()).toBe(404)
 })
+
+test('the chosen length level is sent with the summary request (#360)', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'Summary').click()
+  const length = page.getByTestId('document-summary-length')
+  await expect(length).toContainText('Short')
+
+  await length.click()
+  await page.getByRole('option', { name: 'Detailed' }).click()
+  const request = page.waitForRequest((r) => r.url().includes('/summary'))
+  await page.getByRole('button', { name: 'Summarize Document' }).click()
+
+  expect(new URL((await request).url()).searchParams.get('length')).toBe('detailed')
+  await expect(summary(page)).toContainText('Fake summary of 3 passage(s); last [3].')
+
+  // Another length no longer matches the shown summary.
+  await length.click()
+  await page.getByRole('option', { name: 'Short' }).click()
+  await expect(summary(page)).toHaveCount(0)
+})

@@ -6,6 +6,7 @@ import { parseDocumentSummaryTokens, useDocumentSummary } from 'src/features/doc
 interface PendingCall {
   collectionId: string
   documentId: string
+  length?: string
   signal?: AbortSignal
   resolve: (value: DocumentSummaryResponse) => void
   reject: (error: unknown) => void
@@ -20,7 +21,7 @@ vi.mock('src/shared/api', async () => {
     useApi: () => ({
       default: {
         summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost: (
-          requestParameters: { collectionId: string, documentId: string },
+          requestParameters: { collectionId: string, documentId: string, length?: string },
           initOverrides?: { signal?: AbortSignal }
         ) => new Promise<DocumentSummaryResponse>((resolve, reject) => {
           const signal = initOverrides?.signal
@@ -76,7 +77,9 @@ describe('parseDocumentSummaryTokens', () => {
 describe('useDocumentSummary', () => {
   beforeEach(() => {
     calls = []
-    useDocumentSummary().reset() // the composable is a module-scope singleton: start clean
+    // The composable is a module-scope singleton: start clean.
+    useDocumentSummary().setLength('short')
+    useDocumentSummary().reset()
   })
 
   it('summarizes a document and exposes citations and tokens', async () => {
@@ -100,6 +103,38 @@ describe('useDocumentSummary', () => {
     expect(summary.timeSpent.value).toBe(1.5)
     expect(summary.error.value).toBeNull()
     expect([summary.totalChunks.value, summary.summarizedChunks.value, summary.truncated.value]).toEqual([1, 1, false])
+  })
+
+  it('sends the chosen length level, short by default', async () => {
+    const summary = useDocumentSummary()
+    expect(summary.length.value).toBe('short')
+
+    summary.setLength('detailed')
+    const request = summary.summarize('c1', 'd1')
+    expect(calls[0].length).toBe('detailed')
+    calls[0].resolve(response('Podrobné shrnutí [doc1].', [citation('chunk-a', 0)]))
+    await request
+
+    expect([summary.length.value, summary.summary.value]).toEqual(['detailed', 'Podrobné shrnutí [doc1].'])
+  })
+
+  it('a new length level drops a running request and clears a shown summary', async () => {
+    const summary = useDocumentSummary()
+    const running = summary.summarize('c1', 'd1')
+
+    summary.setLength('detailed') // chosen before the short summary arrives
+    expect(calls[0].signal?.aborted).toBe(true)
+    await running
+    expect([summary.summary.value, summary.summarizing.value, summary.error.value]).toEqual(['', false, null])
+
+    const second = summary.summarize('c1', 'd1')
+    calls[1].resolve(response('Shrnutí [doc1].', [citation('chunk-a', 0)]))
+    await second
+    summary.setLength('detailed') // the same level again keeps the summary
+    expect(summary.summary.value).toBe('Shrnutí [doc1].')
+
+    summary.setLength('short')
+    expect(summary.summary.value).toBe('')
   })
 
   it('exposes a truncation notice for a partial summary', async () => {

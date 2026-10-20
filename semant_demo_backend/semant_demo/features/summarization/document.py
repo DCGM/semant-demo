@@ -18,7 +18,9 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.adapters.llm.usage import OperationBudget
 from semant_demo.features.documents.schemas import DocumentChunk
-from semant_demo.features.summarization.templated import ModelOptions, TemplateGenerationMixin
+from semant_demo.features.summarization.schemas import SummaryLength
+from semant_demo.features.summarization.templated import ModelOptions, SummaryLengths, TemplateGenerationMixin, \
+    summary_lengths_value
 from semant_demo.utils.template import Template, TemplateTransformer
 
 
@@ -49,6 +51,8 @@ class TemplatedDocumentSummarizer(TemplateGenerationMixin, ConfigurableMixin, Cr
         user_default="N/A",
         desc="Summary to use when document summary generation fails."
     )
+    gen_summary_lengths: SummaryLengths = summary_lengths_value(
+        "Length levels of the document summary.", short=(150, 768), detailed=(400, 1536))
     gen_summary_system_prompt: Template = ConfigurableValue(
         user_default=LiteralScalarString("""Jsi asistent pro sumarizaci historických dokumentů.
 Dostaneš úryvky (chunky) jednoho dokumentu v pořadí, v jakém se v dokumentu vyskytují; každý je označen unikátním ID jako [doc1], [doc2], … [docN].
@@ -57,7 +61,8 @@ Po každém faktu, který z úryvku získáš, připoj ID daného úryvku v hran
 Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID: „Kronikář zaznamenal neúrodu [doc1][doc3].“
 Nikdy neslučuj více id do jednoho, jako [doc2-4] nebo [doc2, doc3, doc4], ale vždy je uváděj jednotlivě.
 Nevymýšlej žádná fakta, která v úryvcích nejsou. Pokud je dokument zkrácen jen na jeho první úryvky, shrň pouze to, co je v nich obsaženo, a nepředstírej znalost zbytku dokumentu.
-Piš přehledně a stručně.
+{% if length == "detailed" %}Piš přehledně a podrobně: rozveď jednotlivé části dokumentu a uveď i méně významné, ale zajímavé informace.{% else %}Piš přehledně a stručně, uveď jen nejdůležitější body.{% endif %}
+{% if brevity %}Souhrn by neměl být delší než {{ brevity }} slov.{% endif %}
 Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
 """),
         desc="System prompt for document summary generation.",
@@ -103,7 +108,8 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
             return fallback
 
     async def gen_document_summary(self, chunks: Sequence[DocumentChunk], document_title: Optional[str] = None,
-                                   on_error: Optional[Callable[[str, Exception], None]] = None) -> str:
+                                   on_error: Optional[Callable[[str, Exception], None]] = None,
+                                   length: Optional[SummaryLength] = None) -> str:
         """
         Creates an overall summary of a document from ``chunks`` (already truncated by the
         caller to ``chunk_limit``, in document order).
@@ -116,12 +122,16 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
             ``[docN]`` (1-based) in the prompt
         :param document_title: optional document title given to the model for context
         :param on_error: called with ("summary", the exception) if generation fails
+        :param length: length level of the summary; None for the configured default
         :return: the generated summary, or the configured fallback text on failure
         """
+        level = self.gen_summary_lengths.level(length)
+        options = self.gen_summary_lengths.options(level)
         return await self._generate_or_fallback(
             "summary", self.gen_summary_error_summary, on_error,
             self.gen_summary_system_prompt, self.gen_summary_prompt,
-            {"chunks": chunks, "document_title": document_title}, self.gen_summary_model_options)
+            {"chunks": chunks, "document_title": document_title, "length": level.value, "brevity": options.words},
+            self.with_length(self.gen_summary_model_options, options))
 
 
 def load_document_summarizer(path: str, llm: LlmGateway) -> TemplatedDocumentSummarizer:

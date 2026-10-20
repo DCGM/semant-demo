@@ -75,6 +75,7 @@ docs/SpanType.md
 docs/StepFailure.md
 docs/SuggestSpansRequest.md
 docs/SuggestSpansSelectionRequest.md
+docs/SummaryLength.md
 docs/SummaryResponse.md
 docs/Tag.md
 docs/TagSpan.md
@@ -164,6 +165,7 @@ models/SpanType.ts
 models/StepFailure.ts
 models/SuggestSpansRequest.ts
 models/SuggestSpansSelectionRequest.ts
+models/SummaryLength.ts
 models/SummaryResponse.ts
 models/Tag.ts
 models/TagSpan.ts
