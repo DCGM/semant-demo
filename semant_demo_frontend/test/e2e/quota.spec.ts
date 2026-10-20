@@ -51,7 +51,8 @@ test('a guest of a frontend on another origin keeps one guest cookie, and its AI
   await page.keyboard.press('Enter')
   await expect(page.locator('#result-1')).toBeVisible()
 
-  const summary = page.waitForResponse(`${baseURL}/api/summarize/results`)
+  // The path only: the request carries the length level as a query parameter (#360).
+  const summary = page.waitForResponse((r) => r.url().split('?')[0] === `${baseURL}/api/summarize/results`)
   await page.getByRole('button', { name: 'Summarize Results' }).click()
   expect((await summary).status()).toBe(200)
   // The allowance is read again after the AI operation.
