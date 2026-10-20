@@ -1,145 +1,92 @@
 # Agent instructions
 
-These instructions supplement [CONTRIBUTING.md](CONTRIBUTING.md) for ordinary
-development. Base new work on the latest `origin/main` and open pull requests
-against protected `main`.
+The project rules for humans and agents are in [CONTRIBUTING.md](CONTRIBUTING.md); this
+file adds only what is specific to coding agents and links to the canonical sections.
+Do not restate those rules elsewhere; change them where they are defined.
 
-## Preparing issues
+## Before you start
 
-When creating or refining an issue, follow [ISSUE_WORKFLOW.md](docs/ISSUE_WORKFLOW.md).
-Search related issues/PRs and planned work; inspect the relevant code, tests,
-architecture and ADRs. Identify scope, acceptance criteria, dependencies and
-important decisions, distinguishing verified facts from assumptions. Normally
-refine the existing draft or user-feedback issue rather than replacing it; consult
-maintainers
-when the proposed behavior or technical design requires a significant decision.
-For `[User draft]` feedback, follow the
-[user-feedback guide](docs/USER_FEEDBACK_ISSUES.md), preserve the reporter's
-use case, and perform technical refinement yourself rather than requesting
-technical specifications from the user.
-Do not start implementation while material decisions remain unresolved.
+- **Issues:** follow [ISSUE_WORKFLOW.md](docs/ISSUE_WORKFLOW.md#ai-assisted-issue-preparation).
+  Normally refine the existing draft or user-feedback issue rather than replacing it.
+  For `[User draft]` feedback, follow the [user-feedback guide](docs/USER_FEEDBACK_ISSUES.md),
+  preserve the reporter's use case and do the technical refinement yourself instead of
+  asking the reporter for a specification. Do not start implementation while material
+  decisions remain unresolved; consult a maintainer about them.
+- **Reading:** [CONTRIBUTING §1](CONTRIBUTING.md#1-working-on-a-change) lists what to read.
+  From [ARCHITECTURE.md](docs/ARCHITECTURE.md), read the module map and the sections for the
+  affected feature, not the whole document.
+- **Rules you must not break:** code structure and API rules in
+  [CONTRIBUTING §3](CONTRIBUTING.md#3-code-and-api-rules); best-effort writes, request-scoped
+  AI and data safety in [CONTRIBUTING §5](CONTRIBUTING.md#5-data-failures-and-safety); the
+  confirmed product decisions (sharing, search representation, search chat scope, local
+  real-time UI, text/image correspondence) in the
+  [ADR index](docs/adr/README.md#confirmed-decisions). If a task seems to require changing
+  one of them, stop and ask instead of working around it.
+- **Python:** use the repository environment `.venv` for backend commands. Do not create
+  another one unless the task requires it.
 
-## Before editing
+## What needs explicit authorization
 
-Read [ARCHITECTURE.md](docs/ARCHITECTURE.md), the relevant
-[ADRs](docs/adr/README.md) and [TODO / issue index](docs/TODO.md), plus affected
-callers and tests. Preserve unrelated changes and identify cross-feature/API
-contracts before editing.
+Agents may create a topic branch, push it and open its PR for review. Without explicit
+authorization for the current task, do not:
 
-## Branch and PR workflow
+- push to `main`, force-update protected branches, merge PRs or deploy;
+- connect to or modify shared server Weaviate, shared preview databases, production
+  databases or other shared/production data;
+- use production endpoints, real user text, paid model calls, GPU/model downloads or live
+  evaluations;
+- use a `local_data/` snapshot;
+- run data cleanup, even when it looks incidental.
 
-1. Fetch and inspect `origin/main`; create a dedicated short-lived topic branch
-   **from `origin/main`** for each assigned change. Do not start from a previous
-   unmerged topic branch unless stacking is explicitly requested.
-2. Limit the branch to its issue/scope. Run appropriate checks described in
-   [CONTRIBUTING.md](CONTRIBUTING.md), update relevant active docs and any
-   generated API client, and report results accurately.
-3. Merge recent `origin/main` into the topic branch when needed and resolve
-   conflicts locally. Open the PR **against `main`**, request review, and wait
-   for required checks. Do not treat a review or one green unit test as a full
-   release verification.
-4. Do not push directly to `main`, force-update protected branches, merge PRs,
-   deploy, or change shared/production data without explicit authorization.
-   Agents may push their own assigned topic branch and open its PR for review.
+Before running a destructive Weaviate/schema/data-cleanup command, verify that the
+configured endpoint is the local development instance. An endpoint called "test" is not
+safe for that reason alone.
+
+## Branches
+
+Follow [CONTRIBUTING §6](CONTRIBUTING.md#6-branching-review-and-merge). Create each
+assigned change's branch from the latest `origin/main`, not from a previous unmerged
+topic branch, unless stacking is explicitly requested. Keep the branch to its issue.
+
+## Running the application
+
+Reuse the human-facing seeded environment exactly as described in
+[DEVELOPMENT §1](docs/DEVELOPMENT.md#1-quick-start-the-seeded-local-application); do not
+build another environment for agents. Run `make dev-backend` and `make dev-frontend` as
+background processes and stop them when done. One instance serves the machine: check
+`make dev-status` before starting it from another checkout. Its AI providers are fakes;
+never point it at live providers to evaluate quality. `make dev-reset CONFIRM=yes`
+destroys the development data: run it only when the task needs the seeded state, and
+never against data the user is working with without asking. Automated tests use their
+own disposable stores, never the development stores.
+
+The Make targets are `make setup`, `check`, `api-generate`, `test-integration`,
+`test-e2e`, `e2e-dev-*` and `dev-*` (all but the first three need Docker); `make dev`
+does not exist.
+
+## Tests and checks
+
+Select tests by [CONTRIBUTING §4](CONTRIBUTING.md#4-testing-contract) and
+[ADR 0005](docs/adr/0005-testing-contract.md); add regression tests for bugs and behavior
+changes. Never weaken assertions, bypass CI, add blanket skips or hand-edit generated API
+files to get a green result. A placeholder `npm test` is not a test pass.
+
+For browser tests or UI work, do not rerun `make test-e2e` after every change: use the
+[fast browser-test loop](docs/DEVELOPMENT.md#fast-browser-test-loop)
+(`make e2e-dev-start`, `e2e-dev-test`, `e2e-dev-rebuild`, `e2e-dev-capture`,
+`e2e-dev-stop`) and run the full `make test-e2e` once before handoff.
+
+For a meaningful UI change, follow the
+[UI change checklist](CONTRIBUTING.md#ui-change-checklist) before the first push,
+including its screenshot upload steps. Check `gh --version` and `gh auth status` first;
+if `gh` is older than 2.99, ask the user to update it rather than working around it. If
+the upload fails, report the blocker and ask the user to upload in the browser; do not
+set up external hosting such as gists. Attach only synthetic/fixture screenshots, and do
+not present screenshots you did not take or checks you did not run.
 
 ## Handoff
 
-Report scope, changed behavior/files, tests actually run, unrun checks, and
-remaining risks/decisions. Link newly discovered actionable gaps to a GitHub
-issue and update the relevant active documentation.
-
-## Architecture
-
-- Use thin HTTP routes and service functions. Classes and ports are optional, not a template requirement.
-- Enforce resource access in the service. Shared users may edit annotations, not document/chunk membership. Use separate checks; authentication alone is not authorization.
-- Concrete repositories belong under `adapters/weaviate/` or `adapters/sql/`. Do not duplicate them inside features.
-- Other features may call supported service functions; do not bypass them through another feature's adapters. Avoid cycles.
-- Keep SDK filters/objects out of feature logic. A concrete adapter type annotation may be used initially; introduce a narrow Protocol only when useful.
-- Do not create mandatory CRUD methods that raise `NotImplementedError`, speculative layers, generic event buses, or a new job framework.
-
-## Behavior to preserve
-
-Multi-write operations are best effort: keep completed work and report incomplete/failed
-steps honestly. Do not add automatic rollback, repair infrastructure, or silent success.
-Do not treat an uncertain timed-out write as definitely absent. Prefer safe explicit retries.
-
-AI proposal generation is request-scoped with incremental persistence. Cancel/await
-remaining work on disconnect; retain saved proposals. Persisted results do not imply a
-durable job. Do not delete SQL user infrastructure with legacy task code.
-
-Keep search on chunk tag attributes in Weaviate; no SQL split, large ID-list bridge, or
-new span-based query design during cleanup. Entries without backing annotations are data
-inconsistencies, not supported legacy features. Review data cleanup separately; never
-execute it as incidental cleanup.
-
-Preserve canonical text and cross-chunk offsets. Document view/export/concordances support
-manual/automatic/both annotation selection when those feature changes land; do not impose
-approved-only defaults or redesign category/provenance fields during moves.
-
-Search chat uses retrieved results or their explicitly selected subset, never an implicit
-query rerun or wider context. Local real-time UI means streamed AI annotations appear in
-Document view, not live multi-user synchronization. Line-level ALTO mapping may be frontend-
-only; polygon storage is optional future work. These roadmap features are not prerequisites
-for unrelated changes. Respect context and late-response guards.
-
-## Tests and safety
-
-Use CONTRIBUTING.md for test selection and [ADR 0005](docs/adr/0005-testing-contract.md)
-for detailed cases/fixtures. Add regression tests for bugs and behavior changes. Use isolated stores and deterministic providers; no production endpoints, real
-user text, paid calls, GPU downloads, or live evaluations without explicit authorization.
-Do not execute destructive schema/bootstrap scripts against an unverified endpoint.
-
-Never manually edit generated API files, commit secrets, weaken assertions, bypass CI,
-or add blanket skips merely to produce a green result. A placeholder `npm test` is not
-a test pass. `make setup`, `make check`, `make api-generate`, `make test-integration`,
-`make test-e2e` and the `make dev-*` targets exist (all but the first three need Docker);
-`make dev` does not.
-
-When iterating on browser tests or UI, do not rerun `make test-e2e` for each change: start
-the profile once with `make e2e-dev-start`, run the affected spec with
-`make e2e-dev-test ARGS="<spec path> [--grep ...]"` (after a frontend edit,
-`make e2e-dev-rebuild`), review layouts with `make e2e-dev-capture` (PNGs in
-`semant_demo_frontend/test-results/ui-capture/`), and `make e2e-dev-stop` when done. See
-[DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop). Run the full `make test-e2e`
-once before handoff.
-
-For a meaningful UI change, follow the
-[UI change checklist](CONTRIBUTING.md#ui-change-checklist) before the first push: inspect
-the affected states and viewports (all three widths for new/shared layouts or responsive
-changes; only relevant contexts for localized changes), attach representative evidence
-of the changed states to the PR, and name any relevant context or state not captured. Do
-not present screenshots you did not take or checks you did not run.
-
-Attach screenshots with GitHub CLI's native upload (`gh` 2.99 or newer): `gh pr edit <N>
---attach './shot.png#What the screenshot shows'` appends them to the PR description, and
-`gh pr comment <N> --attach ...` adds them in a comment; repeat `--attach` for several
-files. To place images (e.g. in a table), reference them in the body file as
-`![alt](./shot.png)` and pass `-F body.md --attach ./shot.png`; the references are
-rewritten to the uploaded assets. Check `gh --version` and `gh auth status` first; if the
-flag is missing, ask the user to update `gh` instead of working around it. Attach only
-synthetic/fixture screenshots, give each a descriptive alt text after `#`, and verify the
-PR renders them (`gh pr view <N> --json body` shows `github.com/user-attachments/...`
-URLs). If the upload is unavailable or fails, report the blocker and ask the user to
-upload in the browser; do not set up external hosting such as gists.
-
-To run the application interactively, reuse exactly the human-facing seeded environment
-([DEVELOPMENT.md](docs/DEVELOPMENT.md#1-quick-start-the-seeded-local-application)):
-`make dev-up`, then `make dev-backend` and `make dev-frontend` as background processes
-(stop them when done); log in e.g. as `owner` / `owner-password-1`. Do not build another
-environment for agents. Its AI providers are fakes: never point it at live providers to
-evaluate quality. `make dev-reset CONFIRM=yes` destroys the development data: run it only
-when the task needs the seeded state, never against data the user is working with without
-asking. One instance serves the machine; check `make dev-status` before starting it from
-another checkout. Automated tests use their own disposable stores (`make test-integration`,
-`make test-e2e`, `make e2e-dev-*`), never the development stores. A `local_data/` snapshot
-is used only when the task explicitly authorizes it.
-
-Do not connect to or modify shared server Weaviate, shared preview databases, or production databases unless explicitly instructed for the current task.
-
-Before running a destructive Weaviate/schema/data-cleanup command, verify that the configured endpoint is the local development instance. Do not infer that an endpoint is safe merely because it is called "test".
-
-
-
-## Local environment
-
-The repository Python environment is `.venv` at the repository root. Use it for backend commands. Do not create another Python environment unless the assigned task specifically requires it.
+Fill in the [pull request template](.github/pull_request_template.md) and request review.
+Report the scope, changed behavior and files, checks actually run, checks not run and
+why, blockers, and remaining risks or decisions. Link newly discovered actionable gaps to
+a GitHub issue and update the relevant active documentation.
