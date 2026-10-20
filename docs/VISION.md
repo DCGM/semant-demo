@@ -37,7 +37,7 @@ Kramerius digital libraries
    Named Entity Recognition (persons, places, institutions, …)
         │
         ▼
-   Embedding generation (BAAI/bge-multilingual-gemma2)
+   Embedding generation (Qwen/Qwen3-Embedding-0.6B)
         │
         ▼
    Weaviate insertion (db_insert_jsonl.py)

@@ -553,23 +553,23 @@ started by hand (section 5.5) can use real services instead.
 
 ### Embedding service
 
-Vector and hybrid search require an embedding service.
+Vector and hybrid search require an embedding service whose model matches the named vector
+of the snapshot's chunks. The deployed embedder is Qwen3-Embedding-0.6B on vLLM
+([deploy/README](../deploy/README.md#qwen-embedding-service-385)), published on the server's
+loopback port 8002; the former Gemma service on port 8001 ([embedding_service/](../embedding_service/README.md))
+is no longer running there, and the default `configs/search_vectors.yaml` still targets it.
 
-It can be run locally according to [the embedding service README](../embedding_service/README.md).
-
-When using an explicitly authorized server-hosted development embedding service, an SSH tunnel can be used:
+With explicit authorization to use the server's embedder, tunnel its port:
 
 ```bash
-ssh -N \
-  -L 8001:localhost:8001 \
-  xlogin00@semant.fit.vutbr.cz
+ssh -N -L 8002:localhost:8002 xlogin00@semant.fit.vutbr.cz
 ```
 
-Then start the backend with:
+Then start the backend with a copy of `configs/search_vectors_qwen.yaml` whose `base_url` is
+`http://localhost:8002/v1` (the snapshot's chunks must hold the `Qwen3_Embedding_0_6B` vector):
 
 ```bash
-EMBEDDING_SERVICE_HOST=localhost \
-EMBEDDING_SERVICE_PORT=8001 \
+SEARCH_VECTORS_CONFIG=/path/to/search_vectors_local.yaml \
 python -m uvicorn semant_demo.main:app --reload
 ```
 
