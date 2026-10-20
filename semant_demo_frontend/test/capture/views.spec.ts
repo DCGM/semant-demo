@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import {
-  annotation, answerChat, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, sidebarPanelButton
+  annotation, answerChat, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, selectText,
+  sidebarPanelButton
 } from '../e2e/support'
 
 // UI review captures (`scripts/e2e-dev.sh capture`), not part of `make test-e2e`. The
@@ -85,6 +86,29 @@ test('document view - summary panel (#249)', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'Summarize Document' }).click()
   await expect(page.getByTestId('document-summary')).toBeVisible()
   await save(page, testInfo, 'document-view-summary')
+})
+
+test('document view - popover, bulk bar and create-tag dialog (#379)', async ({ page }, testInfo) => {
+  await ensureLoggedIn(page, 'owner')
+  await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
+  await page.reload() // without the sign-in notification
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+  await closePhoneNavigation(page)
+  await expectSidebarsOpen(page, testInfo)
+
+  // The chunk gutter starts hidden; its checkboxes select chunks for the bulk bar.
+  await page.locator('button[title="Show/hide chunk gutter"]').click()
+  await page.locator('.chunk-checkbox-item').first().click()
+  await expect(page.locator('.bulk-action-bar')).toBeVisible()
+  const start = fixture.chunk('chronicle_1').text.indexOf('hostinci')
+  await selectText(page, 'chronicle_1', start, 'chronicle_1', start + 'hostinci'.length)
+  await expect(page.locator('.annotation-popover').getByText('Create new tag')).toBeVisible()
+  await save(page, testInfo, 'document-view-popover')
+
+  await page.locator('.annotation-popover').getByText('Create new tag').click()
+  await expect(page.locator('.q-dialog').getByLabel('Tag Name')).toBeVisible()
+  await expect(page.locator('.q-dialog__inner')).not.toHaveClass(/q-transition/) // fully in
+  await save(page, testInfo, 'document-view-create-tag-dialog')
 })
 
 test('corpus overview', async ({ page }, testInfo) => {

@@ -357,6 +357,18 @@ export async function deleteAddedSpans (request: APIRequestContext, userKey: str
   }
 }
 
+/** Deletes the tags of a collection that are not part of the fixture corpus. */
+export async function deleteAddedTags (request: APIRequestContext, userKey: string, collectionKey: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${await apiToken(request, userKey)}` }
+  const fixtureIds = new Set(corpus.tags.map((t) => t.id))
+  const response = await request.get(`/api/user_collections/${fixture.collection(collectionKey).id}/tags`, { headers })
+  expect(response.ok()).toBe(true)
+  for (const tag of await response.json() as { id: string }[]) {
+    if (fixtureIds.has(tag.id)) continue
+    expect((await request.delete(`/api/tags/${tag.id}`, { headers })).ok()).toBe(true)
+  }
+}
+
 /** Removes a chunk from a collection; does nothing when it is not a member. */
 export async function removeChunk (
   request: APIRequestContext, userKey: string, collectionKey: string, chunkKey: string

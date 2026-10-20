@@ -83,7 +83,8 @@ const emit = defineEmits<{
   background: #1c2636;
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
-  z-index: 9000;
+  /* Above the drawers (3000), below the annotation popover (5000) and dialogs (6000). */
+  z-index: 4000;
   white-space: nowrap;
 }
 

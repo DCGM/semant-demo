@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page, type Request } from '@playwright/test'
 import {
-  annotation, chunkText, deleteAddedSpans, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk, selectText,
-  sidebarPanelButton
+  annotation, chunkText, deleteAddedSpans, deleteAddedTags, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk,
+  selectText, sidebarPanelButton
 } from './support'
 
 // Document viewer interactions: text selection and annotation editing, the span gutter,
@@ -9,6 +9,7 @@ import {
 
 test.afterEach(async ({ request }) => {
   await deleteAddedSpans(request, 'owner', 'chronicles')
+  await deleteAddedTags(request, 'owner', 'chronicles')
   await deleteSuggestions(request, 'owner', 'chronicles', 'chronicle', 'person')
   await removeChunk(request, 'owner', 'newspapers', 'chronicle_2')
 })
@@ -87,6 +88,44 @@ test('a selection after clicking a marker opens the tag picker instead of reusin
   await page.keyboard.press('Escape')
   await expect(popover(page)).toHaveCount(0)
   await expect(page.locator('.tag-card.is-active')).toHaveCount(0)
+})
+
+// #379: the create-tag dialog covers the popover (see the tests further down), and Escape
+// there belongs to the dialog, so the new tag still goes onto the selection.
+test('Escape in the create-tag dialog keeps the selection the new tag goes onto', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+
+  const start = fixture.chunk('chronicle_1').text.indexOf('hostinci')
+  const end = start + 'hostinci'.length
+  await selectText(page, 'chronicle_1', start, 'chronicle_1', end)
+  await popover(page).getByText('Create new tag').click()
+  const dialog = page.locator('.q-dialog')
+  await expect(dialog.getByLabel('Tag Name')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(dialog.getByLabel('Tag Name')).toBeVisible()
+  await expect(popover(page)).toBeVisible()
+  await dialog.getByLabel('Tag Name').fill('Inn')
+  await dialog.getByLabel('Tag Shorthand').fill('INN')
+  await dialog.getByRole('button', { name: 'Create' }).click()
+
+  await expect(taggedSegment(page, 'chronicle_1', start, end)).toBeVisible()
+  await expect(popover(page)).toHaveCount(0)
+})
+
+test('closing the popover without an open dialog discards the selection', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+
+  const start = fixture.chunk('chronicle_1').text.indexOf('hostinci')
+  await selectText(page, 'chronicle_1', start, 'chronicle_1', start + 'hostinci'.length)
+  await expect(popover(page).getByText('Create new tag')).toBeVisible()
+
+  await popover(page).locator('.popover-close').click()
+  await expect(popover(page)).toHaveCount(0)
 })
 
 /**
@@ -400,4 +439,55 @@ test('the AI assist and tags panels keep their state across panel switches', asy
   await expect(page.getByRole('radio', { name: 'Thorough (every chunk in collection)' })).toHaveAttribute('aria-checked', 'true')
   await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('person').name })).toHaveAttribute('aria-checked', 'true')
   await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('place').name })).toHaveAttribute('aria-checked', 'false')
+})
+
+/** Whether something else is on top at the centre of the element. */
+const covered = (locator: Locator) => locator.evaluate((el) => {
+  const box = el.getBoundingClientRect()
+  return !el.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2))
+})
+
+// #379: a dialog opened from the popover covers it, so nothing in the popover can be
+// clicked (its close button, a second create-tag dialog) until the dialog closes.
+test('the create-tag dialog covers the popover until it is closed', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+
+  const start = fixture.chunk('chronicle_1').text.indexOf('hostinci')
+  await selectText(page, 'chronicle_1', start, 'chronicle_1', start + 'hostinci'.length)
+  const createTag = popover(page).getByText('Create new tag')
+  await createTag.click()
+  const dialog = page.locator('.q-dialog')
+  await expect(dialog.getByLabel('Tag Name')).toBeVisible()
+
+  await expect(popover(page)).toBeVisible()
+  await expect.poll(() => covered(createTag)).toBe(true)
+  await expect.poll(() => covered(popover(page).locator('.popover-close'))).toBe(true)
+
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect.poll(() => covered(createTag)).toBe(false)
+})
+
+test('the bulk bar stays below the popover and the dialogs it opens', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+
+  await showChunkGutter(page)
+  await page.locator('.chunk-checkbox-item').first().click()
+  const bar = page.locator('.bulk-action-bar')
+  await expect(bar).toContainText('1 selected')
+
+  const start = fixture.chunk('chronicle_1').text.indexOf('hostinci')
+  await selectText(page, 'chronicle_1', start, 'chronicle_1', start + 'hostinci'.length)
+  await expect(popover(page)).toBeVisible()
+  // Both are fixed children of <body>, so their z-index orders them where they overlap.
+  const zIndex = (locator: Locator) => locator.evaluate((el) => Number(getComputedStyle(el).zIndex))
+  expect(await zIndex(bar)).toBeLessThan(await zIndex(popover(page)))
+
+  await popover(page).getByText('Create new tag').click()
+  await expect(page.locator('.q-dialog').getByLabel('Tag Name')).toBeVisible()
+  await expect.poll(() => covered(bar)).toBe(true)
 })
