@@ -166,8 +166,9 @@ async def test_tag_maps_stored_properties(tags, corpus):
         "id": person["id"], "name": person["name"], "shorthand": person["shorthand"], "color": person["color"],
         "pictogram": person["pictogram"], "definition": person["definition"], "examples": person["examples"],
     }
-    assert {str(t.id) for t in await tags.read_by_collection(col(corpus, "chronicles"))} == {
-        corpus.tags["person"]["id"], corpus.tags["place"]["id"]}
+    # By name (Místo before Osoba), not in the order Weaviate happens to return them (#348).
+    assert [str(t.id) for t in await tags.read_by_collection(col(corpus, "chronicles"))] == [
+        corpus.tags["place"]["id"], corpus.tags["person"]["id"]]
     assert await tags.read_collection_ids([UUID(person["id"])]) == {UUID(person["id"]): [col(corpus, "chronicles")]}
 
 
