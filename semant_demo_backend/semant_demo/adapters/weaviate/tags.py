@@ -84,9 +84,13 @@ class TagRepository:
         return to_tag(response) if response is not None else None
 
     async def read_by_collection(self, collection_id: UUID) -> list[Tag]:
-        """All tags of the collection."""
+        """All tags of the collection, by name (then id).
+
+        Weaviate returns them in no defined order (it depends on how they were written), so
+        lists that keep the API order, or use it to break ties, would differ between stores.
+        """
         objects = await fetch_all(self._tags(), filters=Filter.by_ref("userCollection").by_id().equal(collection_id))
-        return [to_tag(obj) for obj in objects]
+        return sorted((to_tag(obj) for obj in objects), key=lambda tag: (tag.name.casefold(), str(tag.id)))
 
     async def read_collection_ids(self, tag_ids: list[UUID]) -> dict[UUID, list[UUID]]:
         """
