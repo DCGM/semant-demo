@@ -6,6 +6,7 @@ import useAiAssistance, {
   describeRunEnd, describeTagLimits, largeRunWarning
 } from 'src/features/annotations/useAiAssistance'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
+import { muteConsole } from './console'
 
 vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
 
@@ -204,6 +205,7 @@ describe('useAiAssistance', () => {
   })
 
   it('shows a refusal for the daily allowance with its reset time and does not retry', async () => {
+    const logged = muteConsole('error')
     const resetAt = new Date(Date.now() + 3_600_000).toISOString()
     const refusal = {
       detail: 'Insufficient remaining daily AI allowance',
@@ -220,6 +222,7 @@ describe('useAiAssistance', () => {
 
     expect(ai.lastError.value).toMatch(/^Today's AI allowance has no room for this request, so nothing was generated. It resets/)
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(logged).toHaveBeenCalledWith('AI assistance failed', expect.anything())
   })
 
   it('reports an early stop for the allowance and the tags that reached the chunk limit', async () => {

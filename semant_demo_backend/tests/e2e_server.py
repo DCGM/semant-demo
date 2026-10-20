@@ -11,6 +11,9 @@ test-owned Weaviate. It
   ``port + 2``, the origin allowed for credentialed cross-origin requests: a browser test
   checks the guest cookie there across origins (local development: frontend :9000, API
   :8000);
+* logs only warnings and errors (``E2E_LOG_LEVEL``, default ``WARNING``), so a failure is
+  not buried under one ``HTTP request completed`` line per request; its own startup line
+  is always shown;
 * runs fake embedding/Topicer/LLM providers on ``port + 1`` and points every AI
   provider setting at them, with no API keys, so no live or paid provider can be reached
   (tiers on keyed providers are refused before any request).
@@ -132,7 +135,8 @@ def main() -> None:
     args = parser.parse_args()
     if not (args.static / "index.html").is_file():
         parser.error(f"{args.static} does not contain a built frontend (index.html)")
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=os.environ.get("E2E_LOG_LEVEL", "WARNING").upper())
+    logger.setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     asyncio.run(serve(args.port, args.static.resolve()))
 

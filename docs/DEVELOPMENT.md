@@ -259,6 +259,10 @@ The Make targets call `scripts/e2e-dev.sh start|test|capture|rebuild|restart|sta
 - **Display.** The script runs headless Chromium without `DISPLAY` (unless `--headed`,
   `--debug` or `--ui` is passed): with a forwarded X display (`ssh -X`) Chromium otherwise
   waits ~25 s for its first frame at every browser launch. `make test-e2e` unsets it too.
+- **Server log.** `make test-e2e` shows only the profile's warnings and errors, not one
+  `HTTP request completed` line per request; `E2E_LOG_LEVEL=INFO make test-e2e` shows them.
+  The loop keeps them (`E2E_LOG_LEVEL` defaults to `INFO` there) in `.e2e-dev/server.log`,
+  which `scripts/e2e-dev.sh logs` prints.
 
 **UI captures.** `make e2e-dev-capture` runs `semant_demo_frontend/test/capture/views.spec.ts`
 in three projects, wide desktop (1920×1000), narrow desktop with both sidebars open

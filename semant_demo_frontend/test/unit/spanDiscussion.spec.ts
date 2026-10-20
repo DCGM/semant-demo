@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import useSpanDiscussion from 'src/features/annotations/useSpanDiscussion'
+import { muteConsole } from './console'
 
 const encoder = new TextEncoder()
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -74,6 +75,7 @@ describe('useSpanDiscussion', () => {
   })
 
   it('explains a refusal for the daily AI allowance and removes the empty reply', async () => {
+    const logged = muteConsole('error')
     globalThis.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
       detail: 'Insufficient remaining daily AI allowance for this operation; it resets at 2026-10-18 00:00 UTC.',
       code: 'llm_quota_exhausted',
@@ -90,6 +92,7 @@ describe('useSpanDiscussion', () => {
     expect(chat.error.value).toMatch(/^Today's AI allowance has no room for this request, so nothing was generated\. It resets /)
     expect(chat.messages.value).toEqual([{ role: 'user', content: 'Why?' }])
     expect([chat.isStreaming.value, (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length]).toEqual([false, 1])
+    expect(logged).toHaveBeenCalledWith('Span discussion failed', expect.anything())
   })
 
   it('drops deltas after cancel and keeps what arrived before', async () => {

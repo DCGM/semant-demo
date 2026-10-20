@@ -21,7 +21,6 @@ const json = (body: unknown, status = 200) =>
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined) // the dialog restores the scroll; jsdom has none
   sent = []
   answers = {
     '/api/rag/configurations': () => json([{ id: 'r1', name: 'RAG', description: '' }]),
