@@ -101,7 +101,7 @@ describe('selectionText', () => {
 })
 
 describe('assignColumns', () => {
-  it('puts overlapping markers side by side and reuses free columns', () => {
+  it('puts overlapping markers side by side, longer ones nearer the text, and reuses free columns', () => {
     const items = [
       { id: 3, top: 60, height: 20, column: 0 },
       { id: 1, top: 0, height: 50, column: 0 },

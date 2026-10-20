@@ -312,6 +312,10 @@ export async function selectText (
     { chunkId: fixture.chunk(startChunkKey).id, offset: start },
     { chunkId: fixture.chunk(endChunkKey).id, offset: end }
   ]
+  // The text may not be rendered yet right after the document opens.
+  for (const { chunkId } of points) {
+    await expect(page.locator(`.chunk-annotator[data-chunk-id="${chunkId}"] .text-segment`).first()).toBeVisible()
+  }
   await page.evaluate((points) => {
     const locate = ({ chunkId, offset }: { chunkId: string, offset: number }) => {
       const segments = document.querySelectorAll<HTMLElement>(`.chunk-annotator[data-chunk-id="${chunkId}"] .text-segment`)
