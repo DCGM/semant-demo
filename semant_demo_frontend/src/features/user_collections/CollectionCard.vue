@@ -107,8 +107,7 @@ const ownerInitials = computed(() => {
 })
 
 const handleToggleFavorite = () => {
-  // TODO implement toggle favorite --- IGNORE ---
-  console.log('Toggling favorite for collection with id: ', props.collection.id)
+  // Favorites are not implemented yet; preserve the existing placeholder action.
 }
 
 const handleEditProject = () => {
@@ -121,7 +120,6 @@ const handleDeleteProject = () => {
 
 const handleEnterProject = (collectionId: string) => {
   emit('enter', collectionId)
-  console.log('Entering collection with id: ', collectionId)
 }
 
 const handleShareProject = () => {
