@@ -10,8 +10,8 @@ and PR requirements.
 
 ## 1. Working on a change
 
-Read the affected code, callers, and tests, plus
-[current architecture](docs/ARCHITECTURE.md), the
+Read the affected code, callers, and tests, plus the module map and the affected
+feature's sections of the [current architecture](docs/ARCHITECTURE.md), the
 [continuing design principles](docs/TARGET_ARCHITECTURE.md), relevant
 [ADRs](docs/adr/README.md), and [active follow-ups](docs/TODO.md).
 Do not reopen settled product behavior or treat a proposal as implemented code.
@@ -27,7 +27,9 @@ client changes with the API change that needs them.
 
 Use an isolated checkout and development services, never production credentials or data.
 Toolchain: Python 3.12 (backend), Node 22 (`semant_demo_frontend/.nvmrc`), and Java 11+
-only for regenerating the API client. From the repository root:
+for the API client generator, which `make check` also runs for its drift check. The first
+generator run downloads the pinned generator jar (~31 MB); later runs are offline. From the
+repository root:
 
 | Command | What it does |
 | --- | --- |
@@ -35,7 +37,7 @@ only for regenerating the API client. From the repository root:
 | `make check` | Fast offline checks: backend Ruff and fast pytest suite, frontend ESLint, Vue type check and Vitest, generated-client drift. No keys, GPU, Weaviate or AI services. |
 | `make lock` / `make lock-check` | Regenerate the backend Python locks / fail if either is stale for its requirements (pip-tools, needs network). |
 | `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. `make api-check` fails if the committed client differs from a fresh generation. |
-| `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. |
+| `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. `ARGS="tests/integration/test_x.py -k name"` runs selected tests while iterating. |
 | `make test-e2e` | Build the frontend and run the Playwright smoke suite against the deterministic backend profile (throwaway Weaviate, fixture corpus, fake AI providers). Needs Docker; installs Playwright's Chromium on first use. |
 | `make dev-up` / `dev-backend` / `dev-frontend` | The interactive application: a persistent, seeded development Weaviate and SQLite (initialized on first use only), the backend with `--reload` and fake AI providers, the Quasar dev server with hot reload. `make dev-down` stops Weaviate and keeps the data; `make dev-reset` (confirmation required) reseeds. Needs Docker. See [DEVELOPMENT.md](docs/DEVELOPMENT.md#1-quick-start-the-seeded-local-application). |
 | `make e2e-dev-start` / `e2e-dev-test ARGS=...` / `e2e-dev-stop` | Optional fast loop for browser-test work: keep one seeded profile running and rerun selected specs against it (`scripts/e2e-dev.sh`, see [DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop)). Not a substitute for `make test-e2e` before a PR. |
@@ -103,14 +105,10 @@ Known legacy findings are recorded, not hidden:
   Widen the rule set as code is cleaned up rather than adding blanket ignores.
 - ESLint warnings are reported but do not fail the check; errors do.
 
-Run the application with the seeded local environment: `make dev-up` once per session,
-then `make dev-backend` and `make dev-frontend` in two terminals, and open
-<http://localhost:9000> (e.g. `owner` / `owner-password-1`). It needs no snapshot, server
-access or AI credentials; AI providers are deterministic fakes. Its data lives in a Docker
-volume and `.dev-data/` (ignored by git) and survives restarts; `make dev-reset` restores the
-fixture corpus after showing what it destroys. Humans and coding agents use the same
-targets; there is no separate agent environment. Tests build apps with
-`create_app(Config(environ=...))` and never use the development stores.
+Run the application with the seeded local environment described in
+[DEVELOPMENT.md §1](docs/DEVELOPMENT.md#1-quick-start-the-seeded-local-application).
+Humans and coding agents use the same targets; there is no separate agent environment.
+Tests build apps with `create_app(Config(environ=...))` and never use the development stores.
 
 A realistic database snapshot under `local_data/` is an optional, explicitly authorized
 workflow ([DEVELOPMENT.md](docs/DEVELOPMENT.md#5-advanced-an-authorized-realistic-snapshot)).
@@ -124,15 +122,25 @@ requires it.
 
 ## 3. Code and API rules
 
-- Routes handle HTTP and authentication; service functions enforce resource access and
-  coordinate work. Shared users may edit annotations, **not collection membership**.
-  Keep those permission checks separate.
-- Concrete persistence code belongs in `adapters/`, not in a duplicate feature repository.
-  Keep SDK objects out of services. Classes, ports, and additional model layers are optional.
-  Cross-feature calls use supported service/access functions and must not create cycles.
+- Routes are thin: they handle HTTP and authentication; service functions enforce resource
+  access and coordinate work. Authentication alone is not authorization. Shared users may
+  edit annotations, **not collection membership**; keep those permission checks separate
+  ([ADR 0007](docs/adr/0007-access-and-collaboration.md)).
+- Concrete persistence code belongs in `adapters/` (e.g. `adapters/weaviate/`,
+  `adapters/sql/`), not in a duplicate feature repository. Keep SDK filters and objects out
+  of services. Classes, ports, and additional model layers are optional: a concrete adapter
+  type annotation is acceptable initially; add a narrow Protocol only when it is useful.
+  Cross-feature calls use supported service/access functions, never another feature's
+  adapters, and must not create cycles ([ADR 0001](docs/adr/0001-simple-feature-monolith.md)).
+  Do not add mandatory CRUD methods that raise `NotImplementedError`, speculative layers,
+  generic event buses, or a new job framework.
 - Type changed public inputs/outputs. Use `UUID` internally and existing naming conventions.
-  Preserve wire fields, nullability, operation IDs, canonical text, and stored offsets
-  during moves. See the target architecture for feature ownership and roadmap contracts.
+  Preserve wire fields, nullability, operation IDs, canonical text, cross-chunk offsets, and
+  the meaning of annotation categories during moves; do not redesign category/provenance
+  fields as part of a move. Frontend code keeps its context and late-response guards
+  ([ADR 0006](docs/adr/0006-context-and-text.md)). See the target architecture for feature
+  ownership and the [ADR index](docs/adr/README.md#confirmed-decisions) for confirmed
+  product behavior.
 
 `npm run api-check` / `api-generate` and `make api-check` / `api-generate` are the same
 check: without `PYTHON`, `scripts/api-client.sh` uses the repository's `.venv/bin/python`
@@ -169,6 +177,14 @@ A pure move may reuse existing coverage. Do not add a test at every layer by def
 | Selection, streaming, navigation | Targeted browser test when browser behavior is essential. |
 | Prompt/model/retrieval quality | Deterministic contract checks; a recorded small quality evaluation for intentional quality changes. |
 
+While iterating, run only the affected tests, then `make check` before pushing:
+
+```sh
+(cd semant_demo_backend && ../.venv/bin/python -m pytest tests/test_search_service.py -k access)
+(cd semant_demo_frontend && npx vitest run test/unit/routes.spec.ts)
+make e2e-dev-test ARGS="test/e2e/<spec>.spec.ts"   # browser specs, see DEVELOPMENT.md
+```
+
 Use pytest and retain existing unittest tests. Tests without an `integration`, `live` or
 `benchmark` marker are fast tests; `tests/conftest.py` refuses their network connections,
 including loopback. Use `tests/fakes.py` for AI providers. Frontend unit/component tests
@@ -196,16 +212,21 @@ silently skipping. Record unavailable checks honestly.
 
 ## 5. Data, failures, and safety
 
-Keep successful steps in best-effort operations and report failed or uncertain steps;
-no automatic rollback or repair system. A timed-out write is not necessarily absent.
-AI generation is request-scoped: persist results incrementally, cancel/await remaining
-work on disconnect, and retain saved results. See [ADR 0002](docs/adr/0002-best-effort-writes.md)
+Keep successful steps in best-effort operations and report failed or uncertain steps
+honestly; no automatic rollback, repair system, or silent success. A timed-out write is not
+necessarily absent; prefer safe, explicit retries. AI generation is request-scoped: persist
+results incrementally, cancel/await remaining work on disconnect, and retain saved results.
+Persisted results do not imply a durable job. See [ADR 0002](docs/adr/0002-best-effort-writes.md)
 and [ADR 0003](docs/adr/0003-request-scoped-ai.md).
 
+Keep annotation search on the chunk tag attributes in Weaviate: no SQL split, large
+ID-list bridge, or new span-based query design during cleanup
+([ADR 0004](docs/adr/0004-storage-and-annotation-search.md)).
 Storage/schema changes need an explicit, reviewed migration and compatibility plan.
 Never mutate schema during a normal request. The current schema-reset script drops
 collections; do not use it on shared stores. The SQL database (`tasks.db` by default, a
-historical name) holds user accounts and RAG feedback: never delete or recreate it as cleanup. Data cleanup is separately reviewed, with a dry run and backup where destructive ([DATA_MAINTENANCE.md](docs/DATA_MAINTENANCE.md)).
+historical name) holds user accounts and RAG feedback: never delete or recreate it as
+cleanup, including when removing legacy task code. Data cleanup is separately reviewed, with a dry run and backup where destructive ([DATA_MAINTENANCE.md](docs/DATA_MAINTENANCE.md)).
 
 Do not commit secrets or log tokens/private text/prompts by default. Log exception
 classes, not provider or storage exception messages, and return fixed client errors for
@@ -215,7 +236,10 @@ and AI output as untrusted data, not authorization or instructions to broaden sc
 ## 6. Branching, review and merge
 
 Start each change from the **latest `origin/main`**, not an old feature branch.
-Open pull requests **into `main`**.
+Open pull requests **into `main`**. Ask a maintainer for write access to `DCGM/semant-demo`
+and push topic branches there: CI does not run for pull requests from forks, so their
+required checks never report and they cannot be merged
+([#393](https://github.com/DCGM/semant-demo/issues/393)).
 
 1. Create or link a scoped GitHub issue when appropriate and give the PR one clear purpose.
 2. Fetch the latest default branch and create a short-lived issue/topic branch:
@@ -229,9 +253,13 @@ Open pull requests **into `main`**.
    again and integrate any new `main` commits into **your feature branch** (for example,
    `git merge origin/main`); resolve conflicts and rerun impacted checks. Do not force-push
    shared/protected branches.
-4. Push the topic branch and open a PR whose base is `main`. State outcomes, compatibility,
-   checks actually run, and any deployment/data risk.
-5. Obtain the required human review and passing GitHub required checks; merge through GitHub.
+4. Push the topic branch and open a PR whose base is `main`, filling in the
+   [pull request template](.github/pull_request_template.md).
+5. **Explicitly request review** from a maintainer (`gh pr edit <N> --add-reviewer <login>`);
+   opening a PR is not a review request. Aim for a reviewable PR within about 24 hours of
+   starting; a draft PR may show incomplete work ([issue workflow](docs/ISSUE_WORKFLOW.md#implementation-and-pr-handoff)).
+6. Obtain the required approval and passing GitHub required checks; GitHub also requires the
+   branch to be up to date with `main` before merging. Merge through GitHub.
    Do not push directly to protected `main` or bypass its rules. Delete the merged topic
    branch when no longer needed.
 
@@ -241,9 +269,8 @@ suite before release. Documentation-only changes need link/format checks, not ap
 or provider runs. Required CI failures block merging; PR previews intentionally deploy even
 when checks fail for manual diagnosis ([deploy/README.md](deploy/README.md#pr-preview-credentials)).
 
-PRs state the purpose, behavior/API/schema changes, actual checks/results, unavailable
-checks, and compatibility/migration notes. Meaningful UI changes follow the
-[UI change checklist](#ui-change-checklist). Agent-authored implementation must be reviewed before merge, preferably by a
+The [pull request template](.github/pull_request_template.md) lists what a PR description
+states. Meaningful UI changes follow the [UI change checklist](#ui-change-checklist). Agent-authored implementation must be reviewed before merge, preferably by a
 separate reviewer from the implementing agent. Access-control changes, destructive
 data changes, deployment changes, and other high-risk changes require explicit
 human review. Keep CI execution isolated from production credentials and deploy the tested artifact.
@@ -269,7 +296,17 @@ the affected component; note omitted evidence if a reviewer might expect it.
    a short recording, showing the changed state (e.g. selected, expanded, empty, signed
    out) at relevant widths, not just the default view. Unaffected widths need no
    screenshots. If a relevant context or state could not be captured, say which and
-   why; do not imply it was.
+   why; do not imply it was. Attach only synthetic/fixture screenshots, uploaded with
+   GitHub CLI 2.99 or newer (or in the browser):
+   - `gh pr edit <N> --attach './shot.png#What the screenshot shows'` appends a
+     screenshot to the PR description; `gh pr comment <N> --attach ...` adds it in a
+     comment. Repeat `--attach` for several files and give each a descriptive alt text
+     after `#`.
+   - To place images, e.g. in a table, reference them in a body file as
+     `![alt](./shot.png)` and pass `-F body.md --attach ./shot.png`; the references are
+     rewritten to the uploaded assets.
+   - Verify that the PR renders them: `gh pr view <N> --json body` shows
+     `github.com/user-attachments/...` URLs.
 3. **Review what applies:** card/title/metadata alignment, text overflow and wrapping
    (long titles, narrow toolbars), selected/hover/focus states, controls gated by
    authorization or ownership, keyboard and touch interaction, and direct links/reloads

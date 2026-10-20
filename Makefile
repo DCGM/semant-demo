@@ -56,8 +56,10 @@ check-frontend:
 	cd semant_demo_frontend && npm test
 
 ## Real-Weaviate tests in a throwaway, test-owned Weaviate container (needs Docker).
+## ARGS selects tests while iterating, e.g.
+##   make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"
 test-integration:
-	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && "$(PY)" -m pytest -m integration'
+	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && "$(PY)" -m pytest -m integration $(ARGS)'
 
 ## Browser smoke tests: build the frontend and run it against the deterministic backend
 ## profile (test-owned Weaviate, fixture corpus, fake AI providers). Needs Docker.

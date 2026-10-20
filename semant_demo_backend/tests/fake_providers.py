@@ -33,13 +33,17 @@ FAKE_REASON = "fake provider: tag example found in text"
 FAKE_COST_PER_TOKEN = 3e-6
 # Read without importing semant_demo, whose settings must see the profile's environment.
 DEFAULT_LLM_MODELS_CONFIG = Path(__file__).parents[1] / "semant_demo" / "configs" / "llm_models.yaml"
+# The annotation vector embedded by the fake embedding service; its `id` is the one stored in
+# existing local development data.
+FAKE_ANNOTATION_VECTOR_CONFIG = Path(__file__).parents[1] / "semant_demo" / "configs" / "annotation_vector_gemma.yaml"
 
 
 def fake_provider_environ(config_dir: Path, fake_url: str, fake_port: int) -> dict[str, str]:
     """Application settings that point every AI provider at the fakes served on
     ``fake_url`` (port ``fake_port``), with no API keys, so no live or paid provider can be
     reached (tiers on keyed providers are refused before any request). Writes the model tier
-    catalog and the search vectors they use into ``config_dir``. Used by the browser-test
+    catalog and the search vectors they use into ``config_dir``; the annotation vector
+    uses the fake embedding service. Used by the browser-test
     profile (``tests/e2e_server.py``) and the local development profile (``tests/local_dev.py``)."""
     # The default model tiers without per-tier endpoints: every tier uses the fake provider.
     catalog = yaml.safe_load(DEFAULT_LLM_MODELS_CONFIG.read_text())
@@ -59,6 +63,7 @@ def fake_provider_environ(config_dir: Path, fake_url: str, fake_port: int) -> di
     return {
         "LLM_MODELS_CONFIG": str(llm_models_path),
         "SEARCH_VECTORS_CONFIG": str(search_vectors_path),
+        "ANNOTATION_VECTOR_CONFIG": str(FAKE_ANNOTATION_VECTOR_CONFIG),
         "EMBEDDING_SERVICE_HOST": "127.0.0.1",
         "EMBEDDING_SERVICE_PORT": str(fake_port),
         "TOPICER_URL": fake_url,

@@ -77,6 +77,8 @@ first.
 
 ### 3. Embedding Service
 
+This runs the **former** Gemma service, which `configs/search_vectors_gemma.yaml` and `configs/annotation_vector_gemma.yaml` target (select them with `SEARCH_VECTORS_CONFIG` / `ANNOTATION_VECTOR_CONFIG`). The deployed embedder, and the default configuration, is Qwen3-Embedding-0.6B on vLLM ([deploy/README](../deploy/README.md#qwen-embedding-service-385)): `configs/search_vectors_qwen.yaml` (adjust its `base_url` outside the deployment).
+
 ```bash
 cd embedding_service
 pip install -r requirements.txt
@@ -177,8 +179,8 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `RAG_HISTORY_LIMIT` | `20` | Most recent RAG/Explain chat history messages sent to the model |
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summary prompts, fallbacks, options and `max_generated_results` (results of one search that get titles and per-result summaries) |
 | `SEARCH_FILTERS_CONFIG` | `configs/search_filters.yaml` | Search filters ([SEARCH_FILTERS.md](SEARCH_FILTERS.md)) |
-| `SEARCH_VECTORS_CONFIG` | `configs/search_vectors.yaml` | Weaviate named vectors Search and RAG may query, their query embedding and the default ([ARCHITECTURE.md](ARCHITECTURE.md#search-pipeline)); validated at startup. List a vector only after it is populated in the chunk collection |
-| `ANNOTATION_VECTOR_CONFIG` | `configs/annotation_vector.yaml` | Contextual vector of span annotations (#328): its `id`, Weaviate `target_vector`, input template and embedding ([ARCHITECTURE.md](ARCHITECTURE.md#annotation-derived-data-328)); validated at startup; empty configures none. Used only once the annotation collection has the vector ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-derived-data-annotation_enrichment-328)) |
+| `SEARCH_VECTORS_CONFIG` | `configs/search_vectors_qwen.yaml` | Weaviate named vectors Search and RAG may query, their query embedding and the default ([ARCHITECTURE.md](ARCHITECTURE.md#search-pipeline)); validated at startup. List a vector only after it is populated in the chunk collection |
+| `ANNOTATION_VECTOR_CONFIG` | `configs/annotation_vector_qwen.yaml` | Contextual vector of span annotations (#328): its `id`, Weaviate `target_vector`, input template and embedding ([ARCHITECTURE.md](ARCHITECTURE.md#annotation-derived-data-328)); validated at startup; empty configures none. Used only once the annotation collection has the vector ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-derived-data-annotation_enrichment-328)) |
 | `EMBEDDING_API_KEY` | (empty) | Bearer key sent to the OpenAI-compatible embedding endpoints of search vectors; empty sends none |
 | `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service; deployed separately ([Topicer deployment](../deploy/README.md#topicer)) |
 | `TOPICER_MAX_CHUNKS_PER_TAG` | `40` | Most chunks one optimized AI suggestion run evaluates per tag, sent to Topicer as `max_chunks` (backend policy; the frontend reads it from document stats for its size warning). Positive integer; must not exceed the Topicer config's `max_chunks_ceiling` (default 200), which Topicer answers with 422 |
@@ -198,7 +200,7 @@ uses it only if LangSmith tracing is enabled (`LANGCHAIN_TRACING_V2`), which wou
 prompts and texts to LangSmith. `SQL_DB_PATH` and the build arguments are used by Docker
 Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 
-### Embedding Service
+### Embedding Service (former Gemma service)
 
 | Variable | Default | Description |
 |---|---|---|
@@ -244,4 +246,4 @@ Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 5. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
 6. **Annotation migration before #327** — the first release with multi-tenant annotation storage reads and writes only `Annotation`. Every store it runs on (production, the shared test store of `test-main` and the PR previews) needs the operator-run migration during a write pause first ([cutover](DATA_MAINTENANCE.md#cutover-production-test-store)); otherwise annotations appear empty and cannot be saved
 7. **SQLite backups** — back up `tasks.db` (users, feedback, LLM quota) separately; production uses a daily host cron job with `sqlite3 .backup` ([deploy/README](../deploy/README.md#sqlite-backup-399))
-8. **Embedding service** — the deployed embedder is Qwen3-Embedding-0.6B on vLLM (`deploy/docker-compose.embedder.yml`, #385), reached through an `openai` search vector (`configs/search_vectors_qwen.yaml`); settings and cutover order: [deploy/README](../deploy/README.md#qwen-embedding-service-385). `EMBEDDING_SERVICE_HOST` / `EMBEDDING_SERVICE_PORT` locate the former Gemma service (`embedding_service/`, the `embedding_service` provider of the default `search_vectors.yaml`).
+8. **Embedding service** — the deployed embedder is Qwen3-Embedding-0.6B on vLLM (`deploy/docker-compose.embedder.yml`, #385), reached through an `openai` search vector (`configs/search_vectors_qwen.yaml`); settings and cutover order: [deploy/README](../deploy/README.md#qwen-embedding-service-385). `EMBEDDING_SERVICE_HOST` / `EMBEDDING_SERVICE_PORT` locate the former Gemma service (`embedding_service/`, the `embedding_service` provider of `search_vectors_gemma.yaml` and `annotation_vector_gemma.yaml`).
