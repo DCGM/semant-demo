@@ -54,11 +54,18 @@ class TagRepository:
         collections = self.client.collections.get(self.collectionNames.user_collection_name)
         if await collections.query.fetch_object_by_id(collection_id, return_properties=[]) is None:
             raise NotFoundError("Collection not found")
-        existing = await self._tags().query.fetch_objects(
-            filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
-            limit=2000,
+        
+        filters = (
+            Filter.by_ref("userCollection").by_id().equal(collection_id)
+            & Filter.by_property("tag_name").equal(tag.name)
         )
-        for obj in existing.objects:
+        existing = await fetch_all(
+            self._tags(),
+            filters=filters,
+            return_properties=list(_PROPERTIES.values()),
+        )
+
+        for obj in existing:
             found = to_tag(obj)
             if (found.name, found.shorthand, found.color, found.pictogram, found.definition) == (
                     tag.name, tag.shorthand, tag.color, tag.pictogram, tag.definition
