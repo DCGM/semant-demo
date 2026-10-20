@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { closePhoneNavigation, fixture, useViewport } from './support'
+import { fixture, useViewport } from './support'
 
 // Corpus overview (#254): document counts of the whole public corpus, without signing in.
 // The fixture store has three documents (chronicle 1851, letters 1902, gazette without a
@@ -55,7 +55,6 @@ test('the overview fits a phone screen and lists the libraries of a synced store
     await route.fulfill({ response, json: body })
   })
   await page.goto('/#/corpus')
-  await closePhoneNavigation(page)
 
   await expect(card(page, 'libraries').locator('svg').first()).toBeVisible()
   expect(await tableRows(page, 'libraries')).toEqual([['Moravian Library (mzk)', 'mzk', '2'], ['Unknown', '—', '1']])

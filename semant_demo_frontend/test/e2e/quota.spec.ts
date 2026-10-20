@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
 import {
-  answerChat, answerGuestQuota, chatSource, closePhoneNavigation, editSearchResults, ensureLoggedIn, logOut, search, useViewport
+  answerChat, answerGuestQuota, chatSource, editSearchResults, ensureLoggedIn, logOut, search, useViewport
 } from './support'
 
 // The daily AI allowance in the browser (#234). The first two tests use the real backend
@@ -45,7 +45,6 @@ test('a guest of a frontend on another origin keeps one guest cookie, and its AI
   })
 
   await page.goto(`${secondOrigin(baseURL!)}/#/search`)
-  await closePhoneNavigation(page)
   await expect(indicator(page)).toHaveAccessibleName('AI allowance: 100% left today')
   await page.getByRole('textbox').first().fill('Lhota')
   await page.keyboard.press('Enter')
@@ -91,7 +90,6 @@ test('a guest near the limit is warned, with Log in and Register', async ({ page
   await useViewport(page, 'narrow')
   await answerGuestQuota(page, 0.21)
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
 
   await expect(banner(page)).toContainText('You have used 84% of today\'s AI allowance. It resets')
   await expect(indicator(page)).toHaveAccessibleName('AI allowance: 16% left today')
@@ -126,7 +124,6 @@ test('an exhausted guest is told why a chat question was refused, and it is not 
     })
   })
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
   await expect(banner(page)).toContainText('Today\'s AI allowance is used up.')
 
   const input = page.getByPlaceholder('Vaše otázka?')

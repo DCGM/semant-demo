@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { Notify, Quasar } from 'quasar'
+import { Notify, Quasar, Screen } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, effectScope, h } from 'vue'
 import { createMemoryHistory, createRouter, RouterView, type RouteRecordRaw } from 'vue-router'
@@ -216,6 +216,44 @@ describe('MainLayout navigation', () => {
 
   const drawerLabels = (wrapper: Awaited<ReturnType<typeof mountLayout>>['wrapper']) =>
     wrapper.findAll('.drawer-item .item-label').map((item) => item.text())
+
+  describe('on first load', () => {
+    const originalWidth = window.innerWidth
+    afterEach(() => { resizeWindow(originalWidth) })
+
+    // Quasar installs its Screen plugin once per file and afterwards follows the window only
+    // on (debounced) resize events, so a width set for one test is resized into it.
+    function resizeWindow (width: number) {
+      vi.useFakeTimers()
+      try {
+        window.innerWidth = width
+        window.dispatchEvent(new Event('resize'))
+        vi.runOnlyPendingTimers()
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+
+    const menuButton = (wrapper: Awaited<ReturnType<typeof mountLayout>>['wrapper']) =>
+      wrapper.find('button[aria-label$="navigation"]')
+
+    it('keeps the navigation closed at phone width', async () => {
+      resizeWindow(375)
+      const { wrapper } = await mountLayout()
+
+      expect([Screen.width, Screen.lt.md]).toEqual([375, true])
+      expect(menuButton(wrapper).attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('.q-drawer__backdrop:not(.hidden)').exists()).toBe(false)
+    })
+
+    it('docks the navigation open on a desktop screen', async () => {
+      resizeWindow(1280)
+      const { wrapper } = await mountLayout()
+
+      expect([Screen.width, Screen.lt.md]).toEqual([1280, false])
+      expect(menuButton(wrapper).attributes('aria-expanded')).toBe('true')
+    })
+  })
 
   it('shows Log in and Register, not protected pages or account actions, when signed out', async () => {
     const { wrapper } = await mountLayout()

@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
-import { closePhoneNavigation, fixture } from './support'
+import { fixture } from './support'
 
 // Search vectors (#217): the browser-test profile configures the test store's two named
 // chunk vectors, `fake-default` (the default) and `fake-small`, both embedded by the fake
@@ -10,7 +10,6 @@ const QUERY = fixture.chunk('gazette_1').text
 
 async function openFilters (page: Page) {
   await page.goto('/#/search')
-  await closePhoneNavigation(page)
   await page.getByRole('textbox').first().fill(QUERY)
   await page.getByRole('button', { name: 'Search filters' }).click()
 }
