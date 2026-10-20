@@ -115,12 +115,12 @@ class FakeSpans(Recorder):
     async def read_by_chunks(self, cid, chunk_ids):
         return {str(c): [s for s in self._tenant(cid).values() if s.chunkId == str(c)] for c in chunk_ids}
 
-    async def insert(self, cid, span, document_id):
+    async def insert(self, cid, span, document_id, derived=None):
         await self._write("insert_span", span.chunkId)
         self.inserted_documents.append((cid, document_id))
         return UUID(int=2)
 
-    async def update(self, cid, span_id, patch):
+    async def update(self, cid, span_id, patch, derived=None):
         await self._write("update_span", span_id)
         tenant = self.stored[cid]
         tenant[span_id] = tenant[span_id].model_copy(update=patch.model_dump(exclude_none=True))

@@ -1,38 +1,71 @@
 <template>
-  <div class="span-gutter-wrapper" @wheel.prevent="onWheel">
-    <div class="span-gutter" :style="{ width: gutterWidth + 'px', height: gutterHeight + 'px' }">
+  <div ref="column" class="span-gutter-column" :style="{ width: width + 'px' }">
+    <!-- The gutter is as tall as the document, so a native scrollbar would usually be off
+         screen (and hidden until used with overlay scrollbars). This one sits at the top
+         and sticks below the reader toolbar while the document scrolls. -->
+    <!-- .prevent: no compatibility mousedown, which would close an open popover. -->
+    <div v-if="overflowing" class="span-gutter-scrollbar" @pointerdown.prevent="onTrackPointerDown">
       <div
-        v-for="item in markers"
-        :key="item.spanId"
-        class="gutter-item"
-        :class="{ 'is-active': hoveredSpanId === item.spanId, 'is-auto': item.isAuto, 'is-highlighted': highlightedSpanId === item.spanId }"
-        :style="{
-          top: item.top + 'px',
-          height: item.height + 'px',
-          left: item.column * COLUMN_WIDTH + 8 + 'px',
-          '--tag-color': tagInfo(item.tagId).color
-        }"
-        @mouseenter="emit('hover', item.spanId)"
-        @mouseleave="emit('hover', null)"
-        @click.stop="emit('select', item, $event)"
-      >
-        <div class="gutter-line" :style="{ backgroundColor: tagInfo(item.tagId).color }"></div>
-        <div class="gutter-label" :style="{ backgroundColor: tagInfo(item.tagId).color }">
-          <q-icon :name="tagInfo(item.tagId).pictogram" size="10px" class="gutter-icon" />
-          {{ tagInfo(item.tagId).shorthand }}
+        class="span-gutter-thumb"
+        :style="{ width: thumbWidth + 'px', right: thumbRight + 'px' }"
+        @pointerdown.stop.prevent="onThumbPointerDown"
+        @pointermove="onThumbPointerMove"
+        @pointerup="onThumbPointerUp"
+        @pointercancel="onThumbPointerUp"
+      ></div>
+    </div>
+    <div ref="viewport" class="span-gutter-wrapper" @scroll="onViewportScroll">
+      <div class="span-gutter" :style="{ width: labelsWidth + 'px', height: gutterHeight + 'px' }">
+        <div
+          v-for="item in markers"
+          :key="item.spanId"
+          class="gutter-item"
+          :class="markerClasses(item)"
+          :style="{
+            top: item.top + 'px',
+            height: item.height + 'px',
+            right: item.column * COLUMN_WIDTH + GUTTER_PADDING + 'px',
+            '--tag-color': tagInfo(item.tagId).color
+          }"
+          :title="markerTitle(item)"
+          @mouseenter="emit('hover', item.spanId)"
+          @mouseleave="emit('hover', null)"
+          @click.stop="emit('select', item, $event)"
+        >
+          <q-icon v-if="item.isAuto" name="auto_awesome" size="10px" class="gutter-icon" />
+          <span class="gutter-shorthand">{{ tagInfo(item.tagId).shorthand }}</span>
         </div>
       </div>
     </div>
+    <!-- Dragging the right border changes the split between the gutter and the text. -->
+    <div
+      class="span-gutter-resizer"
+      :class="{ 'is-dragging': resizeStart }"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the span gutter"
+      tabindex="0"
+      @pointerdown.prevent="onResizePointerDown"
+      @pointermove="onResizePointerMove"
+      @pointerup="onResizePointerUp"
+      @pointercancel="onResizePointerUp"
+      @keydown.left.prevent="resizeBy(-RESIZE_KEY_STEP)"
+      @keydown.right.prevent="resizeBy(RESIZE_KEY_STEP)"
+    ></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { Tag } from 'src/generated/api'
 import type { SpanMarker } from './AnnotationGutterTypes'
 
-// Span markers beside the document text, one column per overlapping span. Auto
-// (AI-suggested) spans have muted, dashed markers.
+// Span markers left of the document text, one column per span sharing lines with another,
+// column 0 next to the text. Each marker is a fixed-width block from the span's first line
+// to its last with the shorthand centred; AI suggestions are dashed. More columns than
+// fit are scrolled to with a scrollbar kept in view, starting at the text side; the wheel
+// over the gutter scrolls the document, never the gutter sideways. Its right border can
+// be dragged to make it wider or narrower; the width is remembered in this browser.
 const props = defineProps<{
   markers: SpanMarker[]
   tags: Tag[]
@@ -45,175 +78,306 @@ const emit = defineEmits<{
   select: [marker: SpanMarker, event: MouseEvent]
 }>()
 
-const COLUMN_WIDTH = 44
-const UNKNOWN_TAG = { color: '#3b82f6', shorthand: '?', pictogram: 'label' }
+const COLUMN_WIDTH = 50
+const GUTTER_PADDING = 4
+const UNKNOWN_TAG = { name: 'Unknown tag', color: '#3b82f6', shorthand: '?' }
 
 const tagInfoMap = computed(() => {
-  const map: Record<string, { color: string; shorthand: string; pictogram: string }> = {}
+  const map: Record<string, { name: string; color: string; shorthand: string }> = {}
   for (const tag of props.tags) {
-    map[tag.id] = { color: tag.color, shorthand: tag.shorthand || tag.name.slice(0, 3), pictogram: tag.pictogram || 'label' }
+    map[tag.id] = { name: tag.name, color: tag.color, shorthand: tag.shorthand || tag.name.slice(0, 3) }
   }
   return map
 })
 
 const tagInfo = (tagId: string) => tagInfoMap.value[tagId] ?? UNKNOWN_TAG
 
-const gutterWidth = computed(() => {
-  if (!props.markers.length) return 0
-  const maxCol = Math.max(...props.markers.map(i => i.column))
-  return (maxCol + 1) * COLUMN_WIDTH
+const columnCount = computed(() => props.markers.length ? Math.max(...props.markers.map(i => i.column)) + 1 : 0)
+const labelsWidth = computed(() => columnCount.value * COLUMN_WIDTH + GUTTER_PADDING)
+
+const markerClasses = (item: SpanMarker) => ({
+  'is-active': props.hoveredSpanId === item.spanId,
+  'is-auto': item.isAuto,
+  'is-highlighted': props.highlightedSpanId === item.spanId
 })
+
+const markerTitle = (item: SpanMarker) => tagInfo(item.tagId).name + (item.isAuto ? ' (AI suggestion)' : '')
 
 const gutterHeight = computed(() => {
   if (!props.markers.length) return 0
   return Math.max(...props.markers.map(i => i.top + i.height))
 })
 
-const onWheel = (e: WheelEvent) => {
-  const wrapper = (e.currentTarget as HTMLElement)
-  wrapper.scrollLeft += e.deltaY
+const viewport = ref<HTMLElement | null>(null)
+const viewportWidth = ref(0)
+// `direction: rtl`: 0 with column 0 in view, negative further out.
+const scrollLeft = ref(0)
+const maxScroll = computed(() => Math.max(0, labelsWidth.value - viewportWidth.value))
+const overflowing = computed(() => maxScroll.value > 1)
+
+const MIN_THUMB_WIDTH = 24
+const thumbWidth = computed(() =>
+  Math.max(MIN_THUMB_WIDTH, viewportWidth.value * viewportWidth.value / Math.max(labelsWidth.value, 1)))
+const thumbTravel = computed(() => Math.max(0, viewportWidth.value - thumbWidth.value))
+const thumbRight = computed(() => maxScroll.value ? -scrollLeft.value / maxScroll.value * thumbTravel.value : 0)
+
+function onViewportScroll () {
+  scrollLeft.value = viewport.value?.scrollLeft ?? 0
 }
+
+function scrollGutterTo (left: number) {
+  if (viewport.value) viewport.value.scrollLeft = Math.min(0, Math.max(-maxScroll.value, left))
+}
+
+let dragStart: { x: number; scrollLeft: number } | null = null
+function onThumbPointerDown (event: PointerEvent) {
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  dragStart = { x: event.clientX, scrollLeft: scrollLeft.value }
+}
+
+function onThumbPointerMove (event: PointerEvent) {
+  if (!dragStart || !thumbTravel.value) return
+  scrollGutterTo(dragStart.scrollLeft + (event.clientX - dragStart.x) * maxScroll.value / thumbTravel.value)
+}
+
+function onThumbPointerUp () {
+  dragStart = null
+}
+
+// A click beside the thumb pages one gutter width that way.
+function onTrackPointerDown (event: PointerEvent) {
+  const thumb = (event.currentTarget as HTMLElement).firstElementChild?.getBoundingClientRect()
+  if (!thumb) return
+  scrollGutterTo(scrollLeft.value + (event.clientX < thumb.left ? -1 : 1) * viewportWidth.value)
+}
+
+const column = ref<HTMLElement | null>(null)
+const WIDTH_STORAGE_KEY = 'semant.spanGutterWidth'
+const DEFAULT_WIDTH = 232 // four columns
+const PHONE_WIDTH = 120 // two columns
+const MAX_WIDTH_SHARE = 0.6 // of the gutter and the text together
+const RESIZE_KEY_STEP = COLUMN_WIDTH / 2
+const minWidth = COLUMN_WIDTH + 2 * GUTTER_PADDING
+
+function storedWidth (): number | null {
+  try {
+    const value = Number(localStorage.getItem(WIDTH_STORAGE_KEY))
+    return value > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+function storeWidth (value: number) {
+  try {
+    localStorage.setItem(WIDTH_STORAGE_KEY, String(Math.round(value)))
+  } catch {
+    // Storage unavailable (private mode, quota): the width just won't persist.
+  }
+}
+
+const isPhone = () => window.matchMedia('(max-width: 599px)').matches
+// The width the user chose; the shown width is clamped to the space there is now, so a
+// narrower window squeezes the gutter and a wider one gives the chosen width back.
+const preferredWidth = ref(isPhone() ? PHONE_WIDTH : storedWidth() ?? DEFAULT_WIDTH)
+const availableWidth = ref(Infinity) // of the gutter and the text together
+const width = computed(() => clampWidth(preferredWidth.value))
+
+function clampWidth (value: number): number {
+  return Math.round(Math.max(minWidth, Math.min(availableWidth.value * MAX_WIDTH_SHARE, value)))
+}
+
+function setWidth (value: number) {
+  preferredWidth.value = clampWidth(value)
+}
+
+function resizeBy (delta: number) {
+  setWidth(width.value + delta)
+  if (!isPhone()) storeWidth(preferredWidth.value)
+}
+
+const resizeStart = ref<{ x: number; width: number } | null>(null)
+function onResizePointerDown (event: PointerEvent) {
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  resizeStart.value = { x: event.clientX, width: width.value }
+}
+
+function onResizePointerMove (event: PointerEvent) {
+  if (!resizeStart.value) return
+  setWidth(resizeStart.value.width + event.clientX - resizeStart.value.x)
+}
+
+function onResizePointerUp () {
+  if (!resizeStart.value) return
+  resizeStart.value = null
+  if (!isPhone()) storeWidth(preferredWidth.value)
+}
+
+let resizeObserver: ResizeObserver | null = null
+let containerObserver: ResizeObserver | null = null
+onMounted(() => {
+  const container = column.value?.parentElement
+  if (container) {
+    containerObserver = new ResizeObserver(() => { availableWidth.value = container.clientWidth })
+    containerObserver.observe(container)
+  }
+  if (!viewport.value) return
+  resizeObserver = new ResizeObserver(() => {
+    viewportWidth.value = viewport.value?.clientWidth ?? 0
+    onViewportScroll()
+  })
+  resizeObserver.observe(viewport.value)
+})
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  containerObserver?.disconnect()
+})
 </script>
 
 <style scoped>
-.span-gutter-wrapper {
-  flex: 1;
-  min-width: 60px;
+/* The width is set inline (resizable). */
+.span-gutter-column {
+  flex: none;
   position: relative;
-  overflow-x: auto;
-  overflow-y: hidden;
-  background: #ffffff;
-  border-radius: 0 16px 16px 0;
-  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
 }
 
-.span-gutter-wrapper::-webkit-scrollbar {
-  height: 6px;
-}
-
-.span-gutter-wrapper::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.04);
-  border-radius: 3px;
-  margin: 0 4px;
-}
-
-.span-gutter-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.18);
-  border-radius: 3px;
-}
-
-.span-gutter-wrapper::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.span-gutter {
-  position: relative;
-  min-width: 100%;
-  padding: 0 4px;
-}
-
-.gutter-item {
+/* Straddles the right border. */
+.span-gutter-resizer {
   position: absolute;
-  width: 40px;
+  top: 0;
+  bottom: 0;
+  right: -5px;
+  width: 10px;
+  z-index: 3;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.span-gutter-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.span-gutter-resizer:hover::after,
+.span-gutter-resizer:focus-visible::after,
+.span-gutter-resizer.is-dragging::after {
+  background: #94a3b8;
+}
+
+.span-gutter-resizer:focus-visible {
+  outline: none;
+}
+
+/* `direction: rtl` starts the sideways scroll at the text side. `overflow: hidden` keeps
+   the wheel, swipes and Shift+wheel from scrolling it sideways (they scroll the
+   document); only .span-gutter-scrollbar does, through scrollLeft. */
+.span-gutter-wrapper {
+  position: relative;
+  overflow: hidden;
+  direction: rtl;
+}
+
+/* At the top of the gutter, over the padding above the first line, so the markers keep
+   their offsets. While the document scrolls it sticks just below the reader toolbar
+   (ReaderToolbar.vue, sticky at 96px, 36px tall), which floats over this side of the
+   gutter. Sticking needs every ancestor up to the scrolling one to be free of
+   `overflow: hidden`. */
+.span-gutter-scrollbar {
+  position: sticky;
+  top: 138px;
+  z-index: 2;
+  height: 20px;
+  margin-bottom: -20px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
   cursor: pointer;
 }
 
-.gutter-line {
+.span-gutter-thumb {
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  border-radius: 2px;
-  opacity: 0.7;
-  transition: opacity 0.15s;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.3);
+  cursor: grab;
+  touch-action: none;
 }
 
-.gutter-item:hover .gutter-line,
-.gutter-item.is-active .gutter-line {
-  opacity: 1;
+.span-gutter-thumb:hover,
+.span-gutter-thumb:active {
+  background: rgba(15, 23, 42, 0.45);
 }
 
-.gutter-label {
+.span-gutter {
+  direction: ltr;
+  position: relative;
+  min-width: 100%;
+}
+
+/* From the span's first line to its last: fixed width, shorthand centred; a long
+   shorthand is cut off. */
+.gutter-item {
   position: absolute;
-  left: 8px;
-  top: 0;
-  display: inline-flex;
+  width: 44px;
+  min-height: 22px;
+  box-sizing: border-box;
+  display: flex;
   align-items: center;
-  gap: 2px;
-  font-size: 0.65rem;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
+  letter-spacing: 0.04em;
+  line-height: 19px;
+  padding: 0 5px;
+  border: 1.5px solid var(--tag-color);
+  border-radius: 6px;
+  background-color: var(--tag-color);
   color: #fff;
   white-space: nowrap;
-  line-height: 1.4;
-  opacity: 0.8;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-  transition: opacity 0.15s;
+  cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.15s;
 }
 
 .gutter-icon {
+  flex: none;
+  height: 19px;
   opacity: 0.9;
 }
 
-.gutter-item:hover .gutter-label,
-.gutter-item.is-active .gutter-label {
-  opacity: 1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+.gutter-shorthand {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ── Auto (AI-suggested) gutter items: muted, dashed, slightly faded. ── */
-.gutter-item.is-auto .gutter-line {
-  /* Replace solid colour with a dashed strip so users can spot at a glance
-     that this is an unconfirmed AI suggestion. The inline `backgroundColor`
-     (tag colour) is intentionally overridden — but we need to use
-     `background-image` only (not the `background` shorthand) so the inline
-     `background-color` isn't wiped, which would make the bar disappear
-     whenever we re-enable it (e.g. on highlight). */
-  background-image: repeating-linear-gradient(
-    to bottom,
-    currentColor 0,
-    currentColor 4px,
-    transparent 4px,
-    transparent 8px
-  ) !important;
-  background-color: transparent !important;
-  color: #94a3b8;
-  opacity: 0.55;
-  filter: grayscale(0.6);
+.gutter-item:hover,
+.gutter-item.is-active {
+  box-shadow: 0 0 0 2px #f8fafc, 0 0 0 4px color-mix(in srgb, var(--tag-color) 55%, transparent);
 }
 
-.gutter-item.is-auto .gutter-label {
-  background-color: #94a3b8 !important;
-  opacity: 0.7;
-  filter: grayscale(0.5);
+/* ── AI suggestions: the tag colour, dashed. ── */
+.gutter-item.is-auto {
+  background-color: #fff;
+  color: var(--tag-color);
+  border-style: dashed;
 }
 
-.gutter-item.is-auto:hover .gutter-line,
-.gutter-item.is-auto.is-active .gutter-line {
-  opacity: 0.85;
-}
-
-.gutter-item.is-auto:hover .gutter-label,
-.gutter-item.is-auto.is-active .gutter-label {
-  opacity: 0.95;
-}
-
-/* Two-way highlight with the AI suggestions panel: when a card is selected
-   in the panel, emphasize the gray dashed marker (darker color, full
-   opacity) without restoring the tag's full colour. The same class is
-   added when the user clicks an auto span in the text/gutter so the panel
-   mirrors the choice. */
-.gutter-item.is-auto.is-highlighted .gutter-line {
-  color: #475569;
-  opacity: 1;
-  filter: none;
-}
-
-.gutter-item.is-auto.is-highlighted .gutter-label {
-  background-color: #475569 !important;
-  opacity: 1;
-  filter: none;
+/* Two-way highlight with the AI suggestions panel: when a card is selected in the panel,
+   ring its marker. The same class is added when the user clicks an auto span in the
+   text or gutter so the panel mirrors the choice. */
+.gutter-item.is-highlighted {
+  box-shadow: 0 0 0 2px #f8fafc, 0 0 0 4px var(--tag-color);
 }
 </style>

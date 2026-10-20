@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SpanType, WriteOutcome } from 'src/generated/api'
-import { IncompleteWriteError, describeIncomplete, incompleteWriteMessage, requireComplete, searchTagWarning, spanOf } from 'src/shared/writeOutcome'
+import { IncompleteWriteError, describeIncomplete, incompleteWriteMessage, requireComplete, spanWriteWarning, spanOf } from 'src/shared/writeOutcome'
 
 describe('write outcomes', () => {
   it('passes complete results through', () => {
@@ -33,11 +33,20 @@ describe('write outcomes', () => {
 
   it('warns about a span write whose search tag update failed', () => {
     const failed = [{ itemId: 'chunk:tag', step: 'update_chunk_tags', message: 'x', uncertain: false }]
-    expect(searchTagWarning({ outcome: WriteOutcome.complete, succeeded: ['s'] }, 'saved')).toBeNull()
-    expect(searchTagWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed }, 'saved'))
+    expect(spanWriteWarning({ outcome: WriteOutcome.complete, succeeded: ['s'] }, 'saved')).toBeNull()
+    expect(spanWriteWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed }, 'saved'))
       .toMatch(/saved, but tag search was not updated/)
-    expect(searchTagWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed }, 'deleted'))
+    expect(spanWriteWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed }, 'deleted'))
       .toMatch(/deleted, but tag search may still find/)
+  })
+
+  it('names the search text and vector of a span write whose enrichment failed', () => {
+    const step = (name: string) => ({ itemId: 's', step: name, message: 'x', uncertain: false })
+    expect(spanWriteWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed: [step('embed_annotation')] }, 'saved'))
+      .toBe('The annotation was saved, but its search text or similarity vector was not updated for it. Save the annotation again to retry.')
+    expect(spanWriteWarning({
+      outcome: WriteOutcome.partial, succeeded: ['s'], failed: [step('update_chunk_tags'), step('derive_annotation')]
+    }, 'saved')).toMatch(/saved, but tag search and its search text or similarity vector were not updated/)
   })
 
   it('keeps only the span fields of a span write result', () => {

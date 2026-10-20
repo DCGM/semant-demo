@@ -298,13 +298,16 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
-import { useApi } from 'src/shared/api'
+import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
+import { errorNotification } from 'src/shared/notification'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useTagsStore } from './tagsStore'
-import useAiAssistance, { largeRunWarning, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode } from './useAiAssistance'
+import useAiAssistance, {
+  largeRunWarning, resolveAutoSpanFailure, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode
+} from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
 import useTagSpans from './useTagSpans'
 
@@ -493,11 +496,19 @@ function navigateAutoSpan(tagId: string, direction: 'prev' | 'next') {
   if (target.id) aiAssist.highlightedAutoSpanId.value = target.id
 }
 
+// Approve/reject requests of this panel's document: entered when the panel moves to another
+// document or collection, or closes, so a failure that arrives later is not reported here.
+const resolveRequests = createContextGuard()
+onBeforeUnmount(() => resolveRequests.enter())
+
 async function resolveSuggestion(span: TagSpan, type: SpanType) {
   if (!span.id) return
   busyAutoSpanIds.value.add(span.id)
+  const isCurrent = resolveRequests.capture()
   try {
     await aiAssist.resolveAutoSpan(span, type)
+  } catch (e: unknown) {
+    if (isCurrent() && !isAbortError(e)) errorNotification(await apiErrorMessage(e, resolveAutoSpanFailure(type)))
   } finally {
     busyAutoSpanIds.value.delete(span.id)
   }
@@ -631,6 +642,7 @@ function onEditEntryTag(entry: AutoSpanEntry) {
 watch(
   () => [props.collectionId, props.documentId],
   () => {
+    resolveRequests.enter()
     selectedSuggestionIds.value = new Set()
     lastDeletedCount.value = null
     lastStatusKind.value = null

@@ -2,8 +2,9 @@
 
 This document is the backend configuration reference and describes a manual standalone setup.
 The Docker Compose stacks, CI/CD, previews, Topicer deployment and server setup are documented in
-[deploy/README.md](../deploy/README.md). For local development, including the local Weaviate
-and SQLite snapshot, see [DEVELOPMENT.md](DEVELOPMENT.md).
+[deploy/README.md](../deploy/README.md). For local development (the seeded local application
+started with `make dev-up`, and the optional advanced snapshot workflow), see
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Prerequisites
 
@@ -39,22 +40,24 @@ The backend image installs `semant_demo_backend/requirements-runtime.lock` with 
 
 ## Manual Standalone Setup
 
-For local development and test-owned database rules, see [DEVELOPMENT.md](DEVELOPMENT.md).
-
-The steps below describe how to construct a standalone environment from scratch.
+This section builds a standalone environment from scratch, e.g. to construct a corpus database
+on a server. It is not needed for development: run the application locally with the seeded
+environment (`make dev-up`, [DEVELOPMENT.md](DEVELOPMENT.md#1-quick-start-the-seeded-local-application)),
+which also covers test-owned stores. Working against a copy of real data is the separate,
+explicitly authorized [snapshot workflow](DEVELOPMENT.md#5-advanced-an-authorized-realistic-snapshot).
 
 ### 1. Weaviate
 
-For normal development, use the local database snapshot under `local_data/` and start Weaviate as described in [DEVELOPMENT.md](DEVELOPMENT.md).
-
-The standalone setup below creates a separate development Weaviate instance from scratch:
+Start an empty Weaviate for building a database:
 
 ```bash
 cd weaviate_utils
 docker compose up -d
 ```
 
-Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures HNSW indexing. It pins Weaviate **1.30.2**; the deployments and test stores use **1.34.4**.
+Data is persisted to `./weaviate_db`. The compose file enables anonymous access and configures
+HNSW indexing. It pins Weaviate **1.40.1**, the version of the deployments, the test stores and
+the local development environment.
 
 To verify:
 
@@ -62,7 +65,8 @@ To verify:
 curl http://localhost:8080/v1/.well-known/ready
 ```
 
-Do not use this empty standalone database when the realistic `local_data/weaviate_semant_test/` development snapshot is required.
+It publishes the default ports 8080/50051, which a running snapshot Weaviate also uses; the
+development Weaviate of `make dev-up` uses 8180/50151 and does not conflict.
 
 ### 2. Data Ingestion
 
@@ -174,6 +178,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `SEARCH_SUMMARIZER_CONFIG` | `configs/search_summarizer.yaml` | Summary prompts, fallbacks, options and `max_generated_results` (results of one search that get titles and per-result summaries) |
 | `SEARCH_FILTERS_CONFIG` | `configs/search_filters.yaml` | Search filters ([SEARCH_FILTERS.md](SEARCH_FILTERS.md)) |
 | `SEARCH_VECTORS_CONFIG` | `configs/search_vectors.yaml` | Weaviate named vectors Search and RAG may query, their query embedding and the default ([ARCHITECTURE.md](ARCHITECTURE.md#search-pipeline)); validated at startup. List a vector only after it is populated in the chunk collection |
+| `ANNOTATION_VECTOR_CONFIG` | `configs/annotation_vector.yaml` | Contextual vector of span annotations (#328): its `id`, Weaviate `target_vector`, input template and embedding ([ARCHITECTURE.md](ARCHITECTURE.md#annotation-derived-data-328)); validated at startup; empty configures none. Used only once the annotation collection has the vector ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-derived-data-annotation_enrichment-328)) |
 | `EMBEDDING_API_KEY` | (empty) | Bearer key sent to the OpenAI-compatible embedding endpoints of search vectors; empty sends none |
 | `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `openai` / `600` | External Topicer span-proposal service; deployed separately ([Topicer deployment](../deploy/README.md#topicer)) |
 | `TOPICER_MAX_CHUNKS_PER_TAG` | `40` | Most chunks one optimized AI suggestion run evaluates per tag, sent to Topicer as `max_chunks` (backend policy; the frontend reads it from document stats for its size warning). Positive integer; must not exceed the Topicer config's `max_chunks_ceiling` (default 200), which Topicer answers with 422 |

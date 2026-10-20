@@ -56,6 +56,7 @@ export interface AiRunEnd {
   rejected: number
   save_failures: number
   search_tag_failures: number
+  enrichment_failures?: number
   provider_failures: number
   error?: string | null
   unit?: 'chunk' | 'tag' | 'selection'
@@ -93,6 +94,10 @@ export function largeRunWarning (
 export const UNKNOWN_RUN_SIZE_WARNING = 'The size of this AI run could not be determined, so it may evaluate ' +
   'many chunks, each counted against today\'s AI allowance.'
 
+/** The message for an approve (`pos`) or reject (`neg`) of an AI suggestion that failed. */
+export const resolveAutoSpanFailure = (type: SpanType): string =>
+  type === SpanType.pos ? 'The suggestion could not be approved.' : 'The suggestion could not be rejected.'
+
 const UNIT_NAMES = { chunk: 'chunks', tag: 'tags', selection: 'selections' } as const
 
 /** One notice per tag that reached the per-tag chunk limit. */
@@ -118,6 +123,7 @@ function failuresOf (end: AiRunEnd): string[] {
   if (end.provider_failures) problems.push(`${end.provider_failures} AI request(s) failed`)
   if (end.save_failures) problems.push(`${end.save_failures} suggestion(s) could not be saved`)
   if (end.search_tag_failures) problems.push(`${end.search_tag_failures} saved suggestion(s) not yet findable by tag search`)
+  if (end.enrichment_failures) problems.push(`${end.enrichment_failures} saved suggestion(s) without current search text or similarity vector`)
   if (end.error) problems.push(end.error)
   return problems
 }

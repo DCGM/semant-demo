@@ -16,7 +16,9 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Data
 
-- [#327](https://github.com/DCGM/semant-demo/issues/327) — annotations moved to one tenant per collection: the deployed stores (production, the shared test store) are not migrated yet; each needs the [cutover](DATA_MAINTENANCE.md#cutover-production-test-store) before a release with #327 runs on it. Idle tenant deactivation stays disabled (no memory benefit measured yet). The legacy `Span` collection is kept for rollback.
+- [#327](https://github.com/DCGM/semant-demo/issues/327) — annotations moved to one tenant per collection; production and the shared test store are migrated (2026-10-18). Another store needs the [cutover](DATA_MAINTENANCE.md#cutover-production-test-store) before a release with #327 runs on it. Idle tenant deactivation stays disabled (no memory benefit measured yet). The legacy `Span` collection is kept for rollback.
+- [#328](https://github.com/DCGM/semant-demo/issues/328) — annotation text, positions and vectors are stored only after `annotation_enrichment add-schema` on a store, and existing spans only after its backfill ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-derived-data-annotation_enrichment-328)); not run on production or the shared test store. With several backend processes a late vector may land on a newer revision; it is detected as stale, not prevented, so the backfill runs with the application stopped. Rows and similarity reads have no HTTP route until #329 (basic KWIC, Stage 1) and #332 (annotation search, Stage 2).
+- [#422](https://github.com/DCGM/semant-demo/issues/422) — production chunk tag references disagree with the annotations in 6,689 audit entries (6,603 annotations missing from tag-filtered search, 86 unbacked references); cause and reviewed repair pending.
 - [#376](https://github.com/DCGM/semant-demo/issues/376) — chunk context reads (and sorts) every chunk of the document; 0.14–0.2 s p50, up to 2.4 s ([audit](WEAVIATE_AUDIT_2026-10-17.md#376-chunk-context-and-document-reads)).
 - [#259](https://github.com/DCGM/semant-demo/issues/259) — Kramerius metadata import: unresolved libraries and mirror rows without MODS (no author/publisher).
 - [#281](https://github.com/DCGM/semant-demo/issues/281) — documents without text chunks: audit and gated removal ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#documents-without-chunks-document_cleanup-281)).
@@ -29,6 +31,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 - [#319](https://github.com/DCGM/semant-demo/issues/319) — access tokens live 7 days without renewal, and the stateless JWT logout revokes nothing server-side: signing out only forgets the token in this browser (all its tabs).
 - [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI.
 - [#261](https://github.com/DCGM/semant-demo/issues/261) — reproducibility of the production frontend build. The backend Python packages are locked; the base images and the embedding service requirements are not ([DEPLOYMENT.md](DEPLOYMENT.md#docker--production-deployment)).
+- The seeded local development environment ([DEVELOPMENT.md](DEVELOPMENT.md#2-lifecycle-reset-and-safety), #438) runs one instance per machine (fixed container, volume and ports); parallel checkouts or agents must take turns. Its corpus is the small test fixture; a richer deterministic dataset is separate follow-up work.
 - PR previews share the server and Docker daemon with CI and the other deployments; separate preview credentials limit, but do not isolate, them ([deploy/README](../deploy/README.md#pr-preview-credentials)). Host separation is out of scope.
 
 ## Product work (when scoped)

@@ -8,7 +8,7 @@
 # on random loopback ports, exports SEMANT_TEST_WEAVIATE_HOST/_REST_PORT/_GRPC_PORT and a
 # fresh per-run ownership token SEMANT_TEST_STORE_TOKEN for the command, and removes the
 # container afterwards, also on failure or Ctrl-C. It never touches the development
-# container (semant-weaviate-dev) or local_data/.
+# containers (seeded semant-weaviate-local, snapshot semant-weaviate-dev) or local_data/.
 #
 # If SEMANT_TEST_WEAVIATE_HOST is already set (e.g. a CI service container), no container
 # is started and the caller must also set SEMANT_TEST_STORE_TOKEN; the tests refuse an

@@ -26,6 +26,16 @@
         @hide="chunkWindow.hideChunk"
       />
 
+      <AnnotationGutter
+        v-if="gutters.spanMarkers.value.length"
+        :markers="gutters.spanMarkers.value"
+        :tags="tags"
+        :hovered-span-id="hoveredSpanId || navHighlightedSpanId"
+        :highlighted-span-id="highlightedAutoSpanId"
+        @hover="hoveredSpanId = $event"
+        @select="onMarkerClick"
+      />
+
       <q-card class="paper-card" :class="{ 'has-gutter': gutters.spanMarkers.value.length > 0 }">
         <q-card-section class="paper-body">
           <!-- Expand previous — right above the text -->
@@ -48,7 +58,7 @@
             />
           </div>
 
-          <div class="document-text" :class="{ 'document-text--preserve-whitespace': preserveWhitespace }" ref="documentTextRef" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="hoveredPreviewChunkId = null">
+          <div class="document-text" :class="{ 'document-text--preserve-whitespace': preserveWhitespace }" ref="documentTextRef" @pointerdown="onDocumentPointerDown" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="onDocumentPointerLeave">
             <template v-for="(group, gIndex) in paragraphs" :key="gIndex">
               <p>
                 <ChunkAnnotator
@@ -59,15 +69,19 @@
                   :spans="getVisibleSpans(chunk.id)"
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
-                  :highlight-span-id="hoveredSpanId || highlightedAutoSpanId"
+                  :highlight-span-id="hoveredSpanId || navHighlightedSpanId || highlightedAutoSpanId"
                   :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id, 'chunk-gutter-hovered': gutterHoveredChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
               </p>
-              <!-- Gap buttons between non-consecutive chunks -->
+              <!-- Divider at a gap between non-consecutive chunks -->
               <div v-if="group.gapAfter !== null" class="gap-row">
+                <span class="gap-label">
+                  <q-icon name="warning_amber" size="16px" />
+                  {{ missingChunksText(gapSize(group)) }}
+                </span>
                 <q-btn
-                  flat dense
+                  flat dense no-caps
                   icon="keyboard_arrow_down"
                   :loading="chunkWindow.gapLoadingKey.value === `${group.gapAfter}:next`"
                   class="gap-btn"
@@ -76,7 +90,7 @@
                   @click="chunkWindow.loadGap(group.gapAfter)"
                 />
                 <q-btn
-                  flat dense
+                  flat dense no-caps
                   icon="unfold_more"
                   :loading="chunkWindow.gapLoadingKey.value === `${group.gapAfter}:all`"
                   class="gap-btn gap-btn--all"
@@ -85,7 +99,7 @@
                   @click="chunkWindow.loadGapAll(group.gapAfter, group.gapBefore!)"
                 />
                 <q-btn
-                  flat dense
+                  flat dense no-caps
                   icon="keyboard_arrow_up"
                   :loading="chunkWindow.gapLoadingKey.value === `${group.gapBefore}:prev`"
                   class="gap-btn"
@@ -121,32 +135,24 @@
         <error-display v-if="error" :error="error" />
       </q-card>
 
-      <AnnotationGutter
-        v-if="gutters.spanMarkers.value.length"
-        :markers="gutters.spanMarkers.value"
-        :tags="tags"
-        :hovered-span-id="hoveredSpanId"
-        :highlighted-span-id="highlightedAutoSpanId"
-        @hover="hoveredSpanId = $event"
-        @select="onMarkerClick"
-      />
-
       <AnnotationPopover
         ref="popoverRef"
-        :visible="annotations.hasSelection.value && !quickTagging"
+        :visible="annotations.hasSelection.value"
         :tags="tags"
         :selection="annotations.selection.value"
+        :selected-text="selectedSpanText"
+        :last-used-tag-id="lastUsedTagId"
         :selected-tag-id="annotations.selection.value?.tagId ?? null"
         :is-editing="annotations.isEditing.value"
         :position-changed="annotations.positionChanged.value"
         :editing-auto="!!editingAutoSpan"
-        :approve-reject-busy="approveRejectBusy"
+        :busy="annotations.saving.value"
         :ai-selection-running="aiAssist.isSelectionRunning.value"
-        @close="onPopoverClose"
+        @close="annotations.clearSelection()"
         @pick-tag="onTagClick"
         @create-tag="onCreateTagClick"
         @run-ai="onRunAiOnSelection"
-        @save-position="annotations.updateSpanPosition()"
+        @save-position="onSavePosition"
         @approve="changeEditingSpanType(SpanType.pos)"
         @reject="changeEditingSpanType(SpanType.neg)"
         @tag-details="onOpenTagDetails"
@@ -175,14 +181,16 @@ import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { SpanType } from 'src/generated/api'
+import { apiErrorMessage, createContextGuard, isAbortError } from 'src/shared/api'
+import { errorNotification } from 'src/shared/notification'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import AnnotationGutter from 'src/features/annotations/AnnotationGutter.vue'
 import type { SpanMarker } from 'src/features/annotations/AnnotationGutterTypes'
 import AnnotationPopover from 'src/features/annotations/AnnotationPopover.vue'
 import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
-import useAiAssistance from 'src/features/annotations/useAiAssistance'
-import { useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
+import useAiAssistance, { resolveAutoSpanFailure } from 'src/features/annotations/useAiAssistance'
+import { SpanMoveIncompleteError, useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
 import useSpanDiscussionDialog from 'src/features/annotations/useSpanDiscussionDialog'
 import { useTagEditing } from 'src/features/annotations/useTagEditing'
 import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
@@ -195,7 +203,11 @@ import ChunkMembershipGutter from './ChunkMembershipGutter.vue'
 import ChunkSelectionBar from './ChunkSelectionBar.vue'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import ReaderToolbar from './ReaderToolbar.vue'
-import { groupParagraphs, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText } from './readerOffsets'
+import { getLastUsedTagId, setLastUsedTagId } from 'src/features/annotations/lastUsedTag'
+import {
+  gapSize, groupParagraphs, missingChunksText, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText,
+  shortestMarker
+} from './readerOffsets'
 import { useChunkMembership } from './useChunkMembership'
 import { useChunkWindow } from './useChunkWindow'
 import { useReaderGutters } from './useReaderGutters'
@@ -230,7 +242,8 @@ const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.valu
 
 const documentTextRef = ref<HTMLElement | null>(null)
 const totalDocumentChunks = ref<number | null>(null)
-const chunkGutterVisible = ref(true)
+// Hidden on every visit; the toolbar toggle shows it.
+const chunkGutterVisible = ref(false)
 // Toggle between original-text whitespace (default) and HTML's collapsed
 // whitespace. Original-mode preserves consecutive spaces and line breaks
 // inside chunk text via CSS `white-space: pre-wrap`.
@@ -255,6 +268,9 @@ const relayout = () => gutters.relayout()
 
 // ── Hover state shared by the text and the gutters ──
 const hoveredSpanId = ref<string | null>(null)
+// The span the tags panel's next/prev went to. Separate from hoveredSpanId so moving the
+// pointer over the text doesn't clear it; hover only takes precedence while it lasts.
+const navHighlightedSpanId = ref<string | null>(null)
 const hoveredPreviewChunkId = ref<string | null>(null)
 const hoveredChunkId = ref<string | null>(null)
 const gutterHoveredChunkId = ref<string | null>(null)
@@ -266,6 +282,26 @@ function onDocumentPointerMove(e: PointerEvent) {
 
   const chunk = chunkId ? chunkWindow.findChunk(chunkId) : null
   hoveredPreviewChunkId.value = chunk && !chunk.inCollection ? chunk.id : null
+
+  // Tagged text under the pointer highlights the span a click would open.
+  const spanId = shortestMarker(markersAtSegment(e.target))?.spanId ?? null
+  if (hoveredSpanId.value !== spanId) hoveredSpanId.value = spanId
+}
+
+function onDocumentPointerLeave() {
+  hoveredPreviewChunkId.value = null
+  hoveredSpanId.value = null
+}
+
+/** The markers of the shown spans covering the tagged text segment at `target`. */
+function markersAtSegment(target: EventTarget | null): SpanMarker[] {
+  const segment = (target as HTMLElement | null)?.closest?.<HTMLElement>('.text-segment.is-tagged')
+  const chunkId = segment?.closest<HTMLElement>('[data-chunk-id]')?.dataset.chunkId
+  if (!segment || !chunkId) return []
+  const start = Number(segment.dataset.start)
+  const end = Number(segment.dataset.end)
+  const ids = new Set(getVisibleSpans(chunkId).filter((s) => s.start <= start && s.end >= end).map((s) => s.id))
+  return gutters.spanMarkers.value.filter((m) => ids.has(m.spanId))
 }
 
 function onChunkGutterHover(chunkId: string | null, controls: boolean) {
@@ -327,7 +363,7 @@ watch(gutters.spanMarkers, (markers) => {
   })))
 })
 tagNav.onScroll((item) => scrollToSpan(item.chunkId, item.start, item.end))
-tagNav.onHighlight((spanId) => { hoveredSpanId.value = spanId })
+tagNav.onHighlight((spanId) => { navHighlightedSpanId.value = spanId })
 
 // Re-render gutter (and re-filter auto spans in text) when the AI assist panel
 // becomes active or inactive in the sidebar.
@@ -351,7 +387,7 @@ watch(highlightedAutoSpanId, (spanId) => {
 // window first (chunkWindow.loadUntil, #249 review) if it isn't shown yet — the summary
 // covers the whole document, but the reader only displays a bounded window by default. This
 // is otherwise an orthogonal, read-only navigation action: it must not touch
-// annotations/tagEditing/quickTagId state (no selection clearing, no popover changes, no span
+// annotations/tagEditing state (no selection clearing, no popover changes, no span
 // highlight changes) or navigate, only scroll/load — so tag-editing state in progress is left
 // exactly as it was.
 watch(() => documentSummary.requestedCitation.value, async (citation) => {
@@ -367,21 +403,21 @@ watch(() => documentSummary.requestedCitation.value, async (citation) => {
 
 // ── Annotation editing ──
 const popoverRef = ref<InstanceType<typeof AnnotationPopover> | null>(null)
-// The tag of the span whose marker was last clicked. While set, drag-selecting
-// new text quick-tags it with this same tag (see handleDocumentMouseUp) —
-// stays active across multiple selections until explicitly ended.
-const quickTagId = ref<string | null>(null)
-// True for the brief window between a quick-tag selection and its span
-// being created — suppresses the popover entirely so "Add tag" never flashes.
-const quickTagging = ref(false)
 
-const endQuickTagging = () => {
-  quickTagId.value = null
-  annotations.clearSelection()
+// The last tag actually applied to a span in this collection — suggested first in the popover,
+// ahead of any text-similarity match. Re-read whenever collectionId changes, like the other
+// per-collection state on this page (useChunkWindow, useChunkMembership, useTagEditing), in case
+// a future route ever reuses this component instance across collections.
+const lastUsedTagId = ref<string | null>(getLastUsedTagId(props.collectionId))
+watch(() => props.collectionId, (collectionId) => {
+  lastUsedTagId.value = getLastUsedTagId(collectionId)
+})
+const recordTagUsage = (tagId: string) => {
+  lastUsedTagId.value = tagId
+  setLastUsedTagId(props.collectionId, tagId)
 }
 
 // The span being edited when it is an AI suggestion: the popover offers approve/reject.
-const approveRejectBusy = ref(false)
 const editingAutoSpan = computed(() => {
   const sel = annotations.selection.value
   if (!sel?.editingSpanId) return null
@@ -390,22 +426,54 @@ const editingAutoSpan = computed(() => {
   return span && span.type === SpanType.auto ? span : null
 })
 
+// Span requests of this reader's document: entered when the reader moves to another document
+// or collection, or closes, so a failure that arrives later is not reported here.
+const spanRequests = createContextGuard()
+watch(() => [props.collectionId, props.documentId], () => spanRequests.enter())
+
+/**
+ * Run a span request from the popover. A failed one tells the user it was not saved and, unless
+ * a move left the span at two positions, leaves its selection open. Returns the request's
+ * result, or null when it failed.
+ */
+async function runSpanRequest<T>(request: () => Promise<T>, failure: string): Promise<T | null> {
+  const isCurrent = spanRequests.capture()
+  try {
+    return await request()
+  } catch (err) {
+    // A span left at two positions is reported even after the reader has moved on.
+    if (err instanceof SpanMoveIncompleteError) {
+      errorNotification(err.message)
+      return null
+    }
+    if (!isCurrent() || isAbortError(err)) return null
+    errorNotification(await apiErrorMessage(err, failure))
+    return null
+  }
+}
+
 async function changeEditingSpanType(type: SpanType) {
   const span = editingAutoSpan.value
   if (!span || !span.id) return
-  approveRejectBusy.value = true
-  try {
-    await aiAssist.resolveAutoSpan(span, type)
-  } finally {
-    approveRejectBusy.value = false
-    endQuickTagging()
-  }
+  await runSpanRequest(
+    () => annotations.applyToSelection(() => aiAssist.resolveAutoSpan(span, type)),
+    resolveAutoSpanFailure(type)
+  )
+}
+
+// The AI-panel highlight this page set for a selected auto span. A new text selection clears
+// the highlight only while it is still this one, so a card the user moved to in the AI panel
+// (its prev/next position) is kept.
+let highlightFromSelection: string | null = null
+const highlightAutoSpan = (spanId: string) => {
+  aiAssist.highlightedAutoSpanId.value = spanId
+  highlightFromSelection = spanId
 }
 
 // When the user selects an auto span (from its gutter marker), mirror that into the
 // AI panel highlight so the matching suggestion card lights up.
 watch(editingAutoSpan, (span) => {
-  if (span?.id) aiAssist.highlightedAutoSpanId.value = span.id
+  if (span?.id) highlightAutoSpan(span.id)
 })
 
 const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
@@ -416,7 +484,6 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
     start: item.start,
     end: item.end
   })
-  quickTagId.value = item.tagId
   popoverRef.value?.moveTo(e)
   popoverRef.value?.showMode('actions')
 
@@ -427,13 +494,53 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
   // should make its corresponding suggestion card light up (and scroll into
   // view inside the panel).
   if (item.isAuto) {
-    aiAssist.highlightedAutoSpanId.value = item.spanId
+    highlightAutoSpan(item.spanId)
   }
+}
+
+// Where the primary button went down in the text, to tell a click from a drag. A drag of
+// a selection handle is never a click, nor is a right or middle click.
+let pointerDown: { x: number, y: number, onHandle: boolean } | null = null
+const CLICK_TOLERANCE = 4
+
+// Opening a span re-renders its text, which would break a double-click's word selection,
+// so a click opens it only once no second click has followed.
+const DOUBLE_CLICK_WAIT = 250
+let pendingSpanOpen: ReturnType<typeof setTimeout> | null = null
+
+function cancelPendingSpanOpen() {
+  if (pendingSpanOpen) clearTimeout(pendingSpanOpen)
+  pendingSpanOpen = null
+}
+
+function onDocumentPointerDown(e: PointerEvent) {
+  cancelPendingSpanOpen()
+  pointerDown = e.button === 0
+    ? { x: e.clientX, y: e.clientY, onHandle: !!(e.target as HTMLElement).closest('.selection-handle') }
+    : null
+}
+
+/** A click (no drag) on tagged text opens the shortest span there, like its gutter label. */
+function openSpanAtClick(e: MouseEvent) {
+  const down = pointerDown
+  if (!down || down.onHandle || e.detail > 1) return
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE) return
+  const marker = shortestMarker(markersAtSegment(e.target))
+  if (!marker) return
+  pendingSpanOpen = setTimeout(() => {
+    pendingSpanOpen = null
+    onMarkerClick(marker, e)
+  }, DOUBLE_CLICK_WAIT)
 }
 
 const handleDocumentMouseUp = (e: MouseEvent) => {
   const domSelection = window.getSelection()
-  if (!domSelection || domSelection.isCollapsed) return
+  if (!domSelection || domSelection.isCollapsed) {
+    openSpanAtClick(e)
+    pointerDown = null
+    return
+  }
+  pointerDown = null
 
   const range = domSelection.getRangeAt(0)
   const startPoint = resolveSelectionEndpoint(range.startContainer, range.startOffset)
@@ -456,18 +563,11 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
   popoverRef.value?.moveTo(e)
   domSelection.removeAllRanges()
-
-  // A marker's tag stays "active" (see quickTagId) until explicitly ended,
-  // so every subsequent selection here quick-tags that new text with it
-  // instead of opening the picker — repositioning the original span is
-  // still done via its drag handles.
-  if (quickTagId.value) {
-    quickTagging.value = true
-    void annotations.createSpan(quickTagId.value).finally(() => {
-      quickTagging.value = false
-    })
-    return
+  // A new selection is unrelated to an AI suggestion highlighted by selecting it earlier.
+  if (highlightFromSelection && aiAssist.highlightedAutoSpanId.value === highlightFromSelection) {
+    aiAssist.highlightedAutoSpanId.value = null
   }
+  highlightFromSelection = null
 
   // Fresh selections open straight into the tag picker, as if "Add tag" had
   // already been clicked.
@@ -475,13 +575,18 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 }
 
 const onTagClick = async (tagId: string) => {
-  if (annotations.isEditing.value) {
-    quickTagId.value = null
-    await annotations.updateSpanTag(tagId)
-  } else {
-    await annotations.createSpan(tagId)
-  }
+  const applied = annotations.isEditing.value
+    ? await runSpanRequest(() => annotations.updateSpanTag(tagId), 'The tag could not be changed.')
+    : await runSpanRequest(() => annotations.createSpan(tagId), 'The tag could not be saved.')
+  // Only a tag that really went onto a span becomes the last-used suggestion.
+  if (applied) recordTagUsage(tagId)
 }
+
+const onSavePosition = () =>
+  runSpanRequest(() => annotations.updateSpanPosition(), 'The new position could not be saved.')
+
+const onDeleteSpan = () =>
+  runSpanRequest(() => annotations.deleteSpan(), 'The tag could not be removed.')
 
 const onCreateTagClick = () => {
   tagEditing.createTag((newTag) => onTagClick(newTag.id))
@@ -496,10 +601,12 @@ const onBoundaryDrag = (payload: { chunkId: string; handle: 'start' | 'end'; cha
   annotations.adjustSelectionBoundary(payload.handle, payload.chunkId, payload.charOffset)
 }
 
-const onDeleteSpan = async () => {
-  quickTagId.value = null
-  await annotations.deleteSpan()
-}
+// The text of the current selection, used by the popover to suggest a likely tag first.
+const selectedSpanText = computed(() => {
+  const sel = annotations.selection.value
+  if (!sel) return ''
+  return selectionText(sel, [...displayChunks.value, ...hiddenPreviewChunks.value])
+})
 
 // ── Suggest tags via AI for the highlighted selection ──
 const onRunAiOnSelection = async (tagIds: string[]) => {
@@ -595,20 +702,16 @@ watch(
 // When prev/next expand-rows appear/disappear they shift the text — remeasure
 watch([chunkWindow.hasPrev, chunkWindow.hasNext], () => nextTick(() => requestAnimationFrame(relayout)))
 
-// While quick-tagging is active, keep the tag highlighted in the right-hand
-// panel regardless of the selection briefly clearing between instances.
+// Highlight the selected span's tag in the right-hand panel.
 watch(
-  [() => annotations.selection.value?.tagId, quickTagId],
-  ([selectionTagId, activeQuickTagId]) => tagNav.setActiveTagId(activeQuickTagId ?? selectionTagId ?? null)
+  () => annotations.selection.value?.tagId,
+  (tagId) => tagNav.setActiveTagId(tagId ?? null)
 )
 
 // ── Dismiss on click-outside / Escape ──
 
 const onClickOutside = (e: MouseEvent) => {
-  // quickTagId can stay active with no current selection — createSpan()
-  // clears the selection right after each quick-tag, but fast-labeling
-  // mode itself keeps going until explicitly ended.
-  if (!annotations.hasSelection.value && !quickTagId.value) return
+  if (!annotations.hasSelection.value) return
   const target = e.target as HTMLElement
   // Don't dismiss if clicking inside the popover, the document text area,
   // a Quasar dialog opened from the popover (e.g. the create/edit-tag
@@ -618,28 +721,18 @@ const onClickOutside = (e: MouseEvent) => {
   // sidebar (#249): switching tools there (checking tags, AI suggestions,
   // document metadata, or the document summary and its citations) is a
   // normal part of annotating and must not silently discard an open
-  // popover or an in-progress quick-tag selection either.
+  // popover either.
   const popover = document.querySelector('.annotation-popover')
   if (popover?.contains(target)) return
   if (documentTextRef.value?.contains(target)) return
   if (target.closest('.q-dialog')) return
   if (target.closest('.q-drawer--right')) return
-  endQuickTagging()
-}
-
-// A dialog opened from the popover (create/edit tag, discuss) is still open. The
-// popover stays above it, so its close button and Escape must not clear the selection
-// the dialog's onOk handler still needs (#379).
-const dialogOpen = () => document.querySelector('.q-dialog') !== null
-
-const onPopoverClose = () => {
-  if (dialogOpen()) return
-  endQuickTagging()
+  annotations.clearSelection()
 }
 
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && (annotations.hasSelection.value || quickTagId.value) && !dialogOpen()) {
-    endQuickTagging()
+  if (e.key === 'Escape' && annotations.hasSelection.value) {
+    annotations.clearSelection()
   }
 }
 
@@ -664,9 +757,14 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  spanRequests.enter()
   resizeObserver?.disconnect()
+  cancelPendingSpanOpen()
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)
+  // activeTagId is module-level state in useTagNavigation; don't carry this reader's
+  // highlighted tag into the next one.
+  tagNav.setActiveTagId(null)
 })
 </script>
 
@@ -684,9 +782,15 @@ onBeforeUnmount(() => {
   flex-direction: row;
   gap: 0;
   align-items: stretch;
+  /* One white card, outlined, so the gutter reads as part of it rather than of the
+     grey page around it. */
+  background: #ffffff;
+  border: 1px solid #d5dce6;
   border-radius: 16px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
-  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.12);
+  /* clip, not hidden: hidden would make this the scroll container of the span gutter's
+     sticky scrollbar, so it would never stick to the window. */
+  overflow: clip;
 }
 
 .paper-card {
@@ -706,6 +810,11 @@ onBeforeUnmount(() => {
   padding: 32px 32px 40px;
 }
 
+/* The text starts right next to the span gutter. */
+.paper-card.has-gutter .paper-body {
+  padding-left: 10px;
+}
+
 .document-text {
   max-width: none;
   margin: 0;
@@ -723,6 +832,13 @@ onBeforeUnmount(() => {
    allowed so long lines don't overflow the column. */
 .document-text--preserve-whitespace :deep(.text-segment) {
   white-space: pre-wrap;
+}
+
+/* A chunk's text has no line break at its end, so inline chunks would continue the
+   previous chunk's last line, making each chunk's first line about twice as long.
+   Each chunk starts on its own line instead. */
+.document-text--preserve-whitespace :deep(.chunk-annotator) {
+  display: block;
 }
 
 /* Dim non-collection preview chunks slightly */
@@ -784,38 +900,45 @@ onBeforeUnmount(() => {
   color: #334155;
 }
 
-/* ── Gap row (missing chunks between two displayed chunks) ── */
+/* ── Gap divider (missing chunks between two displayed chunks) ── */
 
 .gap-row {
   display: flex;
-  flex-direction: column;
-  margin: 4px 0;
-  border-top: 1px dashed #e2e8f0;
-  border-bottom: 1px dashed #e2e8f0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 8px 0 18px;
+  padding: 4px 10px;
+  border-top: 1px dashed #f59e0b;
+  border-bottom: 1px dashed #f59e0b;
+  background: #fffbeb;
+}
+
+.gap-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  color: #92400e;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .gap-btn {
-  flex: 1;
-  color: #94a3b8;
+  color: #78716c;
   font-size: 0.78rem;
   letter-spacing: 0.02em;
   transition: background 0.15s, color 0.15s;
-  border-radius: 0;
-}
-
-.gap-btn + .gap-btn {
-  border-left: none;
-  border-top: 1px solid #e2e8f0;
 }
 
 .gap-btn--all {
-  color: #64748b;
+  color: #57534e;
   font-weight: 500;
 }
 
 .gap-btn:hover {
-  background: #f8fafc;
-  color: #475569;
+  background: #fef3c7;
+  color: #44403c;
 }
 
 @media (max-width: 1023px) {
@@ -826,11 +949,19 @@ onBeforeUnmount(() => {
   .paper-body {
     padding: 24px;
   }
+
+  .paper-card.has-gutter .paper-body {
+    padding-left: 10px;
+  }
 }
 
 @media (max-width: 599px) {
   .paper-body {
     padding: 20px 16px 24px;
+  }
+
+  .paper-card.has-gutter .paper-body {
+    padding-left: 8px;
   }
 
   .document-text {
