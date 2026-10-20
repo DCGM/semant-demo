@@ -94,7 +94,7 @@ import { storeToRefs } from 'pinia'
 import { createContextGuard } from 'src/shared/api'
 
 const props = defineProps<{ modelValue: boolean }>()
-const emit = defineEmits(['update:modelValue'])
+defineEmits(['update:modelValue'])
 
 const userStore = useUserStore()
 const { user } = storeToRefs(userStore)
