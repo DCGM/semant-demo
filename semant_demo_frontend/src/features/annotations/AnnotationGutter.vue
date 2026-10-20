@@ -3,11 +3,12 @@
     <!-- The gutter is as tall as the document, so a native scrollbar would usually be off
          screen (and hidden until used with overlay scrollbars). This one sits at the top
          and sticks below the reader toolbar while the document scrolls. -->
-    <div v-if="overflowing" class="span-gutter-scrollbar" @pointerdown="onTrackPointerDown">
+    <!-- .prevent: no compatibility mousedown, which would close an open popover. -->
+    <div v-if="overflowing" class="span-gutter-scrollbar" @pointerdown.prevent="onTrackPointerDown">
       <div
         class="span-gutter-thumb"
         :style="{ width: thumbWidth + 'px', right: thumbRight + 'px' }"
-        @pointerdown.stop="onThumbPointerDown"
+        @pointerdown.stop.prevent="onThumbPointerDown"
         @pointermove="onThumbPointerMove"
         @pointerup="onThumbPointerUp"
         @pointercancel="onThumbPointerUp"
@@ -176,16 +177,23 @@ function storeWidth (value: number) {
 }
 
 const isPhone = () => window.matchMedia('(max-width: 599px)').matches
-const width = ref(isPhone() ? PHONE_WIDTH : storedWidth() ?? DEFAULT_WIDTH)
+// The width the user chose; the shown width is clamped to the space there is now, so a
+// narrower window squeezes the gutter and a wider one gives the chosen width back.
+const preferredWidth = ref(isPhone() ? PHONE_WIDTH : storedWidth() ?? DEFAULT_WIDTH)
+const availableWidth = ref(Infinity) // of the gutter and the text together
+const width = computed(() => clampWidth(preferredWidth.value))
 
 function clampWidth (value: number): number {
-  const available = column.value?.parentElement?.clientWidth ?? Infinity
-  return Math.round(Math.max(minWidth, Math.min(available * MAX_WIDTH_SHARE, value)))
+  return Math.round(Math.max(minWidth, Math.min(availableWidth.value * MAX_WIDTH_SHARE, value)))
+}
+
+function setWidth (value: number) {
+  preferredWidth.value = clampWidth(value)
 }
 
 function resizeBy (delta: number) {
-  width.value = clampWidth(width.value + delta)
-  if (!isPhone()) storeWidth(width.value)
+  setWidth(width.value + delta)
+  if (!isPhone()) storeWidth(preferredWidth.value)
 }
 
 const resizeStart = ref<{ x: number; width: number } | null>(null)
@@ -196,18 +204,23 @@ function onResizePointerDown (event: PointerEvent) {
 
 function onResizePointerMove (event: PointerEvent) {
   if (!resizeStart.value) return
-  width.value = clampWidth(resizeStart.value.width + event.clientX - resizeStart.value.x)
+  setWidth(resizeStart.value.width + event.clientX - resizeStart.value.x)
 }
 
 function onResizePointerUp () {
   if (!resizeStart.value) return
   resizeStart.value = null
-  if (!isPhone()) storeWidth(width.value)
+  if (!isPhone()) storeWidth(preferredWidth.value)
 }
 
 let resizeObserver: ResizeObserver | null = null
+let containerObserver: ResizeObserver | null = null
 onMounted(() => {
-  width.value = clampWidth(width.value)
+  const container = column.value?.parentElement
+  if (container) {
+    containerObserver = new ResizeObserver(() => { availableWidth.value = container.clientWidth })
+    containerObserver.observe(container)
+  }
   if (!viewport.value) return
   resizeObserver = new ResizeObserver(() => {
     viewportWidth.value = viewport.value?.clientWidth ?? 0
@@ -215,7 +228,10 @@ onMounted(() => {
   })
   resizeObserver.observe(viewport.value)
 })
-onBeforeUnmount(() => resizeObserver?.disconnect())
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  containerObserver?.disconnect()
+})
 </script>
 
 <style scoped>

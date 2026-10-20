@@ -30,7 +30,7 @@
         v-if="gutters.spanMarkers.value.length"
         :markers="gutters.spanMarkers.value"
         :tags="tags"
-        :hovered-span-id="hoveredSpanId"
+        :hovered-span-id="hoveredSpanId || navHighlightedSpanId"
         :highlighted-span-id="highlightedAutoSpanId"
         @hover="hoveredSpanId = $event"
         @select="onMarkerClick"
@@ -69,7 +69,7 @@
                   :spans="getVisibleSpans(chunk.id)"
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
-                  :highlight-span-id="hoveredSpanId || highlightedAutoSpanId"
+                  :highlight-span-id="hoveredSpanId || navHighlightedSpanId || highlightedAutoSpanId"
                   :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id, 'chunk-gutter-hovered': gutterHoveredChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
@@ -268,6 +268,9 @@ const relayout = () => gutters.relayout()
 
 // ── Hover state shared by the text and the gutters ──
 const hoveredSpanId = ref<string | null>(null)
+// The span the tags panel's next/prev went to. Separate from hoveredSpanId so moving the
+// pointer over the text doesn't clear it; hover only takes precedence while it lasts.
+const navHighlightedSpanId = ref<string | null>(null)
 const hoveredPreviewChunkId = ref<string | null>(null)
 const hoveredChunkId = ref<string | null>(null)
 const gutterHoveredChunkId = ref<string | null>(null)
@@ -360,7 +363,7 @@ watch(gutters.spanMarkers, (markers) => {
   })))
 })
 tagNav.onScroll((item) => scrollToSpan(item.chunkId, item.start, item.end))
-tagNav.onHighlight((spanId) => { hoveredSpanId.value = spanId })
+tagNav.onHighlight((spanId) => { navHighlightedSpanId.value = spanId })
 
 // Re-render gutter (and re-filter auto spans in text) when the AI assist panel
 // becomes active or inactive in the sidebar.
@@ -495,22 +498,39 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
   }
 }
 
-// Where the pointer went down in the text, to tell a click from a drag. A drag of a
-// selection handle is never a click.
+// Where the primary button went down in the text, to tell a click from a drag. A drag of
+// a selection handle is never a click, nor is a right or middle click.
 let pointerDown: { x: number, y: number, onHandle: boolean } | null = null
 const CLICK_TOLERANCE = 4
 
+// Opening a span re-renders its text, which would break a double-click's word selection,
+// so a click opens it only once no second click has followed.
+const DOUBLE_CLICK_WAIT = 250
+let pendingSpanOpen: ReturnType<typeof setTimeout> | null = null
+
+function cancelPendingSpanOpen() {
+  if (pendingSpanOpen) clearTimeout(pendingSpanOpen)
+  pendingSpanOpen = null
+}
+
 function onDocumentPointerDown(e: PointerEvent) {
-  pointerDown = { x: e.clientX, y: e.clientY, onHandle: !!(e.target as HTMLElement).closest('.selection-handle') }
+  cancelPendingSpanOpen()
+  pointerDown = e.button === 0
+    ? { x: e.clientX, y: e.clientY, onHandle: !!(e.target as HTMLElement).closest('.selection-handle') }
+    : null
 }
 
 /** A click (no drag) on tagged text opens the shortest span there, like its gutter label. */
 function openSpanAtClick(e: MouseEvent) {
   const down = pointerDown
-  if (!down || down.onHandle) return
+  if (!down || down.onHandle || e.detail > 1) return
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE) return
   const marker = shortestMarker(markersAtSegment(e.target))
-  if (marker) onMarkerClick(marker, e)
+  if (!marker) return
+  pendingSpanOpen = setTimeout(() => {
+    pendingSpanOpen = null
+    onMarkerClick(marker, e)
+  }, DOUBLE_CLICK_WAIT)
 }
 
 const handleDocumentMouseUp = (e: MouseEvent) => {
@@ -739,6 +759,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   spanRequests.enter()
   resizeObserver?.disconnect()
+  cancelPendingSpanOpen()
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)
   // activeTagId is module-level state in useTagNavigation; don't carry this reader's
