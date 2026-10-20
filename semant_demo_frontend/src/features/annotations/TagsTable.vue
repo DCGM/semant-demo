@@ -186,7 +186,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute } from 'vue-router'
 
@@ -219,10 +219,6 @@ const visibleColumns = ref<string[]>([
   'definition',
   'examples'
 ])
-
-watch(visibleColumns, (newVal) => {
-  console.log('Visible columns changed:', newVal)
-})
 
 const collectionId = computed<string>(() => {
   const value = route.params.collectionId
