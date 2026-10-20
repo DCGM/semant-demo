@@ -24,6 +24,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['test/unit/**/*.spec.ts'],
+    setupFiles: ['test/unit/setup.ts'],
     // Generated client and build output are not test sources.
     exclude: ['node_modules', 'dist', 'src/generated/**']
   }

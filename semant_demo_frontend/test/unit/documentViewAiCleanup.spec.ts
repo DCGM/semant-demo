@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, shallowMount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
 
 import DocumentViewLayout from 'src/features/documents/viewer/DocumentViewLayout.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
@@ -9,7 +10,6 @@ import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
 
 // The layout's data loading is not under test: the stores load empty state.
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: {}, query: {} }) }))
 vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
 vi.mock('src/features/documents/useDocumentsRepository', () => ({ useDocumentsRepository: () => ({ getById: async () => null }) }))
 vi.mock('src/features/user_collections/useUserCollectionsRepository', () => ({
@@ -21,6 +21,12 @@ vi.mock('src/shared/api', async () => ({
   ...(await vi.importActual<typeof import('src/shared/api')>('src/shared/api')),
   useApi: () => ({ default: {} })
 }))
+
+/** A router at a route without parameters: the layout reads the collection from the route. */
+const testRouter = () => createRouter({
+  history: createMemoryHistory(),
+  routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }]
+})
 
 const encoder = new TextEncoder()
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -66,7 +72,7 @@ describe('DocumentViewLayout AI cleanup', () => {
   it('aborts document-wide and selection runs on unmount and ignores their late events', async () => {
     const wrapper = shallowMount(DocumentViewLayout, {
       props: { collectionId: 'c', documentId: 'd' },
-      global: { plugins: [[Quasar, {}]], stubs: { RouterView: true, 'router-view': true } }
+      global: { plugins: [[Quasar, {}], testRouter()], stubs: { RouterView: true, 'router-view': true } }
     })
     await flush()
     const ai = useAiAssistance()
@@ -107,7 +113,7 @@ describe('DocumentViewLayout sidebar panels', () => {
     return mount(DocumentViewLayout, {
       props: { collectionId: 'c', documentId: 'd' },
       global: {
-        plugins: [[Quasar, {}]],
+        plugins: [[Quasar, {}], testRouter()],
         stubs: {
           RouterView: true,
           QBtn: true,
