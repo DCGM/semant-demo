@@ -51,29 +51,34 @@ class SummaryLengths:
     default: SummaryLength
     levels: dict[SummaryLength, LengthOptions]
 
-    def level(self, length: SummaryLength | None) -> SummaryLength:
-        """The requested level, or the configured default when none is requested."""
-        return length if length is not None else self.default
-
-    def options(self, level: SummaryLength) -> LengthOptions:
-        return self.levels[level]
+    def resolve(self, length: SummaryLength | None) -> tuple[SummaryLength, LengthOptions]:
+        """The requested level, or the configured default when none is requested, and its options."""
+        level = length if length is not None else self.default
+        return level, self.levels[level]
 
     @classmethod
     def parse(cls, value: dict) -> "SummaryLengths":
-        """The length levels configured as ``{default: <level>, <level>: {words, max_completion_tokens}, ...}``.
+        """The length levels configured as ``{default: <level>, <level>: {words, max_completion_tokens}, ...}``;
+        a missing default is short.
 
-        :raises ValueError: if the default or a level is unknown, a level is missing, or a number is not positive
+        :raises ValueError: if the default or a level is unknown, a level is missing or malformed, or a number is
+            not a positive integer
         """
         value = dict(value)
-        default = SummaryLength(value.pop("default"))
-        levels = {SummaryLength(name): LengthOptions(**options) for name, options in value.items()}
+        default = SummaryLength(value.pop("default", SummaryLength.short.value))
+        levels = {SummaryLength(name): cls._parse_level(name, options) for name, options in value.items()}
         if missing := [level.value for level in SummaryLength if level not in levels]:
             raise ValueError(f"Missing summary length levels: {', '.join(missing)}")
-        for level, options in levels.items():
-            if not all(isinstance(n, int) and n > 0 for n in (options.words, options.max_completion_tokens)):
-                raise ValueError(f"Summary length {level.value}: words and max_completion_tokens must be positive "
-                                 "integers")
         return cls(default, levels)
+
+    @staticmethod
+    def _parse_level(name: str, options) -> LengthOptions:
+        if not isinstance(options, dict) or set(options) != {"words", "max_completion_tokens"}:
+            raise ValueError(f"Summary length {name}: expected words and max_completion_tokens")
+        # bool is an int subclass; True is not a length.
+        if not all(type(n) is int and n > 0 for n in options.values()):
+            raise ValueError(f"Summary length {name}: words and max_completion_tokens must be positive integers")
+        return LengthOptions(**options)
 
 
 def summary_lengths_value(desc: str, short: tuple[int, int], detailed: tuple[int, int]) -> ConfigurableValue:
@@ -85,7 +90,7 @@ def summary_lengths_value(desc: str, short: tuple[int, int], detailed: tuple[int
             SummaryLength.short.value: {"words": short[0], "max_completion_tokens": short[1]},
             SummaryLength.detailed.value: {"words": detailed[0], "max_completion_tokens": detailed[1]},
         },
-        desc=desc + " default is the level used when the request names none; each level has words (the maximum "
+        desc=desc + " default is the level used when the request names none (short when omitted); each level has words (the maximum "
                     "length in words, given to the prompts as brevity, with the level's name as length) and "
                     "max_completion_tokens (replaces that of the model options; keep it above the words, a Czech "
                     "word takes about 2-3 tokens, and within the feature's max_output_tokens in LLM_MODELS_CONFIG).",
@@ -174,7 +179,8 @@ Nadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".
 
     gen_results_summary_model_options: ModelOptions = ConfigurableFactory(
         ModelOptions,
-        desc="Model options for search results summary generation."
+        desc="Model options for search results summary generation. Its max_completion_tokens is not used: the "
+             "length level sets it (gen_results_summary_lengths)."
     )
     gen_results_summary_error_summary: str = ConfigurableValue(
         user_default="N/A",
@@ -263,8 +269,7 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
     async def gen_results_summary(self, query: str, results: Sequence[DocumentChunk], prompt: Optional[str] = None, brevity: Optional[int] = None,
                                   on_error: Optional[Callable[[str], None]] = None,
                                   length: Optional[SummaryLength] = None) -> str:
-        level = self.gen_results_summary_lengths.level(length)
-        options = self.gen_results_summary_lengths.options(level)
+        level, options = self.gen_results_summary_lengths.resolve(length)
         return await self._generate_or_fallback(
             "results_summary", self.gen_results_summary_error_summary, on_error,
             self.gen_results_summary_system_prompt, self.handle_prompt(prompt, self.gen_results_summary_prompt),

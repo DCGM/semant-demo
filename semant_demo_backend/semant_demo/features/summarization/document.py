@@ -45,7 +45,8 @@ class TemplatedDocumentSummarizer(TemplateGenerationMixin, ConfigurableMixin, Cr
 
     gen_summary_model_options: ModelOptions = ConfigurableFactory(
         ModelOptions,
-        desc="Model options for document summary generation."
+        desc="Model options for document summary generation. Its max_completion_tokens is not used: the length "
+             "level sets it (gen_summary_lengths)."
     )
     gen_summary_error_summary: str = ConfigurableValue(
         user_default="N/A",
@@ -125,8 +126,7 @@ Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
         :param length: length level of the summary; None for the configured default
         :return: the generated summary, or the configured fallback text on failure
         """
-        level = self.gen_summary_lengths.level(length)
-        options = self.gen_summary_lengths.options(level)
+        level, options = self.gen_summary_lengths.resolve(length)
         return await self._generate_or_fallback(
             "summary", self.gen_summary_error_summary, on_error,
             self.gen_summary_system_prompt, self.gen_summary_prompt,
