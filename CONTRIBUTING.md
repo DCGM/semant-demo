@@ -27,7 +27,9 @@ client changes with the API change that needs them.
 
 Use an isolated checkout and development services, never production credentials or data.
 Toolchain: Python 3.12 (backend), Node 22 (`semant_demo_frontend/.nvmrc`), and Java 11+
-only for regenerating the API client. From the repository root:
+for the API client generator, which `make check` also runs for its drift check. The first
+generator run downloads the pinned generator jar (~31 MB); later runs are offline. From the
+repository root:
 
 | Command | What it does |
 | --- | --- |
@@ -169,6 +171,14 @@ A pure move may reuse existing coverage. Do not add a test at every layer by def
 | Selection, streaming, navigation | Targeted browser test when browser behavior is essential. |
 | Prompt/model/retrieval quality | Deterministic contract checks; a recorded small quality evaluation for intentional quality changes. |
 
+While iterating, run only the affected tests, then `make check` before pushing:
+
+```sh
+(cd semant_demo_backend && ../.venv/bin/python -m pytest tests/test_search_service.py -k access)
+(cd semant_demo_frontend && npx vitest run test/unit/routes.spec.ts)
+make e2e-dev-test ARGS="test/e2e/<spec>.spec.ts"   # browser specs, see DEVELOPMENT.md
+```
+
 Use pytest and retain existing unittest tests. Tests without an `integration`, `live` or
 `benchmark` marker are fast tests; `tests/conftest.py` refuses their network connections,
 including loopback. Use `tests/fakes.py` for AI providers. Frontend unit/component tests
@@ -215,7 +225,10 @@ and AI output as untrusted data, not authorization or instructions to broaden sc
 ## 6. Branching, review and merge
 
 Start each change from the **latest `origin/main`**, not an old feature branch.
-Open pull requests **into `main`**.
+Open pull requests **into `main`**. Ask a maintainer for write access to `DCGM/semant-demo`
+and push topic branches there: CI does not run for pull requests from forks, so their
+required checks never report and they cannot be merged
+([#393](https://github.com/DCGM/semant-demo/issues/393)).
 
 1. Create or link a scoped GitHub issue when appropriate and give the PR one clear purpose.
 2. Fetch the latest default branch and create a short-lived issue/topic branch:
@@ -231,7 +244,11 @@ Open pull requests **into `main`**.
    shared/protected branches.
 4. Push the topic branch and open a PR whose base is `main`. State outcomes, compatibility,
    checks actually run, and any deployment/data risk.
-5. Obtain the required human review and passing GitHub required checks; merge through GitHub.
+5. **Explicitly request review** from a maintainer (`gh pr edit <N> --add-reviewer <login>`);
+   opening a PR is not a review request. Aim for a reviewable PR within about 24 hours of
+   starting; a draft PR may show incomplete work ([issue workflow](docs/ISSUE_WORKFLOW.md#implementation-and-pr-handoff)).
+6. Obtain the required approval and passing GitHub required checks; GitHub also requires the
+   branch to be up to date with `main` before merging. Merge through GitHub.
    Do not push directly to protected `main` or bypass its rules. Delete the merged topic
    branch when no longer needed.
 

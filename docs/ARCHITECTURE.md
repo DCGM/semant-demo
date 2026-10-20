@@ -43,7 +43,7 @@ flowchart TB
 
 ### 1. Embedding Service (`embedding_service/`)
 
-A lightweight FastAPI server that wraps `BAAI/bge-multilingual-gemma2` via `sentence-transformers`. Runs on GPU for fast inference.
+The **former** embedding service: a FastAPI server wrapping `BAAI/bge-multilingual-gemma2` via `sentence-transformers`. It is no longer deployed. The deployed embedder is `Qwen/Qwen3-Embedding-0.6B` on vLLM (`deploy/docker-compose.embedder.yml`, #385), which the backend queries through an `openai` search vector (`configs/search_vectors_qwen.yaml`; see [Search vectors](#search-pipeline)). The default `configs/search_vectors.yaml` still targets this service.
 
 | Endpoint | Input | Output |
 |---|---|---|

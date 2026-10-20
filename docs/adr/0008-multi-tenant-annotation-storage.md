@@ -1,7 +1,7 @@
 # ADR 0008 - One annotation tenant per user collection
 
-Status: storage, access, lifecycle and migration tooling implemented in #327; the migration of
-the deployed stores and the enabling of idle deactivation are pending operator steps.
+Status: storage, access, lifecycle and migration tooling implemented in #327; production and
+the shared test store were migrated on 2026-10-18. Enabling idle deactivation is pending.
 Date: 2026-10-18. Agreed in the collection-workspace plan (#311, #323); refines ADR 0004's
 storage of span annotations, not its chunk tag search. Derived annotation data on the same
 objects: [ADR 0009](0009-derived-annotation-data.md) (#328).
