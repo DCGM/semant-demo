@@ -10,8 +10,8 @@ and PR requirements.
 
 ## 1. Working on a change
 
-Read the affected code, callers, and tests, plus
-[current architecture](docs/ARCHITECTURE.md), the
+Read the affected code, callers, and tests, plus the module map and the affected
+feature's sections of the [current architecture](docs/ARCHITECTURE.md), the
 [continuing design principles](docs/TARGET_ARCHITECTURE.md), relevant
 [ADRs](docs/adr/README.md), and [active follow-ups](docs/TODO.md).
 Do not reopen settled product behavior or treat a proposal as implemented code.
@@ -103,14 +103,10 @@ Known legacy findings are recorded, not hidden:
   Widen the rule set as code is cleaned up rather than adding blanket ignores.
 - ESLint warnings are reported but do not fail the check; errors do.
 
-Run the application with the seeded local environment: `make dev-up` once per session,
-then `make dev-backend` and `make dev-frontend` in two terminals, and open
-<http://localhost:9000> (e.g. `owner` / `owner-password-1`). It needs no snapshot, server
-access or AI credentials; AI providers are deterministic fakes. Its data lives in a Docker
-volume and `.dev-data/` (ignored by git) and survives restarts; `make dev-reset` restores the
-fixture corpus after showing what it destroys. Humans and coding agents use the same
-targets; there is no separate agent environment. Tests build apps with
-`create_app(Config(environ=...))` and never use the development stores.
+Run the application with the seeded local environment described in
+[DEVELOPMENT.md §1](docs/DEVELOPMENT.md#1-quick-start-the-seeded-local-application).
+Humans and coding agents use the same targets; there is no separate agent environment.
+Tests build apps with `create_app(Config(environ=...))` and never use the development stores.
 
 A realistic database snapshot under `local_data/` is an optional, explicitly authorized
 workflow ([DEVELOPMENT.md](docs/DEVELOPMENT.md#5-advanced-an-authorized-realistic-snapshot)).
@@ -124,15 +120,25 @@ requires it.
 
 ## 3. Code and API rules
 
-- Routes handle HTTP and authentication; service functions enforce resource access and
-  coordinate work. Shared users may edit annotations, **not collection membership**.
-  Keep those permission checks separate.
-- Concrete persistence code belongs in `adapters/`, not in a duplicate feature repository.
-  Keep SDK objects out of services. Classes, ports, and additional model layers are optional.
-  Cross-feature calls use supported service/access functions and must not create cycles.
+- Routes are thin: they handle HTTP and authentication; service functions enforce resource
+  access and coordinate work. Authentication alone is not authorization. Shared users may
+  edit annotations, **not collection membership**; keep those permission checks separate
+  ([ADR 0007](docs/adr/0007-access-and-collaboration.md)).
+- Concrete persistence code belongs in `adapters/` (e.g. `adapters/weaviate/`,
+  `adapters/sql/`), not in a duplicate feature repository. Keep SDK filters and objects out
+  of services. Classes, ports, and additional model layers are optional: a concrete adapter
+  type annotation is acceptable initially; add a narrow Protocol only when it is useful.
+  Cross-feature calls use supported service/access functions, never another feature's
+  adapters, and must not create cycles ([ADR 0001](docs/adr/0001-simple-feature-monolith.md)).
+  Do not add mandatory CRUD methods that raise `NotImplementedError`, speculative layers,
+  generic event buses, or a new job framework.
 - Type changed public inputs/outputs. Use `UUID` internally and existing naming conventions.
-  Preserve wire fields, nullability, operation IDs, canonical text, and stored offsets
-  during moves. See the target architecture for feature ownership and roadmap contracts.
+  Preserve wire fields, nullability, operation IDs, canonical text, cross-chunk offsets, and
+  the meaning of annotation categories during moves; do not redesign category/provenance
+  fields as part of a move. Frontend code keeps its context and late-response guards
+  ([ADR 0006](docs/adr/0006-context-and-text.md)). See the target architecture for feature
+  ownership and the [ADR index](docs/adr/README.md#confirmed-decisions) for confirmed
+  product behavior.
 
 `npm run api-check` / `api-generate` and `make api-check` / `api-generate` are the same
 check: without `PYTHON`, `scripts/api-client.sh` uses the repository's `.venv/bin/python`
@@ -196,16 +202,21 @@ silently skipping. Record unavailable checks honestly.
 
 ## 5. Data, failures, and safety
 
-Keep successful steps in best-effort operations and report failed or uncertain steps;
-no automatic rollback or repair system. A timed-out write is not necessarily absent.
-AI generation is request-scoped: persist results incrementally, cancel/await remaining
-work on disconnect, and retain saved results. See [ADR 0002](docs/adr/0002-best-effort-writes.md)
+Keep successful steps in best-effort operations and report failed or uncertain steps
+honestly; no automatic rollback, repair system, or silent success. A timed-out write is not
+necessarily absent; prefer safe, explicit retries. AI generation is request-scoped: persist
+results incrementally, cancel/await remaining work on disconnect, and retain saved results.
+Persisted results do not imply a durable job. See [ADR 0002](docs/adr/0002-best-effort-writes.md)
 and [ADR 0003](docs/adr/0003-request-scoped-ai.md).
 
+Keep annotation search on the chunk tag attributes in Weaviate: no SQL split, large
+ID-list bridge, or new span-based query design during cleanup
+([ADR 0004](docs/adr/0004-storage-and-annotation-search.md)).
 Storage/schema changes need an explicit, reviewed migration and compatibility plan.
 Never mutate schema during a normal request. The current schema-reset script drops
 collections; do not use it on shared stores. The SQL database (`tasks.db` by default, a
-historical name) holds user accounts and RAG feedback: never delete or recreate it as cleanup. Data cleanup is separately reviewed, with a dry run and backup where destructive ([DATA_MAINTENANCE.md](docs/DATA_MAINTENANCE.md)).
+historical name) holds user accounts and RAG feedback: never delete or recreate it as
+cleanup, including when removing legacy task code. Data cleanup is separately reviewed, with a dry run and backup where destructive ([DATA_MAINTENANCE.md](docs/DATA_MAINTENANCE.md)).
 
 Do not commit secrets or log tokens/private text/prompts by default. Log exception
 classes, not provider or storage exception messages, and return fixed client errors for
@@ -229,8 +240,8 @@ Open pull requests **into `main`**.
    again and integrate any new `main` commits into **your feature branch** (for example,
    `git merge origin/main`); resolve conflicts and rerun impacted checks. Do not force-push
    shared/protected branches.
-4. Push the topic branch and open a PR whose base is `main`. State outcomes, compatibility,
-   checks actually run, and any deployment/data risk.
+4. Push the topic branch and open a PR whose base is `main`, filling in the
+   [pull request template](.github/pull_request_template.md).
 5. Obtain the required human review and passing GitHub required checks; merge through GitHub.
    Do not push directly to protected `main` or bypass its rules. Delete the merged topic
    branch when no longer needed.
@@ -241,9 +252,8 @@ suite before release. Documentation-only changes need link/format checks, not ap
 or provider runs. Required CI failures block merging; PR previews intentionally deploy even
 when checks fail for manual diagnosis ([deploy/README.md](deploy/README.md#pr-preview-credentials)).
 
-PRs state the purpose, behavior/API/schema changes, actual checks/results, unavailable
-checks, and compatibility/migration notes. Meaningful UI changes follow the
-[UI change checklist](#ui-change-checklist). Agent-authored implementation must be reviewed before merge, preferably by a
+The [pull request template](.github/pull_request_template.md) lists what a PR description
+states. Meaningful UI changes follow the [UI change checklist](#ui-change-checklist). Agent-authored implementation must be reviewed before merge, preferably by a
 separate reviewer from the implementing agent. Access-control changes, destructive
 data changes, deployment changes, and other high-risk changes require explicit
 human review. Keep CI execution isolated from production credentials and deploy the tested artifact.
@@ -269,7 +279,17 @@ the affected component; note omitted evidence if a reviewer might expect it.
    a short recording, showing the changed state (e.g. selected, expanded, empty, signed
    out) at relevant widths, not just the default view. Unaffected widths need no
    screenshots. If a relevant context or state could not be captured, say which and
-   why; do not imply it was.
+   why; do not imply it was. Attach only synthetic/fixture screenshots, uploaded with
+   GitHub CLI 2.99 or newer (or in the browser):
+   - `gh pr edit <N> --attach './shot.png#What the screenshot shows'` appends a
+     screenshot to the PR description; `gh pr comment <N> --attach ...` adds it in a
+     comment. Repeat `--attach` for several files and give each a descriptive alt text
+     after `#`.
+   - To place images, e.g. in a table, reference them in a body file as
+     `![alt](./shot.png)` and pass `-F body.md --attach ./shot.png`; the references are
+     rewritten to the uploaded assets.
+   - Verify that the PR renders them: `gh pr view <N> --json body` shows
+     `github.com/user-attachments/...` URLs.
 3. **Review what applies:** card/title/metadata alignment, text overflow and wrapping
    (long titles, narrow toolbars), selected/hover/focus states, controls gated by
    authorization or ownership, keyboard and touch interaction, and direct links/reloads
