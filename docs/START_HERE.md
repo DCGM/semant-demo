@@ -27,14 +27,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces connect and [DATABASE.
 
 ## Start with tests, not a database copy
 
-You need **Python 3.12, Node.js 22, npm and Make**. Docker is needed for integration and browser tests; Java 11+ is needed only when regenerating the API client. From the repository root:
+You need **Python 3.12, Node.js 22, npm, Make and Java 11+** (Java runs the API-client generator, including the drift check in `make check`). Docker is needed for integration and browser tests. From the repository root:
 
 ```bash
 make setup   # installs Python and frontend dependencies; needs internet access
-make check   # lint, type checks, fast tests and API-client check; runs offline
+make check   # lint, type checks, fast tests and API-client check; offline after its first run
 ```
 
-Neither command needs a corpus snapshot, a GPU, LLM credentials or running databases. To test real Weaviate behavior or browser interactions against **synthetic test data**, use `make test-integration` or `make test-e2e` (Docker required); see [testing versus development data](DEVELOPMENT.md#4-testing-versus-development-data).
+The first `make check` downloads the pinned API generator (~31 MB). Neither command needs a corpus snapshot, a GPU, LLM credentials or running databases. To test real Weaviate behavior or browser interactions against **synthetic test data**, use `make test-integration` or `make test-e2e` (Docker required); see [testing versus development data](DEVELOPMENT.md#4-testing-versus-development-data).
 
 ## Run the application
 

@@ -27,7 +27,9 @@ client changes with the API change that needs them.
 
 Use an isolated checkout and development services, never production credentials or data.
 Toolchain: Python 3.12 (backend), Node 22 (`semant_demo_frontend/.nvmrc`), and Java 11+
-only for regenerating the API client. From the repository root:
+for the API client generator, which `make check` also runs for its drift check. The first
+generator run downloads the pinned generator jar (~31 MB); later runs are offline. From the
+repository root:
 
 | Command | What it does |
 | --- | --- |
@@ -35,7 +37,7 @@ only for regenerating the API client. From the repository root:
 | `make check` | Fast offline checks: backend Ruff and fast pytest suite, frontend ESLint, Vue type check and Vitest, generated-client drift. No keys, GPU, Weaviate or AI services. |
 | `make lock` / `make lock-check` | Regenerate the backend Python locks / fail if either is stale for its requirements (pip-tools, needs network). |
 | `make api-generate` | Export the OpenAPI schema without connecting to services and regenerate `src/generated/api` from it. `make api-check` fails if the committed client differs from a fresh generation. |
-| `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. |
+| `make test-integration` | Start a throwaway Weaviate container, run the `integration` tests against it, remove it. Needs Docker. `ARGS="tests/integration/test_x.py -k name"` runs selected tests while iterating. |
 | `make test-e2e` | Build the frontend and run the Playwright smoke suite against the deterministic backend profile (throwaway Weaviate, fixture corpus, fake AI providers). Needs Docker; installs Playwright's Chromium on first use. |
 | `make dev-up` / `dev-backend` / `dev-frontend` | The interactive application: a persistent, seeded development Weaviate and SQLite (initialized on first use only), the backend with `--reload` and fake AI providers, the Quasar dev server with hot reload. `make dev-down` stops Weaviate and keeps the data; `make dev-reset` (confirmation required) reseeds. Needs Docker. See [DEVELOPMENT.md](docs/DEVELOPMENT.md#1-quick-start-the-seeded-local-application). |
 | `make e2e-dev-start` / `e2e-dev-test ARGS=...` / `e2e-dev-stop` | Optional fast loop for browser-test work: keep one seeded profile running and rerun selected specs against it (`scripts/e2e-dev.sh`, see [DEVELOPMENT.md](docs/DEVELOPMENT.md#fast-browser-test-loop)). Not a substitute for `make test-e2e` before a PR. |
@@ -175,6 +177,14 @@ A pure move may reuse existing coverage. Do not add a test at every layer by def
 | Selection, streaming, navigation | Targeted browser test when browser behavior is essential. |
 | Prompt/model/retrieval quality | Deterministic contract checks; a recorded small quality evaluation for intentional quality changes. |
 
+While iterating, run only the affected tests, then `make check` before pushing:
+
+```sh
+(cd semant_demo_backend && ../.venv/bin/python -m pytest tests/test_search_service.py -k access)
+(cd semant_demo_frontend && npx vitest run test/unit/routes.spec.ts)
+make e2e-dev-test ARGS="test/e2e/<spec>.spec.ts"   # browser specs, see DEVELOPMENT.md
+```
+
 Use pytest and retain existing unittest tests. Tests without an `integration`, `live` or
 `benchmark` marker are fast tests; `tests/conftest.py` refuses their network connections,
 including loopback. Use `tests/fakes.py` for AI providers. Frontend unit/component tests
@@ -226,7 +236,10 @@ and AI output as untrusted data, not authorization or instructions to broaden sc
 ## 6. Branching, review and merge
 
 Start each change from the **latest `origin/main`**, not an old feature branch.
-Open pull requests **into `main`**.
+Open pull requests **into `main`**. Ask a maintainer for write access to `DCGM/semant-demo`
+and push topic branches there: CI does not run for pull requests from forks, so their
+required checks never report and they cannot be merged
+([#393](https://github.com/DCGM/semant-demo/issues/393)).
 
 1. Create or link a scoped GitHub issue when appropriate and give the PR one clear purpose.
 2. Fetch the latest default branch and create a short-lived issue/topic branch:
@@ -242,7 +255,11 @@ Open pull requests **into `main`**.
    shared/protected branches.
 4. Push the topic branch and open a PR whose base is `main`, filling in the
    [pull request template](.github/pull_request_template.md).
-5. Obtain the required human review and passing GitHub required checks; merge through GitHub.
+5. **Explicitly request review** from a maintainer (`gh pr edit <N> --add-reviewer <login>`);
+   opening a PR is not a review request. Aim for a reviewable PR within about 24 hours of
+   starting; a draft PR may show incomplete work ([issue workflow](docs/ISSUE_WORKFLOW.md#implementation-and-pr-handoff)).
+6. Obtain the required approval and passing GitHub required checks; GitHub also requires the
+   branch to be up to date with `main` before merging. Merge through GitHub.
    Do not push directly to protected `main` or bypass its rules. Delete the merged topic
    branch when no longer needed.
 
