@@ -30,6 +30,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 - [#319](https://github.com/DCGM/semant-demo/issues/319) — access tokens live 7 days without renewal, and the stateless JWT logout revokes nothing server-side: signing out only forgets the token in this browser (all its tabs).
 - [#212](https://github.com/DCGM/semant-demo/issues/212) — run the browser smoke suite (`make test-e2e`) in CI.
+- [#444](https://github.com/DCGM/semant-demo/issues/444) — several `weaviate_utils/` scripts delete data or change the schema on `localhost` as soon as they run, without arguments or confirmation ([agent-readiness audit](AGENT_READINESS_AUDIT_2026-10.md)).
 - [#261](https://github.com/DCGM/semant-demo/issues/261) — reproducibility of the production frontend build. The backend Python packages are locked; the base images and the embedding service requirements are not ([DEPLOYMENT.md](DEPLOYMENT.md#docker--production-deployment)).
 - The seeded local development environment ([DEVELOPMENT.md](DEVELOPMENT.md#2-lifecycle-reset-and-safety), #438) runs one instance per machine (fixed container, volume and ports); parallel checkouts or agents must take turns. Its corpus is the small test fixture; a richer deterministic dataset is separate follow-up work.
 - PR previews share the server and Docker daemon with CI and the other deployments; separate preview credentials limit, but do not isolate, them ([deploy/README](../deploy/README.md#pr-preview-credentials)). Host separation is out of scope.
