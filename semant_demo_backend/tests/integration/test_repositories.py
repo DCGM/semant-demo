@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from weaviate.classes.data import DataObject
-from weaviate.classes.query import QueryReference
+from weaviate.classes.query import Filter, QueryReference
 
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.user_collections.schemas import PatchCollection
@@ -371,6 +371,66 @@ async def test_collection_delete_unlinks_more_than_a_page_of_chunks(
     # Other collections keep their members.
     assert await collections.document_in_collection(doc(corpus, "chronicle"), col(corpus, "chronicles"))
     assert await collections.document_in_collection(doc(corpus, "gazette"), col(corpus, "outsider_notes"))
+
+
+async def test_tag_deduplication_finds_a_match_beyond_2000_limit(
+        tags, corpus, seeded_store, collection_names):
+    chronicles = col(corpus, "chronicles")
+
+    extra = [
+        (
+            uuid4(),
+            PostTag(
+                name=f"Dedup tag {i}",
+                shorthand=f"D{i}",
+                color="red",
+                pictogram="label",
+                definition=f"Definition {i}",
+                examples=[f"Example {i}"],
+            ),
+        )
+        for i in range(2001)
+    ]
+
+    await insert(seeded_store, collection_names.tag_collection_name, [
+        DataObject(
+            uuid=tag_id,
+            properties={
+                "tag_name": tag.name,
+                "tag_shorthand": tag.shorthand,
+                "tag_color": tag.color,
+                "tag_pictogram": tag.pictogram,
+                "tag_definition": tag.definition,
+                "tag_examples": tag.examples,
+            },
+            references={"userCollection": str(chronicles)},
+        )
+        for tag_id, tag in extra
+    ])
+
+    tag_collection = seeded_store.collections.get(collection_names.tag_collection_name)
+    first_2000 = await tag_collection.query.fetch_objects(
+        filters=Filter.by_ref("userCollection").by_id().equal(chronicles),
+        limit=2000,
+        return_properties=[],
+    )
+    first_2000_ids = {obj.uuid for obj in first_2000.objects}
+
+    target_id, target = next(
+        (tag_id, tag)
+        for tag_id, tag in extra
+        if tag_id not in first_2000_ids
+    )
+
+    found = await tags.find_same(chronicles, target)
+
+    assert found is not None
+    assert found.id == target_id
+
+    assert await tags.find_same(
+        chronicles,
+        target.model_copy(update={"color": "blue"}),
+    ) is None
 
 
 #########################
