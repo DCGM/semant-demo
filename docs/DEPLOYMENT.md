@@ -77,6 +77,8 @@ first.
 
 ### 3. Embedding Service
 
+This runs the **former** Gemma service, which the default `configs/search_vectors.yaml` targets. The deployed embedder is Qwen3-Embedding-0.6B on vLLM ([deploy/README](../deploy/README.md#qwen-embedding-service-385)); use it with `SEARCH_VECTORS_CONFIG` pointing at `configs/search_vectors_qwen.yaml` (adjust its `base_url`).
+
 ```bash
 cd embedding_service
 pip install -r requirements.txt
@@ -198,7 +200,7 @@ uses it only if LangSmith tracing is enabled (`LANGCHAIN_TRACING_V2`), which wou
 prompts and texts to LangSmith. `SQL_DB_PATH` and the build arguments are used by Docker
 Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 
-### Embedding Service
+### Embedding Service (former Gemma service)
 
 | Variable | Default | Description |
 |---|---|---|
