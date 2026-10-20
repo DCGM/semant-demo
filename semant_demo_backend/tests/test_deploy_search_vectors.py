@@ -1,9 +1,9 @@
 """Production and the test instances search the Qwen vector (#385) and embed annotations with it (#328)."""
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 import pytest
 
-from semant_demo.config import SCRIPT_PATH
+from semant_demo.config import SCRIPT_PATH, Config
 from semant_demo.features.annotations.enrichment import load_annotation_vector_settings
 from semant_demo.features.search.vectors import load_search_vectors_settings
 from tests.test_deploy_feedback_storage import _env_value
@@ -32,3 +32,12 @@ def test_instances_embed_annotations_with_the_qwen_embedder_shipped_in_the_image
     assert settings.embedding.base_url == "http://qwen-embedder:8000/v1"
     assert settings.embedding.model == load_search_vectors_settings(
         SCRIPT_PATH / "configs" / "search_vectors_qwen.yaml").vectors[0].embedding.model
+
+
+@pytest.mark.parametrize("template", [".env.example", ".env.test.example"])
+def test_the_default_vector_configuration_is_the_one_the_instances_select(template):
+    # Without the settings, an instance searches and embeds as production does.
+    default = Config(environ={})
+    for name in ("SEARCH_VECTORS_CONFIG", "ANNOTATION_VECTOR_CONFIG"):
+        deployed = SCRIPT_PATH.parent / PurePosixPath(_env_value(template, name)).relative_to(APP_ROOT)
+        assert Path(getattr(default, name)) == deployed

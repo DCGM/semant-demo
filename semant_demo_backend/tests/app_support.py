@@ -40,6 +40,9 @@ def make_test_config(tmp_dir: Path, **overrides: str) -> Config:
         "LLM_MODELS_CONFIG": str(llm_models_path),
         "STATIC_PATH": str(tmp_dir / "no_static"),
         "FEEDBACK_LOG_PATH": str(tmp_dir / "feedback.log.jsonl"),
+        # The fixture store's `default` chunk vector, embedded by the unreachable
+        # EMBEDDING_SERVICE_HOST above, not the deployed default (#385); tests inject embedders.
+        "SEARCH_VECTORS_CONFIG": str(SCRIPT_PATH / "configs" / "search_vectors_gemma.yaml"),
         # No contextual annotation vector: its embedder would be a live provider (#328).
         "ANNOTATION_VECTOR_CONFIG": "",
     }

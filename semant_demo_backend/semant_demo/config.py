@@ -29,10 +29,12 @@ class Config:
         self.GEMMA_URL = f"http://{embedding_service_host}:{embedding_service_port}"
         #self.GEMMA_URL = "http://localhost:8001"
         # Search vectors: Weaviate named vectors and their query embedding (features/search/vectors.py).
-        self.SEARCH_VECTORS_CONFIG = env.get("SEARCH_VECTORS_CONFIG", str(SCRIPT_PATH / "configs" / "search_vectors.yaml"))
+        # The defaults are the deployed Qwen embedder (#385), as in deploy/.env*.example.
+        self.SEARCH_VECTORS_CONFIG = env.get("SEARCH_VECTORS_CONFIG",
+                                             str(SCRIPT_PATH / "configs" / "search_vectors_qwen.yaml"))
         # Contextual vector of span annotations (#328, features/annotations/enrichment.py); empty: none.
         self.ANNOTATION_VECTOR_CONFIG = env.get("ANNOTATION_VECTOR_CONFIG",
-                                                str(SCRIPT_PATH / "configs" / "annotation_vector.yaml"))
+                                                str(SCRIPT_PATH / "configs" / "annotation_vector_qwen.yaml"))
         # Bearer key of the OpenAI-compatible embedding endpoints of search vectors; empty sends none.
         self.EMBEDDING_API_KEY = env.get("EMBEDDING_API_KEY", "")
 

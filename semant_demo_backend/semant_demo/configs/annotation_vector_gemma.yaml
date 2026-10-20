@@ -1,0 +1,11 @@
+# Contextual annotation vector (#328) with the former Gemma embedding service
+# (embedding_service/, no longer deployed). Not active by default; selected by
+# ANNOTATION_VECTOR_CONFIG pointing at this file. The local development and browser-test
+# profiles use it with the fake providers (tests/fake_providers.py). Fields and the meaning
+# of `id`: annotation_vector_qwen.yaml.
+
+id: bge-gemma2-context-v1
+target_vector: contextual
+template: "{left}<<<{text}>>>{right}"
+embedding:
+  provider: embedding_service  # EMBEDDING_SERVICE_HOST / EMBEDDING_SERVICE_PORT

@@ -42,14 +42,23 @@ def settings(**overrides) -> dict:
 # Configuration #
 #################
 
-def test_the_shipped_configuration_keeps_the_original_vector_as_default():
-    vectors = load_search_vectors(Config(environ={"EMBEDDING_SERVICE_HOST": "embedding.invalid"}))
+def test_the_default_configuration_searches_the_deployed_qwen_vector():
+    vectors = load_search_vectors(Config(environ={}))
+
+    default = vectors.resolve(None)
+    assert (default.target_vector, type(default.embedder)) == ("Qwen3_Embedding_0_6B", OpenAICompatibleEmbeddings)
+    assert vectors.describe().model_dump() == {"default_vector": default.id, "vectors": [
+        {"id": default.id, "name": default.name, "description": default.description}]}
+
+
+def test_the_gemma_configuration_queries_the_original_vector_through_the_embedding_service():
+    vectors = load_search_vectors(Config(environ={
+        "SEARCH_VECTORS_CONFIG": str(SCRIPT_PATH / "configs" / "search_vectors_gemma.yaml"),
+        "EMBEDDING_SERVICE_HOST": "embedding.invalid"}))
 
     default = vectors.resolve(None)
     assert (default.target_vector, type(default.embedder)) == ("default", GemmaEmbeddings)
     assert default.embedder.base_url == "http://embedding.invalid:8001"
-    assert vectors.describe().model_dump() == {"default_vector": default.id, "vectors": [
-        {"id": default.id, "name": default.name, "description": default.description}]}
 
 
 def test_a_configuration_file_is_found_through_the_setting(tmp_path):
