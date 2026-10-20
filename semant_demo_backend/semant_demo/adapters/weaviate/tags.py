@@ -48,13 +48,11 @@ class TagRepository:
         """
         A tag of the collection with exactly the same fields (examples in any order), or
         None. Raises ``NotFoundError`` if the collection does not exist.
-
-        Reads at most 2000 tags of the collection (#218).
         """
         collections = self.client.collections.get(self.collectionNames.user_collection_name)
         if await collections.query.fetch_object_by_id(collection_id, return_properties=[]) is None:
             raise NotFoundError("Collection not found")
-        
+
         filters = (
             Filter.by_ref("userCollection").by_id().equal(collection_id)
             & Filter.by_property("tag_name").equal(tag.name)
