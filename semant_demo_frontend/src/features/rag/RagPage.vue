@@ -269,7 +269,7 @@ const selectedRAG = ref<RagRouteConfig | null>(null)
 
 const chunkNumber = ref<number>(5)
 
-const explainButttonnRef = ref<any>(null)
+const explainButttonnRef = ref<{ $el: HTMLElement } | null>(null)
 const selectionData = ref({ show: false, x: 0, y: 0, text: '', msgIndex: -1 })
 const explanationDialog = ref({ show: false, text: '', loading: false })
 

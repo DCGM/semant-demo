@@ -445,6 +445,8 @@ A best-effort daily allowance of AI work per visitor (#371), to discourage misus
 
 #### Tags and Tag Spans (`features/annotations/`, `adapters/weaviate/spans.py`, `adapters/weaviate/tags.py`)
 
+`GET /api/user_collections/{id}/tags` lists a collection's tags by name (case-insensitive, then id; #348), because Weaviate returns them in no defined order. The document tags panel puts tags with more annotations first and keeps that order among equals.
+
 Tags can additionally be anchored to specific character ranges inside a chunk: span annotations, stored in the multi-tenant `Annotation` collection ([below](#annotation-storage-one-tenant-per-collection-327)). Three span types coexist:
 
 - `pos` — manually confirmed positive span (created by a human reviewer).
