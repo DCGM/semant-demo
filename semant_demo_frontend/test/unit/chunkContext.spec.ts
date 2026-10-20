@@ -238,6 +238,19 @@ describe('ChunkContextPanel', () => {
   const button = (wrapper: ReturnType<typeof mountPanel>, label: string) =>
     wrapper.findAll('button').find(b => b.text().includes(label))
 
+  it('marks an exact span, continuing into the following chunk until a gap in order', async () => {
+    // "Paragraph 4" + "Paragraph 5": offsets 10..14 cover "4" and "Para".
+    const wrapper = mountPanel({ highlight: { chunkId: 'doc-1-c4', start: 10, end: 15 } })
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid="chunk-context-mark"]').map(m => m.text())).toEqual(['4', 'Para'])
+    expect(wrapper.get('[data-chunk-id="doc-1-c4"]').text()).toBe('Paragraph 4')
+
+    const gap = [chunk(3), chunk(4), chunk(6)]
+    const withGap = mountPanel({ chunks: gap, highlight: { chunkId: 'doc-1-c4', start: 10, end: 15 } })
+    await flushPromises()
+    expect(withGap.findAll('[data-testid="chunk-context-mark"]').map(m => m.text())).toEqual(['4'])
+  })
+
   it('highlights the target chunk under a header with title, year and Focus on result', async () => {
     const wrapper = mountPanel({ hasBefore: true, returnLabel: 'Focus on result' })
     await flushPromises()

@@ -37,7 +37,8 @@ from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty, Tokenization
-from weaviate.classes.query import Filter, MetadataQuery
+from weaviate.classes.aggregate import GroupByAggregate
+from weaviate.classes.query import Filter, MetadataQuery, Sort
 from weaviate.classes.tenants import Tenant, TenantActivityStatus
 from weaviate.exceptions import WeaviateBaseError
 
@@ -46,7 +47,9 @@ from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import NoProgressError
-from semant_demo.features.annotations.schemas import AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan
+from semant_demo.features.annotations.schemas import (
+    AnnotationQuery, AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +196,18 @@ def to_row(obj) -> AnnotationRow:
     props = obj.properties
     distance = getattr(obj.metadata, "distance", None)
     return AnnotationRow(id=obj.uuid, distance=distance, **{k: props.get(k) for k in _ROW})
+
+
+def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None):
+    """The Weaviate filter of a concordance query; ``like`` on the word-tokenized text
+    matches inside one word and ignores case."""
+    conditions = [Filter.by_property("type").contains_any([t.value for t in query.types])]
+    if query.tag_ids:
+        conditions.append(Filter.by_property("tagId").contains_any(list(query.tag_ids)))
+    conditions.extend(Filter.by_property("text").like(f"*{word}*") for word in query.words)
+    if document_ids is not None:
+        conditions.append(Filter.by_property("documentId").contains_any(list(document_ids)))
+    return Filter.all_of(conditions)
 
 
 def pair_of(span: TagSpan) -> ChunkTag:
@@ -383,6 +398,47 @@ class SpanRepository:
         async def read():
             response = await self._tenant(collection_id).query.fetch_objects(
                 filters=Filter.all_of(conditions) if conditions else None, limit=limit, offset=offset,
+                return_properties=_ROW)
+            return [to_row(o) for o in response.objects]
+        return await self._read(collection_id, read, [])
+
+    # ── Concordance queries (#329) ────────────────────────────────────────
+
+    async def count_by_document(self, collection_id: UUID, query: AnnotationQuery, limit: int) -> dict[UUID, int]:
+        """Matching spans per document, for at most ``limit`` documents (one aggregation;
+        spans without a document are not counted)."""
+        async def count():
+            result = await self._tenant(collection_id).aggregate.over_all(
+                filters=_query_filter(query), group_by=GroupByAggregate(prop="documentId", limit=limit),
+                total_count=True)
+            return {UUID(str(g.grouped_by.value)): g.total_count or 0 for g in result.groups}
+        return await self._read(collection_id, count, {})
+
+    async def count_rows(self, collection_id: UUID, query: AnnotationQuery,
+                         document_ids: list[UUID] | None = None) -> int:
+        """Matching spans, of the given documents when ``document_ids`` is not None."""
+        if document_ids is not None and not document_ids:
+            return 0
+
+        async def count():
+            result = await self._tenant(collection_id).aggregate.over_all(
+                filters=_query_filter(query, document_ids), total_count=True)
+            return result.total_count or 0
+        return await self._read(collection_id, count, 0)
+
+    async def query_rows(self, collection_id: UUID, query: AnnotationQuery, *, by_text: bool,
+                         document_ids: list[UUID] | None = None, limit: int, offset: int = 0) -> list[AnnotationRow]:
+        """One page of matching spans (of the given documents when ``document_ids`` is not
+        None) with their derived fields, by annotated text or by position in the document,
+        each ending with the span id."""
+        if document_ids is not None and not document_ids:
+            return []
+        sort = (Sort.by_property("text") if by_text else
+                Sort.by_property("positionSegment").by_property("documentStartChar").by_property("documentEndChar"))
+
+        async def read():
+            response = await self._tenant(collection_id).query.fetch_objects(
+                filters=_query_filter(query, document_ids), sort=sort.by_property("_id"), limit=limit, offset=offset,
                 return_properties=_ROW)
             return [to_row(o) for o in response.objects]
         return await self._read(collection_id, read, [])

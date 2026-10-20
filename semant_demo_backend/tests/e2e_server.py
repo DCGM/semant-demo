@@ -66,7 +66,7 @@ def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, f
 async def prepare_stores(config, endpoint: StoreEndpoint) -> None:
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from tests.seed import seed_users, seed_weaviate
+    from tests.seed import derive_annotations, seed_users, seed_weaviate
     from tests.weaviate_store import connect, create_app_schema, drop_app_collections
 
     corpus = load_corpus()
@@ -75,6 +75,8 @@ async def prepare_stores(config, endpoint: StoreEndpoint) -> None:
         await drop_app_collections(client, config.collectionNames, endpoint.token)
         await create_app_schema(client, config.collectionNames)
         await seed_weaviate(client, config.collectionNames, corpus, endpoint.token)
+        # Concordance rows (#329) read the derived text, as on a migrated store.
+        await derive_annotations(client, config, corpus)
     finally:
         await client.close()
     engine = create_async_engine(config.SQL_DB_URL)

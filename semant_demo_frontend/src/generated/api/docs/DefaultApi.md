@@ -38,6 +38,8 @@ All URIs are relative to *http://localhost*
 | [**getQuotaStatusApiQuotaGet**](DefaultApi.md#getquotastatusapiquotaget) | **GET** /api/quota | Get Quota Status |
 | [**getTagApiTagsTagUuidGet**](DefaultApi.md#gettagapitagstaguuidget) | **GET** /api/tags/{tag_uuid} | Get Tag |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
+| [**listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet**](DefaultApi.md#listannotateddocumentsapiusercollectionscollectionidannotationsdocumentsget) | **GET** /api/user_collections/{collection_id}/annotations/documents | List Annotated Documents |
+| [**listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet**](DefaultApi.md#listcollectionannotationsapiusercollectionscollectionidannotationsget) | **GET** /api/user_collections/{collection_id}/annotations | List Collection Annotations |
 | [**questionApiQuestionPost**](DefaultApi.md#questionapiquestionpost) | **POST** /api/question | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
 | [**readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet**](DefaultApi.md#readdocumentadjacentchunksapidocumentsdocumentidchunkschunkidadjacentget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/adjacent | Read Document Adjacent Chunks |
@@ -2476,6 +2478,183 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet
+
+> Array&lt;AnnotatedDocument&gt; listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(collectionId, tagId, type)
+
+List Annotated Documents
+
+The documents with annotations of the given tags and types, with their counts, by title.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // Array<string> | Only annotations of these tags (repeat the parameter) (optional)
+    tagId: ...,
+    // Array<SpanType> | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto (optional)
+    type: ...,
+  } satisfies ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest;
+
+  try {
+    const data = await api.listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **tagId** | `Array<string>` | Only annotations of these tags (repeat the parameter) | [Optional] |
+| **type** | `Array<SpanType>` | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto | [Optional] |
+
+### Return type
+
+[**Array&lt;AnnotatedDocument&gt;**](AnnotatedDocument.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
+
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, tagId, type, q, documentId, yearFrom, yearTo, sort, limit, offset)
+
+List Collection Annotations
+
+One page of the collection\&#39;s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have &#x60;&#x60;textStatus&#x60;&#x60; other than &#x60;&#x60;ready&#x60;&#x60; and no text.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // Array<string> | Only annotations of these tags (repeat the parameter) (optional)
+    tagId: ...,
+    // Array<SpanType> | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto (optional)
+    type: ...,
+    // string | Words that must each occur in the annotated text (inside a word, any case) (optional)
+    q: q_example,
+    // Array<string> | Only annotations in these documents (optional)
+    documentId: ...,
+    // number | Only documents issued in or after this year (optional)
+    yearFrom: 56,
+    // number | Only documents issued in or before this year (optional)
+    yearTo: 56,
+    // AnnotationSort (optional)
+    sort: ...,
+    // number (optional)
+    limit: 56,
+    // number (optional)
+    offset: 56,
+  } satisfies ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest;
+
+  try {
+    const data = await api.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **tagId** | `Array<string>` | Only annotations of these tags (repeat the parameter) | [Optional] |
+| **type** | `Array<SpanType>` | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto | [Optional] |
+| **q** | `string` | Words that must each occur in the annotated text (inside a word, any case) | [Optional] [Defaults to `undefined`] |
+| **documentId** | `Array<string>` | Only annotations in these documents | [Optional] |
+| **yearFrom** | `number` | Only documents issued in or after this year | [Optional] [Defaults to `undefined`] |
+| **yearTo** | `number` | Only documents issued in or before this year | [Optional] [Defaults to `undefined`] |
+| **sort** | `AnnotationSort` |  | [Optional] [Defaults to `undefined`] [Enum: document, year, text] |
+| **limit** | `number` |  | [Optional] [Defaults to `50`] |
+| **offset** | `number` |  | [Optional] [Defaults to `0`] |
+
+### Return type
+
+[**AnnotationPage**](AnnotationPage.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

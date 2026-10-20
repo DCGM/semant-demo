@@ -123,6 +123,13 @@
         />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
+          name="annotations"
+          label="Annotations"
+          icon="format_quote"
+          :to="{ name: 'collectionAnnotations' }"
+        />
+        <q-separator vertical size="1.8px" inset />
+        <q-route-tab
           name="tags"
           label="Tags"
           icon="label"

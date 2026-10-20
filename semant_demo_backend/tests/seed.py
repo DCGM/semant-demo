@@ -173,3 +173,25 @@ async def seed_users(engine: AsyncEngine, corpus: Corpus) -> None:
             for user in corpus.users.values()
         ])
         await session.commit()
+
+
+async def derive_annotations(client: WeaviateAsyncClient, config, corpus: Corpus) -> None:
+    """Store the seeded annotations' derived text, positions and contextual vectors (#328) as
+    the backend would, with the fake embedder of ``config`` called in-process."""
+    import httpx
+
+    from semant_demo.bootstrap import WeaviateRepositories, detect_enrichment, load_annotation_vector
+    from semant_demo.features.annotations import backfill
+    from semant_demo.features.annotations.service import AnnotationStore
+    from tests.fake_providers import create_fake_provider_app
+
+    transport = httpx.ASGITransport(app=create_fake_provider_app(corpus))
+    vector = load_annotation_vector(config, transport)
+    repos = WeaviateRepositories.create(client, config)
+    enrichment = await detect_enrichment(client, config, vector)
+    store = AnnotationStore(collections=repos.user_collections, tags=repos.tags, spans=repos.spans,
+                            chunk_tags=repos.chunk_tags, documents=repos.documents, enrichment=enrichment)
+    collections = sorted(UUID(name) for name in await repos.spans.list_tenants())
+    result = await backfill.backfill(store, collections, limit=len(corpus.spans) + 1)
+    if result.failed or result.remaining_incomplete:
+        raise RuntimeError(f"Deriving the seeded annotations failed: {result.as_dict()}")

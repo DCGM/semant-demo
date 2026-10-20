@@ -12,10 +12,10 @@
         <q-btn
           flat round dense
           icon="arrow_back"
-          :to="backToDocumentsRoute"
-          aria-label="Back to collection documents"
+          :to="backRoute"
+          :aria-label="backLabel"
         >
-          <q-tooltip>Back to collection documents</q-tooltip>
+          <q-tooltip>{{ backLabel }}</q-tooltip>
         </q-btn>
 
         <div class="q-ml-sm" v-if="documentData">
@@ -172,8 +172,12 @@ const layoutStyle = computed(() => ({
   '--document-layout-height': layoutHeight.value
 }))
 
-const backToDocumentsRoute = computed(() => ({
-  name: 'collectionDocumentsTagging',
+// Opened from the collection's annotation workspace (#329), it leads back there. (No route
+// when the layout is mounted without a router, as in component tests.)
+const fromAnnotations = computed(() => route?.query.from === 'annotations')
+const backLabel = computed(() => fromAnnotations.value ? 'Back to annotations' : 'Back to collection documents')
+const backRoute = computed(() => ({
+  name: fromAnnotations.value ? 'collectionAnnotations' : 'collectionDocumentsTagging',
   params: {
     collectionId:
       props.collectionId ||

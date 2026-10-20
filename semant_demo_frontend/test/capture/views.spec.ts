@@ -1,6 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import {
-  annotation, answerChat, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, selectText,
+  annotation, answerChat, apiToken, deleteAddedSpans, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, selectText,
   sidebarPanelButton
 } from '../e2e/support'
 
@@ -109,6 +109,38 @@ test('document view - popover, bulk bar and create-tag dialog (#379)', async ({ 
   await expect(page.locator('.q-dialog').getByLabel('Tag Name')).toBeVisible()
   await expect(page.locator('.q-dialog__inner')).not.toHaveClass(/q-transition/) // fully in
   await save(page, testInfo, 'document-view-create-tag-dialog')
+})
+
+test('annotation workspace (#329)', async ({ page, request }, testInfo) => {
+  // A few more annotations than the fixture holds: a repeated name, a long cross-chunk span.
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const first = fixture.chunk('chronicle_1').text
+  const spans: [string, number, number][] = [
+    ['chronicle_1', 34, 43], ['chronicle_1', 10, first.length + 30], ['chronicle_2', 51, 60], ['letters_2', 10, 16]
+  ]
+  try {
+    for (const [chunk, start, end] of spans) {
+      const response = await request.post('/api/tag_spans', {
+        headers, data: { chunkId: fixture.chunk(chunk).id, tagId: fixture.tag('person').id, start, end, type: 'pos' }
+      })
+      expect(response.ok()).toBe(true)
+    }
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
+    await page.reload() // without the sign-in notification
+    await closePhoneNavigation(page)
+    await expect(page.getByTestId('kwic-row')).toHaveCount(8)
+    await page.getByTestId('kwic-row').nth(3).getByRole('checkbox').click()
+    await save(page, testInfo, 'annotation-workspace')
+
+    await page.getByTestId('kwic-row').nth(4).click()
+    await expect(page.getByTestId('chunk-context-mark').first()).toBeVisible()
+    await expectRightSidebarIn(page)
+    await expectSidebarsOpen(page, testInfo)
+    await save(page, testInfo, 'annotation-workspace-context')
+  } finally {
+    await deleteAddedSpans(request, 'owner', 'chronicles')
+  }
 })
 
 test('corpus overview', async ({ page }, testInfo) => {

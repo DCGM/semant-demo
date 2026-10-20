@@ -1,6 +1,10 @@
 /* tslint:disable */
 /* eslint-disable */
 export * from './AdjacentChunks';
+export * from './AnnotatedDocument';
+export * from './AnnotationListRow';
+export * from './AnnotationPage';
+export * from './AnnotationSort';
 export * from './AppFeedbackRequest';
 export * from './BearerResponse';
 export * from './BulkUpdateSpansRequest';
@@ -76,6 +80,7 @@ export * from './Tag';
 export * from './TagSpan';
 export * from './TagSpanBatchRequest';
 export * from './TagSpanWriteResult';
+export * from './TextStatus';
 export * from './Url';
 export * from './UserCreate';
 export * from './UserRead';

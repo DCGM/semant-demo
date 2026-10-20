@@ -25,6 +25,7 @@ describe('routes', () => {
     ['/collections/c1', 'collectionOverview', true],
     ['/collections/c1/overview', 'collectionOverview', true],
     ['/collections/c1/documents', 'collectionDocumentsTagging', true],
+    ['/collections/c1/annotations', 'collectionAnnotations', true],
     ['/collections/c1/tags', 'collectionTags', true],
     ['/collections/c1/tagging_jobs', 'collectionTaggingJobs', true],
     ['/collections/c1/members', 'collectionMembers', true],

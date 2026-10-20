@@ -147,6 +147,77 @@ class AnnotationRow(BaseModel):
     """Joined from the document per page of rows (not copied onto annotations)."""
 
 
+class AnnotationQuery(BaseModel):
+    """Internal: the stored-field conditions of a concordance query (#329), all required.
+    ``words``: each must occur in the annotation's text, inside one of its words."""
+    tag_ids: list[UUID] | None = None
+    types: list[SpanType]
+    words: list[str] = []
+
+
+class AnnotationSort(str, Enum):
+    """Order of concordance rows; each ends with the annotation id, so it is total."""
+    document = "document"
+    """Document title (missing last), year, document id, then position in the document."""
+    year = "year"
+    """Document year (missing last), then as ``document``."""
+    text = "text"
+    """Annotated text by code point (case-sensitive; rows without current text first)."""
+
+
+class TextStatus(str, Enum):
+    """Whether a concordance row's text and context are shown (#328)."""
+    ready = "ready"
+    pending = "pending"
+    """Not derived for the annotation's current revision yet (e.g. saved before #328)."""
+    failed = "failed"
+    """Reading the source text failed; saving the annotation again retries."""
+    invalid = "invalid"
+    """The stored offsets do not fit the document's text; only an edit can fix it."""
+
+
+class AnnotationListRow(BaseModel):
+    """One concordance (KWIC) row: an annotation with its stored text and context (#329).
+
+    ``start``/``end`` are the authoritative UTF-16 offsets on the anchor chunk ``chunkId``.
+    ``text``, ``leftContext`` and ``rightContext`` are present only when ``textStatus`` is
+    ``ready``. ``documentAvailable`` is false when the annotation's document cannot be read
+    (deleted from the corpus); title and year are then absent."""
+    id: UUID
+    tagId: UUID | None = None
+    type: SpanType | None = None
+    chunkId: UUID | None = None
+    documentId: UUID | None = None
+    start: int | None = None
+    end: int | None = None
+    revision: int
+    textStatus: TextStatus
+    text: str | None = None
+    leftContext: str | None = None
+    rightContext: str | None = None
+    documentAvailable: bool
+    documentTitle: str | None = None
+    documentYear: int | None = None
+
+
+class AnnotationPage(BaseModel):
+    """One page of a collection's concordance rows and the number of all matching rows."""
+    rows: list[AnnotationListRow]
+    total: int
+    offset: int
+    limit: int
+
+
+class AnnotatedDocument(BaseModel):
+    """A document with annotations matching a concordance query, for the source and year
+    filters (#329). ``available`` is false when the document cannot be read."""
+    id: UUID
+    title: str | None = None
+    year: int | None = None
+    count: int
+    available: bool
+
+
 class TagSpanWriteResult(TagSpan, WriteResult):
     """
     A created or updated span with the outcome of the write. ``succeeded`` holds the span

@@ -178,6 +178,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { SpanType } from 'src/generated/api'
@@ -401,6 +402,30 @@ watch(() => documentSummary.requestedCitation.value, async (citation) => {
   }
   scrollToChunk(citation.chunkId)
 })
+
+// A link from the annotation workspace (#329): `?annotation=&chunk=&order=` brings that
+// annotation into view and marks it, loading the chunks up to it first. Once per link.
+const route = useRoute()
+let linkedAnnotationShown: string | null = null
+async function showLinkedAnnotation() {
+  const { annotation, chunk, order } = route.query
+  if (typeof annotation !== 'string' || typeof chunk !== 'string' || linkedAnnotationShown === annotation) return
+  linkedAnnotationShown = annotation
+  const chunkOrder = Number(order)
+  if (!chunkWindow.findChunk(chunk) && typeof order === 'string' && Number.isInteger(chunkOrder)) {
+    await chunkWindow.loadUntil(chunkOrder)
+  }
+  let span = (tagSpans.spansByChunkId.value[chunk] || []).find(s => s.id === annotation)
+  if (!span && chunkWindow.findChunk(chunk)) {
+    await annotations.refreshChunkSpans(chunk, props.collectionId)
+    span = (tagSpans.spansByChunkId.value[chunk] || []).find(s => s.id === annotation)
+  }
+  if (!span) return
+  await nextTick()
+  relayout()
+  navHighlightedSpanId.value = annotation
+  scrollToSpan(chunk, span.start, span.end)
+}
 
 // ── Annotation editing ──
 const popoverRef = ref<InstanceType<typeof AnnotationPopover> | null>(null)
@@ -686,6 +711,7 @@ watch(
       await nextTick()
       relayout()
       await chunkWindow.checkNeighbours()
+      await showLinkedAnnotation()
     }
   }
 )
