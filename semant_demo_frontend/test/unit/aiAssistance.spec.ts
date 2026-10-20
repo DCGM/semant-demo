@@ -283,6 +283,9 @@ describe('describeRunEnd', () => {
       event: 'end', outcome: 'failed', saved: 0, rejected: 3, save_failures: 2, search_tag_failures: 0, provider_failures: 0
     })).toBe('AI suggestions failed (0 saved): 2 suggestion(s) could not be saved.')
     expect(describeRunEnd({
+      event: 'end', outcome: 'partial', saved: 2, rejected: 0, save_failures: 0, search_tag_failures: 0, enrichment_failures: 1, provider_failures: 0
+    })).toBe('AI suggestions were only partly completed (2 saved): 1 saved suggestion(s) without current search text or similarity vector.')
+    expect(describeRunEnd({
       event: 'end', outcome: 'complete', saved: 1, rejected: 3, save_failures: 0, search_tag_failures: 0, provider_failures: 0
     })).toBeNull()
   })

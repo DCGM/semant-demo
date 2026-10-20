@@ -57,6 +57,7 @@ from semant_demo.adapters.topicer.client import (
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import service
+from semant_demo.features.annotations.derivation import DocumentText
 from semant_demo.features.annotations.offsets import code_point_offset, text_length, utf16_offset
 from semant_demo.features.annotations.schemas import (
     PostSpan, SuggestionRunOutcome, SuggestSpansChunkResult, SuggestSpansRequest, SuggestSpansRunEnd,
@@ -94,6 +95,7 @@ class _Tally:
     rejected: int = 0
     save_failures: int = 0
     search_tag_failures: int = 0
+    enrichment_failures: int = 0
     provider_failures: int = 0
     completed_calls: int = 0
     """Provider calls that succeeded and whose valid proposals were all saved."""
@@ -105,10 +107,13 @@ class _Tally:
     """The refusal that stopped the run before all its units."""
     max_chunks_per_tag: int | None = None
     tag_limits: list[SuggestTagLimit] = field(default_factory=list)
+    document_texts: dict[UUID, DocumentText] = field(default_factory=dict)
+    """The run's document text for the derived data of its saved spans (#328): read by the first
+    save and reused (saves that start before the first read finished read it too)."""
 
     def summary(self) -> SuggestSpansRunEnd:
-        failures = (self.provider_failures + self.save_failures + self.search_tag_failures + bool(self.error)
-                    + bool(self.quota_exhausted))
+        failures = (self.provider_failures + self.save_failures + self.search_tag_failures
+                    + self.enrichment_failures + bool(self.error) + bool(self.quota_exhausted))
         if not failures:
             outcome = SuggestionRunOutcome.complete
         elif self.saved or self.completed_calls:
@@ -117,7 +122,8 @@ class _Tally:
             outcome = SuggestionRunOutcome.failed
         return SuggestSpansRunEnd(
             outcome=outcome, saved=self.saved, rejected=self.rejected, save_failures=self.save_failures,
-            search_tag_failures=self.search_tag_failures, provider_failures=self.provider_failures,
+            search_tag_failures=self.search_tag_failures, enrichment_failures=self.enrichment_failures,
+            provider_failures=self.provider_failures,
             error=self.error, unit=self.unit, units_total=self.units_total, units_processed=self.units_processed,
             stop_reason="quota_exhausted" if self.quota_exhausted else None,
             quota_exhausted=(QuotaExhaustedResponse.model_validate(self.quota_exhausted.body())
@@ -136,6 +142,7 @@ class _ChunkEvent:
     unsaved: int = 0
     reasons: set[str] = field(default_factory=set)
     untagged: int = 0
+    unenriched: int = 0
     save_failed: bool = False
 
     def reject(self, reason: str, count: int = 1) -> None:
@@ -153,6 +160,8 @@ class _ChunkEvent:
             errors.append(f"{self.unsaved} proposal(s) not saved ({', '.join(sorted(self.reasons))})")
         if self.untagged:
             errors.append(f"{self.untagged} saved proposal(s) not yet findable by tag search")
+        if self.unenriched:
+            errors.append(f"{self.unenriched} saved proposal(s) without current search text or vector")
         return SuggestSpansChunkResult(
             chunk_id=self.chunk_id, spans=self.spans, error="; ".join(errors) or None, unsaved=self.unsaved,
         )
@@ -402,7 +411,8 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
     span = PostSpan(chunkId=chunk_id, tagId=proposal.tag_id, start=start, end=end, type=SpanType.auto,
                     reason=proposal.reason, confidence=proposal.confidence)
     try:
-        result = await _uninterrupted(service.save_span(store, collection_id, document_id, span))
+        result = await _uninterrupted(service.save_span(store, collection_id, document_id, span,
+                                                        event.tally.document_texts))
     except Exception as e:
         failure = step_failure("insert_span", chunk_id, e)
         event.unsaved += 1
@@ -412,9 +422,13 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
         return
     event.spans.append(TagSpan(**result.model_dump(include=set(TagSpan.model_fields))))
     event.tally.saved += 1
-    if result.failed:
+    steps = {f.step for f in result.failed}
+    if "update_chunk_tags" in steps:
         event.untagged += 1
         event.tally.search_tag_failures += 1
+    if steps - {"update_chunk_tags"}:
+        event.unenriched += 1
+        event.tally.enrichment_failures += 1
 
 
 async def _authorized_tags(store: AnnotationStore, user: Principal | None, collection_id: str,

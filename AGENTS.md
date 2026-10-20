@@ -4,6 +4,21 @@ These instructions supplement [CONTRIBUTING.md](CONTRIBUTING.md) for ordinary
 development. Base new work on the latest `origin/main` and open pull requests
 against protected `main`.
 
+## Preparing issues
+
+When creating or refining an issue, follow [ISSUE_WORKFLOW.md](docs/ISSUE_WORKFLOW.md).
+Search related issues/PRs and planned work; inspect the relevant code, tests,
+architecture and ADRs. Identify scope, acceptance criteria, dependencies and
+important decisions, distinguishing verified facts from assumptions. Normally
+refine the existing draft or user-feedback issue rather than replacing it; consult
+maintainers
+when the proposed behavior or technical design requires a significant decision.
+For `[User draft]` feedback, follow the
+[user-feedback guide](docs/USER_FEEDBACK_ISSUES.md), preserve the reporter's
+use case, and perform technical refinement yourself rather than requesting
+technical specifications from the user.
+Do not start implementation while material decisions remain unresolved.
+
 ## Before editing
 
 Read [ARCHITECTURE.md](docs/ARCHITECTURE.md), the relevant
@@ -76,8 +91,9 @@ Do not execute destructive schema/bootstrap scripts against an unverified endpoi
 
 Never manually edit generated API files, commit secrets, weaken assertions, bypass CI,
 or add blanket skips merely to produce a green result. A placeholder `npm test` is not
-a test pass. `make setup`, `make check`, `make api-generate`, `make test-integration` and
-`make test-e2e` exist (the last two need Docker); `make dev` does not.
+a test pass. `make setup`, `make check`, `make api-generate`, `make test-integration`,
+`make test-e2e` and the `make dev-*` targets exist (all but the first three need Docker);
+`make dev` does not.
 
 When iterating on browser tests or UI, do not rerun `make test-e2e` for each change: start
 the profile once with `make e2e-dev-start`, run the affected spec with
@@ -106,7 +122,17 @@ PR renders them (`gh pr view <N> --json body` shows `github.com/user-attachments
 URLs). If the upload is unavailable or fails, report the blocker and ask the user to
 upload in the browser; do not set up external hosting such as gists.
 
-For ordinary development, use the local database environment documented in `docs/DEVELOPMENT.md`.
+To run the application interactively, reuse exactly the human-facing seeded environment
+([DEVELOPMENT.md](docs/DEVELOPMENT.md#1-quick-start-the-seeded-local-application)):
+`make dev-up`, then `make dev-backend` and `make dev-frontend` as background processes
+(stop them when done); log in e.g. as `owner` / `owner-password-1`. Do not build another
+environment for agents. Its AI providers are fakes: never point it at live providers to
+evaluate quality. `make dev-reset CONFIRM=yes` destroys the development data: run it only
+when the task needs the seeded state, never against data the user is working with without
+asking. One instance serves the machine; check `make dev-status` before starting it from
+another checkout. Automated tests use their own disposable stores (`make test-integration`,
+`make test-e2e`, `make e2e-dev-*`), never the development stores. A `local_data/` snapshot
+is used only when the task explicitly authorizes it.
 
 Do not connect to or modify shared server Weaviate, shared preview databases, or production databases unless explicitly instructed for the current task.
 

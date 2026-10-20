@@ -1,7 +1,7 @@
 
 # TagSpanWriteResult
 
-A created or updated span with the outcome of the write. ``succeeded`` holds the span id. ``failed`` lists chunk tag updates (``update_chunk_tags``) that did not complete: the span is saved, but tag-filtered search does not reflect it until the span is saved again.
+A created or updated span with the outcome of the write. ``succeeded`` holds the span id. ``failed`` lists the later steps that did not complete; the span is saved either way, and saving it again retries them: ``update_chunk_tags`` (tag-filtered search does not reflect the span), ``derive_annotation`` (its stored text, context and positions could not be updated) and ``embed_annotation`` (its contextual vector could not be computed or stored; semantic search leaves the span out).
 
 ## Properties
 

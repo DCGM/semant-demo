@@ -102,8 +102,9 @@ behavior and Weaviate/SQL access.
 
 New to the repository? [Start here](docs/START_HERE.md) explains how the parts fit together, which files to read and how to run tests without project data.
 
-- **Local development** (local Weaviate snapshot, backend, frontend):
-  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). `make setup` installs the pinned dependencies.
+- **Local development**: `make setup`, then `make dev-up`, `make dev-backend` and
+  `make dev-frontend` run the application with a seeded synthetic corpus, hot reload and fake AI
+  providers; see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 - **Checks** (see [CONTRIBUTING.md](CONTRIBUTING.md#2-setup-and-commands)):
 
   ```bash
@@ -143,6 +144,14 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 | [docs/TODO.md](docs/TODO.md) | Open risks, linked to GitHub issues |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | `main`-based PR workflow, checks and agent instructions |
 | [docs/archive/](docs/archive/README.md) | Historical plans, review notes and maintenance run records |
+
+## Feedback and feature requests
+
+Librarians, researchers and annotators can report problems or suggest
+improvements without technical knowledge. See the
+[user-feedback issue guide](docs/USER_FEEDBACK_ISSUES.md) for a short explanation
+of what helps developers understand a request. Begin the GitHub issue title
+with `[User draft]`.
 
 ## Contribution Guidelines
 

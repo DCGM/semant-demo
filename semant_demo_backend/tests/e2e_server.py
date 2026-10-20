@@ -32,59 +32,33 @@ import tempfile
 from pathlib import Path
 
 import uvicorn
-import yaml
 from starlette.staticfiles import StaticFiles
 
 # Only modules that do not import `semant_demo.config`; see `serve`.
 from tests.corpus import load_corpus
-from tests.fakes import SECOND_VECTOR
+from tests.fake_providers import create_fake_provider_app, fake_provider_environ
 from tests.weaviate_store import StoreEndpoint
 
 logger = logging.getLogger("e2e_server")
 
 E2E_JWT_SECRET = "e2e-only-secret-long-enough-for-hmac-sha256-32bytes"
 FAKE_TOPICER_STREAM_DELAY = 3.0
-# Read without importing semant_demo, whose settings must see the profile's environment.
-DEFAULT_LLM_MODELS_CONFIG = Path(__file__).parents[1] / "semant_demo" / "configs" / "llm_models.yaml"
 
 
 def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, fake_url: str, fake_port: int,
                     cross_origin: str) -> dict[str, str]:
     rag_dir = work_dir / "rag_configs"
     rag_dir.mkdir()
-    # The default model tiers without per-tier endpoints: every tier uses the fake provider.
-    catalog = yaml.safe_load(DEFAULT_LLM_MODELS_CONFIG.read_text())
-    for tier in catalog["tiers"].values():
-        tier.pop("base_url", None)
-    llm_models_path = work_dir / "llm_models.yaml"
-    llm_models_path.write_text(yaml.safe_dump(catalog))
-    # Both named chunk vectors of the test store (#217), embedded by the fake providers.
-    search_vectors_path = work_dir / "search_vectors.yaml"
-    search_vectors_path.write_text(yaml.safe_dump({"default": "fake-default", "vectors": [
-        {"id": "fake-default", "name": "Fake default", "description": "The test store's default vector.",
-         "target_vector": "default", "embedding": {"provider": "embedding_service"}},
-        {"id": "fake-small", "name": "Fake small", "description": "The test store's second vector.",
-         "target_vector": SECOND_VECTOR, "embedding": {"provider": "openai", "base_url": f"{fake_url}/openai/v1",
-                                                 "model": "fake-small"}},
-    ]}))
     return {
         **endpoint.app_environ(),
+        **fake_provider_environ(work_dir, fake_url, fake_port),
         "SQL_DB_URL": f"sqlite+aiosqlite:///{work_dir / 'e2e.db'}",
         "JWT_SECRET": E2E_JWT_SECRET,
         "STATIC_PATH": str(static_dir),
         "ALLOWED_ORIGIN": cross_origin,
         "RAG_CONFIGS_PATH": str(rag_dir),
-        "LLM_MODELS_CONFIG": str(llm_models_path),
-        "SEARCH_VECTORS_CONFIG": str(search_vectors_path),
         "FEEDBACK_LOG_PATH": str(work_dir / "feedback.log.jsonl"),
         "FEEDBACK_WEBHOOK_URL": "",
-        "EMBEDDING_SERVICE_HOST": "127.0.0.1",
-        "EMBEDDING_SERVICE_PORT": str(fake_port),
-        "TOPICER_URL": fake_url,
-        "OPENAI_API_URL": f"{fake_url}/openai/v1",
-        "OLLAMA_URLS": f"{fake_url}/ollama",
-        "OPENAI_API_KEY": "e2e-fake-openrouter-key",
-        "GOOGLE_API_KEY": "",
         "PRODUCTION": "false",
     }
 
@@ -124,7 +98,6 @@ async def serve(port: int, static_dir: Path) -> None:
                                           cross_origin=f"http://127.0.0.1:{cross_port}"))
         from semant_demo.config import Config, config as process_config
         from semant_demo.main import create_app
-        from tests.fake_providers import create_fake_provider_app
 
         assert process_config.TOPICER_URL == fake_url
 
