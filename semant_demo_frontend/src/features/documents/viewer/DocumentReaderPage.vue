@@ -183,6 +183,7 @@ import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { SpanType } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError } from 'src/shared/api'
 import { errorNotification } from 'src/shared/notification'
+import { overlayOpen } from 'src/shared/overlays'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import AnnotationGutter from 'src/features/annotations/AnnotationGutter.vue'
 import type { SpanMarker } from 'src/features/annotations/AnnotationGutterTypes'
@@ -730,8 +731,10 @@ const onClickOutside = (e: MouseEvent) => {
   annotations.clearSelection()
 }
 
+// Escape in an open dialog belongs to the dialog: the create-tag dialog opened from the
+// popover still needs the selection when its tag is created (#379).
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && annotations.hasSelection.value) {
+  if (e.key === 'Escape' && annotations.hasSelection.value && !overlayOpen()) {
     annotations.clearSelection()
   }
 }
