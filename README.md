@@ -143,7 +143,7 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 | [deploy/README.md](deploy/README.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker deployment and CI/CD; configuration reference |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Logs, traces, metrics, dashboards, adding signals safely |
 | [docs/TODO.md](docs/TODO.md) | Open risks, linked to GitHub issues |
-| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | `main`-based PR workflow, checks and agent instructions |
+| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | `main`-based PR workflow, checks and agent instructions; [2026-10 agent-readiness audit](docs/AGENT_READINESS_AUDIT_2026-10.md) with measured check times |
 | [docs/archive/](docs/archive/README.md) | Historical plans, review notes and maintenance run records |
 
 ## Feedback and feature requests

@@ -120,6 +120,15 @@ use the same values for every command.
 Coding agents use exactly these targets for interactive work, and disposable test-owned
 stores (`make test-integration`, `make test-e2e`, `make e2e-dev-*`) for automated tests.
 
+**Parallel checkouts (e.g. a git worktree per agent or branch).** Another checkout can reuse
+this checkout's backend environment: pass `PYTHON=/path/to/first-checkout/.venv/bin/python`
+to `make`. The tests, `api-check` and the E2E server still import the code of the checkout
+they run in. Run `npm ci` in its `semant_demo_frontend` (seconds with a warm npm cache).
+Each test run owns its Weaviate, so `make check` and `make test-integration` can run in
+several checkouts at once. `make test-e2e` uses ports 8765–8767 (`E2E_PORT` moves the
+first) and `make e2e-dev-*` 8775–8777 (`E2E_DEV_PORT`), so start concurrent runs at least
+three ports apart. The development instance above stays one per machine.
+
 ## 3. Troubleshooting
 
 | Symptom | Cause and fix |
@@ -154,6 +163,11 @@ stores (both need Docker); they run independently of `make dev-up`:
 make test-integration   # pytest -m integration against a throwaway Weaviate
 make test-e2e           # Playwright smoke suite against the deterministic app profile
 ```
+
+While iterating, run only the affected integration tests: the container starts in about a
+second, so one file takes ~30 s instead of ~4 min for the whole suite, e.g.
+`make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"` (paths relative
+to `semant_demo_backend`). Run the full suite before review when the change needs it.
 
 They never use the development container, `.dev-data/` or `local_data/`:
 
