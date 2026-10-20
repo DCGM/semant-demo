@@ -89,7 +89,8 @@ for (const { name, viewport, constrained } of [
     await page.keyboard.press('Space')
     await expect(checkbox).toHaveAttribute('aria-checked', 'true')
     await expect(result).toHaveClass(/search-result--selected/)
-    expect(await background()).not.toBe(unselected)
+    // Polled: the card animates its background (0.15 s), so one read can still see the old one.
+    await expect.poll(background).not.toBe(unselected)
     await expect(checkbox).toBeFocused()
 
     // Signed out: count and Clear selection, no collection actions.
