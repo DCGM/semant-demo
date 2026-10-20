@@ -371,6 +371,9 @@ def test_the_backend_uses_the_development_stores_and_only_loopback_fake_provider
     assert all("base_url" not in tier for tier in tiers.values())
     vectors = yaml.safe_load(open(environ["SEARCH_VECTORS_CONFIG"]))["vectors"]
     assert all(urlparse(v["embedding"].get("base_url", fake)).hostname == "127.0.0.1" for v in vectors)
+    # Neither does the annotation vector (#328), whatever the deployed default is.
+    annotation_vector = yaml.safe_load(open(environ["ANNOTATION_VECTOR_CONFIG"]))
+    assert urlparse(annotation_vector["embedding"].get("base_url", fake)).hostname == "127.0.0.1"
 
 
 def test_the_development_rag_configurations_never_search_the_web(profile):

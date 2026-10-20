@@ -54,7 +54,8 @@ An existing `EmbedderTest` collection is refused and left unchanged; add `--forc
 ## Using the vector in the application
 
 The application never creates or fills vectors; it queries the ones listed in
-`semant_demo_backend/semant_demo/configs/search_vectors.yaml` (`SEARCH_VECTORS_CONFIG`, #217).
+the file of `SEARCH_VECTORS_CONFIG` (#217; default
+`semant_demo_backend/semant_demo/configs/search_vectors_qwen.yaml`).
 After a run has filled the vector for the whole collection, add an entry there:
 
 - `target_vector`: this tool's `vector_name`;

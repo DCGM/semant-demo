@@ -21,7 +21,7 @@
 | Layer | Technology |
 |---|---|
 | Database | Weaviate 1.40 (Docker) + SQLite (user accounts, RAG answer feedback) |
-| Embeddings | Deployed: `Qwen/Qwen3-Embedding-0.6B` on vLLM, queried as an OpenAI-compatible search vector (`configs/search_vectors_qwen.yaml`). The repository default `configs/search_vectors.yaml` still targets the former `BAAI/bge-multilingual-gemma2` service (`embedding_service/`); local development uses fakes |
+| Embeddings | Deployed: `Qwen/Qwen3-Embedding-0.6B` on vLLM, queried as an OpenAI-compatible search vector (`configs/search_vectors_qwen.yaml`, the default). `configs/search_vectors_gemma.yaml` targets the former `BAAI/bge-multilingual-gemma2` service (`embedding_service/`); local development uses fakes |
 | Backend | Python 3.12 · FastAPI · LangChain / LangGraph · LLM tiers on OpenAI-compatible APIs (OpenRouter by default), Ollama or Google Gemini |
 | Frontend | Vue 3 · Quasar 2 · TypeScript · Pinia · OpenAPI-generated client |
 

@@ -7,7 +7,7 @@ and AI metadata are not part of the input, so changing them never re-embeds). Qu
 against it use the same model's query embedding.
 
 The vector is configured by ``ANNOTATION_VECTOR_CONFIG`` (default
-``configs/annotation_vector.yaml``; an empty value configures none). Its ``id`` is stored
+``configs/annotation_vector_qwen.yaml``; an empty value configures none). Its ``id`` is stored
 with every vector and must change whenever the model, its dimensions, prefixes or the
 template change: vectors of another ``id`` are not current and the backfill replaces them.
 

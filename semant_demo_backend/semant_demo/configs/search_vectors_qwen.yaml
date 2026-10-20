@@ -1,11 +1,16 @@
-# Search vectors after the Qwen cutover (#385). Not active by default: an instance uses it
-# when its SEARCH_VECTORS_CONFIG is /app/semant_demo/configs/search_vectors_qwen.yaml.
+# Search vectors (#217): the Weaviate named vectors of the chunk collection that vector and
+# hybrid search (and RAG retrieval) may query, and how each one embeds its query.
+# Loaded at startup from SEARCH_VECTORS_CONFIG; this file is the default and the
+# configuration of production and the test instances (deploy/.env*.example). Fields:
+# features/search/vectors.py.
 #
-# Only the Qwen vector: the Gemma embedding service is stopped and there is no fallback to
-# the old `default` vector. Switch an instance only after the named vector exists in its
-# Weaviate chunk collection (a query for a missing target vector fails); until the backfill
-# finishes, vector and hybrid search cover only the chunks embedded so far, as accepted in #385.
+# A vector must exist in the collection and be populated offline (data_tools/embedder,
+# #192) before it is listed here (a query for a missing target vector fails). Clients select
+# a vector by `id` (GET /api/search/vectors); a request without a selection uses `default`.
+# Keys are never stored here: an `openai` embedding sends EMBEDDING_API_KEY when it is set.
 #
+# Only the Qwen vector (#385): the Gemma embedding service is stopped and there is no
+# fallback to the old `default` vector; search_vectors_gemma.yaml configures that one.
 # The served model, revision and URL are those of deploy/docker-compose.embedder.yml
 # (`qwen-embedder`); the chunk vectors are written by data_tools/embedder with the same
 # model and the plain chunk text (input_template `{{ text }}`, no document instruction).

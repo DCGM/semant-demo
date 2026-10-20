@@ -557,7 +557,7 @@ Vector and hybrid search require an embedding service whose model matches the na
 of the snapshot's chunks. The deployed embedder is Qwen3-Embedding-0.6B on vLLM
 ([deploy/README](../deploy/README.md#qwen-embedding-service-385)), published on the server's
 loopback port 8002; the former Gemma service on port 8001 ([embedding_service/](../embedding_service/README.md))
-is no longer running there, and the default `configs/search_vectors.yaml` still targets it.
+is no longer running there; only `configs/*_gemma.yaml` still target it.
 
 With explicit authorization to use the server's embedder, tunnel its port:
 
@@ -572,6 +572,10 @@ Then start the backend with a copy of `configs/search_vectors_qwen.yaml` whose `
 SEARCH_VECTORS_CONFIG=/path/to/search_vectors_local.yaml \
 python -m uvicorn semant_demo.main:app --reload
 ```
+
+The default annotation vector (`configs/annotation_vector_qwen.yaml`) uses the deployment's
+`qwen-embedder` URL too: point `ANNOTATION_VECTOR_CONFIG` at a copy with the same `base_url`,
+or set it empty to configure no annotation vector.
 
 A live embedding service is not required for ordinary fast tests. Tests should use fixed vectors where the embedding model itself is not under test.
 

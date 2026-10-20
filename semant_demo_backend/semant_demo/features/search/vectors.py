@@ -1,7 +1,7 @@
 """Configured search vectors (#217): the Weaviate named vector a vector or hybrid search
 queries, and the embedding model that embeds its query.
 
-The configuration (``SEARCH_VECTORS_CONFIG``, default ``configs/search_vectors.yaml``)
+The configuration (``SEARCH_VECTORS_CONFIG``, default ``configs/search_vectors_qwen.yaml``)
 lists the vectors the application may use and names the default. A request selects one
 by its ``id``; a request without a selection uses the default, an unknown id is refused.
 Vectors are created and populated offline (``data_tools/embedder``, #192): nothing here

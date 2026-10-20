@@ -506,10 +506,13 @@ def test_the_default_vector_configuration_loads_and_an_empty_one_configures_none
     from pydantic import ValidationError
 
     from semant_demo.bootstrap import load_annotation_vector
-    from semant_demo.config import Config
+    from semant_demo.config import SCRIPT_PATH, Config
 
-    default = load_annotation_vector(Config(environ={"EMBEDDING_SERVICE_HOST": "embedding.invalid"}))
-    assert (default.id, default.target_vector) == ("bge-gemma2-context-v1", "contextual")
+    default = load_annotation_vector(Config(environ={}))
+    assert (default.id, default.target_vector) == ("qwen3-embedding-0.6b-context-v1", "contextual")
+    gemma = load_annotation_vector(Config(environ={
+        "ANNOTATION_VECTOR_CONFIG": str(SCRIPT_PATH / "configs" / "annotation_vector_gemma.yaml")}))
+    assert (gemma.id, gemma.target_vector) == ("bge-gemma2-context-v1", "contextual")
     assert load_annotation_vector(Config(environ={"ANNOTATION_VECTOR_CONFIG": ""})) is None
 
     invalid = tmp_path / "vector.yaml"
