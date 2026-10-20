@@ -7,6 +7,7 @@ from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 from semant_demo.config import SCRIPT_PATH
+from semant_demo.features.search.schemas import SearchRequest
 from semant_demo.features.summarization import service
 from semant_demo.features.summarization.document import TemplatedDocumentSummarizer, load_document_summarizer
 from semant_demo.features.summarization.schemas import SummaryLength
@@ -51,9 +52,15 @@ def sent(llm) -> tuple[str, int]:
 def test_length_levels_are_parsed():
     lengths = SummaryLengths.parse(LENGTHS)
 
-    assert lengths.level(None) == SummaryLength.short
-    assert lengths.level(SummaryLength.detailed) == SummaryLength.detailed
-    assert lengths.options(SummaryLength.detailed) == LengthOptions(words=250, max_completion_tokens=900)
+    assert lengths.resolve(None) == (SummaryLength.short, LengthOptions(words=50, max_completion_tokens=200))
+    assert lengths.resolve(SummaryLength.detailed) == \
+        (SummaryLength.detailed, LengthOptions(words=250, max_completion_tokens=900))
+
+
+def test_a_missing_default_level_is_short():
+    lengths = SummaryLengths.parse({key: value for key, value in LENGTHS.items() if key != "default"})
+
+    assert lengths.default == SummaryLength.short
 
 
 @pytest.mark.parametrize("change", [
@@ -62,12 +69,21 @@ def test_length_levels_are_parsed():
     {"detailed": None},
     {"short": {"words": 0, "max_completion_tokens": 50}},
     {"short": {"words": 10, "max_completion_tokens": "many"}},
+    {"short": {"words": True, "max_completion_tokens": 50}},
+    {"short": {"words": 10}},
+    {"short": {"words": 10, "max_completion_tokens": 50, "temperature": 0.5}},
+    {"detailed": "long"},
 ])
 def test_invalid_length_levels_are_rejected(change):
     lengths = {key: value for key, value in {**LENGTHS, **change}.items() if value is not None}
 
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises(ValueError):
         SummaryLengths.parse(lengths)
+
+
+def test_an_empty_level_is_rejected():
+    with pytest.raises(ValueError, match="short"):
+        SummaryLengths.parse({**LENGTHS, "short": None})
 
 
 @pytest.mark.parametrize("load, attribute, feature", [
@@ -79,7 +95,7 @@ def test_bundled_length_levels_fit_the_feature_output_limit(load, attribute, fea
     lengths: SummaryLengths = getattr(load(str(path), FakeLlm()), attribute)
     limit = yaml.safe_load((CONFIGS / "llm_models.yaml").read_text())["features"][feature]["limits"]["max_output_tokens"]
 
-    short, detailed = lengths.options(SummaryLength.short), lengths.options(SummaryLength.detailed)
+    (_, short), (_, detailed) = lengths.resolve(SummaryLength.short), lengths.resolve(SummaryLength.detailed)
     assert short.words < detailed.words
     assert all(o.words < o.max_completion_tokens <= limit for o in (short, detailed))
 
@@ -97,7 +113,7 @@ def test_a_configuration_without_length_levels_uses_the_defaults(tmp_path, name,
 
     lengths = getattr(cls.create(str(path)), attribute)
 
-    assert lengths.level(None) == SummaryLength.short
+    assert lengths.default == SummaryLength.short
     assert {level for level in SummaryLength} <= lengths.levels.keys()
 
 
@@ -120,6 +136,20 @@ async def test_the_configured_default_level_is_used_when_none_is_requested():
     await service.summarize(search_summarizer(llm, {**LENGTHS, "default": "detailed"}), "results", results("Lhota."))
 
     assert sent(llm) == ("length=detailed brevity=250", 900)
+
+
+async def test_the_results_summary_of_a_search_uses_the_default_level():
+    # A search request has no length level: its optional results summary is the configured default.
+    llm = FakeLlm()
+    request = SearchRequest(query="kronikář", tag_uuids=[], positive=False, automatic=False,
+                            search_title_generate=False, search_summary_generate=False,
+                            search_results_summary_generate=True)
+    response = results("Jan Novák byl kronikář.")
+
+    failures = await search_summarizer(llm)(request, response)
+
+    assert failures == [] and response.results_summary == "fake reply"
+    assert sent(llm) == ("length=short brevity=50", 200)
 
 
 @pytest.mark.parametrize("length, expected", [
