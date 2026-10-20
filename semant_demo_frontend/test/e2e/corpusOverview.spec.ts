@@ -20,6 +20,10 @@ async function tableRows (page: Page, key: string): Promise<string[][]> {
   await card(page, key).getByText(/^Table: documents per/).click()
   const rows = card(page, key).locator('tbody tr')
   await expect(rows.first()).toBeVisible()
+  // The rows count as visible while the table is still closed: Quasar's slide holds it at
+  // height 0 for 100 ms, then opens it over 300 ms and moves the cards below. A click on one
+  // of them in that time can miss (#429), so wait until the slide removes its inline height.
+  await expect(card(page, key).locator('.q-expansion-item__content')).not.toHaveAttribute('style', /height/)
   return rows.evaluateAll((trs) => trs.map((tr) => Array.from(tr.querySelectorAll('th, td'), (c) => c.textContent?.trim() ?? '')))
 }
 

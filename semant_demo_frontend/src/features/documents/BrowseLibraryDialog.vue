@@ -177,10 +177,6 @@ import {
 import { Document } from 'src/generated/api'
 import { useDocumentsRepository } from './useDocumentsRepository'
 import { useDocumentsStore } from './documentsStore'
-import {
-  errorNotification,
-  successNotification
-} from 'src/shared/notification'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { BrowseLibraryDialogProps } from './BrowseLibraryDialogTypes'
 
