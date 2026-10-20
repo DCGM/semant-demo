@@ -71,6 +71,7 @@ export * from './SpanType';
 export * from './StepFailure';
 export * from './SuggestSpansRequest';
 export * from './SuggestSpansSelectionRequest';
+export * from './SummaryLength';
 export * from './SummaryResponse';
 export * from './Tag';
 export * from './TagSpan';

@@ -1,5 +1,5 @@
 """Summarization HTTP routes; the workflows live in ``service.py``."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
@@ -10,7 +10,8 @@ from semant_demo.features.quota.service import AllowanceBudget
 from semant_demo.features.search.schemas import SearchResponse
 from semant_demo.features.summarization import service
 from semant_demo.features.summarization.document import TemplatedDocumentSummarizer
-from semant_demo.features.summarization.schemas import DocumentSummaryResponse, QuestionRequest, SummaryResponse
+from semant_demo.features.summarization.schemas import DocumentSummaryResponse, QuestionRequest, SummaryLength, \
+    SummaryResponse
 from semant_demo.features.summarization.templated import TemplatedSearchResultsSummarizer
 from semant_demo.routes.dependencies import get_document_summarizer, get_documents, get_llm, get_summarizer, \
     get_user_collections
@@ -19,14 +20,17 @@ from semant_demo.users.models import User
 
 exp_router = APIRouter()
 
+LENGTH_QUERY = Query(None, description="Length level of the summary; the configured default when omitted.")
+
 
 @exp_router.post("/api/summarize/{summary_type}", response_model=SummaryResponse,
                  responses=QUOTA_EXHAUSTED_RESPONSES)
 async def summarize(search_response: SearchResponse, summary_type: str,
+                    length: SummaryLength | None = LENGTH_QUERY,
                     summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
                     current_user: User | None = Depends(current_active_optional_user),
                     budget: AllowanceBudget = Depends(get_allowance_budget)) -> SummaryResponse:
-    return await service.summarize(summarizer, summary_type, search_response, budget)
+    return await service.summarize(summarizer, summary_type, search_response, budget, length)
 
 
 @exp_router.post(
@@ -35,6 +39,7 @@ async def summarize(search_response: SearchResponse, summary_type: str,
     responses=QUOTA_EXHAUSTED_RESPONSES,
 )
 async def summarize_document(collection_id: str, document_id: str,
+                             length: SummaryLength | None = LENGTH_QUERY,
                              documents: DocumentRepository = Depends(get_documents),
                              collections: UserCollectionRepository = Depends(get_user_collections),
                              document_summarizer: TemplatedDocumentSummarizer = Depends(get_document_summarizer),
@@ -50,7 +55,7 @@ async def summarize_document(collection_id: str, document_id: str,
     """
     try:
         return await service.summarize_document(documents, collections, document_summarizer, current_user,
-                                                 document_id, collection_id, budget)
+                                                 document_id, collection_id, budget, length)
     except service.DocumentSummaryFailed as e:
         raise HTTPException(status_code=e.status_code, detail=str(e))
 

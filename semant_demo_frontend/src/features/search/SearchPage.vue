@@ -253,7 +253,7 @@
       <SearchSummaryPanel
         :tokens="searchSummary.tokens"
         :time-spent="searchSummary.timeSpent"
-        v-model:brevity="searchSummary.brevity"
+        v-model:length="searchSummary.length"
         v-model:scope="searchSummary.scope"
         :error="searchSummary.error"
         :loading="searchSummary.summarizing"

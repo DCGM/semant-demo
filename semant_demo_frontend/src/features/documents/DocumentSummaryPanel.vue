@@ -21,6 +21,18 @@
       />
     </div>
 
+    <q-select
+      :model-value="length"
+      @update:model-value="emit('update:length', $event)"
+      :options="SUMMARY_LENGTH_OPTIONS"
+      label="Length"
+      dense
+      outlined
+      emit-value
+      map-options
+      data-testid="document-summary-length"
+    />
+
     <div v-if="error" class="text-negative text-body2" role="alert">{{ error }}</div>
 
     <q-card v-if="tokens.length" flat bordered class="bg-blue-grey-1" data-testid="document-summary">
@@ -49,7 +61,9 @@
 </template>
 
 <script setup lang="ts">
+import type { SummaryLength } from 'src/generated/api'
 import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
+import { SUMMARY_LENGTH_OPTIONS } from 'src/shared/summaryLength'
 import type { SummaryToken } from './useDocumentSummary'
 
 // Props-in/events-out only: this panel does not know it is shown in a sidebar and has no
@@ -58,6 +72,7 @@ import type { SummaryToken } from './useDocumentSummary'
 withDefaults(defineProps<{
   tokens: SummaryToken[]
   timeSpent: number
+  length: SummaryLength
   truncated?: boolean
   summarizedChunks?: number
   totalChunks?: number
@@ -69,6 +84,7 @@ const emit = defineEmits<{
   summarize: []
   cancel: []
   cite: [chunkId: string, order: number | null]
+  'update:length': [value: SummaryLength]
 }>()
 </script>
 

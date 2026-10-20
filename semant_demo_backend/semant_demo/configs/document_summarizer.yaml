@@ -5,6 +5,14 @@ gen_summary_model_options: # Model options for document summary generation.
   context_size: # Context size for the model.
   max_completion_tokens: # Maximum number of tokens to generate. None for default.
 gen_summary_error_summary: N/A # Summary to use when document summary generation fails.
+gen_summary_lengths: # Length levels of the document summary. default is the level used when the request names none; each level has words (the maximum length in words, given to the prompts as brevity, with the level's name as length) and max_completion_tokens (replaces that of the model options; keep it above the words, a Czech word takes about 2-3 tokens, and within the feature's max_output_tokens in LLM_MODELS_CONFIG).
+  default: short
+  short:
+    words: 150
+    max_completion_tokens: 768
+  detailed:
+    words: 400
+    max_completion_tokens: 1536
 gen_summary_system_prompt: |
   Jsi asistent pro sumarizaci historických dokumentů.
   Dostaneš úryvky (chunky) jednoho dokumentu v pořadí, v jakém se v dokumentu vyskytují; každý je označen unikátním ID jako [doc1], [doc2], … [docN].
@@ -13,7 +21,8 @@ gen_summary_system_prompt: |
   Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID: „Kronikář zaznamenal neúrodu [doc1][doc3].“
   Nikdy neslučuj více id do jednoho, jako [doc2-4] nebo [doc2, doc3, doc4], ale vždy je uváděj jednotlivě.
   Nevymýšlej žádná fakta, která v úryvcích nejsou. Pokud je dokument zkrácen jen na jeho první úryvky, shrň pouze to, co je v nich obsaženo, a nepředstírej znalost zbytku dokumentu.
-  Piš přehledně a stručně.
+  {% if length == "detailed" %}Piš přehledně a podrobně: rozveď jednotlivé části dokumentu a uveď i méně významné, ale zajímavé informace.{% else %}Piš přehledně a stručně, uveď jen nejdůležitější body.{% endif %}
+  {% if brevity %}Souhrn by neměl být delší než {{ brevity }} slov.{% endif %}
   Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
 # System prompt for document summary generation.
 gen_summary_prompt: |

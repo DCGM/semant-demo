@@ -1,7 +1,8 @@
 import { computed, ref } from 'vue'
-import type { DocumentSummaryCitation, DocumentSummaryResponse } from 'src/generated/api'
+import type { DocumentSummaryCitation, DocumentSummaryResponse, SummaryLength } from 'src/generated/api'
 import { aiErrorMessage, createContextGuard, isAbortError, reportAiOperation, useApi } from 'src/shared/api'
 import { tokenizeCitations } from 'src/shared/citationTokens'
+import { SUMMARY_LENGTH_DEFAULT } from 'src/shared/summaryLength'
 
 const SUMMARY_FAILED_FALLBACK = 'Failed to summarize the document.'
 
@@ -42,6 +43,8 @@ const summarizing = ref(false)
 const result = ref<DocumentSummaryResponse | null>(null)
 const error = ref<string | null>(null)
 const requestedCitation = ref<RequestedCitation | null>(null)
+// The chosen length level (#360); kept across documents, like the user's other panel choices.
+const length = ref<SummaryLength>(SUMMARY_LENGTH_DEFAULT)
 let citationToken = 0
 let abort: AbortController | null = null
 const guard = createContextGuard()
@@ -52,7 +55,8 @@ const guard = createContextGuard()
  * owning page whenever the document, the collection or the page itself changes, so a stale
  * request is cancelled and its late answer dropped (the document view's existing
  * document/collection watchers and `onBeforeUnmount` do this the same way they do for
- * `useAiAssistance().reset()`).
+ * `useAiAssistance().reset()`). Choosing another length level (`setLength`) resets too: a
+ * running request or a shown summary of the previous length no longer matches the panel.
  */
 export function useDocumentSummary () {
   const api = useApi().default
@@ -78,7 +82,7 @@ export function useDocumentSummary () {
     summarizing.value = true
     try {
       const data = await api.summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(
-        { collectionId, documentId },
+        { collectionId, documentId, length: length.value },
         { signal: controller.signal }
       )
       if (!isCurrent()) return
@@ -101,6 +105,12 @@ export function useDocumentSummary () {
     }
   }
 
+  function setLength (value: SummaryLength) {
+    if (value === length.value) return
+    length.value = value
+    reset()
+  }
+
   // Nothing of an in-flight, not-yet-answered request is worth keeping: cancelling it is
   // the same as resetting (unlike AI assist, there are no incremental results to retain).
   const cancel = reset
@@ -121,6 +131,8 @@ export function useDocumentSummary () {
     summarizedChunks: computed(() => result.value?.summarizedChunks ?? 0),
     truncated: computed(() => result.value?.truncated ?? false),
     tokens,
+    length: computed(() => length.value),
+    setLength,
     summarize,
     cancel,
     reset,

@@ -1,10 +1,18 @@
 """Summarization HTTP models. The summary options of a search are part of its request
 (``SummaryRequestBase`` in ``features/search/schemas.py``)."""
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from semant_demo.features.search.schemas import SearchResponse, SummaryRequestBase
+
+
+class SummaryLength(str, Enum):
+    """Length level of a generated summary (#360). What each level means (the target number
+    of words given to the prompt and the token limit) is set in the summarizer configuration."""
+    short = "short"
+    detailed = "detailed"
 
 
 class SummaryRequest(SummaryRequestBase):

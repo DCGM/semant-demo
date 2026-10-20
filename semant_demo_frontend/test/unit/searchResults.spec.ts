@@ -108,7 +108,7 @@ describe('useSearchSummary', () => {
 
     const running = summary.summarize()
     await flush()
-    expect(calls[0].url).toMatch(/\/api\/summarize\/results$/)
+    expect(calls[0].url).toMatch(/\/api\/summarize\/results\?length=short$/) // the default length level
     expect((calls[0].body as { results: { id: string }[] }).results.map((r) => r.id)).toEqual(['c'])
     calls[0].answer({ summary: 'Only [doc1].', time_spent: 0.5 })
     await running
@@ -198,6 +198,41 @@ describe('useSearchSummary', () => {
     await running
 
     summary.scope.value = 'focused'
+    await nextTick()
+    expect(summary.summary.value).toBe('')
+  })
+
+  it('sends the chosen length level', async () => {
+    const summary = useSearchSummary(ref(contextOf(1, ['a'])), ref<string[]>([]))
+    summary.length.value = 'detailed'
+
+    const running = summary.summarize()
+    await flush()
+    expect(new URL(calls[0].url).searchParams.get('length')).toBe('detailed')
+    calls[0].answer({ summary: 'Long [doc1].', time_spent: 0.1 })
+    await running
+
+    expect(summary.summary.value).toBe('Long [doc1].')
+  })
+
+  it('drops a pending summary and clears a shown one when the length level changes', async () => {
+    const summary = useSearchSummary(ref(contextOf(1, ['a'])), ref<string[]>([]))
+    const running = summary.summarize()
+    await flush()
+
+    summary.length.value = 'detailed' // changed before the short summary arrives
+    await nextTick()
+    expect(calls[0].signal?.aborted).toBe(true)
+    await running
+    expect([summary.summary.value, summary.summarizing.value]).toEqual(['', false])
+
+    const second = summary.summarize()
+    await flush()
+    calls[1].answer({ summary: 'Long [doc1].', time_spent: 0.1 })
+    await second
+    expect(summary.summary.value).toBe('Long [doc1].')
+
+    summary.length.value = 'short' // the shown summary no longer has the chosen length
     await nextTick()
     expect(summary.summary.value).toBe('')
   })
