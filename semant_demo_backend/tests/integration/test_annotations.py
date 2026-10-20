@@ -139,6 +139,19 @@ NEW_TAG = {"name": "Instituce", "shorthand": "IN", "color": "#123456", "pictogra
            "definition": "Úřad nebo spolek."}
 
 
+async def test_collection_tags_are_listed_by_name(api_client, login, ids):
+    owner = await login("owner")
+    # Created out of name order: Weaviate alone would list them as written (#348).
+    for name, shorthand in (("Zámek", "ZA"), ("archiv", "AR")):
+        response = await api_client.post("/api/tags", headers=owner, params={"collection_id": ids.col["chronicles"]},
+                                         json={**NEW_TAG, "name": name, "shorthand": shorthand})
+        assert response.status_code == 201, response.text
+
+    listed = await api_client.get(f"/api/user_collections/{ids.col['chronicles']}/tags", headers=owner)
+
+    assert [t["name"] for t in listed.json()] == ["archiv", "Místo", "Osoba", "Zámek"]
+
+
 async def test_tag_whose_collection_link_fails_is_removed(api_client, login, ids, seeded_store,
                                                           collection_names, fail_writes):
     tag_collection = collection_names.tag_collection_name
