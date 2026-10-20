@@ -3,6 +3,7 @@ from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference
+from weaviate.exceptions import WeaviateQueryError
 
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
@@ -53,15 +54,24 @@ class TagRepository:
         if await collections.query.fetch_object_by_id(collection_id, return_properties=[]) is None:
             raise NotFoundError("Collection not found")
 
+        collection_filter = Filter.by_ref("userCollection").by_id().equal(collection_id)
         filters = (
-            Filter.by_ref("userCollection").by_id().equal(collection_id)
+            collection_filter
             & Filter.by_property("tag_name").equal(tag.name)
         )
-        existing = await fetch_all(
-            self._tags(),
-            filters=filters,
-            return_properties=list(_PROPERTIES.values()),
-        )
+
+        try:
+            existing = await fetch_all(
+                self._tags(),
+                filters=filters,
+                return_properties=list(_PROPERTIES.values()),
+            )
+        except WeaviateQueryError:
+            existing = await fetch_all(
+                self._tags(),
+                filters=collection_filter,
+                return_properties=list(_PROPERTIES.values()),
+            )
 
         for obj in existing:
             found = to_tag(obj)
