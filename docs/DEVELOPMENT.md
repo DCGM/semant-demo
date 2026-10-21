@@ -202,6 +202,9 @@ They never use the development container, `.dev-data/` or `local_data/`:
   `test/e2e/quota.spec.ts` checks the guest cookie across origins, as in local development
   (:9000 → :8000). All AI provider URLs point at the
   fakes and no API keys are set; unfaked provider routes answer 501.
+- CI runs the same browser suite in the `Browser smoke tests` job, using a volume-less
+  Weaviate service container and a Playwright image matched to the locked test package.
+  Failed browser tests upload their retained Playwright traces as an artifact.
 
 The profile serves at `http://127.0.0.1:8765`; log in with a corpus user, e.g. `owner` /
 `owner-password-1`.

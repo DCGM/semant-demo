@@ -1,7 +1,7 @@
 # ADR 0005 - Behavior-based, offline-first testing
 
-Status: adopted and implemented in #199–#200 and CONTRIBUTING; adding browser smoke to CI is tracked in #212.
-Updated: 2026-10-07. Detailed guidance moved here from CONTRIBUTING to keep the everyday
+Status: adopted and implemented in #199–#200, #212 and CONTRIBUTING.
+Updated: 2026-10-21. Detailed guidance moved here from CONTRIBUTING to keep the everyday
 guide short. Confirmed product rules are reflected in the cases below.
 
 ## Purpose and tools
