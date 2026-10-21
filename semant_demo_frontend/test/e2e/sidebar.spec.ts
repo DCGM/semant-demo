@@ -31,6 +31,25 @@ test('search summary in the sidebar works on the selected results only', async (
   await expect(summary).toHaveCount(0)
 })
 
+test('the chosen summary length is sent with the request and a new one clears the summary (#360)', async ({ page }) => {
+  await search(page, 'Lhota')
+  const length = page.getByTestId('search-summary-length')
+  await expect(length).toContainText('Short')
+
+  await length.click()
+  await page.getByRole('option', { name: 'Detailed' }).click()
+  const request = page.waitForRequest((r) => r.url().includes('/api/summarize/results'))
+  await page.getByRole('button', { name: 'Summarize Results' }).click()
+
+  expect(new URL((await request).url()).searchParams.get('length')).toBe('detailed')
+  const summary = page.getByTestId('search-summary')
+  await expect(summary).toContainText('Fake summary of')
+
+  await length.click()
+  await page.getByRole('option', { name: 'Short' }).click()
+  await expect(summary).toHaveCount(0)
+})
+
 test('the sidebar goes away with the page that registered its panel', async ({ page }) => {
   await ensureLoggedIn(page, 'owner') // Collections is in the navigation of signed-in users only
   await search(page, 'Lhota')

@@ -3828,7 +3828,7 @@ example().catch(console.error);
 
 ## summarizeApiSummarizeSummaryTypePost
 
-> SummaryResponse summarizeApiSummarizeSummaryTypePost(summaryType, searchResponse)
+> SummaryResponse summarizeApiSummarizeSummaryTypePost(summaryType, searchResponse, length)
 
 Summarize
 
@@ -3854,6 +3854,8 @@ async function example() {
     summaryType: summaryType_example,
     // SearchResponse
     searchResponse: ...,
+    // SummaryLength | Length level of the summary; the configured default when omitted. (optional)
+    length: ...,
   } satisfies SummarizeApiSummarizeSummaryTypePostRequest;
 
   try {
@@ -3875,6 +3877,7 @@ example().catch(console.error);
 |------------- | ------------- | ------------- | -------------|
 | **summaryType** | `string` |  | [Defaults to `undefined`] |
 | **searchResponse** | [SearchResponse](SearchResponse.md) |  | |
+| **length** | `SummaryLength` | Length level of the summary; the configured default when omitted. | [Optional] [Defaults to `undefined`] [Enum: short, detailed] |
 
 ### Return type
 
@@ -3902,7 +3905,7 @@ example().catch(console.error);
 
 ## summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost
 
-> DocumentSummaryResponse summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(collectionId, documentId)
+> DocumentSummaryResponse summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(collectionId, documentId, length)
 
 Summarize Document
 
@@ -3930,6 +3933,8 @@ async function example() {
     collectionId: collectionId_example,
     // string
     documentId: documentId_example,
+    // SummaryLength | Length level of the summary; the configured default when omitted. (optional)
+    length: ...,
   } satisfies SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest;
 
   try {
@@ -3951,6 +3956,7 @@ example().catch(console.error);
 |------------- | ------------- | ------------- | -------------|
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
 | **documentId** | `string` |  | [Defaults to `undefined`] |
+| **length** | `SummaryLength` | Length level of the summary; the configured default when omitted. | [Optional] [Defaults to `undefined`] [Enum: short, detailed] |
 
 ### Return type
 

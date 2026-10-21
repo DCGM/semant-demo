@@ -177,6 +177,94 @@ jobs:
         working-directory: semant_demo_backend
         run: /tmp/venv/bin/pytest -m integration -v --durations=25
 
+  # Playwright smoke tests against the deterministic backend profile. The image supplies
+  # the Chromium revision and system libraries for the exact Playwright version pinned in
+  # package-lock.json; setup-node keeps the project toolchain on Node 22.
+  test-browser:
+    name: Browser smoke tests
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --user 1025:1027 --shm-size=1gb -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
+    services:
+      weaviate:
+        # Keep this service in sync with the integration job above.
+        image: cr.weaviate.io/semitechnologies/weaviate:1.40.1
+        env:
+          QUERY_DEFAULTS_LIMIT: 25
+          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+          PERSISTENCE_DATA_PATH: /var/lib/weaviate
+          DEFAULT_VECTORIZER_MODULE: none
+          ENABLE_MODULES: backup-filesystem
+          BACKUP_FILESYSTEM_PATH: /var/lib/weaviate-backups
+          CLUSTER_HOSTNAME: node1
+          DISABLE_TELEMETRY: "true"
+    env:
+      HOME: /tmp
+      PIP_CACHE_DIR: /pip-cache
+      SEMANT_TEST_WEAVIATE_HOST: weaviate
+      SEMANT_TEST_WEAVIATE_REST_PORT: 8080
+      SEMANT_TEST_WEAVIATE_GRPC_PORT: 50051
+      SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL: "1"
+      # Unique even when the browser and integration jobs share the Docker daemon.
+      SEMANT_TEST_STORE_TOKEN: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: semant_demo_frontend/.nvmrc
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Set up virtual environment
+        run: python -m venv /tmp/venv
+      - name: Install pinned backend dependencies
+        working-directory: semant_demo_backend
+        run: |
+          if probe=$(mktemp -p "$PIP_CACHE_DIR" .write-probe.XXXXXX 2>/dev/null); then
+            rm -f "$probe"
+            echo "pip cache $PIP_CACHE_DIR is writable by $(id -u):$(id -g)"
+          else
+            echo "::warning title=pip cache unavailable::$PIP_CACHE_DIR is not writable by $(id -u):$(id -g) ($(ls -ldn "$PIP_CACHE_DIR" 2>&1)); installing without the cache. See deploy/README.md."
+          fi
+          /tmp/venv/bin/pip install --require-hashes --no-compile -r requirements-dev.lock
+          /tmp/venv/bin/pip install --no-compile --no-deps -e .
+      - name: Install frontend dependencies
+        working-directory: semant_demo_frontend
+        run: npm ci
+      - name: Verify browser test toolchain
+        working-directory: semant_demo_frontend
+        run: |
+          node --version
+          /tmp/venv/bin/python --version
+          npx playwright --version
+      - name: Wait for Weaviate
+        run: |
+          for _ in $(seq 1 60); do
+            curl -fsS http://weaviate:8080/v1/.well-known/ready && exit 0
+            sleep 2
+          done
+          echo "Weaviate service did not become ready" >&2
+          exit 1
+      - name: Run browser smoke tests
+        working-directory: semant_demo_frontend
+        env:
+          PYTHON: /tmp/venv/bin/python
+        run: env -u DISPLAY npm run test:e2e
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-traces
+          path: semant_demo_frontend/test-results/**/trace.zip
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The production image installs requirements-runtime.lock (#139). Check that it alone
   # installs, is consistent and serves the same OpenAPI schema, and that neither lock is
   # stale for its inputs (re-resolved with the pinned pip-tools; needs the package index).
@@ -251,7 +339,7 @@ jobs:
 
   deploy-production:
     name: Deploy Production ${{ github.ref_name }}
-    needs: [test-backend, test-frontend, test-integration, api-client-drift, python-locks]
+    needs: [test-backend, test-frontend, test-integration, test-browser, api-client-drift, python-locks]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: [self-hosted, semant-server]
     environment: production
@@ -428,7 +516,7 @@ jobs:
 
   deploy-test-main:
     name: Deploy test-main
-    needs: [test-backend, test-frontend, test-integration, api-client-drift, python-locks]
+    needs: [test-backend, test-frontend, test-integration, test-browser, api-client-drift, python-locks]
     if: github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30

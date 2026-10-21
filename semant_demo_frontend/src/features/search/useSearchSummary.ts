@@ -1,6 +1,8 @@
 import { computed, ref, watch, type Ref } from 'vue'
+import type { SummaryLength } from 'src/generated/api'
 import { createContextGuard, isAbortError, quotaRefusalMessage, quotaRefusalOf, reportAiOperation, useApi } from 'src/shared/api'
 import { tokenizeCitations } from 'src/shared/citationTokens'
+import { SUMMARY_LENGTH_DEFAULT } from 'src/shared/summaryLength'
 import { selectResults, type ResultScope, type SearchResultsContext } from './searchResults'
 
 export type SummaryToken =
@@ -8,11 +10,6 @@ export type SummaryToken =
   | { type: 'citation'; docNumber: number }
 
 export type SummaryScopeOption = 'focused' | 'broader' | 'extensive' | 'selected'
-
-export const SUMMARY_BREVITY_OPTIONS = [
-  { label: 'Short', value: 'short' },
-  { label: 'Detailed', value: 'detailed' }
-]
 
 export const SUMMARY_SCOPE_OPTIONS: { label: string, value: SummaryScopeOption }[] = [
   { label: 'Focused', value: 'focused' },
@@ -44,7 +41,8 @@ export function parseSummaryTokens (text: string, indicesMap: number[]): Summary
 /**
  * Summary of search results. Works only on the given context's retrieved results (or the
  * selected ones), never on a re-run query. A new search context, a change of the summarized
- * subset (scope or selection) or a new summary request makes an unfinished request stale:
+ * subset (scope or selection) or of the length level, or a new summary request makes an
+ * unfinished request stale:
  * its answer is dropped and it no longer controls `summarizing`; a shown summary of another
  * subset is cleared.
  *
@@ -56,7 +54,7 @@ export function useSearchSummary (
   selectedIds: Ref<string[]>
 ) {
   const api = useApi().default
-  const brevity = ref('short')
+  const length = ref<SummaryLength>(SUMMARY_LENGTH_DEFAULT)
   const scope = ref<SummaryScopeOption>(scopeDefault)
   const summarizing = ref(false)
   const summary = ref('')
@@ -83,17 +81,17 @@ export function useSearchSummary (
     summarizedResultNumbers.value = []
   }
 
-  // The results a summary is about: the search and, for the "selected" scope, the
-  // selection. When they change (another search, another scope, another selection), a
-  // running request and the shown summary no longer match what the panel says and are
-  // dropped.
-  const subsetKey = computed(() => {
+  // What a summary is: the results it is about (the search and, for the "selected" scope,
+  // the selection) and its length level. When they change (another search, another scope,
+  // another selection, another length), a running request and the shown summary no longer
+  // match what the panel says and are dropped.
+  const summaryKey = computed(() => {
     const id = context.value?.id ?? null
-    if (scope.value !== 'selected') return `${id}:${scope.value}`
-    return `${id}:selected:${[...selectedIds.value].sort().join(',')}`
+    if (scope.value !== 'selected') return `${id}:${length.value}:${scope.value}`
+    return `${id}:${length.value}:selected:${[...selectedIds.value].sort().join(',')}`
   })
   // Synchronous, so the invalidation happens before anything done after the change.
-  watch(subsetKey, reset, { flush: 'sync' })
+  watch(summaryKey, reset, { flush: 'sync' })
 
   async function summarize () {
     const current = context.value
@@ -116,7 +114,8 @@ export function useSearchSummary (
     try {
       const data = await api.summarizeApiSummarizeSummaryTypePost({
         summaryType: 'results',
-        searchResponse: { ...current.response, results: subset.results }
+        searchResponse: { ...current.response, results: subset.results },
+        length: length.value
       }, { signal: controller.signal })
       if (!isCurrent()) return
       summarizedResultNumbers.value = subset.numbers
@@ -139,7 +138,7 @@ export function useSearchSummary (
   }
 
   return {
-    brevity,
+    length,
     scope,
     summarizing,
     summary,

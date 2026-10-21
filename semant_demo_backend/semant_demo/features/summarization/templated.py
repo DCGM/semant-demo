@@ -8,11 +8,13 @@ import logging
 from typing import Callable, Sequence, Optional
 
 from classconfig import ConfigurableValue, ConfigurableFactory, ConfigurableMixin
+from pydantic import BaseModel, Field, StrictInt
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.features.summarization.base import SearchResultsSummarizer
+from semant_demo.features.summarization.schemas import SummaryLength
 from semant_demo.utils.template import Template, TemplateTransformer
 
 
@@ -32,6 +34,19 @@ class ModelOptions(ConfigurableMixin):
         desc="Maximum number of tokens to generate. None for default.",
         voluntary=True
     )
+
+
+class SummaryLengths(BaseModel, extra="forbid", frozen=True):
+    """The summary length levels a client may choose from (``SummaryLength``), each a word limit given to the
+    prompt templates as ``brevity``, and the default level (#360)."""
+    default: SummaryLength = SummaryLength.short
+    short: StrictInt = Field(gt=0)
+    detailed: StrictInt = Field(gt=0)
+
+    def resolve(self, length: SummaryLength | None) -> tuple[SummaryLength, int]:
+        """The requested level, or the configured default when none is requested, and its word limit."""
+        level = length or self.default
+        return level, getattr(self, level.value)
 
 
 class TemplateGenerationMixin:
@@ -114,15 +129,26 @@ Nadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".
         user_default="N/A",
         desc="Summary to use when search results summary generation fails."
     )
+    gen_results_summary_lengths: SummaryLengths = ConfigurableValue(
+        user_default={"default": "short", "short": 100, "detailed": 300},
+        desc="Length levels of the search results summary: short and detailed are word limits given to the "
+             "prompts as brevity (the token limit stays max_completion_tokens of the model options, or the "
+             "feature's max_output_tokens). default is the level used when a request names none (short when "
+             "omitted): by API clients that omit length and for the results summary a search request asks for. "
+             "The frontend panels always send the level the user sees (Short initially), so this default does "
+             "not change them.",
+        transform=SummaryLengths.model_validate,
+        voluntary=True
+    )
     gen_results_summary_system_prompt: Template = ConfigurableValue(
         user_default=LiteralScalarString("""Jsi asistent pro sumarizaci textů.  
 Dostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc0], [doc1], … [doc15].  
-Tvým úkolem je vytvořit jediný, stručný souhrn, který pokryje všechny klíčové body relevantní k uživatelskému vyhledávacímu dotazu.  
+Tvým úkolem je vytvořit jediný souhrn, který pokryje všechny klíčové body relevantní k uživatelskému vyhledávacímu dotazu.  
 Po každém faktu, který z úryvku získáš, připoj ID daného úryvku v hranatých závorkách – například: „Gen ABC je nadregulován v nádorových buňkách [doc3].“  
 Pokud stejný fakt podporuje více úryvků, uveď všechna jejich ID: „Tento přístup zlepšil přesnost o 12 % [doc2][doc7][doc11].“  
 Nikdy neslučuj více id do jednoho, jako [doc2-4] nebo [doc2, doc3, doc4], ale vždy je uváděj jednotlivě.
 Nevymýšlej žádná fakta, která v úryvcích nejsou. Soustřeď se pouze na informace relevantní k uživatelskému dotazu.  
-Piš přehledně a stručně.
+{% if length == "detailed" %}Piš přehledně a podrobně: rozveď jednotlivé body a uveď i méně významné informace, pokud jsou relevantní k dotazu.{% else %}Piš přehledně a stručně, uveď jen nejdůležitější body.{% endif %}
 {% if brevity %} Souhrn by neměl být delší než {{ brevity }} slov. {% endif %}
 Odpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází.
 """),
@@ -193,11 +219,14 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
             self.gen_title_model_options)
 
     async def gen_results_summary(self, query: str, results: Sequence[DocumentChunk], prompt: Optional[str] = None, brevity: Optional[int] = None,
-                                  on_error: Optional[Callable[[str], None]] = None) -> str:
+                                  on_error: Optional[Callable[[str], None]] = None,
+                                  length: Optional[SummaryLength] = None) -> str:
+        level, words = self.gen_results_summary_lengths.resolve(length)
         return await self._generate_or_fallback(
             "results_summary", self.gen_results_summary_error_summary, on_error,
             self.gen_results_summary_system_prompt, self.handle_prompt(prompt, self.gen_results_summary_prompt),
-            {"results": results, "query": query, "brevity": brevity}, self.gen_results_summary_model_options)
+            {"results": results, "query": query, "length": level.value, "brevity": words},
+            self.gen_results_summary_model_options)
 
     async def gen_query_summary_for_text_chunk(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, brevity: Optional[int] = None,
                                                on_error: Optional[Callable[[str], None]] = None) -> str:

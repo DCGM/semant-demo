@@ -21,7 +21,8 @@ from semant_demo.features.documents import service as documents_service
 from semant_demo.features.search.schemas import SearchResponse
 from semant_demo.features.summarization.base import SearchResultsSummarizer
 from semant_demo.features.summarization.document import TemplatedDocumentSummarizer
-from semant_demo.features.summarization.schemas import DocumentSummaryCitation, DocumentSummaryResponse, SummaryResponse
+from semant_demo.features.summarization.schemas import DocumentSummaryCitation, DocumentSummaryResponse, SummaryLength, \
+    SummaryResponse
 from semant_demo.features.user_collections.access import Principal
 
 logger = logging.getLogger(__name__)
@@ -72,17 +73,19 @@ DocumentSummaryFailed = SafeLlmFailure
 
 
 async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
-                    search_response: SearchResponse, budget: OperationBudget | None = None) -> SummaryResponse:
+                    search_response: SearchResponse, budget: OperationBudget | None = None,
+                    length: SummaryLength | None = None) -> SummaryResponse:
     """The summary of ``summary_type`` of the results; only ``results`` is supported.
 
-    A failed generation returns the summarizer's configured fallback text.
+    ``length`` is the length level (#360); None uses the configured default. A failed
+    generation returns the summarizer's configured fallback text.
     """
     start_time = time.time()
     if summary_type != "results":
         raise InvalidRequestError(f"Unknown summary type: {summary_type}")
     async with summarizer.operation(budget):
         summary = await summarizer.gen_results_summary(search_response.search_request.query,
-                                                       search_response.results)
+                                                       search_response.results, length=length)
     return SummaryResponse(summary=summary, time_spent=time.time() - start_time)
 
 
@@ -110,7 +113,8 @@ async def answer_question(llm: LlmGateway, question: str, search_response: Searc
 async def summarize_document(documents: DocumentRepository, collections: UserCollectionRepository,
                              document_summarizer: TemplatedDocumentSummarizer, user: Principal | None,
                              document_id: Id, collection_id: Id,
-                             budget: OperationBudget | None = None) -> DocumentSummaryResponse:
+                             budget: OperationBudget | None = None,
+                             length: SummaryLength | None = None) -> DocumentSummaryResponse:
     """
     A summary of the current document of ``collection_id`` (#249), with citations to the
     chunks it was built from.
@@ -123,7 +127,8 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
     ``chunk_limit`` (first N chunks in document order); the citations list exactly the
     chunks sent to the model, and ``truncated``/``total_chunks``/``summarized_chunks`` let the
     client show a "partial summary" notice for a long document rather than presenting a
-    summary of its first ``chunk_limit`` chunks as if it covered the whole thing.
+    summary of its first ``chunk_limit`` chunks as if it covered the whole thing. ``length``
+    is the length level (#360); None uses the configured default.
 
     Raises :class:`DocumentSummaryFailed` when generation fails, instead of returning the
     configured fallback text as a successful response: unlike the search-results summarizer
@@ -146,7 +151,7 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
 
     async with document_summarizer.operation(budget):
         summary = await document_summarizer.gen_document_summary(truncated, document_title=detail.document.title,
-                                                                  on_error=capture_failure)
+                                                                  on_error=capture_failure, length=length)
     if failure is not None:
         raise DocumentSummaryFailed.of(failure, DOCUMENT_SUMMARY_FAILED_MESSAGE) from failure
     citations = [

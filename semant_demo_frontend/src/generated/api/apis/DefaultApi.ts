@@ -62,6 +62,7 @@ import type {
   SpanType,
   SuggestSpansRequest,
   SuggestSpansSelectionRequest,
+  SummaryLength,
   SummaryResponse,
   Tag,
   TagSpan,
@@ -165,6 +166,8 @@ import {
     SuggestSpansRequestToJSON,
     SuggestSpansSelectionRequestFromJSON,
     SuggestSpansSelectionRequestToJSON,
+    SummaryLengthFromJSON,
+    SummaryLengthToJSON,
     SummaryResponseFromJSON,
     SummaryResponseToJSON,
     TagFromJSON,
@@ -406,11 +409,13 @@ export interface SuggestSpansThoroughApiAiSuggestSpansThoroughPostRequest {
 export interface SummarizeApiSummarizeSummaryTypePostRequest {
     summaryType: string;
     searchResponse: SearchResponse;
+    length?: SummaryLength | null;
 }
 
 export interface SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest {
     collectionId: string;
     documentId: string;
+    length?: SummaryLength | null;
 }
 
 export interface UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest {
@@ -1759,6 +1764,7 @@ export interface DefaultApiInterface {
      * Creates request options for summarizeApiSummarizeSummaryTypePost without sending the request
      * @param {string} summaryType 
      * @param {SearchResponse} searchResponse 
+     * @param {SummaryLength} [length] Length level of the summary; the configured default when omitted.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1769,6 +1775,7 @@ export interface DefaultApiInterface {
      * @summary Summarize
      * @param {string} summaryType 
      * @param {SearchResponse} searchResponse 
+     * @param {SummaryLength} [length] Length level of the summary; the configured default when omitted.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1784,6 +1791,7 @@ export interface DefaultApiInterface {
      * Creates request options for summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost without sending the request
      * @param {string} collectionId 
      * @param {string} documentId 
+     * @param {SummaryLength} [length] Length level of the summary; the configured default when omitted.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1794,6 +1802,7 @@ export interface DefaultApiInterface {
      * @summary Summarize Document
      * @param {string} collectionId 
      * @param {string} documentId 
+     * @param {SummaryLength} [length] Length level of the summary; the configured default when omitted.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -4853,6 +4862,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['length'] != null) {
+            queryParameters['length'] = requestParameters['length'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
@@ -4912,6 +4925,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
         }
 
         const queryParameters: any = {};
+
+        if (requestParameters['length'] != null) {
+            queryParameters['length'] = requestParameters['length'];
+        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
