@@ -1,13 +1,16 @@
 services:
   topicer:
     hostname: topicer
+    # Named after TOPICER_VERSION below, so `docker ps` shows the running release.
+    image: semant-demo-topicer:v0.1.0
     build:
       context: .
       dockerfile: ./Dockerfile.topicer
       target: server
       args:
         - NOW=${NOW}
-        - BRANCH_NAME=main
+        # Topicer release tag, also in `image` above; see README.md#topicer before changing it.
+        - TOPICER_VERSION=v0.1.0
     env_file:
       - path: .env
         required: true
