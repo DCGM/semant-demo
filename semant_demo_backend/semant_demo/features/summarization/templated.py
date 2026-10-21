@@ -5,10 +5,10 @@ Created on 22.09.25
 :author:     Martin Dočekal
 """
 import logging
-from dataclasses import dataclass
 from typing import Callable, Sequence, Optional
 
 from classconfig import ConfigurableValue, ConfigurableFactory, ConfigurableMixin
+from pydantic import BaseModel, Field, StrictInt
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from semant_demo.adapters.llm.gateway import LlmGateway
@@ -36,67 +36,32 @@ class ModelOptions(ConfigurableMixin):
     )
 
 
-@dataclass(frozen=True)
-class LengthOptions:
+class LengthOptions(BaseModel, extra="forbid", frozen=True):
     """What one summary length level means (#360)."""
-    words: int
+    words: StrictInt = Field(gt=0)
     """Maximum length of the summary in words; given to the prompt templates as ``brevity``."""
-    max_completion_tokens: int
-    """Maximum number of tokens to generate; replaces ``max_completion_tokens`` of the model options."""
+    max_completion_tokens: StrictInt = Field(gt=0)
+    """Maximum number of tokens to generate for the summary."""
 
 
-@dataclass(frozen=True)
-class SummaryLengths:
+class SummaryLengths(BaseModel, extra="forbid", frozen=True):
     """The summary length levels a client may choose from (``SummaryLength``) and the default one (#360)."""
-    default: SummaryLength
-    levels: dict[SummaryLength, LengthOptions]
+    default: SummaryLength = SummaryLength.short
+    short: LengthOptions
+    detailed: LengthOptions
 
     def resolve(self, length: SummaryLength | None) -> tuple[SummaryLength, LengthOptions]:
         """The requested level, or the configured default when none is requested, and its options."""
-        level = length if length is not None else self.default
-        return level, self.levels[level]
-
-    @classmethod
-    def parse(cls, value: dict) -> "SummaryLengths":
-        """The length levels configured as ``{default: <level>, <level>: {words, max_completion_tokens}, ...}``;
-        a missing default is short.
-
-        :raises ValueError: if the default or a level is unknown, a level is missing or malformed, or a number is
-            not a positive integer
-        """
-        value = dict(value)
-        default = SummaryLength(value.pop("default", SummaryLength.short.value))
-        levels = {SummaryLength(name): cls._parse_level(name, options) for name, options in value.items()}
-        if missing := [level.value for level in SummaryLength if level not in levels]:
-            raise ValueError(f"Missing summary length levels: {', '.join(missing)}")
-        return cls(default, levels)
-
-    @staticmethod
-    def _parse_level(name: str, options) -> LengthOptions:
-        if not isinstance(options, dict) or set(options) != {"words", "max_completion_tokens"}:
-            raise ValueError(f"Summary length {name}: expected words and max_completion_tokens")
-        # bool is an int subclass; True is not a length.
-        if not all(type(n) is int and n > 0 for n in options.values()):
-            raise ValueError(f"Summary length {name}: words and max_completion_tokens must be positive integers")
-        return LengthOptions(**options)
+        level = length or self.default
+        return level, getattr(self, level.value)
 
 
-def summary_lengths_value(desc: str, short: tuple[int, int], detailed: tuple[int, int]) -> ConfigurableValue:
-    """A configurable ``SummaryLengths`` with the given (words, max_completion_tokens) defaults. Voluntary, so a
-    configuration from before #360 keeps working with the defaults."""
-    return ConfigurableValue(
-        user_default={
-            "default": SummaryLength.short.value,
-            SummaryLength.short.value: {"words": short[0], "max_completion_tokens": short[1]},
-            SummaryLength.detailed.value: {"words": detailed[0], "max_completion_tokens": detailed[1]},
-        },
-        desc=desc + " default is the level used when the request names none (short when omitted); each level has words (the maximum "
-                    "length in words, given to the prompts as brevity, with the level's name as length) and "
-                    "max_completion_tokens (replaces that of the model options; keep it above the words, a Czech "
-                    "word takes about 2-3 tokens, and within the feature's max_output_tokens in LLM_MODELS_CONFIG).",
-        transform=SummaryLengths.parse,
-        voluntary=True
-    )
+class SummaryModelOptions(BaseModel, extra="forbid", frozen=True):
+    """Model options of a summary whose token limit is set by its length level (#360), not here."""
+    temperature: float | None = None
+    context_size: int | None = None
+    max_completion_tokens: None = None
+    """Only empty, as in configurations from before #360; the length level sets the token limit."""
 
 
 class TemplateGenerationMixin:
@@ -127,7 +92,7 @@ class TemplateGenerationMixin:
         return Template(prompt)
 
     @staticmethod
-    def with_length(options: ModelOptions, length: LengthOptions) -> ModelOptions:
+    def with_length(options: SummaryModelOptions, length: LengthOptions) -> ModelOptions:
         """``options`` with the token limit of the chosen length level."""
         return ModelOptions(temperature=options.temperature, context_size=options.context_size,
                             max_completion_tokens=length.max_completion_tokens)
@@ -177,17 +142,28 @@ Nadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".
         transform=TemplateTransformer()
     )
 
-    gen_results_summary_model_options: ModelOptions = ConfigurableFactory(
-        ModelOptions,
-        desc="Model options for search results summary generation. Its max_completion_tokens is not used: the "
-             "length level sets it (gen_results_summary_lengths)."
+    gen_results_summary_model_options: SummaryModelOptions = ConfigurableValue(
+        user_default={"temperature": None, "context_size": None},
+        desc="Model options for search results summary generation: temperature and context_size. The token limit "
+             "is set by the length level (gen_results_summary_lengths).",
+        transform=SummaryModelOptions.model_validate,
+        voluntary=True
     )
     gen_results_summary_error_summary: str = ConfigurableValue(
         user_default="N/A",
         desc="Summary to use when search results summary generation fails."
     )
-    gen_results_summary_lengths: SummaryLengths = summary_lengths_value(
-        "Length levels of the search results summary.", short=(100, 512), detailed=(300, 1024))
+    gen_results_summary_lengths: SummaryLengths = ConfigurableValue(
+        user_default={"default": "short", "short": {"words": 100, "max_completion_tokens": 512},
+                      "detailed": {"words": 300, "max_completion_tokens": 1024}},
+        desc="Length levels of the search results summary. default is the level used when a request names none "
+             "(short when omitted): by API clients that omit length and for the results summary a search request "
+             "asks for. The frontend panels always send the level the user sees (Short initially), so this default "
+             "does not change them. Each level has words (the word limit given to the prompts as brevity) and "
+             "max_completion_tokens (keep it within the feature's max_output_tokens in LLM_MODELS_CONFIG).",
+        transform=SummaryLengths.model_validate,
+        voluntary=True
+    )
     gen_results_summary_system_prompt: Template = ConfigurableValue(
         user_default=LiteralScalarString("""Jsi asistent pro sumarizaci textů.  
 Dostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc0], [doc1], … [doc15].  
@@ -273,8 +249,7 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
         return await self._generate_or_fallback(
             "results_summary", self.gen_results_summary_error_summary, on_error,
             self.gen_results_summary_system_prompt, self.handle_prompt(prompt, self.gen_results_summary_prompt),
-            {"results": results, "query": query, "length": level.value,
-             "brevity": brevity if brevity is not None else options.words},
+            {"results": results, "query": query, "length": level.value, "brevity": options.words},
             self.with_length(self.gen_results_summary_model_options, options))
 
     async def gen_query_summary_for_text_chunk(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, brevity: Optional[int] = None,

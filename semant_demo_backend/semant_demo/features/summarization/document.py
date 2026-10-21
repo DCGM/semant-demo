@@ -11,7 +11,7 @@ import logging
 from contextlib import nullcontext
 from typing import Callable, Optional, Sequence
 
-from classconfig import ConfigurableFactory, ConfigurableMixin, ConfigurableValue
+from classconfig import ConfigurableMixin, ConfigurableValue
 from classconfig.configurable import CreatableMixin
 from ruamel.yaml.scalarstring import LiteralScalarString
 
@@ -19,8 +19,8 @@ from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.adapters.llm.usage import OperationBudget
 from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.features.summarization.schemas import SummaryLength
-from semant_demo.features.summarization.templated import ModelOptions, SummaryLengths, TemplateGenerationMixin, \
-    summary_lengths_value
+from semant_demo.features.summarization.templated import ModelOptions, SummaryLengths, SummaryModelOptions, \
+    TemplateGenerationMixin
 from semant_demo.utils.template import Template, TemplateTransformer
 
 
@@ -43,17 +43,28 @@ class TemplatedDocumentSummarizer(TemplateGenerationMixin, ConfigurableMixin, Cr
              "calling the summarizer."
     )
 
-    gen_summary_model_options: ModelOptions = ConfigurableFactory(
-        ModelOptions,
-        desc="Model options for document summary generation. Its max_completion_tokens is not used: the length "
-             "level sets it (gen_summary_lengths)."
+    gen_summary_model_options: SummaryModelOptions = ConfigurableValue(
+        user_default={"temperature": None, "context_size": None},
+        desc="Model options for document summary generation: temperature and context_size. The token limit is "
+             "set by the length level (gen_summary_lengths).",
+        transform=SummaryModelOptions.model_validate,
+        voluntary=True
     )
     gen_summary_error_summary: str = ConfigurableValue(
         user_default="N/A",
         desc="Summary to use when document summary generation fails."
     )
-    gen_summary_lengths: SummaryLengths = summary_lengths_value(
-        "Length levels of the document summary.", short=(150, 768), detailed=(400, 1536))
+    gen_summary_lengths: SummaryLengths = ConfigurableValue(
+        user_default={"default": "short", "short": {"words": 150, "max_completion_tokens": 768},
+                      "detailed": {"words": 400, "max_completion_tokens": 1536}},
+        desc="Length levels of the document summary. default is the level used when a request names none "
+             "(short when omitted), i.e. by API clients that omit length. The frontend panels always send the "
+             "level the user sees (Short initially), so this default does not change them. Each level has words "
+             "(the word limit given to the prompts as brevity) and max_completion_tokens (keep it within the "
+             "feature's max_output_tokens in LLM_MODELS_CONFIG).",
+        transform=SummaryLengths.model_validate,
+        voluntary=True
+    )
     gen_summary_system_prompt: Template = ConfigurableValue(
         user_default=LiteralScalarString("""Jsi asistent pro sumarizaci historických dokumentů.
 Dostaneš úryvky (chunky) jednoho dokumentu v pořadí, v jakém se v dokumentu vyskytují; každý je označen unikátním ID jako [doc1], [doc2], … [docN].

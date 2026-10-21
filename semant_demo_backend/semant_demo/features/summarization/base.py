@@ -105,7 +105,7 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
         :param query: search query that was used to get the results
         :param results: search results to create a summary for
         :param prompt: optional prompt to use instead of the default one
-        :param brevity: optional brevity to instruct the model to use; overrides the words of the length level
+        :param brevity: optional brevity to instruct the model to use
         :param length: length level of the summary; None for the configured default
         :return: generated summary
         """

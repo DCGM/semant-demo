@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 from asgi_lifespan import LifespanManager
+from classconfig.configurable import ConfigError
 from httpx import ASGITransport, AsyncClient
 
 from semant_demo.config import SCRIPT_PATH
@@ -11,8 +12,8 @@ from semant_demo.features.search.schemas import SearchRequest
 from semant_demo.features.summarization import service
 from semant_demo.features.summarization.document import TemplatedDocumentSummarizer, load_document_summarizer
 from semant_demo.features.summarization.schemas import SummaryLength
-from semant_demo.features.summarization.templated import LengthOptions, SummaryLengths, \
-    TemplatedSearchResultsSummarizer, load_summarizer
+from semant_demo.features.summarization.templated import SummaryLengths, TemplatedSearchResultsSummarizer, \
+    load_summarizer
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_summarizer
 from semant_demo.utils.template import Template
@@ -31,14 +32,14 @@ ECHO = Template("length={{ length }} brevity={{ brevity }}")
 
 def search_summarizer(llm, lengths=LENGTHS) -> TemplatedSearchResultsSummarizer:
     summarizer = load_summarizer(str(CONFIGS / "search_summarizer.yaml"), llm)
-    summarizer.gen_results_summary_lengths = SummaryLengths.parse(lengths)
+    summarizer.gen_results_summary_lengths = SummaryLengths.model_validate(lengths)
     summarizer.gen_results_summary_system_prompt = ECHO
     return summarizer
 
 
 def document_summarizer(llm, lengths=LENGTHS) -> TemplatedDocumentSummarizer:
     summarizer = load_document_summarizer(str(CONFIGS / "document_summarizer.yaml"), llm)
-    summarizer.gen_summary_lengths = SummaryLengths.parse(lengths)
+    summarizer.gen_summary_lengths = SummaryLengths.model_validate(lengths)
     summarizer.gen_summary_system_prompt = ECHO
     return summarizer
 
@@ -49,72 +50,60 @@ def sent(llm) -> tuple[str, int]:
     return messages[0]["content"], options["max_tokens"]
 
 
-def test_length_levels_are_parsed():
-    lengths = SummaryLengths.parse(LENGTHS)
-
-    assert lengths.resolve(None) == (SummaryLength.short, LengthOptions(words=50, max_completion_tokens=200))
-    assert lengths.resolve(SummaryLength.detailed) == \
-        (SummaryLength.detailed, LengthOptions(words=250, max_completion_tokens=900))
+SUMMARIZERS = [
+    (TemplatedSearchResultsSummarizer, "search_summarizer.yaml", "gen_results_summary"),
+    (TemplatedDocumentSummarizer, "document_summarizer.yaml", "gen_summary"),
+]
 
 
-def test_a_missing_default_level_is_short():
-    lengths = SummaryLengths.parse({key: value for key, value in LENGTHS.items() if key != "default"})
-
-    assert lengths.default == SummaryLength.short
-
-
-@pytest.mark.parametrize("change", [
-    {"default": "medium"},
-    {"medium": {"words": 10, "max_completion_tokens": 50}},
-    {"detailed": None},
-    {"short": {"words": 0, "max_completion_tokens": 50}},
-    {"short": {"words": 10, "max_completion_tokens": "many"}},
-    {"short": {"words": True, "max_completion_tokens": 50}},
-    {"short": {"words": 10}},
-    {"short": {"words": 10, "max_completion_tokens": 50, "temperature": 0.5}},
-    {"detailed": "long"},
-])
-def test_invalid_length_levels_are_rejected(change):
-    lengths = {key: value for key, value in {**LENGTHS, **change}.items() if value is not None}
-
-    with pytest.raises(ValueError):
-        SummaryLengths.parse(lengths)
-
-
-def test_an_empty_level_is_rejected():
-    with pytest.raises(ValueError, match="short"):
-        SummaryLengths.parse({**LENGTHS, "short": None})
-
-
-@pytest.mark.parametrize("load, attribute, feature", [
-    (load_summarizer, "gen_results_summary_lengths", "search_summary"),
-    (load_document_summarizer, "gen_summary_lengths", "document_summary"),
-])
-def test_bundled_length_levels_fit_the_feature_output_limit(load, attribute, feature):
-    path = CONFIGS / ("search_summarizer.yaml" if feature == "search_summary" else "document_summarizer.yaml")
-    lengths: SummaryLengths = getattr(load(str(path), FakeLlm()), attribute)
-    limit = yaml.safe_load((CONFIGS / "llm_models.yaml").read_text())["features"][feature]["limits"]["max_output_tokens"]
-
-    (_, short), (_, detailed) = lengths.resolve(SummaryLength.short), lengths.resolve(SummaryLength.detailed)
-    assert short.words < detailed.words
-    assert all(o.words < o.max_completion_tokens <= limit for o in (short, detailed))
-
-
-@pytest.mark.parametrize("name, attribute", [
-    ("search_summarizer.yaml", "gen_results_summary_lengths"),
-    ("document_summarizer.yaml", "gen_summary_lengths"),
-])
-def test_a_configuration_without_length_levels_uses_the_defaults(tmp_path, name, attribute):
+def write_config(tmp_path, name: str, change) -> str:
+    """The bundled configuration ``name`` changed by ``change`` (a function of the loaded YAML)."""
     config = yaml.safe_load((CONFIGS / name).read_text())
-    del config[attribute]
+    change(config)
     path = tmp_path / name
     path.write_text(yaml.safe_dump(config, allow_unicode=True))
-    cls = TemplatedSearchResultsSummarizer if name.startswith("search") else TemplatedDocumentSummarizer
+    return str(path)
 
-    lengths = getattr(cls.create(str(path)), attribute)
+
+@pytest.mark.parametrize("cls, name, prefix", SUMMARIZERS)
+def test_bundled_length_levels_fit_the_feature_output_limit(cls, name, prefix):
+    lengths: SummaryLengths = getattr(cls.create(str(CONFIGS / name)), f"{prefix}_lengths")
+    feature = "search_summary" if cls is TemplatedSearchResultsSummarizer else "document_summary"
+    limit = yaml.safe_load((CONFIGS / "llm_models.yaml").read_text())["features"][feature]["limits"]["max_output_tokens"]
 
     assert lengths.default == SummaryLength.short
-    assert {level for level in SummaryLength} <= lengths.levels.keys()
+    assert lengths.short.words < lengths.detailed.words
+    assert all(o.words < o.max_completion_tokens <= limit for o in (lengths.short, lengths.detailed))
+
+
+@pytest.mark.parametrize("cls, name, prefix", SUMMARIZERS)
+def test_a_configuration_from_before_length_levels_loads_with_the_defaults(tmp_path, cls, name, prefix):
+    def before_360(config):
+        del config[f"{prefix}_lengths"]
+        config[f"{prefix}_model_options"]["max_completion_tokens"] = None
+
+    summarizer = cls.create(write_config(tmp_path, name, before_360))
+
+    assert getattr(summarizer, f"{prefix}_lengths").resolve(None)[0] == SummaryLength.short
+
+
+@pytest.mark.parametrize("cls, name, prefix", SUMMARIZERS)
+def test_a_malformed_length_level_fails_at_load(tmp_path, cls, name, prefix):
+    def malformed(config):
+        config[f"{prefix}_lengths"]["short"]["words"] = 0
+
+    with pytest.raises(ConfigError, match="short.words"):
+        cls.create(write_config(tmp_path, name, malformed))
+
+
+@pytest.mark.parametrize("cls, name, prefix", SUMMARIZERS)
+def test_a_token_limit_in_the_model_options_fails_at_load(tmp_path, cls, name, prefix):
+    # The length level is the only place that sets the summary's token limit (#441 review).
+    def token_limit(config):
+        config[f"{prefix}_model_options"]["max_completion_tokens"] = 300
+
+    with pytest.raises(ConfigError, match="max_completion_tokens"):
+        cls.create(write_config(tmp_path, name, token_limit))
 
 
 @pytest.mark.parametrize("length, expected", [

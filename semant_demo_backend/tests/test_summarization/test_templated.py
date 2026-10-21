@@ -10,7 +10,6 @@ class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
         self.llm = FakeLlm("  Generated text\n")
         self.summarizer = TemplatedSearchResultsSummarizer(
             gen_title_model_options=ModelOptions(temperature=0.5, max_completion_tokens=20),
-            gen_results_summary_model_options=ModelOptions(),
             gen_query_summary_model_options=ModelOptions(context_size=4096),
             gen_title_system_prompt=Template("Jsi užitečný asistent, který generuje nadpisy pro texty historických dokumentů. {% if brevity %}Nadpis by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze nadpisem, bez dalších komentářů nebo úvodních frází."),
             gen_title_prompt=Template("Vygeneruj nadpis pro následující text historického dokumentu.\n\"{{ text.text }}\"\nNadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".\n"),
