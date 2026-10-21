@@ -34,7 +34,8 @@ import {
  * ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have
  * been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted
  * meanwhile) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved,
- * tag-filtered search does not reflect it; repeating the action retries it).
+ * tag-filtered search does not reflect it; ``annotations/chunk-tags/sync`` with that pair
+ * repairs it, also after a deletion).
  * @export
  * @interface AnnotationReviewResult
  */

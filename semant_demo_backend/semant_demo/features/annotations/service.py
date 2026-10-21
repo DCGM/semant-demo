@@ -40,7 +40,7 @@ from uuid import UUID
 from semant_demo.features.annotations.schemas import (
     MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationPage, AnnotationQuery, AnnotationReviewRequest, AnnotationReviewResult, AnnotationRow, AnnotationSort,
-    EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
+    ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
 )
 from semant_demo.features.documents.schemas import Document
 from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
@@ -888,3 +888,21 @@ async def review_annotations(store: AnnotationStore, user: Principal | None, col
         succeeded = [str(s.id) for s in updated]
     failed = missing + failed
     return AnnotationReviewResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded, failed=failed)
+
+
+async def sync_annotation_chunk_tags(store: AnnotationStore, user: Principal | None, collection_id: Id,
+                                     request: ChunkTagSyncRequest) -> WriteResult:
+    """
+    Re-derives the tag-filtered search references of (chunk, tag) pairs of the
+    collection's tags from the annotations stored now: the repair of ``update_chunk_tags``
+    failures, which also works after the annotation was deleted. Idempotent. ``succeeded``
+    and ``failed`` name the pairs as ``chunk_id:tag_id``.
+    """
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
+    pairs = sorted({ChunkTag.of(p.chunk_id, p.tag_id) for p in request.pairs})
+    await access.require_tags_in_collection(store.tags, [p.tag_id for p in pairs], grant.collection_id)
+    cid = await use_tenant(store, grant)
+    failed = await store.chunk_tags.sync(cid, pairs)
+    unsynced = {f.item_id for f in failed}
+    succeeded = [p.label() for p in pairs if p.label() not in unsynced]
+    return WriteResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded, failed=failed)

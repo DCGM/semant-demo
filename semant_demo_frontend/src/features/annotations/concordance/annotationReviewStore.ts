@@ -6,6 +6,8 @@ import { useAnnotationSelectionStore } from '../annotationSelectionStore'
 
 /** Annotations sent per review request (the backend accepts at most 200). */
 export const REVIEW_BATCH = 200
+/** (chunk, tag) pairs per search repair request (the backend accepts at most 1,000). */
+export const SYNC_BATCH = 1000
 
 /** An annotation whose review write did not succeed, or may not have. */
 export interface ReviewFailure {
@@ -26,9 +28,11 @@ export interface ReviewReport {
   failed: ReviewFailure[]
   /** Not annotations of the collection (any more): deleted meanwhile, or never there. */
   missing: string[]
-  /** Saved changes that tag-filtered search does not reflect yet (repeating the action updates it). */
-  searchNotUpdated: number
-  /** Targets not sent because a request was refused (e.g. access was revoked). */
+  /** Saved changes that tag-filtered search does not reflect yet, as the `chunkId:tagId`
+   * pairs to re-derive; a retry repairs them, also those of deleted annotations. */
+  unsynced: string[]
+  /** Targets not sent because a request was refused (e.g. access was revoked) or the
+   * selection changed. */
   notSent: number
   /** Why the action stopped early. */
   error: string | null
@@ -39,11 +43,13 @@ export interface ReviewReport {
  * fixed list of annotations, sent in parts of `REVIEW_BATCH`. The targets are resolved when
  * the action starts (the explicit selection or one row), so later filter changes never
  * widen it. Writes are best effort and reported per annotation; nothing is rolled back.
- * Retrying sends only failed and uncertain items.
+ * Retrying sends only failed and uncertain items and repairs the search references whose
+ * update failed.
  *
  * Leaving the collection or signing out stops sending further parts and drops the report;
- * writes already sent are kept by the backend. A refused part (4xx) stops the action; a
- * lost answer marks its part uncertain and continues with the next.
+ * writes already sent are kept by the backend. A change of the selection's members stops
+ * sending further parts and reports the rest as not sent. A refused part (4xx) stops the
+ * action; a lost answer marks its part uncertain and continues with the next.
  */
 export const useAnnotationReviewStore = defineStore('annotationReview', () => {
   const api = useApi().default
@@ -56,14 +62,24 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
   let run = 0
 
   function emptyReport (action: ReviewAction, tagId: string | null, target: number): ReviewReport {
-    return { action, tagId, target, saved: [], failed: [], missing: [], searchNotUpdated: 0, notSent: 0, error: null }
+    return { action, tagId, target, saved: [], failed: [], missing: [], unsynced: [], notSent: 0, error: null }
   }
 
-  /** Sends `ids` into `into`; false when stopped because the context changed. */
-  async function send (collectionId: string, into: ReviewReport, ids: string[], applies: () => boolean) {
+  /**
+   * Sends `ids` into `into`; false when stopped because the context changed (the answers
+   * are dropped then). `unchanged`: the selection still has the members it had at the start;
+   * once it has not, the remaining parts are not sent.
+   */
+  async function send (collectionId: string, into: ReviewReport, ids: string[], applies: () => boolean,
+    unchanged: () => boolean) {
     progress.value = 0
     for (let i = 0; i < ids.length; i += REVIEW_BATCH) {
       if (!applies()) return false
+      if (!unchanged()) {
+        into.notSent += ids.length - i
+        into.error = `Stopped because the selection changed; ${ids.length - i} were not sent.`
+        return true
+      }
       const part = ids.slice(i, i + REVIEW_BATCH)
       try {
         const result = await api.reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost({
@@ -73,9 +89,10 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
         if (!applies()) return false
         into.saved.push(...(result.succeeded ?? []))
         for (const f of result.failed ?? []) {
-          if (f.step === 'find_annotation' && f.itemId) into.missing.push(f.itemId)
-          else if (f.step === 'update_chunk_tags') into.searchNotUpdated++
-          else if (f.itemId) into.failed.push({ id: f.itemId, message: f.message, uncertain: !!f.uncertain })
+          if (!f.itemId) continue
+          if (f.step === 'find_annotation') into.missing.push(f.itemId)
+          else if (f.step === 'update_chunk_tags') into.unsynced.push(f.itemId)
+          else into.failed.push({ id: f.itemId, message: f.message, uncertain: !!f.uncertain })
         }
       } catch (e) {
         if (!applies()) return false
@@ -95,6 +112,48 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
     return true
   }
 
+  /** Re-derives the search references of `into.unsynced`, keeping the pairs still not
+   * updated; false when stopped because the context changed. */
+  async function sync (collectionId: string, into: ReviewReport, applies: () => boolean) {
+    const pairs = [...new Set(into.unsynced)]
+    const left: string[] = []
+    for (let i = 0; i < pairs.length; i += SYNC_BATCH) {
+      if (!applies()) return false
+      const part = pairs.slice(i, i + SYNC_BATCH)
+      try {
+        const result = await api.syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost({
+          collectionId,
+          chunkTagSyncRequest: {
+            pairs: part.map(pair => {
+              const [chunkId = '', tagId = ''] = pair.split(':')
+              return { chunkId, tagId }
+            })
+          }
+        })
+        if (!applies()) return false
+        for (const f of result.failed ?? []) if (f.itemId) left.push(f.itemId)
+      } catch (e) {
+        if (!applies()) return false
+        left.push(...part)
+        into.error ??= await apiErrorMessage(e, 'Tag-filtered search could not be updated.')
+      }
+    }
+    into.unsynced = left
+    return true
+  }
+
+  /** The guards of a new run: its context still applies, and the selection is unchanged. */
+  function startRun () {
+    const mine = ++run
+    const inScope = selection.captureScope()
+    const inSession = captureSession()
+    return {
+      mine,
+      applies: () => mine === run && inScope() && inSession(),
+      unchanged: selection.captureMembership()
+    }
+  }
+
   /**
    * Applies `action` to `ids` of the collection; returns the report, or null when the
    * collection was left or the session ended meanwhile (nothing more is sent then).
@@ -102,15 +161,13 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
   async function review (collectionId: string, action: ReviewAction, ids: string[],
     tagId: string | null = null): Promise<ReviewReport | null> {
     const targets = [...new Set(ids)]
-    const mine = ++run
-    const inScope = selection.captureScope()
-    const inSession = captureSession()
-    const applies = () => mine === run && inScope() && inSession()
+    const { mine, applies, unchanged } = startRun()
     const next = emptyReport(action, tagId, targets.length)
     target.value = targets.length
     running.value = true
     try {
-      if (!await send(collectionId, next, targets, applies)) return null
+      if (!await send(collectionId, next, targets, applies, unchanged)) return null
+      next.unsynced = [...new Set(next.unsynced)]
       report.value = next
       return next
     } finally {
@@ -118,19 +175,20 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
     }
   }
 
-  /** Sends the failed and uncertain items of the last report again. */
+  /** Sends the failed and uncertain items of the last report again and repairs its
+   * search references that were not updated. */
   async function retry (collectionId: string): Promise<ReviewReport | null> {
     const last = report.value
-    if (!last || !last.failed.length) return last
-    const mine = ++run
-    const inScope = selection.captureScope()
-    const inSession = captureSession()
-    const applies = () => mine === run && inScope() && inSession()
-    const next: ReviewReport = { ...last, failed: [], notSent: 0, error: null, saved: [...last.saved], missing: [...last.missing] }
+    if (!last || (!last.failed.length && !last.unsynced.length)) return last
+    const { mine, applies, unchanged } = startRun()
+    const next: ReviewReport = {
+      ...last, failed: [], notSent: 0, error: null, saved: [...last.saved], missing: [...last.missing], unsynced: [...last.unsynced]
+    }
     target.value = last.failed.length
     running.value = true
     try {
-      if (!await send(collectionId, next, last.failed.map(f => f.id), applies)) return null
+      if (!await send(collectionId, next, last.failed.map(f => f.id), applies, unchanged)) return null
+      if (!await sync(collectionId, next, applies)) return null
       report.value = next
       return next
     } finally {

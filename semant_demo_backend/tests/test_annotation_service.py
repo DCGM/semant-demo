@@ -17,7 +17,8 @@ from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, N
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.offsets import InvalidSpanRange
 from semant_demo.features.annotations.schemas import (
-    AnnotationChunk, AnnotationReviewRequest, PatchSpan, PatchTag, PostSpan, PostTag, ReviewAction, SpanType, TagSpan,
+    AnnotationChunk, AnnotationReviewRequest, ChunkTagPair, ChunkTagSyncRequest, PatchSpan, PatchTag, PostSpan, PostTag,
+    ReviewAction, SpanType, TagSpan,
 )
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.user_collections.access import AuthenticationRequired
@@ -188,6 +189,10 @@ def review(action, *ids, tag=None):
     return AnnotationReviewRequest(action=action, annotation_ids=list(ids or [SPAN_A, SPAN_B]), tag_id=tag)
 
 
+def sync_pairs(*pairs):
+    return ChunkTagSyncRequest(pairs=[ChunkTagPair(chunk_id=c, tag_id=t) for c, t in pairs])
+
+
 NEW_TAG = PostTag(name="Osoba", shorthand="OS", color="#000", pictogram="p", definition="d")
 
 WRITES = [
@@ -202,6 +207,7 @@ WRITES = [
     lambda s, u: service.delete_suggestions_in_document(s, u, COLLECTION, DOCUMENT, [TAG]),
     lambda s, u: service.review_annotations(s, u, COLLECTION, review(ReviewAction.approve)),
     lambda s, u: service.review_annotations(s, u, COLLECTION, review(ReviewAction.delete)),
+    lambda s, u: service.sync_annotation_chunk_tags(s, u, COLLECTION, sync_pairs((CHUNK_1, TAG))),
 ]
 READS = [
     lambda s, u: service.get_tag(s, u, TAG),
@@ -530,3 +536,30 @@ def test_review_request_needs_a_tag_exactly_for_retag_and_bounds_the_batch():
         AnnotationReviewRequest(action=ReviewAction.approve, annotation_ids=[])
     with pytest.raises(ValueError):
         AnnotationReviewRequest(action=ReviewAction.approve, annotation_ids=[uuid4() for _ in range(201)])
+
+
+async def test_chunk_tag_sync_re_derives_the_pairs_also_without_their_annotation(store, writes):
+    # The pair of a deleted annotation (no span on OUTSIDE_CHUNK) is re-derived too.
+    store.chunk_tags.failures = [StepFailure(item_id=f"{CHUNK_1}:{TAG}", step="update_chunk_tags", message="x")]
+
+    result = await service.sync_annotation_chunk_tags(
+        store, SHARED, COLLECTION, sync_pairs((CHUNK_1, TAG), (OUTSIDE_CHUNK, OTHER_TAG), (CHUNK_1, TAG)))
+
+    assert writes == [("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(OUTSIDE_CHUNK, OTHER_TAG)}))]
+    assert store.chunk_tags.collections == [COLLECTION]
+    assert result.outcome == "partial"
+    assert result.succeeded == [f"{OUTSIDE_CHUNK}:{OTHER_TAG}"]
+    assert [f.item_id for f in result.failed] == [f"{CHUNK_1}:{TAG}"]
+
+
+async def test_chunk_tag_sync_of_a_tag_of_another_collection_is_not_found(store, writes):
+    with pytest.raises(NotFoundError):
+        await service.sync_annotation_chunk_tags(store, OWNER, COLLECTION, sync_pairs((CHUNK_1, TAG), (CHUNK_1, SECOND_TAG)))
+    assert writes == []
+
+
+def test_chunk_tag_sync_request_is_bounded():
+    with pytest.raises(ValueError):
+        ChunkTagSyncRequest(pairs=[])
+    with pytest.raises(ValueError):
+        sync_pairs(*[(uuid4(), TAG)] * 1001)

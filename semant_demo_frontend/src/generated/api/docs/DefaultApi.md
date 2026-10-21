@@ -60,6 +60,7 @@ All URIs are relative to *http://localhost*
 | [**suggestSpansThoroughApiAiSuggestSpansThoroughPost**](DefaultApi.md#suggestspansthoroughapiaisuggestspansthoroughpost) | **POST** /api/ai/suggest_spans/thorough | Suggest Spans Thorough |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost**](DefaultApi.md#summarizedocumentapiusercollectionscollectioniddocumentsdocumentidsummarypost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/summary | Summarize Document |
+| [**syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost**](DefaultApi.md#synccollectionannotationchunktagsapiusercollectionscollectionidannotationschunktagssyncpost) | **POST** /api/user_collections/{collection_id}/annotations/chunk-tags/sync | Sync Collection Annotation Chunk Tags |
 | [**unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete**](DefaultApi.md#unsharecollectionapiusercollectionscollectionidshareuseriddelete) | **DELETE** /api/user_collections/{collection_id}/share/{user_id} | Unshare Collection |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
 | [**updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch**](DefaultApi.md#updatecollectionownerapiusercollectionscollectionidownerpatch) | **PATCH** /api/user_collections/{collection_id}/owner | Update Collection Owner |
@@ -4129,6 +4130,81 @@ example().catch(console.error);
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
 | **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost
+
+> WriteResult syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost(collectionId, chunkTagSyncRequest)
+
+Sync Collection Annotation Chunk Tags
+
+Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\&#39;s tags from its annotations: repairs the &#x60;&#x60;update_chunk_tags&#x60;&#x60; failures of a review, also after a deletion. Needs annotation-edit access.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // ChunkTagSyncRequest
+    chunkTagSyncRequest: ...,
+  } satisfies SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest;
+
+  try {
+    const data = await api.syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **chunkTagSyncRequest** | [ChunkTagSyncRequest](ChunkTagSyncRequest.md) |  | |
+
+### Return type
+
+[**WriteResult**](WriteResult.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

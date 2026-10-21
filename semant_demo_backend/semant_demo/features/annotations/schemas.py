@@ -227,6 +227,8 @@ MAX_RESOLVED_IDS = 5000
 """Annotations "select all matches" may resolve at once (#459); more is refused."""
 MAX_REVIEW_BATCH = 200
 """Annotations one review request may change (#459); a client sends larger selections in parts."""
+MAX_SYNC_PAIRS = 1000
+"""(chunk, tag) pairs one chunk tag repair request may re-derive (#459)."""
 
 
 class AnnotationIdsRequest(BaseModel):
@@ -279,7 +281,19 @@ class AnnotationReviewResult(WriteResult):
     ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have
     been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted
     meanwhile) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved,
-    tag-filtered search does not reflect it; repeating the action retries it)."""
+    tag-filtered search does not reflect it; ``annotations/chunk-tags/sync`` with that pair
+    repairs it, also after a deletion)."""
+
+
+class ChunkTagPair(BaseModel):
+    chunk_id: UUID
+    tag_id: UUID
+
+
+class ChunkTagSyncRequest(BaseModel):
+    """(chunk, tag) pairs of the collection's tags whose tag-filtered search references to
+    re-derive: the items of ``update_chunk_tags`` failures (``chunk_id:tag_id``)."""
+    pairs: list[ChunkTagPair] = Field(min_length=1, max_length=MAX_SYNC_PAIRS)
 
 
 class TagSpanWriteResult(TagSpan, WriteResult):

@@ -268,6 +268,49 @@ describe('concordance store', () => {
     expect([...selection.ids]).toEqual(['a'])
   })
 
+  it('ends "select all" on a filter change without adding the old matches', async () => {
+    const store = await opened(['a', 'b'], 3)
+    const selection = useAnnotationSelectionStore()
+    const selecting = store.selectAllMatches()
+    await flush()
+    expect(store.resolving).toBe(true)
+    const filtering = store.setFilters({ text: 'Novák' })
+    expect(store.resolving).toBe(false)
+    idCalls()[0].answer({ ids: ['a', 'b', 'c'] })
+    expect(await selecting).toBeNull()
+    expect(selection.size).toBe(0)
+    await flush()
+    rowCalls()[1].answer(page(['a']))
+    await filtering
+    expect(store.resolving).toBe(false)
+  })
+
+  it('finishes "select all" while the hidden members are asked about, and knows them all after', async () => {
+    const store = await opened(['a', 'b'], 3)
+    const selection = useAnnotationSelectionStore()
+    selection.add(['old'])
+    const asking = store.loadShown()
+    const selecting = store.selectAllMatches()
+    await flush()
+    const [shownCall, allCall] = idCalls()
+    expect([shownCall.body, allCall.body]).toMatchObject([{ within: ['old'] }, { within: null }])
+    // Asking again about the members does not end "select all".
+    const again = store.loadShown()
+    await flush()
+    allCall.answer({ ids: ['a', 'b', 'c'] })
+    expect(await selecting).toBeNull()
+    expect(store.resolving).toBe(false)
+    // "old" is not among all matches: hidden, without waiting for the pending answers.
+    expect(store.hiddenSelected).toBe(1)
+
+    // The pending answers predate "select all" and are dropped.
+    shownCall.answer({ ids: [] })
+    idCalls()[2].answer({ ids: ['old'] })
+    await Promise.all([asking, again])
+    expect([...selection.ids].sort()).toEqual(['a', 'b', 'c', 'old'])
+    expect(store.hiddenSelected).toBe(1)
+  })
+
   it('drops the hidden-selection answer of a collection left meanwhile', async () => {
     const store = await opened(['a'])
     useAnnotationSelectionStore().toggle('a')
@@ -288,6 +331,7 @@ describe('annotation review store', () => {
   const originalFetch = globalThis.fetch
   let calls: ReturnType<typeof controlledFetch>['calls']
   const reviewCalls = () => calls.filter(c => c.url.pathname.endsWith('/annotations/review'))
+  const syncCalls = () => calls.filter(c => c.url.pathname.endsWith('/annotations/chunk-tags/sync'))
 
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -326,18 +370,72 @@ describe('annotation review store', () => {
 
     expect(report?.saved.length).toBe(198)
     expect(report?.missing).toEqual(['id-199'])
-    expect(report?.searchNotUpdated).toBe(1)
+    expect(report?.unsynced).toEqual(['c:t'])
     expect(report?.failed.map(f => [f.id, f.uncertain])).toEqual([
       ['id-198', false], ...ids(250).slice(200).map(id => [id, true])])
     expect(review.running).toBe(false)
 
-    // A retry sends only the failed and uncertain items.
+    // A retry sends only the failed and uncertain items, then repairs the search pair.
     const retrying = review.retry('col-1')
     await flush()
     expect(reviewCalls()[2].body).toMatchObject({ annotation_ids: ['id-198', ...ids(250).slice(200)] })
     reviewCalls()[2].answer({ outcome: 'complete', succeeded: ['id-198', ...ids(250).slice(200)], failed: [] })
+    await flush()
+    expect(syncCalls()[0].body).toEqual({ pairs: [{ chunk_id: 'c', tag_id: 't' }] })
+    syncCalls()[0].answer({ outcome: 'complete', succeeded: ['c:t'], failed: [] })
     const retried = await retrying
-    expect([retried?.saved.length, retried?.failed.length, retried?.missing]).toEqual([249, 0, ['id-199']])
+    expect([retried?.saved.length, retried?.failed.length, retried?.missing, retried?.unsynced])
+      .toEqual([249, 0, ['id-199'], []])
+  })
+
+  it('stops sending parts once the selection changes and keeps what was sent', async () => {
+    const review = useAnnotationReviewStore()
+    const selection = useAnnotationSelectionStore()
+    selection.add(ids(450))
+    const running = review.review('col-1', 'delete' as never, [...selection.ids])
+    await flush()
+    selection.toggle('id-449', false)
+    reviewCalls()[0].answer({ outcome: 'complete', succeeded: ids(200), failed: [] })
+    const report = await running
+
+    expect(reviewCalls()).toHaveLength(1)
+    expect([report?.saved.length, report?.failed.length, report?.notSent]).toEqual([200, 0, 250])
+    expect(report?.error).toContain('selection changed')
+    expect(review.report).toBe(report)
+
+    // The ids not sent are not retried: they may no longer be selected.
+    expect(await review.retry('col-1')).toBe(report)
+    expect(reviewCalls()).toHaveLength(1)
+  })
+
+  it('repairs the search pairs of deleted annotations, which cannot be reviewed again', async () => {
+    const review = useAnnotationReviewStore()
+    const running = review.review('col-1', 'delete' as never, ['a', 'b'])
+    await flush()
+    reviewCalls()[0].answer({
+      outcome: 'partial',
+      succeeded: ['a', 'b'],
+      failed: [
+        { item_id: 'c1:t', step: 'update_chunk_tags', message: 'x' },
+        { item_id: 'c2:t', step: 'update_chunk_tags', message: 'x' },
+        { item_id: 'c1:t', step: 'update_chunk_tags', message: 'x' }
+      ]
+    })
+    expect((await running)?.unsynced).toEqual(['c1:t', 'c2:t'])
+
+    const repairing = review.retry('col-1')
+    await flush()
+    expect(reviewCalls()).toHaveLength(1)
+    expect(syncCalls()[0].url.pathname).toBe('/api/user_collections/col-1/annotations/chunk-tags/sync')
+    syncCalls()[0].answer({ outcome: 'partial', succeeded: ['c1:t'], failed: [{ item_id: 'c2:t', step: 'update_chunk_tags', message: 'x' }] })
+    const partly = await repairing
+    expect([partly?.saved, partly?.unsynced, partly?.error]).toEqual([['a', 'b'], ['c2:t'], null])
+
+    const failing = review.retry('col-1')
+    await flush()
+    syncCalls()[1].answer({ detail: 'Tag not found' }, 404)
+    const refused = await failing
+    expect([refused?.unsynced, refused?.error]).toEqual([['c2:t'], 'Tag not found'])
   })
 
   it('stops at a refused part and keeps the rest as not sent', async () => {
@@ -375,6 +473,28 @@ describe('annotation review store', () => {
 
 describe('annotation selection store', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
+
+  it('tells a captured membership that any change of the members ended it', () => {
+    const selection = useAnnotationSelectionStore()
+    selection.enter('col-1')
+    selection.add(['a'])
+    const changes: [string, () => void][] = [
+      ['add', () => selection.add(['b'])],
+      ['remove', () => selection.remove(['a'])],
+      ['toggle', () => selection.toggle('a')],
+      ['retain', () => selection.retain(new Set())],
+      ['clear selection', () => selection.clearSelection()],
+      ['another collection', () => selection.enter('col-2')]
+    ]
+    for (const [name, change] of changes) {
+      selection.enter('col-1')
+      const unchanged = selection.captureMembership()
+      selection.focus(null)
+      expect(unchanged(), name).toBe(true)
+      change()
+      expect(unchanged(), name).toBe(false)
+    }
+  })
 
   it('holds explicit ids of one collection up to its limit', () => {
     const selection = useAnnotationSelectionStore()

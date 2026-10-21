@@ -57,7 +57,7 @@ describe('SelectionBar', () => {
       saved: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
       failed: [{ id: 'h', message: 'x', uncertain: false }, { id: 'i', message: 'y', uncertain: true }],
       missing: ['j'],
-      searchNotUpdated: 0,
+      unsynced: [],
       notSent: 0,
       error: null
     }
@@ -69,6 +69,25 @@ describe('SelectionBar', () => {
     expect(text).toContain('1 no longer exist')
     expect(text).toContain('Saved changes are kept.')
     expect(byTestId(wrapper, 'review-retry').text()).toContain('Retry 2')
+    await byTestId(wrapper, 'review-retry').trigger('click')
+    expect(wrapper.emitted('retry')).toHaveLength(1)
+  })
+
+  it('offers to update search when only search references were not updated', async () => {
+    const report: ReviewReport = {
+      action: ReviewAction.delete,
+      tagId: null,
+      target: 2,
+      saved: ['a', 'b'],
+      failed: [],
+      missing: [],
+      unsynced: ['c1:t', 'c2:t'],
+      notSent: 0,
+      error: null
+    }
+    const wrapper = mountBar({ report })
+    expect(byTestId(wrapper, 'review-report').text()).toContain('Search by tag does not reflect some changes yet (2 passages).')
+    expect(byTestId(wrapper, 'review-retry').text()).toContain('Update search')
     await byTestId(wrapper, 'review-retry').trigger('click')
     expect(wrapper.emitted('retry')).toHaveLength(1)
   })

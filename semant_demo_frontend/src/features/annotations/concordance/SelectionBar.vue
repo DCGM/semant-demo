@@ -82,7 +82,7 @@
       />
       <span v-if="running" class="selection-bar__progress" role="status" aria-live="polite">
         <q-spinner size="1.1em" color="primary" />
-        Saving {{ progress }} / {{ runningTarget }}…
+        {{ runningTarget ? `Saving ${progress} / ${runningTarget}…` : 'Updating search…' }}
       </span>
     </div>
 
@@ -96,13 +96,13 @@
     >
       <span>{{ reportText }}</span>
       <q-btn
-        v-if="report.failed.length"
+        v-if="report.failed.length || report.unsynced.length"
         dense
         flat
         no-caps
         color="primary"
         icon="refresh"
-        :label="`Retry ${report.failed.length}`"
+        :label="report.failed.length ? `Retry ${report.failed.length}` : 'Update search'"
         :disable="running"
         data-testid="review-retry"
         @click="emit('retry')"
@@ -157,7 +157,7 @@ const PAST: Record<ReviewAction, string> = {
 
 const hasProblems = computed(() => {
   const r = props.report
-  return !!r && (r.failed.length > 0 || r.missing.length > 0 || r.searchNotUpdated > 0 || !!r.error)
+  return !!r && (r.failed.length > 0 || r.missing.length > 0 || r.unsynced.length > 0 || !!r.error)
 })
 
 const reportText = computed(() => {
@@ -168,7 +168,7 @@ const reportText = computed(() => {
   if (r.failed.length - uncertain) parts.push(`${r.failed.length - uncertain} failed.`)
   if (uncertain) parts.push(`${uncertain} uncertain (the server did not confirm; they may have been saved).`)
   if (r.missing.length) parts.push(`${r.missing.length} no longer exist and were removed from the selection.`)
-  if (r.searchNotUpdated) parts.push('Tag-filtered search was not updated for some of them; repeating the action updates it.')
+  if (r.unsynced.length) parts.push(`Search by tag does not reflect some changes yet (${r.unsynced.length} ${r.unsynced.length === 1 ? 'passage' : 'passages'}).`)
   if (r.error) parts.push(r.error)
   if (r.saved.length && r.action !== ReviewAction.delete && r.failed.length) parts.push('Saved changes are kept.')
   return parts.join(' ')
