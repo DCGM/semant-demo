@@ -1,11 +1,10 @@
 # Document summary (#249). The model is the document_summary feature's tier (LLM_MODELS_CONFIG).
 chunk_limit: 40 # Maximum number of chunks summarized for one document. The caller truncates longer documents to their first chunk_limit chunks, in document order, before calling the summarizer.
-gen_summary_model_options: # Model options for document summary generation. Its max_completion_tokens is not used: the length level sets it (gen_summary_lengths).
+gen_summary_model_options: # Model options for document summary generation: temperature and context_size. The token limit is set by the length level (gen_summary_lengths).
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.
-  max_completion_tokens: # Maximum number of tokens to generate. None for default.
 gen_summary_error_summary: N/A # Summary to use when document summary generation fails.
-gen_summary_lengths: # Length levels of the document summary. default is the level used when the request names none (short when omitted); each level has words (the maximum length in words, given to the prompts as brevity, with the level's name as length) and max_completion_tokens (replaces that of the model options; keep it above the words, a Czech word takes about 2-3 tokens, and within the feature's max_output_tokens in LLM_MODELS_CONFIG).
+gen_summary_lengths: # Length levels of the document summary. default is the level used when a request names none (short when omitted), i.e. by API clients that omit length. The frontend panels always send the level the user sees (Short initially), so this default does not change them. Each level has words (the word limit given to the prompts as brevity) and max_completion_tokens (keep it within the feature's max_output_tokens in LLM_MODELS_CONFIG).
   default: short
   short:
     words: 150
