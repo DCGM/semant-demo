@@ -5,7 +5,7 @@ from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.schemas import (
     AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationPage, AnnotationReviewRequest,
-    AnnotationReviewResult, AnnotationSort, SpanType,
+    AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
 )
@@ -278,3 +278,18 @@ async def review_collection_annotations(
     collection (``find_annotation``). Nothing is rolled back.
     """
     return await service.review_annotations(store, current_user, collection_id, body)
+
+
+@span_router.post("/api/user_collections/{collection_id}/annotations/chunk-tags/sync", response_model=WriteResult)
+async def sync_collection_annotation_chunk_tags(
+    collection_id: str,
+    body: ChunkTagSyncRequest,
+    store: AnnotationStore = Depends(get_annotation_store),
+    current_user: User = Depends(current_active_user),
+) -> WriteResult:
+    """
+    Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the
+    collection's tags from its annotations: repairs the ``update_chunk_tags`` failures of a
+    review, also after a deletion. Needs annotation-edit access.
+    """
+    return await service.sync_annotation_chunk_tags(store, current_user, collection_id, body)

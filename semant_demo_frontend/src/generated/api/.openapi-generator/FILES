@@ -18,6 +18,8 @@ docs/BulkUpdateSpansRequest.md
 docs/BulkUpdateSpansResponse.md
 docs/CategoryCount.md
 docs/CategoryDistribution.md
+docs/ChunkTagPair.md
+docs/ChunkTagSyncRequest.md
 docs/Collection.md
 docs/CollectionChunk.md
 docs/CollectionStats.md
@@ -119,6 +121,8 @@ models/BulkUpdateSpansRequest.ts
 models/BulkUpdateSpansResponse.ts
 models/CategoryCount.ts
 models/CategoryDistribution.ts
+models/ChunkTagPair.ts
+models/ChunkTagSyncRequest.ts
 models/Collection.ts
 models/CollectionChunk.ts
 models/CollectionStats.ts

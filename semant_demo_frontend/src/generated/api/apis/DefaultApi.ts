@@ -26,6 +26,7 @@ import type {
   AppFeedbackRequest,
   BulkUpdateSpansRequest,
   BulkUpdateSpansResponse,
+  ChunkTagSyncRequest,
   Collection,
   CollectionChunk,
   CollectionStats,
@@ -98,6 +99,8 @@ import {
     BulkUpdateSpansRequestToJSON,
     BulkUpdateSpansResponseFromJSON,
     BulkUpdateSpansResponseToJSON,
+    ChunkTagSyncRequestFromJSON,
+    ChunkTagSyncRequestToJSON,
     CollectionFromJSON,
     CollectionToJSON,
     CollectionChunkFromJSON,
@@ -438,6 +441,11 @@ export interface SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumen
     collectionId: string;
     documentId: string;
     length?: SummaryLength | null;
+}
+
+export interface SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest {
+    collectionId: string;
+    chunkTagSyncRequest: ChunkTagSyncRequest;
 }
 
 export interface UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest {
@@ -1888,6 +1896,32 @@ export interface DefaultApiInterface {
      * Summarize Document
      */
     summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse>;
+
+    /**
+     * Creates request options for syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost without sending the request
+     * @param {string} collectionId 
+     * @param {ChunkTagSyncRequest} chunkTagSyncRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequestOpts(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\'s tags from its annotations: repairs the ``update_chunk_tags`` failures of a review, also after a deletion. Needs annotation-edit access.
+     * @summary Sync Collection Annotation Chunk Tags
+     * @param {string} collectionId 
+     * @param {ChunkTagSyncRequest} chunkTagSyncRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRaw(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>>;
+
+    /**
+     * Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\'s tags from its annotations: repairs the ``update_chunk_tags`` failures of a review, also after a deletion. Needs annotation-edit access.
+     * Sync Collection Annotation Chunk Tags
+     */
+    syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
 
     /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
@@ -5165,6 +5199,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse> {
         const response = await this.summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost without sending the request
+     */
+    async syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequestOpts(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost().'
+            );
+        }
+
+        if (requestParameters['chunkTagSyncRequest'] == null) {
+            throw new runtime.RequiredError(
+                'chunkTagSyncRequest',
+                'Required parameter "chunkTagSyncRequest" was null or undefined when calling syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/chunk-tags/sync`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: ChunkTagSyncRequestToJSON(requestParameters['chunkTagSyncRequest']),
+        };
+    }
+
+    /**
+     * Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\'s tags from its annotations: repairs the ``update_chunk_tags`` failures of a review, also after a deletion. Needs annotation-edit access.
+     * Sync Collection Annotation Chunk Tags
+     */
+    async syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRaw(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>> {
+        const requestOptions = await this.syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => WriteResultFromJSON(jsonValue));
+    }
+
+    /**
+     * Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\'s tags from its annotations: repairs the ``update_chunk_tags`` failures of a review, also after a deletion. Needs annotation-edit access.
+     * Sync Collection Annotation Chunk Tags
+     */
+    async syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
+        const response = await this.syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

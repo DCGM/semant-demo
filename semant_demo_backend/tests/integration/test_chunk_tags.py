@@ -347,3 +347,28 @@ async def test_cleanup_rechecks_and_keeps_a_reference_backed_since_the_audit(
     await apply_report(seeded_store, collection_names, report, remove_unbacked=True, add_missing=False)
 
     assert (await chunk_refs(marie))["positiveTag"] == [ids.tag["person"]]
+
+
+async def test_a_failed_update_after_a_review_delete_is_repaired_by_its_pair(
+        api_client, login, owner, ids, search, chunk_refs, collection_names, fail_writes, monkeypatch):
+    # #459: the deleted annotation can no longer be reviewed again; its reported pair is re-derived.
+    chunk, person, col = ids.chunk["chronicle_1"], ids.tag["person"], ids.col["chronicles"]
+    span = ids.span["novak_manual"]
+    fail_writes("reference_delete", [chunk], collection=collection_names.chunks_collection_name)
+
+    review = await api_client.post(f"/api/user_collections/{col}/annotations/review", headers=await owner(),
+                                   json={"action": "delete", "annotation_ids": [span]})
+    assert review.json()["succeeded"] == [span]
+    assert [(f["item_id"], f["step"]) for f in review.json()["failed"]] == [(f"{chunk}:{person}", "update_chunk_tags")]
+    assert await search("Novák", "person", positive=True) == {chunk}
+    monkeypatch.undo()
+
+    path = f"/api/user_collections/{col}/annotations/chunk-tags/sync"
+    body = {"pairs": [{"chunk_id": chunk, "tag_id": person}]}
+    assert (await api_client.post(path, headers=await login("outsider"), json=body)).status_code == 404
+    synced = await api_client.post(path, headers=await login("annotator"), json=body)
+
+    assert synced.status_code == 200, synced.text
+    assert synced.json() == {"outcome": "complete", "succeeded": [f"{chunk}:{person}"], "failed": [], "unattempted": []}
+    assert await search("Novák", "person", positive=True) == set()
+    assert (await chunk_refs(chunk))["positiveTag"] == []

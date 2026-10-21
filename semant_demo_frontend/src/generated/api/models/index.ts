@@ -15,6 +15,8 @@ export * from './BulkUpdateSpansRequest';
 export * from './BulkUpdateSpansResponse';
 export * from './CategoryCount';
 export * from './CategoryDistribution';
+export * from './ChunkTagPair';
+export * from './ChunkTagSyncRequest';
 export * from './Collection';
 export * from './CollectionChunk';
 export * from './CollectionStats';

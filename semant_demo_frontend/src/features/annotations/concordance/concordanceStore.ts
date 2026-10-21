@@ -74,6 +74,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
   const rowRequests = createContextGuard()
   const documentRequests = createContextGuard()
   const shownRequests = createContextGuard()
+  const resolveRequests = createContextGuard()
   const selection = useAnnotationSelectionStore()
   let rowAbort: AbortController | null = null
   let documentAbort: AbortController | null = null
@@ -117,6 +118,12 @@ export const useConcordanceStore = defineStore('concordance', () => {
     documentRequests.enter()
     shownRequests.enter()
     loading.value = false
+    stopResolving()
+  }
+
+  /** Drops a running "select all matches" (its filters are no longer the current ones). */
+  function stopResolving () {
+    resolveRequests.enter()
     resolving.value = false
   }
 
@@ -270,8 +277,10 @@ export const useConcordanceStore = defineStore('concordance', () => {
         collectionId: id, annotationIdsRequest: idsRequest(filters.value, ids)
       })
       if (!applies()) return
-      shown.value = new Set(result.ids)
-      known.value = new Set(ids)
+      // Ids noted meanwhile (rows read, members added) keep what is known about them.
+      const asked = new Set(ids)
+      shown.value = new Set([...[...shown.value].filter(i => !asked.has(i)), ...result.ids])
+      known.value = new Set([...known.value, ...ids])
     } catch (e) {
       if (!applies()) return
       shownError.value = failure(e, 'selection')
@@ -286,8 +295,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
   async function selectAllMatches (): Promise<string | null> {
     const id = collectionId.value
     if (!id) return null
-    shownRequests.enter()
-    const isCurrent = shownRequests.capture()
+    resolveRequests.enter()
+    const isCurrent = resolveRequests.capture()
     const inScope = scope.capture()
     const inSession = captureSession()
     const applies = () => isCurrent() && inScope() && inSession()
@@ -300,7 +309,12 @@ export const useConcordanceStore = defineStore('concordance', () => {
       if (!selection.add(result.ids)) {
         return `The selection can hold at most ${MAX_SELECTION} annotations; clear it or narrow the filters.`
       }
-      noteShown(result.ids)
+      // All matches are known now: every other member is hidden by the filters. This
+      // supersedes a pending answer about which members the filters show.
+      shownRequests.enter()
+      shownError.value = null
+      shown.value = new Set(result.ids)
+      known.value = new Set(selection.ids)
       return null
     } catch (e) {
       if (!applies()) return null
@@ -308,7 +322,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
         ? await apiErrorMessage(e, 'Too many annotations match; narrow the filters.')
         : failure(e, 'matching annotations')
     } finally {
-      if (applies()) resolving.value = false
+      if (isCurrent()) resolving.value = false
     }
   }
 
@@ -323,6 +337,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     const before = filters.value
     filters.value = { ...before, ...change }
     offset.value = 0
+    stopResolving()
     shown.value = new Set()
     known.value = new Set()
     const facetsChanged = 'tagIds' in change || 'types' in change
@@ -332,6 +347,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
   async function resetFilters () {
     filters.value = defaultFilters()
     offset.value = 0
+    stopResolving()
     shown.value = new Set()
     known.value = new Set()
     await Promise.all([load(), loadDocuments(), loadShown()])

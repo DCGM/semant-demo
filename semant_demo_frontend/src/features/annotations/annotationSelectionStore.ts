@@ -14,12 +14,15 @@ export const MAX_SELECTION = 5000
  * resolved at that moment, and changing filters or pages never adds or removes members.
  *
  * Entering another collection starts afresh; signing out or another account clears it
- * (`app/session.ts`). Writers use `captureScope` to drop answers of a collection left meanwhile.
+ * (`app/session.ts`). Writers use `captureScope` to drop answers of a collection left meanwhile and
+ * `captureMembership` to stop a review of the members once they changed.
  */
 export const useAnnotationSelectionStore = defineStore('annotationSelection', () => {
   const scope = createScope()
   const collectionId = ref<string | null>(null)
   const ids = ref<Set<string>>(new Set())
+  /** Changes with every change of the members, so a review of them can stop (`captureMembership`). */
+  let revision = 0
   /** The row whose source context is open, as the latest page that lists it shows it. */
   const focused = shallowRef<AnnotationListRow | null>(null)
   /** The focused row left its page when the page was read again: it was deleted, or an
@@ -28,8 +31,13 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
 
   const size = computed(() => ids.value.size)
 
+  function setIds (next: Set<string>) {
+    ids.value = next
+    revision++
+  }
+
   function reset () {
-    ids.value = new Set()
+    setIds(new Set())
     focused.value = null
     focusedGone.value = false
   }
@@ -47,14 +55,14 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
     const next = new Set(ids.value)
     for (const id of list) next.add(id)
     if (next.size > MAX_SELECTION) return false
-    ids.value = next
+    setIds(next)
     return true
   }
 
   function remove (list: Iterable<string>) {
     const next = new Set(ids.value)
     for (const id of list) next.delete(id)
-    ids.value = next
+    setIds(next)
   }
 
   function toggle (id: string, value?: boolean): boolean {
@@ -65,11 +73,11 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
 
   /** Keeps only the selected ids that are also in `list`. */
   function retain (list: Set<string>) {
-    ids.value = new Set([...ids.value].filter(id => list.has(id)))
+    setIds(new Set([...ids.value].filter(id => list.has(id))))
   }
 
   function clearSelection () {
-    ids.value = new Set()
+    setIds(new Set())
   }
 
   function focus (row: AnnotationListRow | null) {
@@ -80,6 +88,13 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
   /** True while the selection still belongs to the collection it had when called. */
   function captureScope (): () => boolean {
     return scope.capture()
+  }
+
+  /** True while the members are those they were when called (and the collection the same). */
+  function captureMembership (): () => boolean {
+    const inScope = scope.capture()
+    const at = revision
+    return () => inScope() && at === revision
   }
 
   /** Forgets everything (sign-out, another account). */
@@ -103,6 +118,7 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
     clearSelection,
     focus,
     captureScope,
+    captureMembership,
     clear
   }
 })
