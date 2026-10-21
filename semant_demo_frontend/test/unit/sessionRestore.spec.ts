@@ -11,6 +11,7 @@ import { installAuthGuard } from 'src/router/authGuard'
 import { captureSession, getAuthToken, setAuthToken, useApi } from 'src/shared/api'
 import LoginDialog from 'src/features/auth/LoginDialog.vue'
 import MainLayout from 'src/app/MainLayout.vue'
+import { muteConsole } from './console'
 
 // #319 (first part): availability is not authentication. Only a rejected token ends a
 // session; offline or a server error leaves a verified session untouched, and a stored
@@ -268,6 +269,7 @@ describe('protected route while the session cannot be verified', () => {
   })
 
   it('is left at once without a session, and opens only in-app destinations when verified', async () => {
+    const warned = muteConsole('warn') // the router warns that /no-such-page matches no route
     const { router } = guardedRouter()
     await router.push('/session-pending?redirect=/collections')
     expect(routeOf(router).name).toBe('search')
@@ -279,6 +281,7 @@ describe('protected route while the session cannot be verified', () => {
       await router.push({ name: 'sessionPending', query: { redirect } })
       expect(routeOf(router).name, redirect).toBe('search')
     }
+    expect(warned).toHaveBeenCalledWith(expect.stringContaining('No match found for location with path "/no-such-page"'))
   })
 })
 

@@ -173,9 +173,8 @@ review process.
    not a request to merge it.
 3. If work exposes a material gap, document it in the issue, consult when
    needed and update the agreed scope. Do not silently extend the task.
-4. Link the issue in the PR. Describe changes, actual checks/results, relevant
-   UI evidence, important decisions, risks and incomplete work. Use
-   `Closes #123` only when the PR completes that issue.
+4. Describe the PR with the [pull request template](../.github/pull_request_template.md),
+   which links the issue and lists what to report.
 5. **Explicitly request review** from an appropriate maintainer; opening a PR
    alone is not the review request. Apply corrections in the same PR and merge
    only with required human review and passing checks. Update parent progress,

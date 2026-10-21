@@ -21,7 +21,7 @@
 | Layer | Technology |
 |---|---|
 | Database | Weaviate 1.40 (Docker) + SQLite (user accounts, RAG answer feedback) |
-| Embeddings | `BAAI/bge-multilingual-gemma2` via a dedicated FastAPI service |
+| Embeddings | Deployed: `Qwen/Qwen3-Embedding-0.6B` on vLLM, queried as an OpenAI-compatible search vector (`configs/search_vectors_qwen.yaml`, the default). `configs/search_vectors_gemma.yaml` targets the former `BAAI/bge-multilingual-gemma2` service (`embedding_service/`); local development uses fakes |
 | Backend | Python 3.12 · FastAPI · LangChain / LangGraph · LLM tiers on OpenAI-compatible APIs (OpenRouter by default), Ollama or Google Gemini |
 | Frontend | Vue 3 · Quasar 2 · TypeScript · Pinia · OpenAPI-generated client |
 
@@ -31,7 +31,7 @@
 semant-demo/
 ├── docs/                      # documentation (see the map below); docs/archive/ is historical
 ├── deploy/                    # Docker Compose files, Dockerfiles, .env templates (deploy/README.md)
-├── embedding_service/         # Gemma embedding microservice (FastAPI, port 8001)
+├── embedding_service/         # former Gemma embedding service (FastAPI, port 8001); not deployed
 ├── semant_demo_backend/       # main API server (FastAPI, port 8000)
 │   ├── semant_demo/
 │   │   ├── main.py            # create_app, routers, lifespan, error mapping
@@ -108,7 +108,7 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 - **Checks** (see [CONTRIBUTING.md](CONTRIBUTING.md#2-setup-and-commands)):
 
   ```bash
-  make check             # offline: Ruff, fast pytest suite, ESLint, vue-tsc, Vitest, API client drift
+  make check             # Ruff, fast pytest suite, ESLint, vue-tsc, Vitest, API client drift (needs Java)
   make test-integration  # real-Weaviate tests in a throwaway container (Docker)
   make test-e2e          # Playwright smoke suite with fake AI providers (Docker)
   ```
@@ -136,13 +136,14 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 | [docs/SEARCH_FILTERS.md](docs/SEARCH_FILTERS.md) | Configurable search filters |
 | [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and adding page tools to it |
 | [docs/START_HERE.md](docs/START_HERE.md) | First steps, code navigation and testing without project data |
+| [docs/ISSUE_WORKFLOW.md](docs/ISSUE_WORKFLOW.md) | Draft and implementation-ready issues, consultation, PR handoff and review request |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development environment and test stores |
 | [docs/DATA_MAINTENANCE.md](docs/DATA_MAINTENANCE.md) | Reviewed data audits and repairs |
 | [docs/DB_BENCHMARK.md](docs/DB_BENCHMARK.md) | Read-only Weaviate inventory and query benchmark; [2026-10 production audit](docs/WEAVIATE_AUDIT_2026-10.md) |
 | [deploy/README.md](deploy/README.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker deployment and CI/CD; configuration reference |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Logs, traces, metrics, dashboards, adding signals safely |
 | [docs/TODO.md](docs/TODO.md) | Open risks, linked to GitHub issues |
-| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | `main`-based PR workflow, checks and agent instructions |
+| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | `main`-based PR workflow, checks and agent instructions; [2026-10 agent-readiness audit](docs/AGENT_READINESS_AUDIT_2026-10.md) with measured check times |
 | [docs/archive/](docs/archive/README.md) | Historical plans, review notes and maintenance run records |
 
 ## Feedback and feature requests

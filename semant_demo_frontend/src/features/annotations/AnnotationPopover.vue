@@ -295,7 +295,10 @@ const popoverStyle = computed(() => ({
   position: 'fixed' as const,
   left: `${popoverPos.value.x}px`,
   top: `${popoverPos.value.y}px`,
-  zIndex: 9999
+  // Above the header, drawers (3000) and the reader's bulk bar (4000), below the
+  // dialogs the popover opens (Quasar $z-fullscreen, 6000), notifications and
+  // tooltips, so a dialog covers it while open (#379).
+  zIndex: 5000
 }))
 
 const POPOVER_VIEWPORT_MARGIN = 8

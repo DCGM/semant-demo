@@ -188,7 +188,7 @@ whose row has MODS metadata (`--prefer-library-with-metadata`) or `--library-pri
 
 The core searchable collection. Each chunk is a contiguous text block (typically paragraph-level, may span pages) with:
 
-- **HNSW vector index** — pre-computed embeddings from `BAAI/bge-multilingual-gemma2`
+- **Named vectors** — pre-computed embeddings; the deployed store holds only `Qwen3_Embedding_0_6B` (Qwen/Qwen3-Embedding-0.6B, 1,024 dimensions, #385). The former `default` vector (`BAAI/bge-multilingual-gemma2`) was dropped ([audit](WEAVIATE_AUDIT_2026-10-17.md))
 - `text` — the full chunk text (also used for BM25)
 - `from_page` / `to_page` — page range in the source document
 - `start_page_id` — UUID of the first page

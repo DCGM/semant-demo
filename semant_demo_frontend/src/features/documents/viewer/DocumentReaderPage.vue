@@ -26,6 +26,16 @@
         @hide="chunkWindow.hideChunk"
       />
 
+      <AnnotationGutter
+        v-if="gutters.spanMarkers.value.length"
+        :markers="gutters.spanMarkers.value"
+        :tags="tags"
+        :hovered-span-id="hoveredSpanId || navHighlightedSpanId"
+        :highlighted-span-id="highlightedAutoSpanId"
+        @hover="hoveredSpanId = $event"
+        @select="onMarkerClick"
+      />
+
       <q-card class="paper-card" :class="{ 'has-gutter': gutters.spanMarkers.value.length > 0 }">
         <q-card-section class="paper-body">
           <!-- Expand previous — right above the text -->
@@ -48,7 +58,7 @@
             />
           </div>
 
-          <div class="document-text" :class="{ 'document-text--preserve-whitespace': preserveWhitespace }" ref="documentTextRef" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="hoveredPreviewChunkId = null">
+          <div class="document-text" :class="{ 'document-text--preserve-whitespace': preserveWhitespace }" ref="documentTextRef" @pointerdown="onDocumentPointerDown" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="onDocumentPointerLeave">
             <template v-for="(group, gIndex) in paragraphs" :key="gIndex">
               <p>
                 <ChunkAnnotator
@@ -59,15 +69,19 @@
                   :spans="getVisibleSpans(chunk.id)"
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
-                  :highlight-span-id="hoveredSpanId || highlightedAutoSpanId"
+                  :highlight-span-id="hoveredSpanId || navHighlightedSpanId || highlightedAutoSpanId"
                   :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id, 'chunk-gutter-hovered': gutterHoveredChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
               </p>
-              <!-- Gap buttons between non-consecutive chunks -->
+              <!-- Divider at a gap between non-consecutive chunks -->
               <div v-if="group.gapAfter !== null" class="gap-row">
+                <span class="gap-label">
+                  <q-icon name="warning_amber" size="16px" />
+                  {{ missingChunksText(gapSize(group)) }}
+                </span>
                 <q-btn
-                  flat dense
+                  flat dense no-caps
                   icon="keyboard_arrow_down"
                   :loading="chunkWindow.gapLoadingKey.value === `${group.gapAfter}:next`"
                   class="gap-btn"
@@ -76,7 +90,7 @@
                   @click="chunkWindow.loadGap(group.gapAfter)"
                 />
                 <q-btn
-                  flat dense
+                  flat dense no-caps
                   icon="unfold_more"
                   :loading="chunkWindow.gapLoadingKey.value === `${group.gapAfter}:all`"
                   class="gap-btn gap-btn--all"
@@ -85,7 +99,7 @@
                   @click="chunkWindow.loadGapAll(group.gapAfter, group.gapBefore!)"
                 />
                 <q-btn
-                  flat dense
+                  flat dense no-caps
                   icon="keyboard_arrow_up"
                   :loading="chunkWindow.gapLoadingKey.value === `${group.gapBefore}:prev`"
                   class="gap-btn"
@@ -120,16 +134,6 @@
         <q-inner-loading :showing="loading" />
         <error-display v-if="error" :error="error" />
       </q-card>
-
-      <AnnotationGutter
-        v-if="gutters.spanMarkers.value.length"
-        :markers="gutters.spanMarkers.value"
-        :tags="tags"
-        :hovered-span-id="hoveredSpanId"
-        :highlighted-span-id="highlightedAutoSpanId"
-        @hover="hoveredSpanId = $event"
-        @select="onMarkerClick"
-      />
 
       <AnnotationPopover
         ref="popoverRef"
@@ -179,6 +183,7 @@ import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { SpanType } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError } from 'src/shared/api'
 import { errorNotification } from 'src/shared/notification'
+import { overlayOpen } from 'src/shared/overlays'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import AnnotationGutter from 'src/features/annotations/AnnotationGutter.vue'
 import type { SpanMarker } from 'src/features/annotations/AnnotationGutterTypes'
@@ -200,7 +205,10 @@ import ChunkSelectionBar from './ChunkSelectionBar.vue'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import ReaderToolbar from './ReaderToolbar.vue'
 import { getLastUsedTagId, setLastUsedTagId } from 'src/features/annotations/lastUsedTag'
-import { groupParagraphs, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText } from './readerOffsets'
+import {
+  gapSize, groupParagraphs, missingChunksText, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText,
+  shortestMarker
+} from './readerOffsets'
 import { useChunkMembership } from './useChunkMembership'
 import { useChunkWindow } from './useChunkWindow'
 import { useReaderGutters } from './useReaderGutters'
@@ -235,7 +243,8 @@ const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.valu
 
 const documentTextRef = ref<HTMLElement | null>(null)
 const totalDocumentChunks = ref<number | null>(null)
-const chunkGutterVisible = ref(true)
+// Hidden on every visit; the toolbar toggle shows it.
+const chunkGutterVisible = ref(false)
 // Toggle between original-text whitespace (default) and HTML's collapsed
 // whitespace. Original-mode preserves consecutive spaces and line breaks
 // inside chunk text via CSS `white-space: pre-wrap`.
@@ -260,6 +269,9 @@ const relayout = () => gutters.relayout()
 
 // ── Hover state shared by the text and the gutters ──
 const hoveredSpanId = ref<string | null>(null)
+// The span the tags panel's next/prev went to. Separate from hoveredSpanId so moving the
+// pointer over the text doesn't clear it; hover only takes precedence while it lasts.
+const navHighlightedSpanId = ref<string | null>(null)
 const hoveredPreviewChunkId = ref<string | null>(null)
 const hoveredChunkId = ref<string | null>(null)
 const gutterHoveredChunkId = ref<string | null>(null)
@@ -271,6 +283,26 @@ function onDocumentPointerMove(e: PointerEvent) {
 
   const chunk = chunkId ? chunkWindow.findChunk(chunkId) : null
   hoveredPreviewChunkId.value = chunk && !chunk.inCollection ? chunk.id : null
+
+  // Tagged text under the pointer highlights the span a click would open.
+  const spanId = shortestMarker(markersAtSegment(e.target))?.spanId ?? null
+  if (hoveredSpanId.value !== spanId) hoveredSpanId.value = spanId
+}
+
+function onDocumentPointerLeave() {
+  hoveredPreviewChunkId.value = null
+  hoveredSpanId.value = null
+}
+
+/** The markers of the shown spans covering the tagged text segment at `target`. */
+function markersAtSegment(target: EventTarget | null): SpanMarker[] {
+  const segment = (target as HTMLElement | null)?.closest?.<HTMLElement>('.text-segment.is-tagged')
+  const chunkId = segment?.closest<HTMLElement>('[data-chunk-id]')?.dataset.chunkId
+  if (!segment || !chunkId) return []
+  const start = Number(segment.dataset.start)
+  const end = Number(segment.dataset.end)
+  const ids = new Set(getVisibleSpans(chunkId).filter((s) => s.start <= start && s.end >= end).map((s) => s.id))
+  return gutters.spanMarkers.value.filter((m) => ids.has(m.spanId))
 }
 
 function onChunkGutterHover(chunkId: string | null, controls: boolean) {
@@ -332,7 +364,7 @@ watch(gutters.spanMarkers, (markers) => {
   })))
 })
 tagNav.onScroll((item) => scrollToSpan(item.chunkId, item.start, item.end))
-tagNav.onHighlight((spanId) => { hoveredSpanId.value = spanId })
+tagNav.onHighlight((spanId) => { navHighlightedSpanId.value = spanId })
 
 // Re-render gutter (and re-filter auto spans in text) when the AI assist panel
 // becomes active or inactive in the sidebar.
@@ -467,9 +499,49 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
   }
 }
 
+// Where the primary button went down in the text, to tell a click from a drag. A drag of
+// a selection handle is never a click, nor is a right or middle click.
+let pointerDown: { x: number, y: number, onHandle: boolean } | null = null
+const CLICK_TOLERANCE = 4
+
+// Opening a span re-renders its text, which would break a double-click's word selection,
+// so a click opens it only once no second click has followed.
+const DOUBLE_CLICK_WAIT = 250
+let pendingSpanOpen: ReturnType<typeof setTimeout> | null = null
+
+function cancelPendingSpanOpen() {
+  if (pendingSpanOpen) clearTimeout(pendingSpanOpen)
+  pendingSpanOpen = null
+}
+
+function onDocumentPointerDown(e: PointerEvent) {
+  cancelPendingSpanOpen()
+  pointerDown = e.button === 0
+    ? { x: e.clientX, y: e.clientY, onHandle: !!(e.target as HTMLElement).closest('.selection-handle') }
+    : null
+}
+
+/** A click (no drag) on tagged text opens the shortest span there, like its gutter label. */
+function openSpanAtClick(e: MouseEvent) {
+  const down = pointerDown
+  if (!down || down.onHandle || e.detail > 1) return
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE) return
+  const marker = shortestMarker(markersAtSegment(e.target))
+  if (!marker) return
+  pendingSpanOpen = setTimeout(() => {
+    pendingSpanOpen = null
+    onMarkerClick(marker, e)
+  }, DOUBLE_CLICK_WAIT)
+}
+
 const handleDocumentMouseUp = (e: MouseEvent) => {
   const domSelection = window.getSelection()
-  if (!domSelection || domSelection.isCollapsed) return
+  if (!domSelection || domSelection.isCollapsed) {
+    openSpanAtClick(e)
+    pointerDown = null
+    return
+  }
+  pointerDown = null
 
   const range = domSelection.getRangeAt(0)
   const startPoint = resolveSelectionEndpoint(range.startContainer, range.startOffset)
@@ -659,8 +731,10 @@ const onClickOutside = (e: MouseEvent) => {
   annotations.clearSelection()
 }
 
+// Escape in an open dialog belongs to the dialog: the create-tag dialog opened from the
+// popover still needs the selection when its tag is created (#379).
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && annotations.hasSelection.value) {
+  if (e.key === 'Escape' && annotations.hasSelection.value && !overlayOpen()) {
     annotations.clearSelection()
   }
 }
@@ -688,6 +762,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   spanRequests.enter()
   resizeObserver?.disconnect()
+  cancelPendingSpanOpen()
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)
   // activeTagId is module-level state in useTagNavigation; don't carry this reader's
@@ -710,9 +785,15 @@ onBeforeUnmount(() => {
   flex-direction: row;
   gap: 0;
   align-items: stretch;
+  /* One white card, outlined, so the gutter reads as part of it rather than of the
+     grey page around it. */
+  background: #ffffff;
+  border: 1px solid #d5dce6;
   border-radius: 16px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
-  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.12);
+  /* clip, not hidden: hidden would make this the scroll container of the span gutter's
+     sticky scrollbar, so it would never stick to the window. */
+  overflow: clip;
 }
 
 .paper-card {
@@ -732,6 +813,11 @@ onBeforeUnmount(() => {
   padding: 32px 32px 40px;
 }
 
+/* The text starts right next to the span gutter. */
+.paper-card.has-gutter .paper-body {
+  padding-left: 10px;
+}
+
 .document-text {
   max-width: none;
   margin: 0;
@@ -749,6 +835,13 @@ onBeforeUnmount(() => {
    allowed so long lines don't overflow the column. */
 .document-text--preserve-whitespace :deep(.text-segment) {
   white-space: pre-wrap;
+}
+
+/* A chunk's text has no line break at its end, so inline chunks would continue the
+   previous chunk's last line, making each chunk's first line about twice as long.
+   Each chunk starts on its own line instead. */
+.document-text--preserve-whitespace :deep(.chunk-annotator) {
+  display: block;
 }
 
 /* Dim non-collection preview chunks slightly */
@@ -810,38 +903,45 @@ onBeforeUnmount(() => {
   color: #334155;
 }
 
-/* ── Gap row (missing chunks between two displayed chunks) ── */
+/* ── Gap divider (missing chunks between two displayed chunks) ── */
 
 .gap-row {
   display: flex;
-  flex-direction: column;
-  margin: 4px 0;
-  border-top: 1px dashed #e2e8f0;
-  border-bottom: 1px dashed #e2e8f0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 8px 0 18px;
+  padding: 4px 10px;
+  border-top: 1px dashed #f59e0b;
+  border-bottom: 1px dashed #f59e0b;
+  background: #fffbeb;
+}
+
+.gap-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  color: #92400e;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .gap-btn {
-  flex: 1;
-  color: #94a3b8;
+  color: #78716c;
   font-size: 0.78rem;
   letter-spacing: 0.02em;
   transition: background 0.15s, color 0.15s;
-  border-radius: 0;
-}
-
-.gap-btn + .gap-btn {
-  border-left: none;
-  border-top: 1px solid #e2e8f0;
 }
 
 .gap-btn--all {
-  color: #64748b;
+  color: #57534e;
   font-weight: 500;
 }
 
 .gap-btn:hover {
-  background: #f8fafc;
-  color: #475569;
+  background: #fef3c7;
+  color: #44403c;
 }
 
 @media (max-width: 1023px) {
@@ -852,11 +952,19 @@ onBeforeUnmount(() => {
   .paper-body {
     padding: 24px;
   }
+
+  .paper-card.has-gutter .paper-body {
+    padding-left: 10px;
+  }
 }
 
 @media (max-width: 599px) {
   .paper-body {
     padding: 20px 16px 24px;
+  }
+
+  .paper-card.has-gutter .paper-body {
+    padding-left: 8px;
   }
 
   .document-text {

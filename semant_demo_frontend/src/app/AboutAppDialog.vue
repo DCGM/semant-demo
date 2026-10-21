@@ -26,11 +26,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import semantLogo from 'src/assets/semant-logo.png'
 
-const props = defineProps<{ modelValue: boolean }>()
-const emit = defineEmits(['update:modelValue'])
-
-const show = computed({ get: () => props.modelValue, set: (v: boolean) => emit('update:modelValue', v) })
+defineProps<{ modelValue: boolean }>()
+defineEmits(['update:modelValue'])
 </script>

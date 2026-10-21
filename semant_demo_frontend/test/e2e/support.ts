@@ -312,6 +312,10 @@ export async function selectText (
     { chunkId: fixture.chunk(startChunkKey).id, offset: start },
     { chunkId: fixture.chunk(endChunkKey).id, offset: end }
   ]
+  // The text may not be rendered yet right after the document opens.
+  for (const { chunkId } of points) {
+    await expect(page.locator(`.chunk-annotator[data-chunk-id="${chunkId}"] .text-segment`).first()).toBeVisible()
+  }
   await page.evaluate((points) => {
     const locate = ({ chunkId, offset }: { chunkId: string, offset: number }) => {
       const segments = document.querySelectorAll<HTMLElement>(`.chunk-annotator[data-chunk-id="${chunkId}"] .text-segment`)
@@ -350,6 +354,18 @@ export async function deleteAddedSpans (request: APIRequestContext, userKey: str
     // A span is addressed within its collection (annotation tenants, #327).
     const params = { collection_id: fixture.collection(collectionKey).id }
     expect((await request.delete(`/api/tag_spans/${span.id}`, { headers, params })).ok()).toBe(true)
+  }
+}
+
+/** Deletes the tags of a collection that are not part of the fixture corpus. */
+export async function deleteAddedTags (request: APIRequestContext, userKey: string, collectionKey: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${await apiToken(request, userKey)}` }
+  const fixtureIds = new Set(corpus.tags.map((t) => t.id))
+  const response = await request.get(`/api/user_collections/${fixture.collection(collectionKey).id}/tags`, { headers })
+  expect(response.ok()).toBe(true)
+  for (const tag of await response.json() as { id: string }[]) {
+    if (fixtureIds.has(tag.id)) continue
+    expect((await request.delete(`/api/tags/${tag.id}`, { headers })).ok()).toBe(true)
   }
 }
 

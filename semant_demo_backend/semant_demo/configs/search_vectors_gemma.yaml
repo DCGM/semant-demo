@@ -1,0 +1,14 @@
+# Search vectors of the former Gemma embedding service (embedding_service/, no longer
+# deployed): the original `default` named vector. Not active by default; an instance uses
+# it when its SEARCH_VECTORS_CONFIG points at this file. Fields: search_vectors_qwen.yaml.
+
+default: bge-gemma2
+
+vectors:
+  - id: bge-gemma2
+    name: BGE Multilingual Gemma2
+    description: The original chunk embeddings (BAAI/bge-multilingual-gemma2, 3584 dimensions).
+    target_vector: default
+    embedding:
+      provider: embedding_service  # EMBEDDING_SERVICE_HOST / EMBEDDING_SERVICE_PORT
+

@@ -120,6 +120,15 @@ use the same values for every command.
 Coding agents use exactly these targets for interactive work, and disposable test-owned
 stores (`make test-integration`, `make test-e2e`, `make e2e-dev-*`) for automated tests.
 
+**Parallel checkouts (e.g. a git worktree per agent or branch).** Another checkout can reuse
+this checkout's backend environment: pass `PYTHON=/path/to/first-checkout/.venv/bin/python`
+to `make`. The tests, `api-check` and the E2E server still import the code of the checkout
+they run in. Run `npm ci` in its `semant_demo_frontend` (seconds with a warm npm cache).
+Each test run owns its Weaviate, so `make check` and `make test-integration` can run in
+several checkouts at once. `make test-e2e` uses ports 8765–8767 (`E2E_PORT` moves the
+first) and `make e2e-dev-*` 8775–8777 (`E2E_DEV_PORT`), so start concurrent runs at least
+three ports apart. The development instance above stays one per machine.
+
 ## 3. Troubleshooting
 
 | Symptom | Cause and fix |
@@ -154,6 +163,11 @@ stores (both need Docker); they run independently of `make dev-up`:
 make test-integration   # pytest -m integration against a throwaway Weaviate
 make test-e2e           # Playwright smoke suite against the deterministic app profile
 ```
+
+While iterating, run only the affected integration tests: the container starts in about a
+second, so one file takes ~30 s instead of ~4 min for the whole suite, e.g.
+`make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"` (paths relative
+to `semant_demo_backend`). Run the full suite before review when the change needs it.
 
 They never use the development container, `.dev-data/` or `local_data/`:
 
@@ -245,6 +259,10 @@ The Make targets call `scripts/e2e-dev.sh start|test|capture|rebuild|restart|sta
 - **Display.** The script runs headless Chromium without `DISPLAY` (unless `--headed`,
   `--debug` or `--ui` is passed): with a forwarded X display (`ssh -X`) Chromium otherwise
   waits ~25 s for its first frame at every browser launch. `make test-e2e` unsets it too.
+- **Server log.** `make test-e2e` shows only the profile's warnings and errors, not one
+  `HTTP request completed` line per request; `E2E_LOG_LEVEL=INFO make test-e2e` shows them.
+  The loop keeps them (`E2E_LOG_LEVEL` defaults to `INFO` there) in `.e2e-dev/server.log`,
+  which `scripts/e2e-dev.sh logs` prints.
 
 **UI captures.** `make e2e-dev-capture` runs `semant_demo_frontend/test/capture/views.spec.ts`
 in three projects, wide desktop (1920×1000), narrow desktop with both sidebars open
@@ -539,25 +557,29 @@ started by hand (section 5.5) can use real services instead.
 
 ### Embedding service
 
-Vector and hybrid search require an embedding service.
+Vector and hybrid search require an embedding service whose model matches the named vector
+of the snapshot's chunks. The deployed embedder is Qwen3-Embedding-0.6B on vLLM
+([deploy/README](../deploy/README.md#qwen-embedding-service-385)), published on the server's
+loopback port 8002; the former Gemma service on port 8001 ([embedding_service/](../embedding_service/README.md))
+is no longer running there; only `configs/*_gemma.yaml` still target it.
 
-It can be run locally according to [the embedding service README](../embedding_service/README.md).
-
-When using an explicitly authorized server-hosted development embedding service, an SSH tunnel can be used:
+With explicit authorization to use the server's embedder, tunnel its port:
 
 ```bash
-ssh -N \
-  -L 8001:localhost:8001 \
-  xlogin00@semant.fit.vutbr.cz
+ssh -N -L 8002:localhost:8002 xlogin00@semant.fit.vutbr.cz
 ```
 
-Then start the backend with:
+Then start the backend with a copy of `configs/search_vectors_qwen.yaml` whose `base_url` is
+`http://localhost:8002/v1` (the snapshot's chunks must hold the `Qwen3_Embedding_0_6B` vector):
 
 ```bash
-EMBEDDING_SERVICE_HOST=localhost \
-EMBEDDING_SERVICE_PORT=8001 \
+SEARCH_VECTORS_CONFIG=/path/to/search_vectors_local.yaml \
 python -m uvicorn semant_demo.main:app --reload
 ```
+
+The default annotation vector (`configs/annotation_vector_qwen.yaml`) uses the deployment's
+`qwen-embedder` URL too: point `ANNOTATION_VECTOR_CONFIG` at a copy with the same `base_url`,
+or set it empty to configure no annotation vector.
 
 A live embedding service is not required for ordinary fast tests. Tests should use fixed vectors where the embedding model itself is not under test.
 

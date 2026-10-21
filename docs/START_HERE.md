@@ -27,26 +27,18 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces connect and [DATABASE.
 
 ## Start with tests, not a database copy
 
-You need **Python 3.12, Node.js 22, npm and Make**. Docker is needed for integration and browser tests; Java 11+ is needed only when regenerating the API client. From the repository root:
+You need **Python 3.12, Node.js 22, npm, Make and Java 11+** (Java runs the API-client generator, including the drift check in `make check`). Docker is needed for integration and browser tests. From the repository root:
 
 ```bash
 make setup   # installs Python and frontend dependencies; needs internet access
-make check   # lint, type checks, fast tests and API-client check; runs offline
+make check   # lint, type checks, fast tests and API-client check; offline after its first run
 ```
 
-Neither command needs a corpus snapshot, a GPU, LLM credentials or running databases. To test real Weaviate behavior or browser interactions against **synthetic test data**, use `make test-integration` or `make test-e2e` (Docker required); see [testing versus development data](DEVELOPMENT.md#4-testing-versus-development-data).
+The first `make check` downloads the pinned API generator (~31 MB). Neither command needs a corpus snapshot, a GPU, LLM credentials or running databases. To test real Weaviate behavior or browser interactions against **synthetic test data**, use `make test-integration` or `make test-e2e` (Docker required); see [testing versus development data](DEVELOPMENT.md#4-testing-versus-development-data).
 
 ## Run the application
 
-The canonical way to run semANT locally is the seeded development environment (Docker required):
-
-```bash
-make dev-up         # start a local Weaviate; seed it and SQLite with a small synthetic corpus on first use
-make dev-backend    # terminal 1: backend on :8000 with auto-reload and fake AI providers
-make dev-frontend   # terminal 2: frontend on :9000 with hot reload
-```
-
-Open <http://localhost:9000> and log in as `owner` / `owner-password-1` (other accounts: [DEVELOPMENT.md](DEVELOPMENT.md#1-quick-start-the-seeded-local-application)). Your edits survive restarts and `make dev-down`; `make dev-reset` restores the seeded data after showing what it destroys. AI answers come from deterministic fakes, so they check wiring, not quality. No database snapshot, server access or credentials are needed.
+Run semANT locally with the seeded development environment (Docker required, no snapshot or credentials): `make dev-up`, `make dev-backend` and `make dev-frontend`, then log in at <http://localhost:9000>. Accounts, data and details: [DEVELOPMENT.md §1](DEVELOPMENT.md#1-quick-start-the-seeded-local-application).
 
 A realistic snapshot (`local_data/`, not in the repository) is an optional, **explicitly authorized** advanced workflow; see [DEVELOPMENT.md](DEVELOPMENT.md#5-advanced-an-authorized-realistic-snapshot). Do not point local tooling at production or the shared server test database.
 

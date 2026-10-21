@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResponseError } from 'src/generated/api'
 import type { DocumentSummaryCitation, DocumentSummaryResponse } from 'src/generated/api'
 import { parseDocumentSummaryTokens, useDocumentSummary } from 'src/features/documents/useDocumentSummary'
+import { muteConsole } from './console'
 
 interface PendingCall {
   collectionId: string
@@ -212,6 +213,7 @@ describe('useDocumentSummary', () => {
   })
 
   it('a plain network failure sets a generic error, not the raw exception', async () => {
+    const logged = muteConsole('error')
     const summary = useDocumentSummary()
 
     const request = summary.summarize('c1', 'd1')
@@ -220,9 +222,11 @@ describe('useDocumentSummary', () => {
 
     expect(summary.summarizing.value).toBe(false)
     expect(summary.error.value).toBe('Failed to summarize the document.')
+    expect(logged).toHaveBeenCalledWith('Document summarization failed', expect.anything())
   })
 
   it('a backend generation failure (502) shows its safe detail message, not a generic one', async () => {
+    const logged = muteConsole('error')
     const summary = useDocumentSummary()
     const backendResponse = new Response(JSON.stringify({ detail: 'The document could not be summarized.' }), { status: 502 })
 
@@ -232,9 +236,11 @@ describe('useDocumentSummary', () => {
 
     expect(summary.summarizing.value).toBe(false)
     expect(summary.error.value).toBe('The document could not be summarized.')
+    expect(logged).toHaveBeenCalledWith('Document summarization failed', expect.anything())
   })
 
   it('a refusal for the daily AI allowance (429) explains it instead of the backend detail', async () => {
+    const logged = muteConsole('error')
     const summary = useDocumentSummary()
     const refusal = {
       detail: 'Insufficient remaining daily AI allowance for this operation; it resets at 2026-10-18 00:00 UTC.',
@@ -252,6 +258,7 @@ describe('useDocumentSummary', () => {
     expect(summary.error.value).toMatch(/^Today's AI allowance has no room for this request, so nothing was generated\. It resets /)
     expect(summary.error.value).toContain('Logging in gives you a separate daily allowance.')
     expect([calls.length, summary.summarizing.value]).toEqual([1, false])
+    expect(logged).toHaveBeenCalledWith('Document summarization failed', expect.anything())
   })
 
   it('cite() bumps requestedCitation so clicking the same citation twice still re-triggers, and carries the order', () => {
