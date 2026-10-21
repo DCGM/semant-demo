@@ -77,6 +77,7 @@ READS = [
     lambda c, u: service.list_documents(c, u, COLLECTION),
     lambda c, u: service.list_tags(c, FakeCollections([]), u, COLLECTION),
     lambda c, u: service.list_members(c, FakeUsers(), u, COLLECTION),
+    lambda c, u: service.list_people(c, FakeUsers(), u, COLLECTION),
     lambda c, u: service.get_document_stats(c, u, COLLECTION, DOCUMENT),
     lambda c, u: service.get_document_chunks(c, u, COLLECTION, DOCUMENT),
     lambda c, u: service.get_neighbour_chunk(c, u, COLLECTION, DOCUMENT, "next", 0),
@@ -170,6 +171,15 @@ async def test_members_are_looked_up_in_the_user_store():
     members = await service.list_members(collections, FakeUsers(SHARED), SHARED, COLLECTION)
 
     assert [m.id for m in members] == [SHARED.id]
+
+
+async def test_people_are_the_owner_and_the_members_with_their_names():
+    collections = FakeCollections([SHARED.id, uuid4()])
+
+    people = await service.list_people(collections, FakeUsers(OWNER, SHARED), SHARED, COLLECTION)
+
+    assert [(p.id, p.name, p.role) for p in people] == [(OWNER.id, OWNER.name, "owner"),
+                                                        (SHARED.id, SHARED.name, "member")]
 
 
 @pytest.mark.parametrize("user, error", [(OWNER, AccessDenied), (SHARED, AccessDenied), (None, AuthenticationRequired)],

@@ -38,6 +38,8 @@ stored, then a final ``SuggestSpansRunEnd`` with the outcome.
   type, also an approved or rejected one), and Topicer may return the same proposal
   twice in one run. Approved/rejected spans are never changed or deleted by a run.
   Settle the regeneration policy before adding retries (ADR 0003).
+- Provenance (#460): each run gets a new id; its spans record origin ``ai``, that
+  ``aiRunId`` and the user who started it.
 """
 import asyncio
 import logging
@@ -45,7 +47,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, 
 from contextlib import aclosing, nullcontext
 from dataclasses import dataclass, field
 from typing import Any, AsyncContextManager, Literal, TypeVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import anyio
 
@@ -110,6 +112,8 @@ class _Tally:
     document_texts: dict[UUID, DocumentText] = field(default_factory=dict)
     """The run's document text for the derived data of its saved spans (#328): read by the first
     save and reused (saves that start before the first read finished read it too)."""
+    actor: service.Actor | None = None
+    """The user who started the run and the run's id, recorded on its spans (#460)."""
 
     def summary(self) -> SuggestSpansRunEnd:
         failures = (self.provider_failures + self.save_failures + self.search_tag_failures
@@ -412,7 +416,7 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
                     reason=proposal.reason, confidence=proposal.confidence)
     try:
         result = await _uninterrupted(service.save_span(store, collection_id, document_id, span,
-                                                        event.tally.document_texts))
+                                                        event.tally.document_texts, actor=event.tally.actor))
     except Exception as e:
         failure = step_failure("insert_span", chunk_id, e)
         event.unsaved += 1
@@ -429,6 +433,11 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
     if steps - {"update_chunk_tags"}:
         event.unenriched += 1
         event.tally.enrichment_failures += 1
+
+
+def _run_actor(user: Principal | None) -> service.Actor | None:
+    """The provenance of a run's spans: its user and a new run id (no run table, #460)."""
+    return service.Actor(user.id, uuid4()) if user is not None else None
 
 
 async def _authorized_tags(store: AnnotationStore, user: Principal | None, collection_id: str,
@@ -477,10 +486,11 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
     chunk_reserve = budget.policy.topicer_reserve_usd_per_chunk if budget is not None else 0.0
     if mode == "thorough":
         allowance = _Allowance(budget, "topicer_thorough", chunk_reserve)
-        tally = _Tally(unit="chunk", units_total=len(chunks))
+        tally = _Tally(unit="chunk", units_total=len(chunks), actor=_run_actor(user))
     else:
         allowance = _Allowance(budget, "topicer_optimized", chunk_reserve * provider.max_chunks_per_tag)
-        tally = _Tally(unit="tag", units_total=len(tags), max_chunks_per_tag=provider.max_chunks_per_tag)
+        tally = _Tally(unit="tag", units_total=len(tags), max_chunks_per_tag=provider.max_chunks_per_tag,
+                       actor=_run_actor(user))
     first = await allowance.admit() if tally.units_total else None
     admit = allowance.admitter(tally, first)
 
@@ -679,7 +689,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
     by_order: dict[int, AnnotationChunk] = {c.order: c for c in chunks}
     reserve = budget.policy.topicer_reserve_usd_per_chunk * len(chunks) if budget is not None else 0.0
     allowance = _Allowance(budget, "topicer_selection", reserve)
-    tally = _Tally(unit="selection", units_total=1)
+    tally = _Tally(unit="selection", units_total=1, actor=_run_actor(user))
     admit = allowance.admitter(tally, await allowance.admit())
 
     async def length_between(anchor: AnnotationChunk, last: AnnotationChunk) -> int | None:

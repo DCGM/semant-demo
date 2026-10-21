@@ -14,6 +14,7 @@ Name | Type
 `type` | [SpanType](SpanType.md)
 `reason` | string
 `confidence` | number
+`editVersion` | number
 
 ## Example
 
@@ -30,6 +31,7 @@ const example = {
   "type": null,
   "reason": null,
   "confidence": null,
+  "editVersion": null,
 } satisfies TagSpan
 
 console.log(example)

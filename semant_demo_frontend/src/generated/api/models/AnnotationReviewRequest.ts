@@ -41,6 +41,12 @@ export interface AnnotationReviewRequest {
     annotationIds: Array<string>;
     /**
      * 
+     * @type {{ [key: string]: number; }}
+     * @memberof AnnotationReviewRequest
+     */
+    expectedVersions: { [key: string]: number; };
+    /**
+     * 
      * @type {string}
      * @memberof AnnotationReviewRequest
      */
@@ -55,6 +61,7 @@ export interface AnnotationReviewRequest {
 export function instanceOfAnnotationReviewRequest(value: object): value is AnnotationReviewRequest {
     if (!('action' in value) || value['action'] === undefined) return false;
     if (!('annotationIds' in value) || value['annotationIds'] === undefined) return false;
+    if (!('expectedVersions' in value) || value['expectedVersions'] === undefined) return false;
     return true;
 }
 
@@ -70,6 +77,7 @@ export function AnnotationReviewRequestFromJSONTyped(json: any, ignoreDiscrimina
         
         'action': ReviewActionFromJSON(json['action']),
         'annotationIds': json['annotation_ids'],
+        'expectedVersions': json['expected_versions'],
         'tagId': json['tag_id'] == null ? undefined : json['tag_id'],
     };
 }
@@ -87,6 +95,7 @@ export function AnnotationReviewRequestToJSONTyped(value?: AnnotationReviewReque
         
         'action': ReviewActionToJSON(value['action']),
         'annotation_ids': value['annotationIds'],
+        'expected_versions': value['expectedVersions'],
         'tag_id': value['tagId'],
     };
 }

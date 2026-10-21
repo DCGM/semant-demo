@@ -37,6 +37,8 @@ import {
 
 /**
  * Result of a bulk update: the updated spans, plus per-span failures (best effort).
+ * ``conflicts``: the current state of the spans written by someone else since their
+ * expected version (failure ``edit_conflict``; not changed).
  * @export
  * @interface BulkUpdateSpansResponse
  */
@@ -71,6 +73,12 @@ export interface BulkUpdateSpansResponse {
      * @memberof BulkUpdateSpansResponse
      */
     spans: Array<TagSpan>;
+    /**
+     * 
+     * @type {Array<TagSpan>}
+     * @memberof BulkUpdateSpansResponse
+     */
+    conflicts?: Array<TagSpan>;
 }
 
 
@@ -99,6 +107,7 @@ export function BulkUpdateSpansResponseFromJSONTyped(json: any, ignoreDiscrimina
         'failed': json['failed'] == null ? undefined : ((json['failed'] as Array<any>).map(StepFailureFromJSON)),
         'unattempted': json['unattempted'] == null ? undefined : json['unattempted'],
         'spans': ((json['spans'] as Array<any>).map(TagSpanFromJSON)),
+        'conflicts': json['conflicts'] == null ? undefined : ((json['conflicts'] as Array<any>).map(TagSpanFromJSON)),
     };
 }
 
@@ -118,6 +127,7 @@ export function BulkUpdateSpansResponseToJSONTyped(value?: BulkUpdateSpansRespon
         'failed': value['failed'] == null ? undefined : ((value['failed'] as Array<any>).map(StepFailureToJSON)),
         'unattempted': value['unattempted'],
         'spans': ((value['spans'] as Array<any>).map(TagSpanToJSON)),
+        'conflicts': value['conflicts'] == null ? undefined : ((value['conflicts'] as Array<any>).map(TagSpanToJSON)),
     };
 }
 

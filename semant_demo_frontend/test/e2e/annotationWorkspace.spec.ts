@@ -6,6 +6,8 @@ import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton
 // filters, distinct selection and source context in the shared right sidebar, and the
 // workspace kept while a document is opened. Selection and review (#459): "all matches" is
 // a fixed set of ids, hidden members are counted, and reviews report each annotation.
+// Provenance and edit conflicts (#460): the sidebar names who created and changed the open
+// annotation, and a review of an annotation someone else changed meanwhile is refused.
 
 const chronicles = fixture.collection('chronicles')
 const rows = (page: Page) => page.getByTestId('kwic-row')
@@ -29,9 +31,9 @@ async function createSpan (request: APIRequestContext, chunkKey: string, start: 
 }
 
 /** Patches a seeded span as the document view's editor would. */
-async function patchSpan (request: APIRequestContext, spanId: string, data: Record<string, unknown>) {
+async function patchSpan (request: APIRequestContext, spanId: string, data: Record<string, unknown>, userKey = 'owner') {
   const response = await request.patch(`/api/tag_spans/${spanId}`, {
-    headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
+    headers: { Authorization: `Bearer ${await apiToken(request, userKey)}` },
     params: { collection_id: chronicles.id },
     data
   })
@@ -253,5 +255,61 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
     await expect(panel(page).getByTestId('annotation-context-gone')).toBeVisible()
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })
+  }
+})
+
+test('the sidebar names who changed the open annotation and refuses a review of an outdated copy', async ({ page, request }) => {
+  const lhota = fixture.span('lhota_automatic')
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  const context = page.getByTestId('annotation-context')
+  try {
+    await row(page, 'Lhoty').click()
+    // Seeded before provenance was recorded.
+    await expect(context.getByTestId('provenance-unknown')).toBeVisible()
+
+    // The shared annotator approves it meanwhile; this page still shows the proposal.
+    await patchSpan(request, lhota.id, { type: 'pos' }, 'annotator')
+    await context.getByRole('button', { name: 'Reject' }).click()
+    const conflict = context.getByTestId('annotation-conflict')
+    await expect(conflict).toContainText('now confirmed')
+    await expect(conflict).toContainText('Your reject was not saved.')
+    await expect(context.getByTestId('provenance-reviewed')).toContainText('Approved by')
+    await expect(row(page, 'Lhoty')).toContainText('Confirmed')
+
+    // Rejecting the version shown now is the user's explicit choice.
+    await conflict.getByRole('button', { name: 'Apply to current version' }).click()
+    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1.')
+    await expect(row(page, 'Lhoty')).toHaveCount(0) // rejected: out of the default filters
+  } finally {
+    await patchSpan(request, lhota.id, { type: 'auto' })
+  }
+})
+
+test('a batch review leaves annotations changed since they were selected and can select them', async ({ page, request }) => {
+  const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  try {
+    await page.getByTestId('concordance-status-pos').click()
+    await expect(rows(page)).toHaveCount(2)
+    await page.getByTestId('select-all-matches').click()
+    await expect(page.getByTestId('concordance-selected')).toHaveText('2 selected')
+
+    // The owner retags one of them after it was selected.
+    await patchSpan(request, proposals[0].id, { tagId: fixture.tag('person').id })
+    await page.getByTestId('review-reject').click()
+    const report = page.getByTestId('review-report')
+    await expect(report).toContainText('Rejected 1 of 2.')
+    await expect(report).toContainText('1 was changed by someone else since you selected it; not saved.')
+    await expect(page.getByTestId('review-retry')).toHaveCount(0)
+
+    await page.getByTestId('review-show-changed').click()
+    await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
+    await expect(row(page, 'Lhoty').getByRole('checkbox')).toBeChecked()
+    await expect(row(page, 'Lhoty')).toContainText('Proposal')
+  } finally {
+    await patchSpan(request, proposals[0].id, { tagId: fixture.tag('place').id, type: 'auto' })
+    await patchSpan(request, proposals[1].id, { type: 'auto' })
   }
 })
