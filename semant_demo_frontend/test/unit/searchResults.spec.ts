@@ -6,6 +6,7 @@ import { selectResults, type SearchResultsContext } from 'src/features/search/se
 import { parseSummaryTokens, useSearchSummary } from 'src/features/search/useSearchSummary'
 import { useSearchRequest } from 'src/features/search/useSearchRequest'
 import { onAiOperation } from 'src/shared/api'
+import { muteConsole } from './console'
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -117,6 +118,7 @@ describe('useSearchSummary', () => {
   })
 
   it('explains a refusal for the daily AI allowance, does not retry it and reports the operation', async () => {
+    const logged = muteConsole('error')
     const operations = vi.fn()
     const stop = onAiOperation(operations)
     const summary = useSearchSummary(ref(contextOf(1, ['a'])), ref<string[]>([]))
@@ -133,6 +135,7 @@ describe('useSearchSummary', () => {
     }, 429)
     await running
     stop()
+    expect(logged).toHaveBeenCalledWith('Summarization failed', expect.anything())
 
     expect(summary.error.value).toMatch(/^Today's AI allowance has no room for this request, so nothing was generated\. It resets /)
     expect([calls.length, summary.summarizing.value, operations.mock.calls.length]).toEqual([1, false, 1])

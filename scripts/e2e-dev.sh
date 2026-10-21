@@ -117,7 +117,8 @@ cmd_start() {
   backend_stamp="$(fingerprint "${BACKEND_PATHS[@]}")"
   # Own session and process group, so `stop` can signal the wrapper and the server together.
   # with-test-weaviate.sh removes its container when the server exits.
-  setsid "$ROOT/scripts/with-test-weaviate.sh" sh -c \
+  # The log is a file read on demand (`logs`), so it keeps the request lines.
+  E2E_LOG_LEVEL="${E2E_LOG_LEVEL:-INFO}" setsid "$ROOT/scripts/with-test-weaviate.sh" sh -c \
     'cd "$1" && exec "$2" -m tests.e2e_server --port "$3" --static "$4"' \
     e2e-dev "$BACKEND" "$PYTHON" "$PORT" "$FRONTEND/$DIST" \
     >"$STATE/server.log" 2>&1 </dev/null &
