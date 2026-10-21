@@ -54,6 +54,12 @@ const routes: RouteRecordRaw[] = [
             component: () => import('src/features/user_collections/CollectionDocumentsPage.vue')
           },
           {
+            // The collection's annotations as a concordance (KWIC, #329).
+            name: 'collectionAnnotations',
+            path: 'annotations',
+            component: () => import('src/features/annotations/concordance/CollectionAnnotationsPage.vue')
+          },
+          {
             name: 'collectionTags',
             path: 'tags',
             component: () => import('src/features/user_collections/CollectionTagsPage.vue')

@@ -5,6 +5,7 @@ import { useUserCollectionsStore } from 'src/features/user_collections/userColle
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
+import { useConcordanceStore } from 'src/features/annotations/concordance/concordanceStore'
 import { useChunksStore } from 'src/features/documents/chunksStore'
 import { useCollectionStatsStore } from 'src/features/user_collections/collectionStatsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
@@ -12,13 +13,14 @@ import { endSession, onStoredTokenChange, onUnauthorized } from 'src/shared/api'
 
 /**
  * Forgets everything loaded for the signed-in user: collections, documents, tags,
- * annotations, statistics and running AI suggestion runs. Requests still under way
+ * annotations (also the annotation workspace), statistics and running AI suggestion runs. Requests still under way
  * for that user are ignored when they answer.
  */
 export function clearUserScopedState (): void {
   endSession()
   useAiAssistance().reset()
   useTagSpansStore().clearAll()
+  useConcordanceStore().clear()
   useTagsStore().clear()
   useChunksStore().clear()
   useDocumentsStore().clear()

@@ -33,10 +33,15 @@ Approving or rejecting is a type change (``auto`` -> ``pos`` / ``neg``).
 """
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from semant_demo.features.annotations.schemas import AnnotationRow, EnrichmentStatus, SpanType, TagSpan, VectorStatus
+from semant_demo.features.annotations.schemas import (
+    AnnotatedDocument, AnnotationListRow, AnnotationPage, AnnotationQuery, AnnotationRow, AnnotationSort,
+    EnrichmentStatus, SpanType, TagSpan, TextStatus, VectorStatus,
+)
+from semant_demo.features.documents.schemas import Document
 from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, ChunkTagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
@@ -393,7 +398,10 @@ class Refresh:
         if reset_vector:
             props["vectorStatus"] = VectorStatus.pending.value
         d = self.derived
-        if d is not None:
+        if d is None:
+            # Text of an earlier revision or policy must not stay searchable or sortable (#329).
+            props |= {"text": "", "leftContext": "", "rightContext": ""}
+        else:
             props |= {"text": d.text, "leftContext": d.left_context, "rightContext": d.right_context,
                       "positionSegment": d.segment, "documentStartChar": d.start_char,
                       "documentEndChar": d.end_char, "documentStartWord": d.start_word,
@@ -611,3 +619,184 @@ async def similar_annotations(store: AnnotationStore, user: Principal | None, co
     rows = await store.spans.near_vector(cid, vector.target_vector, await vector.embed_query(query), vector.id,
                                          limit, tags)
     return await _visible(store, [r for r in rows if vector_current(r, vector.id) and text_current(r)])
+
+
+################################
+# Concordance queries (#329)   #
+################################
+
+_MAX_PAGE = 200
+# Weaviate returns no rows beyond offset + limit = QUERY_MAXIMUM_RESULTS (default 10,000).
+_MAX_WINDOW = 10_000
+# Annotated documents a document-ordered or year-filtered query reads (one aggregation).
+_MAX_DOCUMENTS = 10_000
+_MAX_WORDS = 10
+_WORD = re.compile(r"\w+")
+DEFAULT_TYPES = (SpanType.pos, SpanType.auto)
+
+
+def _parse_ids(values: list[Id] | None, kind: str) -> list[UUID] | None:
+    if not values:
+        return None
+    try:
+        return [UUID(str(v)) for v in values]
+    except ValueError:
+        raise InvalidRequestError(f"Malformed {kind} id") from None
+
+
+def _text_status(row: AnnotationRow) -> TextStatus:
+    if text_current(row):
+        return TextStatus.ready
+    if row.enrichmentStatus in (EnrichmentStatus.failed, EnrichmentStatus.invalid) \
+            and (row.enrichedRevision or 0) == (row.revision or 0):
+        return TextStatus(row.enrichmentStatus.value)
+    return TextStatus.pending
+
+
+def _list_row(row: AnnotationRow, document: Document | None) -> AnnotationListRow:
+    ready = text_current(row)
+    return AnnotationListRow(
+        id=row.id, tagId=row.tagId, type=row.type, chunkId=row.chunkId, documentId=row.documentId,
+        start=row.start, end=row.end, revision=row.revision or 0, textStatus=_text_status(row),
+        text=row.text if ready else None, leftContext=row.leftContext if ready else None,
+        rightContext=row.rightContext if ready else None, documentAvailable=document is not None,
+        documentTitle=document.title if document else None, documentYear=document.yearIssued if document else None)
+
+
+def _title_key(document: Document | None) -> tuple:
+    title = document.title if document is not None else None
+    return (title is None, (title or "").casefold(), title or "")
+
+
+def _year_key(document: Document | None) -> tuple:
+    year = document.yearIssued if document is not None else None
+    return (year is None, year or 0)
+
+
+@dataclass
+class _Documents:
+    """The annotated documents of a query, filtered and in row order, with their counts."""
+    order: list[UUID]
+    counts: dict[UUID, int]
+    documents: dict[UUID, Document]
+
+
+async def _annotated_documents(store: AnnotationStore, cid: UUID, query: AnnotationQuery, sort: AnnotationSort,
+                               document_ids: list[UUID] | None, year_from: int | None,
+                               year_to: int | None) -> _Documents:
+    counts = await store.spans.count_by_document(cid, query, _MAX_DOCUMENTS + 1, document_ids)
+    if len(counts) > _MAX_DOCUMENTS:
+        raise InvalidRequestError(
+            f"The annotations are in more than {_MAX_DOCUMENTS} documents; filter by tag or text first.")
+    documents = await store.documents.read_many(list(counts))
+    if year_from is not None or year_to is not None:
+        def in_range(year: int | None) -> bool:
+            return year is not None and (year_from is None or year >= year_from) and (year_to is None or year <= year_to)
+        counts = {d: n for d, n in counts.items()
+                  if d in documents and in_range(documents[d].yearIssued)}
+
+    def key(d: UUID) -> tuple:
+        title, year = _title_key(documents.get(d)), _year_key(documents.get(d))
+        return (*(year + title if sort == AnnotationSort.year else title + year), str(d))
+    return _Documents(order=sorted(counts, key=key), counts=counts, documents=documents)
+
+
+async def _rows_in_document_order(store: AnnotationStore, cid: UUID, query: AnnotationQuery, found: _Documents,
+                                  limit: int, offset: int) -> list[AnnotationRow]:
+    """The page ``[offset, offset + limit)`` of the rows of ``found.order``'s documents in
+    that order, each by position: documents entirely inside the page are read by one query,
+    the first and last documents of the page by their own when the page cuts them."""
+    slices: list[tuple[UUID, int, int]] = []  # document, rows skipped, rows taken
+    position = 0
+    for document in found.order:
+        count = found.counts[document]
+        skip, end = max(0, offset - position), min(count, offset + limit - position)
+        if end > skip:
+            slices.append((document, skip, end - skip))
+        position += count
+        if position >= offset + limit:
+            break
+    whole = [d for d, skip, take in slices if skip == 0 and take == found.counts[d]]
+
+    async def cut(document: UUID, skip: int, take: int) -> list[AnnotationRow]:
+        if skip + take > _MAX_WINDOW:
+            raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} of one document cannot be paged.")
+        return await store.spans.query_rows(cid, query, by_text=False, document_ids=[document], limit=take, offset=skip)
+
+    async def read_whole() -> list[AnnotationRow]:
+        if not whole:
+            return []
+        return await store.spans.query_rows(cid, query, by_text=False, document_ids=whole,
+                                            limit=sum(found.counts[d] for d in whole))
+
+    parts = await asyncio.gather(read_whole(), *(cut(d, s, t) for d, s, t in slices if d not in whole))
+    by_document: dict[UUID, list[AnnotationRow]] = {d: [] for d, _, _ in slices}
+    for row in parts[0]:  # partitioning keeps each document's position order
+        by_document[row.documentId].append(row)
+    for (document, _, _), rows in zip([s for s in slices if s[0] not in whole], parts[1:]):
+        by_document[document] = rows
+    return [row for document, _, _ in slices for row in by_document[document]]
+
+
+async def query_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
+                            tag_ids: list[Id] | None = None, types: list[SpanType] | None = None,
+                            text: str | None = None, document_ids: list[Id] | None = None,
+                            year_from: int | None = None, year_to: int | None = None,
+                            sort: AnnotationSort = AnnotationSort.document, limit: int = 50,
+                            offset: int = 0) -> AnnotationPage:
+    """
+    One page of the collection's annotations as concordance (KWIC) rows, and the number of
+    all that match: of some tags, types (default ``pos`` and ``auto``; rejected ``neg``
+    only when asked), documents and document years, and whose annotated text contains each
+    word of ``text`` (inside a word, ignoring case). The order is total (``AnnotationSort``),
+    so pages do not overlap or skip rows while the annotations do not change.
+
+    Reads the annotations and, for document order or a year filter, the metadata of the
+    annotated documents once (at most ``_MAX_DOCUMENTS``); never the source chunks.
+    """
+    grant = await access.require_collection_read(store.collections, user, collection_id)
+    if not 1 <= limit <= _MAX_PAGE or offset < 0:
+        raise InvalidRequestError(f"limit must be between 1 and {_MAX_PAGE} and offset not negative")
+    words = _WORD.findall(text or "")
+    if len(words) > _MAX_WORDS:
+        raise InvalidRequestError(f"Search for at most {_MAX_WORDS} words")
+    query = AnnotationQuery(tag_ids=_parse_ids(tag_ids, "tag"), types=list(dict.fromkeys(types or DEFAULT_TYPES)),
+                            words=words, derivation_version=DERIVATION_VERSION)
+    documents = _parse_ids(document_ids, "document")
+    cid = await use_tenant(store, grant)
+    by_year = year_from is not None or year_to is not None
+    if sort == AnnotationSort.text and not by_year:
+        if offset + limit > _MAX_WINDOW:
+            raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
+        total, rows = await asyncio.gather(
+            store.spans.count_rows(cid, query, documents),
+            store.spans.query_rows(cid, query, by_text=True, document_ids=documents, limit=limit, offset=offset))
+        joined = await store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
+    else:
+        found = await _annotated_documents(store, cid, query, sort, documents, year_from, year_to)
+        total = sum(found.counts.values())
+        if sort == AnnotationSort.text:
+            if offset + limit > _MAX_WINDOW:
+                raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
+            rows = await store.spans.query_rows(cid, query, by_text=True, document_ids=found.order,
+                                                limit=limit, offset=offset)
+        else:
+            rows = await _rows_in_document_order(store, cid, query, found, limit, offset)
+        joined = found.documents
+    return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None) for r in rows],
+                          total=total, offset=offset, limit=limit)
+
+
+async def list_annotated_documents(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
+                                   tag_ids: list[Id] | None = None, types: list[SpanType] | None = None
+                                   ) -> list[AnnotatedDocument]:
+    """The documents with annotations of the given tags and types (default ``pos`` and
+    ``auto``) and how many, by title: the choices of the concordance's source and year
+    filters."""
+    grant = await access.require_collection_read(store.collections, user, collection_id)
+    query = AnnotationQuery(tag_ids=_parse_ids(tag_ids, "tag"), types=list(dict.fromkeys(types or DEFAULT_TYPES)))
+    found = await _annotated_documents(store, await use_tenant(store, grant), query, AnnotationSort.document,
+                                       None, None, None)
+    return [AnnotatedDocument(id=d, title=found.documents[d].title if d in found.documents else None,
+                              year=found.documents[d].yearIssued if d in found.documents else None,
+                              count=found.counts[d], available=d in found.documents) for d in found.order]

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.schemas import (
+    AnnotatedDocument, AnnotationPage, AnnotationSort, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
 )
@@ -191,3 +192,53 @@ async def delete_spans_for_tags_in_document(
     result = await service.delete_approved_spans_in_document(
         store, current_user, body.collection_id, body.document_id, body.tag_ids)
     return DeleteSpansForTagsResponse(**result.model_dump(), deleted=len(result.succeeded))
+
+
+#############################
+# Concordance (KWIC, #329)  #
+#############################
+
+_TAG_FILTER = Query(default=None, description="Only annotations of these tags (repeat the parameter)")
+_TYPE_FILTER = Query(default=None, alias="type", description=(
+    "Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), "
+    "neg (rejected); default pos and auto"))
+
+
+@span_router.get("/api/user_collections/{collection_id}/annotations", response_model=AnnotationPage)
+async def list_collection_annotations(
+    collection_id: str,
+    tag_id: list[str] | None = _TAG_FILTER,
+    types: list[SpanType] | None = _TYPE_FILTER,
+    q: str | None = Query(default=None, max_length=500,
+                          description="Words that must each occur in the annotated text (inside a word, any case)"),
+    document_id: list[str] | None = Query(default=None, description="Only annotations in these documents"),
+    year_from: int | None = Query(default=None, description="Only documents issued in or after this year"),
+    year_to: int | None = Query(default=None, description="Only documents issued in or before this year"),
+    sort: AnnotationSort = AnnotationSort.document,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    store: AnnotationStore = Depends(get_annotation_store),
+    current_user: User = Depends(current_active_user),
+) -> AnnotationPage:
+    """
+    One page of the collection's annotations as concordance rows (stored text, left and
+    right context, tag, type, document title and year) and the number of all matches.
+    Rows are in a total order, so paging is deterministic. Rows whose text is not derived
+    for their current revision have ``textStatus`` other than ``ready`` and no text.
+    """
+    return await service.query_annotations(
+        store, current_user, collection_id, tag_ids=tag_id, types=types, text=q, document_ids=document_id,
+        year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset)
+
+
+@span_router.get("/api/user_collections/{collection_id}/annotations/documents",
+                 response_model=list[AnnotatedDocument])
+async def list_annotated_documents(
+    collection_id: str,
+    tag_id: list[str] | None = _TAG_FILTER,
+    types: list[SpanType] | None = _TYPE_FILTER,
+    store: AnnotationStore = Depends(get_annotation_store),
+    current_user: User = Depends(current_active_user),
+) -> list[AnnotatedDocument]:
+    """The documents with annotations of the given tags and types, with their counts, by title."""
+    return await service.list_annotated_documents(store, current_user, collection_id, tag_ids=tag_id, types=types)

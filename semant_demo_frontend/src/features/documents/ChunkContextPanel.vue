@@ -12,6 +12,7 @@
           <div class="text-caption text-grey-8">{{ document.yearIssued || 'Year N/A' }}</div>
           <OriginalSourceLink :document="document" :page-id="targetPageId" class="text-caption" />
         </div>
+        <slot name="header" />
         <q-btn
           v-if="returnLabel"
           dense
@@ -58,7 +59,7 @@
             class="chunk-context__chunk"
             :class="{ 'chunk-context__chunk--target': chunk.id === targetChunkId }"
             :aria-current="chunk.id === targetChunkId ? 'true' : undefined"
-            :aria-label="chunk.id === targetChunkId ? (targetLabel ? `Cited passage ${targetLabel}` : 'Matched passage') : undefined"
+            :aria-label="chunk.id === targetChunkId ? (targetLabel ? `Cited passage ${targetLabel}` : targetName) : undefined"
             :data-chunk-id="chunk.id"
           >
             <div
@@ -66,7 +67,14 @@
               class="chunk-context__target-label text-caption text-weight-bold"
               data-testid="chunk-context-target-label"
             >{{ targetLabel }}</div>
-            <div class="chunk-context__chunk-text text-body2">{{ chunk.text }}</div>
+            <div class="chunk-context__chunk-text text-body2"><template
+              v-for="(part, index) in textParts(chunk)"
+              :key="index"
+            ><mark
+              v-if="part.marked"
+              class="chunk-context__mark"
+              data-testid="chunk-context-mark"
+            >{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></div>
           </section>
         </div>
 
@@ -94,6 +102,15 @@ import { QBtn, QSpinner } from 'quasar'
 import type { Document, DocumentChunk } from 'src/generated/api'
 import OriginalSourceLink from './OriginalSourceLink.vue'
 import type { ContextDirection } from './useChunkContext'
+import { projectSpan } from 'src/features/annotations/spanOffsets'
+
+/** An exact range to mark: UTF-16 offsets on the chunk where it starts, possibly continuing
+ * into the following chunks (span coordinates, `annotations/spanOffsets.ts`). */
+export interface ContextHighlight {
+  chunkId: string
+  start: number
+  end: number
+}
 
 const props = withDefaults(defineProps<{
   /** The chunk to highlight; null shows `emptyText`. */
@@ -113,6 +130,10 @@ const props = withDefaults(defineProps<{
   returnLabel?: string | null
   /** Reference shown with the highlighted target (e.g. a chat citation's `S3`); none by default. */
   targetLabel?: string | null
+  /** Accessible name of the target chunk when it has no `targetLabel`. */
+  targetName?: string
+  /** A range marked in the text (an annotation); none by default. */
+  highlight?: ContextHighlight | null
   emptyText?: string
 }>(), {
   hasBefore: false,
@@ -123,6 +144,8 @@ const props = withDefaults(defineProps<{
   error: null,
   returnLabel: null,
   targetLabel: null,
+  targetName: 'Matched passage',
+  highlight: null,
   emptyText: 'Nothing selected.'
 })
 
@@ -142,6 +165,29 @@ watch(() => [props.targetChunkId, props.chunks] as const, ([id, chunks]) => {
   const page = chunks.find(c => c.id === id)?.startPageId
   if (page) targetPageId.value = page
 }, { immediate: true })
+
+// The highlight's part in each loaded chunk; it ends at a gap in chunk order.
+const marked = computed(() => {
+  const parts = new Map<string, { start: number, end: number }>()
+  const h = props.highlight
+  const anchor = h ? props.chunks.findIndex(c => c.id === h.chunkId) : -1
+  if (!h || anchor < 0) return parts
+  const ordered = props.chunks.map(c => ({ order: c.order ?? Number.NaN, text: c.text }))
+  for (const part of projectSpan(ordered, anchor, h.start, h.end)) {
+    parts.set(props.chunks[part.chunk].id, { start: part.start, end: part.end })
+  }
+  return parts
+})
+
+function textParts (chunk: DocumentChunk): { text: string, marked: boolean }[] {
+  const part = marked.value.get(chunk.id)
+  if (!part) return [{ text: chunk.text, marked: false }]
+  return [
+    { text: chunk.text.slice(0, part.start), marked: false },
+    { text: chunk.text.slice(part.start, part.end), marked: true },
+    { text: chunk.text.slice(part.end), marked: false }
+  ].filter(p => p.text)
+}
 
 const documentTitle = computed(() => {
   const d = props.document
@@ -213,6 +259,13 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value] as const, as
 .chunk-context__chunk--target {
   border-left-color: var(--q-primary);
   background-color: #fff8d6;
+}
+
+.chunk-context__mark {
+  background-color: #ffd54f;
+  color: inherit;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #c49000;
 }
 
 .chunk-context__target-label {

@@ -3,6 +3,10 @@ apis/DefaultApi.ts
 apis/UsersApi.ts
 apis/index.ts
 docs/AdjacentChunks.md
+docs/AnnotatedDocument.md
+docs/AnnotationListRow.md
+docs/AnnotationPage.md
+docs/AnnotationSort.md
 docs/AppFeedbackRequest.md
 docs/AuthApi.md
 docs/BearerResponse.md
@@ -81,6 +85,7 @@ docs/Tag.md
 docs/TagSpan.md
 docs/TagSpanBatchRequest.md
 docs/TagSpanWriteResult.md
+docs/TextStatus.md
 docs/Url.md
 docs/UserCreate.md
 docs/UserRead.md
@@ -95,6 +100,10 @@ docs/WriteResult.md
 docs/YearBin.md
 index.ts
 models/AdjacentChunks.ts
+models/AnnotatedDocument.ts
+models/AnnotationListRow.ts
+models/AnnotationPage.ts
+models/AnnotationSort.ts
 models/AppFeedbackRequest.ts
 models/BearerResponse.ts
 models/BulkUpdateSpansRequest.ts
@@ -171,6 +180,7 @@ models/Tag.ts
 models/TagSpan.ts
 models/TagSpanBatchRequest.ts
 models/TagSpanWriteResult.ts
+models/TextStatus.ts
 models/Url.ts
 models/UserCreate.ts
 models/UserRead.ts

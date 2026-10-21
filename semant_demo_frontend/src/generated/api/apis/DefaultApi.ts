@@ -16,6 +16,9 @@
 import * as runtime from '../runtime';
 import type {
   AdjacentChunks,
+  AnnotatedDocument,
+  AnnotationPage,
+  AnnotationSort,
   AppFeedbackRequest,
   BulkUpdateSpansRequest,
   BulkUpdateSpansResponse,
@@ -56,6 +59,7 @@ import type {
   SearchResponse,
   SearchVectorsResponse,
   ShareCollectionRequest,
+  SpanType,
   SuggestSpansRequest,
   SuggestSpansSelectionRequest,
   SummaryLength,
@@ -70,6 +74,12 @@ import type {
 import {
     AdjacentChunksFromJSON,
     AdjacentChunksToJSON,
+    AnnotatedDocumentFromJSON,
+    AnnotatedDocumentToJSON,
+    AnnotationPageFromJSON,
+    AnnotationPageToJSON,
+    AnnotationSortFromJSON,
+    AnnotationSortToJSON,
     AppFeedbackRequestFromJSON,
     AppFeedbackRequestToJSON,
     BulkUpdateSpansRequestFromJSON,
@@ -150,6 +160,8 @@ import {
     SearchVectorsResponseToJSON,
     ShareCollectionRequestFromJSON,
     ShareCollectionRequestToJSON,
+    SpanTypeFromJSON,
+    SpanTypeToJSON,
     SuggestSpansRequestFromJSON,
     SuggestSpansRequestToJSON,
     SuggestSpansSelectionRequestFromJSON,
@@ -299,6 +311,25 @@ export interface GetNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumen
 
 export interface GetTagApiTagsTagUuidGetRequest {
     tagUuid: string;
+}
+
+export interface ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest {
+    collectionId: string;
+    tagId?: Array<string> | null;
+    type?: Array<SpanType> | null;
+}
+
+export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest {
+    collectionId: string;
+    tagId?: Array<string> | null;
+    type?: Array<SpanType> | null;
+    q?: string | null;
+    documentId?: Array<string> | null;
+    yearFrom?: number | null;
+    yearTo?: number | null;
+    sort?: AnnotationSort;
+    limit?: number;
+    offset?: number;
 }
 
 export interface QuestionApiQuestionPostRequest {
@@ -1258,6 +1289,76 @@ export interface DefaultApiInterface {
      * Health
      */
     healthHealthGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+
+    /**
+     * Creates request options for listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet without sending the request
+     * @param {string} collectionId 
+     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
+     * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequestOpts(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * The documents with annotations of the given tags and types, with their counts, by title.
+     * @summary List Annotated Documents
+     * @param {string} collectionId 
+     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
+     * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRaw(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AnnotatedDocument>>>;
+
+    /**
+     * The documents with annotations of the given tags and types, with their counts, by title.
+     * List Annotated Documents
+     */
+    listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AnnotatedDocument>>;
+
+    /**
+     * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
+     * @param {string} collectionId 
+     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
+     * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
+     * @param {string} [q] Words that must each occur in the annotated text (inside a word, any case)
+     * @param {Array<string>} [documentId] Only annotations in these documents
+     * @param {number} [yearFrom] Only documents issued in or after this year
+     * @param {number} [yearTo] Only documents issued in or before this year
+     * @param {AnnotationSort} [sort] 
+     * @param {number} [limit] 
+     * @param {number} [offset] 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequestOpts(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * One page of the collection\'s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text.
+     * @summary List Collection Annotations
+     * @param {string} collectionId 
+     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
+     * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
+     * @param {string} [q] Words that must each occur in the annotated text (inside a word, any case)
+     * @param {Array<string>} [documentId] Only annotations in these documents
+     * @param {number} [yearFrom] Only documents issued in or after this year
+     * @param {number} [yearTo] Only documents issued in or before this year
+     * @param {AnnotationSort} [sort] 
+     * @param {number} [limit] 
+     * @param {number} [offset] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>>;
+
+    /**
+     * One page of the collection\'s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text.
+     * List Collection Annotations
+     */
+    listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage>;
 
     /**
      * Creates request options for questionApiQuestionPost without sending the request
@@ -3683,6 +3784,154 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async healthHealthGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
         const response = await this.healthHealthGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet without sending the request
+     */
+    async listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequestOpts(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['tagId'] != null) {
+            queryParameters['tag_id'] = requestParameters['tagId'];
+        }
+
+        if (requestParameters['type'] != null) {
+            queryParameters['type'] = requestParameters['type'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/documents`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * The documents with annotations of the given tags and types, with their counts, by title.
+     * List Annotated Documents
+     */
+    async listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRaw(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AnnotatedDocument>>> {
+        const requestOptions = await this.listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(AnnotatedDocumentFromJSON));
+    }
+
+    /**
+     * The documents with annotations of the given tags and types, with their counts, by title.
+     * List Annotated Documents
+     */
+    async listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AnnotatedDocument>> {
+        const response = await this.listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
+     */
+    async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequestOpts(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['tagId'] != null) {
+            queryParameters['tag_id'] = requestParameters['tagId'];
+        }
+
+        if (requestParameters['type'] != null) {
+            queryParameters['type'] = requestParameters['type'];
+        }
+
+        if (requestParameters['q'] != null) {
+            queryParameters['q'] = requestParameters['q'];
+        }
+
+        if (requestParameters['documentId'] != null) {
+            queryParameters['document_id'] = requestParameters['documentId'];
+        }
+
+        if (requestParameters['yearFrom'] != null) {
+            queryParameters['year_from'] = requestParameters['yearFrom'];
+        }
+
+        if (requestParameters['yearTo'] != null) {
+            queryParameters['year_to'] = requestParameters['yearTo'];
+        }
+
+        if (requestParameters['sort'] != null) {
+            queryParameters['sort'] = requestParameters['sort'];
+        }
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        if (requestParameters['offset'] != null) {
+            queryParameters['offset'] = requestParameters['offset'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * One page of the collection\'s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text.
+     * List Collection Annotations
+     */
+    async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>> {
+        const requestOptions = await this.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AnnotationPageFromJSON(jsonValue));
+    }
+
+    /**
+     * One page of the collection\'s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text.
+     * List Collection Annotations
+     */
+    async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage> {
+        const response = await this.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
