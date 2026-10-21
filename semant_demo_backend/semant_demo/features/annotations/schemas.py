@@ -156,6 +156,8 @@ class AnnotationQuery(BaseModel):
     types: list[SpanType]
     words: list[str] = []
     derivation_version: int | None = None
+    ids: list[UUID] | None = None
+    """Only these annotations (a selection whose matching members are asked for, #459)."""
 
 
 class AnnotationSort(str, Enum):
@@ -219,6 +221,65 @@ class AnnotatedDocument(BaseModel):
     year: int | None = None
     count: int
     available: bool
+
+
+MAX_RESOLVED_IDS = 5000
+"""Annotations "select all matches" may resolve at once (#459); more is refused."""
+MAX_REVIEW_BATCH = 200
+"""Annotations one review request may change (#459); a client sends larger selections in parts."""
+
+
+class AnnotationIdsRequest(BaseModel):
+    """The concordance filters (#329) whose matching annotation ids to resolve (#459).
+    ``within``: only these annotations, to learn which members of a selection the filters
+    show."""
+    tag_ids: list[UUID] | None = None
+    types: list[SpanType] | None = None
+    """Default ``pos`` and ``auto``, as in the concordance."""
+    q: str | None = Field(default=None, max_length=500)
+    document_ids: list[UUID] | None = None
+    year_from: int | None = None
+    year_to: int | None = None
+    within: list[UUID] | None = Field(default=None, max_length=MAX_RESOLVED_IDS)
+
+
+class AnnotationIds(BaseModel):
+    """The ids of all annotations matching a query when it was resolved (by id); the caller
+    keeps them as a fixed set, so later changes of the filters or annotations never widen it."""
+    ids: list[UUID]
+
+
+class ReviewAction(str, Enum):
+    approve = "approve"
+    """Set type ``pos`` (confirmed)."""
+    reject = "reject"
+    """Set type ``neg``: kept as a rejected example, not deleted."""
+    retag = "retag"
+    """Move to ``tag_id`` of the same collection; the type is kept."""
+    delete = "delete"
+
+
+class AnnotationReviewRequest(BaseModel):
+    """One review action for some annotations of the collection (#459)."""
+    action: ReviewAction
+    annotation_ids: list[UUID] = Field(min_length=1, max_length=MAX_REVIEW_BATCH)
+    tag_id: UUID | None = None
+    """The new tag; required for ``retag`` and only allowed there."""
+
+    @model_validator(mode="after")
+    def check_tag(self) -> "AnnotationReviewRequest":
+        if (self.tag_id is not None) != (self.action == ReviewAction.retag):
+            raise ValueError("tag_id is required for retag and not allowed for other actions")
+        return self
+
+
+class AnnotationReviewResult(WriteResult):
+    """The outcome of a review action per annotation (best effort, ADR 0002; nothing is
+    rolled back). ``succeeded``: annotations changed or deleted. ``failed``:
+    ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have
+    been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted
+    meanwhile) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved,
+    tag-filtered search does not reflect it; repeating the action retries it)."""
 
 
 class TagSpanWriteResult(TagSpan, WriteResult):

@@ -17,7 +17,11 @@ import * as runtime from '../runtime';
 import type {
   AdjacentChunks,
   AnnotatedDocument,
+  AnnotationIds,
+  AnnotationIdsRequest,
   AnnotationPage,
+  AnnotationReviewRequest,
+  AnnotationReviewResult,
   AnnotationSort,
   AppFeedbackRequest,
   BulkUpdateSpansRequest,
@@ -76,8 +80,16 @@ import {
     AdjacentChunksToJSON,
     AnnotatedDocumentFromJSON,
     AnnotatedDocumentToJSON,
+    AnnotationIdsFromJSON,
+    AnnotationIdsToJSON,
+    AnnotationIdsRequestFromJSON,
+    AnnotationIdsRequestToJSON,
     AnnotationPageFromJSON,
     AnnotationPageToJSON,
+    AnnotationReviewRequestFromJSON,
+    AnnotationReviewRequestToJSON,
+    AnnotationReviewResultFromJSON,
+    AnnotationReviewResultToJSON,
     AnnotationSortFromJSON,
     AnnotationSortToJSON,
     AppFeedbackRequestFromJSON,
@@ -371,6 +383,16 @@ export interface RemoveChunkFromCollectionApiUserCollectionsCollectionIdChunksCh
 export interface RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRequest {
     collectionId: string;
     documentId: string;
+}
+
+export interface ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest {
+    collectionId: string;
+    annotationIdsRequest: AnnotationIdsRequest;
+}
+
+export interface ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest {
+    collectionId: string;
+    annotationReviewRequest: AnnotationReviewRequest;
 }
 
 export interface SaveAppFeedbackApiV1FeedbackPostRequest {
@@ -1567,6 +1589,58 @@ export interface DefaultApiInterface {
      * Remove Document From Collection
      */
     removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
+
+    /**
+     * Creates request options for resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost without sending the request
+     * @param {string} collectionId 
+     * @param {AnnotationIdsRequest} annotationIdsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequestOpts(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+     * @summary Resolve Collection Annotation Ids
+     * @param {string} collectionId 
+     * @param {AnnotationIdsRequest} annotationIdsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRaw(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationIds>>;
+
+    /**
+     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+     * Resolve Collection Annotation Ids
+     */
+    resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationIds>;
+
+    /**
+     * Creates request options for reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost without sending the request
+     * @param {string} collectionId 
+     * @param {AnnotationReviewRequest} annotationReviewRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequestOpts(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain and the ids that are no annotation of the collection (``find_annotation``). Nothing is rolled back.
+     * @summary Review Collection Annotations
+     * @param {string} collectionId 
+     * @param {AnnotationReviewRequest} annotationReviewRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRaw(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationReviewResult>>;
+
+    /**
+     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain and the ids that are no annotation of the collection (``find_annotation``). Nothing is rolled back.
+     * Review Collection Annotations
+     */
+    reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationReviewResult>;
 
     /**
      * Creates request options for saveAppFeedbackApiV1FeedbackPost without sending the request
@@ -4402,6 +4476,130 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
         const response = await this.removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost without sending the request
+     */
+    async resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequestOpts(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost().'
+            );
+        }
+
+        if (requestParameters['annotationIdsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'annotationIdsRequest',
+                'Required parameter "annotationIdsRequest" was null or undefined when calling resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/ids`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AnnotationIdsRequestToJSON(requestParameters['annotationIdsRequest']),
+        };
+    }
+
+    /**
+     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+     * Resolve Collection Annotation Ids
+     */
+    async resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRaw(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationIds>> {
+        const requestOptions = await this.resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AnnotationIdsFromJSON(jsonValue));
+    }
+
+    /**
+     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+     * Resolve Collection Annotation Ids
+     */
+    async resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationIds> {
+        const response = await this.resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost without sending the request
+     */
+    async reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequestOpts(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost().'
+            );
+        }
+
+        if (requestParameters['annotationReviewRequest'] == null) {
+            throw new runtime.RequiredError(
+                'annotationReviewRequest',
+                'Required parameter "annotationReviewRequest" was null or undefined when calling reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/review`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AnnotationReviewRequestToJSON(requestParameters['annotationReviewRequest']),
+        };
+    }
+
+    /**
+     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain and the ids that are no annotation of the collection (``find_annotation``). Nothing is rolled back.
+     * Review Collection Annotations
+     */
+    async reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRaw(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationReviewResult>> {
+        const requestOptions = await this.reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AnnotationReviewResultFromJSON(jsonValue));
+    }
+
+    /**
+     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain and the ids that are no annotation of the collection (``find_annotation``). Nothing is rolled back.
+     * Review Collection Annotations
+     */
+    async reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationReviewResult> {
+        const response = await this.reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

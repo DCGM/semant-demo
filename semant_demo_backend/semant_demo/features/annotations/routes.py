@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.schemas import (
-    AnnotatedDocument, AnnotationPage, AnnotationSort, SpanType,
+    AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationPage, AnnotationReviewRequest,
+    AnnotationReviewResult, AnnotationSort, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
 )
@@ -242,3 +243,38 @@ async def list_annotated_documents(
 ) -> list[AnnotatedDocument]:
     """The documents with annotations of the given tags and types, with their counts, by title."""
     return await service.list_annotated_documents(store, current_user, collection_id, tag_ids=tag_id, types=types)
+
+
+###################################
+# Selection and review (#459)     #
+###################################
+
+@span_router.post("/api/user_collections/{collection_id}/annotations/ids", response_model=AnnotationIds)
+async def resolve_collection_annotation_ids(
+    collection_id: str,
+    body: AnnotationIdsRequest,
+    store: AnnotationStore = Depends(get_annotation_store),
+    current_user: User = Depends(current_active_user),
+) -> AnnotationIds:
+    """
+    The ids of all annotations matching the concordance filters now, or of those among
+    ``within`` that match (which members of a selection the filters show). At most 5,000;
+    a query matching more is refused (400), never truncated.
+    """
+    return await service.resolve_annotation_ids(store, current_user, collection_id, body)
+
+
+@span_router.post("/api/user_collections/{collection_id}/annotations/review", response_model=AnnotationReviewResult)
+async def review_collection_annotations(
+    collection_id: str,
+    body: AnnotationReviewRequest,
+    store: AnnotationStore = Depends(get_annotation_store),
+    current_user: User = Depends(current_active_user),
+) -> AnnotationReviewResult:
+    """
+    Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the
+    collection. Best effort and per item: ``succeeded`` lists the changed annotations,
+    ``failed`` the ones not changed or uncertain and the ids that are no annotation of the
+    collection (``find_annotation``). Nothing is rolled back.
+    """
+    return await service.review_annotations(store, current_user, collection_id, body)

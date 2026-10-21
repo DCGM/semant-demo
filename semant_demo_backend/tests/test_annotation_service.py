@@ -16,7 +16,9 @@ from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.offsets import InvalidSpanRange
-from semant_demo.features.annotations.schemas import PatchSpan, PatchTag, PostSpan, PostTag, SpanType, TagSpan, AnnotationChunk
+from semant_demo.features.annotations.schemas import (
+    AnnotationChunk, AnnotationReviewRequest, PatchSpan, PatchTag, PostSpan, PostTag, ReviewAction, SpanType, TagSpan,
+)
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.core.outcomes import StepFailure
@@ -182,6 +184,10 @@ def post_span(start=0, end=3, chunk=CHUNK_1, **kw):
     return PostSpan(start=start, end=end, type=SpanType.pos, chunkId=str(chunk), tagId=str(TAG), **kw)
 
 
+def review(action, *ids, tag=None):
+    return AnnotationReviewRequest(action=action, annotation_ids=list(ids or [SPAN_A, SPAN_B]), tag_id=tag)
+
+
 NEW_TAG = PostTag(name="Osoba", shorthand="OS", color="#000", pictogram="p", definition="d")
 
 WRITES = [
@@ -194,6 +200,8 @@ WRITES = [
     lambda s, u: service.delete_span(s, u, COLLECTION, SPAN_A),
     lambda s, u: service.delete_approved_spans_in_document(s, u, COLLECTION, DOCUMENT, [TAG]),
     lambda s, u: service.delete_suggestions_in_document(s, u, COLLECTION, DOCUMENT, [TAG]),
+    lambda s, u: service.review_annotations(s, u, COLLECTION, review(ReviewAction.approve)),
+    lambda s, u: service.review_annotations(s, u, COLLECTION, review(ReviewAction.delete)),
 ]
 READS = [
     lambda s, u: service.get_tag(s, u, TAG),
@@ -441,3 +449,84 @@ async def test_scoped_delete_with_a_document_outside_the_collection_is_not_found
     with pytest.raises(NotFoundError):
         await service.delete_approved_spans_in_document(store, OWNER, COLLECTION, uuid4(), [TAG])
     assert writes == []
+
+
+# ── Workspace review (#459) ───────────────────────────────────────────────
+
+@pytest.mark.parametrize("action, type", [(ReviewAction.approve, SpanType.pos), (ReviewAction.reject, SpanType.neg)])
+async def test_review_sets_the_type_of_each_annotation_and_keeps_rejections(action, type, store, writes):
+    result = await service.review_annotations(store, SHARED, COLLECTION, review(action))
+
+    assert result.outcome == "complete"
+    assert result.succeeded == [str(SPAN_A), str(SPAN_B)]
+    assert {s.type for s in store.spans.stored[COLLECTION].values()} == {type}
+    assert "delete_span" not in [w[0] for w in writes]
+    # Offsets of SPAN_B are invalid; a type change does not re-check them.
+    assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, TAG)}))
+
+
+async def test_review_reports_ids_outside_the_collection_per_item_and_changes_the_rest(store, writes):
+    gone = uuid4()
+    result = await service.review_annotations(store, OWNER, COLLECTION, review(ReviewAction.approve, SPAN_C, SPAN_A, gone))
+
+    assert result.outcome == "partial"
+    assert result.succeeded == [str(SPAN_A)]
+    assert [(f.item_id, f.step, f.uncertain) for f in result.failed] == [
+        (str(SPAN_C), "find_annotation", False), (str(gone), "find_annotation", False)]
+    assert store.spans.stored[SECOND_COLLECTION][SPAN_C].type == SpanType.auto
+    assert ("update_span", SPAN_C) not in writes
+
+
+async def test_review_of_only_missing_annotations_writes_nothing(store, writes):
+    result = await service.review_annotations(store, OWNER, COLLECTION, review(ReviewAction.delete, uuid4()))
+
+    assert result.outcome == "failed"
+    assert writes == []
+
+
+async def test_review_failures_are_per_item_and_a_timeout_is_uncertain(store, writes):
+    store.spans.fail[f"delete_span:{SPAN_A}"] = WeaviateTimeoutError("slow")
+
+    result = await service.review_annotations(store, OWNER, COLLECTION, review(ReviewAction.delete))
+
+    assert result.outcome == "partial"
+    assert result.succeeded == [str(SPAN_B)]
+    assert [(f.item_id, f.step, f.uncertain) for f in result.failed] == [(str(SPAN_A), "delete_span", True)]
+    # Re-derived also for the span whose deletion may have been applied.
+    assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, TAG)}))
+
+
+async def test_review_reports_chunk_tag_failures_without_failing_the_saved_items(store):
+    store.chunk_tags.failures = [StepFailure(item_id=f"{CHUNK_1}:{TAG}", step="update_chunk_tags", message="x")]
+
+    result = await service.review_annotations(store, OWNER, COLLECTION, review(ReviewAction.reject))
+
+    assert result.outcome == "partial"
+    assert result.succeeded == [str(SPAN_A), str(SPAN_B)]
+    assert [f.step for f in result.failed] == ["update_chunk_tags"]
+
+
+async def test_retag_moves_annotations_to_a_tag_of_the_same_collection(store, writes):
+    result = await service.review_annotations(store, OWNER, COLLECTION, review(ReviewAction.retag, SPAN_A, tag=OTHER_TAG))
+
+    assert result.succeeded == [str(SPAN_A)]
+    stored = store.spans.stored[COLLECTION][SPAN_A]
+    assert (stored.tagId, stored.type) == (str(OTHER_TAG), SpanType.auto)
+    assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_1, OTHER_TAG)}))
+
+
+async def test_retag_to_a_tag_of_another_collection_is_not_found(store, writes):
+    with pytest.raises(NotFoundError):
+        await service.review_annotations(store, OWNER, COLLECTION, review(ReviewAction.retag, tag=SECOND_TAG))
+    assert writes == []
+
+
+def test_review_request_needs_a_tag_exactly_for_retag_and_bounds_the_batch():
+    with pytest.raises(ValueError):
+        review(ReviewAction.retag)
+    with pytest.raises(ValueError):
+        review(ReviewAction.approve, tag=TAG)
+    with pytest.raises(ValueError):
+        AnnotationReviewRequest(action=ReviewAction.approve, annotation_ids=[])
+    with pytest.raises(ValueError):
+        AnnotationReviewRequest(action=ReviewAction.approve, annotation_ids=[uuid4() for _ in range(201)])

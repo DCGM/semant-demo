@@ -4,7 +4,8 @@ import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton
 
 // The collection's annotation workspace (#329): one aligned line per annotation (KWIC),
 // filters, distinct selection and source context in the shared right sidebar, and the
-// workspace kept while a document is opened.
+// workspace kept while a document is opened. Selection and review (#459): "all matches" is
+// a fixed set of ids, hidden members are counted, and reviews report each annotation.
 
 const chronicles = fixture.collection('chronicles')
 const rows = (page: Page) => page.getByTestId('kwic-row')
@@ -187,5 +188,70 @@ test('the open row follows edits made in the document view', async ({ page, requ
     await expect(panel(page).getByTestId('chunk-context-mark')).toHaveCount(0)
   } finally {
     await patchSpan(request, novak.id, { start: 34, type: 'pos' })
+  }
+})
+
+test('all matches are a fixed selection that a shared user reviews in one batch', async ({ page, request }) => {
+  const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  try {
+    // Only the proposals, all selected as they match now.
+    await page.getByTestId('concordance-status-pos').click()
+    await expect(rows(page)).toHaveCount(2)
+    await page.getByTestId('select-all-matches').click()
+    await expect(page.getByTestId('concordance-selected')).toHaveText('2 selected')
+
+    // Wider filters show more rows; the selection does not grow.
+    await page.getByTestId('concordance-status-pos').click()
+    await expect(rows(page)).toHaveCount(4)
+    await expect(page.getByTestId('concordance-selected')).toHaveText('2 selected')
+    await expect(page.getByTestId('hidden-selected')).toHaveCount(0)
+
+    await page.getByTestId('review-reject').click()
+    await expect(page.getByTestId('review-report')).toContainText('Rejected 2 of 2.')
+    // Rejected annotations leave the default filters but stay selected, and the bar says so.
+    await expect(rows(page)).toHaveCount(2)
+    await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown by these filters')
+    await page.getByTestId('concordance-status-neg').click()
+    await expect(row(page, 'Lhoty')).toContainText('Rejected')
+    await expect(page.getByTestId('hidden-selected')).toHaveCount(0)
+
+    await page.getByTestId('concordance-status-neg').click()
+    await page.getByTestId('deselect-hidden').click()
+    await expect(page.getByTestId('concordance-selected')).toHaveCount(0)
+    await expect(page.getByTestId('selection-bar')).toContainText('No annotations selected')
+  } finally {
+    for (const span of proposals) await patchSpan(request, span.id, { type: 'auto' })
+  }
+})
+
+test('one annotation is reviewed from its source; deleting asks first', async ({ page, request }) => {
+  const lhota = fixture.span('lhota_automatic')
+  const first = fixture.chunk('chronicle_1').text
+  await createSpan(request, 'chronicle_1', 0, 4) // "Roku"
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  const review = page.getByTestId('annotation-review')
+  try {
+    await row(page, 'Lhoty').click()
+    const next = rows(page).nth((await rows(page).locator('.kwic__key').allInnerTexts()).indexOf('Lhoty') + 1)
+    await review.getByRole('button', { name: 'Approve' }).click()
+    await expect(row(page, 'Lhoty')).toContainText('Confirmed')
+    // Approving moves on to the next row.
+    await expect(next).toHaveAttribute('aria-current', 'true')
+
+    await row(page, first.slice(0, 4)).click()
+    await review.getByRole('button', { name: 'Delete…' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
+    await expect(row(page, first.slice(0, 4))).toHaveCount(1)
+    await review.getByRole('button', { name: 'Delete…' }).click()
+    await expect(page.getByRole('dialog')).toContainText('cannot be restored')
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
+    await expect(page.getByTestId('review-report')).toContainText('Deleted 1 of 1.')
+    await expect(row(page, first.slice(0, 4))).toHaveCount(0)
+    await expect(panel(page).getByTestId('annotation-context-gone')).toBeVisible()
+  } finally {
+    await patchSpan(request, lhota.id, { type: 'auto' })
   }
 })

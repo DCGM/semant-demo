@@ -2,8 +2,12 @@
 /* eslint-disable */
 export * from './AdjacentChunks';
 export * from './AnnotatedDocument';
+export * from './AnnotationIds';
+export * from './AnnotationIdsRequest';
 export * from './AnnotationListRow';
 export * from './AnnotationPage';
+export * from './AnnotationReviewRequest';
+export * from './AnnotationReviewResult';
 export * from './AnnotationSort';
 export * from './AppFeedbackRequest';
 export * from './BearerResponse';
@@ -60,6 +64,7 @@ export * from './RagRequestMain';
 export * from './RagResponse';
 export * from './RagRouteConfig';
 export * from './RagSearch';
+export * from './ReviewAction';
 export * from './SearchFilter';
 export * from './SearchFilterInput';
 export * from './SearchFiltersResponse';
