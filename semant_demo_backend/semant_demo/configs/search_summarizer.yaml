@@ -13,18 +13,15 @@ gen_title_prompt: |
   "{{ text.text }}"
   Nadpis by měl být relevantní k dotazu uživatele: "{{ query }}".
 # Prompt for title generation.
-gen_results_summary_model_options: # Model options for search results summary generation: temperature and context_size. The token limit is set by the length level (gen_results_summary_lengths).
+gen_results_summary_model_options: # Model options for search results summary generation.
   temperature:  # Temperature for the model.
   context_size: # Context size for the model.
+  max_completion_tokens: # Maximum number of tokens to generate. None for default.
 gen_results_summary_error_summary: N/A # Summary to use when search results summary generation fails.
-gen_results_summary_lengths: # Length levels of the search results summary. default is the level used when a request names none (short when omitted): by API clients that omit length and for the results summary a search request asks for. The frontend panels always send the level the user sees (Short initially), so this default does not change them. Each level has words (the word limit given to the prompts as brevity) and max_completion_tokens (keep it within the feature's max_output_tokens in LLM_MODELS_CONFIG).
+gen_results_summary_lengths: # Length levels of the search results summary: short and detailed are word limits given to the prompts as brevity (the token limit stays max_completion_tokens of the model options, or the feature's max_output_tokens). default is the level used when a request names none (short when omitted): by API clients that omit length and for the results summary a search request asks for. The frontend panels always send the level the user sees (Short initially), so this default does not change them.
   default: short
-  short:
-    words: 100
-    max_completion_tokens: 512
-  detailed:
-    words: 300
-    max_completion_tokens: 1024
+  short: 100
+  detailed: 300
 gen_results_summary_system_prompt: |
   Jsi asistent pro sumarizaci textů.  
   Dostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc0], [doc1], … [doc15].  

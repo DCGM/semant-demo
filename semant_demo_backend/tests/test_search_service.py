@@ -424,7 +424,7 @@ async def test_provider_errors_in_the_templated_summarizer_are_reported():
         return "ok"
 
     summarizer = TemplatedSearchResultsSummarizer(
-        gen_title_model_options=ModelOptions(),
+        gen_title_model_options=ModelOptions(), gen_results_summary_model_options=ModelOptions(),
         gen_query_summary_model_options=ModelOptions())
     summarizer.llm = FakeLlm(failing_titles)
     chunks = FakeChunks(hits=[hit("a"), hit("b")])
@@ -458,7 +458,7 @@ async def test_retrieval_failure_propagates():
 async def test_titles_and_result_summaries_are_generated_for_the_first_results_only():
     llm = FakeLlm("ok")
     summarizer = TemplatedSearchResultsSummarizer(
-        gen_title_model_options=ModelOptions(),
+        gen_title_model_options=ModelOptions(), gen_results_summary_model_options=ModelOptions(),
         gen_query_summary_model_options=ModelOptions(), max_generated_results=2)
     summarizer.llm = llm
     chunks = FakeChunks(hits=[hit(t) for t in "abcd"])
@@ -474,7 +474,7 @@ async def test_titles_and_result_summaries_are_generated_for_the_first_results_o
 
 async def test_the_results_limit_is_not_reported_without_per_result_generation():
     summarizer = TemplatedSearchResultsSummarizer(
-        gen_title_model_options=ModelOptions(),
+        gen_title_model_options=ModelOptions(), gen_results_summary_model_options=ModelOptions(),
         gen_query_summary_model_options=ModelOptions(), max_generated_results=1)
     summarizer.llm = FakeLlm("ok")
     chunks = FakeChunks(hits=[hit("a"), hit("b")])

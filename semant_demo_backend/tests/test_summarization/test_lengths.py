@@ -24,8 +24,7 @@ from tests.test_summarization import test_document_service as documents
 from tests.test_summarization.test_service import results
 
 CONFIGS = SCRIPT_PATH / "configs"
-LENGTHS = {"default": "short", "short": {"words": 50, "max_completion_tokens": 200},
-           "detailed": {"words": 250, "max_completion_tokens": 900}}
+LENGTHS = {"default": "short", "short": 50, "detailed": 250}
 # Echoes what the prompts get, so a test can see the chosen level without depending on the wording.
 ECHO = Template("length={{ length }} brevity={{ brevity }}")
 
@@ -44,10 +43,10 @@ def document_summarizer(llm, lengths=LENGTHS) -> TemplatedDocumentSummarizer:
     return summarizer
 
 
-def sent(llm) -> tuple[str, int]:
-    """The system prompt and the token limit of the only model call."""
-    [(_, messages, options)] = llm.calls
-    return messages[0]["content"], options["max_tokens"]
+def sent(llm) -> str:
+    """The system prompt of the only model call."""
+    [(_, messages, _)] = llm.calls
+    return messages[0]["content"]
 
 
 SUMMARIZERS = [
@@ -66,21 +65,17 @@ def write_config(tmp_path, name: str, change) -> str:
 
 
 @pytest.mark.parametrize("cls, name, prefix", SUMMARIZERS)
-def test_bundled_length_levels_fit_the_feature_output_limit(cls, name, prefix):
+def test_bundled_length_levels(cls, name, prefix):
     lengths: SummaryLengths = getattr(cls.create(str(CONFIGS / name)), f"{prefix}_lengths")
-    feature = "search_summary" if cls is TemplatedSearchResultsSummarizer else "document_summary"
-    limit = yaml.safe_load((CONFIGS / "llm_models.yaml").read_text())["features"][feature]["limits"]["max_output_tokens"]
 
     assert lengths.default == SummaryLength.short
-    assert lengths.short.words < lengths.detailed.words
-    assert all(o.words < o.max_completion_tokens <= limit for o in (lengths.short, lengths.detailed))
+    assert lengths.short < lengths.detailed
 
 
 @pytest.mark.parametrize("cls, name, prefix", SUMMARIZERS)
 def test_a_configuration_from_before_length_levels_loads_with_the_defaults(tmp_path, cls, name, prefix):
     def before_360(config):
         del config[f"{prefix}_lengths"]
-        config[f"{prefix}_model_options"]["max_completion_tokens"] = None
 
     summarizer = cls.create(write_config(tmp_path, name, before_360))
 
@@ -90,26 +85,28 @@ def test_a_configuration_from_before_length_levels_loads_with_the_defaults(tmp_p
 @pytest.mark.parametrize("cls, name, prefix", SUMMARIZERS)
 def test_a_malformed_length_level_fails_at_load(tmp_path, cls, name, prefix):
     def malformed(config):
-        config[f"{prefix}_lengths"]["short"]["words"] = 0
+        config[f"{prefix}_lengths"]["short"] = 0
 
-    with pytest.raises(ConfigError, match="short.words"):
+    with pytest.raises(ConfigError, match="short"):
         cls.create(write_config(tmp_path, name, malformed))
 
 
-@pytest.mark.parametrize("cls, name, prefix", SUMMARIZERS)
-def test_a_token_limit_in_the_model_options_fails_at_load(tmp_path, cls, name, prefix):
-    # The length level is the only place that sets the summary's token limit (#441 review).
-    def token_limit(config):
-        config[f"{prefix}_model_options"]["max_completion_tokens"] = 300
+async def test_the_token_limit_is_the_model_options_for_every_level():
+    # The level sets only the word limit; the token limit stays a safety limit (#441 review).
+    llm = FakeLlm()
+    summarizer = search_summarizer(llm)
+    summarizer.gen_results_summary_model_options.max_completion_tokens = 700
 
-    with pytest.raises(ConfigError, match="max_completion_tokens"):
-        cls.create(write_config(tmp_path, name, token_limit))
+    for length in SummaryLength:
+        await service.summarize(summarizer, "results", results("Lhota."), length=length)
+
+    assert [options["max_tokens"] for _, _, options in llm.calls] == [700] * len(SummaryLength)
 
 
 @pytest.mark.parametrize("length, expected", [
-    (None, ("length=short brevity=50", 200)),
-    (SummaryLength.short, ("length=short brevity=50", 200)),
-    (SummaryLength.detailed, ("length=detailed brevity=250", 900)),
+    (None, "length=short brevity=50"),
+    (SummaryLength.short, "length=short brevity=50"),
+    (SummaryLength.detailed, "length=detailed brevity=250"),
 ])
 async def test_the_results_summary_follows_the_length_level(length, expected):
     llm = FakeLlm()
@@ -124,7 +121,7 @@ async def test_the_configured_default_level_is_used_when_none_is_requested():
 
     await service.summarize(search_summarizer(llm, {**LENGTHS, "default": "detailed"}), "results", results("Lhota."))
 
-    assert sent(llm) == ("length=detailed brevity=250", 900)
+    assert sent(llm) == "length=detailed brevity=250"
 
 
 async def test_the_results_summary_of_a_search_uses_the_default_level():
@@ -138,12 +135,12 @@ async def test_the_results_summary_of_a_search_uses_the_default_level():
     failures = await search_summarizer(llm)(request, response)
 
     assert failures == [] and response.results_summary == "fake reply"
-    assert sent(llm) == ("length=short brevity=50", 200)
+    assert sent(llm) == "length=short brevity=50"
 
 
 @pytest.mark.parametrize("length, expected", [
-    (None, ("length=short brevity=50", 200)),
-    (SummaryLength.detailed, ("length=detailed brevity=250", 900)),
+    (None, "length=short brevity=50"),
+    (SummaryLength.detailed, "length=detailed brevity=250"),
 ])
 async def test_the_document_summary_follows_the_length_level(length, expected):
     llm = FakeLlm()
@@ -188,7 +185,7 @@ async def test_the_summarize_route_passes_the_length_level(app):
     response = await app.client.post("/api/summarize/results", params={"length": "detailed"}, json=SEARCH_RESPONSE)
 
     assert response.status_code == 200, response.text
-    assert sent(llm) == ("length=detailed brevity=250", 900)
+    assert sent(llm) == "length=detailed brevity=250"
 
 
 async def test_the_summarize_route_without_a_level_uses_the_default(app):
@@ -198,7 +195,7 @@ async def test_the_summarize_route_without_a_level_uses_the_default(app):
     response = await app.client.post("/api/summarize/results", json=SEARCH_RESPONSE)
 
     assert response.status_code == 200, response.text
-    assert sent(llm) == ("length=short brevity=50", 200)
+    assert sent(llm) == "length=short brevity=50"
 
 
 async def test_an_unknown_level_is_rejected_before_any_model_call(app):

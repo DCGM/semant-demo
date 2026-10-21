@@ -10,6 +10,7 @@ class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
         self.llm = FakeLlm("  Generated text\n")
         self.summarizer = TemplatedSearchResultsSummarizer(
             gen_title_model_options=ModelOptions(temperature=0.5, max_completion_tokens=20),
+            gen_results_summary_model_options=ModelOptions(),
             gen_query_summary_model_options=ModelOptions(context_size=4096),
             gen_title_system_prompt=Template("Jsi užitečný asistent, který generuje nadpisy pro texty historických dokumentů. {% if brevity %}Nadpis by neměl být delší než {{ brevity }} slov. {% endif %}Odpověz pouze nadpisem, bez dalších komentářů nebo úvodních frází."),
             gen_title_prompt=Template("Vygeneruj nadpis pro následující text historického dokumentu.\n\"{{ text.text }}\"\nNadpis by měl být relevantní k dotazu uživatele: \"{{ query }}\".\n"),
@@ -40,8 +41,8 @@ class TestTemplatedSearchResultsSummarizer(unittest.IsolatedAsyncioTestCase):
                 {"role": "system", "content": "Jsi asistent pro sumarizaci textů.  \nDostaneš úryvky textu, z nichž každý bude označen unikátním ID jako [doc1], [doc2], … [doc15].  \nTvým úkolem je vytvořit jediný, stručný souhrn, který pokryje všechny klíčové body relevantní k uživatelskému vyhledávacímu dotazu.  \nPo každém faktu, který z úryvku získáš, připoj ID daného úryvku v hranatých závorkách – například: „Gen ABC je nadregulován v nádorových buňkách [doc3].“  \nPokud stejný fakt podporuje více úryvků, uveď všechna jejich ID oddělená čárkami: „Tento přístup zlepšil přesnost o 12 % [doc2, doc7, doc11].“  \nNevymýšlej žádná fakta, která v úryvcích nejsou. Soustřeď se pouze na informace relevantní k uživatelskému dotazu.  \nPiš přehledně a stručně.\n Souhrn by neměl být delší než 100 slov. \nOdpověz pouze souhrnem, bez dalších komentářů nebo úvodních frází."},
                 {"role": "user", "content": "Vytvoř souhrn následujících výsledků vyhledávání.\n\nUživatel zadal do vyhledávače historických dokumentů dotaz:\n\n\"What is AI?\"\n\nTento dotaz mu vrátil následující výsledky:\n\n[doc1] AI is...\n"}
             ],
-            # The default length level (short) sets the word limit and the token limit.
-            {"temperature": None, "max_tokens": 512, "context_size": None},
+            # The default length level (short) sets the word limit; the token limit stays the model options'.
+            {"temperature": None, "max_tokens": None, "context_size": None},
         )])
         self.assertEqual(summary, "Generated text")
 
