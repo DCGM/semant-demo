@@ -462,21 +462,6 @@ Runs are serialized per PR (`test-pr-<N>`) and per ref otherwise (`main`, tags).
 PR cancels its running checks; the teardown of a closed or merged PR is not cancelled by runs on `main` or other PRs and waits
 for that PR's running deploy. Before this grouping (#419), merged PRs often kept their preview.
 
-The `Browser smoke tests` job runs the deterministic Playwright suite in the image matching
-the Playwright version in `package-lock.json`, with Node 22 and Python 3.12 selected
-explicitly. It uses the same volume-less Weaviate service configuration and test-store
-ownership guard as `Integration tests`; failed Playwright tests retain traces as a workflow
-artifact for seven days. Production and `test-main` deployments need this job, along with
-the other blocking checks. The PR preview deliberately retains its separate `always()`
-behavior described below.
-
-**Required-check follow-up.** Deployment dependencies are versioned in this workflow, but
-merge protection is a GitHub repository ruleset setting. After the new job has demonstrated
-stable runs on both `semant-ci` runners, a repository administrator must add the exact check
-name `Browser smoke tests` to the `main` ruleset. Until that setting is made, the job still
-runs on same-repository PRs and blocks production and `test-main` deployment, but GitHub may
-not require it for merging.
-
 ### Required GitHub Variables
 
 Set these in **Settings → Secrets and variables → Actions → Variables**:
