@@ -305,6 +305,8 @@ async def test_source_read_failure_keeps_the_edit_with_failed_text(store, embedd
     row = await store.spans.read_row(COLLECTION, sid)
     assert (row.start, row.revision, row.enrichmentStatus) == (29, 2, "failed")
     assert not text_current(row) and not vector_current(row, CONFIG_ID)
+    # Revision 1's text is not left to be searched or sorted by (#329).
+    assert (row.text, row.leftContext, row.rightContext) == ("", "", "")
     assert len(embedder.documents) == 1  # nothing to embed
 
 

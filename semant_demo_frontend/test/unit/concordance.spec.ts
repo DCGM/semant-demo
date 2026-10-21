@@ -158,6 +158,29 @@ describe('concordance store', () => {
     expect([store.page, store.collectionId, store.selected.size]).toEqual([null, null, 0])
   })
 
+  it('updates the focused row from the page read again, and tells when it left the page', async () => {
+    const store = await opened(['a', 'b'], 60)
+    store.focus(store.rows[0])
+    const reloading = store.load() // back from the document, where "a" was moved
+    await flush()
+    rowCalls()[1].answer({ ...page(['a', 'b'], 60), rows: [{ ...row('a', 'moved'), start: 3, end: 8, revision: 2 }, row('b')] })
+    await reloading
+    expect([store.focused?.text, store.focused?.start, store.focusedGone]).toEqual(['moved', 3, false])
+
+    const again = store.load() // and now deleted or retagged out of the filters
+    await flush()
+    rowCalls()[2].answer(page(['b', 'c'], 59))
+    await again
+    expect([store.focused?.id, store.focusedGone]).toEqual(['a', true])
+
+    store.focus(store.rows[0])
+    const paging = store.goTo(50) // another page does not list it, which is no change
+    await flush()
+    rowCalls()[3].answer(page(['x'], 59, 50))
+    await paging
+    expect([store.focused?.id, store.focusedGone]).toEqual(['b', false])
+  })
+
   it('goes back to the last page when the current one emptied meanwhile', async () => {
     const store = await opened(['a', 'b'], 60)
     const paging = store.goTo(50)

@@ -19,7 +19,8 @@ from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.enrichment import Enrichment
-from semant_demo.features.annotations.schemas import AnnotationSort, PostSpan, SpanType, TextStatus
+from semant_demo.core.errors import InvalidRequestError
+from semant_demo.features.annotations.schemas import AnnotationSort, PatchSpan, PostSpan, SpanType, TextStatus
 from semant_demo.features.annotations.service import AnnotationStore
 
 pytestmark = pytest.mark.integration
@@ -124,6 +125,31 @@ async def test_filters_are_applied_by_the_store(store, owner, ids, corpus, creat
     documents = await service.list_annotated_documents(store, owner, ids.col["chronicles"])
     assert [(d.title, d.year, d.count) for d in documents] == [("Dopisy z Prahy", 1902, 3),
                                                                ("Kronika obce Lhota", 1851, 7)]
+
+
+async def test_the_document_limit_counts_only_the_chosen_documents(store, owner, ids, created, monkeypatch):
+    monkeypatch.setattr(service, "_MAX_DOCUMENTS", 1)  # both documents are annotated
+    with pytest.raises(InvalidRequestError):
+        await query(store, owner, ids)
+    chronicle = await query(store, owner, ids, document_ids=[ids.doc["chronicle"]])
+    assert chronicle.total == 7
+
+
+async def test_a_failed_re_derivation_leaves_no_searchable_text(store, owner, ids, monkeypatch):
+    moved = await create(store, owner, ids, "chronicle_1", 34, 43)
+
+    async def unreadable(document_id):
+        raise RuntimeError("source unavailable")
+    monkeypatch.setattr(store.documents, "read_chunk_texts", unreadable)
+    result = await service.update_span(store, owner, ids.col["chronicles"], str(moved), PatchSpan(start=35))
+    assert [f.step for f in result.failed] == ["derive_annotation"]
+
+    assert moved not in [r.id for r in (await query(store, owner, ids, text="Novák")).rows]
+    by_text = (await query(store, owner, ids, sort=AnnotationSort.text, limit=200)).rows
+    [row] = [r for r in by_text if r.id == moved]
+    assert (row.textStatus, row.text) == (TextStatus.failed, None)
+    # Sorted with the rows without text, not by its old "Novák".
+    assert all(r.text is None for r in by_text[:by_text.index(row) + 1])
 
 
 async def test_a_collection_without_annotations_is_empty(store, owner, ids):

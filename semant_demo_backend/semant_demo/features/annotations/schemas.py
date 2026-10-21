@@ -149,10 +149,13 @@ class AnnotationRow(BaseModel):
 
 class AnnotationQuery(BaseModel):
     """Internal: the stored-field conditions of a concordance query (#329), all required.
-    ``words``: each must occur in the annotation's text, inside one of its words."""
+    ``words``: each must occur in the annotation's text, inside one of its words; only text
+    ``ready`` under ``derivation_version`` is searched, so text left from an older revision
+    or policy does not match."""
     tag_ids: list[UUID] | None = None
     types: list[SpanType]
     words: list[str] = []
+    derivation_version: int | None = None
 
 
 class AnnotationSort(str, Enum):

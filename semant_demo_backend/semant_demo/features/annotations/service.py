@@ -398,7 +398,10 @@ class Refresh:
         if reset_vector:
             props["vectorStatus"] = VectorStatus.pending.value
         d = self.derived
-        if d is not None:
+        if d is None:
+            # Text of an earlier revision or policy must not stay searchable or sortable (#329).
+            props |= {"text": "", "leftContext": "", "rightContext": ""}
+        else:
             props |= {"text": d.text, "leftContext": d.left_context, "rightContext": d.right_context,
                       "positionSegment": d.segment, "documentStartChar": d.start_char,
                       "documentEndChar": d.end_char, "documentStartWord": d.start_word,
@@ -681,13 +684,10 @@ class _Documents:
 async def _annotated_documents(store: AnnotationStore, cid: UUID, query: AnnotationQuery, sort: AnnotationSort,
                                document_ids: list[UUID] | None, year_from: int | None,
                                year_to: int | None) -> _Documents:
-    counts = await store.spans.count_by_document(cid, query, _MAX_DOCUMENTS + 1)
+    counts = await store.spans.count_by_document(cid, query, _MAX_DOCUMENTS + 1, document_ids)
     if len(counts) > _MAX_DOCUMENTS:
         raise InvalidRequestError(
             f"The annotations are in more than {_MAX_DOCUMENTS} documents; filter by tag or text first.")
-    if document_ids is not None:
-        chosen = set(document_ids)
-        counts = {d: n for d, n in counts.items() if d in chosen}
     documents = await store.documents.read_many(list(counts))
     if year_from is not None or year_to is not None:
         def in_range(year: int | None) -> bool:
@@ -761,7 +761,7 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     if len(words) > _MAX_WORDS:
         raise InvalidRequestError(f"Search for at most {_MAX_WORDS} words")
     query = AnnotationQuery(tag_ids=_parse_ids(tag_ids, "tag"), types=list(dict.fromkeys(types or DEFAULT_TYPES)),
-                            words=words)
+                            words=words, derivation_version=DERIVATION_VERSION)
     documents = _parse_ids(document_ids, "document")
     cid = await use_tenant(store, grant)
     by_year = year_from is not None or year_to is not None

@@ -212,6 +212,7 @@ import {
 } from './readerOffsets'
 import { useChunkMembership } from './useChunkMembership'
 import { useChunkWindow } from './useChunkWindow'
+import { useChunksRepository } from '../useChunksRepository'
 import { useReaderGutters } from './useReaderGutters'
 
 // The document reader: the text of the displayed chunks with their annotations, the
@@ -258,13 +259,16 @@ const membership = useChunkMembership(() => props.collectionId, chunkWindow, () 
 const annotations = useAnnotations(() => displayChunks.value, () => hiddenPreviewChunks.value)
 const paragraphs = computed(() => groupParagraphs(displayChunks.value))
 
+// The annotation a workspace link points to (#329); shown whatever its tag or type.
+const linkedSpanId = ref<string | null>(null)
+
 // Approved spans of visible tags; AI suggestions only while the AI assist panel is active.
 const gutters = useReaderGutters(
   documentTextRef, displayChunks, hiddenPreviewChunks,
   () => annotations.spansByChunkId.value,
-  (span) => span.type !== SpanType.neg &&
+  (span) => span.id === linkedSpanId.value || (span.type !== SpanType.neg &&
     (aiPanelActive.value || span.type !== SpanType.auto) &&
-    tagNav.isTagVisible(span.tagId)
+    tagNav.isTagVisible(span.tagId))
 )
 const relayout = () => gutters.relayout()
 
@@ -323,7 +327,8 @@ const visibleSpansByChunkId = computed<Record<string, ProjectedSpan[]>>(() => {
   const map: Record<string, ProjectedSpan[]> = {}
   for (const chunk of displayChunks.value) {
     map[chunk.id] = annotations.getProjectedSpans(chunk.id).filter(
-      (s) => tagNav.isTagVisible(s.tagId) && (aiPanelActive.value || s.type !== SpanType.auto)
+      (s) => s.id === linkedSpanId.value ||
+        (tagNav.isTagVisible(s.tagId) && (aiPanelActive.value || s.type !== SpanType.auto))
     )
   }
   return map
@@ -404,16 +409,29 @@ watch(() => documentSummary.requestedCitation.value, async (citation) => {
 })
 
 // A link from the annotation workspace (#329): `?annotation=&chunk=&order=` brings that
-// annotation into view and marks it, loading the chunks up to it first. Once per link.
+// annotation into view and marks it, also when its tag is hidden or it is a proposal
+// outside AI assist, loading the chunks up to it first (`order` is resolved from the
+// chunk when the link has none). Once per link.
 const route = useRoute()
+const chunksRepository = useChunksRepository()
 let linkedAnnotationShown: string | null = null
+async function linkedChunkOrder(chunk: string, order: unknown): Promise<number | null> {
+  const given = typeof order === 'string' ? Number(order) : Number.NaN
+  if (Number.isInteger(given)) return given
+  try {
+    return await chunksRepository.getChunkOrder(props.documentId, chunk)
+  } catch (e) {
+    console.error('Resolving the linked annotation\'s chunk failed', e)
+    return null
+  }
+}
 async function showLinkedAnnotation() {
   const { annotation, chunk, order } = route.query
   if (typeof annotation !== 'string' || typeof chunk !== 'string' || linkedAnnotationShown === annotation) return
   linkedAnnotationShown = annotation
-  const chunkOrder = Number(order)
-  if (!chunkWindow.findChunk(chunk) && typeof order === 'string' && Number.isInteger(chunkOrder)) {
-    await chunkWindow.loadUntil(chunkOrder)
+  if (!chunkWindow.findChunk(chunk)) {
+    const chunkOrder = await linkedChunkOrder(chunk, order)
+    if (chunkOrder != null) await chunkWindow.loadUntil(chunkOrder)
   }
   let span = (tagSpans.spansByChunkId.value[chunk] || []).find(s => s.id === annotation)
   if (!span && chunkWindow.findChunk(chunk)) {
@@ -421,6 +439,7 @@ async function showLinkedAnnotation() {
     span = (tagSpans.spansByChunkId.value[chunk] || []).find(s => s.id === annotation)
   }
   if (!span) return
+  linkedSpanId.value = annotation
   await nextTick()
   relayout()
   navHighlightedSpanId.value = annotation

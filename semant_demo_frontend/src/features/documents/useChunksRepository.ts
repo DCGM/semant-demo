@@ -42,6 +42,14 @@ export function useChunksRepository() {
       })
     },
 
+    /** The chunk's position in its document, or null when the chunk reports none. */
+    getChunkOrder: async (documentId: string, chunkId: string): Promise<number | null> => {
+      const window = await api.readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet({
+        documentId, chunkId, before: 0, after: 0
+      })
+      return window.chunks.find(c => c.id === chunkId)?.order ?? null
+    },
+
     countDocumentChunks: async (documentId: string): Promise<number> => {
       return api.countDocumentChunksApiDocumentsDocumentIdChunksCountGet({ documentId })
     },

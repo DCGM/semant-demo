@@ -65,13 +65,15 @@ class FakeSpans:
         return [r for r in self.rows
                 if r.type in query.types
                 and (not query.tag_ids or r.tagId in query.tag_ids)
+                and (not query.words or (r.enrichmentStatus == EnrichmentStatus.ready
+                                         and r.derivationVersion == query.derivation_version))
                 and all(r.text is not None and any(w.lower() in t.lower() for t in r.text.split())
                         for w in query.words)
                 and (document_ids is None or r.documentId in document_ids)]
 
-    async def count_by_document(self, cid, query, limit):
+    async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}
-        for row in self._match(query, None):
+        for row in self._match(query, document_ids):
             if row.documentId is not None:
                 counts[row.documentId] = counts.get(row.documentId, 0) + 1
         return dict(list(counts.items())[:limit])
@@ -212,6 +214,22 @@ async def test_too_many_annotated_documents_are_refused_not_truncated(store, mon
     store.spans.rows = [row(DOC_A, 0), row(DOC_B, 0), row(DOC_NO_YEAR, 0)]
     with pytest.raises(InvalidRequestError):
         await service.query_annotations(store, OWNER, COLLECTION)
+
+
+async def test_the_document_limit_counts_only_the_chosen_documents(store, monkeypatch):
+    monkeypatch.setattr(service, "_MAX_DOCUMENTS", 2)
+    store.spans.rows = [row(DOC_A, 0), row(DOC_B, 0), row(DOC_NO_YEAR, 0)]
+    page = await service.query_annotations(store, OWNER, COLLECTION, document_ids=[str(DOC_A)])
+    assert (page.total, [r.documentId for r in page.rows]) == (1, [DOC_A])
+
+
+async def test_text_search_skips_text_of_another_revision_or_policy(store):
+    current = row(DOC_A, 0, "Novák")
+    failed = row(DOC_A, 5, "Novák").model_copy(update={"enrichmentStatus": EnrichmentStatus.failed})
+    old_policy = row(DOC_A, 9, "Novák").model_copy(update={"derivationVersion": DERIVATION_VERSION - 1})
+    store.spans.rows = [current, failed, old_policy]
+    page = await service.query_annotations(store, OWNER, COLLECTION, text="novák")
+    assert (page.total, ids(page)) == (1, [current.id])
 
 
 async def test_annotated_documents_list_counts_by_title(store):

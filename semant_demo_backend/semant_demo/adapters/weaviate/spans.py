@@ -200,10 +200,15 @@ def to_row(obj) -> AnnotationRow:
 
 def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None):
     """The Weaviate filter of a concordance query; ``like`` on the word-tokenized text
-    matches inside one word and ignores case."""
+    matches inside one word and ignores case, only in text ``ready`` under the query's
+    derivation version."""
     conditions = [Filter.by_property("type").contains_any([t.value for t in query.types])]
     if query.tag_ids:
         conditions.append(Filter.by_property("tagId").contains_any(list(query.tag_ids)))
+    if query.words:
+        conditions.append(Filter.by_property("enrichmentStatus").equal("ready"))
+        if query.derivation_version is not None:
+            conditions.append(Filter.by_property("derivationVersion").equal(query.derivation_version))
     conditions.extend(Filter.by_property("text").like(f"*{word}*") for word in query.words)
     if document_ids is not None:
         conditions.append(Filter.by_property("documentId").contains_any(list(document_ids)))
@@ -404,12 +409,17 @@ class SpanRepository:
 
     # ── Concordance queries (#329) ────────────────────────────────────────
 
-    async def count_by_document(self, collection_id: UUID, query: AnnotationQuery, limit: int) -> dict[UUID, int]:
-        """Matching spans per document, for at most ``limit`` documents (one aggregation;
-        spans without a document are not counted)."""
+    async def count_by_document(self, collection_id: UUID, query: AnnotationQuery, limit: int,
+                                document_ids: list[UUID] | None = None) -> dict[UUID, int]:
+        """Matching spans per document (of the given documents when ``document_ids`` is not
+        None), for at most ``limit`` documents (one aggregation; spans without a document
+        are not counted)."""
+        if document_ids is not None and not document_ids:
+            return {}
+
         async def count():
             result = await self._tenant(collection_id).aggregate.over_all(
-                filters=_query_filter(query), group_by=GroupByAggregate(prop="documentId", limit=limit),
+                filters=_query_filter(query, document_ids), group_by=GroupByAggregate(prop="documentId", limit=limit),
                 total_count=True)
             return {UUID(str(g.grouped_by.value)): g.total_count or 0 for g in result.groups}
         return await self._read(collection_id, count, {})

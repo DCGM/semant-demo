@@ -82,7 +82,16 @@
               <span>·</span>
               <span>{{ statusText }}</span>
             </div>
-            <blockquote class="annotation-context__text text-body2" data-testid="annotation-context-text">
+            <div
+              v-if="store.focusedGone"
+              class="annotation-context__gone text-body2 text-grey-8"
+              role="status"
+              data-testid="annotation-context-gone"
+            >
+              This annotation is no longer on this page: it was deleted, or an edit took it out of
+              these filters or moved it to another page.
+            </div>
+            <blockquote v-else class="annotation-context__text text-body2" data-testid="annotation-context-text">
               {{ store.focused.text ?? 'The annotated text is not available yet.' }}
             </blockquote>
             <q-btn
@@ -170,7 +179,7 @@ const PagerButtons = defineComponent(() => () => h('div', { class: 'row no-wrap 
 
 // ── Source context (shared right sidebar) ──
 const highlight = computed(() => {
-  const row = store.focused
+  const row = store.focusedGone ? null : store.focused
   return row?.chunkId && row.start != null && row.end != null
     ? { chunkId: row.chunkId, start: row.start, end: row.end }
     : null
@@ -205,7 +214,7 @@ function showContext (row: AnnotationListRow) {
 
 /** Opens the row in the sidebar; viewing context never changes the selection. */
 async function openContext (row: AnnotationListRow) {
-  store.focused = row
+  store.focus(row)
   const opening = showContext(row)
   await nextTick() // the panel registers when the first row is opened
   rightSidebar.activate(CONTEXT_PANEL_ID)
@@ -215,6 +224,10 @@ async function openContext (row: AnnotationListRow) {
 function returnToRow () {
   const row = store.focused
   if (!row) return
+  if (store.focusedGone) {
+    $q.notify({ type: 'info', message: 'This annotation is no longer on this page.' })
+    return
+  }
   // On narrow screens the sidebar covers the list.
   if ($q.screen.lt.md) rightSidebar.open = false
   if (store.rows.some(r => r.id === row.id)) table.value?.reveal(row.id)
@@ -239,6 +252,11 @@ watch(collectionId, async (id) => {
     if (store.focused) void showContext(store.focused)
   }
   await loading
+  // A boundary edit may have moved the annotation to another chunk.
+  const row = store.focused
+  if (returning && row && !store.focusedGone && row.chunkId && row.chunkId !== chunkContext.target?.chunkId) {
+    void showContext(row)
+  }
 }, { immediate: true })
 </script>
 
@@ -293,6 +311,12 @@ watch(collectionId, async (id) => {
   overflow-wrap: anywhere;
   max-height: 9em;
   overflow-y: auto;
+}
+
+.annotation-context__gone {
+  margin: 4px 0;
+  padding: 4px 8px;
+  border-left: 3px solid #bdbdbd;
 }
 
 .annotation-context__open {

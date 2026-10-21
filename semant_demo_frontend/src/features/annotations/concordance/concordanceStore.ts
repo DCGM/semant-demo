@@ -69,9 +69,14 @@ export const useConcordanceStore = defineStore('concordance', () => {
   const documentsError = ref<string | null>(null)
   /** Checked rows by id; kept across pages and filters (actions on them: #330). */
   const selected = ref<Set<string>>(new Set())
-  /** The row whose source context is open. */
+  /** The row whose source context is open, as the latest page that lists it shows it. */
   const focused = shallowRef<AnnotationListRow | null>(null)
+  /** The focused row left its page when the page was read again: it was deleted, or an
+   * edit took it out of the filters or moved it to another page; `focused` is outdated. */
+  const focusedGone = ref(false)
   const scrollY = ref(0)
+  /** The query and offset of `page`. */
+  let pageKey: string | null = null
 
   const rows = computed(() => page.value?.rows ?? [])
   const total = computed(() => page.value?.total ?? 0)
@@ -95,7 +100,23 @@ export const useConcordanceStore = defineStore('concordance', () => {
     documentsError.value = null
     selected.value = new Set()
     focused.value = null
+    focusedGone.value = false
+    pageKey = null
     scrollY.value = 0
+  }
+
+  function focus (row: AnnotationListRow | null) {
+    focused.value = row
+    focusedGone.value = false
+  }
+
+  /** Brings the focused row up to date with a newly read page of the query `key`. */
+  function reconcileFocused (result: AnnotationPage, key: string, refresh: boolean) {
+    const row = focused.value
+    if (!row) return
+    const fresh = result.rows.find(r => r.id === row.id)
+    if (fresh) focus(fresh)
+    else if ((refresh || key === pageKey) && page.value?.rows.some(r => r.id === row.id)) focusedGone.value = true
   }
 
   /** Shows the collection's workspace: as it was left, or a new one for another collection. */
@@ -108,7 +129,12 @@ export const useConcordanceStore = defineStore('concordance', () => {
   }
 
   /** Reads the current page again (also after returning, so edits made elsewhere show). */
-  async function load () {
+  function load () {
+    return read(false)
+  }
+
+  /** `refresh`: the page is read again at another offset because rows were removed. */
+  async function read (refresh: boolean) {
     const id = collectionId.value
     if (!id) return
     rowAbort?.abort()
@@ -120,6 +146,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     const controller = new AbortController()
     rowAbort = controller
     const f = filters.value
+    const key = JSON.stringify([f, offset.value])
     loading.value = true
     error.value = null
     try {
@@ -139,10 +166,12 @@ export const useConcordanceStore = defineStore('concordance', () => {
       // Rows removed meanwhile (e.g. deleted in the document view) leave the page empty.
       if (!result.rows.length && result.total > 0 && offset.value > 0) {
         offset.value = Math.max(0, Math.floor((result.total - 1) / PAGE_SIZE) * PAGE_SIZE)
-        void load()
+        void read(refresh || key === pageKey)
         return
       }
+      reconcileFocused(result, key, refresh)
       page.value = result
+      pageKey = key
     } catch (e) {
       if (!applies() || isAbortError(e)) return
       page.value = null
@@ -243,7 +272,9 @@ export const useConcordanceStore = defineStore('concordance', () => {
     documentsError,
     selected,
     focused,
+    focusedGone,
     scrollY,
+    focus,
     open,
     load,
     loadDocuments,

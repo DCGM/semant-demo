@@ -27,6 +27,16 @@ async function createSpan (request: APIRequestContext, chunkKey: string, start: 
   expect((await response.json()).outcome).toBe('complete')
 }
 
+/** Patches a seeded span as the document view's editor would. */
+async function patchSpan (request: APIRequestContext, spanId: string, data: Record<string, unknown>) {
+  const response = await request.patch(`/api/tag_spans/${spanId}`, {
+    headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
+    params: { collection_id: chronicles.id },
+    data
+  })
+  expect(response.ok()).toBe(true)
+}
+
 test.afterEach(async ({ request }) => {
   await deleteAddedSpans(request, 'owner', 'chronicles')
 })
@@ -135,19 +145,14 @@ test('a shared user reads the same workspace', async ({ page }) => {
 
 test('a review made in the document view shows in the workspace on return', async ({ page, request }) => {
   const lhota = fixture.span('lhota_automatic')
-  const restore = async (type: string) => {
-    const response = await request.patch(`/api/tag_spans/${lhota.id}`, {
-      headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
-      params: { collection_id: chronicles.id },
-      data: { type }
-    })
-    expect(response.ok()).toBe(true)
-  }
+  const restore = (type: string) => patchSpan(request, lhota.id, { type })
   await useViewport(page, 'narrow')
   await openWorkspace(page)
   await row(page, 'Lhoty').click()
   await panel(page).getByRole('link', { name: 'Open in document' }).click()
   await expect(page.getByText('Document detail')).toBeVisible()
+  // The linked proposal is marked although AI assist (which shows proposals) is not open.
+  await expect(page.locator('.text-segment.is-highlighted', { hasText: 'Lhoty' }).first()).toBeVisible()
   try {
     await restore('pos') // approved meanwhile (as from the document view's popover)
     await page.getByRole('link', { name: 'Back to annotations' }).click()
@@ -155,5 +160,32 @@ test('a review made in the document view shows in the workspace on return', asyn
     await expect(row(page, 'Lhoty')).toHaveAttribute('data-annotation-id', lhota.id)
   } finally {
     await restore('auto')
+  }
+})
+
+test('the open row follows edits made in the document view', async ({ page, request }) => {
+  const novak = fixture.span('novak_manual')
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  await row(page, 'Jan Novák').click()
+  const openDocument = async () => {
+    await panel(page).getByRole('link', { name: 'Open in document' }).click()
+    await expect(page.getByText('Document detail')).toBeVisible()
+  }
+  try {
+    await openDocument()
+    await patchSpan(request, novak.id, { start: 38 }) // "Jan Novák" -> "Novák"
+    await page.getByRole('link', { name: 'Back to annotations' }).click()
+    await expect(panel(page).getByTestId('annotation-context-text')).toHaveText('Novák')
+    await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('Novák')
+
+    await openDocument()
+    await patchSpan(request, novak.id, { type: 'neg' }) // rejected: out of the default filters
+    await page.getByRole('link', { name: 'Back to annotations' }).click()
+    await expect(row(page, 'Novák')).toHaveCount(0)
+    await expect(panel(page).getByTestId('annotation-context-gone')).toBeVisible()
+    await expect(panel(page).getByTestId('chunk-context-mark')).toHaveCount(0)
+  } finally {
+    await patchSpan(request, novak.id, { start: 34, type: 'pos' })
   }
 })
