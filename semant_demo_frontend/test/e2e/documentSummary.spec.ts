@@ -11,6 +11,8 @@ import { apiToken, chunkText, ensureLoggedIn, fixture, openDocument, sidebarPane
 // *displays* a collection's member chunks by default.
 
 const summary = (page: import('@playwright/test').Page) => page.getByTestId('document-summary')
+// The summary request with any query string (it carries the length level, #360).
+const SUMMARY_URL = /\/documents\/[^/]+\/summary(\?|$)/
 
 test('summarizing shows citations, and interacting with the summary sidebar (switching to it, Summarize, a citation) never discards an open annotation popover', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
@@ -77,7 +79,7 @@ test('a generation failure shows an error, not a summary that quietly used the f
   // The real backend only fails like this when the LLM provider is unreachable/misconfigured
   // (not reproducible against the deterministic fake); simulate the 502 contract at the
   // network layer to verify the panel shows it as an error, not a successful summary card.
-  await page.route('**/documents/*/summary', (route) => route.fulfill({
+  await page.route(SUMMARY_URL, (route) => route.fulfill({
     status: 502,
     contentType: 'application/json',
     body: JSON.stringify({ detail: 'The document could not be summarized.' })
@@ -118,7 +120,7 @@ test('a long summary stays below the Summarize button, scrolling on its own, ins
   const longSummary = Array.from({ length: 20 }, (_, i) =>
     `Sentence number ${i + 1} of a long document summary, long enough that the whole thing overflows the sidebar's height [doc1].`
   ).join(' ')
-  await page.route('**/documents/*/summary', (route) => route.fulfill({
+  await page.route(SUMMARY_URL, (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({
@@ -154,4 +156,25 @@ test('a user without collection read access cannot request a document summary', 
 
   // ADR 0007: a collection the user cannot read answers "not found", not "forbidden".
   expect(response.status()).toBe(404)
+})
+
+test('the chosen length level is sent with the summary request (#360)', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'Summary').click()
+  const length = page.getByTestId('document-summary-length')
+  await expect(length).toContainText('Short')
+
+  await length.click()
+  await page.getByRole('option', { name: 'Detailed' }).click()
+  const request = page.waitForRequest(SUMMARY_URL)
+  await page.getByRole('button', { name: 'Summarize Document' }).click()
+
+  expect(new URL((await request).url()).searchParams.get('length')).toBe('detailed')
+  await expect(summary(page)).toContainText('Fake summary of 3 passage(s); last [3].')
+
+  // Another length no longer matches the shown summary.
+  await length.click()
+  await page.getByRole('option', { name: 'Short' }).click()
+  await expect(summary(page)).toHaveCount(0)
 })

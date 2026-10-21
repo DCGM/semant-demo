@@ -11,15 +11,16 @@
 
     <div class="row no-wrap q-gutter-sm">
       <q-select
-        :model-value="brevity"
-        @update:model-value="emit('update:brevity', $event)"
-        :options="SUMMARY_BREVITY_OPTIONS"
-        label="Brevity"
+        :model-value="length"
+        @update:model-value="emit('update:length', $event)"
+        :options="SUMMARY_LENGTH_OPTIONS"
+        label="Length"
         dense
         outlined
         class="col"
         emit-value
         map-options
+        data-testid="search-summary-length"
       />
       <q-select
         :model-value="scope"
@@ -54,13 +55,15 @@
 
 <script setup lang="ts">
 import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
-import { SUMMARY_BREVITY_OPTIONS, SUMMARY_SCOPE_OPTIONS } from './useSearchSummary'
+import type { SummaryLength } from 'src/generated/api'
+import { SUMMARY_LENGTH_OPTIONS } from 'src/shared/summaryLength'
+import { SUMMARY_SCOPE_OPTIONS } from './useSearchSummary'
 import type { SummaryScopeOption, SummaryToken } from './useSearchSummary'
 
 withDefaults(defineProps<{
   tokens: SummaryToken[]
   timeSpent: number
-  brevity: string
+  length: SummaryLength
   scope: SummaryScopeOption
   error?: string | null
   loading?: boolean
@@ -70,7 +73,7 @@ withDefaults(defineProps<{
 const emit = defineEmits<{
   summarize: []
   cite: [docNumber: number]
-  'update:brevity': [value: string]
+  'update:length': [value: SummaryLength]
   'update:scope': [value: SummaryScopeOption]
 }>()
 </script>

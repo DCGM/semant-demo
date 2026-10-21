@@ -9,6 +9,7 @@ from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.adapters.llm.usage import OperationBudget
 from semant_demo.features.search.schemas import SearchResponse, SummaryRequestBase
 from semant_demo.features.documents.schemas import DocumentChunk
+from semant_demo.features.summarization.schemas import SummaryLength
 
 
 class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
@@ -96,7 +97,8 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
 
     @abstractmethod
     async def gen_results_summary(self, query: str, results: Sequence[DocumentChunk], prompt: Optional[str] = None, brevity: Optional[int] = None,
-                                  on_error: Optional[Callable[[str], None]] = None) -> str:
+                                  on_error: Optional[Callable[[str], None]] = None,
+                                  length: Optional[SummaryLength] = None) -> str:
         """
         Creates an overall summary for the search results.
 
@@ -104,6 +106,7 @@ class SearchResultsSummarizer(ABC, ConfigurableMixin, CreatableMixin):
         :param results: search results to create a summary for
         :param prompt: optional prompt to use instead of the default one
         :param brevity: optional brevity to instruct the model to use
+        :param length: length level of the summary; None for the configured default
         :return: generated summary
         """
         ...
