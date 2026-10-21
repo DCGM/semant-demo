@@ -5,7 +5,9 @@ one full read in document order (title, then position, then id) and in text orde
 repeated identical annotations keep their own ids; cross-chunk and non-BMP text is returned
 as derived; filters by type, tag, words (any case, inside a word), document and year are
 applied by the store; spans saved without derived data are listed as pending. Through the
-API, owner and shared users read and other users are refused.
+API, owner and shared users read and other users are refused. Selections (#459): all matches
+resolve to ids by the store's filters (also among given ids), and review writes reach the
+annotations and their chunk tags per item.
 """
 from types import SimpleNamespace
 from uuid import UUID
@@ -20,7 +22,9 @@ from semant_demo.adapters.weaviate.user_collections import UserCollectionReposit
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.enrichment import Enrichment
 from semant_demo.core.errors import InvalidRequestError
-from semant_demo.features.annotations.schemas import AnnotationSort, PatchSpan, PostSpan, SpanType, TextStatus
+from semant_demo.features.annotations.schemas import (
+    AnnotationIdsRequest, AnnotationSort, PatchSpan, PostSpan, SpanType, TextStatus,
+)
 from semant_demo.features.annotations.service import AnnotationStore
 
 pytestmark = pytest.mark.integration
@@ -169,3 +173,44 @@ async def test_api_reads_for_owner_and_shared_user_only(api_client, login, ids):
     assert mine.status_code == 200 and mine.json() == shared.json()
     assert mine.json()["total"] == 4  # seeded pos Novák, Brně and auto Lhoty, Prahy
     assert refused.status_code == 404
+
+
+# ── Selection and review (#459) ───────────────────────────────────────────
+
+async def test_all_matches_resolve_to_the_ids_the_pages_show(store, owner, ids, created):
+    col = ids.col["chronicles"]
+    for request, kwargs in [(AnnotationIdsRequest(), {}),
+                            (AnnotationIdsRequest(tag_ids=[ids.tag["person"]], q="nov"),
+                             {"tag_ids": [ids.tag["person"]], "text": "nov"}),
+                            (AnnotationIdsRequest(year_from=1900), {"year_from": 1900})]:
+        resolved = await service.resolve_annotation_ids(store, owner, col, request)
+        rows = await all_pages(store, owner, ids, 3, **kwargs)
+        assert sorted(resolved.ids, key=str) == sorted(rows, key=str), request
+        assert resolved.ids == sorted(resolved.ids, key=str)
+
+    within = await service.resolve_annotation_ids(
+        store, owner, col, AnnotationIdsRequest(types=[SpanType.auto], within=[created.brno, created.zdenka]))
+    assert within.ids == [created.brno]
+
+
+async def test_api_review_is_per_item_for_owner_and_shared_user_only(api_client, login, store, owner, ids, created):
+    col = ids.col["chronicles"]
+    path = f"/api/user_collections/{col}/annotations/review"
+    annotator, outsider = await login("annotator"), await login("outsider")
+    body = {"action": "reject", "annotation_ids": [str(created.brno), str(created.zdenka)]}
+
+    refused = await api_client.post(path, headers=outsider, json=body)
+    assert refused.status_code == 404
+
+    rejected = await api_client.post(path, headers=annotator, json=body)
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["outcome"] == "complete"
+    page = await query(store, owner, ids, types=[SpanType.neg])
+    assert {r.id for r in page.rows} >= {created.brno, created.zdenka}
+
+    deleted = await api_client.post(path, headers=annotator, json={
+        "action": "delete", "annotation_ids": [str(created.karel), str(created.karel)]})
+    again = await api_client.post(path, headers=annotator, json={"action": "delete", "annotation_ids": [str(created.karel)]})
+    assert deleted.json()["succeeded"] == [str(created.karel)]
+    assert [(f["item_id"], f["step"]) for f in again.json()["failed"]] == [(str(created.karel), "find_annotation")]
+    assert again.json()["outcome"] == "failed"

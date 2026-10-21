@@ -48,6 +48,8 @@ All URIs are relative to *http://localhost*
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
 | [**removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectionscollectionidchunkschunkiddelete) | **DELETE** /api/user_collections/{collection_id}/chunks/{chunk_id} | Remove Chunk From Collection |
 | [**removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapiusercollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/user_collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
+| [**resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost**](DefaultApi.md#resolvecollectionannotationidsapiusercollectionscollectionidannotationsidspost) | **POST** /api/user_collections/{collection_id}/annotations/ids | Resolve Collection Annotation Ids |
+| [**reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost**](DefaultApi.md#reviewcollectionannotationsapiusercollectionscollectionidannotationsreviewpost) | **POST** /api/user_collections/{collection_id}/annotations/review | Review Collection Annotations |
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
@@ -3240,6 +3242,156 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost
+
+> AnnotationIds resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost(collectionId, annotationIdsRequest)
+
+Resolve Collection Annotation Ids
+
+The ids of all annotations matching the concordance filters now, or of those among &#x60;&#x60;within&#x60;&#x60; that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // AnnotationIdsRequest
+    annotationIdsRequest: ...,
+  } satisfies ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest;
+
+  try {
+    const data = await api.resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **annotationIdsRequest** | [AnnotationIdsRequest](AnnotationIdsRequest.md) |  | |
+
+### Return type
+
+[**AnnotationIds**](AnnotationIds.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost
+
+> AnnotationReviewResult reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost(collectionId, annotationReviewRequest)
+
+Review Collection Annotations
+
+Approve (&#x60;&#x60;pos&#x60;&#x60;), reject (&#x60;&#x60;neg&#x60;&#x60;, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: &#x60;&#x60;succeeded&#x60;&#x60; lists the changed annotations, &#x60;&#x60;failed&#x60;&#x60; the ones not changed or uncertain and the ids that are no annotation of the collection (&#x60;&#x60;find_annotation&#x60;&#x60;). Nothing is rolled back.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // AnnotationReviewRequest
+    annotationReviewRequest: ...,
+  } satisfies ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest;
+
+  try {
+    const data = await api.reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **annotationReviewRequest** | [AnnotationReviewRequest](AnnotationReviewRequest.md) |  | |
+
+### Return type
+
+[**AnnotationReviewResult**](AnnotationReviewResult.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 

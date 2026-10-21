@@ -212,6 +212,8 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
     conditions.extend(Filter.by_property("text").like(f"*{word}*") for word in query.words)
     if document_ids is not None:
         conditions.append(Filter.by_property("documentId").contains_any(list(document_ids)))
+    if query.ids is not None:
+        conditions.append(Filter.by_id().contains_any(list(query.ids)))
     return Filter.all_of(conditions)
 
 
@@ -451,6 +453,20 @@ class SpanRepository:
                 filters=_query_filter(query, document_ids), sort=sort.by_property("_id"), limit=limit, offset=offset,
                 return_properties=_ROW)
             return [to_row(o) for o in response.objects]
+        return await self._read(collection_id, read, [])
+
+    async def query_ids(self, collection_id: UUID, query: AnnotationQuery, *,
+                        document_ids: list[UUID] | None = None, limit: int) -> list[UUID]:
+        """The ids of at most ``limit`` matching spans (of the given documents when
+        ``document_ids`` is not None), by id."""
+        if (document_ids is not None and not document_ids) or (query.ids is not None and not query.ids):
+            return []
+
+        async def read():
+            response = await self._tenant(collection_id).query.fetch_objects(
+                filters=_query_filter(query, document_ids), sort=Sort.by_property("_id"), limit=limit,
+                return_properties=[])
+            return [UUID(str(o.uuid)) for o in response.objects]
         return await self._read(collection_id, read, [])
 
     async def near_vector(self, collection_id: UUID, target_vector: str, vector: list[float], config_id: str,

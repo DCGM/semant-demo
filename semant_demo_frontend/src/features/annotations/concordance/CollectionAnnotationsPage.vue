@@ -10,15 +10,31 @@
       @reset="store.resetFilters"
     />
 
+    <SelectionBar
+      class="q-mb-xs"
+      :selected-count="selection.size"
+      :total="store.total"
+      :hidden-selected="store.hiddenSelected"
+      :shown-error="store.shownError"
+      :all-selected="allMatchesSelected"
+      :resolving="store.resolving"
+      :tags="tags"
+      :running="review.running"
+      :progress="review.progress"
+      :running-target="review.target"
+      :report="review.report"
+      @select-all="selectAllMatches"
+      @clear="clearSelection"
+      @deselect-hidden="store.deselectHidden"
+      @reload-shown="store.loadShown"
+      @review="(action, tagId) => reviewSelection(action, tagId)"
+      @retry="retryReview"
+      @dismiss="review.dismiss"
+    />
+
     <div class="collection-annotations__summary" aria-live="polite">
       <span data-testid="concordance-range">{{ rangeLabel }}</span>
       <q-spinner v-if="store.loading" color="primary" size="1.2em" aria-label="Loading annotations" />
-      <template v-if="store.selected.size">
-        <span class="collection-annotations__selected" data-testid="concordance-selected">
-          {{ store.selected.size }} selected
-        </span>
-        <q-btn flat dense no-caps color="primary" label="Clear selection" @click="store.clearSelection" />
-      </template>
       <q-space />
       <PagerButtons v-if="store.total > PAGE_SIZE" />
     </div>
@@ -41,13 +57,13 @@
       ref="table"
       :rows="store.rows"
       :tags="tags"
-      :selected="store.selected"
-      :focused-id="store.focused?.id ?? null"
+      :selected="selection.ids"
+      :focused-id="selection.focused?.id ?? null"
       :loading="store.loading"
       :class="{ 'collection-annotations__stale': store.loading }"
       @open="openContext"
-      @toggle="store.toggleSelected"
-      @select-page="store.setPageSelected"
+      @toggle="toggleRow"
+      @select-page="selectPage"
     />
 
     <div v-if="store.total > PAGE_SIZE && store.rows.length" class="collection-annotations__summary q-mt-sm">
@@ -56,7 +72,7 @@
     </div>
 
     <!-- Registered once a row is opened. -->
-    <RightSidebarPanel v-if="store.focused" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
+    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
       <ChunkContextPanel
         :target-chunk-id="chunkContext.target?.chunkId ?? null"
         :document="chunkContext.document"
@@ -83,7 +99,7 @@
               <span>{{ statusText }}</span>
             </div>
             <div
-              v-if="store.focusedGone"
+              v-if="selection.focusedGone"
               class="annotation-context__gone text-body2 text-grey-8"
               role="status"
               data-testid="annotation-context-gone"
@@ -92,10 +108,73 @@
               these filters or moved it to another page.
             </div>
             <blockquote v-else class="annotation-context__text text-body2" data-testid="annotation-context-text">
-              {{ store.focused.text ?? 'The annotated text is not available yet.' }}
+              {{ selection.focused.text ?? 'The annotated text is not available yet.' }}
             </blockquote>
+            <div
+              v-if="!selection.focusedGone"
+              class="annotation-context__review"
+              role="group"
+              aria-label="Review this annotation"
+              data-testid="annotation-review"
+            >
+              <q-btn
+                dense
+                outline
+                no-caps
+                color="positive"
+                icon="check"
+                label="Approve"
+                :disable="review.running || selection.focused.type === SpanType.pos"
+                data-testid="row-approve"
+                @click="reviewFocused(ReviewAction.approve)"
+              />
+              <q-btn
+                dense
+                outline
+                no-caps
+                color="warning"
+                text-color="orange-10"
+                icon="block"
+                label="Reject"
+                :disable="review.running || selection.focused.type === SpanType.neg"
+                data-testid="row-reject"
+                @click="reviewFocused(ReviewAction.reject)"
+              />
+              <q-btn
+                dense
+                flat
+                no-caps
+                color="primary"
+                icon="skip_next"
+                label="Skip"
+                :disable="!nextRow"
+                data-testid="row-skip"
+                @click="skip"
+              >
+                <q-tooltip>Leave it as it is and show the next row</q-tooltip>
+              </q-btn>
+              <ReviewTagMenu
+                :tags="tags"
+                label="Change tag"
+                :current-tag-id="selection.focused.tagId ?? null"
+                :disable="review.running"
+                testid="row-retag"
+                @pick="tagId => reviewFocused(ReviewAction.retag, tagId)"
+              />
+              <q-btn
+                dense
+                flat
+                no-caps
+                color="negative"
+                icon="delete"
+                label="Delete…"
+                :disable="review.running"
+                data-testid="row-delete"
+                @click="reviewFocused(ReviewAction.delete)"
+              />
+            </div>
             <q-btn
-              v-if="store.focused.documentId"
+              v-if="selection.focused.documentId"
               dense
               flat
               no-caps
@@ -114,17 +193,21 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, nextTick, reactive, ref, watch } from 'vue'
-import { QBtn, QPage, QSpace, QSpinner, useQuasar } from 'quasar'
+import { QBtn, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { SpanType, type AnnotationListRow } from 'src/generated/api'
+import { ReviewAction, SpanType, type AnnotationListRow } from 'src/generated/api'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
 import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
+import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceTable from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
+import SelectionBar from './SelectionBar.vue'
+import ReviewTagMenu from './ReviewTagMenu.vue'
+import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
 import { PAGE_SIZE, defaultFilters, useConcordanceStore } from './concordanceStore'
 
 const CONTEXT_PANEL_ID = 'annotation-context'
@@ -132,6 +215,8 @@ const CONTEXT_PANEL_ID = 'annotation-context'
 const route = useRoute()
 const $q = useQuasar()
 const store = reactive(useConcordanceStore())
+const selection = reactive(useAnnotationSelectionStore())
+const review = reactive(useAnnotationReviewStore())
 const tagsStore = useTagsStore()
 const { tags } = storeToRefs(tagsStore)
 const rightSidebar = useRightSidebarStore()
@@ -179,21 +264,21 @@ const PagerButtons = defineComponent(() => () => h('div', { class: 'row no-wrap 
 
 // ── Source context (shared right sidebar) ──
 const highlight = computed(() => {
-  const row = store.focusedGone ? null : store.focused
+  const row = selection.focusedGone ? null : selection.focused
   return row?.chunkId && row.start != null && row.end != null
     ? { chunkId: row.chunkId, start: row.start, end: row.end }
     : null
 })
 
-const focusedTag = computed(() => tags.value.find(t => t.id === store.focused?.tagId) ?? null)
+const focusedTag = computed(() => tags.value.find(t => t.id === selection.focused?.tagId) ?? null)
 const statusText = computed(() => ({
   [SpanType.pos]: 'Confirmed',
   [SpanType.auto]: 'Proposal',
   [SpanType.neg]: 'Rejected'
-} as Record<string, string>)[store.focused?.type ?? ''] ?? 'Unknown status')
+} as Record<string, string>)[selection.focused?.type ?? ''] ?? 'Unknown status')
 
 const documentRoute = computed(() => {
-  const row = store.focused
+  const row = selection.focused
   const order = chunkContext.chunks.find(c => c.id === row?.chunkId)?.order
   return {
     name: 'documentDetailV1',
@@ -214,7 +299,7 @@ function showContext (row: AnnotationListRow) {
 
 /** Opens the row in the sidebar; viewing context never changes the selection. */
 async function openContext (row: AnnotationListRow) {
-  store.focus(row)
+  selection.focus(row)
   const opening = showContext(row)
   await nextTick() // the panel registers when the first row is opened
   rightSidebar.activate(CONTEXT_PANEL_ID)
@@ -222,9 +307,9 @@ async function openContext (row: AnnotationListRow) {
 }
 
 function returnToRow () {
-  const row = store.focused
+  const row = selection.focused
   if (!row) return
-  if (store.focusedGone) {
+  if (selection.focusedGone) {
     $q.notify({ type: 'info', message: 'This annotation is no longer on this page.' })
     return
   }
@@ -232,6 +317,117 @@ function returnToRow () {
   if ($q.screen.lt.md) rightSidebar.open = false
   if (store.rows.some(r => r.id === row.id)) table.value?.reveal(row.id)
   else $q.notify({ type: 'info', message: 'This annotation is not on the current page.' })
+}
+
+// ── Selection (#459) ──
+const allMatchesSelected = computed(() =>
+  store.hiddenSelected !== null && selection.size - store.hiddenSelected >= store.total)
+
+function tooMany () {
+  $q.notify({ type: 'warning', message: `The selection can hold at most ${MAX_SELECTION} annotations.` })
+}
+
+function toggleRow (id: string, value: boolean) {
+  if (!selection.toggle(id, value)) tooMany()
+}
+
+function selectPage (value: boolean) {
+  if (!store.setPageSelected(value)) tooMany()
+}
+
+function clearSelection () {
+  selection.clearSelection()
+  void store.loadShown()
+}
+
+async function selectAllMatches () {
+  const problem = await store.selectAllMatches()
+  if (problem) $q.notify({ type: 'warning', message: problem })
+}
+
+// ── Review (#459) ──
+const VERB: Record<ReviewAction, string> = {
+  [ReviewAction.approve]: 'Approve',
+  [ReviewAction.reject]: 'Reject',
+  [ReviewAction.retag]: 'Change the tag of',
+  [ReviewAction.delete]: 'Delete'
+}
+
+const nextRow = computed(() => {
+  const index = store.rows.findIndex(r => r.id === selection.focused?.id)
+  return index >= 0 ? store.rows[index + 1] ?? null : null
+})
+
+function plural (n: number) {
+  return `${n} annotation${n === 1 ? '' : 's'}`
+}
+
+/** Asks before deleting, and before a change to annotations not on this page. */
+function confirmed (action: ReviewAction, ids: string[], tagId?: string): Promise<boolean> {
+  const offPage = ids.filter(id => !store.rows.some(r => r.id === id)).length
+  if (action !== ReviewAction.delete && !offPage) return Promise.resolve(true)
+  const tag = tagId ? tags.value.find(t => t.id === tagId)?.name : null
+  const lines = [`${VERB[action]} ${plural(ids.length)}${tag ? ` to "${tag}"` : ''}?`]
+  if (offPage) lines.push(`${offPage} of them ${offPage === 1 ? 'is' : 'are'} not on this page.`)
+  if (action === ReviewAction.delete) {
+    lines.push('Deleted annotations cannot be restored. To keep a proposal as negative feedback, reject it instead.')
+  }
+  return new Promise(resolve => {
+    $q.dialog({
+      title: action === ReviewAction.delete ? 'Delete annotations' : 'Review annotations',
+      message: lines.join(' '),
+      cancel: true,
+      persistent: true,
+      ok: { label: `${VERB[action].split(' ')[0]} ${ids.length}`, color: action === ReviewAction.delete ? 'negative' : 'primary', flat: false }
+    }).onOk(() => resolve(true)).onCancel(() => resolve(false)).onDismiss(() => resolve(false))
+  })
+}
+
+/** Shows the review's effect: rows read again, deleted and missing ones leave the selection. */
+function afterReview (report: ReviewReport) {
+  const gone = report.action === ReviewAction.delete ? [...report.saved, ...report.missing] : report.missing
+  if (gone.length) selection.remove(gone)
+  void store.load()
+  void store.loadShown()
+  if (report.action !== ReviewAction.approve) void store.loadDocuments()
+}
+
+async function runReview (action: ReviewAction, ids: string[], tagId?: string) {
+  const id = collectionId.value
+  if (!id || !ids.length || !await confirmed(action, ids, tagId)) return null
+  const report = await review.review(id, action, ids, tagId ?? null)
+  if (report) afterReview(report)
+  return report
+}
+
+async function reviewSelection (action: ReviewAction, tagId?: string) {
+  await runReview(action, [...selection.ids], tagId)
+}
+
+async function retryReview () {
+  const id = collectionId.value
+  if (!id) return
+  const report = await review.retry(id)
+  if (report) afterReview(report)
+}
+
+/** Reviews the open annotation; approving or rejecting it moves on to the next row. */
+async function reviewFocused (action: ReviewAction, tagId?: string) {
+  const row = selection.focused
+  if (!row) return
+  const next = nextRow.value
+  const report = await runReview(action, [row.id], tagId)
+  if (!report) return
+  const ok = report.saved.length === 1
+  if (!ok) {
+    $q.notify({ type: 'warning', message: report.missing.length ? 'This annotation no longer exists.' : 'The change was not saved; see the result above the list.' })
+    return
+  }
+  if (next && (action === ReviewAction.approve || action === ReviewAction.reject)) void openContext(next)
+}
+
+function skip () {
+  if (nextRow.value) void openContext(nextRow.value)
 }
 
 // ── Workspace state across navigation ──
@@ -249,12 +445,12 @@ watch(collectionId, async (id) => {
     // Back from a document: the same place, then the rows as they are now.
     await nextTick()
     window.scrollTo(0, store.scrollY)
-    if (store.focused) void showContext(store.focused)
+    if (selection.focused) void showContext(selection.focused)
   }
   await loading
   // A boundary edit may have moved the annotation to another chunk.
-  const row = store.focused
-  if (returning && row && !store.focusedGone && row.chunkId && row.chunkId !== chunkContext.target?.chunkId) {
+  const row = selection.focused
+  if (returning && row && !selection.focusedGone && row.chunkId && row.chunkId !== chunkContext.target?.chunkId) {
     void showContext(row)
   }
 }, { immediate: true })
@@ -269,11 +465,6 @@ watch(collectionId, async (id) => {
   min-height: 36px;
   font-size: 0.85rem;
   color: rgba(0, 0, 0, 0.72);
-}
-
-.collection-annotations__selected {
-  font-weight: 600;
-  color: var(--q-primary);
 }
 
 .collection-annotations__state {
@@ -317,6 +508,13 @@ watch(collectionId, async (id) => {
   margin: 4px 0;
   padding: 4px 8px;
   border-left: 3px solid #bdbdbd;
+}
+
+.annotation-context__review {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 6px 0;
 }
 
 .annotation-context__open {

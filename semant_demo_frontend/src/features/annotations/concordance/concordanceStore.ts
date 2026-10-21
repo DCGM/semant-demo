@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import {
-  AnnotationSort, SpanType, type AnnotatedDocument, type AnnotationListRow, type AnnotationPage
+  AnnotationSort, SpanType, type AnnotatedDocument, type AnnotationPage
 } from 'src/generated/api'
-import { captureSession, createContextGuard, createScope, errorStatus, isAbortError, useApi } from 'src/shared/api'
+import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus, isAbortError, useApi } from 'src/shared/api'
+import { MAX_SELECTION, useAnnotationSelectionStore } from '../annotationSelectionStore'
+import { useAnnotationReviewStore } from './annotationReviewStore'
 
 /** Rows per page of the concordance. */
 export const PAGE_SIZE = 50
@@ -41,12 +43,27 @@ function failure (e: unknown, what: string): string {
   return `Failed to load the ${what}.`
 }
 
+/** The request body of the concordance filters for resolving annotation ids. */
+function idsRequest (f: ConcordanceFilters, within?: string[]) {
+  return {
+    tagIds: f.tagIds.length ? f.tagIds : null,
+    types: f.types,
+    q: f.text.trim() || null,
+    documentIds: f.documentIds.length ? f.documentIds : null,
+    yearFrom: f.yearFrom,
+    yearTo: f.yearTo,
+    within: within ?? null
+  }
+}
+
 /**
- * The collection's annotation workspace (#329): the concordance query, its current page,
- * the checked rows, the row whose source is open and the scroll position. It belongs to
- * one collection of the signed-in user and outlives the page, so leaving for a document
- * and coming back keeps filters, page, selection and position. Opening another collection
- * starts afresh; signing out clears it (`app/session.ts`).
+ * The collection's annotation workspace (#329): the concordance query, its current page
+ * and the scroll position; the checked and focused annotations are the workspace selection
+ * (`annotationSelectionStore`, #459), which this store also tells which selected
+ * annotations the current filters show. It belongs to one collection of the signed-in user
+ * and outlives the page, so leaving for a document and coming back keeps filters, page,
+ * selection and position. Opening another collection starts afresh; signing out clears it
+ * (`app/session.ts`).
  *
  * Each query is a context: a newer query, another collection or a sign-out aborts it and
  * drops its late answer. A failed read is reported as an error, never as an empty result.
@@ -56,6 +73,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
   const scope = createScope()
   const rowRequests = createContextGuard()
   const documentRequests = createContextGuard()
+  const shownRequests = createContextGuard()
+  const selection = useAnnotationSelectionStore()
   let rowAbort: AbortController | null = null
   let documentAbort: AbortController | null = null
 
@@ -67,19 +86,28 @@ export const useConcordanceStore = defineStore('concordance', () => {
   const error = ref<string | null>(null)
   const documents = shallowRef<AnnotatedDocument[]>([])
   const documentsError = ref<string | null>(null)
-  /** Checked rows by id; kept across pages and filters (actions on them: #330). */
-  const selected = ref<Set<string>>(new Set())
-  /** The row whose source context is open, as the latest page that lists it shows it. */
-  const focused = shallowRef<AnnotationListRow | null>(null)
-  /** The focused row left its page when the page was read again: it was deleted, or an
-   * edit took it out of the filters or moved it to another page; `focused` is outdated. */
-  const focusedGone = ref(false)
+  /** Annotations known to match the current filters (listed, resolved, or the selected
+   * ones the filters show); selected annotations of `known` not in it are hidden, or no
+   * longer exist. */
+  const shown = ref<Set<string>>(new Set())
+  /** Ids whose membership in `shown` is known for the current filters. */
+  const known = ref<Set<string>>(new Set())
+  const shownError = ref<string | null>(null)
+  /** "Select all matches" is resolving the current filters. */
+  const resolving = ref(false)
   const scrollY = ref(0)
   /** The query and offset of `page`. */
   let pageKey: string | null = null
 
   const rows = computed(() => page.value?.rows ?? [])
   const total = computed(() => page.value?.total ?? 0)
+  /** Selected annotations the current filters do not show (or that no longer exist);
+   * null while that is not known for the current selection. */
+  const hiddenSelected = computed<number | null>(() => {
+    const ids = selection.ids
+    if ([...ids].some(id => !known.value.has(id) && !shown.value.has(id))) return null
+    return [...ids].filter(id => !shown.value.has(id)).length
+  })
 
   function stop () {
     rowAbort?.abort()
@@ -87,7 +115,9 @@ export const useConcordanceStore = defineStore('concordance', () => {
     rowAbort = documentAbort = null
     rowRequests.enter()
     documentRequests.enter()
+    shownRequests.enter()
     loading.value = false
+    resolving.value = false
   }
 
   function reset () {
@@ -98,25 +128,20 @@ export const useConcordanceStore = defineStore('concordance', () => {
     error.value = null
     documents.value = []
     documentsError.value = null
-    selected.value = new Set()
-    focused.value = null
-    focusedGone.value = false
+    shown.value = new Set()
+    known.value = new Set()
+    shownError.value = null
     pageKey = null
     scrollY.value = 0
   }
 
-  function focus (row: AnnotationListRow | null) {
-    focused.value = row
-    focusedGone.value = false
-  }
-
   /** Brings the focused row up to date with a newly read page of the query `key`. */
   function reconcileFocused (result: AnnotationPage, key: string, refresh: boolean) {
-    const row = focused.value
+    const row = selection.focused
     if (!row) return
     const fresh = result.rows.find(r => r.id === row.id)
-    if (fresh) focus(fresh)
-    else if ((refresh || key === pageKey) && page.value?.rows.some(r => r.id === row.id)) focusedGone.value = true
+    if (fresh) selection.focus(fresh)
+    else if ((refresh || key === pageKey) && page.value?.rows.some(r => r.id === row.id)) selection.focusedGone = true
   }
 
   /** Shows the collection's workspace: as it was left, or a new one for another collection. */
@@ -124,8 +149,10 @@ export const useConcordanceStore = defineStore('concordance', () => {
     if (scope.enter(id)) {
       reset()
       collectionId.value = id
+      useAnnotationReviewStore().clear()
     }
-    await Promise.all([load(), loadDocuments()])
+    selection.enter(id)
+    await Promise.all([load(), loadDocuments(), loadShown()])
   }
 
   /** Reads the current page again (also after returning, so edits made elsewhere show). */
@@ -172,6 +199,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
       reconcileFocused(result, key, refresh)
       page.value = result
       pageKey = key
+      // Rows on the page match the filters: checking one never makes it hidden.
+      noteShown(result.rows.map(r => r.id))
     } catch (e) {
       if (!applies() || isAbortError(e)) return
       page.value = null
@@ -213,19 +242,99 @@ export const useConcordanceStore = defineStore('concordance', () => {
     }
   }
 
+  /** Marks ids as matching the current filters (they were just listed or resolved for them). */
+  function noteShown (ids: string[]) {
+    shown.value = new Set([...shown.value, ...ids])
+    known.value = new Set([...known.value, ...ids])
+  }
+
+  /** Asks which selected annotations the current filters show (after the filters, the
+   * selection's members or the annotations changed). */
+  async function loadShown () {
+    const id = collectionId.value
+    shownRequests.enter()
+    const ids = [...selection.ids]
+    shownError.value = null
+    if (!id || !ids.length) {
+      shown.value = new Set()
+      known.value = new Set()
+      return
+    }
+    const isCurrent = shownRequests.capture()
+    const inScope = scope.capture()
+    const inSession = captureSession()
+    const applies = () => isCurrent() && inScope() && inSession()
+    known.value = new Set()
+    try {
+      const result = await api.resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost({
+        collectionId: id, annotationIdsRequest: idsRequest(filters.value, ids)
+      })
+      if (!applies()) return
+      shown.value = new Set(result.ids)
+      known.value = new Set(ids)
+    } catch (e) {
+      if (!applies()) return
+      shownError.value = failure(e, 'selection')
+    }
+  }
+
+  /**
+   * Adds every annotation matching the current filters to the selection, as the ids the
+   * server resolves now: later filter changes do not widen it. Returns a message when
+   * nothing was added (too many matches, or the selection would exceed its limit).
+   */
+  async function selectAllMatches (): Promise<string | null> {
+    const id = collectionId.value
+    if (!id) return null
+    shownRequests.enter()
+    const isCurrent = shownRequests.capture()
+    const inScope = scope.capture()
+    const inSession = captureSession()
+    const applies = () => isCurrent() && inScope() && inSession()
+    resolving.value = true
+    try {
+      const result = await api.resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost({
+        collectionId: id, annotationIdsRequest: idsRequest(filters.value)
+      })
+      if (!applies()) return null
+      if (!selection.add(result.ids)) {
+        return `The selection can hold at most ${MAX_SELECTION} annotations; clear it or narrow the filters.`
+      }
+      noteShown(result.ids)
+      return null
+    } catch (e) {
+      if (!applies()) return null
+      return errorStatus(e) === 400
+        ? await apiErrorMessage(e, 'Too many annotations match; narrow the filters.')
+        : failure(e, 'matching annotations')
+    } finally {
+      if (applies()) resolving.value = false
+    }
+  }
+
+  /** Drops the selected annotations the current filters do not show. */
+  function deselectHidden () {
+    if (hiddenSelected.value === null) return
+    selection.retain(shown.value)
+  }
+
   /** Changes the query and shows its first page. */
   async function setFilters (change: Partial<ConcordanceFilters>) {
     const before = filters.value
     filters.value = { ...before, ...change }
     offset.value = 0
+    shown.value = new Set()
+    known.value = new Set()
     const facetsChanged = 'tagIds' in change || 'types' in change
-    await Promise.all([load(), facetsChanged ? loadDocuments() : Promise.resolve()])
+    await Promise.all([load(), facetsChanged ? loadDocuments() : Promise.resolve(), loadShown()])
   }
 
   async function resetFilters () {
     filters.value = defaultFilters()
     offset.value = 0
-    await Promise.all([load(), loadDocuments()])
+    shown.value = new Set()
+    known.value = new Set()
+    await Promise.all([load(), loadDocuments(), loadShown()])
   }
 
   async function goTo (nextOffset: number) {
@@ -235,21 +344,14 @@ export const useConcordanceStore = defineStore('concordance', () => {
     await load()
   }
 
-  function toggleSelected (id: string, value?: boolean) {
-    const next = new Set(selected.value)
-    if (value ?? !next.has(id)) next.add(id)
-    else next.delete(id)
-    selected.value = next
-  }
-
-  function setPageSelected (value: boolean) {
-    const next = new Set(selected.value)
-    rows.value.forEach((r) => value ? next.add(r.id) : next.delete(r.id))
-    selected.value = next
-  }
-
-  function clearSelection () {
-    selected.value = new Set()
+  /** Checks or unchecks the rows of the current page; false when the selection would exceed its limit. */
+  function setPageSelected (value: boolean): boolean {
+    const ids = rows.value.map(r => r.id)
+    if (!value) {
+      selection.remove(ids)
+      return true
+    }
+    return selection.add(ids)
   }
 
   /** Forgets everything (sign-out, another account). */
@@ -257,6 +359,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
     scope.reset()
     reset()
     collectionId.value = null
+    selection.clear()
+    useAnnotationReviewStore().clear()
   }
 
   return {
@@ -270,20 +374,21 @@ export const useConcordanceStore = defineStore('concordance', () => {
     error,
     documents,
     documentsError,
-    selected,
-    focused,
-    focusedGone,
+    shown,
+    shownError,
+    hiddenSelected,
+    resolving,
     scrollY,
-    focus,
     open,
     load,
     loadDocuments,
+    loadShown,
+    selectAllMatches,
+    deselectHidden,
     setFilters,
     resetFilters,
     goTo,
-    toggleSelected,
     setPageSelected,
-    clearSelection,
     clear
   }
 })

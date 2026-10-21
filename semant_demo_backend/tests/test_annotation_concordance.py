@@ -14,7 +14,9 @@ import pytest
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION
-from semant_demo.features.annotations.schemas import AnnotationRow, AnnotationSort, EnrichmentStatus, SpanType, TextStatus
+from semant_demo.features.annotations.schemas import (
+    AnnotationIdsRequest, AnnotationRow, AnnotationSort, EnrichmentStatus, SpanType, TextStatus,
+)
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.documents.schemas import Document
 from semant_demo.features.user_collections.access import AuthenticationRequired, ResourceNotFound
@@ -69,7 +71,8 @@ class FakeSpans:
                                          and r.derivationVersion == query.derivation_version))
                 and all(r.text is not None and any(w.lower() in t.lower() for t in r.text.split())
                         for w in query.words)
-                and (document_ids is None or r.documentId in document_ids)]
+                and (document_ids is None or r.documentId in document_ids)
+                and (query.ids is None or r.id in query.ids)]
 
     async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}
@@ -85,6 +88,11 @@ class FakeSpans:
         self.queries += 1
         key = (lambda r: (r.text is not None, r.text or "", str(r.id))) if by_text else _position_key
         return sorted(self._match(query, document_ids), key=key)[offset:offset + limit]
+
+
+    async def query_ids(self, cid, query, *, document_ids=None, limit):
+        self.queries += 1
+        return sorted((r.id for r in self._match(query, document_ids)), key=str)[:limit]
 
 
 def row(document, start, text="slovo", *, tag=TAG, type=SpanType.pos, current=True, rid=None):
@@ -280,3 +288,52 @@ async def test_routes_parse_repeated_filters_and_serialize_rows(tmp_path, store,
                           "rightContext", "documentAvailable"}
     assert [(d["title"], d["count"]) for d in documents.json()] == [("Almanach", 1), ("Bulletin", 1)]
     assert [r.status_code for r in bad] == [422, 422, 422, 422]
+
+
+# ── Resolving a selection (#459) ──────────────────────────────────────────
+
+async def test_all_matches_resolve_to_the_ids_of_every_page(store):
+    store.spans.rows = [row(DOC_A, i) for i in range(5)] + [row(DOC_B, 0, tag=OTHER_TAG),
+                                                            row(DOC_A, 9, type=SpanType.neg)]
+    resolved = await service.resolve_annotation_ids(store, SHARED, COLLECTION, AnnotationIdsRequest(tag_ids=[TAG]))
+
+    rows, _ = await all_pages(store, 2, tag_ids=[TAG])
+    assert sorted(resolved.ids, key=str) == sorted(rows, key=str)
+    assert len(resolved.ids) == 5
+
+
+async def test_resolving_applies_the_year_and_text_filters(store):
+    store.spans.rows = [row(DOC_A, 0, "Praha"), row(DOC_B, 0, "Praha"), row(DOC_A, 9, "Brno")]
+    resolved = await service.resolve_annotation_ids(store, OWNER, COLLECTION,
+                                                    AnnotationIdsRequest(q="prah", year_from=1900))
+
+    assert resolved.ids == [store.spans.rows[0].id]
+
+
+async def test_within_tells_which_selected_annotations_the_filters_show(store):
+    shown, hidden = row(DOC_A, 0), row(DOC_A, 5, tag=OTHER_TAG)
+    store.spans.rows = [shown, hidden, row(DOC_A, 9)]
+    deleted = uuid4()
+
+    resolved = await service.resolve_annotation_ids(
+        store, OWNER, COLLECTION, AnnotationIdsRequest(tag_ids=[TAG], within=[shown.id, hidden.id, deleted]))
+
+    assert resolved.ids == [shown.id]
+    empty = await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest(within=[]))
+    assert empty.ids == []
+
+
+async def test_more_matches_than_the_limit_are_refused_not_truncated(store, monkeypatch):
+    monkeypatch.setattr(service, "MAX_RESOLVED_IDS", 2)
+    store.spans.rows = [row(DOC_A, i) for i in range(3)]
+
+    with pytest.raises(InvalidRequestError, match="3 annotations match"):
+        await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest())
+    assert store.spans.queries == 0
+
+
+@pytest.mark.parametrize("user, error", [(OTHER, ResourceNotFound), (None, AuthenticationRequired)])
+async def test_resolving_needs_read_access(user, error, store):
+    store.spans.rows = [row(DOC_A, 0)]
+    with pytest.raises(error):
+        await service.resolve_annotation_ids(store, user, COLLECTION, AnnotationIdsRequest())

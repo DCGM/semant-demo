@@ -13,7 +13,7 @@ import { endSession, onStoredTokenChange, onUnauthorized } from 'src/shared/api'
 
 /**
  * Forgets everything loaded for the signed-in user: collections, documents, tags,
- * annotations (also the annotation workspace), statistics and running AI suggestion runs. Requests still under way
+ * annotations (also the annotation workspace with its selection and review), statistics and running AI suggestion runs. Requests still under way
  * for that user are ignored when they answer.
  */
 export function clearUserScopedState (): void {

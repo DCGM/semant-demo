@@ -4,8 +4,12 @@ apis/UsersApi.ts
 apis/index.ts
 docs/AdjacentChunks.md
 docs/AnnotatedDocument.md
+docs/AnnotationIds.md
+docs/AnnotationIdsRequest.md
 docs/AnnotationListRow.md
 docs/AnnotationPage.md
+docs/AnnotationReviewRequest.md
+docs/AnnotationReviewResult.md
 docs/AnnotationSort.md
 docs/AppFeedbackRequest.md
 docs/AuthApi.md
@@ -64,6 +68,7 @@ docs/RagRequestMain.md
 docs/RagResponse.md
 docs/RagRouteConfig.md
 docs/RagSearch.md
+docs/ReviewAction.md
 docs/SearchFilter.md
 docs/SearchFilterInput.md
 docs/SearchFiltersResponse.md
@@ -101,8 +106,12 @@ docs/YearBin.md
 index.ts
 models/AdjacentChunks.ts
 models/AnnotatedDocument.ts
+models/AnnotationIds.ts
+models/AnnotationIdsRequest.ts
 models/AnnotationListRow.ts
 models/AnnotationPage.ts
+models/AnnotationReviewRequest.ts
+models/AnnotationReviewResult.ts
 models/AnnotationSort.ts
 models/AppFeedbackRequest.ts
 models/BearerResponse.ts
@@ -159,6 +168,7 @@ models/RagRequestMain.ts
 models/RagResponse.ts
 models/RagRouteConfig.ts
 models/RagSearch.ts
+models/ReviewAction.ts
 models/SearchFilter.ts
 models/SearchFilterInput.ts
 models/SearchFiltersResponse.ts

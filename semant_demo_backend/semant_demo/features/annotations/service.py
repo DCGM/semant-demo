@@ -38,8 +38,9 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from semant_demo.features.annotations.schemas import (
-    AnnotatedDocument, AnnotationListRow, AnnotationPage, AnnotationQuery, AnnotationRow, AnnotationSort,
-    EnrichmentStatus, SpanType, TagSpan, TextStatus, VectorStatus,
+    MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
+    AnnotationPage, AnnotationQuery, AnnotationReviewRequest, AnnotationReviewResult, AnnotationRow, AnnotationSort,
+    EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
 )
 from semant_demo.features.documents.schemas import Document
 from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
@@ -354,8 +355,16 @@ async def bulk_update_spans(store: AnnotationStore, user: Principal | None, coll
         return BulkUpdateSpansResponse(outcome=outcome_of(0, 0), spans=[])
     cid, spans = await _authorize_span_patch(store, user, collection_id, span_ids, patch)
     await _check_patched_ranges(store, spans, patch)
-    pairs = _pairs_touched_by(spans, patch)
+    updated, failed = await _update_spans(store, cid, spans, patch)
+    return BulkUpdateSpansResponse(outcome=outcome_of(len(updated), len(failed)),
+                                   succeeded=[s.id for s in updated], failed=failed, spans=updated)
 
+
+async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, TagSpan],
+                        patch: PatchSpan) -> tuple[list[TagSpan], list[StepFailure]]:
+    """Applies a checked patch to the spans concurrently, then re-derives every touched
+    chunk tag pair once (also of spans whose update failed) and stores new vectors; returns
+    the updated spans in request order and the failures."""
     updated: list[TagSpan] = []
     failed: list[StepFailure] = []
     refreshes: dict[UUID, Refresh] = {}
@@ -367,11 +376,10 @@ async def bulk_update_spans(store: AnnotationStore, user: Principal | None, coll
             updated.append(res[0])
             if res[1] is not None:
                 refreshes[sid] = res[1]
-    failed += await store.chunk_tags.sync(cid, pairs)
+    failed += await store.chunk_tags.sync(cid, _pairs_touched_by(spans, patch))
     for sid, refresh in refreshes.items():
         failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
-    return BulkUpdateSpansResponse(outcome=outcome_of(len(updated), len(failed)),
-                                   succeeded=[s.id for s in updated], failed=failed, spans=updated)
+    return updated, failed
 
 
 @dataclass
@@ -523,7 +531,14 @@ async def _delete_in_document(store: AnnotationStore, user: Principal | None, co
     tags = await access.require_tags_in_collection(store.tags, tag_ids, grant.collection_id)
     cid = await use_tenant(store, grant)
 
-    spans = await store.spans.list_in_document(cid, document, tags, span_type)
+    deleted, failed = await _delete_spans(store, cid, await store.spans.list_in_document(cid, document, tags, span_type))
+    return WriteResult(outcome=outcome_of(len(deleted), len(failed)), succeeded=deleted, failed=failed)
+
+
+async def _delete_spans(store: AnnotationStore, cid: UUID,
+                        spans: dict[UUID, set[ChunkTag]]) -> tuple[list[str], list[StepFailure]]:
+    """Deletes the listed spans one by one, keeping going after a failure, then re-derives
+    their chunk tag pairs, also of spans whose deletion failed (it may have been applied)."""
     deleted: list[str] = []
     failed: list[StepFailure] = []
     for sid in spans:
@@ -532,10 +547,8 @@ async def _delete_in_document(store: AnnotationStore, user: Principal | None, co
             deleted.append(str(sid))
         except Exception as e:
             failed.append(step_failure("delete_span", sid, e))
-    # Re-derived after all deletions, also for spans whose deletion failed.
-    tag_failures = await store.chunk_tags.sync(cid, set().union(*spans.values()) if spans else set())
-    return WriteResult(outcome=outcome_of(len(deleted), len(failed) + len(tag_failures)),
-                       succeeded=deleted, failed=failed + tag_failures)
+    failed += await store.chunk_tags.sync(cid, set().union(*spans.values()) if spans else set())
+    return deleted, failed
 
 
 async def delete_approved_spans_in_document(store: AnnotationStore, user: Principal | None, collection_id: Id,
@@ -642,6 +655,15 @@ def _parse_ids(values: list[Id] | None, kind: str) -> list[UUID] | None:
         return [UUID(str(v)) for v in values]
     except ValueError:
         raise InvalidRequestError(f"Malformed {kind} id") from None
+
+
+def _concordance_query(tag_ids: list[Id] | None, types: list[SpanType] | None, text: str | None,
+                       ids: list[UUID] | None = None) -> AnnotationQuery:
+    words = _WORD.findall(text or "")
+    if len(words) > _MAX_WORDS:
+        raise InvalidRequestError(f"Search for at most {_MAX_WORDS} words")
+    return AnnotationQuery(tag_ids=_parse_ids(tag_ids, "tag"), types=list(dict.fromkeys(types or DEFAULT_TYPES)),
+                           words=words, derivation_version=DERIVATION_VERSION, ids=ids)
 
 
 def _text_status(row: AnnotationRow) -> TextStatus:
@@ -757,11 +779,7 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     grant = await access.require_collection_read(store.collections, user, collection_id)
     if not 1 <= limit <= _MAX_PAGE or offset < 0:
         raise InvalidRequestError(f"limit must be between 1 and {_MAX_PAGE} and offset not negative")
-    words = _WORD.findall(text or "")
-    if len(words) > _MAX_WORDS:
-        raise InvalidRequestError(f"Search for at most {_MAX_WORDS} words")
-    query = AnnotationQuery(tag_ids=_parse_ids(tag_ids, "tag"), types=list(dict.fromkeys(types or DEFAULT_TYPES)),
-                            words=words, derivation_version=DERIVATION_VERSION)
+    query = _concordance_query(tag_ids, types, text)
     documents = _parse_ids(document_ids, "document")
     cid = await use_tenant(store, grant)
     by_year = year_from is not None or year_to is not None
@@ -800,3 +818,73 @@ async def list_annotated_documents(store: AnnotationStore, user: Principal | Non
     return [AnnotatedDocument(id=d, title=found.documents[d].title if d in found.documents else None,
                               year=found.documents[d].yearIssued if d in found.documents else None,
                               count=found.counts[d], available=d in found.documents) for d in found.order]
+
+
+######################################
+# Selection and review (#459)        #
+######################################
+
+async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None, collection_id: Id,
+                                 request: AnnotationIdsRequest) -> AnnotationIds:
+    """
+    The ids of all annotations matching the concordance filters now (``within``: only
+    among these), for a selection that must not change with later filters. At most
+    ``MAX_RESOLVED_IDS``; a query matching more is refused, never truncated.
+    """
+    grant = await access.require_collection_read(store.collections, user, collection_id)
+    within = list(dict.fromkeys(request.within)) if request.within is not None else None
+    if within is not None and len(within) > MAX_RESOLVED_IDS:
+        raise InvalidRequestError(f"Ask about at most {MAX_RESOLVED_IDS} annotations")
+    query = _concordance_query(request.tag_ids, request.types, request.q, within)
+    documents = request.document_ids or None
+    cid = await use_tenant(store, grant)
+    if within == []:
+        return AnnotationIds(ids=[])
+    if request.year_from is not None or request.year_to is not None:
+        found = await _annotated_documents(store, cid, query, AnnotationSort.document, documents,
+                                           request.year_from, request.year_to)
+        total, documents = sum(found.counts.values()), found.order
+    else:
+        total = await store.spans.count_rows(cid, query, documents)
+    if total > MAX_RESOLVED_IDS:
+        raise InvalidRequestError(
+            f"{total} annotations match; at most {MAX_RESOLVED_IDS} can be selected at once. Narrow the filters.")
+    return AnnotationIds(ids=await store.spans.query_ids(cid, query, document_ids=documents, limit=MAX_RESOLVED_IDS))
+
+
+_REVIEW_PATCHES = {ReviewAction.approve: PatchSpan(type=SpanType.pos), ReviewAction.reject: PatchSpan(type=SpanType.neg)}
+
+
+async def review_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id,
+                             request: AnnotationReviewRequest) -> AnnotationReviewResult:
+    """
+    Approves, rejects, retags or deletes annotations of the collection (at most
+    ``MAX_REVIEW_BATCH``), each on its own: an id that is no annotation of the collection
+    (deleted meanwhile, or of another collection) is reported as ``find_annotation`` and
+    not changed, the others are written best effort and reported per item. Type and tag
+    changes keep offsets, revision and derived data (no embedding).
+    """
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
+    ids = list(dict.fromkeys(request.annotation_ids))
+    if not 1 <= len(ids) <= MAX_REVIEW_BATCH:
+        raise InvalidRequestError(f"Review between 1 and {MAX_REVIEW_BATCH} annotations at once")
+    if request.action == ReviewAction.retag:
+        if request.tag_id is None:
+            raise InvalidRequestError("Choose the new tag")
+        await access.require_tags_in_collection(store.tags, [request.tag_id], grant.collection_id)
+    cid = await use_tenant(store, grant)
+    spans = await store.spans.read_many(cid, ids)
+    missing = [StepFailure(item_id=str(i), step="find_annotation",
+                           message="No such annotation in this collection; it may have been deleted.")
+               for i in ids if i not in spans]
+    found = {i: spans[i] for i in ids if i in spans}
+    if not found:
+        succeeded, failed = [], []
+    elif request.action == ReviewAction.delete:
+        succeeded, failed = await _delete_spans(store, cid, {i: {pair_of(s)} for i, s in found.items()})
+    else:
+        patch = _REVIEW_PATCHES.get(request.action) or PatchSpan(tagId=str(request.tag_id))
+        updated, failed = await _update_spans(store, cid, found, patch)
+        succeeded = [str(s.id) for s in updated]
+    failed = missing + failed
+    return AnnotationReviewResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded, failed=failed)

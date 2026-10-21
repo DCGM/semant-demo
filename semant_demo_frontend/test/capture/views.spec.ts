@@ -143,6 +143,48 @@ test('annotation workspace (#329)', async ({ page, request }, testInfo) => {
   }
 })
 
+test('annotation workspace review (#459)', async ({ page, request }, testInfo) => {
+  // A batch reject of the two proposals: its per-item result and the now hidden selection.
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const proposals = ['lhota_automatic', 'praha_automatic'].map(key => fixture.span(key).id)
+  try {
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
+    await page.reload() // without the sign-in notification
+    await closePhoneNavigation(page)
+    await expect(page.getByTestId('kwic-row')).toHaveCount(4)
+    await page.getByTestId('concordance-status-pos').click()
+    await expect(page.getByTestId('kwic-row')).toHaveCount(2)
+    await page.getByTestId('select-all-matches').click()
+    await page.getByTestId('concordance-status-pos').click()
+    await expect(page.getByTestId('kwic-row')).toHaveCount(4)
+    const novak = page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: 'Jan Novák' }) })
+    await novak.getByRole('checkbox').click()
+    await expect(page.getByTestId('concordance-selected')).toHaveText('3 selected')
+    await page.mouse.move(0, 0) // no hover tooltip
+    await page.waitForTimeout(400) // the checkbox animation
+    await save(page, testInfo, 'annotation-review-selection')
+
+    await novak.getByRole('checkbox').click()
+    await page.getByTestId('review-reject').click()
+    await expect(page.getByTestId('hidden-selected')).toBeVisible()
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'annotation-review-result')
+
+    await page.getByTestId('kwic-row').first().click()
+    await expect(page.getByTestId('annotation-review')).toBeVisible()
+    await expectRightSidebarIn(page)
+    await expectSidebarsOpen(page, testInfo)
+    await save(page, testInfo, 'annotation-review-sidebar')
+  } finally {
+    for (const id of proposals) {
+      await request.patch(`/api/tag_spans/${id}`, {
+        headers, params: { collection_id: fixture.collection('chronicles').id }, data: { type: 'auto' }
+      })
+    }
+  }
+})
+
 test('corpus overview', async ({ page }, testInfo) => {
   // A synced store has libraries; the fixture store has none (shown as unavailable).
   await page.route('**/api/analytics/corpus/overview', async (route) => {
