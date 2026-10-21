@@ -1,17 +1,17 @@
-# Topicer API (https://github.com/DCGM/topicer), cloned from BRANCH_NAME at build time.
-# Docker caches the clone: build with --no-cache (update.sh topicer-build) to get the branch tip.
+# Topicer API (https://github.com/DCGM/topicer), cloned at the release tag TOPICER_VERSION
+# (set in docker-compose.topicer*.yml) at build time.
 FROM node:18 AS git_stage
 WORKDIR /app
 RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/apt/lists/*
 
-ARG BRANCH_NAME=main
+ARG TOPICER_VERSION
 ARG NOW
 
 
 # Make git strictly non-interactive and ignore any credential prompting
 ENV GIT_TERMINAL_PROMPT=0
 
-RUN git clone --branch "$BRANCH_NAME" https://github.com/DCGM/topicer.git
+RUN test -n "$TOPICER_VERSION" && git clone --depth 1 --branch "$TOPICER_VERSION" https://github.com/DCGM/topicer.git
 
 WORKDIR /app/topicer
 

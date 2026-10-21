@@ -178,11 +178,20 @@ production size (startup and drop duration unknown).
 
 ### Topicer
 
-`Dockerfile.topicer` clones [DCGM/topicer](https://github.com/DCGM/topicer) at the compose
-file's `BRANCH_NAME` (both files: `main`; production built from `semant-debug` until
-2026-10-17). Docker caches the clone, so `./update.sh topicer-build` builds with `--no-cache`;
-check `git log origin/main` of Topicer before rebuilding, since the build takes its tip. The
-production service reserves a GPU (CrossBERT and mDeBERTa configs); the test one does not.
+`Dockerfile.topicer` clones [DCGM/topicer](https://github.com/DCGM/topicer) at the release
+tag in the compose file's `TOPICER_VERSION` (both files: `v0.1.0`, #392; built from `main`
+until then, from `semant-debug` until 2026-10-17). The production service reserves a GPU
+(CrossBERT and mDeBERTa configs); the test one does not.
+
+To change the Topicer version: read the release notes on
+[DCGM/topicer releases](https://github.com/DCGM/topicer/releases) for config changes, set
+`TOPICER_VERSION` in `docker-compose.topicer-test.yml`, then `./update.sh test-topicer-build`
+and `./update.sh test-topicer-up`. Check its image tag and loaded configs (below), then do the same with
+`docker-compose.topicer.yml` and `topicer-build` / `topicer-up`. Both files are changed by a PR,
+so the repository records what runs. Change the tag in `image` (`semant-demo-topicer:<tag>`)
+together with `TOPICER_VERSION`: `docker ps --filter name=topicer` then shows the running release.
+To roll back, build the previous tag the same way.
+Releases are made in the Topicer repository (its README, "Versions and releases").
 
 The server's `deploy/data/` is mounted at `/app/data`. At startup the API loads every
 `*.yaml` in `TOPICER_API_CONFIGS_DIR` (`/app/data/topicer`) as a config named after the file;
@@ -209,9 +218,9 @@ db_connection:
 ```
 
 `DefaultEmbeddingService` (the former Gemma service, 3,584 dimensions) cannot query the Qwen
-vector. Topicer `main` also requires `stride` (e.g. `32`) in `CrossBertTopicer` configs.
+vector. Topicer `v0.1.0` requires `stride` (e.g. `32`) in `CrossBertTopicer` configs.
 
-semANT charges AI suggestions to the daily allowance from the usage Topicer reports and sends `max_chunks` (`TOPICER_MAX_CHUNKS_PER_TAG`, 40) with every optimized stream (#408). This needs Topicer with DCGM/topicer#81 (`main` since 2026-10-17, `06d32b9`); an older one ignores `max_chunks` and reports no usage, so every chunk or tag is charged its full reservation. A config's `max_chunks_ceiling` (default 200) must be at least `TOPICER_MAX_CHUNKS_PER_TAG`. For costs below the reservation, the provider must report cost (OpenRouter `usage.cost`) or the config must set `prices` per model; without either, cost is `unknown` and charged at least the reservation.
+semANT charges AI suggestions to the daily allowance from the usage Topicer reports and sends `max_chunks` (`TOPICER_MAX_CHUNKS_PER_TAG`, 40) with every optimized stream (#408). This needs Topicer with DCGM/topicer#81 (`v0.1.0` and later); an older one ignores `max_chunks` and reports no usage, so every chunk or tag is charged its full reservation. A config's `max_chunks_ceiling` (default 200) must be at least `TOPICER_MAX_CHUNKS_PER_TAG`. For costs below the reservation, the provider must report cost (OpenRouter `usage.cost`) or the config must set `prices` per model; without either, cost is `unknown` and charged at least the reservation.
 Switched in production on 2026-10-17: `openai-xjuric` as above, `bert.yaml` with `stride: 32`
 (same spans as before on a synthetic check, now with confidences), `openai-xsucha`
 (`TagProposalV2`, no embeddings) unchanged.
