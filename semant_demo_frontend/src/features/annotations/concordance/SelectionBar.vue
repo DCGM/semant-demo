@@ -107,6 +107,20 @@
         data-testid="review-retry"
         @click="emit('retry')"
       />
+      <q-btn
+        v-if="report.conflicts.length"
+        dense
+        flat
+        no-caps
+        color="primary"
+        icon="manage_search"
+        label="Show changed"
+        :disable="running"
+        data-testid="review-show-changed"
+        @click="emit('show-changed')"
+      >
+        <q-tooltip>Select only the changed annotations, as they are now, to review them again</q-tooltip>
+      </q-btn>
       <q-btn dense flat round size="sm" icon="close" aria-label="Dismiss the review result" @click="emit('dismiss')" />
     </div>
   </div>
@@ -114,7 +128,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { QBtn, QIcon, QSpinner } from 'quasar'
+import { QBtn, QIcon, QSpinner, QTooltip } from 'quasar'
 import { ReviewAction, type Tag } from 'src/generated/api'
 import ReviewTagMenu from './ReviewTagMenu.vue'
 import type { ReviewReport } from './annotationReviewStore'
@@ -143,6 +157,7 @@ const emit = defineEmits<{
   'reload-shown': []
   review: [action: ReviewAction, tagId?: string]
   retry: []
+  'show-changed': []
   dismiss: []
 }>()
 
@@ -157,7 +172,8 @@ const PAST: Record<ReviewAction, string> = {
 
 const hasProblems = computed(() => {
   const r = props.report
-  return !!r && (r.failed.length > 0 || r.missing.length > 0 || r.unsynced.length > 0 || !!r.error)
+  return !!r && (r.failed.length > 0 || r.conflicts.length > 0 || r.missing.length > 0 || r.unsynced.length > 0 ||
+    !!r.error)
 })
 
 const reportText = computed(() => {
@@ -167,10 +183,16 @@ const reportText = computed(() => {
   const parts = [`${PAST[r.action]} ${r.saved.length} of ${r.target}.`]
   if (r.failed.length - uncertain) parts.push(`${r.failed.length - uncertain} failed.`)
   if (uncertain) parts.push(`${uncertain} uncertain (the server did not confirm; they may have been saved).`)
+  if (r.conflicts.length) {
+    const n = r.conflicts.length
+    parts.push(`${n} ${n === 1 ? 'was' : 'were'} changed by someone else since you selected ${n === 1 ? 'it' : 'them'}; not saved.`)
+  }
   if (r.missing.length) parts.push(`${r.missing.length} no longer exist and were removed from the selection.`)
   if (r.unsynced.length) parts.push(`Search by tag does not reflect some changes yet (${r.unsynced.length} ${r.unsynced.length === 1 ? 'passage' : 'passages'}).`)
   if (r.error) parts.push(r.error)
-  if (r.saved.length && r.action !== ReviewAction.delete && r.failed.length) parts.push('Saved changes are kept.')
+  if (r.saved.length && r.action !== ReviewAction.delete && (r.failed.length || r.conflicts.length)) {
+    parts.push('Saved changes are kept.')
+  }
   return parts.join(' ')
 })
 </script>

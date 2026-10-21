@@ -101,6 +101,11 @@ erDiagram
         text rightContext "derived"
         int documentStartChar "derived, segment-relative"
         int documentStartWord "derived, segment-relative"
+        text origin "manual | ai | unknown (#460)"
+        uuid createdBy "user (#460)"
+        date reviewedAt "last approve/reject (#460)"
+        uuid aiRunId "suggestion run (#460)"
+        int editVersion "span writes (#460)"
     }
 
     Chunks }o--|| Documents : "document (many:1)"
@@ -287,6 +292,25 @@ fields above stay authoritative). Absent on spans saved before #328 until the ba
   `ready`, `vectorRevision` equals `revision`, `vectorConfig` is the configured id and the
   derived text is current (every re-derivation of the text sets it `pending`)
 
+Provenance properties (#460; written by `features/annotations/service.py`, current state only,
+no history). Absent on spans saved before #460: they read as `origin` `unknown`, no actor or
+time, version 0, and nothing is invented for them:
+- `origin` (`TEXT`, field: `manual` / `ai` / `unknown`) — how the span was created; independent
+  of `type` and never changed later (approving an AI proposal keeps `ai`)
+- `createdBy` (`UUID`), `createdAt` (`DATE`) — the user who created it (for `ai`: who started
+  the suggestion run) and when
+- `reviewedBy` (`UUID`), `reviewedAt` (`DATE`) — the last approve or reject (a type change to
+  `pos` / `neg`)
+- `lastEditedBy` (`UUID`), `lastEditedAt` (`DATE`) — the last span write (type, tag, offsets)
+- `aiRunId` (`UUID`) — the suggestion run that proposed it (a UUID per run; there is no run
+  table); kept through approval, like `reason` and `confidence`
+- `editVersion` (`INT`) — span writes since creation (0 at creation). A write or delete that
+  names the version it expects is refused when it differs (HTTP 409, per item `edit_conflict`
+  in batches). `revision` keeps counting offset changes only
+
+User ids are stored; the client names them from the collection's owner and members
+(`GET /api/user_collections/{id}/people`), anyone else as a former member.
+
 Document metadata (title, year) is not copied onto annotations: reads join it per page of rows.
 
 References:
@@ -299,8 +323,9 @@ Vectors: an unused self-provided `default` named vector (flat index) and the con
 annotation vector `contextual` (#328, self-provided, flat index per tenant; its name is the
 `target_vector` of `ANNOTATION_VECTOR_CONFIG`). On a collection created before #328, the
 derived properties and the vector are added by `annotation_enrichment add-schema`
-(`config.add_property` / `config.add_vector`, supported on 1.40); the backend writes them only
-when they exist, so Weaviate's auto-schema never guesses their types.
+(`config.add_property` / `config.add_vector`, supported on 1.40), and on one created before
+#460 the provenance properties by `annotation_provenance add-schema`; the backend writes them
+only when they exist (decided at startup), so Weaviate's auto-schema never guesses their types.
 
 The application never creates the collection; the migration does
 (`python -m semant_demo.maintenance.annotation_migration backfill --execute`,

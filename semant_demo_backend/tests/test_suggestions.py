@@ -50,6 +50,8 @@ class World:
         self.holds: list = []  # tenant activity: (event, collection, spans inserted so far)
         self.chunk_text_reads = 0
         self.chunk_texts_fail = False
+        self.provenance = False  # the collection holds provenance (#460)
+        self.recorded: dict[UUID, dict] = {}
 
     def by_id(self, chunk_id):
         return next((c for c in self.chunks if c.id == chunk_id), None)
@@ -78,7 +80,7 @@ class World:
                    examples=[])
 
     # spans
-    async def insert(self, cid, span, document_id, derived=None):
+    async def insert(self, cid, span, document_id, derived=None, provenance=None):
         assert (cid, document_id) == (COLLECTION, DOCUMENT)  # the run's tenant and the chunk's document
         self.inserted += 1
         number = self.inserted
@@ -89,6 +91,8 @@ class World:
             raise self.insert_fail[number]
         span_id = uuid4()
         self.stored[span_id] = span
+        if provenance is not None:
+            self.recorded[span_id] = provenance
         self.log.append(("inserted", span_id))
         return span_id
 
@@ -115,7 +119,7 @@ class World:
                 for c in self.chunks if c.order > after_order][:limit]
 
     def store(self) -> AnnotationStore:
-        spans = SimpleNamespace(insert=self.insert)
+        spans = SimpleNamespace(insert=self.insert, provenance=self.provenance)
         tags = SimpleNamespace(read_collection_ids=self.read_collection_ids, read=self.read)
         return AnnotationStore(collections=self, tags=tags, spans=spans,
                                chunk_tags=SimpleNamespace(sync=self.sync), documents=self, activity=self)
@@ -238,6 +242,21 @@ async def test_each_event_follows_its_stored_span():
     second, end = await anext(events), await anext(events)
     assert second.chunk_id == str(world.chunks[1].id) and len(second.spans) == 1
     assert (end.outcome.value, end.saved, end.rejected) == ("complete", 2, 0)
+
+
+async def test_spans_of_a_run_record_ai_origin_its_run_and_its_user():
+    world = World("Jan Novák v Brně", "Brno a Jan")
+    world.provenance = True
+    provider = FakeProvider(world, {"Jan Novák v Brně": [proposal(PERSON, 0, 9)],
+                                    "Brno a Jan": [proposal(PERSON, 7, 10)]})
+    await run_all(await thorough(world, provider, user=SHARED))
+    await run_all(await thorough(world, provider, user=SHARED))
+
+    recorded = list(world.recorded.values())
+    assert {(r["origin"], r["createdBy"], r["editVersion"]) for r in recorded} == {("ai", SHARED.id, 0)}
+    # One id per run, shared by its spans.
+    assert [r["aiRunId"] for r in recorded].count(recorded[0]["aiRunId"]) == 2
+    assert len({r["aiRunId"] for r in recorded}) == 2
 
 
 async def test_provider_failure_after_partial_success_keeps_saved_spans():

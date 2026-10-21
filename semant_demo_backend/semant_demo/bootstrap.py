@@ -26,7 +26,7 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
-from semant_demo.adapters.weaviate.spans import SpanRepository, enrichment_schema
+from semant_demo.adapters.weaviate.spans import SpanRepository, enrichment_schema, provenance_schema
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
@@ -125,6 +125,26 @@ async def detect_enrichment(client: WeaviateAsyncClient, config: Config,
     return Enrichment(derived=True, vector=vector if has_vector else None)
 
 
+async def detect_provenance(client: WeaviateAsyncClient, config: Config) -> bool:
+    """Whether the annotation collection holds the provenance properties of #460.
+
+    Until it does, annotations are written without provenance and without ``editVersion``
+    checks; the operator adds them with
+    ``python -m semant_demo.maintenance.annotation_provenance add-schema``.
+    """
+    try:
+        missing = await provenance_schema(client, config.collectionNames)
+    except Exception as e:
+        logger.warning("Could not read the annotation schema; annotation provenance is off: %s", type(e).__name__)
+        return False
+    if missing:
+        logger.error("The annotation collection lacks the provenance properties of #460 (%s): provenance and "
+                     "edit conflicts are not recorded until python -m semant_demo.maintenance.annotation_provenance "
+                     "add-schema adds them.", ", ".join(missing))
+        return False
+    return True
+
+
 @dataclass
 class AppResources:
     config: Config
@@ -178,8 +198,9 @@ class AppResources:
 
         Logs an error when the multi-tenant annotation collection does not exist (#327):
         span reads and writes then fail until the operator has run the migration. The
-        application never creates or migrates it itself. Annotation enrichment (#328) is
-        enabled as far as the collection's schema supports it (``detect_enrichment``).
+        application never creates or migrates it itself. Annotation enrichment (#328) and
+        provenance (#460) are enabled as far as the collection's schema supports them
+        (``detect_enrichment``, ``detect_provenance``).
         """
         client = await connector(self.config)
         try:
@@ -199,6 +220,7 @@ class AppResources:
                          "(docs/DATA_MAINTENANCE.md).", name)
             return
         self.annotation_enrichment = await detect_enrichment(client, self.config, self.annotation_vector)
+        self.weaviate.spans.provenance = await detect_provenance(client, self.config)
 
     def get_summarizer(self) -> TemplatedSearchResultsSummarizer:
         if self._summarizer is None:

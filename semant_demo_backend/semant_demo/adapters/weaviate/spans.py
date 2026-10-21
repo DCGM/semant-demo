@@ -28,6 +28,13 @@ Derived data is current only for the revision it names, so a late or stale write
 recognizable instead of trusted. They are written only when the service passes them
 (the collection holds them, ``enrichment_schema``); ``add_enrichment_schema`` adds them
 to an existing collection on the operator's request.
+
+Provenance (#460): ``origin``, ``createdBy``/``createdAt``, ``reviewedBy``/``reviewedAt``,
+``lastEditedBy``/``lastEditedAt``, ``aiRunId`` and ``editVersion`` (span writes since
+creation). They are read and written only when the collection holds them
+(``SpanRepository.provenance``, set at startup from ``provenance_schema``);
+``add_provenance_schema`` adds them on the operator's request. Spans without them have
+``origin`` unknown and version 0.
 """
 import asyncio
 import logging
@@ -99,10 +106,27 @@ ENRICHMENT_PROPERTIES: list[Property] = [
 ]
 """Derived properties of #328, in the order ``add_enrichment_schema`` adds them."""
 
+PROVENANCE_PROPERTIES: list[Property] = [
+    _status("origin"),
+    Property(name="createdBy", data_type=DataType.UUID),
+    Property(name="createdAt", data_type=DataType.DATE),
+    Property(name="reviewedBy", data_type=DataType.UUID),
+    Property(name="reviewedAt", data_type=DataType.DATE),
+    Property(name="lastEditedBy", data_type=DataType.UUID),
+    Property(name="lastEditedAt", data_type=DataType.DATE),
+    Property(name="aiRunId", data_type=DataType.UUID),
+    Property(name="editVersion", data_type=DataType.INT),
+]
+"""Provenance properties of #460, in the order ``add_provenance_schema`` adds them."""
+
 _ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "enrichmentStatus",
         "enrichedRevision", "derivationVersion", "vectorStatus", "vectorRevision", "vectorConfig", "text",
         "leftContext", "rightContext", "positionSegment", "documentStartChar", "documentEndChar",
         "documentStartWord", "documentEndWord"]
+
+
+_PROVENANCE = [p.name for p in PROVENANCE_PROPERTIES]
+_ROW_FIELDS = {*_ROW, *_PROVENANCE}
 
 
 def _contextual_vector(name: str):
@@ -116,7 +140,7 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
 
     No tenant is created here. Vectors are self-provided: ``default`` (flat index, unused)
     and the contextual vector ``annotation_vector`` (#328; ``None``: none). The derived
-    properties of #328 are included. A reference cannot target an alias, so when the chunk
+    properties of #328 and the provenance of #460 are included. A reference cannot target an alias, so when the chunk
     collection name is an alias (production: ``Chunks`` -> ``Chunks_test``) the reference
     targets the collection it names.
     """
@@ -141,6 +165,7 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
             Property(name="reason", data_type=DataType.TEXT),
             Property(name="confidence", data_type=DataType.NUMBER),
             *ENRICHMENT_PROPERTIES,
+            *PROVENANCE_PROPERTIES,
         ],
         references=[ReferenceProperty(name="text_chunk", target_collection=chunk_target)],
     )
@@ -172,6 +197,24 @@ async def add_enrichment_schema(client: WeaviateAsyncClient, names: CollectionNa
     return added
 
 
+async def provenance_schema(client: WeaviateAsyncClient, names: CollectionNames) -> list[str]:
+    """The provenance properties (#460) the annotation collection lacks."""
+    config = await client.collections.get(names.annotation_collection_name).config.get()
+    present = {p.name for p in config.properties}
+    return [p.name for p in PROVENANCE_PROPERTIES if p.name not in present]
+
+
+async def add_provenance_schema(client: WeaviateAsyncClient, names: CollectionNames) -> list[str]:
+    """Add the missing provenance properties to the existing annotation collection; returns
+    what was added. Existing objects are not changed (their provenance stays unknown)."""
+    missing = await provenance_schema(client, names)
+    config = client.collections.get(names.annotation_collection_name).config
+    for prop in PROVENANCE_PROPERTIES:
+        if prop.name in missing:
+            await config.add_property(prop)
+    return missing
+
+
 def _uuid(value) -> UUID | None:
     return UUID(str(value)) if value is not None else None
 
@@ -189,13 +232,14 @@ def to_span(obj) -> TagSpan:
         type=SpanType(span_type) if isinstance(span_type, str) else None,
         reason=props.get("reason"),
         confidence=float(confidence) if confidence is not None else None,
+        editVersion=props.get("editVersion") or 0,
     )
 
 
 def to_row(obj) -> AnnotationRow:
     props = obj.properties
     distance = getattr(obj.metadata, "distance", None)
-    return AnnotationRow(id=obj.uuid, distance=distance, **{k: props.get(k) for k in _ROW})
+    return AnnotationRow(id=obj.uuid, distance=distance, **{k: props.get(k) for k in props if k in _ROW_FIELDS})
 
 
 def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None):
@@ -223,9 +267,12 @@ def pair_of(span: TagSpan) -> ChunkTag:
 
 
 class SpanRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames, provenance: bool = False):
         self.client = client
         self.collectionNames = collectionNames
+        self.provenance = provenance
+        """The collection holds the provenance properties (#460): they are read, and the
+        service writes them. Decided at startup (``bootstrap.detect_provenance``)."""
         # Tenants this process created or saw; a removed tenant is forgotten by ``remove_tenant``.
         self._known_tenants: set[str] = set()
         # A lock exists while some write holds or waits for it.
@@ -238,6 +285,12 @@ class SpanRepository:
         if lock is None:
             lock = self._locks[span_id] = asyncio.Lock()
         return lock
+
+    def _span_properties(self) -> list[str]:
+        return _PROPERTIES + ["editVersion"] if self.provenance else _PROPERTIES
+
+    def _row_properties(self) -> list[str]:
+        return _ROW + _PROVENANCE if self.provenance else _ROW
 
     def _collection(self):
         return self.client.collections.get(self.collectionNames.annotation_collection_name)
@@ -296,12 +349,14 @@ class SpanRepository:
     # ── Spans ─────────────────────────────────────────────────────────────
 
     async def insert(self, collection_id: UUID, span: PostSpan, document_id: UUID | None,
-                     derived: dict | None = None) -> UUID:
+                     derived: dict | None = None, provenance: dict | None = None) -> UUID:
         """Stores the span in the collection's tenant (created if needed) and returns its id.
-        ``derived``: derived properties written with it (#328)."""
+        ``derived``: derived properties written with it (#328); ``provenance``: its
+        provenance properties (#460)."""
         await self.ensure_tenant(collection_id)
         properties: dict = {"start": span.start, "end": span.end, "type": span.type.value,
-                            "tagId": UUID(span.tagId), "chunkId": UUID(span.chunkId), **(derived or {})}
+                            "tagId": UUID(span.tagId), "chunkId": UUID(span.chunkId), **(derived or {}),
+                            **(provenance or {})}
         if document_id is not None:
             properties["documentId"] = document_id
         # AI metadata only when present.
@@ -325,7 +380,7 @@ class SpanRepository:
     async def read(self, collection_id: UUID, span_id: UUID) -> TagSpan | None:
         """The collection's span with this id, or None."""
         async def read():
-            obj = await self._tenant(collection_id).query.fetch_object_by_id(span_id, return_properties=_PROPERTIES)
+            obj = await self._tenant(collection_id).query.fetch_object_by_id(span_id, return_properties=self._span_properties())
             return to_span(obj) if obj is not None else None
         return await self._read(collection_id, read, None)
 
@@ -337,14 +392,14 @@ class SpanRepository:
         async def read():
             response = await self._tenant(collection_id).query.fetch_objects(
                 filters=Filter.by_id().contains_any(list(span_ids)), limit=len(span_ids),
-                return_properties=_PROPERTIES)
+                return_properties=self._span_properties())
             return {UUID(str(o.uuid)): to_span(o) for o in response.objects}
         return await self._read(collection_id, read, {})
 
     async def _fetch(self, collection_id: UUID, filters, return_properties=None) -> list:
         return await self._read(collection_id, lambda: fetch_all(
             self._tenant(collection_id), filters=filters, page_size=500,
-            return_properties=_PROPERTIES if return_properties is None else return_properties), [])
+            return_properties=self._span_properties() if return_properties is None else return_properties), [])
 
     async def read_by_collection(self, collection_id: UUID, chunk_id: UUID | None = None) -> list[TagSpan]:
         """All spans of the collection, optionally only those starting on one chunk."""
@@ -362,10 +417,13 @@ class SpanRepository:
                 result[span.chunkId].append(span)
         return result
 
-    async def update(self, collection_id: UUID, span_id: UUID, patch: PatchSpan, derived: dict | None = None) -> None:
-        """Sets the patched offsets, type and tag, and the ``derived`` properties, in one write."""
+    async def update(self, collection_id: UUID, span_id: UUID, patch: PatchSpan, derived: dict | None = None,
+                     provenance: dict | None = None) -> None:
+        """Sets the patched offsets, type and tag, and the ``derived`` and ``provenance``
+        properties, in one write."""
         fields = patch.model_dump(exclude_none=True)
-        properties: dict = {k: fields[k] for k in ("start", "end") if k in fields} | (derived or {})
+        properties: dict = {k: fields[k] for k in ("start", "end") if k in fields} | (derived or {}) \
+            | (provenance or {})
         if patch.type is not None:
             properties["type"] = patch.type.value
         if patch.tagId is not None:
@@ -381,7 +439,7 @@ class SpanRepository:
     async def read_row(self, collection_id: UUID, span_id: UUID) -> AnnotationRow | None:
         """The collection's span with its revision and derived fields, or None."""
         async def read():
-            obj = await self._tenant(collection_id).query.fetch_object_by_id(span_id, return_properties=_ROW)
+            obj = await self._tenant(collection_id).query.fetch_object_by_id(span_id, return_properties=self._row_properties())
             return to_row(obj) if obj is not None else None
         return await self._read(collection_id, read, None)
 
@@ -405,7 +463,7 @@ class SpanRepository:
         async def read():
             response = await self._tenant(collection_id).query.fetch_objects(
                 filters=Filter.all_of(conditions) if conditions else None, limit=limit, offset=offset,
-                return_properties=_ROW)
+                return_properties=self._row_properties())
             return [to_row(o) for o in response.objects]
         return await self._read(collection_id, read, [])
 
@@ -451,23 +509,23 @@ class SpanRepository:
         async def read():
             response = await self._tenant(collection_id).query.fetch_objects(
                 filters=_query_filter(query, document_ids), sort=sort.by_property("_id"), limit=limit, offset=offset,
-                return_properties=_ROW)
+                return_properties=self._row_properties())
             return [to_row(o) for o in response.objects]
         return await self._read(collection_id, read, [])
 
     async def query_ids(self, collection_id: UUID, query: AnnotationQuery, *,
-                        document_ids: list[UUID] | None = None, limit: int) -> list[UUID]:
+                        document_ids: list[UUID] | None = None, limit: int) -> dict[UUID, int]:
         """The ids of at most ``limit`` matching spans (of the given documents when
-        ``document_ids`` is not None), by id."""
+        ``document_ids`` is not None), by id, with their ``editVersion`` (#460)."""
         if (document_ids is not None and not document_ids) or (query.ids is not None and not query.ids):
-            return []
+            return {}
 
         async def read():
             response = await self._tenant(collection_id).query.fetch_objects(
                 filters=_query_filter(query, document_ids), sort=Sort.by_property("_id"), limit=limit,
-                return_properties=[])
-            return [UUID(str(o.uuid)) for o in response.objects]
-        return await self._read(collection_id, read, [])
+                return_properties=["editVersion"] if self.provenance else [])
+            return {UUID(str(o.uuid)): o.properties.get("editVersion") or 0 for o in response.objects}
+        return await self._read(collection_id, read, {})
 
     async def near_vector(self, collection_id: UUID, target_vector: str, vector: list[float], config_id: str,
                           limit: int, tag_ids: list[UUID] | None = None) -> list[AnnotationRow]:
@@ -482,7 +540,7 @@ class SpanRepository:
         async def read():
             response = await self._tenant(collection_id).query.near_vector(
                 near_vector=vector, target_vector=target_vector, limit=limit, filters=filters,
-                return_properties=_ROW, return_metadata=MetadataQuery(distance=True))
+                return_properties=self._row_properties(), return_metadata=MetadataQuery(distance=True))
             return [to_row(o) for o in response.objects]
         return await self._read(collection_id, read, [])
 
@@ -491,7 +549,7 @@ class SpanRepository:
         nothing when the collection has no tenant)."""
         if not await self.tenant_exists(collection_id):
             return
-        async for obj in self._tenant(collection_id).iterator(return_properties=_ROW):
+        async for obj in self._tenant(collection_id).iterator(return_properties=self._row_properties()):
             yield to_row(obj)
 
     async def list_in_document(self, collection_id: UUID, document_id: UUID, tag_ids: list[UUID],

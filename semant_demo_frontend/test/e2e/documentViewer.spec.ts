@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page, type Request } from '@playwright/test'
 import {
-  annotation, chunkText, deleteAddedSpans, deleteAddedTags, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk,
+  annotation, apiToken, chunkText, deleteAddedSpans, deleteAddedTags, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk,
   selectText, sidebarPanelButton
 } from './support'
 
@@ -66,6 +66,33 @@ test('a click on tagged text opens its span like its gutter label', async ({ pag
   await annotation(page, 'novak_manual').click()
   await expect(popover(page).getByRole('button', { name: 'Change tag' })).toBeVisible()
   await expect(page.locator('.tag-card.is-active')).toContainText(fixture.tag('person').name)
+})
+
+test('a span someone else changed meanwhile is not deleted, and shows as it is now', async ({ page, request }) => {
+  const novak = fixture.span('novak_manual')
+  const retag = async (tag: string, userKey: string) => {
+    const response = await request.patch(`/api/tag_spans/${novak.id}`, {
+      headers: { Authorization: `Bearer ${await apiToken(request, userKey)}` },
+      params: { collection_id: fixture.collection('chronicles').id },
+      data: { tagId: fixture.tag(tag).id }
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  try {
+    await annotation(page, 'novak_manual').click()
+    await expect(popover(page).getByRole('button', { name: 'Delete' })).toBeVisible()
+    await retag('place', 'annotator') // a collaborator's edit after this page loaded the span
+
+    await popover(page).getByRole('button', { name: 'Delete' }).click()
+    await expect(page.getByText('Someone else changed this annotation meanwhile; nothing was saved.')).toBeVisible()
+    await expect(annotation(page, 'novak_manual')).toBeVisible()
+    await annotation(page, 'novak_manual').click()
+    await expect(page.locator('.tag-card.is-active')).toContainText(fixture.tag('place').name)
+  } finally {
+    await retag('person', 'owner')
+  }
 })
 
 test('a selection after clicking a marker opens the tag picker instead of reusing its tag', async ({ page }) => {

@@ -6,6 +6,7 @@ collection like the annotation tenants (#327): a span id is only found in its ow
 collection. Storage behavior is covered against real Weaviate in
 tests/integration/test_annotations.py and test_annotation_tenants.py.
 """
+import asyncio
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -13,7 +14,7 @@ import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
-from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
+from semant_demo.core.errors import EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.offsets import InvalidSpanRange
 from semant_demo.features.annotations.schemas import (
@@ -88,6 +89,10 @@ class FakeTags(Recorder):
 class FakeSpans(Recorder):
     def __init__(self, writes):
         super().__init__(writes)
+        self.provenance = False
+        self.recorded: dict[UUID, dict] = {}
+        """Provenance written per span (#460)."""
+        self._locks: dict[UUID, asyncio.Lock] = {}
         self.stored = {
             COLLECTION: {
                 SPAN_A: TagSpan(id=str(SPAN_A), chunkId=str(CHUNK_1), tagId=str(TAG), start=0, end=3,
@@ -102,6 +107,9 @@ class FakeSpans(Recorder):
             },
         }
         self.inserted_documents = []
+
+    def lock(self, span_id):
+        return self._locks.setdefault(span_id, asyncio.Lock())
 
     def _tenant(self, cid):
         return self.stored.get(cid, {})
@@ -118,18 +126,25 @@ class FakeSpans(Recorder):
     async def read_by_chunks(self, cid, chunk_ids):
         return {str(c): [s for s in self._tenant(cid).values() if s.chunkId == str(c)] for c in chunk_ids}
 
-    async def insert(self, cid, span, document_id, derived=None):
+    async def insert(self, cid, span, document_id, derived=None, provenance=None):
         await self._write("insert_span", span.chunkId)
         self.inserted_documents.append((cid, document_id))
+        if provenance is not None:
+            self.recorded[UUID(int=2)] = provenance
         return UUID(int=2)
 
-    async def update(self, cid, span_id, patch, derived=None):
+    async def update(self, cid, span_id, patch, derived=None, provenance=None):
         await self._write("update_span", span_id)
         tenant = self.stored[cid]
-        tenant[span_id] = tenant[span_id].model_copy(update=patch.model_dump(exclude_none=True))
+        update = patch.model_dump(exclude_none=True)
+        if provenance is not None:
+            update["editVersion"] = provenance["editVersion"]
+            self.recorded[span_id] = self.recorded.get(span_id, {}) | provenance
+        tenant[span_id] = tenant[span_id].model_copy(update=update)
 
     async def delete(self, cid, span_id):
         await self._write("delete_span", span_id)
+        self._tenant(cid).pop(span_id, None)
 
     async def list_in_document(self, cid, document, tags, span_type):
         return {i: {ChunkTag.of(s.chunkId, s.tagId)} for i, s in self._tenant(cid).items() if s.type == span_type}
@@ -185,8 +200,10 @@ def post_span(start=0, end=3, chunk=CHUNK_1, **kw):
     return PostSpan(start=start, end=end, type=SpanType.pos, chunkId=str(chunk), tagId=str(TAG), **kw)
 
 
-def review(action, *ids, tag=None):
-    return AnnotationReviewRequest(action=action, annotation_ids=list(ids or [SPAN_A, SPAN_B]), tag_id=tag)
+def review(action, *ids, tag=None, versions=None):
+    ids = list(ids or [SPAN_A, SPAN_B])
+    return AnnotationReviewRequest(action=action, annotation_ids=ids, tag_id=tag,
+                                   expected_versions=versions or dict.fromkeys(ids, 0))
 
 
 def sync_pairs(*pairs):
@@ -533,9 +550,15 @@ def test_review_request_needs_a_tag_exactly_for_retag_and_bounds_the_batch():
     with pytest.raises(ValueError):
         review(ReviewAction.approve, tag=TAG)
     with pytest.raises(ValueError):
-        AnnotationReviewRequest(action=ReviewAction.approve, annotation_ids=[])
+        AnnotationReviewRequest(action=ReviewAction.approve, annotation_ids=[], expected_versions={})
     with pytest.raises(ValueError):
-        AnnotationReviewRequest(action=ReviewAction.approve, annotation_ids=[uuid4() for _ in range(201)])
+        review(ReviewAction.approve, *(uuid4() for _ in range(201)))
+
+
+def test_review_request_needs_the_expected_version_of_every_annotation():
+    with pytest.raises(ValueError):
+        AnnotationReviewRequest(action=ReviewAction.approve, annotation_ids=[SPAN_A, SPAN_B],
+                                expected_versions={SPAN_A: 0})
 
 
 async def test_chunk_tag_sync_re_derives_the_pairs_also_without_their_annotation(store, writes):
@@ -563,3 +586,133 @@ def test_chunk_tag_sync_request_is_bounded():
         ChunkTagSyncRequest(pairs=[])
     with pytest.raises(ValueError):
         sync_pairs(*[(uuid4(), TAG)] * 1001)
+
+
+# ── Provenance and edit versions (#460) ───────────────────────────────────
+
+@pytest.fixture
+def recording(store):
+    """The store of a collection that holds the provenance properties."""
+    store.spans.provenance = True
+    return store
+
+
+def stored(store, span_id=SPAN_A):
+    return store.spans.stored[COLLECTION][span_id]
+
+
+async def test_a_manual_span_records_its_creator_and_time(recording):
+    await service.create_span(recording, SHARED, post_span())
+
+    recorded = recording.spans.recorded[UUID(int=2)]
+    assert (recorded["origin"], recorded["createdBy"], recorded["editVersion"]) == ("manual", SHARED.id, 0)
+    assert recorded["createdAt"].tzinfo is not None
+    assert "aiRunId" not in recorded
+
+
+async def test_spans_are_written_without_provenance_until_the_collection_holds_it(store, writes):
+    await service.create_span(store, OWNER, post_span())
+    # Without the properties no version is checked: a stale one changes nothing.
+    await service.update_span(store, OWNER, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos), expected_version=7)
+
+    assert store.spans.recorded == {}
+    assert stored(store).type == SpanType.pos
+
+
+async def test_approving_records_the_review_and_the_edit_and_keeps_the_origin(recording):
+    result = await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos),
+                                       expected_version=0)
+
+    recorded = recording.spans.recorded[SPAN_A]
+    assert result.editVersion == 1
+    assert (recorded["reviewedBy"], recorded["lastEditedBy"]) == (SHARED.id, SHARED.id)
+    assert recorded["reviewedAt"] == recorded["lastEditedAt"]
+    # Origin, run, reason and confidence are never rewritten.
+    assert not {"origin", "aiRunId", "createdBy", "createdAt"} & set(recorded)
+
+
+async def test_a_retag_is_an_edit_but_no_review(recording):
+    await service.update_span(recording, OWNER, COLLECTION, SPAN_A, PatchSpan(tagId=str(OTHER_TAG)), expected_version=0)
+
+    assert set(recording.spans.recorded[SPAN_A]) == {"editVersion", "lastEditedBy", "lastEditedAt"}
+
+
+async def test_a_write_based_on_an_outdated_version_is_refused_with_the_current_span(recording, writes):
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(tagId=str(OTHER_TAG)), expected_version=0)
+    writes.clear()
+
+    with pytest.raises(EditConflictError) as refused:
+        await service.update_span(recording, OWNER, COLLECTION, SPAN_A, PatchSpan(type=SpanType.neg),
+                                  expected_version=0)
+
+    assert writes == []
+    assert (refused.value.current["editVersion"], refused.value.current["tagId"]) == (1, str(OTHER_TAG))
+    assert stored(recording).type == SpanType.auto
+
+
+async def test_a_write_already_applied_counts_as_done_without_writing(recording, writes):
+    await service.update_span(recording, OWNER, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos), expected_version=0)
+    writes.clear()
+
+    # A retry of the same approval whose answer was lost: no conflict, nothing written.
+    result = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos),
+                                       expected_version=0)
+
+    assert (result.outcome, result.editVersion) == ("complete", 1)
+    assert [w for w in writes if w[0] == "update_span"] == []
+
+
+async def test_a_delete_based_on_an_outdated_version_is_refused(recording, writes):
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos), expected_version=0)
+    writes.clear()
+
+    with pytest.raises(EditConflictError):
+        await service.delete_span(recording, OWNER, COLLECTION, SPAN_A, expected_version=0)
+    assert writes == []
+
+    await service.delete_span(recording, OWNER, COLLECTION, SPAN_A, expected_version=1)
+    assert writes[0] == ("delete_span", SPAN_A)
+
+
+async def test_a_review_refuses_only_the_annotations_changed_since_their_version(recording):
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_B, PatchSpan(type=SpanType.neg), expected_version=0)
+
+    result = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.approve))
+
+    assert result.succeeded == [str(SPAN_A)]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(SPAN_B), "edit_conflict")]
+    assert result.versions == {SPAN_A: 1, SPAN_B: 1}
+    assert (stored(recording).type, stored(recording, SPAN_B).type) == (SpanType.pos, SpanType.neg)
+
+
+async def test_a_review_delete_refuses_the_annotations_changed_since_their_version(recording, writes):
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_B, PatchSpan(type=SpanType.neg), expected_version=0)
+    writes.clear()
+
+    result = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.delete))
+
+    assert result.succeeded == [str(SPAN_A)]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(SPAN_B), "edit_conflict")]
+    assert result.versions == {SPAN_B: 1}
+    assert [w for w in writes if w[0] == "delete_span"] == [("delete_span", SPAN_A)]
+
+
+async def test_a_bulk_update_returns_the_current_state_of_conflicting_spans(recording):
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_B, PatchSpan(tagId=str(OTHER_TAG)), expected_version=0)
+
+    result = await service.bulk_update_spans(recording, OWNER, COLLECTION, [str(SPAN_A), str(SPAN_B)],
+                                             PatchSpan(type=SpanType.pos),
+                                             {str(SPAN_A): 0, str(SPAN_B): 0})
+
+    assert [s.id for s in result.spans] == [str(SPAN_A)]
+    assert [(c.id, c.tagId, c.editVersion) for c in result.conflicts] == [(str(SPAN_B), str(OTHER_TAG), 1)]
+    assert [f.step for f in result.failed] == ["edit_conflict"]
+
+
+async def test_scoped_cleanups_delete_without_a_version_check(recording, writes):
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(tagId=str(TAG)), expected_version=0)
+    writes.clear()
+
+    result = await service.delete_suggestions_in_document(recording, OWNER, COLLECTION, DOCUMENT, [TAG])
+
+    assert set(result.succeeded) == {str(SPAN_A), str(SPAN_B)}

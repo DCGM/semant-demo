@@ -62,6 +62,7 @@ class FakeSpans:
     def __init__(self):
         self.rows: list[AnnotationRow] = []
         self.queries = 0
+        self.provenance = False
 
     def _match(self, query, document_ids):
         return [r for r in self.rows
@@ -92,7 +93,7 @@ class FakeSpans:
 
     async def query_ids(self, cid, query, *, document_ids=None, limit):
         self.queries += 1
-        return sorted((r.id for r in self._match(query, document_ids)), key=str)[:limit]
+        return {r.id: r.editVersion or 0 for r in sorted(self._match(query, document_ids), key=lambda r: str(r.id))[:limit]}
 
 
 def row(document, start, text="slovo", *, tag=TAG, type=SpanType.pos, current=True, rid=None):
@@ -308,6 +309,27 @@ async def test_resolving_applies_the_year_and_text_filters(store):
                                                     AnnotationIdsRequest(q="prah", year_from=1900))
 
     assert resolved.ids == [store.spans.rows[0].id]
+
+
+async def test_resolved_ids_come_with_the_versions_a_review_expects(store):
+    edited, untouched = row(DOC_A, 0), row(DOC_A, 5)
+    store.spans.rows = [edited.model_copy(update={"editVersion": 3}), untouched]
+
+    resolved = await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest())
+
+    assert resolved.versions == {edited.id: 3, untouched.id: 0}
+
+
+async def test_rows_report_their_version_and_provenance_or_an_unknown_origin(store):
+    run, user = uuid4(), uuid4()
+    store.spans.rows = [row(DOC_A, 0).model_copy(update={"editVersion": 2, "origin": "ai", "aiRunId": run,
+                                                          "createdBy": user}), row(DOC_A, 5)]
+
+    page = await service.query_annotations(store, OWNER, COLLECTION, limit=10)
+
+    ai, migrated = page.rows
+    assert (ai.editVersion, ai.provenance.origin, ai.provenance.aiRunId, ai.provenance.createdBy) == (2, "ai", run, user)
+    assert (migrated.editVersion, migrated.provenance.origin, migrated.provenance.createdBy) == (0, "unknown", None)
 
 
 async def test_within_tells_which_selected_annotations_the_filters_show(store):

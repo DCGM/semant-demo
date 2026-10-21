@@ -30,12 +30,15 @@ import {
 
 /**
  * The outcome of a review action per annotation (best effort, ADR 0002; nothing is
- * rolled back). ``succeeded``: annotations changed or deleted. ``failed``:
- * ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have
- * been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted
- * meanwhile) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved,
- * tag-filtered search does not reflect it; ``annotations/chunk-tags/sync`` with that pair
- * repairs it, also after a deletion).
+ * rolled back). ``succeeded``: annotations changed or deleted, and those already as the
+ * action asks. ``failed``: ``update_span`` / ``delete_span`` (``uncertain`` when the
+ * write timed out and may have been applied), ``find_annotation`` (no such annotation in
+ * the collection, e.g. deleted meanwhile), ``edit_conflict`` (written by someone else
+ * since the expected version; not changed) and ``update_chunk_tags`` (item
+ * ``chunk_id:tag_id``: the change was saved, tag-filtered search does not reflect it;
+ * ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion).
+ * ``versions``: the ``editVersion`` of each changed annotation after the action, and the
+ * current one of each conflicting annotation.
  * @export
  * @interface AnnotationReviewResult
  */
@@ -64,6 +67,12 @@ export interface AnnotationReviewResult {
      * @memberof AnnotationReviewResult
      */
     unattempted?: Array<string>;
+    /**
+     * 
+     * @type {{ [key: string]: number; }}
+     * @memberof AnnotationReviewResult
+     */
+    versions?: { [key: string]: number; };
 }
 
 
@@ -90,6 +99,7 @@ export function AnnotationReviewResultFromJSONTyped(json: any, ignoreDiscriminat
         'succeeded': json['succeeded'] == null ? undefined : json['succeeded'],
         'failed': json['failed'] == null ? undefined : ((json['failed'] as Array<any>).map(StepFailureFromJSON)),
         'unattempted': json['unattempted'] == null ? undefined : json['unattempted'],
+        'versions': json['versions'] == null ? undefined : json['versions'],
     };
 }
 
@@ -108,6 +118,7 @@ export function AnnotationReviewResultToJSONTyped(value?: AnnotationReviewResult
         'succeeded': value['succeeded'],
         'failed': value['failed'] == null ? undefined : ((value['failed'] as Array<any>).map(StepFailureToJSON)),
         'unattempted': value['unattempted'],
+        'versions': value['versions'],
     };
 }
 

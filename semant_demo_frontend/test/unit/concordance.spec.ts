@@ -12,6 +12,8 @@ import { endSession } from 'src/shared/api'
 // counted, and review actions sent in parts with per-item results.
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+/** Annotations at version 0, as selected before anyone changed them. */
+const at0 = (list: string[]) => list.map(id => [id, 0] as const)
 
 const row = (id: string, text = id) => ({
   id,
@@ -118,12 +120,12 @@ describe('concordance store', () => {
   it('keeps filters, page and selection when the same collection is opened again', async () => {
     const store = await opened(['a', 'b'], 51)
     const selection = useAnnotationSelectionStore()
-    selection.toggle('a')
+    selection.toggle('a', 0)
     const paging = store.goTo(50)
     await flush()
     rowCalls()[1].answer(page(['c'], 51, 50))
     await paging
-    selection.toggle('c')
+    selection.toggle('c', 0)
 
     const reopening = store.open('col-1')
     await flush()
@@ -141,7 +143,7 @@ describe('concordance store', () => {
   it('starts afresh for another collection and ignores the previous one\'s late answer', async () => {
     const store = await opened()
     const selection = useAnnotationSelectionStore()
-    selection.toggle('a')
+    selection.toggle('a', 0)
     const stale = store.load()
     await flush()
 
@@ -255,7 +257,7 @@ describe('concordance store', () => {
   it('refuses "all matches" beyond the limit without changing the selection', async () => {
     const store = await opened(['a'])
     const selection = useAnnotationSelectionStore()
-    selection.toggle('a')
+    selection.toggle('a', 0)
     const tooMany = store.selectAllMatches()
     await flush()
     idCalls()[0].answer({ detail: '6000 annotations match; at most 5000 can be selected at once. Narrow the filters.' }, 400)
@@ -285,10 +287,20 @@ describe('concordance store', () => {
     expect(store.resolving).toBe(false)
   })
 
+  it('selects all matches at the versions the server resolved', async () => {
+    const store = await opened(['a', 'b'], 3)
+    const selection = useAnnotationSelectionStore()
+    const selecting = store.selectAllMatches()
+    await flush()
+    idCalls()[0].answer({ ids: ['a', 'b', 'c'], versions: { a: 0, b: 2, c: 1 } })
+    expect(await selecting).toBeNull()
+    expect(['a', 'b', 'c'].map(i => selection.versionOf(i))).toEqual([0, 2, 1])
+  })
+
   it('finishes "select all" while the hidden members are asked about, and knows them all after', async () => {
     const store = await opened(['a', 'b'], 3)
     const selection = useAnnotationSelectionStore()
-    selection.add(['old'])
+    selection.add(at0(['old']))
     const asking = store.loadShown()
     const selecting = store.selectAllMatches()
     await flush()
@@ -313,7 +325,7 @@ describe('concordance store', () => {
 
   it('drops the hidden-selection answer of a collection left meanwhile', async () => {
     const store = await opened(['a'])
-    useAnnotationSelectionStore().toggle('a')
+    useAnnotationSelectionStore().toggle('a', 0)
     const asking = store.loadShown()
     await flush()
     const other = store.open('col-2')
@@ -349,7 +361,7 @@ describe('annotation review store', () => {
 
   it('sends the resolved targets in parts and reports every item', async () => {
     const review = useAnnotationReviewStore()
-    const running = review.review('col-1', 'reject' as never, ids(250))
+    const running = review.review('col-1', 'reject' as never, at0(ids(250)))
     await flush()
     expect(reviewCalls()[0].url.pathname).toBe('/api/user_collections/col-1/annotations/review')
     expect(reviewCalls()[0].body).toMatchObject({ action: 'reject', annotation_ids: ids(200), tag_id: null })
@@ -388,13 +400,45 @@ describe('annotation review store', () => {
       .toEqual([249, 0, ['id-199'], []])
   })
 
+  it('sends each annotation with its version and reports the ones changed meanwhile apart', async () => {
+    const review = useAnnotationReviewStore()
+    const selection = useAnnotationSelectionStore()
+    selection.add([['a', 2], ['b', 0], ['c', 5]])
+    const running = review.review('col-1', 'approve' as never, [...selection.ids].map(i => [i, selection.versionOf(i)] as const))
+    await flush()
+    expect(reviewCalls()[0].body).toMatchObject({ annotation_ids: ['a', 'b', 'c'], expected_versions: { a: 2, b: 0, c: 5 } })
+    reviewCalls()[0].answer({
+      outcome: 'partial',
+      succeeded: ['a'],
+      failed: [
+        { item_id: 'b', step: 'edit_conflict', message: 'changed' },
+        { item_id: 'c', step: 'update_span', message: 'boom', uncertain: true }
+      ],
+      versions: { a: 3, b: 4 }
+    })
+    const report = await running
+
+    expect(report?.conflicts).toEqual([{ id: 'b', version: 4 }])
+    expect(report?.failed.map(f => [f.id, f.version])).toEqual([['c', 5]])
+    // This user's saved write moves the selection on; the changed one keeps its old version.
+    expect(['a', 'b', 'c'].map(i => selection.versionOf(i))).toEqual([3, 0, 5])
+
+    // A retry sends the uncertain item at the version it expected, never the changed one.
+    const retrying = review.retry('col-1')
+    await flush()
+    expect(reviewCalls()[1].body).toMatchObject({ annotation_ids: ['c'], expected_versions: { c: 5 } })
+    reviewCalls()[1].answer({ outcome: 'complete', succeeded: ['c'], failed: [], versions: { c: 6 } })
+    const retried = await retrying
+    expect([retried?.saved, retried?.conflicts.length]).toEqual([['a', 'c'], 1])
+  })
+
   it('stops sending parts once the selection changes and keeps what was sent', async () => {
     const review = useAnnotationReviewStore()
     const selection = useAnnotationSelectionStore()
-    selection.add(ids(450))
-    const running = review.review('col-1', 'delete' as never, [...selection.ids])
+    selection.add(at0(ids(450)))
+    const running = review.review('col-1', 'delete' as never, at0([...selection.ids]))
     await flush()
-    selection.toggle('id-449', false)
+    selection.toggle('id-449', 0, false)
     reviewCalls()[0].answer({ outcome: 'complete', succeeded: ids(200), failed: [] })
     const report = await running
 
@@ -410,7 +454,7 @@ describe('annotation review store', () => {
 
   it('repairs the search pairs of deleted annotations, which cannot be reviewed again', async () => {
     const review = useAnnotationReviewStore()
-    const running = review.review('col-1', 'delete' as never, ['a', 'b'])
+    const running = review.review('col-1', 'delete' as never, at0(['a', 'b']))
     await flush()
     reviewCalls()[0].answer({
       outcome: 'partial',
@@ -440,7 +484,7 @@ describe('annotation review store', () => {
 
   it('stops at a refused part and keeps the rest as not sent', async () => {
     const review = useAnnotationReviewStore()
-    const running = review.review('col-1', 'delete' as never, ids(450))
+    const running = review.review('col-1', 'delete' as never, at0(ids(450)))
     await flush()
     reviewCalls()[0].answer({ outcome: 'complete', succeeded: ids(200), failed: [] })
     await flush()
@@ -454,7 +498,7 @@ describe('annotation review store', () => {
 
   it('sends nothing more after the collection was left or the session ended', async () => {
     const review = useAnnotationReviewStore()
-    const running = review.review('col-1', 'approve' as never, ids(300))
+    const running = review.review('col-1', 'approve' as never, at0(ids(300)))
     await flush()
     useAnnotationSelectionStore().enter('col-2')
     reviewCalls()[0].answer({ outcome: 'complete', succeeded: ids(200), failed: [] })
@@ -463,7 +507,7 @@ describe('annotation review store', () => {
     expect(review.report).toBeNull()
 
     useAnnotationSelectionStore().enter('col-1')
-    const again = review.review('col-1', 'approve' as never, ids(1))
+    const again = review.review('col-1', 'approve' as never, at0(ids(1)))
     await flush()
     endSession()
     reviewCalls()[1].answer({ outcome: 'complete', succeeded: ['id-0'], failed: [] })
@@ -477,11 +521,11 @@ describe('annotation selection store', () => {
   it('tells a captured membership that any change of the members ended it', () => {
     const selection = useAnnotationSelectionStore()
     selection.enter('col-1')
-    selection.add(['a'])
+    selection.add(at0(['a']))
     const changes: [string, () => void][] = [
-      ['add', () => selection.add(['b'])],
+      ['add', () => selection.add(at0(['b']))],
       ['remove', () => selection.remove(['a'])],
-      ['toggle', () => selection.toggle('a')],
+      ['toggle', () => selection.toggle('a', 0)],
       ['retain', () => selection.retain(new Set())],
       ['clear selection', () => selection.clearSelection()],
       ['another collection', () => selection.enter('col-2')]
@@ -496,12 +540,29 @@ describe('annotation selection store', () => {
     }
   })
 
+  it('keeps the version each member was selected at until this user saves it', () => {
+    const selection = useAnnotationSelectionStore()
+    selection.enter('col-1')
+    selection.add([['a', 1], ['b', 2]])
+    // Selecting again (a page, all matches) keeps the version it was first selected at.
+    selection.add([['a', 7], ['c', 3]])
+    selection.noteVersions({ b: 4, gone: 9 })
+    expect(['a', 'b', 'c', 'gone'].map(i => selection.versionOf(i))).toEqual([1, 4, 3, 0])
+
+    const unchanged = selection.captureMembership()
+    selection.noteVersions({ a: 2 })
+    expect(unchanged()).toBe(true) // a saved version is no change of the members
+
+    selection.replace([['b', 8]])
+    expect([[...selection.ids], selection.versionOf('b'), selection.versionOf('a')]).toEqual([['b'], 8, 0])
+  })
+
   it('holds explicit ids of one collection up to its limit', () => {
     const selection = useAnnotationSelectionStore()
     selection.enter('col-1')
-    expect(selection.add(['a', 'b'])).toBe(true)
-    expect(selection.add(Array.from({ length: MAX_SELECTION - 1 }, (_, i) => `x${i}`))).toBe(false)
-    expect(selection.toggle('b')).toBe(true)
+    expect(selection.add(at0(['a', 'b']))).toBe(true)
+    expect(selection.add(at0(Array.from({ length: MAX_SELECTION - 1 }, (_, i) => `x${i}`)))).toBe(false)
+    expect(selection.toggle('b', 0)).toBe(true)
     expect([...selection.ids]).toEqual(['a'])
 
     selection.enter('col-1')
