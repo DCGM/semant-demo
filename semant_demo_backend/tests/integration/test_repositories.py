@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from weaviate.classes.data import DataObject
-from weaviate.classes.query import QueryReference
+from weaviate.classes.query import Filter, QueryReference
 
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.user_collections.schemas import PatchCollection
@@ -374,6 +374,133 @@ async def test_collection_delete_unlinks_more_than_a_page_of_chunks(
     assert await collections.document_in_collection(doc(corpus, "gazette"), col(corpus, "outsider_notes"))
 
 
+async def test_tag_deduplication_finds_a_match_beyond_2000_limit(
+        tags, corpus, seeded_store, collection_names):
+    chronicles = col(corpus, "chronicles")
+    paged_name = "Paged dedup tag"
+
+    extra = [
+        (
+            uuid4(),
+            PostTag(
+                name=paged_name if i < 110 else f"Dedup tag {i}",
+                shorthand=f"D{i}",
+                color="red",
+                pictogram="label",
+                definition=f"Definition {i}",
+                examples=[f"Example {i}"],
+            ),
+        )
+        for i in range(2001)
+    ]
+
+    await insert(seeded_store, collection_names.tag_collection_name, [
+        DataObject(
+            uuid=tag_id,
+            properties={
+                "tag_name": tag.name,
+                "tag_shorthand": tag.shorthand,
+                "tag_color": tag.color,
+                "tag_pictogram": tag.pictogram,
+                "tag_definition": tag.definition,
+                "tag_examples": tag.examples,
+            },
+            references={"userCollection": str(chronicles)},
+        )
+        for tag_id, tag in extra
+    ])
+
+    tag_collection = seeded_store.collections.get(collection_names.tag_collection_name)
+
+    # The exact tag is outside the first 2000 tags of the collection.
+    first_2000 = await tag_collection.query.fetch_objects(
+        filters=Filter.by_ref("userCollection").by_id().equal(chronicles),
+        limit=2000,
+        return_properties=[],
+    )
+    first_2000_ids = {obj.uuid for obj in first_2000.objects}
+
+    target_id, target = next(
+        (tag_id, tag)
+        for tag_id, tag in extra
+        if tag_id not in first_2000_ids
+    )
+
+    found = await tags.find_same(chronicles, target)
+
+    assert found is not None
+    assert found.id == target_id
+
+    # Exercise fetch_all() pagination: 110 candidates have the same name,
+    # while its page size is 100. Pick the exact match outside page one.
+    same_name_filter = (
+        Filter.by_ref("userCollection").by_id().equal(chronicles)
+        & Filter.by_property("tag_name").equal(paged_name)
+    )
+    first_page = await tag_collection.query.fetch_objects(
+        filters=same_name_filter,
+        limit=100,
+        return_properties=[],
+    )
+    assert len(first_page.objects) == 100
+    first_page_ids = {obj.uuid for obj in first_page.objects}
+
+    paged_target_id, paged_target = next(
+        (tag_id, tag)
+        for tag_id, tag in extra
+        if tag.name == paged_name and tag_id not in first_page_ids
+    )
+
+    paged_found = await tags.find_same(chronicles, paged_target)
+
+    assert paged_found is not None
+    assert paged_found.id == paged_target_id
+
+    assert await tags.find_same(
+        chronicles,
+        paged_target.model_copy(update={"color": "blue"}),
+    ) is None
+
+
+async def test_tag_deduplication_finds_punctuation_only_name(
+        tags, corpus, seeded_store, collection_names):
+    chronicles = col(corpus, "chronicles")
+    tag_id = uuid4()
+
+    tag = PostTag(
+        name="§",
+        shorthand="P",
+        color="red",
+        pictogram="label",
+        definition="Section",
+        examples=["§ 5"],
+    )
+
+    await insert(
+        seeded_store,
+        collection_names.tag_collection_name,
+        [
+            DataObject(
+                uuid=tag_id,
+                properties={
+                    "tag_name": tag.name,
+                    "tag_shorthand": tag.shorthand,
+                    "tag_color": tag.color,
+                    "tag_pictogram": tag.pictogram,
+                    "tag_definition": tag.definition,
+                    "tag_examples": tag.examples,
+                },
+                references={"userCollection": str(chronicles)},
+            )
+        ],
+    )
+
+    found = await tags.find_same(chronicles, tag)
+
+    assert found is not None
+    assert found.id == tag_id
+
+    
 #########################
 # Repeated attach/remove #
 #########################

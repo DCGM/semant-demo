@@ -3,6 +3,7 @@ from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference
+from weaviate.exceptions import WeaviateQueryError
 
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
@@ -48,17 +49,31 @@ class TagRepository:
         """
         A tag of the collection with exactly the same fields (examples in any order), or
         None. Raises ``NotFoundError`` if the collection does not exist.
-
-        Reads at most 2000 tags of the collection (#218).
         """
         collections = self.client.collections.get(self.collectionNames.user_collection_name)
         if await collections.query.fetch_object_by_id(collection_id, return_properties=[]) is None:
             raise NotFoundError("Collection not found")
-        existing = await self._tags().query.fetch_objects(
-            filters=Filter.by_ref("userCollection").by_id().equal(collection_id),
-            limit=2000,
+
+        collection_filter = Filter.by_ref("userCollection").by_id().equal(collection_id)
+        filters = (
+            collection_filter
+            & Filter.by_property("tag_name").equal(tag.name)
         )
-        for obj in existing.objects:
+
+        try:
+            existing = await fetch_all(
+                self._tags(),
+                filters=filters,
+                return_properties=list(_PROPERTIES.values()),
+            )
+        except WeaviateQueryError:
+            existing = await fetch_all(
+                self._tags(),
+                filters=collection_filter,
+                return_properties=list(_PROPERTIES.values()),
+            )
+
+        for obj in existing:
             found = to_tag(obj)
             if (found.name, found.shorthand, found.color, found.pictogram, found.definition) == (
                     tag.name, tag.shorthand, tag.color, tag.pictogram, tag.definition
