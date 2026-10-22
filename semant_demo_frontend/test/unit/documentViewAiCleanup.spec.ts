@@ -117,6 +117,7 @@ describe('DocumentViewLayout sidebar panels', () => {
         stubs: {
           RouterView: true,
           QBtn: true,
+          BackLink: true,
           DocumentTagsPanel: true,
           AiAssistPanel: true,
           DocumentSummaryPanel: true,

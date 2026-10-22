@@ -2,16 +2,7 @@
   <q-page class="q-pt-sm">
     <div class="collection-topbar q-px-md q-pb-xs">
       <div class="collection-header">
-        <!-- A text link on its own line, so it is not mistaken for the drawer's collapse button
-             right next to it (#479). A fixed parent route, not browser history (#253). -->
-        <router-link
-          :to="{ name: 'collections' }"
-          class="collection-back-link"
-          aria-label="Back to collections"
-        >
-          <q-icon name="arrow_back" size="14px" />
-          <span>Collections</span>
-        </router-link>
+        <BackLink :to="{ name: 'collections' }" label="Collections" aria-label="Back to collections" />
         <div class="collection-title-row">
           <button
             v-if="activeCollectionColor"
@@ -157,6 +148,7 @@ import { useRoute } from 'vue-router'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
 import { collectionRights } from './permissions'
+import BackLink from 'src/shared/ui/BackLink.vue'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
@@ -285,22 +277,6 @@ onMounted(async () => {
   padding: 2px 0;
   flex: 0 1 auto;
   min-width: 0;
-}
-
-.collection-back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 2px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.6);
-  text-decoration: none;
-}
-
-.collection-back-link:hover {
-  color: var(--q-primary);
-  text-decoration: underline;
 }
 
 .collection-title-row {
