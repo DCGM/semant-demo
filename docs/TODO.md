@@ -37,7 +37,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 
 ## Product work (when scoped)
 
-- [#43](https://github.com/DCGM/semant-demo/issues/43) — optional durable bulk tagging jobs; the `Tagging Jobs` tab is a placeholder.
+- [#43](https://github.com/DCGM/semant-demo/issues/43) — optional durable bulk tagging jobs; the placeholder `Tagging Jobs` tab was removed (#479).
 - Page-specific sidebar tools and chat: [#243](https://github.com/DCGM/semant-demo/issues/243) and its linked issues.
 
 Create a focused issue before starting other improvements (SQL scalability beyond SQLite,

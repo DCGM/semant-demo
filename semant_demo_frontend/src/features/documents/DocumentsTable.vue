@@ -18,40 +18,7 @@
   >
     <template #top>
       <div class="text-h5 text-weight-medium">Documents ({{ documents.length }} {{ documents.length === 1 ? 'item' : 'items' }})</div>
-      <q-space />
-
-      <q-select
-        v-model="visibleColumns"
-        multiple
-        outlined
-        options-dense
-        dense
-        :display-value="$q.lang.table.columns"
-        :options="columnOptions"
-        option-value="name"
-        emit-value
-        style="min-width: 150px"
-        transition-hide="scale"
-        transition-show="scale"
-        color="primary"
-        class="text-grey-2"
-      >
-        <template #option="{ itemProps, opt, selected, toggleOption }">
-          <q-item v-bind="itemProps">
-            <q-item-section>
-              <q-item-label>{{ opt.label }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-toggle
-                :model-value="selected"
-                @update:model-value="toggleOption(opt)"
-              />
-            </q-item-section>
-          </q-item>
-        </template>
-      </q-select>
       <div style="width: 100%" class="row items-center q-my-sm">
-        <RefreshButton @click="handleRefresh" />
         <BaseButton
           v-if="rights.editMembership"
           icon="library_add"
@@ -60,7 +27,7 @@
           @click="handleBrowseLibrary"
         />
         <q-input
-          class="q-ml-md"
+          :class="{ 'q-ml-md': rights.editMembership }"
           v-model="filter"
           placeholder="Search"
           dense
@@ -72,6 +39,37 @@
             <q-icon name="search" />
           </template>
         </q-input>
+        <q-space />
+        <q-select
+          v-model="visibleColumns"
+          multiple
+          outlined
+          options-dense
+          dense
+          :display-value="$q.lang.table.columns"
+          :options="columnOptions"
+          option-value="name"
+          emit-value
+          style="min-width: 150px"
+          transition-hide="scale"
+          transition-show="scale"
+          color="primary"
+          class="text-grey-2"
+        >
+          <template #option="{ itemProps, opt, selected, toggleOption }">
+            <q-item v-bind="itemProps">
+              <q-item-section>
+                <q-item-label>{{ opt.label }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <q-toggle
+                  :model-value="selected"
+                  @update:model-value="toggleOption(opt)"
+                />
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
       </div>
     </template>
     <template #body-cell-actions="props">
@@ -176,7 +174,6 @@ import { Document, DocumentStats } from 'src/generated/api'
 import { useDocumentsStore } from './documentsStore'
 import useBrowseLibraryDialog from './useBrowseLibraryDialog'
 import { computed, onMounted, ref } from 'vue'
-import RefreshButton from 'src/shared/ui/RefreshButton.vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
@@ -233,11 +230,6 @@ const loadAllDocumentStats = async () => {
   } finally {
     statsLoading.value = false
   }
-}
-
-const handleRefresh = async () => {
-  await fetchDocumentsByCollection(collectionId.value)
-  void loadAllDocumentStats()
 }
 
 const handleBrowseLibrary = () => {
