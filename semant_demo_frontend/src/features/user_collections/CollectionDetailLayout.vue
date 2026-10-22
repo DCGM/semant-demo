@@ -70,6 +70,7 @@
                 dense
                 icon="close"
                 color="negative"
+                :disable="isSavingName"
                 @click="cancelNameEdit"
               />
             </template>
@@ -201,18 +202,13 @@ const isNameSaveDisabled = computed(() => isSavingName.value || !normalizedEdite
 const startNameEdit = () => {
   if (!activeCollectionLabel.value || !rights.value.editMetadata) return
   editableCollectionName.value = activeCollectionLabel.value
-  nameEdit++
   isEditingName.value = true
 }
 
-// Each opened editor gets a number, so a save that ends after the editor was cancelled
-// (or reopened) leaves it alone.
-let nameEdit = 0
-
+// A save already sent cannot be taken back, so the editor stays until it is answered.
 const cancelNameEdit = () => {
-  nameEdit++
+  if (isSavingName.value) return
   isEditingName.value = false
-  isSavingName.value = false
   editableCollectionName.value = activeCollectionLabel.value
 }
 
@@ -224,22 +220,23 @@ const submitNameEdit = async () => {
     isEditingName.value = false
     return
   }
-  const edit = nameEdit
   isSavingName.value = true
   try {
-    // A failed rename keeps the editor open with the typed name (the store reports the error).
-    if (!await updateCollection(collectionId.value, { name: updatedName })) return
-    if (edit === nameEdit) isEditingName.value = false
-    await fetchCollection(collectionId.value)
+    // The store keeps the saved collection; a failed rename keeps the editor open with the
+    // typed name (the store reports the error).
+    if (await updateCollection(collectionId.value, { name: updatedName })) isEditingName.value = false
   } finally {
-    if (edit === nameEdit) isSavingName.value = false
+    isSavingName.value = false
   }
 }
 
-// Escape cancels the name edit wherever the focus is, not only in the input, unless it
-// closes a dialog or menu (e.g. the color picker) instead.
+// Escape cancels the name edit also when the focus left the input, but not when it is
+// meant for another field (e.g. a search box) or closes a dialog or menu (the color picker).
+const OTHER_FIELD = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="combobox"]'
 const onEditKeydown = (e: KeyboardEvent) => {
-  if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen()) return
+  if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || overlayOpen()) return
+  const target = e.target
+  if (target instanceof Element && target.closest(OTHER_FIELD) && !target.closest('.collection-title-input')) return
   cancelNameEdit()
 }
 watch(isEditingName, (editing) => {
@@ -266,7 +263,6 @@ const submitColorEdit = async () => {
   isSavingColor.value = false
 
   closeColor()
-  await fetchCollection(collectionId.value)
 }
 
 onMounted(async () => {

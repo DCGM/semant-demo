@@ -22,7 +22,7 @@
         Collections ({{ collections.length }} {{ collections.length === 1 ? 'item' : 'items' }})
       </div>
       <q-space />
-      <ColumnPicker v-model="visibleColumns" :options="columnOptions" />
+      <ColumnPicker v-model="visibleColumns" :columns="columns" />
     </template>
     <template #body-cell-actions="tableProps">
       <q-td :props="tableProps">
@@ -213,7 +213,6 @@ const columns: QTableColumn<Collection>[] = [
 ]
 
 const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
-const columnOptions = columns.filter((column) => !column.required)
 
 // Sharing and deleting are the owner's (ADR 0007).
 const isOwned = (collection: Collection) => collectionRights(collection).share

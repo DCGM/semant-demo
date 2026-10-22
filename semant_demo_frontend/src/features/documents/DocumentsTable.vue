@@ -40,7 +40,7 @@
           </template>
         </q-input>
         <q-space />
-        <ColumnPicker v-model="visibleColumns" :options="columnOptions" />
+        <ColumnPicker v-model="visibleColumns" :columns="columns" />
       </div>
     </template>
     <template #body-cell-actions="props">
@@ -144,7 +144,7 @@ import { storeToRefs } from 'pinia'
 import { Document, DocumentStats } from 'src/generated/api'
 import { useDocumentsStore } from './documentsStore'
 import useBrowseLibraryDialog from './useBrowseLibraryDialog'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import { QTableColumn, useQuasar } from 'quasar'
@@ -182,10 +182,15 @@ const rights = computed(() =>
 
 onMounted(async () => {
   await fetchDocumentsByCollection(collectionId.value)
-  void loadAllDocumentStats()
 })
 
+// Every fetch replaces the list (on mount, after adding from the library, after removing),
+// so the stats are reloaded with it; only the latest load is kept.
+watch(documents, () => { void loadAllDocumentStats() })
+let statsLoad = 0
+
 const loadAllDocumentStats = async () => {
+  const load = ++statsLoad
   if (!documents.value.length) return
   statsLoading.value = true
   try {
@@ -194,13 +199,14 @@ const loadAllDocumentStats = async () => {
         documentsRepository.getStats(collectionId.value, doc.id).catch(() => null)
       )
     )
+    if (load !== statsLoad) return
     const map: Record<string, DocumentStats> = {}
     for (const stats of results) {
       if (stats) map[stats.documentId] = stats
     }
     documentStatsMap.value = map
   } finally {
-    statsLoading.value = false
+    if (load === statsLoad) statsLoading.value = false
   }
 }
 
@@ -353,7 +359,6 @@ const columns: QTableColumn<Document>[] = [
   }
 ]
 
-const columnOptions = columns.filter((col) => !col.required)
 </script>
 
 <style scoped>

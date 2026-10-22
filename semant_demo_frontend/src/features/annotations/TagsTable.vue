@@ -34,7 +34,7 @@
           </template>
         </q-input>
         <q-space />
-        <ColumnPicker v-model="visibleColumns" :options="columnOptions" />
+        <ColumnPicker v-model="visibleColumns" :columns="columns" />
       </div>
     </template>
 
@@ -310,7 +310,6 @@ const columns: QTableColumn<Tag>[] = [
   }
 ]
 
-const columnOptions = columns.filter((column) => !column.required)
 </script>
 
 <style scoped>
