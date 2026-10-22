@@ -30,7 +30,7 @@ The stack is split across several compose files that are started independently a
 | `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder`, `semant_demo_topicer` | Production app instance; own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
 | `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_test_topicer` | One container per test instance (CI/CD managed); each has its own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
 | `docker-compose.topicer.yml` | `topicer` | `semant_demo_topicer`, `semant_demo_database`, `semant_demo_embedder` | Production Topicer (`http://topicer:8089`; host loopback port 8089; GPU) |
-| `docker-compose.topicer-test.yml` | `topicer-test` | `semant_demo_test_topicer`, `semant_demo_test_database`, `semant_demo_embedder` | Topicer shared by **all** test instances (`http://topicer-test:8089`; host loopback port 8090; no GPU; project `semant-demo-test`) |
+| `docker-compose.topicer-test.yml` | `topicer-test` | `semant_demo_test_topicer`, `semant_demo_test_database`, `semant_demo_embedder` | Topicer shared by **all** test instances (`http://topicer-test:8089`; no host port, reach it from a container on `semant_demo_test_topicer`; no GPU; project `semant-demo-test`) |
 
 **`SQL_DB_PATH`** (set by `.github/workflows/ci-cd.yml`; the directory, its `tasks.db` file and the `feedback/` directory must exist, see [SQLite database directory](#sqlite-database-directory-406) and [In-app feedback storage](#in-app-feedback-storage)):
 - **Production:** `$SQL_DB_DIR` from the GitHub variables
@@ -191,7 +191,7 @@ Each Weaviate needs its own Topicer: optimized suggestions make Topicer search s
 on the Topicer's database network). Production's Topicer serves the production app; the test
 Topicer (`topicer-test`, #473) serves test-main and all PR previews (`TOPICER_URL` in
 `.env.test.example`). Both share the image `semant-demo-topicer:<tag>` and the `./data` mount.
-The test service has its own service name, project, host port and config directory: both
+The test service has its own service name, project and config directory, and publishes no host port: both
 Topicers are on `semant_demo_embedder`, where the service name is a DNS alias, so with one
 name for both an app could reach the other instance's Topicer, and with one project
 `test-topicer-up` would replace production's container.
