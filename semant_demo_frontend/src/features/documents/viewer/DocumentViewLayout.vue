@@ -19,6 +19,7 @@
         </q-btn>
 
         <div class="q-ml-sm" v-if="documentData">
+          <div class="text-caption text-grey-6">Document</div>
           <div class="text-h5 text-weight-medium">{{ documentData.title || 'Untitled document' }}</div>
           <div v-if="documentData.subtitle" class="text-body2 text-grey-7 q-mt-xs">
             {{ documentData.subtitle }}
@@ -29,6 +30,7 @@
         <q-space />
 
         <div class="collection-context text-right q-pr-sm">
+          <div class="text-caption text-grey-6">Collection</div>
           <div class="text-body1 text-weight-medium">{{ activeCollectionName }}</div>
         </div>
       </q-toolbar>

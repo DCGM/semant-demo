@@ -100,10 +100,9 @@ test('a stored session that is no longer valid restores as signed out', async ({
   await expectSignedOutMenu(page)
 })
 
-// #253: the document's back arrow goes to a fixed parent page and leaves the left navigation
-// drawer alone; the drawer's own collapse control is a separate, labelled toggle. The collection
-// page has no back arrow (#479): the drawer's Collections item is right next to it.
-test('the back arrow goes to the parent page without changing the navigation drawer', async ({ page }) => {
+// #253: back arrows go to a fixed parent page and leave the left navigation drawer alone;
+// the drawer's own collapse control is a separate, labelled toggle.
+test('back arrows go to the parent page without changing the navigation drawer', async ({ page }) => {
   const collection = fixture.collection('chronicles')
   const document = fixture.document('chronicle')
   await ensureLoggedIn(page, 'owner')
@@ -117,20 +116,21 @@ test('the back arrow goes to the parent page without changing the navigation dra
   await page.getByRole('link', { name: 'Back to collection documents' }).click()
   await expect(page).toHaveURL(new RegExp(`#/collections/${collection.id}/documents$`))
   await expect(drawer(page)).toHaveClass(/q-drawer--mini/)
-  await expect(page.getByRole('link', { name: /^Back to/ })).toHaveCount(0)
 
   await drawer(page).getByRole('button', { name: 'Expand navigation' }).click()
   await expect(drawer(page)).not.toHaveClass(/q-drawer--mini/)
+  await page.getByRole('link', { name: 'Back to collections' }).click()
+  await expect(page).toHaveURL(/#\/collections$/)
+  await expect(drawer(page)).toBeVisible()
+  await expect(drawer(page)).not.toHaveClass(/q-drawer--mini/)
 
   // Top-level pages have no back arrow.
-  await drawerItem(page, 'Collections').click()
-  await expect(page).toHaveURL(/#\/collections$/)
   await expect(page.getByRole('link', { name: /^Back to/ })).toHaveCount(0)
   await drawerItem(page, 'Document search').click()
   await expect(page.getByRole('link', { name: /^Back to/ })).toHaveCount(0)
 })
 
-test('on a phone, the back arrow navigates and leaves the overlay navigation closed', async ({ page }) => {
+test('on a phone, back arrows navigate and leave the overlay navigation closed', async ({ page }) => {
   const collection = fixture.collection('chronicles')
   await ensureLoggedIn(page, 'owner')
   await useViewport(page, 'phone')
@@ -142,6 +142,8 @@ test('on a phone, the back arrow navigates and leaves the overlay navigation clo
 
   await page.getByRole('link', { name: 'Back to collection documents' }).click()
   await expect(page).toHaveURL(new RegExp(`#/collections/${collection.id}/documents$`))
+  await page.getByRole('link', { name: 'Back to collections' }).click()
+  await expect(page).toHaveURL(/#\/collections$/)
   await expect(drawer(page)).toBeHidden()
 
   await page.getByRole('button', { name: 'Show navigation' }).click()
