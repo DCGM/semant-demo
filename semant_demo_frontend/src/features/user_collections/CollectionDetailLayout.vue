@@ -2,6 +2,16 @@
   <q-page class="q-pt-sm">
     <div class="collection-topbar q-px-md q-pb-xs">
       <div class="collection-header">
+        <!-- A text link on its own line, so it is not mistaken for the drawer's collapse button
+             right next to it (#479). A fixed parent route, not browser history (#253). -->
+        <router-link
+          :to="{ name: 'collections' }"
+          class="collection-back-link"
+          aria-label="Back to collections"
+        >
+          <q-icon name="arrow_back" size="14px" />
+          <span>Collections</span>
+        </router-link>
         <div class="collection-title-row">
           <button
             v-if="activeCollectionColor"
@@ -51,7 +61,6 @@
             class="collection-title-input"
             :disable="isSavingName"
             @keyup.enter="submitNameEdit"
-            @keyup.esc="cancelNameEdit"
           >
             <template #append>
               <q-btn
@@ -143,7 +152,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
@@ -192,11 +201,8 @@ const rights = computed(() =>
 
 const normalizedEditedName = computed(() => editableCollectionName.value.trim())
 
-const isNameSaveDisabled = computed(() =>
-  isSavingName.value ||
-  !normalizedEditedName.value ||
-  normalizedEditedName.value === activeCollectionLabel.value
-)
+// An unchanged name may be confirmed too; it just closes the editor.
+const isNameSaveDisabled = computed(() => isSavingName.value || !normalizedEditedName.value)
 
 const startNameEdit = () => {
   if (!activeCollectionLabel.value || !rights.value.editMetadata) return
@@ -213,6 +219,10 @@ const submitNameEdit = async () => {
   if (!collectionId.value || isNameSaveDisabled.value) return
 
   const updatedName = normalizedEditedName.value
+  if (updatedName === activeCollectionLabel.value) {
+    isEditingName.value = false
+    return
+  }
   isSavingName.value = true
   await updateCollection(collectionId.value, { name: updatedName })
   await fetchCollection(collectionId.value)
@@ -220,6 +230,16 @@ const submitNameEdit = async () => {
 
   isEditingName.value = false
 }
+
+// Escape cancels the name edit wherever the focus is, not only in the input.
+const onEditKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && !isSavingName.value) cancelNameEdit()
+}
+watch(isEditingName, (editing) => {
+  if (editing) window.addEventListener('keydown', onEditKeydown)
+  else window.removeEventListener('keydown', onEditKeydown)
+})
+onBeforeUnmount(() => window.removeEventListener('keydown', onEditKeydown))
 
 const openCollectionColorPicker = () => {
   if (!activeCollectionColor.value || !rights.value.editMetadata) return
@@ -265,6 +285,22 @@ onMounted(async () => {
   padding: 2px 0;
   flex: 0 1 auto;
   min-width: 0;
+}
+
+.collection-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.6);
+  text-decoration: none;
+}
+
+.collection-back-link:hover {
+  color: var(--q-primary);
+  text-decoration: underline;
 }
 
 .collection-title-row {
