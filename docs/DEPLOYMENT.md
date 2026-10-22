@@ -2,8 +2,10 @@
 
 This document is the backend configuration reference and describes a manual standalone setup.
 The Docker Compose stacks, CI/CD, previews, Topicer deployment and server setup are documented in
-[deploy/README.md](../deploy/README.md). For local development (the seeded local application
-started with `make dev-up`, and the optional advanced snapshot workflow), see
+[deploy/README.md](../deploy/README.md). Its
+[runner installation layout](../deploy/README.md#runner-installation-layout) is the canonical
+reference for the self-hosted runners' on-server paths. For local development (the seeded local
+application started with `make dev-up`, and the optional advanced snapshot workflow), see
 [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Prerequisites
