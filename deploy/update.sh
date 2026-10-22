@@ -34,13 +34,13 @@ case "$CMD" in
     docker compose -p semant-demo -f ./docker-compose.topicer.yml down ;;
   topicer-build)
     docker compose -p semant-demo -f ./docker-compose.topicer.yml build --no-cache ;;
-  
+
   test-topicer-up)
-    docker compose -p semant-demo -f ./docker-compose.topicer-test.yml up -d ;;
+    docker compose -p semant-demo-test -f ./docker-compose.topicer-test.yml up -d ;;
   test-topicer-down)
-    docker compose -p semant-demo -f ./docker-compose.topicer-test.yml down ;;
+    docker compose -p semant-demo-test -f ./docker-compose.topicer-test.yml down ;;
   test-topicer-build)
-    docker compose -p semant-demo -f ./docker-compose.topicer-test.yml build --no-cache ;;
+    docker compose -p semant-demo-test -f ./docker-compose.topicer-test.yml build --no-cache ;;
   *)
     echo "Usage: $0 <command>"
     echo ""
@@ -49,6 +49,6 @@ case "$CMD" in
     echo "  test-database-up / test-database-down  test weaviate"
     echo "  embedder-up / embedder-down / embedder-pull  Qwen embedding service (vLLM)"
     echo "  topicer-up / topicer-down / topicer-build  topicer"
-    echo "  test-topicer-up / test-topicer-down / test-topicer-build  topicer test instance"
+    echo "  test-topicer-up / test-topicer-down / test-topicer-build  topicer of the test instances"
     exit 1 ;;
 esac
