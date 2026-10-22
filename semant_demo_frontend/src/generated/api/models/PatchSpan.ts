@@ -51,6 +51,12 @@ export interface PatchSpan {
      * @memberof PatchSpan
      */
     tagId?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PatchSpan
+     */
+    chunkId?: string | null;
 }
 
 
@@ -76,6 +82,7 @@ export function PatchSpanFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'end': json['end'] == null ? undefined : json['end'],
         'type': json['type'] == null ? undefined : SpanTypeFromJSON(json['type']),
         'tagId': json['tagId'] == null ? undefined : json['tagId'],
+        'chunkId': json['chunkId'] == null ? undefined : json['chunkId'],
     };
 }
 
@@ -94,6 +101,7 @@ export function PatchSpanToJSONTyped(value?: PatchSpan | null, ignoreDiscriminat
         'end': value['end'],
         'type': SpanTypeToJSON(value['type']),
         'tagId': value['tagId'],
+        'chunkId': value['chunkId'],
     };
 }
 

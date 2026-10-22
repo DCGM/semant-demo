@@ -95,6 +95,59 @@ test('a span someone else changed meanwhile is not deleted, and shows as it is n
   }
 })
 
+test('dragging a span\'s start into the previous chunk moves the same span there', async ({ page, request }) => {
+  const brno = fixture.span('brno_manual') // "Brně" on chronicle_2
+  const collectionId = fixture.collection('chronicles').id
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const chunk1Length = fixture.chunk('chronicle_1').text.length
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  try {
+    await annotation(page, 'brno_manual').click()
+    await expect(popover(page).getByRole('button', { name: 'Change tag' })).toBeVisible()
+
+    // Drag the start handle onto "hostinci" in chronicle_1 (#436).
+    const handle = await page.locator('.selection-handle.handle-start').boundingBox()
+    const target = await page.evaluate(({ chunkId, offset }) => {
+      const segments = document.querySelectorAll<HTMLElement>(`.chunk-annotator[data-chunk-id="${chunkId}"] .text-segment`)
+      for (const segment of Array.from(segments)) {
+        const start = Number(segment.dataset.start)
+        if (offset >= start && offset < Number(segment.dataset.end)) {
+          const range = document.createRange()
+          const text = Array.from(segment.childNodes).find((n) => n.nodeType === Node.TEXT_NODE)!
+          range.setStart(text, offset - start)
+          range.setEnd(text, offset - start + 1)
+          const rect = range.getBoundingClientRect()
+          return { x: rect.left + 1, y: rect.top + rect.height / 2 }
+        }
+      }
+      throw new Error('offset not rendered')
+    }, { chunkId: fixture.chunk('chronicle_1').id, offset: 60 })
+    await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(target.x, target.y, { steps: 10 })
+    await page.mouse.up()
+    await popover(page).getByRole('button', { name: 'Save position' }).click()
+
+    await expect(taggedSegment(page, 'chronicle_1', 60, chunk1Length)).toBeVisible()
+    await expect(taggedSegment(page, 'chronicle_2', 0, brno.end)).toBeVisible()
+    await expect(page.locator('.gutter-item')).toHaveCount(2)
+    // Stored on chronicle_1 under the same id, not as a new span.
+    const response = await request.get('/api/tag_spans', {
+      headers, params: { collection_id: collectionId, chunk_id: fixture.chunk('chronicle_1').id }
+    })
+    const moved = (await response.json() as { id: string, start: number, end: number }[]).find((s) => s.id === brno.id)
+    expect(moved).toMatchObject({ start: 60, end: chunk1Length + brno.end })
+  } finally {
+    const restored = await request.patch(`/api/tag_spans/${brno.id}`, {
+      headers,
+      params: { collection_id: collectionId },
+      data: { chunkId: fixture.chunk('chronicle_2').id, start: brno.start, end: brno.end }
+    })
+    expect(restored.ok()).toBe(true)
+  }
+})
+
 test('a selection after clicking a marker opens the tag picker instead of reusing its tag', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')

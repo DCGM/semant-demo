@@ -31,19 +31,24 @@ export function requireComplete<T extends WriteResult> (result: T, what: string)
 /**
  * A single span write saves the span first and then updates the chunk tag that
  * tag-filtered search uses and, for a new span or changed offsets, the span's stored
- * search text and similarity vector (#328). When only those later steps failed the span
- * change stands; this returns the warning to show (or null when the write was complete).
+ * search text and similarity vector (#328); a span moved to another chunk also its chunk
+ * reference, which the collection statistics read (#436). When only those later steps
+ * failed the span change stands; this returns the warning to show (or null when the write
+ * was complete).
  */
 export function spanWriteWarning (result: WriteResult, action: 'saved' | 'deleted'): string | null {
   if (result.outcome === WriteOutcome.complete) return null
   if (action === 'deleted') return 'The annotation was deleted, but tag search may still find its passage.'
   const steps = new Set((result.failed ?? []).map((f) => f.step))
   const enrichment = steps.has('derive_annotation') || steps.has('embed_annotation')
-  const tagSearch = steps.has('update_chunk_tags') || !enrichment
-  const missed = tagSearch && enrichment
-    ? 'tag search and its search text or similarity vector were'
-    : tagSearch ? 'tag search was' : 'its search text or similarity vector was'
-  return `The annotation was saved, but ${missed} not updated for it. Save the annotation again to retry.`
+  const statistics = steps.has('update_chunk_reference')
+  const missed = [
+    ...(steps.has('update_chunk_tags') || (!enrichment && !statistics) ? ['tag search'] : []),
+    ...(enrichment ? ['its search text or similarity vector'] : []),
+    ...(statistics ? ['its count in the collection statistics'] : [])
+  ]
+  const list = missed.length > 1 ? `${missed.slice(0, -1).join(', ')} and ${missed[missed.length - 1]}` : missed[0]
+  return `The annotation was saved, but ${list} ${missed.length > 1 ? 'were' : 'was'} not updated for it. Save the annotation again to retry.`
 }
 
 /** The span part of a span write result, without the outcome fields. */

@@ -95,6 +95,10 @@ class PatchSpan(BaseModel):
     type: SpanType | None = None
 
     tagId: str | None = None
+    chunkId: str | None = None
+    """Moves the span to another chunk of its document and collection (its start moved
+    there, #436): ``start`` and ``end`` are then required and count from that chunk. Only
+    for a single span (``PATCH /api/tag_spans/{id}``), not in bulk updates."""
 
 
 class EnrichmentStatus(str, Enum):
@@ -361,8 +365,10 @@ class TagSpanWriteResult(TagSpan, WriteResult):
     id. ``failed`` lists the later steps that did not complete; the span is saved either
     way, and saving it again retries them: ``update_chunk_tags`` (tag-filtered search
     does not reflect the span), ``derive_annotation`` (its stored text, context and
-    positions could not be updated) and ``embed_annotation`` (its contextual vector could
-    not be computed or stored; semantic search leaves the span out).
+    positions could not be updated), ``embed_annotation`` (its contextual vector could
+    not be computed or stored; semantic search leaves the span out) and, for a span moved
+    to another chunk, ``update_chunk_reference`` (collection statistics may still count it
+    on its old chunk).
     """
 
 

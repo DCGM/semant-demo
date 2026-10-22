@@ -419,8 +419,9 @@ class SpanRepository:
 
     async def update(self, collection_id: UUID, span_id: UUID, patch: PatchSpan, derived: dict | None = None,
                      provenance: dict | None = None) -> None:
-        """Sets the patched offsets, type and tag, and the ``derived`` and ``provenance``
-        properties, in one write."""
+        """Sets the patched offsets, type, tag and anchor chunk, and the ``derived`` and
+        ``provenance`` properties, in one write. A moved span's ``text_chunk`` reference is
+        not changed here (``replace_anchor_reference``)."""
         fields = patch.model_dump(exclude_none=True)
         properties: dict = {k: fields[k] for k in ("start", "end") if k in fields} | (derived or {}) \
             | (provenance or {})
@@ -428,8 +429,16 @@ class SpanRepository:
             properties["type"] = patch.type.value
         if patch.tagId is not None:
             properties["tagId"] = UUID(patch.tagId)
+        if patch.chunkId is not None:
+            properties["chunkId"] = UUID(patch.chunkId)
         if properties:
             await self._tenant(collection_id).data.update(uuid=span_id, properties=properties)
+
+    async def replace_anchor_reference(self, collection_id: UUID, span_id: UUID, chunk_id: UUID) -> None:
+        """Points the span's ``text_chunk`` reference at ``chunk_id`` only (an update would
+        add it to the old one)."""
+        await self._tenant(collection_id).data.reference_replace(
+            from_uuid=span_id, from_property="text_chunk", to=chunk_id)
 
     async def delete(self, collection_id: UUID, span_id: UUID) -> None:
         await self._tenant(collection_id).data.delete_by_id(span_id)

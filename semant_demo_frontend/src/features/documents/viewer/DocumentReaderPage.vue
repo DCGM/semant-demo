@@ -193,7 +193,7 @@ import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance, { resolveAutoSpanFailure } from 'src/features/annotations/useAiAssistance'
 import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
-import { SpanMoveIncompleteError, useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
+import { useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
 import useSpanDiscussionDialog from 'src/features/annotations/useSpanDiscussionDialog'
 import { useTagEditing } from 'src/features/annotations/useTagEditing'
 import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
@@ -464,11 +464,12 @@ const recordTagUsage = (tagId: string) => {
   setLastUsedTagId(props.collectionId, tagId)
 }
 
-// The span being edited when it is an AI suggestion: the popover offers approve/reject.
+// The span being edited when it is an AI suggestion: the popover offers approve/reject, also
+// after its start was dragged into another chunk (it is stored on its own chunk until saved).
 const editingAutoSpan = computed(() => {
   const sel = annotations.selection.value
   if (!sel?.editingSpanId) return null
-  const spans = tagSpans.spansByChunkId.value[sel.chunkId] || []
+  const spans = tagSpans.spansByChunkId.value[sel.spanChunkId ?? sel.chunkId] || []
   const span = spans.find((s) => s.id === sel.editingSpanId)
   return span && span.type === SpanType.auto ? span : null
 })
@@ -479,20 +480,14 @@ const spanRequests = createContextGuard()
 watch(() => [props.collectionId, props.documentId], () => spanRequests.enter())
 
 /**
- * Run a span request from the popover. A failed one tells the user it was not saved and, unless
- * a move left the span at two positions, leaves its selection open. Returns the request's
- * result, or null when it failed.
+ * Run a span request from the popover. A failed one tells the user it was not saved and leaves
+ * its selection open. Returns the request's result, or null when it failed.
  */
 async function runSpanRequest<T>(request: () => Promise<T>, failure: string): Promise<T | null> {
   const isCurrent = spanRequests.capture()
   try {
     return await request()
   } catch (err) {
-    // A span left at two positions is reported even after the reader has moved on.
-    if (err instanceof SpanMoveIncompleteError) {
-      errorNotification(err.message)
-      return null
-    }
     if (!isCurrent() || isAbortError(err)) return null
     errorNotification(await apiErrorMessage(err, failure))
     return null
