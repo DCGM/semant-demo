@@ -9,6 +9,7 @@ All URIs are relative to *http://localhost*
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
 | [**corpusDistributionsApiAnalyticsCorpusDistributionsPost**](DefaultApi.md#corpusdistributionsapianalyticscorpusdistributionspost) | **POST** /api/analytics/corpus/distributions | Corpus Distributions |
+| [**corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost**](DefaultApi.md#corpuslibraryyearsapianalyticscorpuslibraryyearspost) | **POST** /api/analytics/corpus/library-years | Corpus Library Years |
 | [**corpusOverviewApiAnalyticsCorpusOverviewGet**](DefaultApi.md#corpusoverviewapianalyticscorpusoverviewget) | **GET** /api/analytics/corpus/overview | Corpus Overview |
 | [**countDocumentChunksApiDocumentsDocumentIdChunksCountGet**](DefaultApi.md#countdocumentchunksapidocumentsdocumentidchunkscountget) | **GET** /api/documents/{document_id}/chunks/count | Count Document Chunks |
 | [**createTagApiTagsPost**](DefaultApi.md#createtagapitagspost) | **POST** /api/tags | Create Tag |
@@ -436,6 +437,74 @@ example().catch(console.error);
 ### Return type
 
 [**CorpusDistributions**](CorpusDistributions.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost
+
+> LibraryYearDistribution corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(corpusDistributionsRequest)
+
+Corpus Library Years
+
+Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // CorpusDistributionsRequest
+    corpusDistributionsRequest: ...,
+  } satisfies CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest;
+
+  try {
+    const data = await api.corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **corpusDistributionsRequest** | [CorpusDistributionsRequest](CorpusDistributionsRequest.md) |  | |
+
+### Return type
+
+[**LibraryYearDistribution**](LibraryYearDistribution.md)
 
 ### Authorization
 

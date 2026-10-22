@@ -121,18 +121,20 @@ async def _add_filtered_documents(store, collection_names):
     ({"year_min": 1910}, {"skolni", "plain"}),
     ({"year_min": 1900, "year_max": 1910}, {"letters", "skola", "skolni", "listy"}),
     # Title words: inside a title word, ignoring case, not diacritics; all words, any order.
-    ({"title_contains": "škol"}, {"skola", "skolni"}),
-    ({"title_contains": "skol"}, {"plain"}),
-    ({"title_contains": "listy-brn"}, {"listy"}),  # "Listy z Brna"
-    ({"title_contains": "věstník pražský"}, {"gazette"}),
-    ({"title_contains": "zzz"}, set()),
+    ({"title_contains": ["škol"]}, {"skola", "skolni"}),
+    ({"title_contains": ["skol"]}, {"plain"}),
+    ({"title_contains": ["listy-brn"]}, {"listy"}),  # "Listy z Brna"
+    ({"title_contains": ["věstník pražský"]}, {"gazette"}),
+    ({"title_contains": ["zzz"]}, set()),
+    # Several titles: any of them.
+    ({"title_contains": ["brn", "škol"]}, {"listy", "skola", "skolni"}),
     # library (field): exact apart from surrounding whitespace; several values: any of them.
     ({"libraries": ["mzk"]}, {"skola", "listy"}),
     ({"libraries": ["mzk", "nkp"]}, {"skola", "skolni", "listy"}),
     # language (word): ignoring case.
     ({"languages": ["ces"]}, {"chronicle", "letters", "gazette", "skola", "skolni"}),
     ({"languages": ["czech"]}, {"listy"}),
-    ({"year_min": 1900, "year_max": 1920, "title_contains": "škol", "libraries": ["mzk", "nkp"],
+    ({"year_min": 1900, "year_max": 1920, "title_contains": ["škol"], "libraries": ["mzk", "nkp"],
       "languages": ["ces"]}, {"skola", "skolni"}),
 ])
 async def test_filtered_counts_describe_exactly_the_matching_documents(
@@ -187,3 +189,25 @@ async def test_repository_filters_through_an_alias(seeded_store, collection_name
 
     assert counts.total == 1  # letters 1902
     assert counts.properties["yearIssued"] == ValueCounts(known=1, groups=[(1902.0, 1)], complete=True)
+
+
+async def test_library_years_put_every_matching_document_in_one_row(api_client, seeded_store, collection_names):
+    await _add_filtered_documents(seeded_store, collection_names)
+
+    body = (await api_client.post("/api/analytics/corpus/library-years", json={})).json()
+
+    assert (body["available"], body["total_documents"]) == (True, 8)
+    rows = [(r["library"], r["kind"], r["total_documents"], [(y["year"], y["count"]) for y in r["years"]],
+             r["unknown_year_count"]) for r in body["rows"]]
+    assert rows == [
+        # "mzk" and " mzk" are the same library (field tokenization); 1909.5 is no valid year.
+        ("mzk", "value", 2, [(1909, 1)], 1),
+        # MZK is another stored code: library codes are case-sensitive.
+        ("MZK", "value", 1, [(1920, 1)], 0),
+        ("nkp", "value", 1, [(1910, 1)], 0),
+        # The fixture documents and "Pražské listy" have no library.
+        (None, "unknown", 4, [(1851, 1), (1902, 1)], 2)]
+
+    filtered = (await api_client.post("/api/analytics/corpus/library-years",
+                                      json={"filters": {"title_contains": ["škol"]}})).json()
+    assert [(r["library"], r["total_documents"]) for r in filtered["rows"]] == [("mzk", 1), ("nkp", 1)]

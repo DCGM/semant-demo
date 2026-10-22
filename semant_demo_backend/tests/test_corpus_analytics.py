@@ -18,6 +18,7 @@ from httpx import ASGITransport, AsyncClient
 from semant_demo.adapters.weaviate.analytics import (
     AnyOf, ContainsWords, DocumentCounts, NumberRange, Unavailable, UnavailableFilter, ValueCounts, where)
 from semant_demo.features.analytics import service
+from semant_demo.features.analytics.schemas import DocumentFilters
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_corpus_analytics
 from tests.app_support import make_test_config, offline_weaviate
@@ -45,6 +46,12 @@ class FakeAnalytics:
         await asyncio.sleep(0)
         return DocumentCounts(total=self.total, properties={
             prop: self.properties.get(prop, Unavailable("missing")) for prop in properties})
+
+    async def count_documents_per_value(self, prop, values, properties, group_limit, conditions=()):
+        """The counts of ``per_value[value]`` (a FakeAnalytics) for each value; the conditions are
+        only recorded here."""
+        self.calls.append((prop, list(values), properties, group_limit, list(conditions)))
+        return {value: await self.per_value[value].count_documents(properties, group_limit) for value in values}
 
 
 def counts(groups, known=None, complete=True) -> ValueCounts:
@@ -289,7 +296,7 @@ async def test_distributions_count_documents_per_year_and_treat_future_years_as_
     body = response.json()
     assert {k: body[k] for k in ("scope", "unit", "total_documents", "data_source")} == \
         {"scope": "searchable_corpus", "unit": "documents", "total_documents": 9, "data_source": "live_aggregation"}
-    assert body["filters"] == {"year_min": None, "year_max": None, "title_contains": None,
+    assert body["filters"] == {"year_min": None, "year_max": None, "title_contains": [],
                                "libraries": [], "languages": []}
     # Only years with documents, ascending; the next year and 1909.5 are unknown or invalid.
     assert body["publication_year"] == {
@@ -314,16 +321,17 @@ async def test_filters_are_normalized_and_become_one_set_of_conditions(tmp_path)
                               language=counts([("ces", 4)]), title=counts([]))  # title: declared, not counted
 
     response, = await _request(tmp_path, analytics, (DISTRIBUTIONS, {"filters": {
-        "year_min": 1900, "year_max": 1920, "title_contains": "  Pražský: věstník a pražský-1919 ",
+        "year_min": 1900, "year_max": 1920, "title_contains": ["  Pražský: věstník a pražský-1919 ", "brno", "BRNO"],
         "libraries": [" nkp", "mzk", "nkp"], "languages": ["ces"]}}))
 
     assert response.status_code == 200
-    # Split like the store's words; one-letter words and repeats in another case are dropped.
+    # Each title split like the store's words, without one-letter words and words repeated in
+    # another case; titles repeated in another case are dropped and the rest sorted.
     assert response.json()["filters"] == {"year_min": 1900, "year_max": 1920,
-                                          "title_contains": "Pražský věstník 1919",
+                                          "title_contains": ["brno", "Pražský věstník 1919"],
                                           "libraries": ["mzk", "nkp"], "languages": ["ces"]}
     assert analytics.calls[0][2] == [NumberRange("yearIssued", 1900, 1920),
-                                     ContainsWords("title", ("Pražský", "věstník", "1919")),
+                                     ContainsWords("title", (("brno",), ("Pražský", "věstník", "1919"))),
                                      AnyOf("library", ("mzk", "nkp")), AnyOf("language", ("ces",))]
 
 
@@ -332,11 +340,14 @@ async def test_filters_are_normalized_and_become_one_set_of_conditions(tmp_path)
     ({"year_max": NEXT_YEAR}, "cannot be after the current year"),
     ({"year_min": 1921, "year_max": 1920}, "must not be after the last one"),
     ({"year_min": 1900.5}, "valid integer"),
-    ({"title_contains": "škol*"}, "does not support wildcards"),
-    ({"title_contains": "praz?ky"}, "does not support wildcards"),
-    ({"title_contains": "a v z"}, "at least one title word of two or more"),
-    ({"title_contains": "x" * 101}, "at most 100 characters"),
-    ({"title_contains": "one two three four five six"}, "at most 5 words"),
+    ({"title_contains": ["škol*"]}, "does not support wildcards"),
+    ({"title_contains": ["brno", "praz?ky"]}, "does not support wildcards"),
+    ({"title_contains": ["a v z"]}, "at least one title word of two or more"),
+    ({"title_contains": [" "]}, "must not be empty"),
+    ({"title_contains": ["x" * 101]}, "at most 100 characters"),
+    ({"title_contains": ["one two three four five six"]}, "at most 5 words"),
+    ({"title_contains": [f"t{i}" for i in range(11)]}, "at most 10 items"),
+    ({"title_contains": "brno"}, "valid list"),
     ({"libraries": ["mzk", " "]}, "must be non-empty"),
     ({"languages": [f"l{i}" for i in range(51)]}, "at most 50 items"),
     ({"publisher": "x"}, "Extra inputs are not permitted"),
@@ -411,23 +422,120 @@ def test_a_year_range_is_compared_as_the_declared_type(data_type, bound_type):
 
 
 def test_conditions_are_combined_with_and_and_values_with_or():
-    f = where([ContainsWords("title", ("Pražský", "věstník")), AnyOf("library", ("mzk", "nkp")),
+    f = where([ContainsWords("title", (("Pražský", "věstník"),)), AnyOf("library", ("mzk", "nkp")),
                AnyOf("language", ("ces",))], TYPES)
 
-    title_a, title_b, libraries, language = f.filters
-    assert _parts(title_a) + _parts(title_b) == [("title", "Like", "*Pražský*"), ("title", "Like", "*věstník*")]
+    title, libraries, language = f.filters
+    # One title: all its words.
+    assert type(title).__name__ == "_FilterAnd"
+    assert _parts(title) == [("title", "Like", "*Pražský*"), ("title", "Like", "*věstník*")]
     assert _parts(libraries) == [("library", "Equal", "mzk"), ("library", "Equal", "nkp")]
     assert type(libraries).__name__ == "_FilterOr"
     assert _parts(language) == [("language", "Equal", "ces")]
     assert where([], TYPES) is None
 
 
+def test_title_alternatives_match_any_of_them_with_all_of_their_words():
+    f = where([ContainsWords("title", (("brno",), ("pražský", "věstník")))], TYPES)
+
+    assert type(f).__name__ == "_FilterOr"
+    brno, prague = f.filters
+    assert _parts(brno) == [("title", "Like", "*brno*")]
+    assert type(prague).__name__ == "_FilterAnd"
+    assert _parts(prague) == [("title", "Like", "*pražský*"), ("title", "Like", "*věstník*")]
+
+
 @pytest.mark.parametrize("condition, reason", [
     (AnyOf("nothing", ("x",)), "missing"),
-    (ContainsWords("author", ("Hájek",)), "unsupported_type"),  # text[]: several values per document
+    (ContainsWords("author", (("Hájek",),)), "unsupported_type"),  # text[]: several values per document
     (NumberRange("title", 1900), "unsupported_type"),
 ])
 def test_a_condition_on_a_property_that_cannot_be_filtered_is_refused(condition, reason):
     with pytest.raises(UnavailableFilter) as refused:
         where([condition], TYPES)
     assert (refused.value.prop, refused.value.reason) == (condition.prop, reason)
+
+
+# Documents per library and year (#361, optional heatmap)
+
+LIBRARY_YEARS = "/api/analytics/corpus/library-years"
+
+
+def heatmap_analytics() -> FakeAnalytics:
+    """10 documents: mzk 6 (one stored as " mzk"), nkp 2, 2 without a library; 2 without a year."""
+    analytics = FakeAnalytics(
+        10, yearIssued=counts([(1909.0, 3), (1910.0, 4), (1700.0, 1)]),
+        library=counts([("mzk", 5), ("nkp", 2), (" mzk", 1)]), language=counts([("ces", 10)]))
+    analytics.per_value = {
+        "mzk": FakeAnalytics(6, yearIssued=counts([(1909.0, 3), (1910.0, 2)])),
+        "nkp": FakeAnalytics(2, yearIssued=counts([(1910.0, 2)]))}
+    return analytics
+
+
+def rows_of(distribution):
+    return [(r.library, r.kind, r.total_documents, [(y.year, y.count) for y in r.years], r.unknown_year_count)
+            for r in distribution.rows]
+
+
+async def test_library_years_count_each_document_once_and_the_rest_as_unknown():
+    analytics = heatmap_analytics()
+
+    result = await service.library_years(analytics, service.OverviewCache(600), DocumentFilters(languages=["ces"]))
+
+    assert (result.available, result.total_documents) == (True, 10)
+    # " mzk" matches the same documents as "mzk" (field tokenization): one row.
+    assert analytics.calls[1][:2] == ("library", ["mzk", "nkp"])
+    assert analytics.calls[1][4] == [AnyOf("language", ("ces",))]  # the page's filters apply to every row
+    assert rows_of(result) == [
+        ("mzk", "value", 6, [(1909, 3), (1910, 2)], 1),
+        ("nkp", "value", 2, [(1910, 2)], 0),
+        # The documents without a library: the difference to the distributions.
+        (None, "unknown", 2, [(1700, 1)], 1)]
+    assert sum(r.total_documents for r in result.rows) == 10
+
+
+async def test_library_years_list_at_most_20_libraries_and_name_the_rest_other_or_unknown():
+    libraries = [(f"lib{i:02}", 1) for i in range(25)]
+    analytics = FakeAnalytics(25, yearIssued=counts([(1900.0, 25)]), library=counts(libraries))
+    analytics.per_value = {name: FakeAnalytics(1, yearIssued=counts([(1900.0, 1)])) for name, _ in libraries}
+
+    result = await service.library_years(analytics, service.OverviewCache(600), DocumentFilters())
+
+    assert len(result.rows) == service.MAX_HEATMAP_LIBRARIES + 1
+    assert rows_of(result)[-1] == (None, "other_or_unknown", 5, [(1900, 5)], 0)
+
+
+@pytest.mark.parametrize("missing, unavailable_property", [("library", "library"), ("yearIssued", "publication_year")])
+async def test_library_years_without_libraries_or_years_are_unavailable(missing, unavailable_property):
+    analytics = heatmap_analytics()
+    analytics.properties[missing] = Unavailable("missing")
+
+    result = await service.library_years(analytics, service.OverviewCache(600), DocumentFilters())
+
+    assert (result.available, result.unavailable_reason, result.unavailable_property, result.rows) == \
+        (False, "missing_property", unavailable_property, None)
+    assert len(analytics.calls) == 1  # no per-library counts
+
+
+async def test_library_years_that_do_not_add_up_fail_instead_of_misreporting():
+    analytics = heatmap_analytics()
+    analytics.per_value["nkp"] = FakeAnalytics(5, yearIssued=counts([(1910.0, 5)]))  # more than in the corpus
+
+    with pytest.raises(service.IncompleteCounts):
+        await service.library_years(analytics, service.OverviewCache(600), DocumentFilters())
+
+
+async def test_library_years_are_answered_anonymously_and_refuse_unavailable_filters(tmp_path):
+    analytics = heatmap_analytics()
+
+    ok, refused = await _request(tmp_path, analytics, (LIBRARY_YEARS, {}),
+                                 (LIBRARY_YEARS, {"filters": {"title_contains": ["brno"]}}))  # no title property
+
+    assert ok.status_code == 200
+    assert [r["library"] for r in ok.json()["rows"]] == ["mzk", "nkp", None]
+    assert refused.status_code == 422
+    schema = create_app(make_test_config(tmp_path)).openapi()
+    operation = schema["paths"][LIBRARY_YEARS]["post"]
+    assert "security" not in operation
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == \
+        {"$ref": "#/components/schemas/LibraryYearDistribution"}

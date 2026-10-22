@@ -291,6 +291,16 @@ documents, ascending; the page groups them into bins) and the filters it applied
 The `/corpus` page uses it for every view, also the unfiltered one; `GET` stays for other
 clients.
 
+`POST /api/analytics/corpus/library-years` (public, #361, optional heatmap) takes the same
+filters and returns the matching documents per source library and publication year: one row
+per library (at most 20, most documents first) and one for the remaining documents ("unknown",
+or "other or unknown" when not every library has a row). Weaviate groups by one property only,
+so the years are counted once per library with a filter on it, concurrently, and the remaining
+row is the difference to the distributions (documents without a library cannot be filtered).
+Library values that differ only in surrounding whitespace match the same documents (`field`
+tokenization) and form one row. It costs about as much as the distributions again, so the page
+asks for it only when the heatmap is opened, and it is not cached.
+
 - **Filters.** All given filters must match (AND); several libraries or languages match any
   of them (OR). One Weaviate filter is built once and applied to the total and to every
   grouped aggregate, so all counts describe the same documents.
@@ -584,7 +594,7 @@ and `router/` the routes and sign-in guard.
 | `auth` | login/register/account dialogs, `userStore`, user search |
 | `quota` | the daily AI allowance: `quotaStore`, `useQuotaScope`, header indicator and near-limit/used-up banner ([above](#daily-llm-allowances-featuresquota-adapterssqlquotapy)) |
 | `feedback` | feedback page and its schema |
-| `analytics` | corpus overview page, its filter form (`CorpusFilters`: years and titles applied by Apply/Enter, library and language at once; applied values are shown as grouped removable chips), the publication timeline (`PublicationTimeline`, `timeline.ts`: main range and outliers, zoom/pan/drag selection in the browser, bin width from the visible window, table with collapsed empty periods; only "Apply … as filter" changes the counted documents), its request (`useCorpusOverview`: filtered counts, abort on a newer request or on leave, retry, slow notice), rows/labels/filter chips/chart specifications (`corpusOverview.ts`) |
+| `analytics` | corpus overview page, its filter form (`CorpusFilters`: years and titles applied by Apply/Enter, library and language at once; applied values are shown as grouped removable chips), the publication timeline (`PublicationTimeline`, `timeline.ts`: main range and outliers, zoom/pan/drag selection in the browser, bin width from the visible window, table with collapsed empty periods; only "Apply … as filter" changes the counted documents), the period × library heatmap (`LibraryHeatmap`, `libraryHeatmap.ts`: loaded when opened, periods follow the timeline's view), its request (`useCorpusOverview`: filtered counts, abort on a newer request or on leave, retry, slow notice), rows/labels/filter chips/chart specifications (`corpusOverview.ts`) |
 
 The document view (`features/documents/viewer/`) is `DocumentViewLayout` (header; the tags,
 AI assist and document tools as panels of the app's right sidebar; loads the document,

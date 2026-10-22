@@ -114,7 +114,22 @@ class CorpusAnalyticsRepository:
         property's ``known`` count together, one grouped aggregate per property runs alongside.
         Raises ``UnavailableFilter`` when a condition's property cannot be filtered."""
         types = await self._property_types()
-        filters = where(conditions, types)
+        return await self._count(where(conditions, types), properties, types, group_limit)
+
+    async def count_documents_per_value(self, prop: str, values: Sequence[str], properties: dict[str, ValueKind],
+                                        group_limit: int, conditions: Sequence[Condition] = ()) -> dict[str, DocumentCounts]:
+        """``count_documents`` for each value of ``prop`` separately: the documents meeting every
+        condition that also equal the value (``AnyOf``, so the property's tokenization applies;
+        values that match the same documents must be passed once). All values run concurrently.
+        Weaviate groups by one property only, so this is how two properties are crossed."""
+        types = await self._property_types()
+        counts = await asyncio.gather(*(
+            self._count(where([*conditions, AnyOf(prop, (value,))], types), properties, types, group_limit)
+            for value in values))
+        return dict(zip(values, counts))
+
+    async def _count(self, filters, properties: dict[str, ValueKind], types: dict[str, str],
+                     group_limit: int) -> DocumentCounts:
         result: dict[str, ValueCounts | Unavailable] = {}
         countable: dict[str, str] = {}
         for prop, kind in properties.items():

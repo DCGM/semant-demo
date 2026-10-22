@@ -144,7 +144,8 @@ export function timelineBins (years: YearCount[], window: YearWindow, width: num
 /** Runs of this many empty bins or more are one table row. */
 export const COLLAPSE_EMPTY = 3
 
-function plural (n: number, width: number): string {
+/** "13 decades", "1 year", "4 bins of 25 years": a number of bins in words. */
+export function binCount (n: number, width: number): string {
   const name = widthName(width)
   if (width !== 1 && width !== DECADE && width !== 100) return `${n} bins of ${name}`
   if (n === 1) return `1 ${name}`
@@ -173,7 +174,7 @@ export function timelineRows (bins: TimelineBin[], width: number, out: { before:
         kind: 'gap',
         label: `${bins[i].start}–${bins[j - 1].endExclusive - 1}`,
         count: 0,
-        note: `no documents (${plural(j - i, width)})`
+        note: `no documents (${binCount(j - i, width)})`
       })
       i = j
     } else {

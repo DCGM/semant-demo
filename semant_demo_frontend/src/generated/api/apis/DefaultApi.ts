@@ -48,6 +48,7 @@ import type {
   ExplainRequest,
   FeedbackRequest,
   HTTPValidationError,
+  LibraryYearDistribution,
   PatchCollection,
   PatchCollectionOwner,
   PatchSpan,
@@ -145,6 +146,8 @@ import {
     FeedbackRequestToJSON,
     HTTPValidationErrorFromJSON,
     HTTPValidationErrorToJSON,
+    LibraryYearDistributionFromJSON,
+    LibraryYearDistributionToJSON,
     PatchCollectionFromJSON,
     PatchCollectionToJSON,
     PatchCollectionOwnerFromJSON,
@@ -232,6 +235,10 @@ export interface BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest {
 }
 
 export interface CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest {
+    corpusDistributionsRequest: CorpusDistributionsRequest;
+}
+
+export interface CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest {
     corpusDistributionsRequest: CorpusDistributionsRequest;
 }
 
@@ -630,6 +637,30 @@ export interface DefaultApiInterface {
      * Corpus Distributions
      */
     corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions>;
+
+    /**
+     * Creates request options for corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost without sending the request
+     * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+     * @summary Corpus Library Years
+     * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>>;
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+     * Corpus Library Years
+     */
+    corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution>;
 
     /**
      * Creates request options for corpusOverviewApiAnalyticsCorpusOverviewGet without sending the request
@@ -2396,6 +2427,55 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions> {
         const response = await this.corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost without sending the request
+     */
+    async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['corpusDistributionsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'corpusDistributionsRequest',
+                'Required parameter "corpusDistributionsRequest" was null or undefined when calling corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/analytics/corpus/library-years`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CorpusDistributionsRequestToJSON(requestParameters['corpusDistributionsRequest']),
+        };
+    }
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+     * Corpus Library Years
+     */
+    async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>> {
+        const requestOptions = await this.corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => LibraryYearDistributionFromJSON(jsonValue));
+    }
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+     * Corpus Library Years
+     */
+    async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution> {
+        const response = await this.corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -45,6 +45,8 @@ export * from './ExplainRequest';
 export * from './FeedbackRequest';
 export * from './FilterType';
 export * from './HTTPValidationError';
+export * from './LibraryYearDistribution';
+export * from './LibraryYears';
 export * from './LocationInner';
 export * from './MaxValue';
 export * from './MaxValue1';

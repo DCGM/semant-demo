@@ -191,3 +191,34 @@ class CorpusDistributions(BaseModel):
     libraries: CategoryDistribution = Field(description="Source digital library (``Documents.library``).")
     languages: CategoryDistribution = Field(
         description="Bibliographic language of the document (``Documents.language``), not of its text chunks.")
+
+
+class LibraryYears(BaseModel):
+    """The documents of one library (or of the rest) per publication year."""
+    library: str | None
+    """The stored library code, trimmed; ``null`` for the row of the remaining documents."""
+    kind: Literal["value", "unknown", "other_or_unknown"]
+    """``value``: one library; ``unknown``: documents without a library; ``other_or_unknown``:
+    documents without a library or of a library not listed (when there are more than listed)."""
+    total_documents: int
+    years: list[YearCount]
+    """Only years with documents, ascending."""
+    unknown_year_count: int
+    """Documents of this row without a valid publication year (not in ``years``)."""
+
+
+class LibraryYearDistribution(BaseModel):
+    """The documents matching ``filters`` per source library and publication year: a document is
+    counted in exactly one row and, with a valid year, in one year of it. The rows add up to
+    ``total_documents``, and each year's counts add up to that year in the distributions."""
+    scope: Literal["searchable_corpus"]
+    unit: Literal["documents"]
+    filters: DocumentFilters
+    total_documents: int
+    computed_at: datetime
+    available: bool
+    unavailable_reason: UnavailableReason | None = None
+    unavailable_property: Literal["library", "publication_year"] | None = None
+    """Which of the two properties cannot be counted, when ``available`` is false."""
+    rows: list[LibraryYears] | None = None
+    """The libraries with most documents first (at most 20), then the remaining documents, if any."""

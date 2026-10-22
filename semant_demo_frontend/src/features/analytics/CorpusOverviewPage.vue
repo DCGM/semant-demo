@@ -79,10 +79,35 @@
                 v-if="overview.publicationYear.years?.length"
                 :distribution="overview.publicationYear"
                 @apply-period="applyPeriod"
+                @view="(view) => (timelineView = view)"
               />
               <p v-else class="dimension-card__note">No document of these has a valid publication year.</p>
             </template>
             <p v-else class="dimension-card__unavailable" role="note">{{ unavailableText('publication years') }}</p>
+          </q-card-section>
+        </q-card>
+
+        <q-card flat bordered class="dimension-card dimension-card--wide" data-testid="corpus-heatmap">
+          <q-card-section>
+            <h2 class="dimension-card__title">Publication period × source library</h2>
+            <template v-if="overview.libraries.available && overview.publicationYear.available">
+              <p class="dimension-card__note">
+                Which libraries the documents of each period come from, in raw document counts. Counted on request, for the
+                same documents as the rest of the page.
+              </p>
+              <q-btn
+                v-if="!showHeatmap" outline no-caps color="primary" icon="grid_on" label="Show documents per library and period"
+                data-testid="heatmap-show" @click="showHeatmap = true"
+              />
+              <LibraryHeatmap
+                v-else-if="overview.publicationYear.years?.length && timelineView"
+                :filters="overview.filters" :view="timelineView"
+              />
+              <p v-else class="dimension-card__note">No document of these has a valid publication year.</p>
+            </template>
+            <p v-else class="dimension-card__unavailable" role="note">
+              {{ unavailableText(overview.libraries.available ? 'publication years' : 'source libraries') }}
+            </p>
           </q-card-section>
         </q-card>
 
@@ -129,10 +154,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
 import type { CategoryDistribution } from 'src/generated/api'
 import VegaChart from 'src/shared/visualization/VegaChart.vue'
 import CorpusFilters from './CorpusFilters.vue'
+import LibraryHeatmap from './LibraryHeatmap.vue'
 import PublicationTimeline from './PublicationTimeline.vue'
 import {
   categoryBarSpec, categoryRows, coverage, filterGroups, isUnfiltered, languageLabel, libraryLabel, withoutFilter
@@ -150,6 +176,11 @@ const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
 
 const total = computed(() => overview.value?.totalDocuments ?? 0)
+
+/** The timeline's shown window and bin width; the heatmap shows the same periods. */
+const timelineView = shallowRef<{ window: YearWindow, width: number } | null>(null)
+/** The heatmap is counted only once asked for; it then stays shown for other filters. */
+const showHeatmap = ref(false)
 
 /** Restricts the counted documents to a period of the timeline, keeping the other filters. */
 function applyPeriod (period: YearWindow) {

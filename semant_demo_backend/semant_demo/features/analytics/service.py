@@ -27,8 +27,8 @@ from datetime import UTC, datetime, timedelta
 from semant_demo.adapters.weaviate.analytics import (
     AnyOf, Condition, ContainsWords, CorpusAnalyticsRepository, NumberRange, Unavailable, ValueCounts)
 from semant_demo.features.analytics.schemas import (
-    CategoryCount, CategoryDistribution, CorpusDistributions, CorpusOverview, DocumentFilters, PublicationYearCounts,
-    PublicationYearDistribution, UnavailableReason, YearBin, YearCount)
+    CategoryCount, CategoryDistribution, CorpusDistributions, CorpusOverview, DocumentFilters, LibraryYearDistribution,
+    LibraryYears, PublicationYearCounts, PublicationYearDistribution, UnavailableReason, YearBin, YearCount)
 
 YEAR_PROPERTY = "yearIssued"
 LIBRARY_PROPERTY = "library"
@@ -42,6 +42,9 @@ MAX_LISTED_VALUES = 50
 """Most library/language values listed; the documents of further values are ``other_count``."""
 BIN_WIDTH_YEARS = 10
 MIN_YEAR = 1
+MAX_HEATMAP_LIBRARIES = 20
+"""Most libraries with a row of their own in the library × year counts; the documents of the
+others are counted in the row of the remaining documents."""
 
 
 class IncompleteCounts(Exception):
@@ -100,6 +103,54 @@ async def corpus_distributions(analytics: CorpusAnalyticsRepository, filters: Do
         publication_year=_years(counts.properties[YEAR_PROPERTY], total, max_year=computed_at.year),
         libraries=_categories(counts.properties[LIBRARY_PROPERTY], total, LIBRARY_PROPERTY),
         languages=_categories(counts.properties[LANGUAGE_PROPERTY], total, LANGUAGE_PROPERTY))
+
+
+async def library_years(analytics: CorpusAnalyticsRepository, cache: OverviewCache,
+                        filters: DocumentFilters) -> LibraryYearDistribution:
+    """Documents per source library and publication year (#361, optional heatmap).
+
+    Weaviate groups by one property only, so the years are counted once per library (a filter
+    on that library) and the remaining documents are the difference to the distributions, which
+    also gives the documents without a library (they cannot be filtered directly). Libraries
+    whose stored values differ only in surrounding whitespace match the same documents
+    (``field`` tokenization), so they are one row. Counting takes about as long again as the
+    distributions, so it is only done on request and not cached."""
+    distributions = await cached_corpus_distributions(analytics, cache, filters)
+    base = dict(scope="searchable_corpus", unit="documents", filters=filters,
+                total_documents=distributions.total_documents, computed_at=datetime.now(UTC))
+    for prop, counted in (("library", distributions.libraries), ("publication_year", distributions.publication_year)):
+        if not counted.available:
+            return LibraryYearDistribution(**base, available=False, unavailable_reason=counted.unavailable_reason,
+                                           unavailable_property=prop)
+
+    merged: Counter[str] = Counter()
+    for value in distributions.libraries.values or []:
+        merged[value.value.strip()] += value.count
+    every = sorted(merged, key=lambda library: (-merged[library], library))
+    listed = every[:MAX_HEATMAP_LIBRARIES]
+    counts = await analytics.count_documents_per_value(
+        LIBRARY_PROPERTY, listed, {YEAR_PROPERTY: "number"}, group_limit=GROUP_LIMIT, conditions=_conditions(filters))
+
+    rows: list[LibraryYears] = []
+    rest = Counter({y.year: y.count for y in distributions.publication_year.years or []})
+    rest_total = distributions.total_documents
+    rest_unknown = distributions.publication_year.unknown_count or 0
+    for library in listed:
+        library_counts = counts[library]
+        years = _years(library_counts.properties[YEAR_PROPERTY], library_counts.total, max_year=base["computed_at"].year)
+        rows.append(LibraryYears(library=library, kind="value", total_documents=library_counts.total,
+                                 years=years.years or [], unknown_year_count=years.unknown_count or 0))
+        rest.subtract({y.year: y.count for y in years.years or []})
+        rest_total -= library_counts.total
+        rest_unknown -= years.unknown_count or 0
+    if rest_total < 0 or rest_unknown < 0 or any(n < 0 for n in rest.values()):
+        raise IncompleteCounts("Library and year counts do not add up (the corpus may have changed).")
+    if rest_total:
+        complete = len(listed) == len(every) and not distributions.libraries.other_count
+        rows.append(LibraryYears(library=None, kind="unknown" if complete else "other_or_unknown",
+                                 total_documents=rest_total, unknown_year_count=rest_unknown,
+                                 years=[YearCount(year=y, count=n) for y, n in sorted(rest.items()) if n]))
+    return LibraryYearDistribution(**base, available=True, rows=rows)
 
 
 def _conditions(filters: DocumentFilters) -> list[Condition]:

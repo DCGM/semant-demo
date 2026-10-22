@@ -49,6 +49,8 @@ docs/ExplainRequest.md
 docs/FeedbackRequest.md
 docs/FilterType.md
 docs/HTTPValidationError.md
+docs/LibraryYearDistribution.md
+docs/LibraryYears.md
 docs/LocationInner.md
 docs/MaxValue.md
 docs/MaxValue1.md
@@ -156,6 +158,8 @@ models/ExplainRequest.ts
 models/FeedbackRequest.ts
 models/FilterType.ts
 models/HTTPValidationError.ts
+models/LibraryYearDistribution.ts
+models/LibraryYears.ts
 models/LocationInner.ts
 models/MaxValue.ts
 models/MaxValue1.ts

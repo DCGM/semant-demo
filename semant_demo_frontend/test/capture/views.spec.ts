@@ -185,18 +185,52 @@ test('annotation workspace review (#459)', async ({ page, request }, testInfo) =
   }
 })
 
-test('corpus overview', async ({ page }, testInfo) => {
-  // A synced store has libraries; the fixture store has none (shown as unavailable).
-  await page.route('**/api/analytics/corpus/overview', async (route) => {
+/** Lets the fixture store look synced: it has no library property, a synced store has one. */
+async function withLibraries (page: Page) {
+  await page.route('**/api/analytics/corpus/distributions', async (route) => {
     const response = await route.fetch()
     const body = await response.json()
     body.libraries = { available: true, values: [{ value: 'mzk', count: 2 }], other_count: 0, unknown_count: 1 }
     await route.fulfill({ response, json: body })
   })
+  await page.route('**/api/analytics/corpus/library-years', (route) => route.fulfill({
+    json: {
+      scope: 'searchable_corpus',
+      unit: 'documents',
+      filters: { year_min: null, year_max: null, title_contains: [], libraries: [], languages: [] },
+      total_documents: 3,
+      computed_at: '2026-10-22T12:00:00Z',
+      available: true,
+      rows: [
+        { library: 'mzk', kind: 'value', total_documents: 2, years: [{ year: 1851, count: 1 }, { year: 1902, count: 1 }], unknown_year_count: 0 },
+        { library: null, kind: 'unknown', total_documents: 1, years: [], unknown_year_count: 1 }
+      ]
+    }
+  }))
+}
+
+test('corpus overview', async ({ page }, testInfo) => {
+  await withLibraries(page)
   await page.goto('/#/corpus')
   await closePhoneNavigation(page)
   await expect(page.getByTestId('corpus-libraries').locator('svg').first()).toBeVisible()
   await save(page, testInfo, 'corpus-overview')
+})
+
+test('corpus overview filtered, with timeline and heatmap', async ({ page }, testInfo) => {
+  await withLibraries(page)
+  await page.goto('/#/corpus')
+  await closePhoneNavigation(page)
+  await page.getByTestId('filter-title').fill('kronika')
+  await page.getByTestId('filter-title').press('Enter')
+  await page.getByTestId('filter-title').fill('dopisy')
+  await page.getByTestId('filter-title').press('Enter')
+  await expect(page.getByTestId('corpus-total')).toHaveText('2')
+  await save(page, testInfo, 'corpus-filtered')
+  await page.getByTestId('heatmap-show').click()
+  await expect(page.getByTestId('corpus-heatmap').locator('svg').first()).toBeVisible()
+  await page.getByTestId('corpus-years').scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'corpus-timeline-heatmap')
 })
 
 test('corpus overview without libraries', async ({ page }, testInfo) => {

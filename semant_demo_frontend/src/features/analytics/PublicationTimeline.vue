@@ -87,7 +87,11 @@ import {
 } from './timeline'
 
 const props = defineProps<{ distribution: PublicationYearCounts }>()
-const emit = defineEmits<{ applyPeriod: [period: YearWindow] }>()
+const emit = defineEmits<{
+  applyPeriod: [period: YearWindow]
+  /** The shown window and bin width, whenever they change (other views follow the timeline). */
+  view: [view: { window: YearWindow, width: number }]
+}>()
 
 const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
@@ -110,6 +114,8 @@ const bins = computed(() => timelineBins(years.value, shown.value, width.value))
 const out = computed(() => outside(years.value, shown.value))
 const rows = computed(() => timelineRows(bins.value, width.value, out.value))
 const spec = computed(() => timelineSpec(bins.value, width.value, shown.value))
+
+watch([shown, width], () => emit('view', { window: shown.value, width: width.value }), { immediate: true })
 
 const same = (a: YearWindow | null, b: YearWindow | null) => !!a && !!b && a.start === b.start && a.end === b.end
 const covers = (a: YearWindow, b: YearWindow | null) => !!b && a.start <= b.start && a.end >= b.end
