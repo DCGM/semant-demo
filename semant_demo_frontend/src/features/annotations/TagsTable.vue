@@ -155,7 +155,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
-import { QTableColumn, useQuasar } from 'quasar'
+import { QTableColumn } from 'quasar'
 import { useRoute } from 'vue-router'
 
 import useTagsDialog from './useTagsDialog'
@@ -163,9 +163,11 @@ import { useTagsStore } from './tagsStore'
 import { PostTag, Tag, PatchTag } from 'src/generated/api'
 import CreateButton from 'src/shared/ui/CreateButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
+import useConfirmDelete from 'src/shared/useConfirmDelete'
+import { countAnnotations } from './annotationCounts'
 
 const route = useRoute()
-const $q = useQuasar()
+const confirmDelete = useConfirmDelete()
 const tagsStore = useTagsStore()
 const { tags, loading } = storeToRefs(tagsStore)
 const { fetchTagsByCollection, createTag, deleteTag, deleteManyTags, updateTag } = tagsStore
@@ -205,16 +207,10 @@ const handleCreate = () => {
 }
 
 const handleDelete = async (tag: Tag) => {
-  $q.dialog({
+  confirmDelete({
     title: 'Delete Tag',
-    html: true,
-    message: `Are you sure you want to delete the tag <strong>${tag.name}</strong>?`,
-    cancel: true,
-    ok: {
-      label: 'Delete',
-      color: 'negative'
-    },
-    persistent: true
+    message: `Delete the tag "${tag.name}"?`,
+    count: () => countAnnotations(collectionId.value, [tag.id])
   }).onOk(async () => {
     await deleteTag(tag.id)
   })
@@ -232,18 +228,13 @@ const handleEdit = (tag: Tag) => {
 const handleBulkDelete = () => {
   if (selected.value.length === 0) return
   const count = selected.value.length
-  $q.dialog({
+  const ids = selected.value.map(tag => tag.id)
+  confirmDelete({
     title: 'Delete Selected Tags',
-    html: true,
-    message: `Are you sure you want to delete <strong>${count}</strong> selected tag${count === 1 ? '' : 's'}?`,
-    cancel: true,
-    ok: {
-      label: 'Delete selected',
-      color: 'negative'
-    },
-    persistent: true
+    message: `Delete ${count} selected tag${count === 1 ? '' : 's'}?`,
+    okLabel: 'Delete selected',
+    count: () => countAnnotations(collectionId.value, ids)
   }).onOk(async () => {
-    const ids = selected.value.map(tag => tag.id)
     selected.value = []
     // Resolves after every deletion has finished; only acknowledged ones are removed and
     // failures are reported by the store. Reload afterwards (not before all deletions are

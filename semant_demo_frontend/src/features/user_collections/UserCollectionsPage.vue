@@ -102,6 +102,8 @@ import { onMounted, computed, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import CollectionCard from './CollectionCard.vue'
+import useConfirmDelete from 'src/shared/useConfirmDelete'
+import { countAnnotations } from 'src/features/annotations/annotationCounts'
 import { Collection, PatchCollection, PostCollection } from 'src/generated/api'
 import { useRouter } from 'vue-router'
 
@@ -129,6 +131,7 @@ const filteredCollections = computed(() => {
 })
 const { currentPage, pageCount, paginatedItems } = usePagination(filteredCollections, itemsPerPage)
 const { openCollectionDialog } = useCollectionDialog()
+const confirmDelete = useConfirmDelete()
 
 watch(viewMode, (mode) => {
   localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
@@ -165,15 +168,10 @@ const handleEdit = (collection: Collection) => {
 }
 
 const handleDelete = (collection: Collection) => {
-  $q.dialog({
+  confirmDelete({
     title: 'Delete Collection',
-    html: true,
-    message: `Are you sure you want to delete the collection <strong>${collection.name}</strong>? This action cannot be undone.`,
-    ok: {
-      label: 'Delete',
-      color: 'negative'
-    },
-    cancel: true
+    message: `Delete the collection "${collection.name}"?`,
+    count: () => countAnnotations(collection.id)
   }).onOk(async () => {
     await deleteCollection(collection.id)
   })
