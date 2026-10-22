@@ -22,7 +22,6 @@ above its own safety ceiling.
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
 import logging
 import time
@@ -185,12 +184,6 @@ class TopicerClient:
         self._configs: tuple[float, list[str]] | None = None
         self._configs_read: asyncio.Future[list[str]] | None = None
 
-    def with_config(self, config_name: str) -> "TopicerClient":
-        """The same Topicer and settings with another of its configurations (#189)."""
-        other = copy.copy(self)
-        other.config_name = config_name
-        return other
-
     def _client(self, timeout: float | None = None) -> httpx.AsyncClient:
         timeout = self.timeout if timeout is None else timeout
         return httpx.AsyncClient(base_url=self.base_url, timeout=httpx.Timeout(timeout, connect=10.0),
@@ -228,9 +221,11 @@ class TopicerClient:
             raise TopicerError("configs is not a list of names")
         return data
 
-    async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag]) -> TopicerProposals:
+    async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag],
+                               config_name: str | None = None) -> TopicerProposals:
         """
-        Call ``POST /v1/tags/propose/texts`` for a single text + a list of tags.
+        Call ``POST /v1/tags/propose/texts`` for a single text + a list of tags, with
+        ``config_name`` (#189) or the configured one.
 
         Returns the ``tag_span_proposals`` of Topicer's response and its ``usage``.
         """
@@ -241,7 +236,7 @@ class TopicerClient:
         path = "/v1/tags/propose/texts"
         try:
             async with self._client() as client:
-                resp = await client.post(path, params={"config_name": self.config_name}, json=body)
+                resp = await client.post(path, params={"config_name": config_name or self.config_name}, json=body)
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, ValueError) as e:
@@ -254,10 +249,12 @@ class TopicerClient:
             raise TopicerError("tag_span_proposals is not a list")
         return TopicerProposals(proposals=proposals or [], usage=_usage(data.get("usage")))
 
-    async def propose_for_db_stream(self, *, tag: TopicerTag, collection_id: str, document_id: str
+    async def propose_for_db_stream(self, *, tag: TopicerTag, collection_id: str, document_id: str,
+                                    config_name: str | None = None
                                     ) -> AsyncGenerator[dict[str, Any] | TopicerStreamSummary, None]:
         """
-        Call ``POST /v1/tags/propose/db/stream?max_chunks=<max_chunks_per_tag>`` and yield
+        Call ``POST /v1/tags/propose/db/stream?max_chunks=<max_chunks_per_tag>`` with
+        ``config_name`` (#189) or the configured one, and yield
         each chunk result as it arrives, a ``TextChunkWithTagSpanProposals`` dict::
 
             {"id": "<chunk_id>", "text": "...", "tag_span_proposals": [...]}
@@ -274,7 +271,7 @@ class TopicerClient:
         path = "/v1/tags/propose/db/stream"
         try:
             async with self._client() as client:
-                params = {"config_name": self.config_name, "max_chunks": self.max_chunks_per_tag}
+                params = {"config_name": config_name or self.config_name, "max_chunks": self.max_chunks_per_tag}
                 async with client.stream("POST", path, params=params, json=body) as resp:
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():

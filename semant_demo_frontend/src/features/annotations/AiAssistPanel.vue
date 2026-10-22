@@ -26,7 +26,7 @@
         options-dense
         class="q-mb-sm"
         data-testid="ai-model-select"
-        :disable="aiAssist.isRunning.value"
+        :disable="aiAssist.isRunning.value || isPreparingRun"
       />
     </template>
     <div v-else-if="topicerModel.failed" class="text-caption text-grey-7 q-mb-sm" data-testid="ai-model-unavailable">

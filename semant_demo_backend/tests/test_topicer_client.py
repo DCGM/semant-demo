@@ -235,18 +235,19 @@ async def test_concurrent_config_list_reads_share_one_request():
     assert isinstance(results[0], asyncio.CancelledError) and results[1:] == [["a"], ["a"]]
 
 
-async def test_another_config_keeps_the_other_settings():
+async def test_a_call_may_name_another_config():
     seen = []
 
     def handler(request):
         seen.append(request.url.params["config_name"])
+        if request.url.path.endswith("/stream"):
+            return httpx.Response(200, text="")
         return httpx.Response(200, json={"tag_span_proposals": []})
-    client = TopicerClient("http://topicer", "default", 5.0, max_chunks_per_tag=7,
-                           transport=httpx.MockTransport(handler))
+    client = TopicerClient("http://topicer", "default", 5.0, transport=httpx.MockTransport(handler))
 
-    other = client.with_config("other")
-    await other.propose_for_text(chunk_id="c", text="x", tags=[TAG])
+    await client.propose_for_text(chunk_id="c", text="x", tags=[TAG])
+    await client.propose_for_text(chunk_id="c", text="x", tags=[TAG], config_name="other")
+    [_ async for _ in client.propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc",
+                                                   config_name="other")]
 
-    assert seen == ["other"] and client.config_name == "default"
-    assert (other.base_url, other.timeout, other.max_chunks_per_tag, other.transport) == (
-        client.base_url, client.timeout, client.max_chunks_per_tag, client.transport)
+    assert seen == ["default", "other", "other"]

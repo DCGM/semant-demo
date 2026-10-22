@@ -180,6 +180,16 @@ describe('confirmation before a large AI run', () => {
     expect(bodies.map((b) => b.config_name)).toEqual([undefined, 'crossbert'])
   })
 
+  it('keeps the model picker disabled while a run waits for its confirmation', async () => {
+    topicerConfigs = { configs: ['llm', 'crossbert'], defaultConfig: 'llm' }
+    const wrapper = await runAi(2) // asks first
+
+    expect(wrapper.find('.q-select').classes()).toContain('q-field--disabled')
+    dialogs[0].cancel()
+    await flushPromises()
+    expect(wrapper.find('.q-select').classes()).not.toContain('q-field--disabled')
+  })
+
   it('hides the model picker when the models cannot be listed', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     topicerConfigs = null

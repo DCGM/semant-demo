@@ -9,9 +9,10 @@ import { useApi } from 'src/shared/api'
  * The configurations are the ones Topicer has loaded (`GET /api/ai/topicer_configs`).
  * `load()` (panel mount, every run) reads them when they are older than `MAX_AGE_MS` or
  * were never read, `reload()` at once (after the backend refused the chosen model as
- * unknown). Until a read succeeds there is no picker and the server default is used
- * (`failed` says why). The server default is always offered, also when Topicer does not
- * list it. The choice is remembered per browser; a remembered name that is not offered
+ * unknown). Until a read succeeds there is no picker (`failed` says why) and requests
+ * name the remembered model, which the backend checks (an unknown one is refused, and the
+ * list is then read again). The server default is always offered, also when Topicer does
+ * not list it. The choice is remembered per browser; a remembered name that is not offered
  * falls back to the default.
  */
 
@@ -20,6 +21,9 @@ const STORAGE_KEY = 'semant.topicerConfig'
 export const MAX_AGE_MS = 5 * 60_000
 /** The backend's `detail` for a request naming a model Topicer does not list. */
 export const UNKNOWN_MODEL_DETAIL = 'Unknown AI model'
+/** Shown instead of that refusal; the list read again then offers the default. */
+export const UNKNOWN_MODEL_MESSAGE = 'The chosen AI model is no longer available; the default model is selected. ' +
+  'Run the suggestions again.'
 
 function readStored (): string | null {
   try {
@@ -90,8 +94,9 @@ export const useTopicerModelStore = defineStore('topicerModel', () => {
     await (loading ??= read())
   }
 
-  /** The name to send with a suggestion request: `null` for the server default (also before the list is read). */
+  /** The name to send with a suggestion request: `null` for the server default; before the list is read, the remembered one. */
   function chosenConfigName (): string | null {
+    if (!loaded.value) return stored.value
     return selected.value !== null && selected.value !== defaultConfig.value ? selected.value : null
   }
 

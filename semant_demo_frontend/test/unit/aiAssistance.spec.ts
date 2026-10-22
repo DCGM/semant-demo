@@ -6,7 +6,7 @@ import useAiAssistance, {
   describeRunEnd, describeTagLimits, largeRunWarning
 } from 'src/features/annotations/useAiAssistance'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
-import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
+import { UNKNOWN_MODEL_MESSAGE, useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
 import { muteConsole } from './console'
 
 vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
@@ -203,7 +203,7 @@ describe('useAiAssistance', () => {
       collectionId: 'c', documentId: 'd1', chunkIds: ['x'], selectionStart: 0, selectionEnd: 3, tagIds: ['t'], configName: 'gone'
     })
 
-    expect(ai.lastSelectionError.value).toBe('Unknown AI model')
+    expect(ai.lastSelectionError.value).toBe(UNKNOWN_MODEL_MESSAGE)
     expect(reload).toHaveBeenCalledTimes(2)
   })
 

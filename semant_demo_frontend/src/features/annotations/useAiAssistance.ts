@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { TagSpan, SpanType } from 'src/generated/api'
 import { useTagSpansStore } from './tagSpansStore'
 import { ApiError, aiErrorMessage, formatQuotaReset, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
-import { UNKNOWN_MODEL_DETAIL, useTopicerModelStore } from './topicerModelStore'
+import { UNKNOWN_MODEL_DETAIL, UNKNOWN_MODEL_MESSAGE, useTopicerModelStore } from './topicerModelStore'
 
 /**
  * Streamed AI span suggestion (NDJSON) helper.
@@ -179,11 +179,14 @@ const isSelectionRunning = ref(false)
 const lastSelectionError = ref<string | null>(null)
 let activeSelectionAbort: AbortController | null = null
 
-/** A request refused for naming a model Topicer no longer lists: the model list is outdated (Topicer redeployed). */
-function reloadModelsIfUnknown (configName: string | null | undefined, e: unknown): void {
-  if (configName && e instanceof ApiError && e.status === 400 && e.detail === UNKNOWN_MODEL_DETAIL) {
-    void useTopicerModelStore().reload()
-  }
+/**
+ * Whether a request was refused for naming a model Topicer no longer lists (Topicer was
+ * redeployed); the model list is then read again, which selects the default.
+ */
+function refusedUnknownModel (configName: string | null | undefined, e: unknown): boolean {
+  if (!configName || !(e instanceof ApiError) || e.status !== 400 || e.detail !== UNKNOWN_MODEL_DETAIL) return false
+  void useTopicerModelStore().reload()
+  return true
 }
 
 /**
@@ -349,9 +352,10 @@ export function useAiAssistance() {
         lastStatus.value = 'cancelled'
       } else {
         console.error('AI assistance failed', e)
-        reloadModelsIfUnknown(req.configName, e)
         // A refusal for the daily allowance (429) gets its reset time; nothing is retried.
-        const message = await aiErrorMessage(e, 'AI assistance request failed')
+        const message = refusedUnknownModel(req.configName, e)
+          ? UNKNOWN_MODEL_MESSAGE
+          : await aiErrorMessage(e, 'AI assistance request failed')
         if (!isCurrent()) return
         lastStatus.value = 'interrupted'
         lastError.value = message
@@ -449,8 +453,9 @@ export function useAiAssistance() {
         return null
       }
       console.error('AI selection assistance failed', e)
-      reloadModelsIfUnknown(req.configName, e)
-      const message = await aiErrorMessage(e, 'AI selection request failed')
+      const message = refusedUnknownModel(req.configName, e)
+        ? UNKNOWN_MODEL_MESSAGE
+        : await aiErrorMessage(e, 'AI selection request failed')
       if (!isCurrent()) return null
       lastSelectionError.value = message
       return collected

@@ -6,7 +6,6 @@ provider calls without cutting a write. The HTTP stream and real Weaviate are co
 tests/integration/test_suggestions.py.
 """
 import asyncio
-import copy
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -166,15 +165,9 @@ class FakeProvider:
             raise self.configs
         return list(self.configs)
 
-    def with_config(self, config_name):
-        # Shares the call records with the original.
-        other = copy.copy(self)
-        other.config_name = config_name
-        return other
-
-    async def propose_for_text(self, *, chunk_id, text, tags):
+    async def propose_for_text(self, *, chunk_id, text, tags, config_name=None):
         self.calls.append(text)
-        self.configs_used.append(self.config_name)
+        self.configs_used.append(config_name or self.config_name)
         self.world.log.append(("provider", text))
         self.running += 1
         self.max_running = max(self.max_running, self.running)
@@ -195,9 +188,9 @@ class FakeProvider:
         finally:
             self.running -= 1
 
-    async def propose_for_db_stream(self, *, tag, collection_id, document_id):
+    async def propose_for_db_stream(self, *, tag, collection_id, document_id, config_name=None):
         self.calls.append(tag.name)
-        self.configs_used.append(self.config_name)
+        self.configs_used.append(config_name or self.config_name)
         for item in self.stream.get(tag.name, []):
             if isinstance(item, Exception):
                 raise item
@@ -586,7 +579,7 @@ async def test_the_default_configuration_is_used_without_asking_for_the_list(con
 
 async def test_a_listed_configuration_is_used_in_every_mode():
     world = World("Jan Novák")
-    provider = FakeProvider(world, stream={"Person": []})
+    provider = FakeProvider(world, stream={"person": []})
 
     await run_all(await thorough(world, provider, req=request(config_name="fake-other")))
     await run_all(await suggestions.prepare_document_run(
@@ -612,6 +605,19 @@ async def test_an_unknown_configuration_or_an_unreadable_list_fails_before_any_p
             world.store(), provider, OWNER, selection(world, world.chunks, 0, 3, config_name="fake-other"))
 
     assert provider.calls == [] and world.log == []
+
+
+async def test_an_optimized_run_stops_when_the_configuration_has_no_optimized_mode():
+    world = World("Jan Novák")
+    refused = TopicerError("HTTP 409", no_work=True)
+    provider = FakeProvider(world, stream={"person": [refused], "place": [refused]})
+
+    results, end = await run_all(await suggestions.prepare_document_run(
+        world.store(), provider, OWNER, request(tags=(PERSON, PLACE), config_name="fake-other"), "optimized"))
+
+    assert provider.calls == ["person"] and results == []
+    assert (end.outcome.value, end.error, end.units_processed) == (
+        "failed", suggestions.UNSUPPORTED_OPTIMIZED, 1)
 
 
 async def test_access_is_checked_before_the_configurations_are_listed():

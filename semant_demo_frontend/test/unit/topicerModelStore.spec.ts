@@ -57,6 +57,19 @@ describe('useTopicerModelStore', () => {
     expect(second.chosenConfigName()).toBe('crossbert')
   })
 
+  it('names the remembered model until the list has been read', async () => {
+    listed(['llm', 'crossbert'])
+    const first = pageLoad()
+    await first.load()
+    first.selected = 'crossbert'
+
+    getConfigs.mockReturnValue(new Promise(() => undefined)) // still loading
+    const second = pageLoad()
+    void second.load()
+
+    expect([second.loaded, second.chosenConfigName()]).toEqual([false, 'crossbert'])
+  })
+
   it('falls back to the default when the remembered model is no longer offered', async () => {
     listed(['llm', 'crossbert'])
     const first = pageLoad()
