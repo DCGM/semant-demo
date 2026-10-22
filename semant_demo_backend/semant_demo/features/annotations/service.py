@@ -362,36 +362,39 @@ def _pairs_touched_by(spans: dict[UUID, TagSpan], patch: PatchSpan) -> set[Chunk
 
 
 async def _update_and_read(store: AnnotationStore, collection_id: UUID, span_id: UUID, patch: PatchSpan,
-                           actor: Actor, expected: int | None = None) -> tuple[TagSpan, "Refresh | None"]:
+                           actor: Actor, expected: int | None = None
+                           ) -> tuple[TagSpan, "Refresh | None", list[StepFailure]]:
     """Applies the patch (with the span's new derived fields when its offsets are sent, and
-    its provenance) and reads the span back; the refresh tells which vector to store next.
+    its provenance) and reads the span back; the refresh tells which vector to store next,
+    the failures are those of a move's ``text_chunk`` reference.
     ``expected``: the version the caller knows; a span written since raises
     ``EditConflictError`` unless it already is as the patch asks (then nothing is written).
     Under the span's lock the span is read back before the lock is released, so the version
-    returned is the one this write saved, never a later writer's."""
-    refresh = None
+    returned is the one this write saved, never a later writer's; a move also replaces its
+    reference there, so overlapping moves leave it at the chunk the span is on."""
     offsets = store.enrichment.derived and (patch.start is not None or patch.end is not None)
-    if store.spans.provenance:
-        async with store.spans.lock(span_id):
+    if not (store.spans.provenance or offsets or patch.chunkId is not None):
+        await store.spans.update(collection_id, span_id, patch)
+        return await _read_back(store, collection_id, span_id), None, []
+    async with store.spans.lock(span_id):
+        provenance = None
+        if store.spans.provenance:
             current = await store.spans.read(collection_id, span_id)
             if current is None:
                 raise NotFoundError("Span not found")
             if expected is not None and current.editVersion != expected:
                 if _already(current, patch):
-                    return current, None
+                    # A retry of a move whose answer was lost also repairs its reference.
+                    return current, None, await _replace_anchor_reference(store, collection_id, span_id, patch)
                 raise _conflict(current)
             provenance = _edited(current, patch, actor)
-            if offsets:
-                refresh = await _patch_with_derived(store, collection_id, span_id, patch, provenance)
-            else:
-                await store.spans.update(collection_id, span_id, patch, provenance=provenance)
-            return await _read_back(store, collection_id, span_id), refresh
-    if offsets:
-        async with store.spans.lock(span_id):
-            refresh = await _patch_with_derived(store, collection_id, span_id, patch)
-            return await _read_back(store, collection_id, span_id), refresh
-    await store.spans.update(collection_id, span_id, patch)
-    return await _read_back(store, collection_id, span_id), None
+        refresh = None
+        if offsets:
+            refresh = await _patch_with_derived(store, collection_id, span_id, patch, provenance)
+        else:
+            await store.spans.update(collection_id, span_id, patch, provenance=provenance)
+        failed = await _replace_anchor_reference(store, collection_id, span_id, patch)
+        return await _read_back(store, collection_id, span_id), refresh, failed
 
 
 async def _read_back(store: AnnotationStore, collection_id: UUID, span_id: UUID) -> TagSpan:
@@ -440,28 +443,29 @@ async def update_span(store: AnnotationStore, user: Principal | None, collection
     pairs = _pairs_touched_by(spans, patch)
     [sid] = spans
     try:
-        span, refresh = await _update_and_read(store, cid, sid, patch, Actor.of(user), expected_version)
+        span, refresh, anchor_failed = await _update_and_read(store, cid, sid, patch, Actor.of(user), expected_version)
     except EditConflictError:
         raise
     except Exception:
         # The update may have been partly applied (or applied despite a timeout).
         await store.chunk_tags.sync(cid, pairs)
         raise
-    failed = await store.chunk_tags.sync(cid, pairs)
-    if patch.chunkId is not None:
-        failed += await _replace_anchor_reference(store, cid, sid, access.parse_id(patch.chunkId, "Chunk"))
+    failed = anchor_failed + await store.chunk_tags.sync(cid, pairs)
     if refresh is not None:
         failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
     return _write_result(span, failed)
 
 
-async def _replace_anchor_reference(store: AnnotationStore, cid: UUID, span_id: UUID, chunk_id: UUID
+async def _replace_anchor_reference(store: AnnotationStore, cid: UUID, span_id: UUID, patch: PatchSpan
                                     ) -> list[StepFailure]:
     """Points a moved span's ``text_chunk`` reference (the statistics' collection filter) at
-    its new chunk, best effort: also when the move was already applied, so saving the move
-    again repairs a failure (``update_chunk_reference``)."""
+    the chunk of the move, under the span's lock, best effort: also when the move was
+    already applied, so saving the move again repairs a failure (``update_chunk_reference``).
+    Nothing for a patch that moves nothing."""
+    if patch.chunkId is None:
+        return []
     try:
-        await store.spans.replace_anchor_reference(cid, span_id, chunk_id)
+        await store.spans.replace_anchor_reference(cid, span_id, access.parse_id(patch.chunkId, "Chunk"))
     except Exception as e:
         return [step_failure("update_chunk_reference", span_id, e)]
     return []
@@ -519,6 +523,7 @@ async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, Tag
             failed.append(step_failure("update_span", sid, res))
         else:
             updated.append(res[0])
+            failed += res[2]
             if res[1] is not None:
                 refreshes[sid] = res[1]
     failed += await store.chunk_tags.sync(cid, _pairs_touched_by(spans, patch))

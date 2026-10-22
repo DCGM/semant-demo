@@ -109,6 +109,8 @@ class FakeSpans(Recorder):
             },
         }
         self.inserted_documents = []
+        self.references: dict[UUID, UUID] = {}
+        """``text_chunk`` per span, as moves replaced it (#436)."""
 
     def lock(self, span_id):
         return self._locks.setdefault(span_id, asyncio.Lock())
@@ -146,6 +148,7 @@ class FakeSpans(Recorder):
 
     async def replace_anchor_reference(self, cid, span_id, chunk_id):
         await self._write("replace_anchor_reference", span_id, chunk_id)
+        self.references[span_id] = chunk_id
 
     async def delete(self, cid, span_id):
         await self._write("delete_span", span_id)
@@ -448,15 +451,15 @@ async def test_moving_a_span_to_another_chunk_keeps_its_id_and_syncs_both_pairs(
                                        PatchSpan(chunkId=str(CHUNK_2), start=1, end=7))
 
     assert (result.id, result.chunkId, result.start, result.end) == (str(SPAN_A), str(CHUNK_2), 1, 7)
-    assert writes == [("update_span", SPAN_A), ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, TAG)})),
-                      ("replace_anchor_reference", SPAN_A, CHUNK_2)]
+    assert writes == [("update_span", SPAN_A), ("replace_anchor_reference", SPAN_A, CHUNK_2),
+                      ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, TAG)}))]
 
 
 async def test_a_move_with_a_tag_change_syncs_the_new_chunk_with_the_new_tag(store, writes):
     await service.update_span(store, OWNER, COLLECTION, SPAN_A,
                               PatchSpan(chunkId=str(CHUNK_2), start=1, end=7, tagId=str(OTHER_TAG)))
 
-    assert writes[1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, OTHER_TAG)}))
+    assert writes[2] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, OTHER_TAG)}))
 
 
 async def test_a_failed_reference_update_keeps_the_move_and_saving_it_again_repairs_it(recording, writes):
@@ -472,7 +475,30 @@ async def test_a_failed_reference_update_keeps_the_move_and_saving_it_again_repa
     # Saving the same move again (as the client knew it) writes no span, only the reference.
     again = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=0)
     assert again.outcome == "complete"
-    assert [w[0] for w in writes] == ["sync", "replace_anchor_reference"]
+    assert [w[0] for w in writes] == ["replace_anchor_reference", "sync"]
+
+
+@pytest.mark.parametrize("provenance", [False, True], ids=["unversioned", "versioned"])
+async def test_overlapping_moves_leave_the_reference_at_the_chunk_the_span_is_on(provenance, store):
+    # The first move's reference write starts a second move back and gives it every chance
+    # to finish first: the reference is replaced under the span's lock, so the second move
+    # waits and its reference is the last one written.
+    store.spans.provenance = provenance
+    original_replace, later = store.spans.replace_anchor_reference, {}
+
+    async def replace(cid, span_id, chunk_id):
+        if "back" not in later:
+            later["back"] = asyncio.create_task(service.update_span(
+                store, SHARED, COLLECTION, SPAN_A, PatchSpan(chunkId=str(CHUNK_1), start=0, end=3)))
+            await asyncio.wait({later["back"]}, timeout=0.05)
+        await original_replace(cid, span_id, chunk_id)
+
+    store.spans.replace_anchor_reference = replace
+    await service.update_span(store, OWNER, COLLECTION, SPAN_A, PatchSpan(chunkId=str(CHUNK_2), start=1, end=7))
+    back = await later["back"]
+
+    assert (back.outcome, back.chunkId) == ("complete", str(CHUNK_1))
+    assert stored(store).chunkId == str(store.spans.references[SPAN_A]) == str(CHUNK_1)
 
 
 @pytest.mark.parametrize("patch, error", [
