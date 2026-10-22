@@ -123,10 +123,12 @@
 <script setup lang="ts">
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import { computed, ref } from 'vue'
-import { useQuasar, type QTableColumn } from 'quasar'
+import type { QTableColumn } from 'quasar'
 import { Collection, UserSearchResult } from 'src/generated/api'
 import useShareCollectionsDialog from './useShareCollectionsDialog'
 import { collectionRights } from './permissions'
+import useConfirmDelete from 'src/shared/useConfirmDelete'
+import { countAnnotationsInCollections } from 'src/features/annotations/annotationCounts'
 
 interface Props {
   collections: Collection[]
@@ -148,7 +150,7 @@ const emit = defineEmits<
   (event: 'shareMany', payload: { collectionIds: string[]; userId: string }): void
 }>()
 
-const $q = useQuasar()
+const confirmDelete = useConfirmDelete()
 const selected = ref<Collection[]>([])
 const { openShareCollectionsDialog } = useShareCollectionsDialog()
 
@@ -231,16 +233,12 @@ const handleBulkShare = () => {
 const handleBulkDelete = () => {
   if (selected.value.length === 0 || !allSelectedOwned.value) return
   const count = selected.value.length
-  $q.dialog({
+  const ids = selected.value.map(c => c.id)
+  confirmDelete({
     title: 'Delete Selected Collections',
-    html: true,
-    message: `Are you sure you want to delete <strong>${count}</strong> selected collection${count === 1 ? '' : 's'}?`,
-    cancel: true,
-    ok: {
-      label: 'Delete selected',
-      color: 'negative'
-    },
-    persistent: true
+    message: `Delete ${count} selected collection${count === 1 ? '' : 's'}?`,
+    okLabel: 'Delete selected',
+    count: () => countAnnotationsInCollections(ids)
   }).onOk(() => {
     emit('deleteMany', selected.value.map(c => c.id))
     selected.value = []

@@ -1,6 +1,7 @@
 <template>
-  <q-dialog ref="dialogRef" @hide="onDialogHide" persistent>
-    <q-card class="q-pa-sm" style="width: 900px">
+  <!-- Escape is handled on the card, so it can ask about unsaved changes first. -->
+  <q-dialog ref="dialogRef" @hide="onDialogHide" no-esc-dismiss no-backdrop-dismiss>
+    <q-card ref="cardRef" class="q-pa-sm" style="width: 900px" @keydown="onKeydown" @keyup="onKeyup">
       <q-card-section>
         <div class="text-h4 text-grey-9 text-center">
           {{ dialogTitle }}
@@ -173,7 +174,8 @@
 </template>
 
 <script setup lang="ts">
-import { QForm, useDialogPluginComponent, useQuasar } from 'quasar'
+import { useFormDialog } from 'src/shared/useFormDialog'
+import { QCard, QForm, useDialogPluginComponent } from 'quasar'
 import useColorPicker from 'src/shared/useColorPicker'
 import { PostTag, Tag } from 'src/generated/api'
 import { computed, ref } from 'vue'
@@ -185,7 +187,6 @@ interface TagsDialogProps {
   tag?: Tag
 }
 
-const $q = useQuasar()
 const props = defineProps<TagsDialogProps>()
 const { dialogRef, onDialogHide, onDialogCancel, onDialogOK } =
   useDialogPluginComponent()
@@ -290,22 +291,9 @@ const handleConfirmColor = () => {
   closeColor()
 }
 
-const handleCancel = () => {
-  if (isDirty.value) {
-    $q.dialog({
-      title: 'Unsaved Changes',
-      message:
-        'You have unsaved changes. Are you sure you want to discard them?',
-      ok: 'Yes',
-      cancel: 'No',
-      persistent: true
-    }).onOk(() => {
-      onDialogCancel()
-    })
-  } else {
-    onDialogCancel()
-  }
-}
+// Cancel and Escape close at once when nothing was entered, otherwise they ask first (#479).
+const cardRef = ref<QCard | null>(null)
+const { requestClose: handleCancel, onKeydown, onKeyup } = useFormDialog(cardRef, isDirty, onDialogCancel)
 
 const handleConfirm = () => {
   formRef.value?.submit()
