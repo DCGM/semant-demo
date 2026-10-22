@@ -1,13 +1,16 @@
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 import logging
 
 from semant_demo.bootstrap import AppResources, WeaviateConnector
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
 from semant_demo.adapters.llm.gateway import limit_provider_sdk_logs
-from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
+from semant_demo.core.errors import (
+    EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError,
+)
 from semant_demo.features.quota.guest_cookie import GuestCookieMiddleware
 from semant_demo.features.quota.service import QuotaExhausted, utc_now
 from semant_demo.features.user_collections.access import AccessDenied, AuthenticationRequired
@@ -89,13 +92,18 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     # Raised by collection access checks (features/user_collections/access.py, its
     # ResourceNotFound is a NotFoundError) and by repositories/services (core/errors.py).
     for exc_type, status_code in ((AuthenticationRequired, 401), (NotFoundError, 404), (AccessDenied, 403),
-                                  (InvalidRequestError, 400)):
+                                  (InvalidRequestError, 400), (ServiceUnavailableError, 503)):
         app.add_exception_handler(exc_type, _detail_handler(status_code))
 
     # A multi-step write that stopped part way: completed steps are kept (ADR 0002).
     async def incomplete_write(request: Request, exc: IncompleteWriteError) -> JSONResponse:
         return JSONResponse(status_code=500, content=exc.body())
     app.add_exception_handler(IncompleteWriteError, incomplete_write)
+
+    # A write refused because someone else wrote the object since the expected version (#460).
+    async def edit_conflict(request: Request, exc: EditConflictError) -> JSONResponse:
+        return JSONResponse(status_code=409, content=jsonable_encoder(exc.body()))
+    app.add_exception_handler(EditConflictError, edit_conflict)
 
     # An AI operation refused for the caller's daily allowance (features/quota).
     async def quota_exhausted(request: Request, exc: QuotaExhausted) -> JSONResponse:

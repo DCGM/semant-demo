@@ -1,10 +1,12 @@
 """Topicer failures name only the error class or HTTP status, in logs and in suggestion events (#301);
 reported usage, the per-tag chunk limit and the stream's usage summary (#408)."""
+import asyncio
 import json
 
 import httpx
 import pytest
 
+from semant_demo.adapters.topicer import client as topicer_client
 from semant_demo.adapters.topicer.client import TopicerClient, TopicerError, TopicerStreamSummary, TopicerTag
 
 SECRET = "SECRET-MARKER"
@@ -149,7 +151,8 @@ async def test_a_malformed_summary_is_not_yielded(broken):
 
 
 @pytest.mark.parametrize("handler, no_work", [
-    (_failing(422), True), (_unreachable, True), (_failing(500), False), (_failing(429), False)])
+    (_failing(422), True), (_failing(404), True), (_failing(409), True), (_unreachable, True),
+    (_failing(500), False), (_failing(429), False)])
 async def test_only_certainly_unprocessed_requests_are_marked_as_no_work(handler, no_work):
     with pytest.raises(TopicerError) as raised:
         async for _ in _client(handler).propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc"):
@@ -168,3 +171,83 @@ def _answer_stream(lines):
     text = "".join(json.dumps(line) + "\n" for line in lines)
     return _client(lambda request: httpx.Response(200, text=text)).propose_for_db_stream(
         tag=TAG, collection_id="col", document_id="doc")
+
+
+# ── Configurations (#189) ──────────────────────────────────────────────────
+
+
+async def test_configs_are_listed():
+    client = _client(lambda request: httpx.Response(200, json=["llm-openrouter", "crossbert"]))
+
+    assert await client.list_configs() == ["llm-openrouter", "crossbert"]
+
+
+@pytest.mark.parametrize("handler", [
+    _failing(503), _unreachable, lambda request: httpx.Response(200, json={"configs": []}),
+    lambda request: httpx.Response(200, json=["ok", 1]), lambda request: httpx.Response(200, text="not json"),
+])
+async def test_an_unusable_config_list_raises(handler, caplog):
+    with pytest.raises(TopicerError):
+        await _client(handler).list_configs()
+
+    assert SECRET not in _logged(caplog)
+
+
+async def test_the_config_list_is_reused_for_a_while_and_a_failure_is_not(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(topicer_client.time, "monotonic", lambda: now[0])
+    answers = [httpx.Response(503), httpx.Response(200, json=["a"]), httpx.Response(200, json=["a", "b"])]
+    timeouts = []
+
+    def handler(request):
+        timeouts.append(request.extensions["timeout"]["read"])
+        return answers.pop(0)
+    client = _client(handler)
+
+    with pytest.raises(TopicerError):
+        await client.list_configs()
+    assert await client.list_configs() == ["a"]
+    now[0] += topicer_client.CONFIGS_MAX_AGE - 1
+    assert await client.list_configs() == ["a"]
+    now[0] += 2
+    assert await client.list_configs() == ["a", "b"]
+
+    # Not the proposal timeout: listing needs no inference.
+    assert timeouts == [topicer_client.CONFIGS_TIMEOUT] * 3
+
+
+async def test_concurrent_config_list_reads_share_one_request():
+    requests, release = [], asyncio.Event()
+
+    async def handler(request):
+        requests.append(request)
+        await release.wait()
+        return httpx.Response(200, json=["a"])
+    client = _client(handler)
+
+    waiters = [asyncio.create_task(client.list_configs()) for _ in range(3)]
+    await asyncio.sleep(0.01)
+    waiters[0].cancel()  # one caller gone: the others still get the shared answer
+    release.set()
+    results = await asyncio.gather(*waiters, return_exceptions=True)
+
+    assert len(requests) == 1
+    assert isinstance(results[0], asyncio.CancelledError) and results[1:] == [["a"], ["a"]]
+
+
+async def test_a_call_may_name_another_config():
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.params["config_name"])
+        if request.url.path.endswith("/stream"):
+            return httpx.Response(200, text="")
+        return httpx.Response(200, json={"tag_span_proposals": []})
+    client = TopicerClient("http://topicer", "default", 5.0, transport=httpx.MockTransport(handler))
+
+    await client.propose_for_text(chunk_id="c", text="x", tags=[TAG])
+    await client.propose_for_text(chunk_id="c", text="x", tags=[TAG], config_name="other")
+    [_ async for _ in client.propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc",
+                                                   config_name="other")]
+
+    assert seen == ["default", "other", "other"]

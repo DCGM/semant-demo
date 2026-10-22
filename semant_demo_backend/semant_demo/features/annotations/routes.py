@@ -116,6 +116,9 @@ async def read_tag_spans_batch(
 
 
 _SPAN_COLLECTION = Query(description="Collection of the span; a span of another collection is not found")
+_EXPECTED_VERSION = Query(default=None, description=(
+    "The span's editVersion as the client knows it: when someone else wrote the span since, nothing is "
+    "changed and the answer is 409 with the current span (``current``)"))
 
 
 @span_router.patch("/api/tag_spans/{span_id}", response_model=TagSpanWriteResult)
@@ -123,6 +126,7 @@ async def update_tag_span(
     span_id: str,
     body: PatchSpan,
     collection_id: str = _SPAN_COLLECTION,
+    expected_version: int | None = _EXPECTED_VERSION,
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ):
@@ -130,9 +134,10 @@ async def update_tag_span(
     Update TagSpan's information (start, end, tagId, ...), then re-derive the chunk tag
     references of its (chunk, tag) pair (and the new pair on a tag change), so saving again
     retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated
-    but the chunk tags could not be.
+    but the chunk tags could not be. A span written by someone else since
+    ``expected_version`` is not changed (409), unless it already is as the patch asks.
     """
-    return await service.update_span(store, current_user, collection_id, span_id, body)
+    return await service.update_span(store, current_user, collection_id, span_id, body, expected_version)
 
 
 @span_router.post(
@@ -153,23 +158,28 @@ async def bulk_update_tag_spans(
     All spans must belong to ``collection_id``, which the user may annotate; otherwise
     nothing is updated. Updates are best effort: ``spans`` holds the updated spans and
     ``failed`` the spans that could not be updated (``update_span``) and the chunk tag
-    updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+    updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by
+    someone else since their version in ``expected_versions`` are not changed
+    (``edit_conflict``; their current state in ``conflicts``).
     """
-    return await service.bulk_update_spans(store, current_user, body.collection_id, body.span_ids, body.update)
+    return await service.bulk_update_spans(store, current_user, body.collection_id, body.span_ids, body.update,
+                                           body.expected_versions)
 
 
 @span_router.delete("/api/tag_spans/{span_id}", response_model=WriteResult)
 async def delete_tag_span(
     span_id: str,
     collection_id: str = _SPAN_COLLECTION,
+    expected_version: int | None = _EXPECTED_VERSION,
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> WriteResult:
     """
     Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is
-    ``partial`` when the span was deleted but the chunk tag could not be updated.
+    ``partial`` when the span was deleted but the chunk tag could not be updated. A span
+    written by someone else since ``expected_version`` is not deleted (409).
     """
-    return await service.delete_span(store, current_user, collection_id, span_id)
+    return await service.delete_span(store, current_user, collection_id, span_id, expected_version)
 
 
 @span_router.post(
@@ -218,6 +228,8 @@ async def list_collection_annotations(
     sort: AnnotationSort = AnnotationSort.document,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    annotation_id: list[str] | None = Query(default=None, max_length=200,
+                                            description="Only these annotations"),
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> AnnotationPage:
@@ -229,7 +241,7 @@ async def list_collection_annotations(
     """
     return await service.query_annotations(
         store, current_user, collection_id, tag_ids=tag_id, types=types, text=q, document_ids=document_id,
-        year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset)
+        year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset, annotation_ids=annotation_id)
 
 
 @span_router.get("/api/user_collections/{collection_id}/annotations/documents",
@@ -273,9 +285,11 @@ async def review_collection_annotations(
 ) -> AnnotationReviewResult:
     """
     Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the
-    collection. Best effort and per item: ``succeeded`` lists the changed annotations,
-    ``failed`` the ones not changed or uncertain and the ids that are no annotation of the
-    collection (``find_annotation``). Nothing is rolled back.
+    collection, each expected at its version in ``expected_versions``. Best effort and per
+    item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or
+    uncertain, those written by someone else since (``edit_conflict``) and the ids that are
+    no annotation of the collection (``find_annotation``); ``versions`` the new versions.
+    Nothing is rolled back.
     """
     return await service.review_annotations(store, current_user, collection_id, body)
 

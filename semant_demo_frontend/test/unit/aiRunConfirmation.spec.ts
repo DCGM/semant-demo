@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import AiAssistPanel from 'src/features/annotations/AiAssistPanel.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
+import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
 
 // A document run that would evaluate more than 50 chunks asks first (#408): thorough
 // counts the document's chunks in the collection, optimized the selected tags times the
@@ -15,6 +16,7 @@ import useAiAssistance from 'src/features/annotations/useAiAssistance'
 const tag = (id: string, name: string) => ({ id, name, color: '#000', shorthand: id, collectionId: 'c1' })
 const stats = { chunksInCollection: 10 as number | undefined, aiMaxChunksPerTag: 40 as number | undefined }
 let statsFail = false
+let topicerConfigs: { configs: string[], defaultConfig: string } | null = { configs: ['llm'], defaultConfig: 'llm' }
 const dialogs: { title: string, message: string, ok: () => void, cancel: () => void }[] = []
 
 vi.mock('src/features/annotations/useTagsRepository', () => ({
@@ -28,6 +30,10 @@ vi.mock('src/shared/api', async () => ({
       getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet: async () => {
         if (statsFail) throw new Error('stats unavailable')
         return { ...stats }
+      },
+      getTopicerConfigsApiAiTopicerConfigsGet: async () => {
+        if (!topicerConfigs) throw new Error('Topicer unavailable')
+        return { ...topicerConfigs }
       }
     }
   })
@@ -56,17 +62,22 @@ vi.mock('quasar', async () => {
 describe('confirmation before a large AI run', () => {
   const originalFetch = globalThis.fetch
   let requested: string[]
+  let bodies: Record<string, unknown>[]
 
   beforeEach(async () => {
     setActivePinia(createPinia())
     await useTagsStore().fetchTagsByCollection('c1')
     dialogs.length = 0
     requested = []
+    bodies = []
+    topicerConfigs = { configs: ['llm'], defaultConfig: 'llm' }
+    localStorage.clear()
     Object.assign(stats, { chunksInCollection: 10, aiMaxChunksPerTag: 40 })
     statsFail = false
     const end = JSON.stringify({ event: 'end', outcome: 'complete', saved: 0, rejected: 0, save_failures: 0, search_tag_failures: 0, provider_failures: 0 })
-    globalThis.fetch = vi.fn((url: Parameters<typeof fetch>[0]) => {
+    globalThis.fetch = vi.fn((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       requested.push(String(url))
+      bodies.push(JSON.parse(String(init?.body)))
       return Promise.resolve(new Response(end + '\n'))
     })
   })
@@ -157,5 +168,35 @@ describe('confirmation before a large AI run', () => {
 
     expect(dialogs.map((d) => d.title)).toEqual(['AI run of unknown size', 'AI run of unknown size'])
     expect(requested).toEqual([expect.stringMatching(/\/ai\/suggest_spans\/thorough$/)])
+  })
+
+  it('sends the model picked in the panel, and none for the server default', async () => {
+    topicerConfigs = { configs: ['llm', 'crossbert'], defaultConfig: 'llm' }
+    await runAi(1)
+    useTopicerModelStore().selected = 'crossbert'
+    const wrapper = await runAi(1)
+
+    expect(wrapper.find('[data-testid="ai-model-select"]').exists()).toBe(true)
+    expect(bodies.map((b) => b.config_name)).toEqual([undefined, 'crossbert'])
+  })
+
+  it('keeps the model picker disabled while a run waits for its confirmation', async () => {
+    topicerConfigs = { configs: ['llm', 'crossbert'], defaultConfig: 'llm' }
+    const wrapper = await runAi(2) // asks first
+
+    expect(wrapper.find('.q-select').classes()).toContain('q-field--disabled')
+    dialogs[0].cancel()
+    await flushPromises()
+    expect(wrapper.find('.q-select').classes()).not.toContain('q-field--disabled')
+  })
+
+  it('hides the model picker when the models cannot be listed', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    topicerConfigs = null
+    const wrapper = await runAi(1)
+
+    expect(wrapper.find('[data-testid="ai-model-select"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ai-model-unavailable"]').text()).toMatch(/the default model is used/)
+    expect(bodies.map((b) => b.config_name)).toEqual([undefined])
   })
 })

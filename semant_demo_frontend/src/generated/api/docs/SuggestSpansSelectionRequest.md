@@ -13,6 +13,7 @@ Name | Type
 `selectionStart` | number
 `selectionEnd` | number
 `tagIds` | Array&lt;string&gt;
+`configName` | string
 
 ## Example
 
@@ -27,6 +28,7 @@ const example = {
   "selectionStart": null,
   "selectionEnd": null,
   "tagIds": null,
+  "configName": null,
 } satisfies SuggestSpansSelectionRequest
 
 console.log(example)

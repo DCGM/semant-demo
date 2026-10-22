@@ -18,40 +18,7 @@
   >
     <template #top>
       <div class="text-h5 text-weight-medium">Documents ({{ documents.length }} {{ documents.length === 1 ? 'item' : 'items' }})</div>
-      <q-space />
-
-      <q-select
-        v-model="visibleColumns"
-        multiple
-        outlined
-        options-dense
-        dense
-        :display-value="$q.lang.table.columns"
-        :options="columnOptions"
-        option-value="name"
-        emit-value
-        style="min-width: 150px"
-        transition-hide="scale"
-        transition-show="scale"
-        color="primary"
-        class="text-grey-2"
-      >
-        <template #option="{ itemProps, opt, selected, toggleOption }">
-          <q-item v-bind="itemProps">
-            <q-item-section>
-              <q-item-label>{{ opt.label }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-toggle
-                :model-value="selected"
-                @update:model-value="toggleOption(opt)"
-              />
-            </q-item-section>
-          </q-item>
-        </template>
-      </q-select>
       <div style="width: 100%" class="row items-center q-my-sm">
-        <RefreshButton @click="handleRefresh" />
         <BaseButton
           v-if="rights.editMembership"
           icon="library_add"
@@ -60,7 +27,7 @@
           @click="handleBrowseLibrary"
         />
         <q-input
-          class="q-ml-md"
+          :class="{ 'q-ml-md': rights.editMembership }"
           v-model="filter"
           placeholder="Search"
           dense
@@ -72,6 +39,8 @@
             <q-icon name="search" />
           </template>
         </q-input>
+        <q-space />
+        <ColumnPicker v-model="visibleColumns" :columns="columns" />
       </div>
     </template>
     <template #body-cell-actions="props">
@@ -175,9 +144,9 @@ import { storeToRefs } from 'pinia'
 import { Document, DocumentStats } from 'src/generated/api'
 import { useDocumentsStore } from './documentsStore'
 import useBrowseLibraryDialog from './useBrowseLibraryDialog'
-import { computed, onMounted, ref } from 'vue'
-import RefreshButton from 'src/shared/ui/RefreshButton.vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
+import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocumentsRepository } from './useDocumentsRepository'
@@ -213,10 +182,15 @@ const rights = computed(() =>
 
 onMounted(async () => {
   await fetchDocumentsByCollection(collectionId.value)
-  void loadAllDocumentStats()
 })
 
+// Every fetch replaces the list (on mount, after adding from the library, after removing),
+// so the stats are reloaded with it; only the latest load is kept.
+watch(documents, () => { void loadAllDocumentStats() })
+let statsLoad = 0
+
 const loadAllDocumentStats = async () => {
+  const load = ++statsLoad
   if (!documents.value.length) return
   statsLoading.value = true
   try {
@@ -225,19 +199,15 @@ const loadAllDocumentStats = async () => {
         documentsRepository.getStats(collectionId.value, doc.id).catch(() => null)
       )
     )
+    if (load !== statsLoad) return
     const map: Record<string, DocumentStats> = {}
     for (const stats of results) {
       if (stats) map[stats.documentId] = stats
     }
     documentStatsMap.value = map
   } finally {
-    statsLoading.value = false
+    if (load === statsLoad) statsLoading.value = false
   }
-}
-
-const handleRefresh = async () => {
-  await fetchDocumentsByCollection(collectionId.value)
-  void loadAllDocumentStats()
 }
 
 const handleBrowseLibrary = () => {
@@ -389,7 +359,6 @@ const columns: QTableColumn<Document>[] = [
   }
 ]
 
-const columnOptions = columns.filter((col) => !col.required)
 </script>
 
 <style scoped>

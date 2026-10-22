@@ -185,6 +185,68 @@ test('annotation workspace review (#459)', async ({ page, request }, testInfo) =
   }
 })
 
+test('annotation provenance and edit conflicts (#460)', async ({ page, request }, testInfo) => {
+  // The sidebar names who created and changed the open annotation; a review of a copy
+  // someone else changed meanwhile is refused, in the sidebar and in a batch.
+  const collectionId = fixture.collection('chronicles').id
+  const as = async (userKey: string) => ({ Authorization: `Bearer ${await apiToken(request, userKey)}` })
+  const patch = async (id: string, data: Record<string, unknown>, userKey = 'owner') =>
+    request.patch(`/api/tag_spans/${id}`, { headers: await as(userKey), params: { collection_id: collectionId }, data })
+  const lhota = fixture.span('lhota_automatic')
+  const praha = fixture.span('praha_automatic')
+  const row = (text: string) => page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: text }) })
+  // On a phone the sidebar covers the list.
+  const backToList = async () => {
+    if (testInfo.project.name === 'phone') await page.getByRole('button', { name: 'Close sidebar' }).click()
+  }
+  try {
+    const created = await (await request.post('/api/tag_spans', {
+      headers: await as('owner'),
+      data: { chunkId: fixture.chunk('chronicle_1').id, tagId: fixture.tag('person').id, start: 0, end: 4, type: 'pos' }
+    })).json() as { id: string }
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${collectionId}/annotations`)
+    await page.reload() // without the sign-in notification
+    await closePhoneNavigation(page)
+
+    // Created by the owner, then retagged by the shared annotator.
+    await patch(created.id, { tagId: fixture.tag('place').id }, 'annotator')
+    await page.getByTestId('concordance-status-pos').click() // reload with the change
+    await page.getByTestId('concordance-status-pos').click()
+    await page.locator(`[data-testid="kwic-row"][data-annotation-id="${created.id}"]`).click()
+    await expect(page.getByTestId('provenance-edited')).toBeVisible()
+    await expectRightSidebarIn(page)
+    await expectSidebarsOpen(page, testInfo)
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'annotation-provenance-sidebar')
+
+    // The annotator approves the proposal the owner has open; the owner's reject is refused.
+    await backToList()
+    await row('Lhoty').click()
+    await patch(lhota.id, { type: 'pos' }, 'annotator')
+    await page.getByTestId('annotation-review').getByRole('button', { name: 'Reject' }).click()
+    await expect(page.getByTestId('annotation-conflict')).toBeVisible()
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'annotation-conflict-sidebar')
+
+    // A batch: one of the selected proposals changed after it was selected.
+    await backToList()
+    await patch(lhota.id, { type: 'auto' })
+    await page.getByTestId('concordance-status-pos').click()
+    await expect(page.getByTestId('kwic-row')).toHaveCount(2)
+    await page.getByTestId('select-all-matches').click()
+    await patch(praha.id, { tagId: fixture.tag('person').id }, 'annotator')
+    await page.getByTestId('review-reject').click()
+    await expect(page.getByTestId('review-show-changed')).toBeVisible()
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'annotation-conflict-report')
+  } finally {
+    await patch(lhota.id, { type: 'auto' })
+    await patch(praha.id, { type: 'auto', tagId: fixture.tag('place').id })
+    await deleteAddedSpans(request, 'owner', 'chronicles')
+  }
+})
+
 test('corpus overview', async ({ page }, testInfo) => {
   // A synced store has libraries; the fixture store has none (shown as unavailable).
   await page.route('**/api/analytics/corpus/overview', async (route) => {

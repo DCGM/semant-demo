@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { useTagSpansStore } from './tagSpansStore'
 import { SpanType, TagSpan, CollectionChunk } from 'src/generated/api'
 import { localRange, offsetBetween } from './spanOffsets'
-import { createContextGuard } from 'src/shared/api'
+import { createContextGuard, errorStatus } from 'src/shared/api'
 
 // ── Types ──────────────────────────────────────────────
 
@@ -365,10 +365,19 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     if (saving.value) return false
     const isCurrent = selectionGuard.capture()
     saving.value = true
+    let outdated = false
     try {
       await request()
+    } catch (err) {
+      // Someone else changed or deleted the span meanwhile (#460): the view shows it as it
+      // is now, so the selection editing the outdated copy is closed.
+      outdated = [409, 404].includes(errorStatus(err) ?? 0)
+      throw err
     } finally {
-      if (isCurrent()) saving.value = false
+      if (isCurrent()) {
+        saving.value = false
+        if (outdated) clearSelection()
+      }
     }
     if (isCurrent()) clearSelection()
     return true

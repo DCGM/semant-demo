@@ -11,6 +11,8 @@ render suggestions progressively: ``SuggestSpansChunkResult`` lines (``"event":
 - ``POST /api/ai/suggest_spans/optimized`` — per tag, Topicer's
   ``/v1/tags/propose/db/stream`` pre-filters chunks by vector similarity.
 - ``POST /api/ai/suggest_spans/selection`` — one user-selected passage.
+- ``GET /api/ai/topicer_configs`` — the Topicer configurations a request may name in
+  ``config_name`` (#189); without one, the server default is used.
 
 Access is checked before the stream starts (404/401/403 as for other annotation writes,
 400 for invalid requests). Each chunk, tag or selection is then one operation of the
@@ -31,6 +33,7 @@ from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.features.annotations import service, suggestions
 from semant_demo.features.annotations.schemas import (
     DeleteAutoSpansRequest, DeleteAutoSpansResponse, SuggestSpansRequest, SuggestSpansSelectionRequest,
+    TopicerConfigsResponse,
 )
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.quota.principal import get_allowance_budget
@@ -75,6 +78,20 @@ _STREAM_DESCRIPTION = (
     "Stream of SuggestSpansChunkResult, one JSON object per line, ended by one "
     "SuggestSpansRunEnd line (``event == 'end'``)."
 )
+
+
+@exp_router.get("/api/ai/topicer_configs", response_model=TopicerConfigsResponse)
+async def get_topicer_configs(
+    provider: TopicerClient = Depends(get_topicer),
+    current_user: User = Depends(current_active_user),
+) -> TopicerConfigsResponse:
+    """
+    The Topicer configurations (AI models) that suggestion requests may name in
+    ``config_name``, as Topicer lists them, and the server default. 503 when Topicer
+    cannot be asked.
+    """
+    return TopicerConfigsResponse(configs=await suggestions.topicer_configs(provider),
+                                  default_config=provider.config_name)
 
 
 @exp_router.post(

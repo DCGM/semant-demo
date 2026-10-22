@@ -4,7 +4,22 @@ import type { PostSpan, TagSpan, PatchSpan } from 'src/generated/api'
 import { useTagSpansRepository } from './useTagSpansRepository'
 import { requireComplete, spanWriteWarning, spanOf } from 'src/shared/writeOutcome'
 import { warningNotification } from 'src/shared/notification'
-import { createScope } from 'src/shared/api'
+import { ApiError, createScope, errorStatus } from 'src/shared/api'
+
+/** The span a 409 answer carries: the span as someone else saved it meanwhile (#460). */
+async function currentOfConflict (err: unknown): Promise<TagSpan | null> {
+  if (errorStatus(err) !== 409) return null
+  const response = (err as { response?: Response } | null)?.response
+  try {
+    const body = await response?.clone().json() as { current?: TagSpan } | undefined
+    return body?.current ?? null
+  } catch {
+    return null
+  }
+}
+
+const CHANGED = 'Someone else changed this annotation meanwhile; nothing was saved. The view now shows its current version.'
+const DELETED = 'Someone else deleted this annotation meanwhile; it was removed from the view.'
 
 /**
  * Spans of the document view, keyed by chunk id. They belong to one collection (a chunk
@@ -13,6 +28,10 @@ import { createScope } from 'src/shared/api'
  * Responses and write results of the old scope do not change the new one; the writes
  * themselves are kept by the backend. Span updates and deletions name the scope's
  * collection, since the backend finds a span only within its own collection.
+ *
+ * Updates and deletions send the span's `editVersion` as loaded (#460): when someone else
+ * changed the span meanwhile, nothing is saved, the span is replaced by its current version
+ * (or removed, when it was deleted) and the write fails with a message saying so.
  */
 export const useTagSpansStore = defineStore('tagSpans', () => {
   const repo = useTagSpansRepository()
@@ -101,10 +120,29 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     }
   }
 
+  const findSpan = (spanId: string, chunkId: string) =>
+    spansByChunkId.value[chunkId]?.find((s) => s.id === spanId)
+
+  /** After a refused write: shows the span as it is now, and the error to report. */
+  const reconcileRefused = async (err: unknown, spanId: string, chunkId: string): Promise<unknown> => {
+    const current = await currentOfConflict(err)
+    if (current) {
+      spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).map((s) => (s.id === spanId ? current : s))
+      spansVersion.value++
+      return new ApiError(409, CHANGED)
+    }
+    if (errorStatus(err) === 404 && findSpan(spanId, chunkId)) {
+      spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).filter((s) => s.id !== spanId)
+      spansVersion.value++
+      return new ApiError(404, DELETED)
+    }
+    return err
+  }
+
   const updateSpan = async (spanId: string, chunkId: string, update: PatchSpan) => {
     const isCurrent = scope.capture()
     try {
-      const result = await repo.update(spanId, currentCollection(), update)
+      const result = await repo.update(spanId, currentCollection(), update, findSpan(spanId, chunkId)?.editVersion)
       warnIfIncomplete(spanWriteWarning(result, 'saved'))
       if (!isCurrent()) return
       const updatedSpan = spanOf(result)
@@ -114,7 +152,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
       if (!isCurrent()) throw err
       console.error('Failed to update span', err)
       error.value = 'Failed to update span'
-      throw err
+      throw await reconcileRefused(err, spanId, chunkId)
     }
   }
 
@@ -131,13 +169,19 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     if (spanIds.length === 0) return
     const isCurrent = scope.capture()
     try {
-      const result = await repo.bulkUpdate(spanIds, currentCollection(), update)
+      const known = new Map(Object.values(spansByChunkId.value).flat().map((s) => [s.id, s.editVersion] as const))
+      const expected = Object.fromEntries(spanIds.flatMap((id) => {
+        const version = known.get(id)
+        return version === undefined ? [] : [[id, version]]
+      }))
+      const result = await repo.bulkUpdate(spanIds, currentCollection(), update, expected)
       if (!isCurrent()) {
         requireComplete(result, 'Updating the selected suggestions')
         return
       }
-      // Apply the spans that were updated, then report any that were not.
-      const byId = new Map(result.spans.map((s) => [s.id, s] as const))
+      // Apply the spans that were updated and the current state of those changed by
+      // someone else meanwhile, then report any that were not updated.
+      const byId = new Map([...(result.conflicts ?? []), ...result.spans].map((s) => [s.id, s] as const))
 
       const next: Record<string, TagSpan[]> = { ...spansByChunkId.value }
       for (const chunkId of Object.keys(next)) {
@@ -157,6 +201,10 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
 
       spansByChunkId.value = next
       spansVersion.value++
+      const changed = result.conflicts?.length ?? 0
+      if (changed && changed === (result.failed ?? []).length) {
+        throw new Error(`${changed} of the selected suggestions ${changed === 1 ? 'was' : 'were'} changed by someone else meanwhile and ${changed === 1 ? 'was' : 'were'} not updated; the view now shows ${changed === 1 ? 'it' : 'them'} as ${changed === 1 ? 'it is' : 'they are'}.`)
+      }
       requireComplete(result, 'Updating the selected suggestions')
     } catch (err) {
       if (!isCurrent()) throw err
@@ -169,7 +217,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   const deleteSpan = async (spanId: string, chunkId: string) => {
     const isCurrent = scope.capture()
     try {
-      const result = await repo.delete(spanId, currentCollection())
+      const result = await repo.delete(spanId, currentCollection(), findSpan(spanId, chunkId)?.editVersion)
       warnIfIncomplete(spanWriteWarning(result, 'deleted'))
       if (!isCurrent()) return
       spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).filter((s) => s.id !== spanId)
@@ -178,7 +226,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
       if (!isCurrent()) throw err
       console.error('Failed to delete span', err)
       error.value = 'Failed to delete span'
-      throw err
+      throw await reconcileRefused(err, spanId, chunkId)
     }
   }
 

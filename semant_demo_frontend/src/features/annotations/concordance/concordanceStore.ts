@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import {
-  AnnotationSort, SpanType, type AnnotatedDocument, type AnnotationPage
+  AnnotationSort, SpanType, type AnnotatedDocument, type AnnotationPage, type CollectionPerson
 } from 'src/generated/api'
 import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus, isAbortError, useApi } from 'src/shared/api'
 import { MAX_SELECTION, useAnnotationSelectionStore } from '../annotationSelectionStore'
@@ -96,6 +96,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
   const shownError = ref<string | null>(null)
   /** "Select all matches" is resolving the current filters. */
   const resolving = ref(false)
+  /** The collection's owner and members, to name who created or changed annotations (#460). */
+  const people = shallowRef<CollectionPerson[]>([])
   const scrollY = ref(0)
   /** The query and offset of `page`. */
   let pageKey: string | null = null
@@ -138,6 +140,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     shown.value = new Set()
     known.value = new Set()
     shownError.value = null
+    people.value = []
     pageKey = null
     scrollY.value = 0
   }
@@ -151,6 +154,31 @@ export const useConcordanceStore = defineStore('concordance', () => {
     else if ((refresh || key === pageKey) && page.value?.rows.some(r => r.id === row.id)) selection.focusedGone = true
   }
 
+  /**
+   * Reads the focused annotation as it is now, whatever the filters, and keeps it focused
+   * (a review of it was refused because someone changed it, possibly out of the filters;
+   * #460). False when it no longer exists, another one is focused meanwhile, or reading failed.
+   */
+  async function readFocused (): Promise<boolean> {
+    const id = collectionId.value
+    const row = selection.focused
+    if (!id || !row) return false
+    const inScope = scope.capture()
+    const inSession = captureSession()
+    try {
+      const result = await api.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet({
+        collectionId: id, annotationId: [row.id], type: Object.values(SpanType), limit: 1
+      })
+      const fresh = result.rows[0]
+      if (!fresh || !inScope() || !inSession() || selection.focused?.id !== row.id) return false
+      selection.focus(fresh)
+      return true
+    } catch (e) {
+      console.error('Reading the annotation failed', e)
+      return false
+    }
+  }
+
   /** Shows the collection's workspace: as it was left, or a new one for another collection. */
   async function open (id: string) {
     if (scope.enter(id)) {
@@ -159,7 +187,23 @@ export const useConcordanceStore = defineStore('concordance', () => {
       useAnnotationReviewStore().clear()
     }
     selection.enter(id)
+    // Names only label provenance: the workspace does not wait for them.
+    void loadPeople()
     await Promise.all([load(), loadDocuments(), loadShown()])
+  }
+
+  /** The collection's owner and members; without them actors show as "a former member". */
+  async function loadPeople () {
+    const id = collectionId.value
+    if (!id) return
+    const inScope = scope.capture()
+    const inSession = captureSession()
+    try {
+      const result = await api.getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet({ collectionId: id })
+      if (inScope() && inSession()) people.value = result
+    } catch (e) {
+      console.error('Loading the collection members failed', e)
+    }
   }
 
   /** Reads the current page again (also after returning, so edits made elsewhere show). */
@@ -288,8 +332,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
   }
 
   /**
-   * Adds every annotation matching the current filters to the selection, as the ids the
-   * server resolves now: later filter changes do not widen it. Returns a message when
+   * Adds every annotation matching the current filters to the selection, as the ids (and
+   * versions) the server resolves now: later filter changes do not widen it. Returns a message when
    * nothing was added (too many matches, or the selection would exceed its limit).
    */
   async function selectAllMatches (): Promise<string | null> {
@@ -306,7 +350,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
         collectionId: id, annotationIdsRequest: idsRequest(filters.value)
       })
       if (!applies()) return null
-      if (!selection.add(result.ids)) {
+      if (!selection.add(result.ids.map(i => [i, result.versions?.[i] ?? 0] as const))) {
         return `The selection can hold at most ${MAX_SELECTION} annotations; clear it or narrow the filters.`
       }
       // All matches are known now: every other member is hidden by the filters. This
@@ -362,12 +406,11 @@ export const useConcordanceStore = defineStore('concordance', () => {
 
   /** Checks or unchecks the rows of the current page; false when the selection would exceed its limit. */
   function setPageSelected (value: boolean): boolean {
-    const ids = rows.value.map(r => r.id)
     if (!value) {
-      selection.remove(ids)
+      selection.remove(rows.value.map(r => r.id))
       return true
     }
-    return selection.add(ids)
+    return selection.add(rows.value.map(r => [r.id, r.editVersion ?? 0] as const))
   }
 
   /** Forgets everything (sign-out, another account). */
@@ -394,9 +437,11 @@ export const useConcordanceStore = defineStore('concordance', () => {
     shownError,
     hiddenSelected,
     resolving,
+    people,
     scrollY,
     open,
     load,
+    readFocused,
     loadDocuments,
     loadShown,
     selectAllMatches,

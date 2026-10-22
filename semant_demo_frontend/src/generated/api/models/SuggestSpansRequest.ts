@@ -37,6 +37,12 @@ export interface SuggestSpansRequest {
      * @memberof SuggestSpansRequest
      */
     tagIds: Array<string>;
+    /**
+     * 
+     * @type {string}
+     * @memberof SuggestSpansRequest
+     */
+    configName?: string | null;
 }
 
 /**
@@ -62,6 +68,7 @@ export function SuggestSpansRequestFromJSONTyped(json: any, ignoreDiscriminator:
         'collectionId': json['collection_id'],
         'documentId': json['document_id'],
         'tagIds': json['tag_ids'],
+        'configName': json['config_name'] == null ? undefined : json['config_name'],
     };
 }
 
@@ -79,6 +86,7 @@ export function SuggestSpansRequestToJSONTyped(value?: SuggestSpansRequest | nul
         'collection_id': value['collectionId'],
         'document_id': value['documentId'],
         'tag_ids': value['tagIds'],
+        'config_name': value['configName'],
     };
 }
 

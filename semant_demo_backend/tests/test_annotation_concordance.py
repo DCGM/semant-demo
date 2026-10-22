@@ -62,6 +62,7 @@ class FakeSpans:
     def __init__(self):
         self.rows: list[AnnotationRow] = []
         self.queries = 0
+        self.provenance = False
 
     def _match(self, query, document_ids):
         return [r for r in self.rows
@@ -92,7 +93,7 @@ class FakeSpans:
 
     async def query_ids(self, cid, query, *, document_ids=None, limit):
         self.queries += 1
-        return sorted((r.id for r in self._match(query, document_ids)), key=str)[:limit]
+        return {r.id: r.editVersion or 0 for r in sorted(self._match(query, document_ids), key=lambda r: str(r.id))[:limit]}
 
 
 def row(document, start, text="slovo", *, tag=TAG, type=SpanType.pos, current=True, rid=None):
@@ -175,6 +176,17 @@ async def test_filters_by_tag_text_document_and_year(store):
     # A year range leaves out documents without a year.
     since = await service.query_annotations(store, OWNER, COLLECTION, year_from=1800)
     assert DOC_NO_YEAR not in {r.documentId for r in since.rows}
+
+
+async def test_annotations_are_read_by_id_with_the_type_filter_they_ask_for(store):
+    # The workspace reads the annotation it shows as it is now, also when it left the page's filters (#460).
+    approved, other = row(DOC_A, 0, type=SpanType.pos), row(DOC_A, 5, type=SpanType.auto)
+    store.spans.rows = [approved, other]
+    page = await service.query_annotations(store, OWNER, COLLECTION, annotation_ids=[str(approved.id)],
+                                           types=list(SpanType))
+    assert (ids(page), page.total) == ([approved.id], 1)
+    with pytest.raises(InvalidRequestError):
+        await service.query_annotations(store, OWNER, COLLECTION, annotation_ids=["not-an-id"])
 
 
 async def test_rows_report_text_status_and_unavailable_documents(store):
@@ -274,6 +286,7 @@ async def test_routes_parse_repeated_filters_and_serialize_rows(tmp_path, store,
         page = await client.get(path, headers=headers, params=[("type", "pos"), ("type", "neg"),
                                                                 ("tag_id", str(TAG)), ("limit", "1")])
         documents = await client.get(f"{path}/documents", headers=headers)
+        by_id = await client.get(path, headers=headers, params=[("annotation_id", str(store.spans.rows[2].id))])
         bad = [await client.get(path, headers=headers, params=params)
                for params in ({"sort": "random"}, {"limit": 201}, {"type": "maybe"}, {"offset": -1})]
 
@@ -287,6 +300,7 @@ async def test_routes_parse_repeated_filters_and_serialize_rows(tmp_path, store,
     assert set(first) >= {"id", "tagId", "chunkId", "documentId", "start", "end", "revision", "leftContext",
                           "rightContext", "documentAvailable"}
     assert [(d["title"], d["count"]) for d in documents.json()] == [("Almanach", 1), ("Bulletin", 1)]
+    assert [r["text"] for r in by_id.json()["rows"]] == ["Lhota"]
     assert [r.status_code for r in bad] == [422, 422, 422, 422]
 
 
@@ -308,6 +322,27 @@ async def test_resolving_applies_the_year_and_text_filters(store):
                                                     AnnotationIdsRequest(q="prah", year_from=1900))
 
     assert resolved.ids == [store.spans.rows[0].id]
+
+
+async def test_resolved_ids_come_with_the_versions_a_review_expects(store):
+    edited, untouched = row(DOC_A, 0), row(DOC_A, 5)
+    store.spans.rows = [edited.model_copy(update={"editVersion": 3}), untouched]
+
+    resolved = await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest())
+
+    assert resolved.versions == {edited.id: 3, untouched.id: 0}
+
+
+async def test_rows_report_their_version_and_provenance_or_an_unknown_origin(store):
+    run, user = uuid4(), uuid4()
+    store.spans.rows = [row(DOC_A, 0).model_copy(update={"editVersion": 2, "origin": "ai", "aiRunId": run,
+                                                          "createdBy": user}), row(DOC_A, 5)]
+
+    page = await service.query_annotations(store, OWNER, COLLECTION, limit=10)
+
+    ai, migrated = page.rows
+    assert (ai.editVersion, ai.provenance.origin, ai.provenance.aiRunId, ai.provenance.createdBy) == (2, "ai", run, user)
+    assert (migrated.editVersion, migrated.provenance.origin, migrated.provenance.createdBy) == (0, "unknown", None)
 
 
 async def test_within_tells_which_selected_annotations_the_filters_show(store):

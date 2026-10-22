@@ -153,6 +153,14 @@ def propose_spans(text: str, tags: list[dict[str, Any]]) -> list[dict[str, Any]]
 FAKE_TOPICER_CALL_COST_USD = 0.0001
 """Reported cost of each fake Topicer model call."""
 FAKE_TOPICER_MAX_CHUNKS_CEILING = 200
+FAKE_TOPICER_CONFIGS = ("llm-openrouter", "fake-local")
+"""Configurations the fake Topicer lists; the first is the backend's default ``TOPICER_CONFIG_NAME``."""
+
+
+def _require_config(config_name: str | None) -> None:
+    # As the real Topicer: an unknown configuration is 404.
+    if config_name is not None and config_name not in FAKE_TOPICER_CONFIGS:
+        raise HTTPException(404, f"Config {config_name} not found.")
 
 
 def fake_topicer_usage(calls: int) -> dict[str, Any]:
@@ -183,14 +191,20 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
                 "data": [{"object": "embedding", "index": i, "embedding": second_embedding(t)}
                          for i, t in enumerate(body["input"])]}
 
+    @app.get("/v1/configs")
+    async def configs():
+        return list(FAKE_TOPICER_CONFIGS)
+
     @app.post("/v1/tags/propose/texts")
-    async def propose_texts(body: dict):
+    async def propose_texts(body: dict, config_name: str | None = None):
+        _require_config(config_name)
         chunk = body["text_chunk"]
         return {"text_chunk": chunk, "tag_span_proposals": propose_spans(chunk["text"], body["tags"]),
                 "usage": fake_topicer_usage(1)}
 
     @app.post("/v1/tags/propose/db/stream")
-    async def propose_db_stream(body: dict, max_chunks: int | None = None):
+    async def propose_db_stream(body: dict, max_chunks: int | None = None, config_name: str | None = None):
+        _require_config(config_name)
         if max_chunks is not None and not 0 < max_chunks <= FAKE_TOPICER_MAX_CHUNKS_CEILING:
             raise HTTPException(422, "max_chunks out of range")
         # The real Topicer reads chunks from the database; the fake reads the corpus.

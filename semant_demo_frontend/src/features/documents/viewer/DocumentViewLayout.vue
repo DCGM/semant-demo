@@ -8,23 +8,16 @@
   >
     <q-header class="doc-header q-pl-sm" bordered>
       <q-toolbar class="doc-header-toolbar">
-        <!-- A fixed parent route, not browser history, so direct links go back predictably (#253). -->
-        <q-btn
-          flat round dense
-          icon="arrow_back"
-          :to="backRoute"
-          :aria-label="backLabel"
-        >
-          <q-tooltip>{{ backLabel }}</q-tooltip>
-        </q-btn>
-
-        <div class="q-ml-sm" v-if="documentData">
-          <div class="text-caption text-grey-6">Document detail</div>
-          <div class="text-h5 text-weight-medium">{{ documentData.title || 'Untitled document' }}</div>
-          <div v-if="documentData.subtitle" class="text-body2 text-grey-7 q-mt-xs">
-            {{ documentData.subtitle }}
-          </div>
-          <OriginalSourceLink :document="documentData" class="text-body2 q-mt-xs" />
+        <div class="q-ml-sm">
+          <BackLink :to="backRoute" :label="backText" :aria-label="backLabel" />
+          <template v-if="documentData">
+            <div class="text-caption text-grey-6">Document</div>
+            <div class="text-h5 text-weight-medium">{{ documentData.title || 'Untitled document' }}</div>
+            <div v-if="documentData.subtitle" class="text-body2 text-grey-7 q-mt-xs">
+              {{ documentData.subtitle }}
+            </div>
+            <OriginalSourceLink :document="documentData" class="text-body2 q-mt-xs" />
+          </template>
         </div>
 
         <q-space />
@@ -104,6 +97,7 @@ import useTagSpans from 'src/features/annotations/useTagSpans'
 import DocumentSummaryPanel from 'src/features/documents/DocumentSummaryPanel.vue'
 import useDocumentSummary from 'src/features/documents/useDocumentSummary'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
+import BackLink from 'src/shared/ui/BackLink.vue'
 
 // The document view: header, the tags, AI assist and document tools as panels of the
 // app's right sidebar, and the reader (child route). It loads the document, collection and tags and
@@ -178,6 +172,7 @@ const layoutStyle = computed(() => ({
 // when the layout is mounted without a router, as in component tests.)
 const fromAnnotations = computed(() => route?.query.from === 'annotations')
 const backLabel = computed(() => fromAnnotations.value ? 'Back to annotations' : 'Back to collection documents')
+const backText = computed(() => fromAnnotations.value ? 'Annotations' : 'Documents')
 const backRoute = computed(() => ({
   name: fromAnnotations.value ? 'collectionAnnotations' : 'collectionDocumentsTagging',
   params: {

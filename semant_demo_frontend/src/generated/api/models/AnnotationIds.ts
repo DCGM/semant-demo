@@ -16,6 +16,7 @@ import { mapValues } from '../runtime';
 /**
  * The ids of all annotations matching a query when it was resolved (by id); the caller
  * keeps them as a fixed set, so later changes of the filters or annotations never widen it.
+ * ``versions``: each one's ``editVersion`` then, which review actions send back (#460).
  * @export
  * @interface AnnotationIds
  */
@@ -26,6 +27,12 @@ export interface AnnotationIds {
      * @memberof AnnotationIds
      */
     ids: Array<string>;
+    /**
+     * 
+     * @type {{ [key: string]: number; }}
+     * @memberof AnnotationIds
+     */
+    versions?: { [key: string]: number; };
 }
 
 /**
@@ -47,6 +54,7 @@ export function AnnotationIdsFromJSONTyped(json: any, ignoreDiscriminator: boole
     return {
         
         'ids': json['ids'],
+        'versions': json['versions'] == null ? undefined : json['versions'],
     };
 }
 
@@ -62,6 +70,7 @@ export function AnnotationIdsToJSONTyped(value?: AnnotationIds | null, ignoreDis
     return {
         
         'ids': value['ids'],
+        'versions': value['versions'],
     };
 }
 

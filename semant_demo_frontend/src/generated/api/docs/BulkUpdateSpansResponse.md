@@ -1,7 +1,7 @@
 
 # BulkUpdateSpansResponse
 
-Result of a bulk update: the updated spans, plus per-span failures (best effort).
+Result of a bulk update: the updated spans, plus per-span failures (best effort). ``conflicts``: the current state of the spans written by someone else since their expected version (failure ``edit_conflict``; not changed).
 
 ## Properties
 
@@ -12,6 +12,7 @@ Name | Type
 `failed` | [Array&lt;StepFailure&gt;](StepFailure.md)
 `unattempted` | Array&lt;string&gt;
 `spans` | [Array&lt;TagSpan&gt;](TagSpan.md)
+`conflicts` | [Array&lt;TagSpan&gt;](TagSpan.md)
 
 ## Example
 
@@ -25,6 +26,7 @@ const example = {
   "failed": null,
   "unattempted": null,
   "spans": null,
+  "conflicts": null,
 } satisfies BulkUpdateSpansResponse
 
 console.log(example)

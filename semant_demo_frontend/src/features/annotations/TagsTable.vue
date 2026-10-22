@@ -18,41 +18,7 @@
       <div class="text-h5 text-weight-medium">
         Tags ({{ tags.length }} {{ tags.length === 1 ? 'item' : 'items' }})
       </div>
-      <q-space />
-
-      <q-select
-        v-model="visibleColumns"
-        multiple
-        outlined
-        options-dense
-        dense
-        :display-value="$q.lang.table.columns"
-        :options="columnOptions"
-        option-value="name"
-        emit-value
-        style="min-width: 150px"
-        transition-hide="scale"
-        transition-show="scale"
-        color="primary"
-        class="text-grey-2"
-      >
-        <template #option="{ itemProps, opt, selected, toggleOption }">
-          <q-item v-bind="itemProps">
-            <q-item-section>
-              <q-item-label>{{ opt.label }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-toggle
-                :model-value="selected"
-                @update:model-value="toggleOption(opt)"
-              />
-            </q-item-section>
-          </q-item>
-        </template>
-      </q-select>
-
       <div style="width: 100%" class="row items-center q-my-sm">
-        <RefreshButton @click="handleRefresh" />
         <CreateButton @click="handleCreate" />
         <q-input
           class="q-ml-md"
@@ -67,6 +33,8 @@
             <q-icon name="search" />
           </template>
         </q-input>
+        <q-space />
+        <ColumnPicker v-model="visibleColumns" :columns="columns" />
       </div>
     </template>
 
@@ -193,8 +161,8 @@ import { useRoute } from 'vue-router'
 import useTagsDialog from './useTagsDialog'
 import { useTagsStore } from './tagsStore'
 import { PostTag, Tag, PatchTag } from 'src/generated/api'
-import RefreshButton from 'src/shared/ui/RefreshButton.vue'
 import CreateButton from 'src/shared/ui/CreateButton.vue'
+import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 
 const route = useRoute()
 const $q = useQuasar()
@@ -227,10 +195,6 @@ const collectionId = computed<string>(() => {
   }
   return value
 })
-
-const handleRefresh = async () => {
-  await fetchTagsByCollection(collectionId.value)
-}
 
 const handleCreate = () => {
   openTagsDialog({
@@ -346,7 +310,6 @@ const columns: QTableColumn<Tag>[] = [
   }
 ]
 
-const columnOptions = columns.filter((column) => !column.required)
 </script>
 
 <style scoped>

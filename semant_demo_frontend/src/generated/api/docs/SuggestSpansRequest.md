@@ -10,6 +10,7 @@ Name | Type
 `collectionId` | string
 `documentId` | string
 `tagIds` | Array&lt;string&gt;
+`configName` | string
 
 ## Example
 
@@ -21,6 +22,7 @@ const example = {
   "collectionId": null,
   "documentId": null,
   "tagIds": null,
+  "configName": null,
 } satisfies SuggestSpansRequest
 
 console.log(example)

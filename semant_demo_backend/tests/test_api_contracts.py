@@ -101,6 +101,7 @@ USER_COLLECTION_ROUTES = {
     ("post", "/api/user_collections/{collection_id}/share"),
     ("delete", "/api/user_collections/{collection_id}/share/{user_id}"),
     ("get", "/api/user_collections/{collection_id}/members"),
+    ("get", "/api/user_collections/{collection_id}/people"),
     ("get", "/api/user_collections/{collection_id}/stats"),
     ("get", "/api/user_collections/{collection_id}/tags"),
     ("get", "/api/user_collections/{collection_id}/annotations"),

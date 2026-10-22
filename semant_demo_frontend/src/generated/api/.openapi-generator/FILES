@@ -7,7 +7,9 @@ docs/AnnotatedDocument.md
 docs/AnnotationIds.md
 docs/AnnotationIdsRequest.md
 docs/AnnotationListRow.md
+docs/AnnotationOrigin.md
 docs/AnnotationPage.md
+docs/AnnotationProvenance.md
 docs/AnnotationReviewRequest.md
 docs/AnnotationReviewResult.md
 docs/AnnotationSort.md
@@ -22,6 +24,7 @@ docs/ChunkTagPair.md
 docs/ChunkTagSyncRequest.md
 docs/Collection.md
 docs/CollectionChunk.md
+docs/CollectionPerson.md
 docs/CollectionStats.md
 docs/CorpusOverview.md
 docs/CreateResponse.md
@@ -93,6 +96,7 @@ docs/TagSpan.md
 docs/TagSpanBatchRequest.md
 docs/TagSpanWriteResult.md
 docs/TextStatus.md
+docs/TopicerConfigsResponse.md
 docs/Url.md
 docs/UserCreate.md
 docs/UserRead.md
@@ -111,7 +115,9 @@ models/AnnotatedDocument.ts
 models/AnnotationIds.ts
 models/AnnotationIdsRequest.ts
 models/AnnotationListRow.ts
+models/AnnotationOrigin.ts
 models/AnnotationPage.ts
+models/AnnotationProvenance.ts
 models/AnnotationReviewRequest.ts
 models/AnnotationReviewResult.ts
 models/AnnotationSort.ts
@@ -125,6 +131,7 @@ models/ChunkTagPair.ts
 models/ChunkTagSyncRequest.ts
 models/Collection.ts
 models/CollectionChunk.ts
+models/CollectionPerson.ts
 models/CollectionStats.ts
 models/CorpusOverview.ts
 models/CreateResponse.ts
@@ -195,6 +202,7 @@ models/TagSpan.ts
 models/TagSpanBatchRequest.ts
 models/TagSpanWriteResult.ts
 models/TextStatus.ts
+models/TopicerConfigsResponse.ts
 models/Url.ts
 models/UserCreate.ts
 models/UserRead.ts
