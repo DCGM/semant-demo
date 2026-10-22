@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 
 import { closePhoneNavigation, fixture, useViewport } from './support'
 
@@ -81,10 +81,19 @@ test('filters narrow every count to the matching documents until they are cleare
   await expect(page.getByTestId('corpus-total')).toHaveText('1')
   await expect(card(page, 'years')).toContainText('0 of 1 documents (0 %) have a publication year; 1 unknown.')
 
-  // A second title is an alternative: the gazette or the letters ("Dopisy z Prahy").
+  // A second title is an alternative: the gazette or the letters ("Dopisy z Prahy"). Enter
+  // works also while the previous filters are still being counted.
+  await page.getByRole('button', { name: 'Remove filter Title contains PRAŽ' }).click()
+  await expect(page.getByTestId('corpus-total')).toHaveText('3')
+  const slow = async (route: Route) => { await new Promise(resolve => setTimeout(resolve, 300)); await route.continue() }
+  await page.route(DISTRIBUTIONS, slow)
+  await page.getByTestId('filter-title').fill('PRAŽ')
+  await page.getByTestId('filter-title').press('Enter')
   await page.getByTestId('filter-title').fill('dopisy')
-  await page.getByTestId('filter-apply').click()
+  await page.getByTestId('filter-title').press('Enter')
+  await expect(page.getByTestId('corpus-applied-title')).toContainText('dopisy')
   await expect(page.getByTestId('corpus-total')).toHaveText('2')
+  await page.unroute(DISTRIBUTIONS, slow)
 
   await page.getByRole('button', { name: 'Remove filter Title contains PRAŽ' }).click()
   await page.getByRole('button', { name: 'Remove filter Title contains dopisy' }).click()

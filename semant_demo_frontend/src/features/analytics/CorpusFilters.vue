@@ -48,7 +48,9 @@
       </q-select>
     </div>
     <div class="corpus-filters__actions">
-      <q-btn type="submit" color="primary" unelevated label="Apply" icon="filter_alt" :loading="loading" data-testid="filter-apply" />
+      <!-- Never disabled while counting: Enter submits only through an enabled submit button, and a
+           newer request replaces the running one. -->
+      <q-btn type="submit" color="primary" unelevated label="Apply" icon="filter_alt" data-testid="filter-apply" />
       <q-btn flat color="primary" label="Clear all" :disable="!hasFilters" data-testid="filter-clear" @click="clear" />
     </div>
   </q-form>
@@ -70,7 +72,6 @@ const props = defineProps<{
   applied: DocumentFilters
   libraries?: CategoryDistribution
   languages?: CategoryDistribution
-  loading?: boolean
 }>()
 
 const emit = defineEmits<{ apply: [filters: DocumentFilters] }>()

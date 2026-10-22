@@ -14,7 +14,6 @@
       :applied="filters"
       :libraries="corpus.libraries"
       :languages="corpus.languages"
-      :loading="loading"
       @apply="load"
     />
 
