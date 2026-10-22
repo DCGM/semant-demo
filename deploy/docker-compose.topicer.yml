@@ -37,6 +37,7 @@ networks:
   semant_demo_topicer:
     name: semant_demo_topicer
     driver: bridge
+    external: true
   semant_demo_database:
     name: semant_demo_database
     external: true
