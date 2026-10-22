@@ -256,6 +256,8 @@ onMounted(() => {
 <style scoped lang="scss">
 .collection-members {
   width: 100%;
+  // Narrow, so Share/Unshare sit next to the names (#479).
+  max-width: 640px;
 }
 
 .panel-card {

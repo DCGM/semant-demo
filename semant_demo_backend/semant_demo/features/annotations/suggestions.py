@@ -38,6 +38,8 @@ stored, then a final ``SuggestSpansRunEnd`` with the outcome.
   type, also an approved or rejected one), and Topicer may return the same proposal
   twice in one run. Approved/rejected spans are never changed or deleted by a run.
   Settle the regeneration policy before adding retries (ADR 0003).
+- Provenance (#460): each run gets a new id; its spans record origin ``ai``, that
+  ``aiRunId`` and the user who started it.
 """
 import asyncio
 import logging
@@ -45,7 +47,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, 
 from contextlib import aclosing, nullcontext
 from dataclasses import dataclass, field
 from typing import Any, AsyncContextManager, Literal, TypeVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import anyio
 
@@ -55,7 +57,7 @@ from semant_demo.adapters.topicer.client import (
     TopicerClient, TopicerError, TopicerStreamSummary, TopicerTag, TopicerUsage,
 )
 from semant_demo.adapters.weaviate.writes import step_failure
-from semant_demo.core.errors import InvalidRequestError, NotFoundError
+from semant_demo.core.errors import InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.derivation import DocumentText
 from semant_demo.features.annotations.offsets import code_point_offset, text_length, utf16_offset
@@ -78,6 +80,8 @@ PROVIDER_CONCURRENCY = 10
 
 FALLBACK_SHARE = 0.25
 """Share of its reservation charged for a tag stream that ended without usable usage."""
+UNSUPPORTED_OPTIMIZED = "The chosen AI model does not support optimized mode; use thorough mode."
+"""The run's ``error`` when Topicer refuses optimized mode for the configuration (HTTP 409, #189)."""
 
 SuggestionEvent = SuggestSpansChunkResult | SuggestSpansRunEnd
 Unit = Literal["chunk", "tag", "selection"]
@@ -110,6 +114,8 @@ class _Tally:
     document_texts: dict[UUID, DocumentText] = field(default_factory=dict)
     """The run's document text for the derived data of its saved spans (#328): read by the first
     save and reused (saves that start before the first read finished read it too)."""
+    actor: service.Actor | None = None
+    """The user who started the run and the run's id, recorded on its spans (#460)."""
 
     def summary(self) -> SuggestSpansRunEnd:
         failures = (self.provider_failures + self.save_failures + self.search_tag_failures
@@ -412,7 +418,7 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
                     reason=proposal.reason, confidence=proposal.confidence)
     try:
         result = await _uninterrupted(service.save_span(store, collection_id, document_id, span,
-                                                        event.tally.document_texts))
+                                                        event.tally.document_texts, actor=event.tally.actor))
     except Exception as e:
         failure = step_failure("insert_span", chunk_id, e)
         event.unsaved += 1
@@ -431,6 +437,11 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
         event.tally.enrichment_failures += 1
 
 
+def _run_actor(user: Principal | None) -> service.Actor | None:
+    """The provenance of a run's spans: its user and a new run id (no run table, #460)."""
+    return service.Actor(user.id, uuid4()) if user is not None else None
+
+
 async def _authorized_tags(store: AnnotationStore, user: Principal | None, collection_id: str,
                            document_id: str, tag_ids: list[str]) -> tuple[UUID, UUID, list[TopicerTag]]:
     """(collection, document, tags) after the access and scope checks, in this order."""
@@ -447,6 +458,30 @@ async def _authorized_tags(store: AnnotationStore, user: Principal | None, colle
         tags.append(TopicerTag(id=str(tag.id), name=tag.name, definition=tag.definition or "",
                                examples=list(tag.examples or [])))
     return grant.collection_id, document, tags
+
+
+async def topicer_configs(provider: TopicerClient) -> list[str]:
+    """The Topicer configurations (AI models) requests may name (#189);
+    ``ServiceUnavailableError`` when Topicer cannot list them."""
+    try:
+        return await provider.list_configs()
+    except TopicerError as e:
+        raise ServiceUnavailableError("The list of AI models is unavailable") from e
+
+
+async def config_for(provider: TopicerClient, config_name: str | None) -> str:
+    """The Topicer configuration of a run whose request named ``config_name`` (#189).
+
+    ``None`` or the default is ``provider.config_name``, without asking Topicer. Another
+    name must be one Topicer lists as loaded (``InvalidRequestError`` otherwise), so an
+    unknown name never reaches a proposal call; ``ServiceUnavailableError`` when the list
+    cannot be read.
+    """
+    if config_name is None or config_name == provider.config_name:
+        return provider.config_name
+    if config_name not in await topicer_configs(provider):
+        raise InvalidRequestError("Unknown AI model")  # the frontend recognises this detail (UNKNOWN_MODEL_DETAIL)
+    return config_name
 
 
 # ── Whole document (thorough / optimized) ──────────────────────────────────
@@ -471,16 +506,18 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
     """
     collection_id, document_id, tags = await _authorized_tags(
         store, user, request.collection_id, request.document_id, request.tag_ids)
+    config = await config_for(provider, request.config_name)
     chunks = await store.collections.read_all_chunks_by_document(document_id, collection_id)
     allowed = {t.id for t in tags}
     description = f"{mode}, collection {collection_id}, document {document_id}"
     chunk_reserve = budget.policy.topicer_reserve_usd_per_chunk if budget is not None else 0.0
     if mode == "thorough":
         allowance = _Allowance(budget, "topicer_thorough", chunk_reserve)
-        tally = _Tally(unit="chunk", units_total=len(chunks))
+        tally = _Tally(unit="chunk", units_total=len(chunks), actor=_run_actor(user))
     else:
         allowance = _Allowance(budget, "topicer_optimized", chunk_reserve * provider.max_chunks_per_tag)
-        tally = _Tally(unit="tag", units_total=len(tags), max_chunks_per_tag=provider.max_chunks_per_tag)
+        tally = _Tally(unit="tag", units_total=len(tags), max_chunks_per_tag=provider.max_chunks_per_tag,
+                       actor=_run_actor(user))
     first = await allowance.admit() if tally.units_total else None
     admit = allowance.admitter(tally, first)
 
@@ -488,7 +525,8 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
         async def call(chunk: CollectionChunk, admission: str | None) -> list | TopicerError:
             usage, no_work = None, False
             try:
-                answer = await provider.propose_for_text(chunk_id=str(chunk.id), text=chunk.text or "", tags=tags)
+                answer = await provider.propose_for_text(chunk_id=str(chunk.id), text=chunk.text or "", tags=tags,
+                                                         config_name=config)
                 usage = answer.usage
                 return answer.proposals
             except TopicerError as e:
@@ -529,7 +567,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
             ended = False  # the stream ended normally (not failed, cancelled or closed)
             try:
                 stream = provider.propose_for_db_stream(tag=tag, collection_id=str(collection_id),
-                                                        document_id=str(document_id))
+                                                        document_id=str(document_id), config_name=config)
                 async with aclosing(stream) as provider_events:
                     async for provider_event in provider_events:
                         if isinstance(provider_event, TopicerStreamSummary):
@@ -571,6 +609,10 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                 tally.tag_limits.append(SuggestTagLimit(
                     tag_id=tag.id, tag_name=tag.name, max_chunks=summary.max_chunks or provider.max_chunks_per_tag,
                     processed_chunks=summary.processed_chunks, candidates_truncated=summary.candidates_truncated))
+            if failure is not None and str(failure) == "HTTP 409":
+                # The configuration has no optimized mode: every other tag would be refused too.
+                tally.error = UNSUPPORTED_OPTIMIZED
+                return
             problem = _stream_problem(failure, summary, provider.max_chunks_per_tag)
             if problem:
                 event = _ChunkEvent(tally, "")
@@ -580,7 +622,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
             if summary is None:
                 logger.warning("Topicer stream of tag %s (document %s, config %s) ended without a usable usage "
                                "summary (missing or malformed); charged %d%% of its reservation as a fallback "
-                               "estimate", tag.id, document_id, provider.config_name, FALLBACK_SHARE * 100)
+                               "estimate", tag.id, document_id, config, FALLBACK_SHARE * 100)
             if not save_failed:
                 tally.completed_calls += 1
 
@@ -665,6 +707,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
         chunks.append(chunk)
     if len(chunk_ids) != len(request.chunk_ids) or any(b.order <= a.order for a, b in zip(chunks, chunks[1:])):
         raise InvalidRequestError("chunk_ids must be distinct chunks in document order")
+    config = await config_for(provider, request.config_name)
 
     concatenation = "".join(c.text for c in chunks)
     starts = [0]
@@ -679,7 +722,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
     by_order: dict[int, AnnotationChunk] = {c.order: c for c in chunks}
     reserve = budget.policy.topicer_reserve_usd_per_chunk * len(chunks) if budget is not None else 0.0
     allowance = _Allowance(budget, "topicer_selection", reserve)
-    tally = _Tally(unit="selection", units_total=1)
+    tally = _Tally(unit="selection", units_total=1, actor=_run_actor(user))
     admit = allowance.admitter(tally, await allowance.admit())
 
     async def length_between(anchor: AnnotationChunk, last: AnnotationChunk) -> int | None:
@@ -701,7 +744,8 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
         admission = await admit()
         usage, no_work = None, False
         try:
-            answer = await provider.propose_for_text(chunk_id=anchor_id, text=selection.text, tags=tags)
+            answer = await provider.propose_for_text(chunk_id=anchor_id, text=selection.text, tags=tags,
+                                                     config_name=config)
             usage = answer.usage
         except TopicerError as e:
             no_work = e.no_work

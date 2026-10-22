@@ -48,6 +48,12 @@ export interface BulkUpdateSpansRequest {
      * @memberof BulkUpdateSpansRequest
      */
     update: PatchSpan;
+    /**
+     * 
+     * @type {{ [key: string]: number; }}
+     * @memberof BulkUpdateSpansRequest
+     */
+    expectedVersions?: { [key: string]: number; } | null;
 }
 
 /**
@@ -73,6 +79,7 @@ export function BulkUpdateSpansRequestFromJSONTyped(json: any, ignoreDiscriminat
         'collectionId': json['collection_id'],
         'spanIds': json['span_ids'],
         'update': PatchSpanFromJSON(json['update']),
+        'expectedVersions': json['expected_versions'] == null ? undefined : json['expected_versions'],
     };
 }
 
@@ -90,6 +97,7 @@ export function BulkUpdateSpansRequestToJSONTyped(value?: BulkUpdateSpansRequest
         'collection_id': value['collectionId'],
         'span_ids': value['spanIds'],
         'update': PatchSpanToJSON(value['update']),
+        'expected_versions': value['expectedVersions'],
     };
 }
 

@@ -10,7 +10,9 @@ from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.features.summarization.templated import load_summarizer
 from tests.app_support import write_offline_llm_catalog
 from tests.corpus import load_corpus
-from tests.fake_providers import FAKE_REASON, FAKE_TOPICER_CALL_COST_USD, create_fake_provider_app
+from tests.fake_providers import (
+    FAKE_REASON, FAKE_TOPICER_CALL_COST_USD, FAKE_TOPICER_CONFIGS, create_fake_provider_app,
+)
 from tests.fakes import FAKE_EMBEDDING_DIM, fake_embedding
 
 
@@ -27,7 +29,7 @@ async def fake_client(fake_app):
 
 @pytest.fixture
 def topicer(fake_app):
-    return TopicerClient("http://fake", "test", 5.0, transport=ASGITransport(app=fake_app))
+    return TopicerClient("http://fake", FAKE_TOPICER_CONFIGS[0], 5.0, transport=ASGITransport(app=fake_app))
 
 
 def topicer_tag(tag):
@@ -66,7 +68,8 @@ async def test_db_stream_covers_collection_chunks_of_document(topicer):
 
 async def test_db_stream_stops_at_max_chunks(fake_app):
     corpus = load_corpus()
-    topicer = TopicerClient("http://fake", "test", 5.0, max_chunks_per_tag=1, transport=ASGITransport(app=fake_app))
+    topicer = TopicerClient("http://fake", FAKE_TOPICER_CONFIGS[0], 5.0, max_chunks_per_tag=1,
+                            transport=ASGITransport(app=fake_app))
 
     events = [event async for event in topicer.propose_for_db_stream(
         tag=topicer_tag(corpus.tags["person"]), collection_id=corpus.collections["chronicles"]["id"],
@@ -75,6 +78,15 @@ async def test_db_stream_stops_at_max_chunks(fake_app):
     chunk, summary = events
     assert chunk["id"] == corpus.chunks["chronicle_1"]["id"]
     assert (summary.processed_chunks, summary.limit_reached, summary.candidates_truncated) == (1, True, True)
+
+
+async def test_configs_are_listed_and_an_unknown_one_is_refused(topicer, fake_client):
+    assert await topicer.list_configs() == list(FAKE_TOPICER_CONFIGS)
+
+    response = await fake_client.post("/v1/tags/propose/texts", params={"config_name": "unknown"},
+                                      json={"text_chunk": {"id": "c", "text": "x"}, "tags": []})
+
+    assert response.status_code == 404
 
 
 async def test_embeddings_are_deterministic(fake_client):

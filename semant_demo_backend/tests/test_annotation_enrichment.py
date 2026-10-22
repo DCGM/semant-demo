@@ -82,6 +82,7 @@ class FakeSpans:
         self.vectors: dict[UUID, dict] = {}
         self.derived_writes: list[tuple[UUID, dict]] = []
         self._locks = weakref.WeakValueDictionary()
+        self.provenance = False
 
     def lock(self, span_id):
         lock = self._locks.get(span_id)
@@ -97,13 +98,13 @@ class FakeSpans:
     def _row(self, sid):
         return AnnotationRow(id=sid, **self.objects[sid])
 
-    async def insert(self, cid, span, document_id, derived=None):
+    async def insert(self, cid, span, document_id, derived=None, provenance=None):
         sid = uuid4()
         self.objects[sid] = {"start": span.start, "end": span.end, "type": span.type.value, "tagId": UUID(span.tagId),
                              "chunkId": UUID(span.chunkId), "documentId": document_id, **(derived or {})}
         return sid
 
-    async def update(self, cid, sid, patch, derived=None):
+    async def update(self, cid, sid, patch, derived=None, provenance=None):
         fields = patch.model_dump(exclude_none=True)
         props = {k: fields[k] for k in ("start", "end") if k in fields} | (derived or {})
         if patch.type is not None:

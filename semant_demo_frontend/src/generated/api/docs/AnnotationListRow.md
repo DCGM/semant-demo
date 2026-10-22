@@ -22,6 +22,8 @@ Name | Type
 `documentAvailable` | boolean
 `documentTitle` | string
 `documentYear` | number
+`editVersion` | number
+`provenance` | [AnnotationProvenance](AnnotationProvenance.md)
 
 ## Example
 
@@ -45,6 +47,8 @@ const example = {
   "documentAvailable": null,
   "documentTitle": null,
   "documentYear": null,
+  "editVersion": null,
+  "provenance": null,
 } satisfies AnnotationListRow
 
 console.log(example)

@@ -197,7 +197,8 @@ async def test_api_review_is_per_item_for_owner_and_shared_user_only(api_client,
     col = ids.col["chronicles"]
     path = f"/api/user_collections/{col}/annotations/review"
     annotator, outsider = await login("annotator"), await login("outsider")
-    body = {"action": "reject", "annotation_ids": [str(created.brno), str(created.zdenka)]}
+    targets = [str(created.brno), str(created.zdenka)]
+    body = {"action": "reject", "annotation_ids": targets, "expected_versions": dict.fromkeys(targets, 0)}
 
     refused = await api_client.post(path, headers=outsider, json=body)
     assert refused.status_code == 404
@@ -208,9 +209,10 @@ async def test_api_review_is_per_item_for_owner_and_shared_user_only(api_client,
     page = await query(store, owner, ids, types=[SpanType.neg])
     assert {r.id for r in page.rows} >= {created.brno, created.zdenka}
 
+    karel = {"annotation_ids": [str(created.karel)], "expected_versions": {str(created.karel): 0}}
     deleted = await api_client.post(path, headers=annotator, json={
-        "action": "delete", "annotation_ids": [str(created.karel), str(created.karel)]})
-    again = await api_client.post(path, headers=annotator, json={"action": "delete", "annotation_ids": [str(created.karel)]})
+        **karel, "action": "delete", "annotation_ids": [str(created.karel), str(created.karel)]})
+    again = await api_client.post(path, headers=annotator, json={**karel, "action": "delete"})
     assert deleted.json()["succeeded"] == [str(created.karel)]
     assert [(f["item_id"], f["step"]) for f in again.json()["failed"]] == [(str(created.karel), "find_annotation")]
     assert again.json()["outcome"] == "failed"

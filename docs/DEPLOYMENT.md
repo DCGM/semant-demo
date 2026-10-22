@@ -2,8 +2,10 @@
 
 This document is the backend configuration reference and describes a manual standalone setup.
 The Docker Compose stacks, CI/CD, previews, Topicer deployment and server setup are documented in
-[deploy/README.md](../deploy/README.md). For local development (the seeded local application
-started with `make dev-up`, and the optional advanced snapshot workflow), see
+[deploy/README.md](../deploy/README.md). Its
+[runner installation layout](../deploy/README.md#runner-installation-layout) is the canonical
+reference for the self-hosted runners' on-server paths. For local development (the seeded local
+application started with `make dev-up`, and the optional advanced snapshot workflow), see
 [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Prerequisites
@@ -183,7 +185,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `SEARCH_VECTORS_CONFIG` | `configs/search_vectors_qwen.yaml` | Weaviate named vectors Search and RAG may query, their query embedding and the default ([ARCHITECTURE.md](ARCHITECTURE.md#search-pipeline)); validated at startup. List a vector only after it is populated in the chunk collection |
 | `ANNOTATION_VECTOR_CONFIG` | `configs/annotation_vector_qwen.yaml` | Contextual vector of span annotations (#328): its `id`, Weaviate `target_vector`, input template and embedding ([ARCHITECTURE.md](ARCHITECTURE.md#annotation-derived-data-328)); validated at startup; empty configures none. Used only once the annotation collection has the vector ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-derived-data-annotation_enrichment-328)) |
 | `EMBEDDING_API_KEY` | (empty) | Bearer key sent to the OpenAI-compatible embedding endpoints of search vectors; empty sends none |
-| `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `llm-openrouter` / `600` | External Topicer span-proposal service; deployed separately ([Topicer deployment](../deploy/README.md#topicer)) |
+| `TOPICER_URL` / `TOPICER_CONFIG_NAME` / `TOPICER_TIMEOUT` | `http://topicer:8089` / `llm-openrouter` / `600` | External Topicer span-proposal service; deployed separately. Test instances use `http://topicer-test:8089` (`.env.test.example`, #473) ([Topicer deployment](../deploy/README.md#topicer)) |
 | `TOPICER_MAX_CHUNKS_PER_TAG` | `40` | Most chunks one optimized AI suggestion run evaluates per tag, sent to Topicer as `max_chunks` (backend policy; the frontend reads it from document stats for its size warning). Positive integer; must not exceed the Topicer config's `max_chunks_ceiling` (default 200), which Topicer answers with 422 |
 | `TOPICER_RESERVE_USD_PER_CHUNK` | `0.005` | Daily-allowance reservation for one Topicer chunk evaluation (a thorough chunk; an optimized tag reserves it × `TOPICER_MAX_CHUNKS_PER_TAG`); unknown Topicer usage is charged at least this. Must be positive ([ARCHITECTURE.md](ARCHITECTURE.md#daily-llm-allowances-featuresquota-adapterssqlquotapy)) |
 | `ANNOTATION_TENANT_TOUCH_SECONDS` | `60` | How often (at most, per tenant and process) a use of a collection's annotation tenant is recorded in `annotation_tenant_activity`; long operations repeat it at this interval |

@@ -9,6 +9,7 @@ Name | Type
 ------------ | -------------
 `action` | [ReviewAction](ReviewAction.md)
 `annotationIds` | Array&lt;string&gt;
+`expectedVersions` | { [key: string]: number; }
 `tagId` | string
 
 ## Example
@@ -20,6 +21,7 @@ import type { AnnotationReviewRequest } from ''
 const example = {
   "action": null,
   "annotationIds": null,
+  "expectedVersions": null,
   "tagId": null,
 } satisfies AnnotationReviewRequest
 

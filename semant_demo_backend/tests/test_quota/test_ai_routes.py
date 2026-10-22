@@ -16,6 +16,7 @@ import yaml
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
+from semant_demo.adapters.topicer.client import TopicerError
 from semant_demo.features.documents.schemas import DocumentStats
 from semant_demo.features.quota import service
 from semant_demo.features.quota.principal import GUEST_COOKIE, guest_principal
@@ -379,3 +380,42 @@ async def test_document_stats_carry_the_optimized_chunk_limit(ai):
 
     assert response.status_code == 200, response.text
     assert (response.json()["chunks_in_collection"], response.json()["ai_max_chunks_per_tag"]) == (2, 40)
+
+
+# ── Topicer configurations (#189) ──────────────────────────────────────────
+
+
+async def test_topicer_configs_are_listed_with_the_default_for_accounts_only(ai):
+    _, headers = await ai.account()
+    ai.app.dependency_overrides[get_topicer] = lambda: suggestion_fakes.FakeProvider(suggestion_fakes.World())
+
+    listed = await ai.client.get("/api/ai/topicer_configs", headers=headers)
+    anonymous = await ai.client.get("/api/ai/topicer_configs")
+
+    assert listed.status_code == 200
+    assert listed.json() == {"configs": ["fake-config", "fake-other"], "default_config": "fake-config"}
+    assert anonymous.status_code == 401
+
+
+async def test_unavailable_topicer_configs_are_503(ai):
+    _, headers = await ai.account()
+    provider = suggestion_fakes.FakeProvider(suggestion_fakes.World(), configs=TopicerError("ConnectError"))
+    ai.app.dependency_overrides[get_topicer] = lambda: provider
+
+    response = await ai.client.get("/api/ai/topicer_configs", headers=headers)
+
+    assert response.status_code == 503
+
+
+@pytest.mark.parametrize("mode", ["thorough", "optimized", "selection"])
+async def test_a_suggestion_request_naming_an_unknown_configuration_is_400(ai, mode):
+    account, headers = await ai.account()
+    world = suggestion_world(account.id)
+    provider = suggestion_fakes.FakeProvider(world)
+    use_suggestion_fakes(ai, world, provider)
+
+    response = await ai.client.post(f"/api/ai/suggest_spans/{mode}", headers=headers,
+                                    json={**suggestion_bodies(world)[mode], "config_name": "unknown"})
+
+    assert response.status_code == 400
+    assert provider.calls == []

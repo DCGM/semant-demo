@@ -27,7 +27,6 @@ describe('routes', () => {
     ['/collections/c1/documents', 'collectionDocumentsTagging', true],
     ['/collections/c1/annotations', 'collectionAnnotations', true],
     ['/collections/c1/tags', 'collectionTags', true],
-    ['/collections/c1/tagging_jobs', 'collectionTaggingJobs', true],
     ['/collections/c1/members', 'collectionMembers', true],
     ['/collections/c1/documents/d1', 'documentDetailV1', true],
     ['/collections/c1/documents/d1/v1', 'documentDetailV1', true],

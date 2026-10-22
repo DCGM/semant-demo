@@ -375,6 +375,13 @@ set `ANNOTATION_VECTOR_CONFIG=` to an empty value to disable vectors in the back
   --execute --confirm-endpoint localhost:8080
 ```
 
+One created before #460 also lacks the provenance properties: the backend then records no
+provenance and checks no edit versions. Add them (existing spans keep an unknown origin):
+
+```bash
+../.venv/bin/python -m semant_demo.maintenance.annotation_provenance add-schema --execute --confirm-endpoint localhost:8080
+```
+
 Automated tests never depend on this snapshot (section 4).
 
 ### 5.3 Start the snapshot Weaviate

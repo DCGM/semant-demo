@@ -357,7 +357,7 @@ async def test_a_failed_update_after_a_review_delete_is_repaired_by_its_pair(
     fail_writes("reference_delete", [chunk], collection=collection_names.chunks_collection_name)
 
     review = await api_client.post(f"/api/user_collections/{col}/annotations/review", headers=await owner(),
-                                   json={"action": "delete", "annotation_ids": [span]})
+                                   json={"action": "delete", "annotation_ids": [span], "expected_versions": {span: 0}})
     assert review.json()["succeeded"] == [span]
     assert [(f["item_id"], f["step"]) for f in review.json()["failed"]] == [(f"{chunk}:{person}", "update_chunk_tags")]
     assert await search("Novák", "person", positive=True) == {chunk}

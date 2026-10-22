@@ -1,7 +1,8 @@
 import { computed, ref } from 'vue'
 import { TagSpan, SpanType } from 'src/generated/api'
 import { useTagSpansStore } from './tagSpansStore'
-import { aiErrorMessage, formatQuotaReset, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
+import { ApiError, aiErrorMessage, formatQuotaReset, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
+import { UNKNOWN_MODEL_DETAIL, UNKNOWN_MODEL_MESSAGE, useTopicerModelStore } from './topicerModelStore'
 
 /**
  * Streamed AI span suggestion (NDJSON) helper.
@@ -28,6 +29,8 @@ export interface AiAssistanceRequest {
   documentId: string
   tagIds: string[]
   mode: AiAssistanceMode
+  /** The Topicer configuration to use (#189); unset or null: the server default. */
+  configName?: string | null
 }
 
 export interface AiAssistanceChunkEvent {
@@ -177,6 +180,16 @@ const lastSelectionError = ref<string | null>(null)
 let activeSelectionAbort: AbortController | null = null
 
 /**
+ * Whether a request was refused for naming a model Topicer no longer lists (Topicer was
+ * redeployed); the model list is then read again, which selects the default.
+ */
+function refusedUnknownModel (configName: string | null | undefined, e: unknown): boolean {
+  if (!configName || !(e instanceof ApiError) || e.status !== 400 || e.detail !== UNKNOWN_MODEL_DETAIL) return false
+  void useTopicerModelStore().reload()
+  return true
+}
+
+/**
  * POST a suggestion request and feed its NDJSON lines to `onResult` while `isCurrent()`.
  * Returns the final line, or null when the stream ended without it.
  */
@@ -309,7 +322,8 @@ export function useAiAssistance() {
       const end = await streamSuggestions(path, {
         collection_id: req.collectionId,
         document_id: req.documentId,
-        tag_ids: req.tagIds
+        tag_ids: req.tagIds,
+        ...(req.configName ? { config_name: req.configName } : {})
       }, abort.signal, isCurrent, (parsed) => {
         const event: AiAssistanceChunkEvent = {
           chunkId: parsed.chunk_id || '',
@@ -339,7 +353,9 @@ export function useAiAssistance() {
       } else {
         console.error('AI assistance failed', e)
         // A refusal for the daily allowance (429) gets its reset time; nothing is retried.
-        const message = await aiErrorMessage(e, 'AI assistance request failed')
+        const message = refusedUnknownModel(req.configName, e)
+          ? UNKNOWN_MODEL_MESSAGE
+          : await aiErrorMessage(e, 'AI assistance request failed')
         if (!isCurrent()) return
         lastStatus.value = 'interrupted'
         lastError.value = message
@@ -383,6 +399,7 @@ export function useAiAssistance() {
     selectionStart: number
     selectionEnd: number
     tagIds: string[]
+    configName?: string | null
   }): Promise<TagSpan[] | null> => {
     if (!req.tagIds.length) {
       lastSelectionError.value = 'No tags selected for AI suggestion.'
@@ -414,7 +431,8 @@ export function useAiAssistance() {
         chunk_ids: req.chunkIds,
         selection_start: req.selectionStart,
         selection_end: req.selectionEnd,
-        tag_ids: req.tagIds
+        tag_ids: req.tagIds,
+        ...(req.configName ? { config_name: req.configName } : {})
       }, abort.signal, isCurrent, (parsed) => {
         if (parsed.error) {
           lastSelectionError.value = parsed.error
@@ -435,7 +453,9 @@ export function useAiAssistance() {
         return null
       }
       console.error('AI selection assistance failed', e)
-      const message = await aiErrorMessage(e, 'AI selection request failed')
+      const message = refusedUnknownModel(req.configName, e)
+        ? UNKNOWN_MODEL_MESSAGE
+        : await aiErrorMessage(e, 'AI selection request failed')
       if (!isCurrent()) return null
       lastSelectionError.value = message
       return collected

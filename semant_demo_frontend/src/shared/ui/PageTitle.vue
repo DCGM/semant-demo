@@ -1,5 +1,5 @@
 <template>
-  <div class="q-pl-xl">
+  <div class="q-px-md">
     <span class="text-h4 text-weight-medium">
       {{ props.title }}
     </span>

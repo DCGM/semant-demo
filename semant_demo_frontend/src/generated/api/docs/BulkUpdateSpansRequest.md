@@ -10,6 +10,7 @@ Name | Type
 `collectionId` | string
 `spanIds` | Array&lt;string&gt;
 `update` | [PatchSpan](PatchSpan.md)
+`expectedVersions` | { [key: string]: number; }
 
 ## Example
 
@@ -21,6 +22,7 @@ const example = {
   "collectionId": null,
   "spanIds": null,
   "update": null,
+  "expectedVersions": null,
 } satisfies BulkUpdateSpansRequest
 
 console.log(example)

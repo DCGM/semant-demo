@@ -2,7 +2,6 @@
   <q-page class="q-pt-md" p>
     <PageTitle title="Collections" />
     <div class="row items-center q-my-sm q-px-md">
-      <RefreshButton @click="handleRefresh" />
       <CreateButton @click="handleCreate" />
 
       <q-input
@@ -35,7 +34,9 @@
         ]"
       />
 
+      <!-- The table view pages with the table's own control. -->
       <q-pagination
+        v-if="viewMode === 'tiles'"
         class="q-mr-md gt-sm"
         v-model="currentPage"
         :max="pageCount"
@@ -46,7 +47,7 @@
         gutter="10px"
       />
     </div>
-    <div v-if="viewMode === 'tiles'" class="row q-col-gutter-md q-px-lg q-py-md">
+    <div v-if="viewMode === 'tiles'" class="row q-col-gutter-md q-px-md q-py-md">
       <CreateCollectionCard @click="handleCreate"/>
 
       <CollectionCard
@@ -71,7 +72,7 @@
       @share="handleShare"
       @shareMany="handleShareMany"
     />
-    <div class="row justify-center q-mt-md lt-md">
+    <div v-if="viewMode === 'tiles'" class="row justify-center q-mt-md lt-md">
       <q-pagination
         v-model="currentPage"
         :max="pageCount"
@@ -89,7 +90,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import PageTitle from 'src/shared/ui/PageTitle.vue'
-import RefreshButton from 'src/shared/ui/RefreshButton.vue'
 import CreateCollectionCard from './CreateCollectionCard.vue'
 import CollectionsTable from './CollectionsTable.vue'
 
@@ -138,10 +138,6 @@ onMounted(async () => {
   searchQuery.value = ''
   await fetchCollections()
 })
-
-const handleRefresh = async () => {
-  await fetchCollections()
-}
 
 const handleCreate = () => {
   openCollectionDialog({
