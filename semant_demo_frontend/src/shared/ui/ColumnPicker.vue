@@ -7,7 +7,7 @@
     options-dense
     dense
     :display-value="$q.lang.table.columns"
-    :options="props.options"
+    :options="options"
     option-value="name"
     emit-value
     style="min-width: 150px"
@@ -34,12 +34,16 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps<{
   /** Names of the visible columns. */
   modelValue: string[]
-  /** The columns that can be hidden. */
-  options: { name: string, label: string }[]
+  /** The table's columns; the required ones cannot be hidden and are not offered. */
+  columns: { name: string, label: string, required?: boolean }[]
 }>()
+
+const options = computed(() => props.columns.filter((column) => !column.required))
 
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
