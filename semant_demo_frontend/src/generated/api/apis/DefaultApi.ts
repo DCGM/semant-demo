@@ -353,6 +353,7 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     sort?: AnnotationSort;
     limit?: number;
     offset?: number;
+    annotationId?: Array<string> | null;
 }
 
 export interface QuestionApiQuestionPostRequest {
@@ -1395,6 +1396,7 @@ export interface DefaultApiInterface {
      * @param {AnnotationSort} [sort] 
      * @param {number} [limit] 
      * @param {number} [offset] 
+     * @param {Array<string>} [annotationId] Only these annotations
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1413,6 +1415,7 @@ export interface DefaultApiInterface {
      * @param {AnnotationSort} [sort] 
      * @param {number} [limit] 
      * @param {number} [offset] 
+     * @param {Array<string>} [annotationId] Only these annotations
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -4095,6 +4098,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['offset'] != null) {
             queryParameters['offset'] = requestParameters['offset'];
+        }
+
+        if (requestParameters['annotationId'] != null) {
+            queryParameters['annotation_id'] = requestParameters['annotationId'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};

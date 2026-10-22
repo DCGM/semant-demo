@@ -154,6 +154,31 @@ export const useConcordanceStore = defineStore('concordance', () => {
     else if ((refresh || key === pageKey) && page.value?.rows.some(r => r.id === row.id)) selection.focusedGone = true
   }
 
+  /**
+   * Reads the focused annotation as it is now, whatever the filters, and keeps it focused
+   * (a review of it was refused because someone changed it, possibly out of the filters;
+   * #460). False when it no longer exists, another one is focused meanwhile, or reading failed.
+   */
+  async function readFocused (): Promise<boolean> {
+    const id = collectionId.value
+    const row = selection.focused
+    if (!id || !row) return false
+    const inScope = scope.capture()
+    const inSession = captureSession()
+    try {
+      const result = await api.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet({
+        collectionId: id, annotationId: [row.id], type: Object.values(SpanType), limit: 1
+      })
+      const fresh = result.rows[0]
+      if (!fresh || !inScope() || !inSession() || selection.focused?.id !== row.id) return false
+      selection.focus(fresh)
+      return true
+    } catch (e) {
+      console.error('Reading the annotation failed', e)
+      return false
+    }
+  }
+
   /** Shows the collection's workspace: as it was left, or a new one for another collection. */
   async function open (id: string) {
     if (scope.enter(id)) {
@@ -416,6 +441,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     scrollY,
     open,
     load,
+    readFocused,
     loadDocuments,
     loadShown,
     selectAllMatches,

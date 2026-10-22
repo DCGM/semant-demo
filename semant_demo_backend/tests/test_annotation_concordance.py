@@ -178,6 +178,17 @@ async def test_filters_by_tag_text_document_and_year(store):
     assert DOC_NO_YEAR not in {r.documentId for r in since.rows}
 
 
+async def test_annotations_are_read_by_id_with_the_type_filter_they_ask_for(store):
+    # The workspace reads the annotation it shows as it is now, also when it left the page's filters (#460).
+    approved, other = row(DOC_A, 0, type=SpanType.pos), row(DOC_A, 5, type=SpanType.auto)
+    store.spans.rows = [approved, other]
+    page = await service.query_annotations(store, OWNER, COLLECTION, annotation_ids=[str(approved.id)],
+                                           types=list(SpanType))
+    assert (ids(page), page.total) == ([approved.id], 1)
+    with pytest.raises(InvalidRequestError):
+        await service.query_annotations(store, OWNER, COLLECTION, annotation_ids=["not-an-id"])
+
+
 async def test_rows_report_text_status_and_unavailable_documents(store):
     pending = row(DOC_GONE, 0, current=False)
     failed = row(DOC_A, 1, current=False).model_copy(update={"enrichmentStatus": EnrichmentStatus.failed, "enrichedRevision": 1})
@@ -275,6 +286,7 @@ async def test_routes_parse_repeated_filters_and_serialize_rows(tmp_path, store,
         page = await client.get(path, headers=headers, params=[("type", "pos"), ("type", "neg"),
                                                                 ("tag_id", str(TAG)), ("limit", "1")])
         documents = await client.get(f"{path}/documents", headers=headers)
+        by_id = await client.get(path, headers=headers, params=[("annotation_id", str(store.spans.rows[2].id))])
         bad = [await client.get(path, headers=headers, params=params)
                for params in ({"sort": "random"}, {"limit": 201}, {"type": "maybe"}, {"offset": -1})]
 
@@ -288,6 +300,7 @@ async def test_routes_parse_repeated_filters_and_serialize_rows(tmp_path, store,
     assert set(first) >= {"id", "tagId", "chunkId", "documentId", "start", "end", "revision", "leftContext",
                           "rightContext", "documentAvailable"}
     assert [(d["title"], d["count"]) for d in documents.json()] == [("Almanach", 1), ("Bulletin", 1)]
+    assert [r["text"] for r in by_id.json()["rows"]] == ["Lhota"]
     assert [r.status_code for r in bad] == [422, 422, 422, 422]
 
 

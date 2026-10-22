@@ -195,6 +195,47 @@ describe('concordance store', () => {
     expect([selection.focused?.id, selection.focusedGone]).toEqual(['b', false])
   })
 
+  it('reads the focused annotation as it is now when a change took it out of the filters (#460)', async () => {
+    const store = await opened(['a', 'b'])
+    const selection = useAnnotationSelectionStore()
+    selection.focus(store.rows[0])
+    const reloading = store.load() // someone else approved "a"; the page shows proposals only
+    await flush()
+    rowCalls()[1].answer(page(['b']))
+    await reloading
+    expect(selection.focusedGone).toBe(true)
+
+    const reading = store.readFocused()
+    await flush()
+    const asked = rowCalls()[2].url.searchParams
+    expect([asked.getAll('annotation_id'), asked.getAll('type').sort()]).toEqual([['a'], ['auto', 'neg', 'pos']])
+    rowCalls()[2].answer({ ...page([]), rows: [{ ...row('a'), type: 'pos', editVersion: 3 }], total: 1 })
+    expect(await reading).toBe(true)
+    expect([selection.focused?.type, selection.focused?.editVersion, selection.focusedGone]).toEqual(['pos', 3, false])
+
+    const again = store.load() // a later read of the page still does not list it, which is no change
+    await flush()
+    rowCalls()[3].answer(page(['b']))
+    await again
+    expect([selection.focused?.id, selection.focusedGone]).toEqual(['a', false])
+  })
+
+  it('leaves the focused annotation gone when it no longer exists or another one is focused meanwhile', async () => {
+    const store = await opened(['a', 'b'])
+    const selection = useAnnotationSelectionStore()
+    selection.focus(store.rows[0])
+    const deleted = store.readFocused()
+    await flush()
+    rowCalls()[1].answer(page([]))
+    expect(await deleted).toBe(false)
+
+    const moved = store.readFocused()
+    await flush()
+    selection.focus(store.rows[1])
+    rowCalls()[2].answer(page(['a']))
+    expect([await moved, selection.focused?.id]).toEqual([false, 'b'])
+  })
+
   it('goes back to the last page when the current one emptied meanwhile', async () => {
     const store = await opened(['a', 'b'], 60)
     const paging = store.goTo(50)

@@ -286,6 +286,34 @@ test('the sidebar names who changed the open annotation and refuses a review of 
   }
 })
 
+test('a refused review keeps its conflict when the change took the annotation out of the filters', async ({ page, request }) => {
+  const lhota = fixture.span('lhota_automatic')
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  const context = page.getByTestId('annotation-context')
+  try {
+    await page.getByTestId('concordance-status-pos').click() // proposals only
+    await row(page, 'Lhoty').click()
+
+    // The shared annotator approves it meanwhile: the page read again no longer lists it.
+    await patchSpan(request, lhota.id, { type: 'pos' }, 'annotator')
+    await context.getByRole('button', { name: 'Reject' }).click()
+    const conflict = context.getByTestId('annotation-conflict')
+    await expect(conflict).toContainText('now confirmed')
+    await expect(conflict).toContainText('It is no longer on this page.')
+    await expect(row(page, 'Lhoty')).toHaveCount(0)
+    await expect(context.getByTestId('annotation-context-gone')).toHaveCount(0)
+
+    // Reviewing an annotation the page does not show asks first, as for hidden selected ones.
+    await conflict.getByRole('button', { name: 'Apply to current version' }).click()
+    await expect(page.getByRole('dialog')).toContainText('not on this page')
+    await page.getByRole('dialog').getByRole('button', { name: 'Reject 1' }).click()
+    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1.')
+  } finally {
+    await patchSpan(request, lhota.id, { type: 'auto' })
+  }
+})
+
 test('a batch review leaves annotations changed since they were selected and can select them', async ({ page, request }) => {
   const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
   await useViewport(page, 'wide')

@@ -33,7 +33,8 @@ nothing else.
   it was added (*Select all* gets them with the resolved ids); only this user's saved writes move
   it on. A conflicting item is reported apart and never retried: the user selects the changed
   items at their current versions and reviews them again.
-- The check reads the annotation under its per-span lock: reliable within one backend process,
+- The check reads the annotation, and the write reads it back, under its per-span lock (a write
+  returns the version it saved, never a later writer's): reliable within one backend process,
   detectable but not atomic across processes (as ADR 0009 accepts for revisions). `revision`
   keeps its boundary-only meaning.
 - The backend reads and writes the properties only when the collection holds them (decided at
@@ -53,10 +54,11 @@ workspace sidebar; the document view reports conflicts but does not show provena
 ## Verification
 
 Service behavior with fakes (`tests/test_annotation_service.py`: provenance per write, refused
-outdated writes and deletes, already-applied writes, per-item batch conflicts, unchecked cleanups,
+outdated writes and deletes, already-applied writes, the saved version returned when another write
+follows at once, per-item batch conflicts, unchecked cleanups,
 no recording before the schema; `tests/test_suggestions.py`: run id and origin), real Weaviate
 1.40.1 (`tests/integration/test_annotation_provenance.py`: API provenance and 409, review
 conflicts, schema addition to a pre-#460 collection without auto-schema), frontend store and
 component tests (`concordance.spec.ts`, `editConflicts.spec.ts`, `provenanceSummary.spec.ts`,
-`selectionBar.spec.ts`) and browser tests (`annotationWorkspace.spec.ts`,
-`documentViewer.spec.ts`).
+`selectionBar.spec.ts`) and browser tests (`annotationWorkspace.spec.ts`, also a
+conflict whose change took the annotation out of the filters; `documentViewer.spec.ts`).

@@ -650,6 +650,27 @@ async def test_a_write_based_on_an_outdated_version_is_refused_with_the_current_
     assert stored(recording).type == SpanType.auto
 
 
+async def test_a_write_returns_the_version_it_saved_although_another_write_follows_at_once(recording):
+    # A's read-back starts B's write and gives it every chance to run: the read back happens
+    # under the span's lock, so B waits and A returns its own version, not B's.
+    original_read, later = recording.spans.read, {}
+
+    async def read(cid, span_id):
+        if stored(recording).editVersion == 1 and "b" not in later:
+            later["b"] = asyncio.create_task(service.update_span(
+                recording, SHARED, COLLECTION, SPAN_A, PatchSpan(tagId=str(OTHER_TAG)), expected_version=1))
+            await asyncio.wait({later["b"]}, timeout=0.05)
+        return await original_read(cid, span_id)
+
+    recording.spans.read = read
+    a = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos),
+                                  expected_version=0)
+    b = await later["b"]
+
+    assert (a.editVersion, a.type, a.tagId) == (1, SpanType.pos, str(TAG))
+    assert (b.editVersion, b.tagId) == (2, str(OTHER_TAG))
+
+
 async def test_a_write_already_applied_counts_as_done_without_writing(recording, writes):
     await service.update_span(recording, OWNER, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos), expected_version=0)
     writes.clear()
