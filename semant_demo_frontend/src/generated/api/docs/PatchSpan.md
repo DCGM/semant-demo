@@ -10,6 +10,7 @@ Name | Type
 `end` | number
 `type` | [SpanType](SpanType.md)
 `tagId` | string
+`chunkId` | string
 
 ## Example
 
@@ -22,6 +23,7 @@ const example = {
   "end": null,
   "type": null,
   "tagId": null,
+  "chunkId": null,
 } satisfies PatchSpan
 
 console.log(example)

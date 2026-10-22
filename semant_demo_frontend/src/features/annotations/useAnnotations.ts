@@ -22,22 +22,13 @@ export interface GlobalSelection {
   start: number // offset from beginning of chunkId
   end: number // may exceed chunkId length → spans into later chunks
   editingSpanId?: string
+  /** The chunk the edited span is stored on; a boundary drag moves only `chunkId`. */
+  spanChunkId?: string
   tagId?: string
 }
 
 /** A tag span projected into a specific chunk's local coordinate space */
 export type ProjectedSpan = TagSpan
-
-/**
- * Moving a span to another chunk saved it in the new chunk, but removing it from the old one
- * failed: the span is now at both positions. The message says so, for the user.
- */
-export class SpanMoveIncompleteError extends Error {
-  constructor (cause: unknown) {
-    super('The tag was saved at its new position, but could not be removed from the old one.', { cause })
-    this.name = 'SpanMoveIncompleteError'
-  }
-}
 
 // ── Composable ─────────────────────────────────────────
 
@@ -294,6 +285,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
       start: span.start,
       end: span.end,
       editingSpanId: span.id ?? undefined,
+      spanChunkId: span.chunkId,
       tagId: span.tagId
     }
     originalPosition.value = {
@@ -409,7 +401,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
     // A boundary drag may have moved the selection's anchor off the chunk that holds the span.
     const spanId = sel.editingSpanId
-    const ownerChunkId = findSpanOwnerChunkId(spanId) || sel.chunkId
+    const ownerChunkId = sel.spanChunkId ?? sel.chunkId
 
     // Update visual highlight immediately
     const isCurrent = selectionGuard.capture()
@@ -435,55 +427,26 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     selection.value = normalized
 
     const spanId = normalized.editingSpanId
-    const ownerChunkId = findSpanOwnerChunkId(spanId)
-    const isCurrent = selectionGuard.capture()
+    const ownerChunkId = normalized.spanChunkId ?? normalized.chunkId
 
-    await applyToSelection(async () => {
-      if (ownerChunkId && ownerChunkId !== normalized.chunkId) {
-        // A span's chunk can't be changed in place: save it in the new chunk, then remove it
-        // from the old one. A failure leaves the old span or, at worst, both; never neither.
-        const original = spansByChunkId.value[ownerChunkId]?.find((s) => s.id === spanId)
-        await store.createSpan({
-          chunkId: normalized.chunkId,
-          tagId: normalized.tagId!,
-          start: normalized.start,
-          end: normalized.end,
-          type: original?.type ?? SpanType.pos,
-          reason: original?.reason,
-          confidence: original?.confidence
-        })
-        try {
-          await store.deleteSpan(spanId, ownerChunkId)
-        } catch (err) {
-          // The selection edits the old span, which no longer matches the saved position.
-          if (isCurrent()) clearSelection()
-          throw new SpanMoveIncompleteError(err)
-        }
-      } else {
-        await store.updateSpan(spanId, normalized.chunkId, {
-          start: normalized.start,
-          end: normalized.end
-        })
-      }
-    })
+    // A start dragged into another chunk moves the span there in the same write (#436): it
+    // keeps its id, provenance and AI metadata.
+    await applyToSelection(() => store.updateSpan(spanId, ownerChunkId, {
+      start: normalized.start,
+      end: normalized.end,
+      ...(ownerChunkId !== normalized.chunkId ? { chunkId: normalized.chunkId } : {})
+    }))
   }
 
   const deleteSpan = async () => {
     if (!selection.value?.editingSpanId) return
 
     const spanId = selection.value.editingSpanId
-    const ownerChunkId = findSpanOwnerChunkId(spanId) || selection.value.chunkId
+    const ownerChunkId = selection.value.spanChunkId ?? selection.value.chunkId
     await applyToSelection(() => store.deleteSpan(spanId, ownerChunkId))
   }
 
   // ── Helpers ──
-
-  const findSpanOwnerChunkId = (spanId: string): string | null => {
-    for (const [chunkId, spans] of Object.entries(spansByChunkId.value)) {
-      if (spans.some((s) => s.id === spanId)) return chunkId
-    }
-    return null
-  }
 
   const isEditing = computed(() => !!selection.value?.editingSpanId)
   const hasSelection = computed(() => !!selection.value)

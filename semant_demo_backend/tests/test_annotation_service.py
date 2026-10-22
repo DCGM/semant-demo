@@ -33,6 +33,8 @@ CHUNK_1, CHUNK_2, OUTSIDE_CHUNK = uuid4(), uuid4(), uuid4()
 TAG, OTHER_TAG = uuid4(), uuid4()
 SPAN_A, SPAN_B = uuid4(), uuid4()
 TEXTS = {CHUNK_1: (0, "Jan Novák"), CHUNK_2: (1, " a Brno 😀")}  # 9 and 10 UTF-16 units
+# A chunk of the collection from another document.
+ELSEWHERE_CHUNK, ELSEWHERE_DOCUMENT = uuid4(), uuid4()
 
 
 class FakeCollections:
@@ -40,7 +42,7 @@ class FakeCollections:
         return {COLLECTION: (OWNER.id, {SHARED.id}), SECOND_COLLECTION: (OWNER.id, set())}.get(cid)
 
     async def chunk_ids_in_collection(self, ids, cid, document=None):
-        return {i for i in ids if i in TEXTS} if cid == COLLECTION else set()
+        return {i for i in ids if i in TEXTS or i == ELSEWHERE_CHUNK} if cid == COLLECTION else set()
 
     async def document_in_collection(self, document_id, cid):
         return (document_id, cid) == (DOCUMENT, COLLECTION)
@@ -142,6 +144,9 @@ class FakeSpans(Recorder):
             self.recorded[span_id] = self.recorded.get(span_id, {}) | provenance
         tenant[span_id] = tenant[span_id].model_copy(update=update)
 
+    async def replace_anchor_reference(self, cid, span_id, chunk_id):
+        await self._write("replace_anchor_reference", span_id, chunk_id)
+
     async def delete(self, cid, span_id):
         await self._write("delete_span", span_id)
         self._tenant(cid).pop(span_id, None)
@@ -176,6 +181,8 @@ class FakeDocuments:
 
     async def read_chunk_text(self, chunk_id):
         self.reads.append(("anchor", chunk_id))
+        if chunk_id == ELSEWHERE_CHUNK:
+            return AnnotationChunk(id=chunk_id, document_id=ELSEWHERE_DOCUMENT, order=0, text="Praha")
         order, text = TEXTS[chunk_id]
         return AnnotationChunk(id=chunk_id, document_id=DOCUMENT, order=order, text=text)
 
@@ -435,6 +442,60 @@ async def test_tag_change_syncs_the_old_and_the_new_pair(store, writes):
     assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_1, OTHER_TAG)}))
 
 
+async def test_moving_a_span_to_another_chunk_keeps_its_id_and_syncs_both_pairs(store, writes):
+    # Its start moved into chunk 2 (#436): one write, offsets counted from chunk 2.
+    result = await service.update_span(store, OWNER, COLLECTION, SPAN_A,
+                                       PatchSpan(chunkId=str(CHUNK_2), start=1, end=7))
+
+    assert (result.id, result.chunkId, result.start, result.end) == (str(SPAN_A), str(CHUNK_2), 1, 7)
+    assert writes == [("update_span", SPAN_A), ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, TAG)})),
+                      ("replace_anchor_reference", SPAN_A, CHUNK_2)]
+
+
+async def test_a_move_with_a_tag_change_syncs_the_new_chunk_with_the_new_tag(store, writes):
+    await service.update_span(store, OWNER, COLLECTION, SPAN_A,
+                              PatchSpan(chunkId=str(CHUNK_2), start=1, end=7, tagId=str(OTHER_TAG)))
+
+    assert writes[1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, OTHER_TAG)}))
+
+
+async def test_a_failed_reference_update_keeps_the_move_and_saving_it_again_repairs_it(recording, writes):
+    move = PatchSpan(chunkId=str(CHUNK_2), start=1, end=7)
+    recording.spans.fail["replace_anchor_reference"] = RuntimeError("down")
+
+    result = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=0)
+
+    assert (result.outcome, result.chunkId) == ("partial", str(CHUNK_2))
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(SPAN_A), "update_chunk_reference")]
+    del recording.spans.fail["replace_anchor_reference"]
+    writes.clear()
+    # Saving the same move again (as the client knew it) writes no span, only the reference.
+    again = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=0)
+    assert again.outcome == "complete"
+    assert [w[0] for w in writes] == ["sync", "replace_anchor_reference"]
+
+
+@pytest.mark.parametrize("patch, error", [
+    (PatchSpan(chunkId=str(CHUNK_2)), InvalidRequestError),  # offsets in the new chunk are required
+    (PatchSpan(chunkId=str(CHUNK_2), start=1), InvalidRequestError),
+    (PatchSpan(chunkId=str(OUTSIDE_CHUNK), start=0, end=3), NotFoundError),
+    (PatchSpan(chunkId=str(ELSEWHERE_CHUNK), start=0, end=3), InvalidRequestError),  # another document
+    (PatchSpan(chunkId=str(CHUNK_2), start=1, end=50), InvalidSpanRange),
+], ids=["no-offsets", "no-end", "outside-collection", "other-document", "past-end"])
+async def test_an_invalid_move_writes_nothing(patch, error, store, writes):
+    with pytest.raises(error):
+        await service.update_span(store, OWNER, COLLECTION, SPAN_A, patch)
+    assert writes == []
+    assert stored(store).chunkId == str(CHUNK_1)
+
+
+async def test_bulk_updates_do_not_move_spans(store, writes):
+    with pytest.raises(InvalidRequestError):
+        await service.bulk_update_spans(store, OWNER, COLLECTION, [SPAN_A],
+                                        PatchSpan(chunkId=str(CHUNK_2), start=1, end=7))
+    assert writes == []
+
+
 async def test_bulk_update_keeps_completed_updates_and_reports_failed_ones(store, writes):
     store.spans.fail[f"update_span:{SPAN_B}"] = RuntimeError("boom")
 
@@ -681,6 +742,24 @@ async def test_a_write_already_applied_counts_as_done_without_writing(recording,
 
     assert (result.outcome, result.editVersion) == ("complete", 1)
     assert [w for w in writes if w[0] == "update_span"] == []
+
+
+async def test_a_move_is_a_checked_edit_that_keeps_the_provenance(recording, writes):
+    move = PatchSpan(chunkId=str(CHUNK_2), start=1, end=7)
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(tagId=str(OTHER_TAG)), expected_version=0)
+
+    with pytest.raises(EditConflictError):
+        await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=0)
+    assert stored(recording).chunkId == str(CHUNK_1)
+
+    result = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=1)
+    assert (result.id, result.chunkId, result.editVersion) == (str(SPAN_A), str(CHUNK_2), 2)
+    assert set(recording.spans.recorded[SPAN_A]) == {"editVersion", "lastEditedBy", "lastEditedAt"}
+
+    # A retry of the move whose answer was lost: no conflict, nothing written.
+    writes.clear()
+    again = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=1)
+    assert (again.editVersion, [w for w in writes if w[0] == "update_span"]) == (2, [])
 
 
 async def test_a_delete_based_on_an_outdated_version_is_refused(recording, writes):
