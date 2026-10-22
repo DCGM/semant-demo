@@ -108,7 +108,7 @@ test('filters, selection and the open row survive a visit to the document', asyn
   await row(page, 'Jan Novák').click()
 
   await panel(page).getByRole('link', { name: 'Open in document' }).click()
-  await expect(page.getByText('Document detail')).toBeVisible()
+  await expect(page.locator('.doc-header .text-h5')).toBeVisible()
   await expect(page.locator('.text-segment.is-tagged', { hasText: 'Jan Novák' }).first()).toBeVisible()
 
   await page.getByRole('link', { name: 'Back to annotations' }).click()
@@ -153,7 +153,7 @@ test('a review made in the document view shows in the workspace on return', asyn
   await openWorkspace(page)
   await row(page, 'Lhoty').click()
   await panel(page).getByRole('link', { name: 'Open in document' }).click()
-  await expect(page.getByText('Document detail')).toBeVisible()
+  await expect(page.locator('.doc-header .text-h5')).toBeVisible()
   // The linked proposal is marked although AI assist (which shows proposals) is not open.
   await expect(page.locator('.text-segment.is-highlighted', { hasText: 'Lhoty' }).first()).toBeVisible()
   try {
@@ -173,7 +173,7 @@ test('the open row follows edits made in the document view', async ({ page, requ
   await row(page, 'Jan Novák').click()
   const openDocument = async () => {
     await panel(page).getByRole('link', { name: 'Open in document' }).click()
-    await expect(page.getByText('Document detail')).toBeVisible()
+    await expect(page.locator('.doc-header .text-h5')).toBeVisible()
   }
   try {
     await openDocument()

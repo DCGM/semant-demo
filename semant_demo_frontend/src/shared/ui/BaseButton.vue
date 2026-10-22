@@ -1,7 +1,7 @@
 <template>
   <q-btn
     v-bind="$attrs"
-    class="q-ma-sm q-px-md"
+    class="q-my-sm q-mr-sm q-px-md"
     unelevated
     no-wrap
     :color="props.color"

@@ -2,19 +2,7 @@
   <q-page class="q-pt-sm">
     <div class="collection-topbar q-px-md q-pb-xs">
       <div class="collection-header">
-        <div class="collection-page-kicker">Collection workspace</div>
         <div class="collection-title-row">
-          <q-btn
-            flat
-            round
-            dense
-            icon="arrow_back"
-            :to="{ name: 'collections' }"
-            class="collection-back-btn"
-            aria-label="Back to collections"
-          >
-            <q-tooltip>Back to collections</q-tooltip>
-          </q-btn>
           <button
             v-if="activeCollectionColor"
             type="button"
@@ -95,7 +83,10 @@
             @click="startNameEdit"
           >
             <h1 class="collection-page-title">{{ activeCollectionLabel }}</h1>
-            <q-tooltip v-if="activeCollectionLabel && rights.editMetadata">Click to edit</q-tooltip>
+            <!-- A long name is cut off with an ellipsis (#479), so the tooltip shows it whole. -->
+            <q-tooltip v-if="activeCollectionLabel">
+              {{ activeCollectionLabel }}<template v-if="rights.editMetadata"><br>Click to edit</template>
+            </q-tooltip>
           </button>
         </div>
       </div>
@@ -134,13 +125,6 @@
           label="Tags"
           icon="label"
           :to="{ name: 'collectionTags' }"
-        />
-        <q-separator vertical size="1.8px" inset />
-        <q-route-tab
-          name="taggingJobs"
-          label="Tagging Jobs"
-          icon="assignment"
-          :to="{ name: 'collectionTaggingJobs' }"
         />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
@@ -273,21 +257,14 @@ onMounted(async () => {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  flex-wrap: wrap;
-}
-
-.collection-page-kicker {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(0, 0, 0, 0.52);
-  margin-bottom: 4px;
+  // The tabs keep their place; a long name shrinks and ends in an ellipsis (#479).
+  flex-wrap: nowrap;
 }
 
 .collection-header {
   padding: 2px 0;
   flex: 0 1 auto;
+  min-width: 0;
 }
 
 .collection-title-row {
@@ -297,6 +274,7 @@ onMounted(async () => {
 }
 
 .collection-title-button {
+  min-width: 0;
   border: 0;
   padding: 0;
   background: transparent;
@@ -310,10 +288,6 @@ onMounted(async () => {
 
 .collection-title-input {
   width: min(350px, 65vw);
-}
-
-.collection-back-btn {
-  color: rgba(0, 0, 0, 0.72);
 }
 
 .collection-color-button {
@@ -340,15 +314,22 @@ onMounted(async () => {
   font-weight: 700;
   line-height: 1.15;
   color: #1f2a37;
+  max-width: 36ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .collection-tabs {
-  flex: 1 1 520px;
+  flex: 1 0 auto;
   min-width: 380px;
-  width: 100%;
 }
 
 @media (max-width: 900px) {
+  .collection-topbar {
+    flex-wrap: wrap;
+  }
+
   .collection-tabs {
     min-width: 0;
     width: 100%;
