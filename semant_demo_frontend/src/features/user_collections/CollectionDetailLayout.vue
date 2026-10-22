@@ -70,24 +70,25 @@
                 dense
                 icon="close"
                 color="negative"
-                :disable="isSavingName"
                 @click="cancelNameEdit"
               />
             </template>
           </q-input>
+          <!-- A long name is cut off with an ellipsis (#479), so the tooltips show it whole.
+               Only the owner gets a button: a disabled one would never show its tooltip. -->
           <button
-            v-else
+            v-else-if="activeCollectionLabel && rights.editMetadata"
             type="button"
             class="collection-title-button"
-            :disabled="!activeCollectionLabel || !rights.editMetadata"
             @click="startNameEdit"
           >
             <h1 class="collection-page-title">{{ activeCollectionLabel }}</h1>
-            <!-- A long name is cut off with an ellipsis (#479), so the tooltip shows it whole. -->
-            <q-tooltip v-if="activeCollectionLabel">
-              {{ activeCollectionLabel }}<template v-if="rights.editMetadata"><br>Click to edit</template>
-            </q-tooltip>
+            <q-tooltip>{{ activeCollectionLabel }}<br>Click to edit</q-tooltip>
           </button>
+          <h1 v-else class="collection-page-title">
+            {{ activeCollectionLabel }}
+            <q-tooltip v-if="activeCollectionLabel">{{ activeCollectionLabel }}</q-tooltip>
+          </h1>
         </div>
       </div>
 
@@ -149,6 +150,7 @@ import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
 import { collectionRights } from './permissions'
 import BackLink from 'src/shared/ui/BackLink.vue'
+import { overlayOpen } from 'src/shared/overlays'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
@@ -199,11 +201,18 @@ const isNameSaveDisabled = computed(() => isSavingName.value || !normalizedEdite
 const startNameEdit = () => {
   if (!activeCollectionLabel.value || !rights.value.editMetadata) return
   editableCollectionName.value = activeCollectionLabel.value
+  nameEdit++
   isEditingName.value = true
 }
 
+// Each opened editor gets a number, so a save that ends after the editor was cancelled
+// (or reopened) leaves it alone.
+let nameEdit = 0
+
 const cancelNameEdit = () => {
+  nameEdit++
   isEditingName.value = false
+  isSavingName.value = false
   editableCollectionName.value = activeCollectionLabel.value
 }
 
@@ -215,17 +224,23 @@ const submitNameEdit = async () => {
     isEditingName.value = false
     return
   }
+  const edit = nameEdit
   isSavingName.value = true
-  await updateCollection(collectionId.value, { name: updatedName })
-  await fetchCollection(collectionId.value)
-  isSavingName.value = false
-
-  isEditingName.value = false
+  try {
+    // A failed rename keeps the editor open with the typed name (the store reports the error).
+    if (!await updateCollection(collectionId.value, { name: updatedName })) return
+    if (edit === nameEdit) isEditingName.value = false
+    await fetchCollection(collectionId.value)
+  } finally {
+    if (edit === nameEdit) isSavingName.value = false
+  }
 }
 
-// Escape cancels the name edit wherever the focus is, not only in the input.
+// Escape cancels the name edit wherever the focus is, not only in the input, unless it
+// closes a dialog or menu (e.g. the color picker) instead.
 const onEditKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && !isSavingName.value) cancelNameEdit()
+  if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen()) return
+  cancelNameEdit()
 }
 watch(isEditingName, (editing) => {
   if (editing) window.addEventListener('keydown', onEditKeydown)
@@ -276,7 +291,7 @@ onMounted(async () => {
 .collection-header {
   padding: 2px 0;
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: 12rem;
 }
 
 .collection-title-row {
@@ -292,10 +307,6 @@ onMounted(async () => {
   background: transparent;
   cursor: text;
   text-align: left;
-}
-
-.collection-title-button:disabled {
-  cursor: default;
 }
 
 .collection-title-input {
@@ -333,8 +344,9 @@ onMounted(async () => {
 }
 
 .collection-tabs {
-  flex: 1 0 auto;
-  min-width: 380px;
+  // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page.
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 @media (max-width: 900px) {

@@ -40,36 +40,7 @@
           </template>
         </q-input>
         <q-space />
-        <q-select
-          v-model="visibleColumns"
-          multiple
-          outlined
-          options-dense
-          dense
-          :display-value="$q.lang.table.columns"
-          :options="columnOptions"
-          option-value="name"
-          emit-value
-          style="min-width: 150px"
-          transition-hide="scale"
-          transition-show="scale"
-          color="primary"
-          class="text-grey-2"
-        >
-          <template #option="{ itemProps, opt, selected, toggleOption }">
-            <q-item v-bind="itemProps">
-              <q-item-section>
-                <q-item-label>{{ opt.label }}</q-item-label>
-              </q-item-section>
-              <q-item-section side>
-                <q-toggle
-                  :model-value="selected"
-                  @update:model-value="toggleOption(opt)"
-                />
-              </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
+        <ColumnPicker v-model="visibleColumns" :options="columnOptions" />
       </div>
     </template>
     <template #body-cell-actions="props">
@@ -175,6 +146,7 @@ import { useDocumentsStore } from './documentsStore'
 import useBrowseLibraryDialog from './useBrowseLibraryDialog'
 import { computed, onMounted, ref } from 'vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
+import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocumentsRepository } from './useDocumentsRepository'

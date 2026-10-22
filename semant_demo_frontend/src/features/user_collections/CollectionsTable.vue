@@ -22,36 +22,7 @@
         Collections ({{ collections.length }} {{ collections.length === 1 ? 'item' : 'items' }})
       </div>
       <q-space />
-      <q-select
-        v-model="visibleColumns"
-        multiple
-        outlined
-        options-dense
-        dense
-        :display-value="$q.lang.table.columns"
-        :options="columnOptions"
-        option-value="name"
-        emit-value
-        style="min-width: 150px"
-        transition-hide="scale"
-        transition-show="scale"
-        color="primary"
-        class="text-grey-2"
-      >
-        <template #option="{ itemProps, opt, selected, toggleOption }">
-          <q-item v-bind="itemProps">
-            <q-item-section>
-              <q-item-label>{{ opt.label }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-toggle
-                :model-value="selected"
-                @update:model-value="toggleOption(opt)"
-              />
-            </q-item-section>
-          </q-item>
-        </template>
-      </q-select>
+      <ColumnPicker v-model="visibleColumns" :options="columnOptions" />
     </template>
     <template #body-cell-actions="tableProps">
       <q-td :props="tableProps">
@@ -150,6 +121,7 @@
 </template>
 
 <script setup lang="ts">
+import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import { computed, ref } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
 import { Collection, UserSearchResult } from 'src/generated/api'
