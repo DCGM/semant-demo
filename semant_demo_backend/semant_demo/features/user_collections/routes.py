@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status, Response, Query
 
-from semant_demo.features.user_collections.schemas import CreateResponse, Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest, CollectionChunk
+from semant_demo.features.user_collections.schemas import CreateResponse, Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest, CollectionChunk, CollectionPerson
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -139,6 +139,18 @@ async def get_collection_members(collection_id: str,
     Returns the users a collection is currently shared with. Owner and shared users.
     """
     return await service.list_members(collections, users, current_user, collection_id)
+
+
+@exp_router.get("/api/user_collections/{collection_id}/people", response_model=list[CollectionPerson])
+async def get_collection_people(collection_id: str,
+                                collections: UserCollectionRepository = Depends(get_user_collections),
+                                users: UserLookup = Depends(get_user_lookup),
+                                current_user: User = Depends(current_active_user)) -> list[CollectionPerson]:
+    """
+    Returns the collection's owner and the users it is shared with, with their names (to name
+    who created or changed its annotations). Owner and shared users.
+    """
+    return await service.list_people(collections, users, current_user, collection_id)
 
 
 @exp_router.get("/api/user_collections/{collection_id}/stats", response_model=CollectionStats)

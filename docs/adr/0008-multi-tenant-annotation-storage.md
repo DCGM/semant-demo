@@ -4,7 +4,8 @@ Status: storage, access, lifecycle and migration tooling implemented in #327; pr
 the shared test store were migrated on 2026-10-18. Enabling idle deactivation is pending.
 Date: 2026-10-18. Agreed in the collection-workspace plan (#311, #323); refines ADR 0004's
 storage of span annotations, not its chunk tag search. Derived annotation data on the same
-objects: [ADR 0009](0009-derived-annotation-data.md) (#328).
+objects: [ADR 0009](0009-derived-annotation-data.md) (#328); provenance and edit versions:
+[ADR 0010](0010-annotation-provenance-and-edit-versions.md) (#460).
 
 ## Context
 

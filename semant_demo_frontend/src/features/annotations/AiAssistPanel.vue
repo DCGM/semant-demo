@@ -14,6 +14,25 @@
       :disable="aiAssist.isRunning.value"
     />
 
+    <template v-if="topicerModel.loaded && topicerModel.options.length">
+      <div class="ai-section-label">Model</div>
+      <q-select
+        v-model="topicerModel.selected"
+        :options="topicerConfigOptions"
+        emit-value
+        map-options
+        dense
+        outlined
+        options-dense
+        class="q-mb-sm"
+        data-testid="ai-model-select"
+        :disable="aiAssist.isRunning.value || isPreparingRun"
+      />
+    </template>
+    <div v-else-if="topicerModel.failed" class="text-caption text-grey-7 q-mb-sm" data-testid="ai-model-unavailable">
+      The AI models could not be listed; the default model is used.
+    </div>
+
     <div class="ai-section-label">
       Tags
       <span class="text-caption text-grey-6 q-ml-xs">({{ selectedAiTagIds.length }}/{{ tags.length }})</span>
@@ -298,7 +317,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
@@ -309,6 +328,7 @@ import useAiAssistance, {
   largeRunWarning, resolveAutoSpanFailure, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode
 } from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
+import { useTopicerModelStore } from './topicerModelStore'
 import useTagSpans from './useTagSpans'
 
 // AI annotation suggestions for a document: runs over the selected tags, the pending
@@ -330,6 +350,12 @@ const aiModeOptions = [
   { label: 'Optimized (vector pre-filtering)', value: 'optimized' },
   { label: 'Thorough (every chunk in collection)', value: 'thorough' }
 ]
+const topicerModel = useTopicerModelStore()
+const topicerConfigOptions = computed(() => topicerModel.options.map((name) => ({
+  label: name === topicerModel.defaultConfig ? `${name} (default)` : name,
+  value: name
+})))
+onMounted(() => { void topicerModel.load() })
 const selectedAiTagIds = ref<string[]>([])
 const isPreparingRun = ref(false)
 const busyAutoSpanIds = ref<Set<string>>(new Set())
@@ -424,11 +450,14 @@ async function confirmLargeRun(collectionId: string, documentId: string, tagCoun
 
 async function onRunAi() {
   if (!selectedAiTagIds.value.length || isPreparingRun.value) return
+  // Not awaited: an outdated or failed list is read again for the next run.
+  void topicerModel.load()
   const req = {
     collectionId: props.collectionId,
     documentId: props.documentId,
     tagIds: [...selectedAiTagIds.value],
-    mode: aiMode.value
+    mode: aiMode.value,
+    configName: topicerModel.chosenConfigName()
   }
   isPreparingRun.value = true
   let confirmed = false

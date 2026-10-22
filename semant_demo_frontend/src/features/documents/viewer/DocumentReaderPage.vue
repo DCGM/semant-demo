@@ -192,6 +192,7 @@ import AnnotationPopover from 'src/features/annotations/AnnotationPopover.vue'
 import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance, { resolveAutoSpanFailure } from 'src/features/annotations/useAiAssistance'
+import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
 import { SpanMoveIncompleteError, useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
 import useSpanDiscussionDialog from 'src/features/annotations/useSpanDiscussionDialog'
 import { useTagEditing } from 'src/features/annotations/useTagEditing'
@@ -238,6 +239,7 @@ const tagEditing = useTagEditing(() => props.collectionId)
 const tagNav = useTagNavigation()
 const tagSpans = useTagSpans()
 const aiAssist = useAiAssistance()
+const topicerModel = useTopicerModelStore()
 const documentSummary = useDocumentSummary()
 const rightSidebar = useRightSidebarStore()
 const aiPanelActive = computed(() => aiAssist.aiPanelActive.value)
@@ -676,13 +678,17 @@ const onRunAiOnSelection = async (tagIds: string[]) => {
   rightSidebar.activate(DOCUMENT_SIDEBAR_PANELS.ai)
   annotations.clearSelection()
 
+  // Not awaited: an outdated or failed list is read again for the next run.
+  void topicerModel.load()
   const created = await aiAssist.runOnSelection({
     collectionId: props.collectionId,
     documentId: props.documentId,
     chunkIds: target.chunkIds,
     selectionStart: target.start,
     selectionEnd: target.end,
-    tagIds
+    tagIds,
+    // The model chosen in the AI Assist panel (the default until its list has been read).
+    configName: topicerModel.chosenConfigName()
   })
   // Cancelled, or the user moved to another document/collection meanwhile.
   if (created === null) return

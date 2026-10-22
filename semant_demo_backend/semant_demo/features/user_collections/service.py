@@ -19,7 +19,7 @@ from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.user_collections.schemas import (
     Collection, CollectionStats, PatchCollection, PostCollection,
 )
-from semant_demo.features.user_collections.schemas import CollectionChunk
+from semant_demo.features.user_collections.schemas import CollectionChunk, CollectionPerson
 from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag
@@ -114,6 +114,18 @@ async def list_members(collections: UserCollectionRepository, users: UserLookup,
     """The users the collection is shared with (unknown user ids are left out). Owner and shared users."""
     grant = await access.require_collection_read(collections, user, collection_id)
     return await users.get_users(await collections.read_shared_user_ids(grant.collection_id))
+
+
+async def list_people(collections: UserCollectionRepository, users: UserLookup, user: Principal | None,
+                      collection_id: Id) -> list[CollectionPerson]:
+    """The owner and the users the collection is shared with, with their names (unknown user
+    ids are left out). Owner and shared users."""
+    grant = await access.require_collection_read(collections, user, collection_id)
+    record = await collections.read_access_record(grant.collection_id)
+    owner, shared = record if record is not None else (None, set())
+    ids = ([owner] if owner is not None else []) + sorted(shared - {owner}, key=str)
+    return [CollectionPerson(id=u.id, name=u.name, username=u.username, role="owner" if u.id == owner else "member")
+            for u in await users.get_users(ids)]
 
 
 #########

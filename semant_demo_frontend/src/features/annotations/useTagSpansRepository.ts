@@ -30,28 +30,33 @@ export function useTagSpansRepository() {
      * Spans are addressed within their collection: the same id in another collection is
      * not found.
      */
-    update: async (spanId: string, collectionId: string, tagSpan: PatchSpan): Promise<TagSpanWriteResult> => {
+    update: async (spanId: string, collectionId: string, tagSpan: PatchSpan,
+      expectedVersion?: number): Promise<TagSpanWriteResult> => {
       return api.updateTagSpanApiTagSpansSpanIdPatch({
         spanId,
         collectionId,
+        expectedVersion,
         patchSpan: tagSpan
       })
     },
 
-    /** Best effort: ``spans`` holds the updated spans, ``failed`` the rest. */
-    bulkUpdate: async (spanIds: string[], collectionId: string, patch: PatchSpan): Promise<BulkUpdateSpansResponse> => {
+    /** Best effort: ``spans`` holds the updated spans, ``failed`` the rest, ``conflicts`` the
+     * current state of spans someone else changed since their expected version. */
+    bulkUpdate: async (spanIds: string[], collectionId: string, patch: PatchSpan,
+      expectedVersions?: Record<string, number>): Promise<BulkUpdateSpansResponse> => {
       return api.bulkUpdateTagSpansApiTagSpansBulkUpdatePost({
         bulkUpdateSpansRequest: {
           collectionId,
           spanIds,
-          update: patch
+          update: patch,
+          expectedVersions
         }
       })
     },
 
     /** ``outcome`` is partial when the span was deleted but its search tag was not updated. */
-    delete: async (spanId: string, collectionId: string): Promise<WriteResult> => {
-      return api.deleteTagSpanApiTagSpansSpanIdDelete({ spanId, collectionId })
+    delete: async (spanId: string, collectionId: string, expectedVersion?: number): Promise<WriteResult> => {
+      return api.deleteTagSpanApiTagSpansSpanIdDelete({ spanId, collectionId, expectedVersion })
     }
   }
 }

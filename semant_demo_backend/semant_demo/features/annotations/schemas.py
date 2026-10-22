@@ -1,4 +1,5 @@
 """Inputs and results of the Annotations feature: tag definitions and span annotations."""
+from datetime import datetime
 from enum import Enum
 from typing import Literal
 from uuid import UUID
@@ -69,6 +70,10 @@ class TagSpan(BaseModel):
     # service. Stored alongside the span itself in the database.
     reason: str | None = None
     confidence: float | None = None
+    editVersion: int = 0
+    """Span writes (type, tag, offsets) since creation (#460); 0 for spans never written
+    since. Sent back as ``expected_version`` so a collaborator's intervening write is
+    refused instead of overwritten."""
 
 
 class PostSpan(BaseModel):
@@ -111,6 +116,32 @@ class VectorStatus(str, Enum):
     """Embedding or storing the vector failed; the backfill or saving again retries."""
 
 
+class AnnotationOrigin(str, Enum):
+    """How an annotation came to exist (#460), independent of its current ``type``."""
+    manual = "manual"
+    ai = "ai"
+    unknown = "unknown"
+    """Saved before provenance was recorded; nothing is invented for it."""
+
+
+class AnnotationProvenance(BaseModel):
+    """Who created, last reviewed (approve/reject) and last changed an annotation, and
+    when (#460): the current state only, no history. User ids are stored; the client
+    resolves names. Absent values were not recorded (``origin`` ``unknown``: saved before)."""
+    origin: AnnotationOrigin = AnnotationOrigin.unknown
+    createdBy: UUID | None = None
+    createdAt: datetime | None = None
+    reviewedBy: UUID | None = None
+    reviewedAt: datetime | None = None
+    lastEditedBy: UUID | None = None
+    lastEditedAt: datetime | None = None
+    aiRunId: UUID | None = None
+    """The AI suggestion run that proposed it (``origin`` ``ai``); kept through approval."""
+
+
+PROVENANCE_FIELDS = tuple(AnnotationProvenance.model_fields)
+
+
 class AnnotationRow(BaseModel):
     """Internal, not an HTTP model yet: a span with its derived fields (#328), as read for
     concordance (KWIC) rows and semantic search, without reading its source chunks.
@@ -145,6 +176,20 @@ class AnnotationRow(BaseModel):
     documentTitle: str | None = None
     documentYear: int | None = None
     """Joined from the document per page of rows (not copied onto annotations)."""
+    editVersion: int | None = None
+    origin: AnnotationOrigin | None = None
+    createdBy: UUID | None = None
+    createdAt: datetime | None = None
+    reviewedBy: UUID | None = None
+    reviewedAt: datetime | None = None
+    lastEditedBy: UUID | None = None
+    lastEditedAt: datetime | None = None
+    aiRunId: UUID | None = None
+    """Provenance (#460), read only when the collection holds it."""
+
+    def provenance(self) -> AnnotationProvenance:
+        return AnnotationProvenance(**{k: getattr(self, k) for k in PROVENANCE_FIELDS
+                                       if getattr(self, k) is not None})
 
 
 class AnnotationQuery(BaseModel):
@@ -203,6 +248,9 @@ class AnnotationListRow(BaseModel):
     documentAvailable: bool
     documentTitle: str | None = None
     documentYear: int | None = None
+    editVersion: int = 0
+    """The version a write of this annotation expects (#460)."""
+    provenance: AnnotationProvenance = Field(default_factory=AnnotationProvenance)
 
 
 class AnnotationPage(BaseModel):
@@ -247,8 +295,10 @@ class AnnotationIdsRequest(BaseModel):
 
 class AnnotationIds(BaseModel):
     """The ids of all annotations matching a query when it was resolved (by id); the caller
-    keeps them as a fixed set, so later changes of the filters or annotations never widen it."""
+    keeps them as a fixed set, so later changes of the filters or annotations never widen it.
+    ``versions``: each one's ``editVersion`` then, which review actions send back (#460)."""
     ids: list[UUID]
+    versions: dict[UUID, int] = {}
 
 
 class ReviewAction(str, Enum):
@@ -265,24 +315,33 @@ class AnnotationReviewRequest(BaseModel):
     """One review action for some annotations of the collection (#459)."""
     action: ReviewAction
     annotation_ids: list[UUID] = Field(min_length=1, max_length=MAX_REVIEW_BATCH)
+    expected_versions: dict[UUID, int]
+    """The ``editVersion`` of every annotation as the client knows it (#460): an annotation
+    written since is not changed (``edit_conflict``)."""
     tag_id: UUID | None = None
     """The new tag; required for ``retag`` and only allowed there."""
 
     @model_validator(mode="after")
-    def check_tag(self) -> "AnnotationReviewRequest":
+    def check_request(self) -> "AnnotationReviewRequest":
         if (self.tag_id is not None) != (self.action == ReviewAction.retag):
             raise ValueError("tag_id is required for retag and not allowed for other actions")
+        if any(i not in self.expected_versions for i in self.annotation_ids):
+            raise ValueError("expected_versions must give the version of every annotation")
         return self
 
 
 class AnnotationReviewResult(WriteResult):
     """The outcome of a review action per annotation (best effort, ADR 0002; nothing is
-    rolled back). ``succeeded``: annotations changed or deleted. ``failed``:
-    ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have
-    been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted
-    meanwhile) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved,
-    tag-filtered search does not reflect it; ``annotations/chunk-tags/sync`` with that pair
-    repairs it, also after a deletion)."""
+    rolled back). ``succeeded``: annotations changed or deleted, and those already as the
+    action asks. ``failed``: ``update_span`` / ``delete_span`` (``uncertain`` when the
+    write timed out and may have been applied), ``find_annotation`` (no such annotation in
+    the collection, e.g. deleted meanwhile), ``edit_conflict`` (written by someone else
+    since the expected version; not changed) and ``update_chunk_tags`` (item
+    ``chunk_id:tag_id``: the change was saved, tag-filtered search does not reflect it;
+    ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion).
+    ``versions``: the ``editVersion`` of each changed annotation after the action, and the
+    current one of each conflicting annotation."""
+    versions: dict[UUID, int] = {}
 
 
 class ChunkTagPair(BaseModel):
@@ -317,11 +376,17 @@ class BulkUpdateSpansRequest(BaseModel):
     collection_id: str
     span_ids: list[str]
     update: PatchSpan
+    expected_versions: dict[str, int] | None = None
+    """``editVersion`` per span id as the client knows it (#460); spans without one are
+    written unchecked."""
 
 
 class BulkUpdateSpansResponse(WriteResult):
-    """Result of a bulk update: the updated spans, plus per-span failures (best effort)."""
+    """Result of a bulk update: the updated spans, plus per-span failures (best effort).
+    ``conflicts``: the current state of the spans written by someone else since their
+    expected version (failure ``edit_conflict``; not changed)."""
     spans: list[TagSpan]
+    conflicts: list[TagSpan] = []
 
 
 class DeleteSpansForTagsRequest(BaseModel):
@@ -353,6 +418,9 @@ class SuggestSpansRequest(BaseModel):
     collection_id: str
     document_id: str
     tag_ids: list[str]
+    config_name: str | None = None
+    """The Topicer configuration to use, one of ``GET /api/ai/topicer_configs``; ``None``:
+    the server default (#189)."""
 
 
 class SuggestSpansSelectionRequest(BaseModel):
@@ -381,6 +449,16 @@ class SuggestSpansSelectionRequest(BaseModel):
     selection_start: int
     selection_end: int
     tag_ids: list[str]
+    config_name: str | None = None
+    """As :attr:`SuggestSpansRequest.config_name`."""
+
+
+class TopicerConfigsResponse(BaseModel):
+    """The Topicer configurations AI suggestions may use (#189)."""
+    configs: list[str]
+    """Names of the configurations Topicer has loaded, as Topicer lists them."""
+    default_config: str
+    """The server default (``TOPICER_CONFIG_NAME``), used when a request names none."""
 
 
 class SuggestSpansChunkResult(BaseModel):

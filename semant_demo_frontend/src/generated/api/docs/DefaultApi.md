@@ -33,12 +33,14 @@ All URIs are relative to *http://localhost*
 | [**getCollectionDocumentChunksApiUserCollectionsCollectionIdDocumentsDocumentIdChunksGet**](DefaultApi.md#getcollectiondocumentchunksapiusercollectionscollectioniddocumentsdocumentidchunksget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks | Get Collection Document Chunks |
 | [**getCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGet**](DefaultApi.md#getcollectiondocumentsapiusercollectionscollectioniddocumentsget) | **GET** /api/user_collections/{collection_id}/documents | Get Collection Documents |
 | [**getCollectionMembersApiUserCollectionsCollectionIdMembersGet**](DefaultApi.md#getcollectionmembersapiusercollectionscollectionidmembersget) | **GET** /api/user_collections/{collection_id}/members | Get Collection Members |
+| [**getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet**](DefaultApi.md#getcollectionpeopleapiusercollectionscollectionidpeopleget) | **GET** /api/user_collections/{collection_id}/people | Get Collection People |
 | [**getCollectionStatsApiUserCollectionsCollectionIdStatsGet**](DefaultApi.md#getcollectionstatsapiusercollectionscollectionidstatsget) | **GET** /api/user_collections/{collection_id}/stats | Get Collection Stats |
 | [**getCollectionTagsApiUserCollectionsCollectionIdTagsGet**](DefaultApi.md#getcollectiontagsapiusercollectionscollectionidtagsget) | **GET** /api/user_collections/{collection_id}/tags | Get Collection Tags |
 | [**getDocumentStatsApiUserCollectionsCollectionIdDocumentsDocumentIdStatsGet**](DefaultApi.md#getdocumentstatsapiusercollectionscollectioniddocumentsdocumentidstatsget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/stats | Get Document Stats |
 | [**getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet**](DefaultApi.md#getneighbourchunkapiusercollectionscollectioniddocumentsdocumentidchunksneighbourget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks/neighbour | Get Neighbour Chunk |
 | [**getQuotaStatusApiQuotaGet**](DefaultApi.md#getquotastatusapiquotaget) | **GET** /api/quota | Get Quota Status |
 | [**getTagApiTagsTagUuidGet**](DefaultApi.md#gettagapitagstaguuidget) | **GET** /api/tags/{tag_uuid} | Get Tag |
+| [**getTopicerConfigsApiAiTopicerConfigsGet**](DefaultApi.md#gettopicerconfigsapiaitopicerconfigsget) | **GET** /api/ai/topicer_configs | Get Topicer Configs |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
 | [**listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet**](DefaultApi.md#listannotateddocumentsapiusercollectionscollectionidannotationsdocumentsget) | **GET** /api/user_collections/{collection_id}/annotations/documents | List Annotated Documents |
 | [**listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet**](DefaultApi.md#listcollectionannotationsapiusercollectionscollectionidannotationsget) | **GET** /api/user_collections/{collection_id}/annotations | List Collection Annotations |
@@ -323,7 +325,7 @@ example().catch(console.error);
 
 Bulk Update Tag Spans
 
-Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to &#x60;&#x60;collection_id&#x60;&#x60;, which the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated (&#x60;&#x60;update_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;).
+Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to &#x60;&#x60;collection_id&#x60;&#x60;, which the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated (&#x60;&#x60;update_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;). Spans written by someone else since their version in &#x60;&#x60;expected_versions&#x60;&#x60; are not changed (&#x60;&#x60;edit_conflict&#x60;&#x60;; their current state in &#x60;&#x60;conflicts&#x60;&#x60;).
 
 ### Example
 
@@ -1161,11 +1163,11 @@ example().catch(console.error);
 
 ## deleteTagSpanApiTagSpansSpanIdDelete
 
-> WriteResult deleteTagSpanApiTagSpansSpanIdDelete(spanId, collectionId)
+> WriteResult deleteTagSpanApiTagSpansSpanIdDelete(spanId, collectionId, expectedVersion)
 
 Delete Tag Span
 
-Delete a TagSpan and the chunk tag reference no other span backs. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was deleted but the chunk tag could not be updated.
+Delete a TagSpan and the chunk tag reference no other span backs. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was deleted but the chunk tag could not be updated. A span written by someone else since &#x60;&#x60;expected_version&#x60;&#x60; is not deleted (409).
 
 ### Example
 
@@ -1189,6 +1191,8 @@ async function example() {
     spanId: spanId_example,
     // string | Collection of the span; a span of another collection is not found
     collectionId: collectionId_example,
+    // number | The span\'s editVersion as the client knows it: when someone else wrote the span since, nothing is changed and the answer is 409 with the current span (``current``) (optional)
+    expectedVersion: 56,
   } satisfies DeleteTagSpanApiTagSpansSpanIdDeleteRequest;
 
   try {
@@ -1210,6 +1214,7 @@ example().catch(console.error);
 |------------- | ------------- | ------------- | -------------|
 | **spanId** | `string` |  | [Defaults to `undefined`] |
 | **collectionId** | `string` | Collection of the span; a span of another collection is not found | [Defaults to `undefined`] |
+| **expectedVersion** | `number` | The span\&#39;s editVersion as the client knows it: when someone else wrote the span since, nothing is changed and the answer is 409 with the current span (&#x60;&#x60;current&#x60;&#x60;) | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -2133,6 +2138,78 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet
+
+> Array&lt;CollectionPerson&gt; getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet(collectionId)
+
+Get Collection People
+
+Returns the collection\&#39;s owner and the users it is shared with, with their names (to name who created or changed its annotations). Owner and shared users.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+  } satisfies GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest;
+
+  try {
+    const data = await api.getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;CollectionPerson&gt;**](CollectionPerson.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## getCollectionStatsApiUserCollectionsCollectionIdStatsGet
 
 > CollectionStats getCollectionStatsApiUserCollectionsCollectionIdStatsGet(collectionId)
@@ -2566,6 +2643,69 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## getTopicerConfigsApiAiTopicerConfigsGet
+
+> TopicerConfigsResponse getTopicerConfigsApiAiTopicerConfigsGet()
+
+Get Topicer Configs
+
+The Topicer configurations (AI models) that suggestion requests may name in &#x60;&#x60;config_name&#x60;&#x60;, as Topicer lists them, and the server default. 503 when Topicer cannot be asked.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetTopicerConfigsApiAiTopicerConfigsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  try {
+    const data = await api.getTopicerConfigsApiAiTopicerConfigsGet();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TopicerConfigsResponse**](TopicerConfigsResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## healthHealthGet
 
 > any healthHealthGet()
@@ -2703,7 +2843,7 @@ example().catch(console.error);
 
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, tagId, type, q, documentId, yearFrom, yearTo, sort, limit, offset)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, tagId, type, q, documentId, yearFrom, yearTo, sort, limit, offset, annotationId)
 
 List Collection Annotations
 
@@ -2747,6 +2887,8 @@ async function example() {
     limit: 56,
     // number (optional)
     offset: 56,
+    // Array<string> | Only these annotations (optional)
+    annotationId: ...,
   } satisfies ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest;
 
   try {
@@ -2776,6 +2918,7 @@ example().catch(console.error);
 | **sort** | `AnnotationSort` |  | [Optional] [Defaults to `undefined`] [Enum: document, year, text] |
 | **limit** | `number` |  | [Optional] [Defaults to `50`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
+| **annotationId** | `Array<string>` | Only these annotations | [Optional] |
 
 ### Return type
 
@@ -3474,7 +3617,7 @@ example().catch(console.error);
 
 Review Collection Annotations
 
-Approve (&#x60;&#x60;pos&#x60;&#x60;), reject (&#x60;&#x60;neg&#x60;&#x60;, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: &#x60;&#x60;succeeded&#x60;&#x60; lists the changed annotations, &#x60;&#x60;failed&#x60;&#x60; the ones not changed or uncertain and the ids that are no annotation of the collection (&#x60;&#x60;find_annotation&#x60;&#x60;). Nothing is rolled back.
+Approve (&#x60;&#x60;pos&#x60;&#x60;), reject (&#x60;&#x60;neg&#x60;&#x60;, kept), retag or delete up to 200 annotations of the collection, each expected at its version in &#x60;&#x60;expected_versions&#x60;&#x60;. Best effort and per item: &#x60;&#x60;succeeded&#x60;&#x60; lists the changed annotations, &#x60;&#x60;failed&#x60;&#x60; the ones not changed or uncertain, those written by someone else since (&#x60;&#x60;edit_conflict&#x60;&#x60;) and the ids that are no annotation of the collection (&#x60;&#x60;find_annotation&#x60;&#x60;); &#x60;&#x60;versions&#x60;&#x60; the new versions. Nothing is rolled back.
 
 ### Example
 
@@ -4650,11 +4793,11 @@ example().catch(console.error);
 
 ## updateTagSpanApiTagSpansSpanIdPatch
 
-> TagSpanWriteResult updateTagSpanApiTagSpansSpanIdPatch(spanId, collectionId, patchSpan)
+> TagSpanWriteResult updateTagSpanApiTagSpansSpanIdPatch(spanId, collectionId, patchSpan, expectedVersion)
 
 Update Tag Span
 
-Update TagSpan\&#39;s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was updated but the chunk tags could not be.
+Update TagSpan\&#39;s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was updated but the chunk tags could not be. A span written by someone else since &#x60;&#x60;expected_version&#x60;&#x60; is not changed (409), unless it already is as the patch asks.
 
 ### Example
 
@@ -4680,6 +4823,8 @@ async function example() {
     collectionId: collectionId_example,
     // PatchSpan
     patchSpan: ...,
+    // number | The span\'s editVersion as the client knows it: when someone else wrote the span since, nothing is changed and the answer is 409 with the current span (``current``) (optional)
+    expectedVersion: 56,
   } satisfies UpdateTagSpanApiTagSpansSpanIdPatchRequest;
 
   try {
@@ -4702,6 +4847,7 @@ example().catch(console.error);
 | **spanId** | `string` |  | [Defaults to `undefined`] |
 | **collectionId** | `string` | Collection of the span; a span of another collection is not found | [Defaults to `undefined`] |
 | **patchSpan** | [PatchSpan](PatchSpan.md) |  | |
+| **expectedVersion** | `number` | The span\&#39;s editVersion as the client knows it: when someone else wrote the span since, nothing is changed and the answer is 409 with the current span (&#x60;&#x60;current&#x60;&#x60;) | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 

@@ -273,6 +273,32 @@ derived properties). Rehearsed only on disposable Weaviate 1.40.1
 (`tests/integration/test_annotation_enrichment.py`); production counts and duration are unknown
 until `status` runs there.
 
+## Annotation provenance (`annotation_provenance`, #460)
+
+Span writes record who created, reviewed and last changed each annotation, its origin and an
+`editVersion` that refuses writes based on an outdated copy
+([DATABASE.md](DATABASE.md#collection-annotation-multi-tenant-327)), once the `Annotation`
+collection has the provenance properties. Collections created by the migration have them; an
+existing collection gets them from this command:
+
+```bash
+python -m semant_demo.maintenance.annotation_provenance add-schema                      # dry run: what is missing
+python -m semant_demo.maintenance.annotation_provenance add-schema --execute --confirm-endpoint HOST:PORT
+```
+
+- `add-schema` adds the missing properties; it changes no object and is idempotent. Existing
+  annotations keep `origin` unknown (no actor or time) and version 0: no backfill, nothing is
+  invented.
+- Until the properties exist and the backend has been restarted, it records no provenance and
+  checks no versions (it logs an error at startup). Adding properties does not disturb a
+  running backend, so no write pause is needed; restart every backend instance afterwards.
+- The version check runs under a per-span lock within one backend process: with several
+  processes a conflicting write is detected but the check and write are not atomic (as for the
+  revision check, [ADR 0009](adr/0009-derived-annotation-data.md)).
+
+Rolling back the release needs no data change (older releases ignore the properties).
+Rehearsed only on disposable Weaviate 1.40.1 (`tests/integration/test_annotation_provenance.py`).
+
 ## Annotation tenants (`annotation_tenants`, #327)
 
 Lists the annotation tenants with their status and last recorded use, and deactivates idle

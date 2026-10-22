@@ -6,6 +6,7 @@ import useAiAssistance, {
   describeRunEnd, describeTagLimits, largeRunWarning
 } from 'src/features/annotations/useAiAssistance'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
+import { UNKNOWN_MODEL_MESSAGE, useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
 import { muteConsole } from './console'
 
 vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
@@ -165,6 +166,45 @@ describe('useAiAssistance', () => {
     expect(await selection).toBeNull()
     expect(store.spansByChunkId.x).toBeUndefined()
     expect(ai.lastSelectionError.value).toBeNull()
+  })
+
+  it('names the chosen model in document and selection requests only when one is chosen', async () => {
+    const ai = useAiAssistance()
+    const bodies = () => vi.mocked(globalThis.fetch).mock.calls.map(([, init]) => JSON.parse(String(init?.body)))
+    for (const configName of [undefined, null, 'crossbert']) {
+      const running = ai.run({ ...request('d1'), configName })
+      await flush()
+      streams[streams.length - 1].close()
+      await running
+    }
+    const selection = ai.runOnSelection({
+      collectionId: 'c', documentId: 'd1', chunkIds: ['x'], selectionStart: 0, selectionEnd: 3, tagIds: ['t'], configName: 'crossbert'
+    })
+    await flush()
+    streams[streams.length - 1].close()
+    await selection
+
+    expect(bodies().map((b) => b.config_name)).toEqual([undefined, undefined, 'crossbert', 'crossbert'])
+  })
+
+  it('reads the model list again when the backend refuses the named model as unknown', async () => {
+    muteConsole('error')
+    const reload = vi.spyOn(useTopicerModelStore(), 'reload').mockResolvedValue()
+    const refused = () => Promise.resolve(new Response(JSON.stringify({ detail: 'Unknown AI model' }), { status: 400 }))
+    vi.mocked(globalThis.fetch).mockImplementation(refused)
+    const ai = useAiAssistance()
+
+    await ai.run({ ...request('d1'), configName: 'gone' })
+    await ai.run(request('d1'))
+    vi.mocked(globalThis.fetch).mockImplementationOnce(() =>
+      Promise.resolve(new Response(JSON.stringify({ detail: 'tag_ids must not be empty' }), { status: 400 })))
+    await ai.run({ ...request('d1'), configName: 'gone' }) // another refusal: the list is not outdated
+    await ai.runOnSelection({
+      collectionId: 'c', documentId: 'd1', chunkIds: ['x'], selectionStart: 0, selectionEnd: 3, tagIds: ['t'], configName: 'gone'
+    })
+
+    expect(ai.lastSelectionError.value).toBe(UNKNOWN_MODEL_MESSAGE)
+    expect(reload).toHaveBeenCalledTimes(2)
   })
 
   it('reports a cancelled run without an error', async () => {

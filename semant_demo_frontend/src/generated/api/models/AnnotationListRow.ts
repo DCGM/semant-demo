@@ -27,6 +27,13 @@ import {
     TextStatusToJSON,
     TextStatusToJSONTyped,
 } from './TextStatus';
+import type { AnnotationProvenance } from './AnnotationProvenance';
+import {
+    AnnotationProvenanceFromJSON,
+    AnnotationProvenanceFromJSONTyped,
+    AnnotationProvenanceToJSON,
+    AnnotationProvenanceToJSONTyped,
+} from './AnnotationProvenance';
 
 /**
  * One concordance (KWIC) row: an annotation with its stored text and context (#329).
@@ -129,6 +136,18 @@ export interface AnnotationListRow {
      * @memberof AnnotationListRow
      */
     documentYear?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AnnotationListRow
+     */
+    editVersion?: number;
+    /**
+     * 
+     * @type {AnnotationProvenance}
+     * @memberof AnnotationListRow
+     */
+    provenance?: AnnotationProvenance;
 }
 
 
@@ -169,6 +188,8 @@ export function AnnotationListRowFromJSONTyped(json: any, ignoreDiscriminator: b
         'documentAvailable': json['documentAvailable'],
         'documentTitle': json['documentTitle'] == null ? undefined : json['documentTitle'],
         'documentYear': json['documentYear'] == null ? undefined : json['documentYear'],
+        'editVersion': json['editVersion'] == null ? undefined : json['editVersion'],
+        'provenance': json['provenance'] == null ? undefined : AnnotationProvenanceFromJSON(json['provenance']),
     };
 }
 
@@ -198,6 +219,8 @@ export function AnnotationListRowToJSONTyped(value?: AnnotationListRow | null, i
         'documentAvailable': value['documentAvailable'],
         'documentTitle': value['documentTitle'],
         'documentYear': value['documentYear'],
+        'editVersion': value['editVersion'],
+        'provenance': AnnotationProvenanceToJSON(value['provenance']),
     };
 }
 

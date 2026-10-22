@@ -29,6 +29,7 @@
       @reload-shown="store.loadShown"
       @review="(action, tagId) => reviewSelection(action, tagId)"
       @retry="retryReview"
+      @show-changed="showChanged"
       @dismiss="review.dismiss"
     />
 
@@ -110,6 +111,34 @@
             <blockquote v-else class="annotation-context__text text-body2" data-testid="annotation-context-text">
               {{ selection.focused.text ?? 'The annotated text is not available yet.' }}
             </blockquote>
+            <ProvenanceSummary
+              v-if="!selection.focusedGone && selection.focused.provenance"
+              :provenance="selection.focused.provenance"
+              :type="selection.focused.type"
+              :people="store.people"
+              :me="userStore.getUserId"
+            />
+            <div
+              v-if="focusedConflict && !selection.focusedGone"
+              class="annotation-context__conflict text-body2"
+              role="alert"
+              data-testid="annotation-conflict"
+            >
+              <div>{{ conflictText }}</div>
+              <div class="annotation-context__conflict-actions">
+                <q-btn
+                  dense
+                  unelevated
+                  no-caps
+                  color="primary"
+                  label="Apply to current version"
+                  :disable="review.running || store.loading"
+                  data-testid="conflict-apply"
+                  @click="applyToCurrent"
+                />
+                <q-btn dense flat no-caps color="primary" label="Keep" data-testid="conflict-keep" @click="focusedConflict = null" />
+              </div>
+            </div>
             <div
               v-if="!selection.focusedGone"
               class="annotation-context__review"
@@ -207,8 +236,12 @@ import ConcordanceTable from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
 import ReviewTagMenu from './ReviewTagMenu.vue'
+import ProvenanceSummary from './ProvenanceSummary.vue'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
 import { PAGE_SIZE, defaultFilters, useConcordanceStore } from './concordanceStore'
+import { formatWhen, personName } from './provenance'
+import { useUserStore } from 'src/features/auth/userStore'
+import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
 
 const CONTEXT_PANEL_ID = 'annotation-context'
 
@@ -217,6 +250,7 @@ const $q = useQuasar()
 const store = reactive(useConcordanceStore())
 const selection = reactive(useAnnotationSelectionStore())
 const review = reactive(useAnnotationReviewStore())
+const userStore = useUserStore()
 const tagsStore = useTagsStore()
 const { tags } = storeToRefs(tagsStore)
 const rightSidebar = useRightSidebarStore()
@@ -299,6 +333,7 @@ function showContext (row: AnnotationListRow) {
 
 /** Opens the row in the sidebar; viewing context never changes the selection. */
 async function openContext (row: AnnotationListRow) {
+  if (row.id !== selection.focused?.id) focusedConflict.value = null
   selection.focus(row)
   const opening = showContext(row)
   await nextTick() // the panel registers when the first row is opened
@@ -328,7 +363,8 @@ function tooMany () {
 }
 
 function toggleRow (id: string, value: boolean) {
-  if (!selection.toggle(id, value)) tooMany()
+  const version = store.rows.find(r => r.id === id)?.editVersion ?? 0
+  if (!selection.toggle(id, version, value)) tooMany()
 }
 
 function selectPage (value: boolean) {
@@ -383,47 +419,96 @@ function confirmed (action: ReviewAction, ids: string[], tagId?: string): Promis
   })
 }
 
-/** Shows the review's effect: rows read again, deleted and missing ones leave the selection. */
+/** Shows the review's effect: rows read again (also the changed ones, at their current state),
+ * deleted and missing ones leave the selection. Resolves when the page has been read again. */
 function afterReview (report: ReviewReport) {
   const gone = report.action === ReviewAction.delete ? [...report.saved, ...report.missing] : report.missing
   if (gone.length) selection.remove(gone)
-  void store.load()
+  const loading = store.load()
   void store.loadShown()
   if (report.action !== ReviewAction.approve) void store.loadDocuments()
+  return loading
 }
 
-async function runReview (action: ReviewAction, ids: string[], tagId?: string) {
+async function runReview (action: ReviewAction, items: SelectionEntry[], tagId?: string) {
   const id = collectionId.value
-  if (!id || !ids.length || !await confirmed(action, ids, tagId)) return null
-  const report = await review.review(id, action, ids, tagId ?? null)
-  if (report) afterReview(report)
-  return report
+  if (!id || !items.length || !await confirmed(action, items.map(([i]) => i), tagId)) return null
+  const report = await review.review(id, action, items, tagId ?? null)
+  return report ? { report, loaded: afterReview(report) } : null
 }
 
 async function reviewSelection (action: ReviewAction, tagId?: string) {
-  await runReview(action, [...selection.ids], tagId)
+  await runReview(action, [...selection.ids].map(i => [i, selection.versionOf(i)] as const), tagId)
+}
+
+/** Selects the annotations someone else changed meanwhile, at their current versions, to
+ * look at them and review them again (#460). */
+function showChanged () {
+  const conflicts = review.report?.conflicts ?? []
+  if (!conflicts.length) return
+  selection.replace(conflicts.map(c => [c.id, c.version] as const))
+  review.dismiss()
+  void store.loadShown()
 }
 
 async function retryReview () {
   const id = collectionId.value
   if (!id) return
   const report = await review.retry(id)
-  if (report) afterReview(report)
+  if (report) void afterReview(report)
 }
+
+/** A review of the open annotation refused because someone else changed it meanwhile (#460). */
+const focusedConflict = ref<{ id: string, action: ReviewAction, tagId?: string } | null>(null)
+
+const conflictText = computed(() => {
+  const row = selection.focused
+  const conflict = focusedConflict.value
+  if (!row || !conflict || row.id !== conflict.id) return ''
+  const p = row.provenance
+  const who = personName(p?.lastEditedBy, store.people, userStore.getUserId)
+  const when = formatWhen(p?.lastEditedAt)
+  const by = who === 'you' ? 'Changed in another window' : `Changed by ${who}`
+  const now = `now ${statusText.value.toLowerCase()}, tag "${focusedTag.value?.name ?? 'unknown'}"`
+  const away = store.rows.some(r => r.id === row.id) ? '' : ' It is no longer on this page.'
+  return `${by}${when ? ` at ${when}` : ''}: ${now}. Your ${VERB[conflict.action].toLowerCase()} was not saved.${away}`
+})
 
 /** Reviews the open annotation; approving or rejecting it moves on to the next row. */
 async function reviewFocused (action: ReviewAction, tagId?: string) {
   const row = selection.focused
   if (!row) return
+  focusedConflict.value = null
   const next = nextRow.value
-  const report = await runReview(action, [row.id], tagId)
-  if (!report) return
+  const reviewed = await runReview(action, [[row.id, row.editVersion ?? 0]], tagId)
+  if (!reviewed) return
+  const { report } = reviewed
+  if (report.conflicts.length) {
+    // The page is read again (afterReview): the sidebar shows the current annotation and
+    // says what happened; the selection's result line has nothing to add.
+    focusedConflict.value = { id: row.id, action, tagId }
+    review.dismiss()
+    await reviewed.loaded
+    // A change that took it out of the filters must not hide the conflict: read it as it is now.
+    if (selection.focusedGone && focusedConflict.value?.id === row.id && await store.readFocused()) {
+      const current = selection.focused
+      if (current && current.chunkId !== chunkContext.target?.chunkId) void showContext(current)
+    }
+    return
+  }
   const ok = report.saved.length === 1
   if (!ok) {
     $q.notify({ type: 'warning', message: report.missing.length ? 'This annotation no longer exists.' : 'The change was not saved; see the result above the list.' })
     return
   }
   if (next && (action === ReviewAction.approve || action === ReviewAction.reject)) void openContext(next)
+}
+
+/** Repeats the refused review against the version the sidebar shows now. */
+async function applyToCurrent () {
+  const conflict = focusedConflict.value
+  if (!conflict || selection.focused?.id !== conflict.id) return
+  await reviewFocused(conflict.action, conflict.tagId)
 }
 
 function skip () {
@@ -519,5 +604,19 @@ watch(collectionId, async (id) => {
 
 .annotation-context__open {
   margin-left: -6px;
+}
+
+.annotation-context__conflict {
+  margin: 6px 0;
+  padding: 4px 8px;
+  border-left: 3px solid var(--q-warning);
+  background: rgba(242, 192, 55, 0.12);
+}
+
+.annotation-context__conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
 }
 </style>
