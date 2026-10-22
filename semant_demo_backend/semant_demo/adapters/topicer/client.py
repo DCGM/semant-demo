@@ -21,8 +21,10 @@ above its own safety ceiling.
 """
 from __future__ import annotations
 
+import copy
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator
 
@@ -149,6 +151,12 @@ def _stream_summary(event: dict[str, Any]) -> TopicerStreamSummary | None:
                                 candidates_truncated=event.get("candidates_truncated") is True, usage=usage)
 
 
+CONFIGS_TIMEOUT = 10.0
+"""Seconds for ``GET /v1/configs``, which needs no inference (proposal calls use ``timeout``)."""
+CONFIGS_MAX_AGE = 60.0
+"""Seconds a configuration list is reused; Topicer changes it only when it is redeployed."""
+
+
 class TopicerClient:
     """Topicer at ``base_url`` with the named Topicer config.
 
@@ -169,20 +177,29 @@ class TopicerClient:
         self.timeout = timeout
         self.max_chunks_per_tag = max_chunks_per_tag
         self.transport = transport
+        self._configs: tuple[float, list[str]] | None = None
 
     def with_config(self, config_name: str) -> "TopicerClient":
         """The same Topicer and settings with another of its configurations (#189)."""
-        return TopicerClient(self.base_url, config_name, self.timeout, self.max_chunks_per_tag, self.transport)
+        other = copy.copy(self)
+        other.config_name = config_name
+        return other
 
-    def _client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self.base_url, timeout=httpx.Timeout(self.timeout, connect=10.0),
+    def _client(self, timeout: float | None = None) -> httpx.AsyncClient:
+        timeout = self.timeout if timeout is None else timeout
+        return httpx.AsyncClient(base_url=self.base_url, timeout=httpx.Timeout(timeout, connect=10.0),
                                  transport=self.transport)
 
     async def list_configs(self) -> list[str]:
-        """Call ``GET /v1/configs``: the names of the configurations Topicer has loaded."""
+        """Call ``GET /v1/configs``: the names of the configurations Topicer has loaded.
+
+        A list read in the last ``CONFIGS_MAX_AGE`` seconds is reused; failures are not.
+        """
+        if self._configs is not None and time.monotonic() - self._configs[0] < CONFIGS_MAX_AGE:
+            return list(self._configs[1])
         path = "/v1/configs"
         try:
-            async with self._client() as client:
+            async with self._client(CONFIGS_TIMEOUT) as client:
                 resp = await client.get(path)
                 resp.raise_for_status()
                 data = resp.json()
@@ -191,6 +208,7 @@ class TopicerClient:
             raise _error(e) from e
         if not isinstance(data, list) or not all(isinstance(name, str) for name in data):
             raise TopicerError("configs is not a list of names")
+        self._configs = (time.monotonic(), list(data))
         return data
 
     async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag]) -> TopicerProposals:

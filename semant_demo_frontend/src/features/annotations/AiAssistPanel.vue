@@ -14,10 +14,10 @@
       :disable="aiAssist.isRunning.value"
     />
 
-    <template v-if="topicerConfigs.length">
+    <template v-if="topicerModel.loaded && topicerModel.options.length">
       <div class="ai-section-label">Model</div>
       <q-select
-        v-model="selectedTopicerConfig"
+        v-model="topicerModel.selected"
         :options="topicerConfigOptions"
         emit-value
         map-options
@@ -325,7 +325,7 @@ import useAiAssistance, {
   largeRunWarning, resolveAutoSpanFailure, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode
 } from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
-import { useTopicerModel } from './topicerModel'
+import { useTopicerModelStore } from './topicerModelStore'
 import useTagSpans from './useTagSpans'
 
 // AI annotation suggestions for a document: runs over the selected tags, the pending
@@ -347,10 +347,9 @@ const aiModeOptions = [
   { label: 'Optimized (vector pre-filtering)', value: 'optimized' },
   { label: 'Thorough (every chunk in collection)', value: 'thorough' }
 ]
-const topicerModel = useTopicerModel()
-const { configs: topicerConfigs, selected: selectedTopicerConfig } = topicerModel
-const topicerConfigOptions = computed(() => topicerConfigs.value.map((name) => ({
-  label: name === topicerModel.defaultConfig.value ? `${name} (default)` : name,
+const topicerModel = useTopicerModelStore()
+const topicerConfigOptions = computed(() => topicerModel.options.map((name) => ({
+  label: name === topicerModel.defaultConfig ? `${name} (default)` : name,
   value: name
 })))
 onMounted(() => { void topicerModel.load() })

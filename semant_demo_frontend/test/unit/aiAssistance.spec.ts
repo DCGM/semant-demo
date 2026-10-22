@@ -6,6 +6,7 @@ import useAiAssistance, {
   describeRunEnd, describeTagLimits, largeRunWarning
 } from 'src/features/annotations/useAiAssistance'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
+import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
 import { muteConsole } from './console'
 
 vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
@@ -184,6 +185,23 @@ describe('useAiAssistance', () => {
     await selection
 
     expect(bodies().map((b) => b.config_name)).toEqual([undefined, undefined, 'crossbert', 'crossbert'])
+  })
+
+  it('reads the model list again when the backend refuses a request that named a model', async () => {
+    muteConsole('error')
+    const reload = vi.spyOn(useTopicerModelStore(), 'reload').mockResolvedValue()
+    const refused = () => Promise.resolve(new Response(JSON.stringify({ detail: 'Unknown AI model' }), { status: 400 }))
+    vi.mocked(globalThis.fetch).mockImplementation(refused)
+    const ai = useAiAssistance()
+
+    await ai.run({ ...request('d1'), configName: 'gone' })
+    await ai.run(request('d1'))
+    await ai.runOnSelection({
+      collectionId: 'c', documentId: 'd1', chunkIds: ['x'], selectionStart: 0, selectionEnd: 3, tagIds: ['t'], configName: 'gone'
+    })
+
+    expect(ai.lastError.value).toBe('Unknown AI model')
+    expect(reload).toHaveBeenCalledTimes(2)
   })
 
   it('reports a cancelled run without an error', async () => {

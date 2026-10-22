@@ -1,7 +1,8 @@
 import { computed, ref } from 'vue'
 import { TagSpan, SpanType } from 'src/generated/api'
 import { useTagSpansStore } from './tagSpansStore'
-import { aiErrorMessage, formatQuotaReset, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
+import { aiErrorMessage, errorStatus, formatQuotaReset, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
+import { useTopicerModelStore } from './topicerModelStore'
 
 /**
  * Streamed AI span suggestion (NDJSON) helper.
@@ -182,6 +183,11 @@ let activeSelectionAbort: AbortController | null = null
  * POST a suggestion request and feed its NDJSON lines to `onResult` while `isCurrent()`.
  * Returns the final line, or null when the stream ended without it.
  */
+/** A refused request that named a model: the model list may be outdated (Topicer redeployed). */
+function reloadModelsIfRefused (configName: string | null | undefined, e: unknown): void {
+  if (configName && errorStatus(e) === 400) void useTopicerModelStore().reload()
+}
+
 async function streamSuggestions (
   path: string,
   body: unknown,
@@ -341,6 +347,7 @@ export function useAiAssistance() {
         lastStatus.value = 'cancelled'
       } else {
         console.error('AI assistance failed', e)
+        reloadModelsIfRefused(req.configName, e)
         // A refusal for the daily allowance (429) gets its reset time; nothing is retried.
         const message = await aiErrorMessage(e, 'AI assistance request failed')
         if (!isCurrent()) return
@@ -440,6 +447,7 @@ export function useAiAssistance() {
         return null
       }
       console.error('AI selection assistance failed', e)
+      reloadModelsIfRefused(req.configName, e)
       const message = await aiErrorMessage(e, 'AI selection request failed')
       if (!isCurrent()) return null
       lastSelectionError.value = message

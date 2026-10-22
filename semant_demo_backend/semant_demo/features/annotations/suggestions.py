@@ -449,6 +449,15 @@ async def _authorized_tags(store: AnnotationStore, user: Principal | None, colle
     return grant.collection_id, document, tags
 
 
+async def topicer_configs(provider: TopicerClient) -> list[str]:
+    """The Topicer configurations (AI models) requests may name (#189);
+    ``ServiceUnavailableError`` when Topicer cannot list them."""
+    try:
+        return await provider.list_configs()
+    except TopicerError as e:
+        raise ServiceUnavailableError("The list of AI models is unavailable") from e
+
+
 async def provider_for(provider: TopicerClient, config_name: str | None) -> TopicerClient:
     """``provider`` with the Topicer configuration a request named (#189).
 
@@ -459,11 +468,7 @@ async def provider_for(provider: TopicerClient, config_name: str | None) -> Topi
     """
     if config_name is None or config_name == provider.config_name:
         return provider
-    try:
-        configs = await provider.list_configs()
-    except TopicerError as e:
-        raise ServiceUnavailableError("The list of AI models is unavailable") from e
-    if config_name not in configs:
+    if config_name not in await topicer_configs(provider):
         raise InvalidRequestError("Unknown AI model")
     return provider.with_config(config_name)
 

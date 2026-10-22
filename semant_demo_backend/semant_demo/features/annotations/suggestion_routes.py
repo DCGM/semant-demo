@@ -29,8 +29,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from starlette.types import Receive, Scope, Send
 
-from semant_demo.adapters.topicer.client import TopicerClient, TopicerError
-from semant_demo.core.errors import ServiceUnavailableError
+from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.features.annotations import service, suggestions
 from semant_demo.features.annotations.schemas import (
     DeleteAutoSpansRequest, DeleteAutoSpansResponse, SuggestSpansRequest, SuggestSpansSelectionRequest,
@@ -91,11 +90,8 @@ async def get_topicer_configs(
     ``config_name``, as Topicer lists them, and the server default. 503 when Topicer
     cannot be asked.
     """
-    try:
-        configs = await provider.list_configs()
-    except TopicerError as e:
-        raise ServiceUnavailableError("The list of AI models is unavailable") from e
-    return TopicerConfigsResponse(configs=configs, default_config=provider.config_name)
+    return TopicerConfigsResponse(configs=await suggestions.topicer_configs(provider),
+                                  default_config=provider.config_name)
 
 
 @exp_router.post(

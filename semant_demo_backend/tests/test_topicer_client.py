@@ -5,6 +5,7 @@ import json
 import httpx
 import pytest
 
+from semant_demo.adapters.topicer import client as topicer_client
 from semant_demo.adapters.topicer.client import TopicerClient, TopicerError, TopicerStreamSummary, TopicerTag
 
 SECRET = "SECRET-MARKER"
@@ -188,6 +189,29 @@ async def test_an_unusable_config_list_raises(handler, caplog):
         await _client(handler).list_configs()
 
     assert SECRET not in _logged(caplog)
+
+
+async def test_the_config_list_is_reused_for_a_while_and_a_failure_is_not(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(topicer_client.time, "monotonic", lambda: now[0])
+    answers = [httpx.Response(503), httpx.Response(200, json=["a"]), httpx.Response(200, json=["a", "b"])]
+    timeouts = []
+
+    def handler(request):
+        timeouts.append(request.extensions["timeout"]["read"])
+        return answers.pop(0)
+    client = _client(handler)
+
+    with pytest.raises(TopicerError):
+        await client.list_configs()
+    assert await client.list_configs() == ["a"]
+    now[0] += topicer_client.CONFIGS_MAX_AGE - 1
+    assert await client.list_configs() == ["a"]
+    now[0] += 2
+    assert await client.list_configs() == ["a", "b"]
+
+    # Not the proposal timeout: listing needs no inference.
+    assert timeouts == [topicer_client.CONFIGS_TIMEOUT] * 3
 
 
 async def test_another_config_keeps_the_other_settings():

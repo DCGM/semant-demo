@@ -6,7 +6,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import AiAssistPanel from 'src/features/annotations/AiAssistPanel.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
-import { resetTopicerModel, useTopicerModel } from 'src/features/annotations/topicerModel'
+import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
 
 // A document run that would evaluate more than 50 chunks asks first (#408): thorough
 // counts the document's chunks in the collection, optimized the selected tags times the
@@ -72,7 +72,6 @@ describe('confirmation before a large AI run', () => {
     bodies = []
     topicerConfigs = { configs: ['llm'], defaultConfig: 'llm' }
     localStorage.clear()
-    resetTopicerModel()
     Object.assign(stats, { chunksInCollection: 10, aiMaxChunksPerTag: 40 })
     statsFail = false
     const end = JSON.stringify({ event: 'end', outcome: 'complete', saved: 0, rejected: 0, save_failures: 0, search_tag_failures: 0, provider_failures: 0 })
@@ -174,8 +173,7 @@ describe('confirmation before a large AI run', () => {
   it('sends the model picked in the panel, and none for the server default', async () => {
     topicerConfigs = { configs: ['llm', 'crossbert'], defaultConfig: 'llm' }
     await runAi(1)
-    await useTopicerModel().load()
-    useTopicerModel().selected.value = 'crossbert'
+    useTopicerModelStore().selected = 'crossbert'
     const wrapper = await runAi(1)
 
     expect(wrapper.find('[data-testid="ai-model-select"]').exists()).toBe(true)
