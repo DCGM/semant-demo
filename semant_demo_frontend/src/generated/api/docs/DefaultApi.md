@@ -38,6 +38,7 @@ All URIs are relative to *http://localhost*
 | [**getNeighbourChunkApiUserCollectionsCollectionIdDocumentsDocumentIdChunksNeighbourGet**](DefaultApi.md#getneighbourchunkapiusercollectionscollectioniddocumentsdocumentidchunksneighbourget) | **GET** /api/user_collections/{collection_id}/documents/{document_id}/chunks/neighbour | Get Neighbour Chunk |
 | [**getQuotaStatusApiQuotaGet**](DefaultApi.md#getquotastatusapiquotaget) | **GET** /api/quota | Get Quota Status |
 | [**getTagApiTagsTagUuidGet**](DefaultApi.md#gettagapitagstaguuidget) | **GET** /api/tags/{tag_uuid} | Get Tag |
+| [**getTopicerConfigsApiAiTopicerConfigsGet**](DefaultApi.md#gettopicerconfigsapiaitopicerconfigsget) | **GET** /api/ai/topicer_configs | Get Topicer Configs |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
 | [**listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet**](DefaultApi.md#listannotateddocumentsapiusercollectionscollectionidannotationsdocumentsget) | **GET** /api/user_collections/{collection_id}/annotations/documents | List Annotated Documents |
 | [**listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet**](DefaultApi.md#listcollectionannotationsapiusercollectionscollectionidannotationsget) | **GET** /api/user_collections/{collection_id}/annotations | List Collection Annotations |
@@ -2500,6 +2501,69 @@ example().catch(console.error);
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getTopicerConfigsApiAiTopicerConfigsGet
+
+> TopicerConfigsResponse getTopicerConfigsApiAiTopicerConfigsGet()
+
+Get Topicer Configs
+
+The Topicer configurations (AI models) that suggestion requests may name in &#x60;&#x60;config_name&#x60;&#x60;, as Topicer lists them, and the server default. 503 when Topicer cannot be asked.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetTopicerConfigsApiAiTopicerConfigsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  try {
+    const data = await api.getTopicerConfigsApiAiTopicerConfigsGet();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TopicerConfigsResponse**](TopicerConfigsResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

@@ -71,6 +71,12 @@ export interface SuggestSpansSelectionRequest {
      * @memberof SuggestSpansSelectionRequest
      */
     tagIds: Array<string>;
+    /**
+     * 
+     * @type {string}
+     * @memberof SuggestSpansSelectionRequest
+     */
+    configName?: string | null;
 }
 
 /**
@@ -102,6 +108,7 @@ export function SuggestSpansSelectionRequestFromJSONTyped(json: any, ignoreDiscr
         'selectionStart': json['selection_start'],
         'selectionEnd': json['selection_end'],
         'tagIds': json['tag_ids'],
+        'configName': json['config_name'] == null ? undefined : json['config_name'],
     };
 }
 
@@ -122,6 +129,7 @@ export function SuggestSpansSelectionRequestToJSONTyped(value?: SuggestSpansSele
         'selection_start': value['selectionStart'],
         'selection_end': value['selectionEnd'],
         'tag_ids': value['tagIds'],
+        'config_name': value['configName'],
     };
 }
 

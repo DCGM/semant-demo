@@ -15,7 +15,7 @@ import pytest
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.topicer.client import TopicerError, TopicerProposals
-from semant_demo.core.errors import InvalidRequestError, NotFoundError
+from semant_demo.core.errors import InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations import suggestions
 from semant_demo.features.annotations.schemas import (
     SuggestSpansRequest, SuggestSpansSelectionRequest, Tag,
@@ -149,8 +149,11 @@ class FakeProvider:
     config_name = "fake-config"
 
     def __init__(self, world: World, answers: dict | None = None, stream: dict | None = None,
-                 usage: dict | None = None):
+                 usage: dict | None = None, configs: list[str] | Exception | None = None):
         self.world = world
+        self.configs = ["fake-config", "fake-other"] if configs is None else configs
+        self.config_lists = 0
+        self.configs_used: list[str] = []
         self.usage = usage or {}
         self.answers = answers or {}
         self.stream = stream or {}
@@ -160,8 +163,15 @@ class FakeProvider:
         self.calls: list[str] = []
         self.cancel_delay = 0.0  # time a cancelled call needs to end (closing its connection)
 
-    async def propose_for_text(self, *, chunk_id, text, tags):
+    async def list_configs(self):
+        self.config_lists += 1
+        if isinstance(self.configs, Exception):
+            raise self.configs
+        return list(self.configs)
+
+    async def propose_for_text(self, *, chunk_id, text, tags, config_name=None):
         self.calls.append(text)
+        self.configs_used.append(config_name or self.config_name)
         self.world.log.append(("provider", text))
         self.running += 1
         self.max_running = max(self.max_running, self.running)
@@ -182,17 +192,18 @@ class FakeProvider:
         finally:
             self.running -= 1
 
-    async def propose_for_db_stream(self, *, tag, collection_id, document_id):
+    async def propose_for_db_stream(self, *, tag, collection_id, document_id, config_name=None):
         self.calls.append(tag.name)
+        self.configs_used.append(config_name or self.config_name)
         for item in self.stream.get(tag.name, []):
             if isinstance(item, Exception):
                 raise item
             yield item
 
 
-def request(tags=(PERSON,), collection=COLLECTION):
+def request(tags=(PERSON,), collection=COLLECTION, config_name=None):
     return SuggestSpansRequest(collection_id=str(collection), document_id=str(DOCUMENT),
-                               tag_ids=[str(t) for t in tags])
+                               tag_ids=[str(t) for t in tags], config_name=config_name)
 
 
 async def run_all(run):
@@ -572,6 +583,72 @@ async def test_shared_user_may_run_suggestions():
     assert end.saved == 1
 
 
+# ── Choice of the Topicer configuration (#189) ─────────────────────────────
+
+
+@pytest.mark.parametrize("config_name", [None, "fake-config"])
+async def test_the_default_configuration_is_used_without_asking_for_the_list(config_name):
+    world = World("Jan Novák")
+    provider = FakeProvider(world)
+
+    await run_all(await thorough(world, provider, req=request(config_name=config_name)))
+
+    assert provider.configs_used == ["fake-config"] and provider.config_lists == 0
+
+
+async def test_a_listed_configuration_is_used_in_every_mode():
+    world = World("Jan Novák")
+    provider = FakeProvider(world, stream={"person": []})
+
+    await run_all(await thorough(world, provider, req=request(config_name="fake-other")))
+    await run_all(await suggestions.prepare_document_run(
+        world.store(), provider, OWNER, request(config_name="fake-other"), "optimized"))
+    await run_all(await suggestions.prepare_selection_run(
+        world.store(), provider, OWNER, selection(world, world.chunks, 0, 3, config_name="fake-other")))
+
+    assert provider.configs_used == ["fake-other"] * 3
+
+
+@pytest.mark.parametrize("configs, error", [
+    (["fake-config"], InvalidRequestError),
+    (TopicerError("HTTP 500"), ServiceUnavailableError),
+])
+async def test_an_unknown_configuration_or_an_unreadable_list_fails_before_any_provider_call(configs, error):
+    world = World("Jan Novák")
+    provider = FakeProvider(world, configs=configs)
+
+    with pytest.raises(error):
+        await thorough(world, provider, req=request(config_name="fake-other"))
+    with pytest.raises(error):
+        await suggestions.prepare_selection_run(
+            world.store(), provider, OWNER, selection(world, world.chunks, 0, 3, config_name="fake-other"))
+
+    assert provider.calls == [] and world.log == []
+
+
+async def test_an_optimized_run_stops_when_the_configuration_has_no_optimized_mode():
+    world = World("Jan Novák")
+    refused = TopicerError("HTTP 409", no_work=True)
+    provider = FakeProvider(world, stream={"person": [refused], "place": [refused]})
+
+    results, end = await run_all(await suggestions.prepare_document_run(
+        world.store(), provider, OWNER, request(tags=(PERSON, PLACE), config_name="fake-other"), "optimized"))
+
+    assert provider.calls == ["person"] and results == []
+    assert (end.outcome.value, end.error, end.units_processed) == (
+        "failed", suggestions.UNSUPPORTED_OPTIMIZED, 1)
+
+
+async def test_access_is_checked_before_the_configurations_are_listed():
+    world = World("Jan Novák")
+    provider = FakeProvider(world)
+
+    with pytest.raises(NotFoundError):
+        await thorough(world, provider, user=OTHER, req=request(config_name="fake-other"))
+
+    assert provider.config_lists == 0
+
+
 # ── Optimized mode ─────────────────────────────────────────────────────────
 
 
@@ -602,10 +679,10 @@ async def test_optimized_validates_chunks_returned_by_the_provider():
 # ── Selection ──────────────────────────────────────────────────────────────
 
 
-def selection(world, chunks, start, end, tags=(PERSON,)):
+def selection(world, chunks, start, end, tags=(PERSON,), config_name=None):
     return SuggestSpansSelectionRequest(
         collection_id=str(COLLECTION), document_id=str(DOCUMENT), chunk_ids=[str(c.id) for c in chunks],
-        selection_start=start, selection_end=end, tag_ids=[str(t) for t in tags])
+        selection_start=start, selection_end=end, tag_ids=[str(t) for t in tags], config_name=config_name)
 
 
 async def test_selection_spans_are_anchored_where_they_start():

@@ -92,6 +92,7 @@ export * from './TagSpan';
 export * from './TagSpanBatchRequest';
 export * from './TagSpanWriteResult';
 export * from './TextStatus';
+export * from './TopicerConfigsResponse';
 export * from './Url';
 export * from './UserCreate';
 export * from './UserRead';

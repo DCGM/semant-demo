@@ -1,8 +1,8 @@
 """Application errors that services and adapters raise independently of the storage SDK.
 
 ``create_app`` maps them to HTTP responses (``NotFoundError`` -> 404,
-``InvalidRequestError`` -> 400, ``IncompleteWriteError`` -> 500 and ``EditConflictError`` -> 409
-with a structured body).
+``InvalidRequestError`` -> 400, ``ServiceUnavailableError`` -> 503, ``IncompleteWriteError`` -> 500
+and ``EditConflictError`` -> 409 with a structured body).
 Other storage/SDK failures are not wrapped: they propagate and become 500 responses.
 """
 
@@ -13,6 +13,10 @@ class NotFoundError(Exception):
 
 class InvalidRequestError(Exception):
     """The request is well formed but cannot be carried out, e.g. sharing with the owner."""
+
+
+class ServiceUnavailableError(Exception):
+    """An external service the request needs could not be reached or gave an unusable answer."""
 
 
 class IncompleteWriteError(Exception):

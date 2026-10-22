@@ -418,6 +418,9 @@ class SuggestSpansRequest(BaseModel):
     collection_id: str
     document_id: str
     tag_ids: list[str]
+    config_name: str | None = None
+    """The Topicer configuration to use, one of ``GET /api/ai/topicer_configs``; ``None``:
+    the server default (#189)."""
 
 
 class SuggestSpansSelectionRequest(BaseModel):
@@ -446,6 +449,16 @@ class SuggestSpansSelectionRequest(BaseModel):
     selection_start: int
     selection_end: int
     tag_ids: list[str]
+    config_name: str | None = None
+    """As :attr:`SuggestSpansRequest.config_name`."""
+
+
+class TopicerConfigsResponse(BaseModel):
+    """The Topicer configurations AI suggestions may use (#189)."""
+    configs: list[str]
+    """Names of the configurations Topicer has loaded, as Topicer lists them."""
+    default_config: str
+    """The server default (``TOPICER_CONFIG_NAME``), used when a request names none."""
 
 
 class SuggestSpansChunkResult(BaseModel):

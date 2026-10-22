@@ -6,6 +6,7 @@ Topicer exposes:
 - ``POST /v1/tags/propose/texts`` — propose tag spans for a single provided text chunk.
 - ``POST /v1/tags/propose/db/stream`` — propose tag spans for chunks stored in
   the database, streaming NDJSON results as each chunk completes.
+- ``GET /v1/configs`` — the names of the configurations Topicer has loaded (#189).
 
 Proposals are returned as Topicer sends them (``tag_span_proposals`` dicts with ``tag``,
 ``span_start``, ``span_end``, ``reason``, ``confidence``); validating them against the
@@ -20,8 +21,10 @@ above its own safety ceiling.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator
 
@@ -48,7 +51,8 @@ class TopicerError(RuntimeError):
     class and HTTP status only, never Topicer's URL, its response or the request text.
 
     ``no_work``: Topicer certainly ran no model for the request (it could not be connected
-    to, or refused the request before inference with 422); otherwise its usage is unknown.
+    to, or refused the request before inference: 404 unknown configuration, 409 method not
+    supported by the configuration, 422 invalid request); otherwise its usage is unknown.
     """
 
     def __init__(self, message: str, *, no_work: bool = False):
@@ -62,8 +66,11 @@ def _failure(e: Exception) -> str:
     return type(e).__name__
 
 
+_REFUSED_BEFORE_INFERENCE = {404, 409, 422}
+
+
 def _error(e: Exception) -> TopicerError:
-    refused = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 422
+    refused = isinstance(e, httpx.HTTPStatusError) and e.response.status_code in _REFUSED_BEFORE_INFERENCE
     return TopicerError(_failure(e), no_work=refused or isinstance(e, httpx.ConnectError))
 
 
@@ -148,6 +155,12 @@ def _stream_summary(event: dict[str, Any]) -> TopicerStreamSummary | None:
                                 candidates_truncated=event.get("candidates_truncated") is True, usage=usage)
 
 
+CONFIGS_TIMEOUT = 10.0
+"""Seconds for ``GET /v1/configs``, which needs no inference (proposal calls use ``timeout``)."""
+CONFIGS_MAX_AGE = 60.0
+"""Seconds a configuration list is reused; Topicer changes it only when it is redeployed."""
+
+
 class TopicerClient:
     """Topicer at ``base_url`` with the named Topicer config.
 
@@ -168,14 +181,51 @@ class TopicerClient:
         self.timeout = timeout
         self.max_chunks_per_tag = max_chunks_per_tag
         self.transport = transport
+        self._configs: tuple[float, list[str]] | None = None
+        self._configs_read: asyncio.Future[list[str]] | None = None
 
-    def _client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self.base_url, timeout=httpx.Timeout(self.timeout, connect=10.0),
+    def _client(self, timeout: float | None = None) -> httpx.AsyncClient:
+        timeout = self.timeout if timeout is None else timeout
+        return httpx.AsyncClient(base_url=self.base_url, timeout=httpx.Timeout(timeout, connect=10.0),
                                  transport=self.transport)
 
-    async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag]) -> TopicerProposals:
+    async def list_configs(self) -> list[str]:
+        """Call ``GET /v1/configs``: the names of the configurations Topicer has loaded.
+
+        A list read in the last ``CONFIGS_MAX_AGE`` seconds is reused; failures are not.
+        Concurrent callers share one request, which a cancelled caller does not cancel.
         """
-        Call ``POST /v1/tags/propose/texts`` for a single text + a list of tags.
+        if self._configs is not None and time.monotonic() - self._configs[0] < CONFIGS_MAX_AGE:
+            return list(self._configs[1])
+        if self._configs_read is None:
+            self._configs_read = asyncio.ensure_future(self._read_configs())
+            self._configs_read.add_done_callback(self._configs_read_done)
+        return list(await asyncio.shield(self._configs_read))
+
+    def _configs_read_done(self, read: asyncio.Future[list[str]]) -> None:
+        self._configs_read = None
+        if not read.cancelled() and read.exception() is None:  # also marks a failure as retrieved
+            self._configs = (time.monotonic(), read.result())
+
+    async def _read_configs(self) -> list[str]:
+        path = "/v1/configs"
+        try:
+            async with self._client(CONFIGS_TIMEOUT) as client:
+                resp = await client.get(path)
+                resp.raise_for_status()
+                data = resp.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Topicer GET %s failed: %s", path, _failure(e))
+            raise _error(e) from e
+        if not isinstance(data, list) or not all(isinstance(name, str) for name in data):
+            raise TopicerError("configs is not a list of names")
+        return data
+
+    async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag],
+                               config_name: str | None = None) -> TopicerProposals:
+        """
+        Call ``POST /v1/tags/propose/texts`` for a single text + a list of tags, with
+        ``config_name`` (#189) or the configured one.
 
         Returns the ``tag_span_proposals`` of Topicer's response and its ``usage``.
         """
@@ -186,7 +236,7 @@ class TopicerClient:
         path = "/v1/tags/propose/texts"
         try:
             async with self._client() as client:
-                resp = await client.post(path, params={"config_name": self.config_name}, json=body)
+                resp = await client.post(path, params={"config_name": config_name or self.config_name}, json=body)
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, ValueError) as e:
@@ -199,10 +249,12 @@ class TopicerClient:
             raise TopicerError("tag_span_proposals is not a list")
         return TopicerProposals(proposals=proposals or [], usage=_usage(data.get("usage")))
 
-    async def propose_for_db_stream(self, *, tag: TopicerTag, collection_id: str, document_id: str
+    async def propose_for_db_stream(self, *, tag: TopicerTag, collection_id: str, document_id: str,
+                                    config_name: str | None = None
                                     ) -> AsyncGenerator[dict[str, Any] | TopicerStreamSummary, None]:
         """
-        Call ``POST /v1/tags/propose/db/stream?max_chunks=<max_chunks_per_tag>`` and yield
+        Call ``POST /v1/tags/propose/db/stream?max_chunks=<max_chunks_per_tag>`` with
+        ``config_name`` (#189) or the configured one, and yield
         each chunk result as it arrives, a ``TextChunkWithTagSpanProposals`` dict::
 
             {"id": "<chunk_id>", "text": "...", "tag_span_proposals": [...]}
@@ -219,7 +271,7 @@ class TopicerClient:
         path = "/v1/tags/propose/db/stream"
         try:
             async with self._client() as client:
-                params = {"config_name": self.config_name, "max_chunks": self.max_chunks_per_tag}
+                params = {"config_name": config_name or self.config_name, "max_chunks": self.max_chunks_per_tag}
                 async with client.stream("POST", path, params=params, json=body) as resp:
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
