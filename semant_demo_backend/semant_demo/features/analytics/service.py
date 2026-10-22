@@ -1,5 +1,6 @@
 """Corpus overview (#254): how many documents the searchable corpus holds, by publication
-decade, source library and document language.
+decade, source library and document language; and the same counts per publication year for
+the documents matching optional metadata filters (#361, ``corpus_distributions``).
 
 Scope: the public corpus as Search covers it, i.e. every corpus document; anonymous users
 may read it. ``Documents.public`` is not used: its values are not verified (#279). When a
@@ -8,30 +9,39 @@ anything is counted, so no restricted document is ever reflected in these number
 
 Counts are read from the store with native aggregates (no objects are downloaded). They
 take about 2 s for 300,000 documents (docs/ARCHITECTURE.md), so the application keeps the
-last overview for ``CORPUS_OVERVIEW_MAX_AGE`` seconds (``OverviewCache``): within that time
-it is served again with ``data_source="cached_aggregation"`` and its original ``computed_at``,
-and concurrent requests wait for one computation instead of starting their own. A failed
+last unfiltered counts for ``CORPUS_OVERVIEW_MAX_AGE`` seconds (``OverviewCache``): within
+that time they are served again with ``data_source="cached_aggregation"`` and their original
+``computed_at``, and concurrent requests wait for one computation instead of starting their
+own. The overview is derived from them. Filtered counts match fewer documents, take well under
+a second and are always computed live (never answered from the unfiltered cache). A failed
 read raises (an error response, never a zero or empty overview) and is not cached.
+
+A year counts only when it is a whole number from 1 to the current year; later years (e.g. a
+typo such as 2879) and fractional years are "unknown or invalid". A year range is filtered in
+the store, so a document with year 1909.5 matches 1900–1920 but is counted as unknown.
 """
 import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 
-from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository, Unavailable, ValueCounts
+from semant_demo.adapters.weaviate.analytics import (
+    AnyOf, Condition, ContainsWords, CorpusAnalyticsRepository, NumberRange, Unavailable, ValueCounts)
 from semant_demo.features.analytics.schemas import (
-    CategoryCount, CategoryDistribution, CorpusOverview, PublicationYearDistribution, UnavailableReason, YearBin)
+    CategoryCount, CategoryDistribution, CorpusDistributions, CorpusOverview, DocumentFilters, PublicationYearCounts,
+    PublicationYearDistribution, UnavailableReason, YearBin, YearCount)
 
 YEAR_PROPERTY = "yearIssued"
 LIBRARY_PROPERTY = "library"
 LANGUAGE_PROPERTY = "language"
+TITLE_PROPERTY = "title"
 
 GROUP_LIMIT = 10_000
-"""Most distinct values read per property. Years are whole numbers up to 9999, so more
-distinct values mean malformed data; the overview then fails rather than guess."""
+"""Most distinct values read per property. Valid years are whole numbers up to the current
+year, so more distinct values mean malformed data; the counts then fail rather than guess."""
 MAX_LISTED_VALUES = 50
 """Most library/language values listed; the documents of further values are ``other_count``."""
 BIN_WIDTH_YEARS = 10
-MIN_YEAR, MAX_YEAR = 1, 9999
+MIN_YEAR = 1
 
 
 class IncompleteCounts(Exception):
@@ -43,37 +53,87 @@ _REASONS: dict[str, UnavailableReason] = {"missing": "missing_property", "unsupp
 
 
 class OverviewCache:
-    """The last computed overview of one application. There is one corpus scope today; once
-    the public-read policy (#279) distinguishes readers, the cache must be kept per scope."""
+    """The last computed unfiltered counts of one application. There is one corpus scope today;
+    once the public-read policy (#279) distinguishes readers, the cache must be kept per scope."""
 
     def __init__(self, max_age_seconds: float):
         self.max_age = timedelta(seconds=max_age_seconds)
-        self.overview: CorpusOverview | None = None
+        self.distributions: CorpusDistributions | None = None
         self.lock = asyncio.Lock()
 
 
-async def cached_corpus_overview(analytics: CorpusAnalyticsRepository, cache: OverviewCache) -> CorpusOverview:
-    """The cached overview while it is younger than the cache's maximum age, else a new one."""
+async def cached_corpus_distributions(analytics: CorpusAnalyticsRepository, cache: OverviewCache,
+                                      filters: DocumentFilters) -> CorpusDistributions:
+    """Counts of the documents matching ``filters``; the unfiltered ones from the cache while
+    they are younger than its maximum age."""
+    if filters != DocumentFilters():
+        return await corpus_distributions(analytics, filters)
     async with cache.lock:  # one computation at a time; waiting requests then get its result
-        cached = cache.overview
+        cached = cache.distributions
         if cached is not None and datetime.now(UTC) - cached.computed_at < cache.max_age:
             return cached.model_copy(update={"data_source": "cached_aggregation"})
-        cache.overview = await corpus_overview(analytics)
-        return cache.overview
+        cache.distributions = await corpus_distributions(analytics, filters)
+        return cache.distributions
+
+
+async def cached_corpus_overview(analytics: CorpusAnalyticsRepository, cache: OverviewCache) -> CorpusOverview:
+    """The overview of the cached unfiltered counts (see ``cached_corpus_distributions``)."""
+    return _overview(await cached_corpus_distributions(analytics, cache, DocumentFilters()))
 
 
 async def corpus_overview(analytics: CorpusAnalyticsRepository) -> CorpusOverview:
     """A new overview, computed from the store now."""
+    return _overview(await corpus_distributions(analytics, DocumentFilters()))
+
+
+async def corpus_distributions(analytics: CorpusAnalyticsRepository, filters: DocumentFilters) -> CorpusDistributions:
+    """New counts of the documents matching ``filters``, computed from the store now. Raises
+    ``UnavailableFilter`` (adapter) for a filter on a property the store cannot filter by."""
     computed_at = datetime.now(UTC)
     counts = await analytics.count_documents(
-        {YEAR_PROPERTY: "number", LIBRARY_PROPERTY: "text", LANGUAGE_PROPERTY: "text"}, group_limit=GROUP_LIMIT)
+        {YEAR_PROPERTY: "number", LIBRARY_PROPERTY: "text", LANGUAGE_PROPERTY: "text"}, group_limit=GROUP_LIMIT,
+        conditions=_conditions(filters))
     total = counts.total
-    return CorpusOverview(
-        scope="searchable_corpus", unit="documents", total_documents=total,
+    return CorpusDistributions(
+        scope="searchable_corpus", unit="documents", filters=filters, total_documents=total,
         computed_at=computed_at, data_source="live_aggregation",
-        publication_year=_years(counts.properties[YEAR_PROPERTY], total),
+        publication_year=_years(counts.properties[YEAR_PROPERTY], total, max_year=computed_at.year),
         libraries=_categories(counts.properties[LIBRARY_PROPERTY], total, LIBRARY_PROPERTY),
         languages=_categories(counts.properties[LANGUAGE_PROPERTY], total, LANGUAGE_PROPERTY))
+
+
+def _conditions(filters: DocumentFilters) -> list[Condition]:
+    conditions: list[Condition] = []
+    if filters.year_min is not None or filters.year_max is not None:
+        conditions.append(NumberRange(YEAR_PROPERTY, filters.year_min, filters.year_max))
+    if filters.title_contains:
+        conditions.append(ContainsWords(TITLE_PROPERTY, filters.title_alternatives()))
+    if filters.libraries:
+        conditions.append(AnyOf(LIBRARY_PROPERTY, tuple(filters.libraries)))
+    if filters.languages:
+        conditions.append(AnyOf(LANGUAGE_PROPERTY, tuple(filters.languages)))
+    return conditions
+
+
+def _overview(distributions: CorpusDistributions) -> CorpusOverview:
+    """The same counts with years grouped into decades; empty decades in between have count 0."""
+    return CorpusOverview(
+        scope=distributions.scope, unit=distributions.unit, total_documents=distributions.total_documents,
+        computed_at=distributions.computed_at, data_source=distributions.data_source,
+        publication_year=_decades(distributions.publication_year),
+        libraries=distributions.libraries, languages=distributions.languages)
+
+
+def _decades(years: PublicationYearCounts) -> PublicationYearDistribution:
+    if not years.available:
+        return PublicationYearDistribution(available=False, unavailable_reason=years.unavailable_reason)
+    decades: Counter[int] = Counter()
+    for year in years.years or []:
+        decades[year.year // BIN_WIDTH_YEARS * BIN_WIDTH_YEARS] += year.count
+    bins = [YearBin(start=start, end_exclusive=start + BIN_WIDTH_YEARS, count=decades[start])
+            for start in range(min(decades), max(decades) + 1, BIN_WIDTH_YEARS)] if decades else []
+    return PublicationYearDistribution(available=True, bin_width_years=BIN_WIDTH_YEARS, bins=bins,
+                                       unknown_count=years.unknown_count)
 
 
 def _check(counts: ValueCounts, total: int, prop: str) -> None:
@@ -81,21 +141,19 @@ def _check(counts: ValueCounts, total: int, prop: str) -> None:
         raise IncompleteCounts(f"Document counts of {prop} do not add up (the corpus may have changed).")
 
 
-def _years(counts: ValueCounts | Unavailable, total: int) -> PublicationYearDistribution:
+def _years(counts: ValueCounts | Unavailable, total: int, max_year: int) -> PublicationYearCounts:
     if isinstance(counts, Unavailable):
-        return PublicationYearDistribution(available=False, unavailable_reason=_REASONS[counts.reason])
+        return PublicationYearCounts(available=False, unavailable_reason=_REASONS[counts.reason])
     _check(counts, total, YEAR_PROPERTY)
     if not counts.complete:
         raise IncompleteCounts(f"More than {GROUP_LIMIT} distinct values of {YEAR_PROPERTY}.")
-    decades: Counter[int] = Counter()
+    years: Counter[int] = Counter()
     for value, n in counts.groups:
         year = float(value)
-        if year.is_integer() and MIN_YEAR <= year <= MAX_YEAR:
-            decades[int(year) // BIN_WIDTH_YEARS * BIN_WIDTH_YEARS] += n
-    bins = [YearBin(start=start, end_exclusive=start + BIN_WIDTH_YEARS, count=decades[start])
-            for start in range(min(decades), max(decades) + 1, BIN_WIDTH_YEARS)] if decades else []
-    return PublicationYearDistribution(available=True, bin_width_years=BIN_WIDTH_YEARS, bins=bins,
-                                       unknown_count=total - sum(decades.values()))
+        if year.is_integer() and MIN_YEAR <= year <= max_year:
+            years[int(year)] += n
+    return PublicationYearCounts(available=True, years=[YearCount(year=y, count=years[y]) for y in sorted(years)],
+                                 unknown_count=total - sum(years.values()))
 
 
 def _categories(counts: ValueCounts | Unavailable, total: int, prop: str) -> CategoryDistribution:

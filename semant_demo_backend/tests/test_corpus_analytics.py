@@ -1,9 +1,12 @@
-"""Corpus overview (features/analytics, #254) with a stand-in repository.
+"""Corpus overview (features/analytics, #254) and filtered distributions (#361) with a
+stand-in repository.
 
 Counts are distinct documents; for each available dimension the bins/values, ``other_count``
 and ``unknown_count`` add up to the total; an unavailable property has no counts (``null``).
-A recent overview is served again, marked as cached, with its original ``computed_at``.
-Real aggregation semantics are tested in ``integration/test_corpus_analytics.py``.
+Recent unfiltered counts are served again, marked as cached, with their original
+``computed_at``; filtered counts never are. Filters are validated and normalized before the
+store is asked; the Weaviate filter they become is checked here, its matching semantics in
+``integration/test_corpus_analytics.py``.
 """
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -12,23 +15,33 @@ import pytest
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
-from semant_demo.adapters.weaviate.analytics import DocumentCounts, Unavailable, ValueCounts
+from semant_demo.adapters.weaviate.analytics import (
+    AnyOf, ContainsWords, DocumentCounts, NumberRange, Unavailable, UnavailableFilter, ValueCounts, where)
 from semant_demo.features.analytics import service
 from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_corpus_analytics
 from tests.app_support import make_test_config, offline_weaviate
 
 PATH = "/api/analytics/corpus/overview"
+DISTRIBUTIONS = "/api/analytics/corpus/distributions"
+NEXT_YEAR = datetime.now(UTC).year + 1
 
 
 class FakeAnalytics:
+    """Answers with fixed counts whatever the conditions; like the store, it refuses a
+    condition on a property it cannot count."""
+
     def __init__(self, total: int, **properties: ValueCounts | Unavailable):
         self.total = total
         self.properties = properties
-        self.calls: list[tuple[dict, int]] = []
+        self.calls: list[tuple[dict, int, list]] = []
 
-    async def count_documents(self, properties, group_limit):
-        self.calls.append((properties, group_limit))
+    async def count_documents(self, properties, group_limit, conditions=()):
+        self.calls.append((properties, group_limit, list(conditions)))
+        for condition in conditions:
+            declared = self.properties.get(condition.prop, Unavailable("missing"))
+            if isinstance(declared, Unavailable):
+                raise UnavailableFilter(condition.prop, declared.reason)
         await asyncio.sleep(0)
         return DocumentCounts(total=self.total, properties={
             prop: self.properties.get(prop, Unavailable("missing")) for prop in properties})
@@ -53,7 +66,7 @@ async def test_counts_documents_by_decade_library_and_language():
 
     overview = await service.corpus_overview(analytics)
 
-    assert analytics.calls == [({"yearIssued": "number", "library": "text", "language": "text"}, service.GROUP_LIMIT)]
+    assert analytics.calls == [({"yearIssued": "number", "library": "text", "language": "text"}, service.GROUP_LIMIT, [])]
     assert (overview.scope, overview.unit, overview.data_source) == ("searchable_corpus", "documents", "live_aggregation")
     assert overview.total_documents == 10
     years = overview.publication_year
@@ -74,7 +87,7 @@ async def test_counts_documents_by_decade_library_and_language():
 async def test_invalid_years_and_blank_values_are_unknown():
     analytics = FakeAnalytics(
         8,
-        yearIssued=counts([(0.0, 1), (1909.5, 1), (-5.0, 1), (12000.0, 1), (1900.0, 2)]),
+        yearIssued=counts([(0.0, 1), (1909.5, 1), (-5.0, 1), (float(NEXT_YEAR), 1), (1900.0, 2)]),
         language=counts([("", 2), ("  ", 1), ("ces", 3)], known=7))
 
     overview = await service.corpus_overview(analytics)
@@ -155,7 +168,8 @@ async def test_a_recent_overview_is_served_again_as_cached():
 async def test_an_expired_overview_is_computed_again():
     analytics, cache = FakeAnalytics(4), service.OverviewCache(600)
     first = await service.cached_corpus_overview(analytics, cache)
-    cache.overview = first.model_copy(update={"computed_at": first.computed_at - timedelta(seconds=601)})
+    cache.distributions = cache.distributions.model_copy(
+        update={"computed_at": first.computed_at - timedelta(seconds=601)})
     analytics.total = 5
 
     second = await service.cached_corpus_overview(analytics, cache)
@@ -175,11 +189,11 @@ async def test_concurrent_requests_share_one_computation():
 
 async def test_a_failure_is_not_cached():
     class FailingOnce(FakeAnalytics):
-        async def count_documents(self, properties, group_limit):
+        async def count_documents(self, properties, group_limit, conditions=()):
             if not self.calls:
                 self.calls.append("failed")
                 raise RuntimeError("store unavailable")
-            return await super().count_documents(properties, group_limit)
+            return await super().count_documents(properties, group_limit, conditions)
 
     analytics, cache = FailingOnce(4), service.OverviewCache(600)
     with pytest.raises(RuntimeError):
@@ -230,7 +244,7 @@ async def test_the_app_serves_its_recent_overview_again(tmp_path):
 
 async def test_a_failed_store_read_is_an_error_not_an_empty_overview(tmp_path):
     class Failing:
-        async def count_documents(self, properties, group_limit):
+        async def count_documents(self, properties, group_limit, conditions=()):
             raise RuntimeError("store unavailable")
 
     response = await _get(tmp_path, Failing(), raise_app_exceptions=False)
@@ -251,3 +265,169 @@ def test_overview_is_a_public_typed_operation(tmp_path):
         {"$ref": "#/components/schemas/CorpusOverview"}
     overview = schema["components"]["schemas"]["CorpusOverview"]
     assert set(overview["required"]) >= {"total_documents", "computed_at", "publication_year", "libraries", "languages"}
+
+
+# Filtered distributions (#361)
+
+async def _request(tmp_path, analytics, *requests: tuple[str, dict | None], **client_options):
+    """Sends (path, body) requests to one app: a body means POST, ``None`` GET."""
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_corpus_analytics] = lambda: analytics
+    transport = ASGITransport(app=app, **client_options)
+    async with LifespanManager(app), AsyncClient(transport=transport, base_url="http://test") as client:
+        return [await (client.get(path) if body is None else client.post(path, json=body)) for path, body in requests]
+
+
+async def test_distributions_count_documents_per_year_and_treat_future_years_as_unknown(tmp_path):
+    analytics = FakeAnalytics(
+        9, yearIssued=counts([(1910.0, 3), (1909.0, 2), (311.0, 1), (float(NEXT_YEAR), 1), (1909.5, 1)]),
+        language=counts([("ces", 9)]))
+
+    response, = await _request(tmp_path, analytics, (DISTRIBUTIONS, {}))  # anonymous
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {k: body[k] for k in ("scope", "unit", "total_documents", "data_source")} == \
+        {"scope": "searchable_corpus", "unit": "documents", "total_documents": 9, "data_source": "live_aggregation"}
+    assert body["filters"] == {"year_min": None, "year_max": None, "title_contains": None,
+                               "libraries": [], "languages": []}
+    # Only years with documents, ascending; the next year and 1909.5 are unknown or invalid.
+    assert body["publication_year"] == {
+        "available": True, "unavailable_reason": None, "unknown_count": 3,
+        "years": [{"year": 311, "count": 1}, {"year": 1909, "count": 2}, {"year": 1910, "count": 3}]}
+    assert body["libraries"]["available"] is False
+    assert body["languages"]["values"] == [{"value": "ces", "count": 9}]
+
+
+async def test_the_overview_counts_a_future_year_as_unknown():
+    analytics = FakeAnalytics(3, yearIssued=counts([(float(NEXT_YEAR - 1), 1), (float(NEXT_YEAR), 2)]))
+
+    years = (await service.corpus_overview(analytics)).publication_year
+
+    decade = (NEXT_YEAR - 1) // 10 * 10
+    assert [(b.start, b.count) for b in years.bins] == [(decade, 1)]
+    assert years.unknown_count == 2
+
+
+async def test_filters_are_normalized_and_become_one_set_of_conditions(tmp_path):
+    analytics = FakeAnalytics(4, yearIssued=counts([(1905.0, 4)]), library=counts([("mzk", 4)]),
+                              language=counts([("ces", 4)]), title=counts([]))  # title: declared, not counted
+
+    response, = await _request(tmp_path, analytics, (DISTRIBUTIONS, {"filters": {
+        "year_min": 1900, "year_max": 1920, "title_contains": "  Pražský: věstník a pražský-1919 ",
+        "libraries": [" nkp", "mzk", "nkp"], "languages": ["ces"]}}))
+
+    assert response.status_code == 200
+    # Split like the store's words; one-letter words and repeats in another case are dropped.
+    assert response.json()["filters"] == {"year_min": 1900, "year_max": 1920,
+                                          "title_contains": "Pražský věstník 1919",
+                                          "libraries": ["mzk", "nkp"], "languages": ["ces"]}
+    assert analytics.calls[0][2] == [NumberRange("yearIssued", 1900, 1920),
+                                     ContainsWords("title", ("Pražský", "věstník", "1919")),
+                                     AnyOf("library", ("mzk", "nkp")), AnyOf("language", ("ces",))]
+
+
+@pytest.mark.parametrize("filters, message", [
+    ({"year_min": 0}, "greater than or equal to 1"),
+    ({"year_max": NEXT_YEAR}, "cannot be after the current year"),
+    ({"year_min": 1921, "year_max": 1920}, "must not be after the last one"),
+    ({"year_min": 1900.5}, "valid integer"),
+    ({"title_contains": "škol*"}, "does not support wildcards"),
+    ({"title_contains": "praz?ky"}, "does not support wildcards"),
+    ({"title_contains": "a v z"}, "at least one title word of two or more"),
+    ({"title_contains": "x" * 101}, "at most 100 characters"),
+    ({"title_contains": "one two three four five six"}, "at most 5 words"),
+    ({"libraries": ["mzk", " "]}, "must be non-empty"),
+    ({"languages": [f"l{i}" for i in range(51)]}, "at most 50 items"),
+    ({"publisher": "x"}, "Extra inputs are not permitted"),
+])
+async def test_invalid_filters_are_rejected_before_the_store_is_asked(tmp_path, filters, message):
+    analytics = FakeAnalytics(1)
+
+    response, = await _request(tmp_path, analytics, (DISTRIBUTIONS, {"filters": filters}))
+
+    assert response.status_code == 422
+    assert message in str(response.json()["detail"])
+    assert analytics.calls == []
+
+
+async def test_a_filter_on_a_property_the_store_lacks_is_rejected_not_zero(tmp_path):
+    analytics = FakeAnalytics(5, language=counts([("ces", 5)]))  # no library property
+
+    response, = await _request(tmp_path, analytics, (DISTRIBUTIONS, {"filters": {"libraries": ["mzk"]}}))
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Documents cannot be filtered by library: this corpus database is not recorded."}
+
+
+async def test_only_unfiltered_distributions_are_served_again(tmp_path):
+    analytics = FakeAnalytics(4, language=counts([("ces", 4)]))
+    filtered = {"filters": {"languages": ["ces"]}}
+
+    responses = await _request(tmp_path, analytics, (DISTRIBUTIONS, {}), (DISTRIBUTIONS, filtered),
+                               (DISTRIBUTIONS, filtered), (DISTRIBUTIONS, {"filters": {}}), (PATH, None))
+
+    assert [r.json()["data_source"] for r in responses] == \
+        ["live_aggregation", "live_aggregation", "live_aggregation", "cached_aggregation", "cached_aggregation"]
+    # The overview is the cached unfiltered computation, grouped into decades.
+    assert [conditions for _, _, conditions in analytics.calls] == [[], [AnyOf("language", ("ces",))],
+                                                                     [AnyOf("language", ("ces",))]]
+    assert responses[4].json()["computed_at"] == responses[0].json()["computed_at"]
+
+
+def test_distributions_are_a_public_typed_operation(tmp_path):
+    schema = create_app(make_test_config(tmp_path)).openapi()
+    operation = schema["paths"][DISTRIBUTIONS]
+
+    assert list(operation) == ["post"]
+    assert operation["post"]["operationId"] == "corpus_distributions_api_analytics_corpus_distributions_post"
+    assert "security" not in operation["post"]
+    assert operation["post"]["requestBody"]["content"]["application/json"]["schema"] == \
+        {"$ref": "#/components/schemas/CorpusDistributionsRequest"}
+    assert operation["post"]["responses"]["200"]["content"]["application/json"]["schema"] == \
+        {"$ref": "#/components/schemas/CorpusDistributions"}
+    distributions = schema["components"]["schemas"]["CorpusDistributions"]
+    assert set(distributions["required"]) >= {"filters", "total_documents", "publication_year", "libraries", "languages"}
+
+
+# The Weaviate filter (adapters/weaviate/analytics.py): one filter for every count.
+
+TYPES = {"yearIssued": "number", "title": "text", "library": "text", "language": "text", "author": "text[]"}
+
+
+def _parts(f):
+    return [(p.target, p.operator.value, p.value) for p in getattr(f, "filters", [f])]
+
+
+@pytest.mark.parametrize("data_type, bound_type", [("int", int), ("number", float)])
+def test_a_year_range_is_compared_as_the_declared_type(data_type, bound_type):
+    # Production declares yearIssued as int, the dev/test schema as number (#128).
+    f = where([NumberRange("yearIssued", 1900, 1920)], {"yearIssued": data_type})
+
+    assert _parts(f) == [("yearIssued", "GreaterThanEqual", 1900), ("yearIssued", "LessThanEqual", 1920)]
+    assert all(type(p.value) is bound_type for p in f.filters)
+    assert _parts(where([NumberRange("yearIssued", maximum=1909)], {"yearIssued": data_type})) == \
+        [("yearIssued", "LessThanEqual", 1909)]
+
+
+def test_conditions_are_combined_with_and_and_values_with_or():
+    f = where([ContainsWords("title", ("Pražský", "věstník")), AnyOf("library", ("mzk", "nkp")),
+               AnyOf("language", ("ces",))], TYPES)
+
+    title_a, title_b, libraries, language = f.filters
+    assert _parts(title_a) + _parts(title_b) == [("title", "Like", "*Pražský*"), ("title", "Like", "*věstník*")]
+    assert _parts(libraries) == [("library", "Equal", "mzk"), ("library", "Equal", "nkp")]
+    assert type(libraries).__name__ == "_FilterOr"
+    assert _parts(language) == [("language", "Equal", "ces")]
+    assert where([], TYPES) is None
+
+
+@pytest.mark.parametrize("condition, reason", [
+    (AnyOf("nothing", ("x",)), "missing"),
+    (ContainsWords("author", ("Hájek",)), "unsupported_type"),  # text[]: several values per document
+    (NumberRange("title", 1900), "unsupported_type"),
+])
+def test_a_condition_on_a_property_that_cannot_be_filtered_is_refused(condition, reason):
+    with pytest.raises(UnavailableFilter) as refused:
+        where([condition], TYPES)
+    assert (refused.value.prop, refused.value.reason) == (condition.prop, reason)

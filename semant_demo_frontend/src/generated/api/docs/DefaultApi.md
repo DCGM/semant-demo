@@ -8,6 +8,7 @@ All URIs are relative to *http://localhost*
 | [**addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapiusercollectionscollectioniddocumentsdocumentidpost) | **POST** /api/user_collections/{collection_id}/documents/{document_id} | Add Document To Collection |
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
+| [**corpusDistributionsApiAnalyticsCorpusDistributionsPost**](DefaultApi.md#corpusdistributionsapianalyticscorpusdistributionspost) | **POST** /api/analytics/corpus/distributions | Corpus Distributions |
 | [**corpusOverviewApiAnalyticsCorpusOverviewGet**](DefaultApi.md#corpusoverviewapianalyticscorpusoverviewget) | **GET** /api/analytics/corpus/overview | Corpus Overview |
 | [**countDocumentChunksApiDocumentsDocumentIdChunksCountGet**](DefaultApi.md#countdocumentchunksapidocumentsdocumentidchunkscountget) | **GET** /api/documents/{document_id}/chunks/count | Count Document Chunks |
 | [**createTagApiTagsPost**](DefaultApi.md#createtagapitagspost) | **POST** /api/tags | Create Tag |
@@ -371,6 +372,74 @@ example().catch(console.error);
 ### Authorization
 
 [OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## corpusDistributionsApiAnalyticsCorpusDistributionsPost
+
+> CorpusDistributions corpusDistributionsApiAnalyticsCorpusDistributionsPost(corpusDistributionsRequest)
+
+Corpus Distributions
+
+Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // CorpusDistributionsRequest
+    corpusDistributionsRequest: ...,
+  } satisfies CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest;
+
+  try {
+    const data = await api.corpusDistributionsApiAnalyticsCorpusDistributionsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **corpusDistributionsRequest** | [CorpusDistributionsRequest](CorpusDistributionsRequest.md) |  | |
+
+### Return type
+
+[**CorpusDistributions**](CorpusDistributions.md)
+
+### Authorization
+
+No authorization required
 
 ### HTTP request headers
 

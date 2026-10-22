@@ -4,19 +4,36 @@ Documents are counted once however many chunks they have (the fixture chronicle 
 Like the local snapshot, the fixture store declares no ``library`` property: the overview
 reports it unavailable until it is added (``add_text_property``). Further documents cover
 the decade boundary (1909/1910), invalid years and missing, empty and multi-word values.
+
+Filtered distributions (#361): every filter is checked against the documents it must match,
+which pins down the store's matching (title words ignore case but not diacritics, ``word``
+language values ignore case, ``field`` library codes only surrounding whitespace).
 """
 from uuid import UUID
 
 import pytest
 from weaviate.classes.data import DataObject
 
-from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository, Unavailable, ValueCounts
+from semant_demo.adapters.weaviate.analytics import (
+    AnyOf, CorpusAnalyticsRepository, NumberRange, Unavailable, UnavailableFilter, ValueCounts)
 from semant_demo.adapters.weaviate.document_metadata import add_text_property
 
 pytestmark = pytest.mark.integration
 
 PATH = "/api/analytics/corpus/overview"
+DISTRIBUTIONS = "/api/analytics/corpus/distributions"
 EXTRA = [UUID(f"5e3a0000-0000-4000-8000-0000000da0{n:02}") for n in range(1, 9)]
+
+# Fixture documents: chronicle "Kronika obce Lhota" 1851, letters "Dopisy z Prahy" 1902,
+# gazette "Pražský věstník" without a year; all ces, no library.
+FILTERED = {
+    "skola": {"title": "Škola a život", "yearIssued": 1909, "library": "mzk", "language": "ces"},
+    "skolni": {"title": "ŠKOLNÍ věstník", "yearIssued": 1910, "library": "nkp", "language": "CES"},
+    "listy": {"title": "Listy z Brna", "yearIssued": 1909.5, "library": " mzk", "language": "Old Czech"},
+    "plain": {"title": "Skola bez diakritiky", "yearIssued": 1920, "library": "MZK", "language": "deu"},
+    "prazske": {"title": "Pražské listy", "language": "lat"},
+}
+FIXTURE_YEARS = {"chronicle": 1851, "letters": 1902, "gazette": None}
 
 
 async def test_overview_counts_fixture_documents_once_and_reports_missing_library(api_client, corpus):
@@ -87,3 +104,86 @@ async def test_repository_reads_through_an_alias_and_rejects_list_properties(see
     assert counts.properties["author"] == Unavailable("unsupported_type")  # text[]: several per document
     assert counts.properties["yearIssued"] == Unavailable("unsupported_type")
     assert counts.properties["nothing"] == Unavailable("missing")
+
+
+async def _add_filtered_documents(store, collection_names):
+    await add_text_property(store, collection_names, "library")
+    documents = store.collections.get(collection_names.document_collection_name)
+    inserted = await documents.data.insert_many([
+        DataObject(uuid=uuid, properties=properties) for uuid, properties in zip(EXTRA, FILTERED.values())])
+    assert not inserted.errors
+
+
+@pytest.mark.parametrize("filters, matching", [
+    ({}, {"chronicle", "letters", "gazette", *FILTERED}),
+    # Inclusive bounds; 1909.5 is in no single year and below 1910.
+    ({"year_min": 1909, "year_max": 1909}, {"skola"}),
+    ({"year_min": 1910}, {"skolni", "plain"}),
+    ({"year_min": 1900, "year_max": 1910}, {"letters", "skola", "skolni", "listy"}),
+    # Title words: inside a title word, ignoring case, not diacritics; all words, any order.
+    ({"title_contains": "škol"}, {"skola", "skolni"}),
+    ({"title_contains": "skol"}, {"plain"}),
+    ({"title_contains": "listy-brn"}, {"listy"}),  # "Listy z Brna"
+    ({"title_contains": "věstník pražský"}, {"gazette"}),
+    ({"title_contains": "zzz"}, set()),
+    # library (field): exact apart from surrounding whitespace; several values: any of them.
+    ({"libraries": ["mzk"]}, {"skola", "listy"}),
+    ({"libraries": ["mzk", "nkp"]}, {"skola", "skolni", "listy"}),
+    # language (word): ignoring case.
+    ({"languages": ["ces"]}, {"chronicle", "letters", "gazette", "skola", "skolni"}),
+    ({"languages": ["czech"]}, {"listy"}),
+    ({"year_min": 1900, "year_max": 1920, "title_contains": "škol", "libraries": ["mzk", "nkp"],
+      "languages": ["ces"]}, {"skola", "skolni"}),
+])
+async def test_filtered_counts_describe_exactly_the_matching_documents(
+        api_client, seeded_store, collection_names, filters, matching):
+    await _add_filtered_documents(seeded_store, collection_names)
+    documents = {**{k: {"yearIssued": y, "language": "ces"} for k, y in FIXTURE_YEARS.items()}, **FILTERED}
+
+    response = await api_client.post(DISTRIBUTIONS, json={"filters": filters})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_documents"] == len(matching)
+    expected_years: dict[int, int] = {}
+    for key in matching:
+        year = documents[key].get("yearIssued")
+        if year is not None and float(year).is_integer():
+            expected_years[int(year)] = expected_years.get(int(year), 0) + 1
+    assert body["publication_year"]["years"] == [{"year": y, "count": n} for y, n in sorted(expected_years.items())]
+    assert body["publication_year"]["unknown_count"] == len(matching) - len([k for k in matching if
+                                                                             documents[k].get("yearIssued") is not None
+                                                                             and float(documents[k]["yearIssued"]).is_integer()])
+    # Stored values stay apart: the language chart of "ces" shows ces and CES.
+    expected_languages: dict[str, int] = {}
+    for key in matching:
+        expected_languages[documents[key]["language"]] = expected_languages.get(documents[key]["language"], 0) + 1
+    assert {v["value"]: v["count"] for v in body["languages"]["values"]} == expected_languages
+    for name in ("libraries", "languages"):
+        d = body[name]
+        assert sum(v["count"] for v in d["values"]) + d["other_count"] + d["unknown_count"] == len(matching)
+
+
+async def test_a_library_filter_on_a_store_without_libraries_is_rejected(api_client, seeded_store):
+    response = await api_client.post(DISTRIBUTIONS, json={"filters": {"libraries": ["mzk"]}})
+
+    assert response.status_code == 422
+    assert "cannot be filtered by library" in response.json()["detail"]
+    assert (await api_client.post(DISTRIBUTIONS, json={"filters": {"languages": ["ces"]}})).json()["total_documents"] == 3
+
+
+async def test_repository_filters_through_an_alias(seeded_store, collection_names):
+    alias = "AnalyticsFilterDocuments"
+    await seeded_store.alias.create(alias_name=alias, target_collection=collection_names.document_collection_name)
+    try:
+        names = collection_names.model_copy(update={"document_collection_name": alias})
+        repository = CorpusAnalyticsRepository(seeded_store, names)
+        counts = await repository.count_documents({"yearIssued": "number"}, group_limit=10,
+                                                  conditions=[NumberRange("yearIssued", minimum=1900)])
+        with pytest.raises(UnavailableFilter):
+            await repository.count_documents({}, group_limit=10, conditions=[AnyOf("library", ("mzk",))])
+    finally:
+        await seeded_store.alias.delete(alias_name=alias)
+
+    assert counts.total == 1  # letters 1902
+    assert counts.properties["yearIssued"] == ValueCounts(known=1, groups=[(1902.0, 1)], complete=True)

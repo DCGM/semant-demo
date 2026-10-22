@@ -86,7 +86,7 @@ semant_demo_backend/semant_demo/
     summarization/        routes, service (results summary, question), base and templated
                           (search summarizer), schemas (SummaryResponse)
     feedback/             app feedback: routes, service (feedback log, webhook), schemas
-    analytics/            corpus overview: routes, service (counting rules, overview cache), schemas
+    analytics/            corpus overview: routes, service (counting and filter rules, overview cache), schemas
     quota/                daily LLM allowances: principal (account or guest cookie), service
                           (status, admission, settlement), routes (GET /api/quota), schemas
   adapters/
@@ -233,7 +233,8 @@ but not change membership, metadata or sharing. Public corpus reads (`GET /api/d
 `/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`,
 `/api/documents/{id}/chunks/{chunk_id}/window` and `/adjacent` (a bounded passage around a
 chunk and its extension), search
-without collection and tags, the corpus overview `/api/analytics/corpus/overview`) need no login. RAG, `/api/summarize/results` and
+without collection and tags, the corpus overview `/api/analytics/corpus/overview` and
+`/api/analytics/corpus/distributions`) need no login. RAG, `/api/summarize/results` and
 `/api/question` are public too and call LLM providers with client-supplied text, within the
 caller's daily AI allowance (guest or account, [below](#daily-llm-allowances-featuresquota-adapterssqlquotapy)).
 
@@ -284,6 +285,37 @@ library (`Documents.library`) and per bibliographic language (`Documents.languag
 chunks' language). The response states its `scope` (`searchable_corpus`), `unit`
 (`documents`), `computed_at` and `data_source`; it carries counts, not chart specifications.
 
+`POST /api/analytics/corpus/distributions` (public, #361) returns the same counts for the
+documents matching optional metadata `filters`, with years per year (only years with
+documents, ascending; the page groups them into bins) and the filters it applied, normalized.
+The `/corpus` page uses it for every view, also the unfiltered one; `GET` stays for other
+clients.
+
+- **Filters.** All given filters must match (AND); several libraries or languages match any
+  of them (OR). One Weaviate filter is built once and applied to the total and to every
+  grouped aggregate, so all counts describe the same documents.
+  - `year_min`/`year_max`: whole years, inclusive, `1 ≤ min ≤ max ≤` the current year. A
+    document without a year never matches; one with a fractional year (possible in the
+    dev/test `number` schema, e.g. 1909.5) matches the numeric range but is counted as an
+    unknown or invalid year. The bound is sent as an integer for an `int` property
+    (production) and as a float for `number` (dev/test, #128).
+  - `title_contains`: up to 10 alternatives; a document matches any of them (e.g. `brno`,
+    `brna`). Each is split into words at anything but letters and digits, as Weaviate's
+    `word` tokenization does; one-letter words are ignored, at most 5 words and 100
+    characters, `*` and `?` are rejected. Each word becomes `like("*word*")` on
+    `Documents.title`, and all words of one alternative must match: each inside some title
+    word, in any order, ignoring case but not diacritics (`skola` does not match "Škola").
+    This relies on `word` tokenization of `title`, which production, the shared test store
+    and dev/test all use (confirmed on #128 from the 2026-10-22 schema snapshot).
+  - `libraries`/`languages`: at most 50 stored values each, compared with `equal`, which
+    follows the property's tokenization: `library` (`field` in production) matches exactly
+    apart from surrounding whitespace; `language` (`word`, in production too) matches by word,
+    ignoring case, so `ces` also matches `CES`. The language counts still list both stored values, so the
+    page shows what matched. An exact language filter needs `field` tokenization (#128).
+  - Invalid filters are rejected with 422 before the store is queried. So is a filter on a
+    property the store does not declare or cannot filter (e.g. `library` in the dev/test
+    schema): it is never answered with 0.
+
 - **Population.** Every object of `Documents`, as Search covers the whole public corpus;
   `Documents.public` is not used (#279). A future public-read policy must restrict the
   counting query itself, and the cache below must then be kept per scope. Documents without
@@ -294,7 +326,8 @@ chunks' language). The response states its `scope` (`searchable_corpus`), `unit`
   most 10,000 values). Missing values are `total - known` (the deployed collections do not
   index null state, so `is_none` filters fail), and empty or blank values count as unknown.
   Decades are `[start, start + 10)` and run without gaps from the earliest to the latest;
-  years that are not whole numbers from 1 to 9999 are unknown. Libraries and languages list
+  years that are not whole numbers from 1 to the current year are unknown or invalid (e.g.
+  2879, probably a typo). Libraries and languages list
   at most 50 values, with the remaining documents in `other_count`; stored values are
   returned unchanged (the page adds names but keeps the codes). For each available
   dimension, listed counts + `other_count` + `unknown_count` = `total_documents`; counts that
@@ -311,7 +344,11 @@ chunks' language). The response states its `scope` (`searchable_corpus`), `unit`
   again with `data_source: "cached_aggregation"` and the original `computed_at`; concurrent
   requests wait for one computation. Each backend process has its own cache; nothing is
   precomputed or stored, and a failure is not cached (an error response, never an empty
-  overview).
+  overview). The cache holds the unfiltered counts, which both endpoints serve; filtered
+  counts are always computed live. In the #361 query spike (Weaviate 1.40.1, 300,000
+  synthetic documents) a filtered request took 30–760 ms and grows with the number of
+  matching documents, not with the kind of filter: a filter matching most of the corpus is
+  the slow case, a short title word is not.
 
 #### RAG System
 
@@ -547,7 +584,7 @@ and `router/` the routes and sign-in guard.
 | `auth` | login/register/account dialogs, `userStore`, user search |
 | `quota` | the daily AI allowance: `quotaStore`, `useQuotaScope`, header indicator and near-limit/used-up banner ([above](#daily-llm-allowances-featuresquota-adapterssqlquotapy)) |
 | `feedback` | feedback page and its schema |
-| `analytics` | corpus overview page, its request (`useCorpusOverview`: abort on leave, retry, slow notice), rows/labels/chart specifications (`corpusOverview.ts`) |
+| `analytics` | corpus overview page, its filter form (`CorpusFilters`: years and titles applied by Apply/Enter, library and language at once; applied values are shown as grouped removable chips), the publication timeline (`PublicationTimeline`, `timeline.ts`: main range and outliers, zoom/pan/drag selection in the browser, bin width from the visible window, table with collapsed empty periods; only "Apply … as filter" changes the counted documents), its request (`useCorpusOverview`: filtered counts, abort on a newer request or on leave, retry, slow notice), rows/labels/filter chips/chart specifications (`corpusOverview.ts`) |
 
 The document view (`features/documents/viewer/`) is `DocumentViewLayout` (header; the tags,
 AI assist and document tools as panels of the app's right sidebar; loads the document,
@@ -564,7 +601,7 @@ behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 |---|---|---|
 | `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
 | `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations (`[S1]`...); the conversation's sources and one of them in its document in the right sidebar |
-| `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication decade, library and language, with tables and unknown/unavailable values (no sign-in) |
+| `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication year (zoomable timeline), library and language, with tables and unknown/unavailable values, filtered by year, title, library and language (no sign-in) |
 | `/collections` | `user_collections/UserCollectionsPage` | List user collections |
 | `/collections/:cid/overview` | `user_collections/CollectionOverviewPage` | Collection summary & stats |
 | `/collections/:cid/documents` | `user_collections/CollectionDocumentsPage` | Documents inside a collection |

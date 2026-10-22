@@ -9,10 +9,19 @@
       </p>
     </header>
 
+    <CorpusFilters
+      v-if="corpus"
+      :applied="filters"
+      :libraries="corpus.libraries"
+      :languages="corpus.languages"
+      :loading="loading"
+      @apply="load"
+    />
+
     <div v-if="error" class="corpus-overview__error" role="alert">
       <q-icon name="error" color="negative" size="24px" />
       <span>{{ error }}</span>
-      <q-btn outline color="primary" label="Retry" icon="refresh" :loading="loading" @click="load" />
+      <q-btn v-if="!invalid" outline color="primary" label="Retry" icon="refresh" :loading="loading" @click="retry" />
     </div>
 
     <div v-else-if="!overview" class="corpus-overview__loading" role="status" aria-live="polite">
@@ -21,51 +30,57 @@
     </div>
 
     <template v-else>
-      <section class="corpus-overview__summary" aria-label="Corpus summary">
+      <div v-if="loading" class="corpus-overview__updating" role="status" aria-live="polite">
+        <q-spinner size="20px" color="primary" />
+        <span>{{ slow ? 'Counting the matching documents takes longer than usual…' : 'Counting the matching documents…' }}</span>
+      </div>
+      <section class="corpus-overview__summary" :class="{ 'corpus-overview__summary--stale': loading }" aria-label="Corpus summary">
         <div class="summary-card">
-          <div class="summary-card__label">Documents in the corpus</div>
+          <div class="summary-card__label">{{ filtered ? 'Matching documents' : 'Documents in the corpus' }}</div>
           <div class="summary-card__value" data-testid="corpus-total">{{ formatCount(overview.totalDocuments) }}</div>
-        </div>
-        <div class="summary-card summary-card--freshness">
-          <div class="summary-card__label">Counted</div>
-          <div class="summary-card__text" data-testid="corpus-freshness">
-            {{ computedAtText }}
-            <span class="text-grey-7">({{ freshnessNote }})</span>
+          <div v-if="filtered && corpus" class="summary-card__text text-grey-7" data-testid="corpus-of-total">
+            of {{ formatCount(corpus.totalDocuments) }} documents in the corpus
           </div>
+        </div>
+        <div v-if="filtered" class="summary-card summary-card--filters" data-testid="corpus-applied">
+          <div class="summary-card__label">Filters: documents match every kind, and any of several values of one kind</div>
+          <div
+            v-for="group in groups" :key="group.key" class="summary-card__chips" :data-testid="`corpus-applied-${group.key}`"
+          >
+            <span class="summary-card__group">{{ group.label }}:</span>
+            <template v-for="(chip, i) in group.chips" :key="chip.value ?? chip.label">
+              <span v-if="i" class="text-grey-7">or</span>
+              <q-chip
+                removable dense color="blue-1" text-color="dark" :label="chip.label"
+                :remove-aria-label="`Remove filter ${group.label} ${chip.label}`"
+                @remove="load(withoutFilter(overview.filters, group.key, chip.value))"
+              />
+            </template>
+          </div>
+          <q-btn flat dense no-caps color="primary" label="Clear all" class="q-mt-xs" data-testid="corpus-clear-all" @click="load({})" />
         </div>
       </section>
 
-      <p v-if="overview.totalDocuments === 0" class="corpus-overview__empty" data-testid="corpus-empty">
+      <p v-if="overview.totalDocuments === 0 && filtered" class="corpus-overview__empty" data-testid="corpus-no-match">
+        No documents match these filters. Remove a filter or clear all of them to see more documents.
+      </p>
+
+      <p v-else-if="overview.totalDocuments === 0" class="corpus-overview__empty" data-testid="corpus-empty">
         The corpus holds no documents.
       </p>
 
-      <div v-else class="corpus-overview__grid">
+      <div v-else class="corpus-overview__grid" :class="{ 'corpus-overview__grid--stale': loading }" :aria-busy="loading">
         <q-card flat bordered class="dimension-card dimension-card--wide" data-testid="corpus-years">
           <q-card-section>
             <h2 class="dimension-card__title">Publication year</h2>
             <template v-if="overview.publicationYear.available">
               <p class="dimension-card__coverage">{{ coverageText(overview.publicationYear.unknownCount ?? 0, 'a publication year') }}</p>
-              <VegaChart
-                v-if="years.length"
-                :spec="yearSpec"
-                label="Bar chart of documents per publication decade; the table below lists the same counts."
+              <PublicationTimeline
+                v-if="overview.publicationYear.years?.length"
+                :distribution="overview.publicationYear"
+                @apply-period="applyPeriod"
               />
-              <q-expansion-item dense dense-toggle switch-toggle-side label="Table: documents per decade" class="dimension-card__table">
-                <q-markup-table flat dense separator="horizontal" class="count-table">
-                  <caption class="sr-only">Documents per publication decade</caption>
-                  <thead><tr><th scope="col" class="text-left">Decade</th><th scope="col" class="text-right">Documents</th></tr></thead>
-                  <tbody>
-                    <tr v-for="row in years" :key="row.start">
-                      <th scope="row" class="text-left text-weight-regular">{{ row.label }}</th>
-                      <td class="text-right">{{ formatCount(row.count) }}</td>
-                    </tr>
-                    <tr class="count-table__unknown">
-                      <th scope="row" class="text-left text-weight-regular">Unknown year</th>
-                      <td class="text-right">{{ formatCount(overview.publicationYear.unknownCount ?? 0) }}</td>
-                    </tr>
-                  </tbody>
-                </q-markup-table>
-              </q-expansion-item>
+              <p v-else class="dimension-card__note">No document of these has a valid publication year.</p>
             </template>
             <p v-else class="dimension-card__unavailable" role="note">{{ unavailableText('publication years') }}</p>
           </q-card-section>
@@ -117,26 +132,29 @@
 import { computed, onMounted } from 'vue'
 import type { CategoryDistribution } from 'src/generated/api'
 import VegaChart from 'src/shared/visualization/VegaChart.vue'
-import { categoryBarSpec, categoryRows, coverage, languageLabel, libraryLabel, yearHistogramSpec, yearRows } from './corpusOverview'
+import CorpusFilters from './CorpusFilters.vue'
+import PublicationTimeline from './PublicationTimeline.vue'
+import {
+  categoryBarSpec, categoryRows, coverage, filterGroups, isUnfiltered, languageLabel, libraryLabel, withoutFilter
+} from './corpusOverview'
+import type { YearWindow } from './timeline'
 import { useCorpusOverview } from './useCorpusOverview'
 
-const { overview, loading, slow, error, load } = useCorpusOverview()
+const { distributions: overview, corpus, filters, loading, slow, error, invalid, load, retry } = useCorpusOverview()
+
+/** The counts shown are of filtered documents (their own filters, not the ones being requested). */
+const filtered = computed(() => overview.value ? !isUnfiltered(overview.value.filters) : false)
+const groups = computed(() => overview.value ? filterGroups(overview.value.filters) : [])
 
 const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
 
 const total = computed(() => overview.value?.totalDocuments ?? 0)
 
-const computedAtText = computed(() => overview.value
-  ? overview.value.computedAt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-  : '')
-
-const freshnessNote = computed(() => overview.value?.dataSource === 'cached_aggregation'
-  ? 'a recent count, served again; recounted every few minutes'
-  : 'counted now')
-
-const years = computed(() => overview.value ? yearRows(overview.value.publicationYear) : [])
-const yearSpec = computed(() => yearHistogramSpec(years.value))
+/** Restricts the counted documents to a period of the timeline, keeping the other filters. */
+function applyPeriod (period: YearWindow) {
+  if (overview.value) void load({ ...overview.value.filters, yearMin: period.start, yearMax: period.end })
+}
 
 interface CategoryDimension {
   key: string
@@ -176,7 +194,7 @@ function unavailableText (subjectPlural: string): string {
     'so documents are not broken down by them (this is not a count of zero).'
 }
 
-onMounted(load)
+onMounted(() => load())
 </script>
 
 <style scoped lang="scss">
@@ -222,8 +240,35 @@ onMounted(load)
   min-width: 200px;
 }
 
-.summary-card--freshness {
-  flex: 1 1 280px;
+.summary-card--filters {
+  flex: 2 1 360px;
+}
+
+.summary-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.summary-card__group {
+  color: #4a5568;
+  margin-right: 2px;
+}
+
+.corpus-overview__updating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #4a5568;
+}
+
+.corpus-overview__summary--stale,
+.corpus-overview__grid--stale {
+  opacity: 0.55;
+  transition: opacity 0.2s;
 }
 
 .summary-card__label {

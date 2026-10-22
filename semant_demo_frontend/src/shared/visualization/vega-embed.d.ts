@@ -12,7 +12,12 @@ declare module 'vega-embed' {
     renderer?: 'svg' | 'canvas'
   }
 
+  export interface View {
+    addSignalListener (name: string, handler: (name: string, value: unknown) => void): View
+  }
+
   export interface Result {
+    view: View
     finalize (): void
   }
 

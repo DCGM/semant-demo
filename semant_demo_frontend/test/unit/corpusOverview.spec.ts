@@ -4,7 +4,8 @@ import { Quasar } from 'quasar'
 import { effectScope, nextTick } from 'vue'
 
 import {
-  categoryBarSpec, categoryRows, coverage, languageLabel, libraryLabel, yearHistogramSpec, yearRows
+  categoryBarSpec, categoryRows, coverage, decadeRows, filterChips, isUnfiltered, languageLabel, libraryLabel,
+  withoutFilter, yearHistogramSpec
 } from 'src/features/analytics/corpusOverview'
 import CorpusOverviewPage from 'src/features/analytics/CorpusOverviewPage.vue'
 import { SLOW_AFTER_MS, useCorpusOverview } from 'src/features/analytics/useCorpusOverview'
@@ -46,17 +47,19 @@ function resetEmbed () {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-/** The backend answer (snake_case) of a corpus with 10 documents. */
+const NO_FILTERS = { year_min: null, year_max: null, title_contains: null, libraries: [], languages: [] }
+
+/** The backend answer (snake_case) of a corpus with 10 documents, unfiltered unless `filters` is given. */
 const overviewBody = (changes: Record<string, unknown> = {}) => ({
   scope: 'searchable_corpus',
   unit: 'documents',
+  filters: NO_FILTERS,
   total_documents: 10,
   computed_at: '2026-10-15T12:00:00Z',
   data_source: 'live_aggregation',
   publication_year: {
     available: true,
-    bin_width_years: 10,
-    bins: [{ start: 1900, end_exclusive: 1910, count: 4 }, { start: 1910, end_exclusive: 1920, count: 3 }],
+    years: [{ year: 1905, count: 4 }, { year: 1910, count: 2 }, { year: 1919, count: 1 }],
     unknown_count: 3
   },
   libraries: { available: false, unavailable_reason: 'missing_property', values: null, other_count: null, unknown_count: null },
@@ -89,10 +92,30 @@ describe('corpus overview rows and labels', () => {
     expect(categoryRows({ available: false, unavailableReason: 'missing_property' }, libraryLabel)).toEqual([])
   })
 
-  it('labels decades by their first and last year', () => {
-    expect(yearRows({ available: true, bins: [{ start: 1900, endExclusive: 1910, count: 2 }] }))
-      .toEqual([{ start: 1900, endExclusive: 1910, label: '1900–1909', count: 2 }])
-    expect(yearRows({ available: false })).toEqual([])
+  it('groups years into decades labelled by their first and last year, keeping empty decades', () => {
+    expect(decadeRows({ available: true, years: [{ year: 1871, count: 1 }, { year: 1909, count: 2 }, { year: 1910, count: 3 }] }))
+      .toEqual([
+        { start: 1870, endExclusive: 1880, label: '1870–1879', count: 1 },
+        { start: 1880, endExclusive: 1890, label: '1880–1889', count: 0 },
+        { start: 1890, endExclusive: 1900, label: '1890–1899', count: 0 },
+        { start: 1900, endExclusive: 1910, label: '1900–1909', count: 2 },
+        { start: 1910, endExclusive: 1920, label: '1910–1919', count: 3 }
+      ])
+    expect(decadeRows({ available: true, years: [], unknownCount: 2 })).toEqual([])
+    expect(decadeRows({ available: false })).toEqual([])
+  })
+
+  it('names each applied filter and removes one of them', () => {
+    const filters = { yearMin: 1900, yearMax: 1920, titleContains: 'Pražský věstník', libraries: ['mzk', 'svkhk'], languages: ['ces'] }
+    expect(filterChips(filters).map(c => c.label)).toEqual([
+      'Years: 1900–1920', 'Title: Pražský věstník', 'Library: Moravian Library (mzk), svkhk', 'Language: Czech (ces)'
+    ])
+    expect(filterChips({ yearMin: 1909 }).map(c => c.label)).toEqual(['Years: from 1909'])
+    expect(filterChips({ yearMax: 1909 }).map(c => c.label)).toEqual(['Years: until 1909'])
+    expect(filterChips({ yearMin: 1909, yearMax: 1909 }).map(c => c.label)).toEqual(['Years: 1909'])
+    expect(withoutFilter(filters, 'years')).toEqual({ titleContains: 'Pražský věstník', libraries: ['mzk', 'svkhk'], languages: ['ces'] })
+    expect(isUnfiltered({ yearMin: null, yearMax: null, titleContains: null, libraries: [], languages: [] })).toBe(true)
+    expect(isUnfiltered(withoutFilter({ languages: ['ces'] }, 'languages'))).toBe(true)
   })
 
   it('computes coverage, also of an empty corpus', () => {
@@ -101,7 +124,7 @@ describe('corpus overview rows and labels', () => {
   })
 
   it('titles the chart axes and tooltips in documents', () => {
-    const histogram = JSON.stringify(yearHistogramSpec(yearRows(overviewBodyAsYears())))
+    const histogram = JSON.stringify(yearHistogramSpec(decadeRows({ available: true, years: [{ year: 1905, count: 4 }] })))
     const bars = JSON.stringify(categoryBarSpec(categoryRows({ available: true, values: [], otherCount: 0, unknownCount: 1 }, String), 'Language'))
     for (const spec of [histogram, bars]) {
       expect(spec).toContain('"title":"Documents"')
@@ -109,10 +132,6 @@ describe('corpus overview rows and labels', () => {
     }
   })
 })
-
-function overviewBodyAsYears () {
-  return { available: true, bins: [{ start: 1900, endExclusive: 1910, count: 4 }] }
-}
 
 describe('VegaChart', () => {
   beforeEach(resetEmbed)
@@ -231,16 +250,17 @@ describe('VegaChart', () => {
 })
 
 describe('CorpusOverviewPage', () => {
-  let requests: { signal?: AbortSignal | null, answer: (body: unknown, status?: number) => void }[]
+  let requests: { signal?: AbortSignal | null, body: unknown, answer: (body: unknown, status?: number) => void }[]
 
   beforeEach(() => {
     resetEmbed()
     requests = []
     globalThis.fetch = vi.fn((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => new Promise<Response>((resolve, reject) => {
-      expect(String(input)).toContain('/api/analytics/corpus/overview')
+      expect(String(input)).toContain('/api/analytics/corpus/distributions')
       init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
       requests.push({
         signal: init?.signal,
+        body: JSON.parse(String(init?.body)),
         answer: (body, status = 200) => resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
       })
     })) as typeof fetch
@@ -278,7 +298,7 @@ describe('CorpusOverviewPage', () => {
     expect(wrapper.findAll('button').map(b => b.text())).not.toContain(expect.stringContaining('Reload'))
     const years = wrapper.get('[data-testid="corpus-years"]')
     expect(years.text()).toContain('7 of 10 documents (70 %) have a publication year; 3 unknown.')
-    expect(tableText(wrapper, 'corpus-years')).toEqual([['1900–1909', '4'], ['1910–1919', '3'], ['Unknown year', '3']])
+    expect(tableText(wrapper, 'corpus-years')).toEqual([['1900–1909', '4'], ['1910–1919', '3'], ['Unknown or invalid year', '3']])
     const languages = wrapper.get('[data-testid="corpus-languages"]')
     expect(languages.text()).toContain('8 of 10 documents (80 %) have a language; 2 unknown.')
     expect(tableText(wrapper, 'corpus-languages')).toEqual([
@@ -312,7 +332,7 @@ describe('CorpusOverviewPage', () => {
     const wrapper = await openPage()
     requests[0].answer(overviewBody({
       total_documents: 0,
-      publication_year: { available: true, bin_width_years: 10, bins: [], unknown_count: 0 },
+      publication_year: { available: true, years: [], unknown_count: 0 },
       languages: { available: true, values: [], other_count: 0, unknown_count: 0 }
     }))
     await flushPromises()
@@ -359,6 +379,123 @@ describe('CorpusOverviewPage', () => {
     expect(request.signal?.aborted).toBe(true)
   })
 
+  /** The page with its whole-corpus counts loaded (filter choices from `changes`). */
+  async function loadedPage (changes: Record<string, unknown> = {}) {
+    const wrapper = await openPage()
+    requests[0].answer(overviewBody(changes))
+    await flushPromises()
+    await flush()
+    return wrapper
+  }
+
+  const button = (wrapper: ReturnType<typeof mountPage>, text: string) => wrapper.findAll('button').find(b => b.text().includes(text))!
+
+  const filtered = { year_min: 1900, year_max: 1920, title_contains: 'Pražský věstník', libraries: [], languages: ['ces'] }
+
+  it('sends no filters first and offers the whole corpus as filter choices', async () => {
+    const wrapper = await loadedPage({
+      libraries: { available: true, values: [{ value: 'mzk', count: 6 }], other_count: 0, unknown_count: 4 }
+    })
+
+    expect(requests[0].body).toEqual({ filters: {} })
+    const panel = wrapper.get('[data-testid="corpus-filters"]')
+    expect(panel.text()).toContain('ignores case, not diacritics (skola ≠ škola)')
+    expect(panel.text()).toContain('Matches language values by word, ignoring case')
+    expect(wrapper.get('[data-testid="corpus-total"]').text()).toBe('10')
+    expect(wrapper.find('[data-testid="corpus-applied"]').exists()).toBe(false)
+  })
+
+  it('disables the library filter when the corpus does not record libraries', async () => {
+    const wrapper = await loadedPage()
+
+    // Quasar puts the test id on the field's inner element.
+    const libraries = wrapper.get('[data-testid="filter-libraries"]').element.closest('.q-field')!
+    expect(libraries.classList.contains('q-field--disabled')).toBe(true)
+    expect(libraries.textContent).toContain('does not record libraries')
+  })
+
+  it('applies the filters and shows the matching documents with their filters', async () => {
+    const wrapper = await loadedPage()
+    await wrapper.get('[data-testid="filter-year-min"]').setValue('1900')
+    await wrapper.get('[data-testid="filter-year-max"]').setValue('1920')
+    await wrapper.get('[data-testid="filter-title"]').setValue('  Pražský: věstník ')
+    await wrapper.get('form').trigger('submit')
+    await flush()
+
+    expect(requests[1].body).toEqual({ filters: { year_min: 1900, year_max: 1920, title_contains: 'Pražský: věstník' } })
+    expect(wrapper.text()).toContain('Counting the matching documents')
+    requests[1].answer(overviewBody({ filters: filtered, total_documents: 4 }))
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Counting the matching documents')
+    expect(wrapper.text()).toContain('Matching documents')
+    expect(wrapper.get('[data-testid="corpus-total"]').text()).toBe('4')
+    expect(wrapper.get('[data-testid="corpus-of-total"]').text()).toBe('of 10 documents in the corpus')
+    // The filters of the counts shown, as the server applied them.
+    expect(wrapper.get('[data-testid="corpus-applied"]').findAll('.q-chip').map(c => c.text())).toEqual([
+      expect.stringContaining('Years: 1900–1920'), expect.stringContaining('Title: Pražský věstník'),
+      expect.stringContaining('Language: Czech (ces)')
+    ])
+  })
+
+  it('removes one filter from its chip and all of them with Clear all', async () => {
+    const wrapper = await loadedPage()
+    await wrapper.get('form').trigger('submit')
+    await flush()
+    requests[1].answer(overviewBody({ filters: filtered, total_documents: 4 }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="corpus-applied"] .q-chip .q-chip__icon--remove').trigger('click')
+    await flush()
+    expect(requests[2].body).toEqual({ filters: { title_contains: 'Pražský věstník', libraries: [], languages: ['ces'] } })
+    requests[2].answer(overviewBody({ filters: { ...filtered, year_min: null, year_max: null }, total_documents: 5 }))
+    await flushPromises()
+    // The form shows the filters requested now.
+    expect((wrapper.get('[data-testid="filter-year-min"]').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.get('[data-testid="filter-title"]').element as HTMLInputElement).value).toBe('Pražský věstník')
+
+    await wrapper.get('[data-testid="corpus-clear-all"]').trigger('click')
+    await flush()
+    expect(requests[3].body).toEqual({ filters: {} })
+    requests[3].answer(overviewBody())
+    await flushPromises()
+    expect(wrapper.text()).toContain('Documents in the corpus')
+    expect(wrapper.find('[data-testid="corpus-applied"]').exists()).toBe(false)
+  })
+
+  it('tells no matching documents apart from an empty corpus', async () => {
+    const wrapper = await loadedPage()
+    await wrapper.get('form').trigger('submit')
+    await flush()
+    requests[1].answer(overviewBody({
+      filters: { ...NO_FILTERS, title_contains: 'zzz' },
+      total_documents: 0,
+      publication_year: { available: true, years: [], unknown_count: 0 },
+      languages: { available: true, values: [], other_count: 0, unknown_count: 0 }
+    }))
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="corpus-no-match"]').text()).toContain('No documents match these filters')
+    expect(wrapper.find('[data-testid="corpus-empty"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="corpus-of-total"]').text()).toBe('of 10 documents in the corpus')
+  })
+
+  it('shows a refused filter without Retry and keeps the filters editable', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const wrapper = await loadedPage()
+    await wrapper.get('[data-testid="filter-title"]').setValue('a')
+    await wrapper.get('form').trigger('submit')
+    await flush()
+    requests[1].answer({ detail: [{ loc: ['body', 'filters', 'title_contains'], msg: 'Enter at least one title word of two or more letters or digits.' }] }, 422)
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('Enter at least one title word')
+    expect(button(wrapper, 'Retry')).toBeUndefined()
+    expect(wrapper.find('[data-testid="corpus-total"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="corpus-filters"]').exists()).toBe(true)
+    expect((wrapper.get('[data-testid="filter-title"]').element as HTMLInputElement).value).toBe('a')
+  })
+
   it('ignores the answer of a request replaced by a newer one', async () => {
     const scope = effectScope()
     const state = scope.run(() => useCorpusOverview())!
@@ -371,7 +508,7 @@ describe('CorpusOverviewPage', () => {
     requests[1].answer(overviewBody({ total_documents: 12 }))
     requests[0].answer(overviewBody({ total_documents: 11 }))
     await Promise.all([first, second])
-    expect(state.overview.value?.totalDocuments).toBe(12)
+    expect(state.distributions.value?.totalDocuments).toBe(12)
     expect(state.loading.value).toBe(false)
 
     const third = state.load()
