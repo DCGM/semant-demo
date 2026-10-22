@@ -180,6 +180,17 @@ function clear () {
   align-items: start;
 }
 
+// Quasar keeps one line under a field for its hint or error; these hints wrap to several lines,
+// so they take their own space instead of running into the field below.
+.corpus-filters__fields :deep(.q-field--with-bottom) {
+  padding-bottom: 0;
+}
+
+.corpus-filters__fields :deep(.q-field__bottom) {
+  position: static;
+  transform: none;
+}
+
 .corpus-filters__years {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
