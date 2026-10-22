@@ -55,7 +55,7 @@ from semant_demo.adapters.topicer.client import (
     TopicerClient, TopicerError, TopicerStreamSummary, TopicerTag, TopicerUsage,
 )
 from semant_demo.adapters.weaviate.writes import step_failure
-from semant_demo.core.errors import InvalidRequestError, NotFoundError
+from semant_demo.core.errors import InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.derivation import DocumentText
 from semant_demo.features.annotations.offsets import code_point_offset, text_length, utf16_offset
@@ -449,6 +449,25 @@ async def _authorized_tags(store: AnnotationStore, user: Principal | None, colle
     return grant.collection_id, document, tags
 
 
+async def provider_for(provider: TopicerClient, config_name: str | None) -> TopicerClient:
+    """``provider`` with the Topicer configuration a request named (#189).
+
+    ``None`` or the default is ``provider`` itself, without asking Topicer. Another name
+    must be one Topicer lists as loaded (``InvalidRequestError`` otherwise), so an unknown
+    name never reaches a proposal call; ``ServiceUnavailableError`` when the list cannot
+    be read.
+    """
+    if config_name is None or config_name == provider.config_name:
+        return provider
+    try:
+        configs = await provider.list_configs()
+    except TopicerError as e:
+        raise ServiceUnavailableError("The list of AI models is unavailable") from e
+    if config_name not in configs:
+        raise InvalidRequestError("Unknown AI model")
+    return provider.with_config(config_name)
+
+
 # ── Whole document (thorough / optimized) ──────────────────────────────────
 
 
@@ -471,6 +490,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
     """
     collection_id, document_id, tags = await _authorized_tags(
         store, user, request.collection_id, request.document_id, request.tag_ids)
+    provider = await provider_for(provider, request.config_name)
     chunks = await store.collections.read_all_chunks_by_document(document_id, collection_id)
     allowed = {t.id for t in tags}
     description = f"{mode}, collection {collection_id}, document {document_id}"
@@ -665,6 +685,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
         chunks.append(chunk)
     if len(chunk_ids) != len(request.chunk_ids) or any(b.order <= a.order for a, b in zip(chunks, chunks[1:])):
         raise InvalidRequestError("chunk_ids must be distinct chunks in document order")
+    provider = await provider_for(provider, request.config_name)
 
     concatenation = "".join(c.text for c in chunks)
     starts = [0]

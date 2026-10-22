@@ -167,6 +167,25 @@ describe('useAiAssistance', () => {
     expect(ai.lastSelectionError.value).toBeNull()
   })
 
+  it('names the chosen model in document and selection requests only when one is chosen', async () => {
+    const ai = useAiAssistance()
+    const bodies = () => vi.mocked(globalThis.fetch).mock.calls.map(([, init]) => JSON.parse(String(init?.body)))
+    for (const configName of [undefined, null, 'crossbert']) {
+      const running = ai.run({ ...request('d1'), configName })
+      await flush()
+      streams[streams.length - 1].close()
+      await running
+    }
+    const selection = ai.runOnSelection({
+      collectionId: 'c', documentId: 'd1', chunkIds: ['x'], selectionStart: 0, selectionEnd: 3, tagIds: ['t'], configName: 'crossbert'
+    })
+    await flush()
+    streams[streams.length - 1].close()
+    await selection
+
+    expect(bodies().map((b) => b.config_name)).toEqual([undefined, undefined, 'crossbert', 'crossbert'])
+  })
+
   it('reports a cancelled run without an error', async () => {
     const ai = useAiAssistance()
     const running = ai.run(request('d1'))

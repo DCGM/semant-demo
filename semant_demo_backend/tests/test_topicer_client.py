@@ -168,3 +168,40 @@ def _answer_stream(lines):
     text = "".join(json.dumps(line) + "\n" for line in lines)
     return _client(lambda request: httpx.Response(200, text=text)).propose_for_db_stream(
         tag=TAG, collection_id="col", document_id="doc")
+
+
+# ── Configurations (#189) ──────────────────────────────────────────────────
+
+
+async def test_configs_are_listed():
+    client = _client(lambda request: httpx.Response(200, json=["llm-openrouter", "crossbert"]))
+
+    assert await client.list_configs() == ["llm-openrouter", "crossbert"]
+
+
+@pytest.mark.parametrize("handler", [
+    _failing(503), _unreachable, lambda request: httpx.Response(200, json={"configs": []}),
+    lambda request: httpx.Response(200, json=["ok", 1]), lambda request: httpx.Response(200, text="not json"),
+])
+async def test_an_unusable_config_list_raises(handler, caplog):
+    with pytest.raises(TopicerError):
+        await _client(handler).list_configs()
+
+    assert SECRET not in _logged(caplog)
+
+
+async def test_another_config_keeps_the_other_settings():
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.params["config_name"])
+        return httpx.Response(200, json={"tag_span_proposals": []})
+    client = TopicerClient("http://topicer", "default", 5.0, max_chunks_per_tag=7,
+                           transport=httpx.MockTransport(handler))
+
+    other = client.with_config("other")
+    await other.propose_for_text(chunk_id="c", text="x", tags=[TAG])
+
+    assert seen == ["other"] and client.config_name == "default"
+    assert (other.base_url, other.timeout, other.max_chunks_per_tag, other.transport) == (
+        client.base_url, client.timeout, client.max_chunks_per_tag, client.transport)

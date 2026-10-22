@@ -83,3 +83,27 @@ test('a run that may evaluate more than 50 chunks asks first, and Cancel starts 
   await expect(page.getByRole('button', { name: 'Run AI' })).toBeVisible()
   await expect(page.getByText('Processed', { exact: false })).toHaveCount(0)
 })
+
+test('the model picked in the panel is used and remembered (#189)', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI assist').click()
+
+  // The fake Topicer lists llm-openrouter (the backend default) and fake-local.
+  const picker = page.getByTestId('ai-model-select')
+  await expect(picker).toContainText('llm-openrouter (default)')
+  await picker.click()
+  await page.getByRole('option', { name: 'fake-local' }).click()
+  await expect(picker).toContainText('fake-local')
+
+  const sent = page.waitForRequest('**/api/ai/suggest_spans/optimized')
+  await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
+  await page.getByRole('button', { name: 'Run AI' }).click()
+  expect((await sent).postDataJSON().config_name).toBe('fake-local')
+  await expect(suggestionCards(page)).toHaveCount(1)
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  await page.reload()
+  await sidebarPanelButton(page, 'AI assist').click()
+  await expect(page.getByTestId('ai-model-select')).toContainText('fake-local')
+})

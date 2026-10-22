@@ -15,7 +15,9 @@ vi.mock('src/features/annotations/useTagsRepository', () => ({
 vi.mock('src/features/annotations/useTagSpansRepository', () => ({ useTagSpansRepository: () => ({}) }))
 vi.mock('src/shared/api', async () => ({
   ...(await vi.importActual<typeof import('src/shared/api')>('src/shared/api')),
-  useApi: () => ({ default: {} })
+  useApi: () => ({
+    default: { getTopicerConfigsApiAiTopicerConfigsGet: async () => ({ configs: ['llm'], defaultConfig: 'llm' }) }
+  })
 }))
 
 // The drawer keeps both panels alive across tab switches (keep-alive), so they reset

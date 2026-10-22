@@ -6,6 +6,7 @@ Topicer exposes:
 - ``POST /v1/tags/propose/texts`` — propose tag spans for a single provided text chunk.
 - ``POST /v1/tags/propose/db/stream`` — propose tag spans for chunks stored in
   the database, streaming NDJSON results as each chunk completes.
+- ``GET /v1/configs`` — the names of the configurations Topicer has loaded (#189).
 
 Proposals are returned as Topicer sends them (``tag_span_proposals`` dicts with ``tag``,
 ``span_start``, ``span_end``, ``reason``, ``confidence``); validating them against the
@@ -169,9 +170,28 @@ class TopicerClient:
         self.max_chunks_per_tag = max_chunks_per_tag
         self.transport = transport
 
+    def with_config(self, config_name: str) -> "TopicerClient":
+        """The same Topicer and settings with another of its configurations (#189)."""
+        return TopicerClient(self.base_url, config_name, self.timeout, self.max_chunks_per_tag, self.transport)
+
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=self.base_url, timeout=httpx.Timeout(self.timeout, connect=10.0),
                                  transport=self.transport)
+
+    async def list_configs(self) -> list[str]:
+        """Call ``GET /v1/configs``: the names of the configurations Topicer has loaded."""
+        path = "/v1/configs"
+        try:
+            async with self._client() as client:
+                resp = await client.get(path)
+                resp.raise_for_status()
+                data = resp.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Topicer GET %s failed: %s", path, _failure(e))
+            raise _error(e) from e
+        if not isinstance(data, list) or not all(isinstance(name, str) for name in data):
+            raise TopicerError("configs is not a list of names")
+        return data
 
     async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag]) -> TopicerProposals:
         """

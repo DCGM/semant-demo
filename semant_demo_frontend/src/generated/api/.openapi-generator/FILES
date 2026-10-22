@@ -93,6 +93,7 @@ docs/TagSpan.md
 docs/TagSpanBatchRequest.md
 docs/TagSpanWriteResult.md
 docs/TextStatus.md
+docs/TopicerConfigsResponse.md
 docs/Url.md
 docs/UserCreate.md
 docs/UserRead.md
@@ -195,6 +196,7 @@ models/TagSpan.ts
 models/TagSpanBatchRequest.ts
 models/TagSpanWriteResult.ts
 models/TextStatus.ts
+models/TopicerConfigsResponse.ts
 models/Url.ts
 models/UserCreate.ts
 models/UserRead.ts

@@ -7,7 +7,7 @@ from semant_demo.bootstrap import AppResources, WeaviateConnector
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
 from semant_demo.adapters.llm.gateway import limit_provider_sdk_logs
-from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
+from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.quota.guest_cookie import GuestCookieMiddleware
 from semant_demo.features.quota.service import QuotaExhausted, utc_now
 from semant_demo.features.user_collections.access import AccessDenied, AuthenticationRequired
@@ -89,7 +89,7 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     # Raised by collection access checks (features/user_collections/access.py, its
     # ResourceNotFound is a NotFoundError) and by repositories/services (core/errors.py).
     for exc_type, status_code in ((AuthenticationRequired, 401), (NotFoundError, 404), (AccessDenied, 403),
-                                  (InvalidRequestError, 400)):
+                                  (InvalidRequestError, 400), (ServiceUnavailableError, 503)):
         app.add_exception_handler(exc_type, _detail_handler(status_code))
 
     # A multi-step write that stopped part way: completed steps are kept (ADR 0002).

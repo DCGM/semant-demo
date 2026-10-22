@@ -14,6 +14,22 @@
       :disable="aiAssist.isRunning.value"
     />
 
+    <template v-if="topicerConfigs.length">
+      <div class="ai-section-label">Model</div>
+      <q-select
+        v-model="selectedTopicerConfig"
+        :options="topicerConfigOptions"
+        emit-value
+        map-options
+        dense
+        outlined
+        options-dense
+        class="q-mb-sm"
+        data-testid="ai-model-select"
+        :disable="aiAssist.isRunning.value"
+      />
+    </template>
+
     <div class="ai-section-label">
       Tags
       <span class="text-caption text-grey-6 q-ml-xs">({{ selectedAiTagIds.length }}/{{ tags.length }})</span>
@@ -298,7 +314,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
@@ -309,6 +325,7 @@ import useAiAssistance, {
   largeRunWarning, resolveAutoSpanFailure, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode
 } from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
+import { useTopicerModel } from './topicerModel'
 import useTagSpans from './useTagSpans'
 
 // AI annotation suggestions for a document: runs over the selected tags, the pending
@@ -330,6 +347,13 @@ const aiModeOptions = [
   { label: 'Optimized (vector pre-filtering)', value: 'optimized' },
   { label: 'Thorough (every chunk in collection)', value: 'thorough' }
 ]
+const topicerModel = useTopicerModel()
+const { configs: topicerConfigs, selected: selectedTopicerConfig } = topicerModel
+const topicerConfigOptions = computed(() => topicerConfigs.value.map((name) => ({
+  label: name === topicerModel.defaultConfig.value ? `${name} (default)` : name,
+  value: name
+})))
+onMounted(() => { void topicerModel.load() })
 const selectedAiTagIds = ref<string[]>([])
 const isPreparingRun = ref(false)
 const busyAutoSpanIds = ref<Set<string>>(new Set())
@@ -428,7 +452,8 @@ async function onRunAi() {
     collectionId: props.collectionId,
     documentId: props.documentId,
     tagIds: [...selectedAiTagIds.value],
-    mode: aiMode.value
+    mode: aiMode.value,
+    configName: topicerModel.chosenConfigName()
   }
   isPreparingRun.value = true
   let confirmed = false

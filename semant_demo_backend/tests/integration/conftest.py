@@ -25,7 +25,7 @@ from semant_demo.routes.dependencies import get_topicer
 from tests.app_support import make_test_config
 from tests.auth_support import auth_headers
 from tests.corpus import load_corpus
-from tests.fake_providers import create_fake_provider_app
+from tests.fake_providers import FAKE_TOPICER_CONFIGS, create_fake_provider_app
 from tests.seed import seed_users, seed_weaviate
 from tests.weaviate_store import StoreEndpoint, connect, reset_app_collections
 
@@ -138,7 +138,7 @@ def use_topicer(api_app):
     def install(provider_app) -> list[str]:
         calls: list[str] = []
         transport = RecordingTransport(ASGITransport(app=provider_app), calls)
-        client = TopicerClient("http://fake-topicer", "test", 30.0, transport=transport)
+        client = TopicerClient("http://fake-topicer", FAKE_TOPICER_CONFIGS[0], 30.0, transport=transport)
         api_app.dependency_overrides[get_topicer] = lambda: client
         return calls
     return install

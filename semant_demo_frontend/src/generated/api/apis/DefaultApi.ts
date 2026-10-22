@@ -73,6 +73,7 @@ import type {
   TagSpan,
   TagSpanBatchRequest,
   TagSpanWriteResult,
+  TopicerConfigsResponse,
   UserSearchResult,
   WriteResult,
 } from '../models/index';
@@ -193,6 +194,8 @@ import {
     TagSpanBatchRequestToJSON,
     TagSpanWriteResultFromJSON,
     TagSpanWriteResultToJSON,
+    TopicerConfigsResponseFromJSON,
+    TopicerConfigsResponseToJSON,
     UserSearchResultFromJSON,
     UserSearchResultToJSON,
     WriteResultFromJSON,
@@ -1298,6 +1301,28 @@ export interface DefaultApiInterface {
      * Get Tag
      */
     getTagApiTagsTagUuidGet(requestParameters: GetTagApiTagsTagUuidGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag>;
+
+    /**
+     * Creates request options for getTopicerConfigsApiAiTopicerConfigsGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getTopicerConfigsApiAiTopicerConfigsGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * The Topicer configurations (AI models) that suggestion requests may name in ``config_name``, as Topicer lists them, and the server default. 503 when Topicer cannot be asked.
+     * @summary Get Topicer Configs
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getTopicerConfigsApiAiTopicerConfigsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TopicerConfigsResponse>>;
+
+    /**
+     * The Topicer configurations (AI models) that suggestion requests may name in ``config_name``, as Topicer lists them, and the server default. 503 when Topicer cannot be asked.
+     * Get Topicer Configs
+     */
+    getTopicerConfigsApiAiTopicerConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TopicerConfigsResponse>;
 
     /**
      * Creates request options for healthHealthGet without sending the request
@@ -3851,6 +3876,50 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async getTagApiTagsTagUuidGet(requestParameters: GetTagApiTagsTagUuidGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Tag> {
         const response = await this.getTagApiTagsTagUuidGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getTopicerConfigsApiAiTopicerConfigsGet without sending the request
+     */
+    async getTopicerConfigsApiAiTopicerConfigsGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/ai/topicer_configs`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * The Topicer configurations (AI models) that suggestion requests may name in ``config_name``, as Topicer lists them, and the server default. 503 when Topicer cannot be asked.
+     * Get Topicer Configs
+     */
+    async getTopicerConfigsApiAiTopicerConfigsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TopicerConfigsResponse>> {
+        const requestOptions = await this.getTopicerConfigsApiAiTopicerConfigsGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TopicerConfigsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * The Topicer configurations (AI models) that suggestion requests may name in ``config_name``, as Topicer lists them, and the server default. 503 when Topicer cannot be asked.
+     * Get Topicer Configs
+     */
+    async getTopicerConfigsApiAiTopicerConfigsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TopicerConfigsResponse> {
+        const response = await this.getTopicerConfigsApiAiTopicerConfigsGetRaw(initOverrides);
         return await response.value();
     }
 

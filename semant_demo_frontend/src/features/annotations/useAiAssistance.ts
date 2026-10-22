@@ -28,6 +28,8 @@ export interface AiAssistanceRequest {
   documentId: string
   tagIds: string[]
   mode: AiAssistanceMode
+  /** The Topicer configuration to use (#189); unset or null: the server default. */
+  configName?: string | null
 }
 
 export interface AiAssistanceChunkEvent {
@@ -309,7 +311,8 @@ export function useAiAssistance() {
       const end = await streamSuggestions(path, {
         collection_id: req.collectionId,
         document_id: req.documentId,
-        tag_ids: req.tagIds
+        tag_ids: req.tagIds,
+        ...(req.configName ? { config_name: req.configName } : {})
       }, abort.signal, isCurrent, (parsed) => {
         const event: AiAssistanceChunkEvent = {
           chunkId: parsed.chunk_id || '',
@@ -383,6 +386,7 @@ export function useAiAssistance() {
     selectionStart: number
     selectionEnd: number
     tagIds: string[]
+    configName?: string | null
   }): Promise<TagSpan[] | null> => {
     if (!req.tagIds.length) {
       lastSelectionError.value = 'No tags selected for AI suggestion.'
@@ -414,7 +418,8 @@ export function useAiAssistance() {
         chunk_ids: req.chunkIds,
         selection_start: req.selectionStart,
         selection_end: req.selectionEnd,
-        tag_ids: req.tagIds
+        tag_ids: req.tagIds,
+        ...(req.configName ? { config_name: req.configName } : {})
       }, abort.signal, isCurrent, (parsed) => {
         if (parsed.error) {
           lastSelectionError.value = parsed.error
