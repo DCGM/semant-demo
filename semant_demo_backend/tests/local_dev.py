@@ -10,6 +10,8 @@ the one listening on the configured port. From ``semant_demo_backend``::
     python -m tests.local_dev status           what the stores hold (read-only)
     python -m tests.local_dev verify           compare the stores with the seeded corpus (read-only)
     python -m tests.local_dev reset [--yes]    show what would be destroyed; with --yes drop it and reseed
+    python -m tests.local_dev add-documents --count N [--no-outliers]
+                                               add synthetic metadata-only documents (tests/synthetic_documents.py)
     python -m tests.local_dev environ          shell exports of the backend settings
     python -m tests.local_dev providers        serve the fake AI providers
 
@@ -405,6 +407,7 @@ async def verify(client, profile: Profile) -> list[str]:
     identities and ownership, not every property."""
     from semant_demo.config import Config
     from tests.corpus import load_corpus
+    from tests.synthetic_documents import is_synthetic
 
     corpus, names = load_corpus(), Config(environ={}).collectionNames
     problems: list[str] = []
@@ -424,8 +427,10 @@ async def verify(client, profile: Profile) -> list[str]:
         for c in corpus.collections.values()})
     compare("tags", await _ids(client.collections.get(names.tag_collection_name)),
             {t["id"] for t in corpus.tags.values()})
-    compare("documents", await _ids(client.collections.get(names.document_collection_name)),
-            {d["id"] for d in corpus.documents.values()})
+    stored_documents = await _ids(client.collections.get(names.document_collection_name))
+    compare("documents", {i for i in stored_documents if not is_synthetic(i)}, {d["id"] for d in corpus.documents.values()})
+    if synthetic := sum(map(is_synthetic, stored_documents)):
+        problems.append(f"documents: {synthetic} synthetic documents added (make dev-add-documents)")
     compare("chunks", await _ids(client.collections.get(names.chunks_collection_name)),
             {c["id"] for c in corpus.chunks.values()})
     annotations = client.collections.get(names.annotation_collection_name)
@@ -492,6 +497,64 @@ async def cmd_reset(profile: Profile, yes: bool) -> int:
         await client.close()
 
 
+ADD_BATCH_SIZE = 1000
+
+
+async def add_documents(client, count: int, outliers: bool) -> int:
+    """Insert the synthetic documents that are not stored yet and return how many were added.
+    Declares ``Documents.library`` first when the store lacks it, as production has it
+    (``field`` tokenization). Batches are written one after another: a failure keeps the
+    earlier ones, and running again adds the rest."""
+    from weaviate.classes.data import DataObject
+    from weaviate.classes.query import Filter
+
+    from semant_demo.adapters.weaviate.document_metadata import add_text_property
+    from semant_demo.config import Config
+    from tests.synthetic_documents import synthetic_documents
+
+    names = Config(environ={}).collectionNames
+    documents = client.collections.get(names.document_collection_name)
+    if "library" not in {p.name for p in (await documents.config.get()).properties}:
+        await add_text_property(client, names, "library")
+        _say("declared Documents.library (text, field tokenization)")
+    pending = list(synthetic_documents(count, outliers))
+    added = 0
+    for start in range(0, len(pending), ADD_BATCH_SIZE):
+        batch = pending[start:start + ADD_BATCH_SIZE]
+        stored = await documents.query.fetch_objects(
+            filters=Filter.by_id().contains_any([uuid for uuid, _ in batch]), limit=len(batch), return_properties=[])
+        existing = {o.uuid for o in stored.objects}
+        new = [DataObject(uuid=uuid, properties=properties) for uuid, properties in batch if uuid not in existing]
+        if new:
+            result = await documents.data.insert_many(new)
+            if result.has_errors:
+                raise RuntimeError(f"Adding documents failed after {added} were added (running again adds the "
+                                   f"rest): {list(result.errors.values())[:3]}")
+            added += len(new)
+        if len(pending) > 10 * ADD_BATCH_SIZE and (start // ADD_BATCH_SIZE) % 10 == 9:
+            _say(f"{start + len(batch)} of {len(pending)} documents checked, {added} added")
+    return added
+
+
+async def cmd_add_documents(profile: Profile, count: int, outliers: bool) -> int:
+    client = await connect(profile)
+    try:
+        state = await weaviate_state(client)
+        if problem := pairing_refusal(state, sqlite_token(profile.sqlite_path), profile.sqlite_path):
+            raise Refused(problem)
+        if not state.owned:
+            raise Refused("The development stores are not initialized (make dev-up).")
+        _require_ready(state)
+        requested = count + (2 if outliers else 0)
+        added = await add_documents(client, count, outliers)
+    finally:
+        await client.close()
+    _say(f"added {added} synthetic documents ({requested - added} of the {requested} requested were already "
+         "stored); make dev-reset removes them. A running backend serves its cached corpus overview for up to "
+         "CORPUS_OVERVIEW_MAX_AGE seconds (default 600); restart make dev-backend to see them at once.")
+    return 0
+
+
 def cmd_environ(profile: Profile) -> int:
     for key, value in backend_environ(profile).items():
         print(f"export {key}={shlex.quote(value)}")
@@ -517,7 +580,14 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_parser(name)
     reset = sub.add_parser("reset")
     reset.add_argument("--yes", action="store_true", help="drop the data and reseed (otherwise a dry run)")
+    add = sub.add_parser("add-documents")
+    add.add_argument("--count", type=int, required=True, help="synthetic documents to have in the store")
+    add.add_argument("--no-outliers", action="store_true", help="omit the documents from the years 311 and 2879")
     args = parser.parse_args(argv)
+    if args.command == "add-documents":
+        from tests.synthetic_documents import MAX_COUNT
+        if not 0 <= args.count <= MAX_COUNT:
+            parser.error(f"--count must be between 0 and {MAX_COUNT}")
     from tests.weaviate_store import StoreUnavailable
 
     profile = Profile.from_env()
@@ -530,6 +600,8 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(cmd_init(profile, initialize_empty=False))
         if args.command == "reset":
             return asyncio.run(cmd_reset(profile, args.yes))
+        if args.command == "add-documents":
+            return asyncio.run(cmd_add_documents(profile, args.count, not args.no_outliers))
         return asyncio.run({"init": cmd_init, "status": cmd_status, "verify": cmd_verify}[args.command](profile))
     except Refused as e:
         _say(f"refused: {e}")

@@ -274,6 +274,64 @@ def test_verify_refuses_an_unpaired_store(profile, use_client, monkeypatch, mark
     assert client.writes == []
 
 
+@UNPAIRED
+def test_add_documents_refuses_an_unpaired_store(profile, use_client, monkeypatch, marker, sqlite_token, message):
+    client = use_client(_Client({MARKER_COLLECTION: [marker], "Chunks": [{}]} if marker else {}))
+    if sqlite_token:
+        _sqlite(profile.sqlite_path, token=sqlite_token)
+    monkeypatch.setattr(local_dev, "add_documents", lambda *args: pytest.fail("added to an unpaired store"))
+
+    with pytest.raises(Refused, match=message):
+        asyncio.run(local_dev.cmd_add_documents(profile, 10, outliers=True))
+
+    assert client.writes == []
+
+
+@pytest.mark.parametrize("objects, sqlite_token, message", [
+    ({"Chunks": [{}], "Documents": [{}]}, None, "without the local development marker"),
+    ({}, None, "not initialized"),
+    ({MARKER_COLLECTION: [_dev_marker("abc", local_dev.INITIALIZING)], "Chunks": [{}]}, "abc", "did not finish"),
+], ids=["snapshot", "empty", "interrupted"])
+def test_add_documents_refuses_a_store_that_is_not_a_ready_development_pair(profile, use_client, monkeypatch,
+                                                                            objects, sqlite_token, message):
+    client = use_client(_Client(objects))
+    if sqlite_token:
+        _sqlite(profile.sqlite_path, token=sqlite_token)
+    monkeypatch.setattr(local_dev, "add_documents", lambda *args: pytest.fail("added to a store not ready"))
+
+    with pytest.raises(Refused, match=message):
+        asyncio.run(local_dev.cmd_add_documents(profile, 10, outliers=True))
+
+    assert client.writes == []
+
+
+def test_add_documents_writes_to_a_ready_pair(profile, use_client, monkeypatch):
+    client = use_client(_Client({MARKER_COLLECTION: [_dev_marker("abc")], "Chunks": [{}]}))
+    _sqlite(profile.sqlite_path, token="abc")
+    monkeypatch.setattr(local_dev.Profile, "from_env", classmethod(lambda cls: profile))
+    calls = []
+
+    async def add_documents(client, count, outliers):
+        calls.append((count, outliers))
+        return count
+
+    monkeypatch.setattr(local_dev, "add_documents", add_documents)
+
+    assert local_dev.main(["add-documents", "--count", "5", "--no-outliers"]) == 0
+    assert local_dev.main(["add-documents", "--count", "7"]) == 0
+
+    assert calls == [(5, False), (7, True)]
+    assert client.closed
+
+
+@pytest.mark.parametrize("count", ["-1", "1000001", "many"])
+def test_add_documents_rejects_a_count_out_of_range(count):
+    with pytest.raises(SystemExit) as exit_info:
+        local_dev.main(["add-documents", "--count", count])
+
+    assert exit_info.value.code == 2
+
+
 def test_reset_without_confirmation_changes_nothing(profile, use_client):
     client = use_client(_Client({MARKER_COLLECTION: [_dev_marker()], "Chunks": [{}]}))
     _sqlite(profile.sqlite_path)

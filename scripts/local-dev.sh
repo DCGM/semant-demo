@@ -8,6 +8,9 @@
 #   scripts/local-dev.sh down      stop Weaviate; its data volume and SQLite are kept
 #   scripts/local-dev.sh reset     show what would be destroyed; with CONFIRM=yes (or typed
 #                                  confirmation) drop both stores and reseed the corpus
+#   scripts/local-dev.sh add-documents
+#                                  add synthetic metadata-only documents: COUNT (default
+#                                  2000) and OUTLIERS=no (default yes: also years 311, 2879)
 #   scripts/local-dev.sh status | verify | logs
 #
 # Weaviate runs in the container semant-weaviate-local on the labelled Docker volume
@@ -172,6 +175,16 @@ cmd_reset() {
   local_dev reset --yes || die "reset failed; run make dev-reset again to start over"
 }
 
+cmd_add_documents() {
+  local count="${COUNT:-2000}" outliers="${OUTLIERS:-yes}"
+  [[ "$count" =~ ^[0-9]+$ ]] || die "COUNT must be a whole number, not '$count'"
+  case "$outliers" in yes) set -- ;; no) set -- --no-outliers ;; *) die "OUTLIERS must be yes or no, not '$outliers'" ;; esac
+  need_python
+  need_docker
+  check_owned
+  local_dev add-documents --count "$count" "$@"
+}
+
 cmd_status() {
   need_docker
   if ! container_running; then
@@ -191,6 +204,7 @@ case "$command" in
   backend) cmd_backend ;;
   frontend) cmd_frontend ;;
   reset) cmd_reset ;;
+  add-documents) cmd_add_documents ;;
   status) cmd_status ;;
   verify) need_python; need_docker; check_owned; local_dev verify ;;
   logs) exec docker logs "$NAME" ;;

@@ -100,7 +100,7 @@ def test_down_leaves_a_container_without_the_label(launcher):
     assert _changes(result.calls) == []
 
 
-@pytest.mark.parametrize("command", ["backend", "verify", "status"])
+@pytest.mark.parametrize("command", ["backend", "verify", "status", "add-documents"])
 def test_commands_refuse_a_container_on_another_port(launcher, command):
     result = launcher(command, STUB_PORT="127.0.0.1:8080")
 
@@ -116,6 +116,29 @@ def test_commands_refuse_a_container_publishing_grpc_elsewhere(launcher, command
     assert result.returncode == 1
     assert "publishes gRPC on '127.0.0.1:50051'" in result.stderr
     assert "python" not in result.calls and _changes(result.calls) == []
+
+
+@pytest.mark.parametrize("env, arguments", [
+    ({}, "--count 2000\n"),
+    ({"COUNT": "50", "OUTLIERS": "no"}, "--count 50 --no-outliers\n"),
+], ids=["defaults", "count-without-outliers"])
+def test_add_documents_passes_count_and_outliers_through_the_owned_container(launcher, env, arguments):
+    result = launcher("add-documents", **env)
+
+    assert result.returncode == 0, result.stderr
+    assert f"python -m tests.local_dev add-documents {arguments}" in result.calls
+
+
+@pytest.mark.parametrize("env, message", [
+    ({"COUNT": "2e3"}, "COUNT must be a whole number"),
+    ({"OUTLIERS": "maybe"}, "OUTLIERS must be yes or no"),
+], ids=["count", "outliers"])
+def test_add_documents_rejects_invalid_settings_before_touching_the_store(launcher, env, message):
+    result = launcher("add-documents", **env)
+
+    assert result.returncode == 1
+    assert message in result.stderr
+    assert result.calls == ""
 
 
 def test_reset_without_confirmation_and_terminal_only_shows_the_plan(launcher):
