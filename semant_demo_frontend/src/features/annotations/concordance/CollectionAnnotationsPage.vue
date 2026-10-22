@@ -252,6 +252,7 @@
 </template>
 
 <script setup lang="ts">
+import { plural } from 'src/shared/plural'
 import { computed, defineComponent, h, nextTick, reactive, ref, watch } from 'vue'
 import { QBtn, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
@@ -439,16 +440,12 @@ const nextRow = computed(() => {
   return index >= 0 ? store.rows[index + 1] ?? null : null
 })
 
-function plural (n: number) {
-  return `${n} annotation${n === 1 ? '' : 's'}`
-}
-
 /** Asks before deleting, and before a change to annotations not on this page. */
 function confirmed (action: ReviewAction, ids: string[], tagId?: string): Promise<boolean> {
   const offPage = ids.filter(id => !store.rows.some(r => r.id === id)).length
   if (action !== ReviewAction.delete && !offPage) return Promise.resolve(true)
   const tag = tagId ? tags.value.find(t => t.id === tagId)?.name : null
-  const lines = [`${VERB[action]} ${plural(ids.length)}${tag ? ` to "${tag}"` : ''}?`]
+  const lines = [`${VERB[action]} ${plural(ids.length, 'annotation')}${tag ? ` to "${tag}"` : ''}?`]
   if (offPage) lines.push(`${offPage} of them ${offPage === 1 ? 'is' : 'are'} not on this page.`)
   if (action === ReviewAction.delete) {
     lines.push('Deleted annotations cannot be restored. To keep a proposal as negative feedback, reject it instead.')

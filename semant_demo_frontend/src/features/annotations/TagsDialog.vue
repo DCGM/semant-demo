@@ -1,7 +1,16 @@
 <template>
-  <!-- Escape is handled on the card, so it can ask about unsaved changes first. -->
-  <q-dialog ref="dialogRef" @hide="onDialogHide" no-esc-dismiss no-backdrop-dismiss>
-    <q-card ref="cardRef" class="q-pa-sm" style="width: 900px" @keydown="onKeydown" @keyup="onKeyup">
+  <!-- Escape is handled here (on the dialog's root, which keeps focus when the card is
+       clicked), so it can ask about unsaved changes first. -->
+  <q-dialog
+    ref="dialogRef"
+    no-esc-dismiss
+    no-backdrop-dismiss
+    no-shake
+    @hide="onDialogHide"
+    @keydown="onKeydown"
+    @keyup="onKeyup"
+  >
+    <q-card ref="cardRef" class="q-pa-sm" style="width: 900px">
       <q-card-section>
         <div class="text-h4 text-grey-9 text-center">
           {{ dialogTitle }}

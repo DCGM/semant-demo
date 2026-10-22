@@ -9,8 +9,8 @@ const FIELD_ACTION = '.q-field__focusable-action'
  * Keyboard behaviour shared by the create/edit form dialogs (#479):
  * - `requestClose` closes at once when nothing was changed and otherwise asks before
  *   discarding, like Cancel;
- * - `onKeydown` and `onKeyup` (on the dialog's card) make Escape do the same, unless it
- *   closes an open menu (e.g. a select's options) instead;
+ * - `onKeydown` and `onKeyup` (on the q-dialog) make Escape do the same, unless it closes
+ *   an open menu (e.g. a select's options) instead;
  * - the fields' clear buttons are taken out of the Tab order (they appear and disappear
  *   with the field's value, so they are watched).
  */
