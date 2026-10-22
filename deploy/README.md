@@ -194,8 +194,8 @@ To roll back, build the previous tag the same way.
 Releases are made in the Topicer repository (its README, "Versions and releases").
 
 The server's `deploy/data/` is mounted at `/app/data`. At startup the API loads every
-`*.yaml` in `TOPICER_API_CONFIGS_DIR` (`/app/data/topicer`) as a config named after the file;
-the apps choose one with `TOPICER_CONFIG_NAME` (`openai-xjuric`). **A config that fails to load
+`*.yaml` in `TOPICER_API_CONFIGS_DIR` (`/app/data/topicer/configs`, top level only) as a config
+named after the file; the apps choose one with `TOPICER_CONFIG_NAME` (`llm-openrouter`). **A config that fails to load
 is only logged as a warning** (`Failed to load topicer config ...`) and is then missing; after
 a rebuild or a config change, check that the log line `Loaded topicer configurations: [...]`
 lists all of them. Config files hold provider keys and are not in this repository.
@@ -221,9 +221,16 @@ db_connection:
 vector. Topicer `v0.1.0` requires `stride` (e.g. `32`) in `CrossBertTopicer` configs.
 
 semANT charges AI suggestions to the daily allowance from the usage Topicer reports and sends `max_chunks` (`TOPICER_MAX_CHUNKS_PER_TAG`, 40) with every optimized stream (#408). This needs Topicer with DCGM/topicer#81 (`v0.1.0` and later); an older one ignores `max_chunks` and reports no usage, so every chunk or tag is charged its full reservation. A config's `max_chunks_ceiling` (default 200) must be at least `TOPICER_MAX_CHUNKS_PER_TAG`. For costs below the reservation, the provider must report cost (OpenRouter `usage.cost`) or the config must set `prices` per model; without either, cost is `unknown` and charged at least the reservation.
-Switched in production on 2026-10-17: `openai-xjuric` as above, `bert.yaml` with `stride: 32`
-(same spans as before on a synthetic check, now with confidences), `openai-xsucha`
-(`TagProposalV2`, no embeddings) unchanged.
+Production configs (#470), named after the method:
+
+- `llm-openrouter` — `LLMTopicer` on OpenRouter with Qwen embeddings, as above; used by semANT.
+  It replaces `openai-xjuric` (the same file under its old name), which stays until production
+  runs a release with `TOPICER_CONFIG_NAME=llm-openrouter`; change both files together until then.
+- `crossbert` — `CrossBertTopicer` (GPU), model in `/app/data/topicer/models`; not used by semANT.
+  It has no streaming endpoint, so it can't serve optimized suggestions.
+
+`openai-xsucha` (`TagProposalV2`, mDeBERTa NLI) was removed: nothing has called it since
+`propose_tags_routes.py` was deleted.
 
 ### In-app feedback storage
 

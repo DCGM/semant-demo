@@ -59,12 +59,11 @@ def test_default_constructor_reads_process_environment(monkeypatch):
     assert Config().SQL_DB_URL == "sqlite+aiosqlite:///from-process-env.db"
 
 
-def test_topicer_defaults_keep_previously_effective_values():
-    # The removed duplicate block was always overridden by these values.
+def test_topicer_defaults():
     config = Config(environ={})
 
     assert config.TOPICER_URL == "http://topicer:8089"
-    assert config.TOPICER_CONFIG_NAME == "openai"
+    assert config.TOPICER_CONFIG_NAME == "llm-openrouter"
     assert config.TOPICER_TIMEOUT == 600.0
     assert not hasattr(config, "TOPICER_READ_WRITE_TIMEOUT")
 
