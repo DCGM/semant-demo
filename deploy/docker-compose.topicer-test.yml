@@ -18,8 +18,7 @@ services:
     environment:
       # Own config dir: only configs for the test Weaviate, and none that load models onto the GPU.
       TOPICER_API_CONFIGS_DIR: /app/data/topicer-test/configs
-    ports:
-    - "127.0.0.1:8090:8089"
+    # No host port: the test apps reach it over semant_demo_test_topicer (host 8090 is taken).
     networks:
       - semant_demo_test_topicer
       - semant_demo_embedder
