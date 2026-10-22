@@ -109,12 +109,12 @@ async def test_every_stream_request_sends_the_configured_chunk_limit():
         seen.append((dict(request.url.params), request.content))
         return httpx.Response(200, text="")
 
-    client = TopicerClient("http://topicer", "openai-xjuric", 5.0, max_chunks_per_tag=20,
+    client = TopicerClient("http://topicer", "llm-openrouter", 5.0, max_chunks_per_tag=20,
                            transport=httpx.MockTransport(handler))
     for _ in range(2):
         [e async for e in client.propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc")]
 
-    assert [params for params, _ in seen] == [{"config_name": "openai-xjuric", "max_chunks": "20"}] * 2
+    assert [params for params, _ in seen] == [{"config_name": "llm-openrouter", "max_chunks": "20"}] * 2
     assert all(b'"db_request":{"collection_id":"col","document_id":"doc"}' in body.replace(b" ", b"")
                for _, body in seen)
 

@@ -87,7 +87,7 @@ class Config:
         
         # Topicer (AI assistance / tag proposal service)
         self.TOPICER_URL = env.get("TOPICER_URL", "http://topicer:8089")
-        self.TOPICER_CONFIG_NAME = env.get("TOPICER_CONFIG_NAME", "openai")
+        self.TOPICER_CONFIG_NAME = env.get("TOPICER_CONFIG_NAME", "llm-openrouter")
         self.TOPICER_TIMEOUT = float(env.get("TOPICER_TIMEOUT", 600.0))
         # Most chunks one optimized suggestion stream evaluates per tag, sent to Topicer as
         # max_chunks (semANT's policy; must not exceed Topicer's own max_chunks_ceiling).
