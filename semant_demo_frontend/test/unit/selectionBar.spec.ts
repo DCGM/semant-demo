@@ -55,7 +55,8 @@ describe('SelectionBar', () => {
       tagId: null,
       target: 10,
       saved: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
-      failed: [{ id: 'h', message: 'x', uncertain: false }, { id: 'i', message: 'y', uncertain: true }],
+      failed: [{ id: 'h', message: 'x', uncertain: false, version: 0 }, { id: 'i', message: 'y', uncertain: true, version: 2 }],
+      conflicts: [],
       missing: ['j'],
       unsynced: [],
       notSent: 0,
@@ -80,6 +81,7 @@ describe('SelectionBar', () => {
       target: 2,
       saved: ['a', 'b'],
       failed: [],
+      conflicts: [],
       missing: [],
       unsynced: ['c1:t', 'c2:t'],
       notSent: 0,
@@ -90,6 +92,30 @@ describe('SelectionBar', () => {
     expect(byTestId(wrapper, 'review-retry').text()).toContain('Update search')
     await byTestId(wrapper, 'review-retry').trigger('click')
     expect(wrapper.emitted('retry')).toHaveLength(1)
+  })
+
+  it('reports annotations changed by someone else apart from failures and offers to show them', async () => {
+    const report: ReviewReport = {
+      action: ReviewAction.reject,
+      tagId: null,
+      target: 5,
+      saved: ['a', 'b', 'c'],
+      failed: [],
+      conflicts: [{ id: 'd', version: 3 }, { id: 'e', version: 1 }],
+      missing: [],
+      unsynced: [],
+      notSent: 0,
+      error: null
+    }
+    const wrapper = mountBar({ selectedCount: 5, report })
+    const text = byTestId(wrapper, 'review-report').text()
+    expect(text).toContain('Rejected 3 of 5.')
+    expect(text).toContain('2 were changed by someone else since you selected them; not saved.')
+    expect(text).not.toContain('failed')
+    // Conflicts are not retried: sending them again would overwrite a change not seen yet.
+    expect(byTestId(wrapper, 'review-retry').exists()).toBe(false)
+    await byTestId(wrapper, 'review-show-changed').trigger('click')
+    expect(wrapper.emitted('show-changed')).toHaveLength(1)
   })
 
   it('disables actions while a review is running and shows its progress', () => {

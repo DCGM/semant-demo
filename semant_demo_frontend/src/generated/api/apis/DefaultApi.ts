@@ -29,6 +29,7 @@ import type {
   ChunkTagSyncRequest,
   Collection,
   CollectionChunk,
+  CollectionPerson,
   CollectionStats,
   CorpusOverview,
   CreateResponse,
@@ -106,6 +107,8 @@ import {
     CollectionToJSON,
     CollectionChunkFromJSON,
     CollectionChunkToJSON,
+    CollectionPersonFromJSON,
+    CollectionPersonToJSON,
     CollectionStatsFromJSON,
     CollectionStatsToJSON,
     CorpusOverviewFromJSON,
@@ -264,6 +267,7 @@ export interface DeleteTagApiTagsTagUuidDeleteRequest {
 export interface DeleteTagSpanApiTagSpansSpanIdDeleteRequest {
     spanId: string;
     collectionId: string;
+    expectedVersion?: number | null;
 }
 
 export interface DiscussSpanApiAiDiscussSpanPostRequest {
@@ -304,6 +308,10 @@ export interface GetCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGe
 }
 
 export interface GetCollectionMembersApiUserCollectionsCollectionIdMembersGetRequest {
+    collectionId: string;
+}
+
+export interface GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest {
     collectionId: string;
 }
 
@@ -348,6 +356,7 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     sort?: AnnotationSort;
     limit?: number;
     offset?: number;
+    annotationId?: Array<string> | null;
 }
 
 export interface QuestionApiQuestionPostRequest {
@@ -475,6 +484,7 @@ export interface UpdateTagSpanApiTagSpansSpanIdPatchRequest {
     spanId: string;
     collectionId: string;
     patchSpan: PatchSpan;
+    expectedVersion?: number | null;
 }
 
 /**
@@ -585,7 +595,7 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePostRequestOpts(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
      * @summary Bulk Update Tag Spans
      * @param {BulkUpdateSpansRequest} bulkUpdateSpansRequest 
      * @param {*} [options] Override http request option.
@@ -595,7 +605,7 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>>;
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
      * Bulk Update Tag Spans
      */
     bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse>;
@@ -820,16 +830,18 @@ export interface DefaultApiInterface {
      * Creates request options for deleteTagSpanApiTagSpansSpanIdDelete without sending the request
      * @param {string} spanId 
      * @param {string} collectionId Collection of the span; a span of another collection is not found
+     * @param {number} [expectedVersion] The span\&#39;s editVersion as the client knows it: when someone else wrote the span since, nothing is changed and the answer is 409 with the current span (&#x60;&#x60;current&#x60;&#x60;)
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     deleteTagSpanApiTagSpansSpanIdDeleteRequestOpts(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated.
+     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated. A span written by someone else since ``expected_version`` is not deleted (409).
      * @summary Delete Tag Span
      * @param {string} spanId 
      * @param {string} collectionId Collection of the span; a span of another collection is not found
+     * @param {number} [expectedVersion] The span\&#39;s editVersion as the client knows it: when someone else wrote the span since, nothing is changed and the answer is 409 with the current span (&#x60;&#x60;current&#x60;&#x60;)
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -837,7 +849,7 @@ export interface DefaultApiInterface {
     deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>>;
 
     /**
-     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated.
+     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated. A span written by someone else since ``expected_version`` is not deleted (409).
      * Delete Tag Span
      */
     deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
@@ -1154,6 +1166,30 @@ export interface DefaultApiInterface {
     getCollectionMembersApiUserCollectionsCollectionIdMembersGet(requestParameters: GetCollectionMembersApiUserCollectionsCollectionIdMembersGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<UserSearchResult>>;
 
     /**
+     * Creates request options for getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequestOpts(requestParameters: GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns the collection\'s owner and the users it is shared with, with their names (to name who created or changed its annotations). Owner and shared users.
+     * @summary Get Collection People
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    getCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRaw(requestParameters: GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CollectionPerson>>>;
+
+    /**
+     * Returns the collection\'s owner and the users it is shared with, with their names (to name who created or changed its annotations). Owner and shared users.
+     * Get Collection People
+     */
+    getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet(requestParameters: GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<CollectionPerson>>;
+
+    /**
      * Creates request options for getCollectionStatsApiUserCollectionsCollectionIdStatsGet without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
@@ -1385,6 +1421,7 @@ export interface DefaultApiInterface {
      * @param {AnnotationSort} [sort] 
      * @param {number} [limit] 
      * @param {number} [offset] 
+     * @param {Array<string>} [annotationId] Only these annotations
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1403,6 +1440,7 @@ export interface DefaultApiInterface {
      * @param {AnnotationSort} [sort] 
      * @param {number} [limit] 
      * @param {number} [offset] 
+     * @param {Array<string>} [annotationId] Only these annotations
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1659,7 +1697,7 @@ export interface DefaultApiInterface {
     reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequestOpts(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain and the ids that are no annotation of the collection (``find_annotation``). Nothing is rolled back.
+     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection, each expected at its version in ``expected_versions``. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain, those written by someone else since (``edit_conflict``) and the ids that are no annotation of the collection (``find_annotation``); ``versions`` the new versions. Nothing is rolled back.
      * @summary Review Collection Annotations
      * @param {string} collectionId 
      * @param {AnnotationReviewRequest} annotationReviewRequest 
@@ -1670,7 +1708,7 @@ export interface DefaultApiInterface {
     reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRaw(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationReviewResult>>;
 
     /**
-     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain and the ids that are no annotation of the collection (``find_annotation``). Nothing is rolled back.
+     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection, each expected at its version in ``expected_versions``. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain, those written by someone else since (``edit_conflict``) and the ids that are no annotation of the collection (``find_annotation``); ``versions`` the new versions. Nothing is rolled back.
      * Review Collection Annotations
      */
     reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationReviewResult>;
@@ -2057,17 +2095,19 @@ export interface DefaultApiInterface {
      * @param {string} spanId 
      * @param {string} collectionId Collection of the span; a span of another collection is not found
      * @param {PatchSpan} patchSpan 
+     * @param {number} [expectedVersion] The span\&#39;s editVersion as the client knows it: when someone else wrote the span since, nothing is changed and the answer is 409 with the current span (&#x60;&#x60;current&#x60;&#x60;)
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     updateTagSpanApiTagSpansSpanIdPatchRequestOpts(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
+     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
      * @summary Update Tag Span
      * @param {string} spanId 
      * @param {string} collectionId Collection of the span; a span of another collection is not found
      * @param {PatchSpan} patchSpan 
+     * @param {number} [expectedVersion] The span\&#39;s editVersion as the client knows it: when someone else wrote the span since, nothing is changed and the answer is 409 with the current span (&#x60;&#x60;current&#x60;&#x60;)
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2075,7 +2115,7 @@ export interface DefaultApiInterface {
     updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>>;
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
+     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
      * Update Tag Span
      */
     updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult>;
@@ -2322,7 +2362,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
      * Bulk Update Tag Spans
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>> {
@@ -2333,7 +2373,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
      * Bulk Update Tag Spans
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse> {
@@ -2838,6 +2878,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['collection_id'] = requestParameters['collectionId'];
         }
 
+        if (requestParameters['expectedVersion'] != null) {
+            queryParameters['expected_version'] = requestParameters['expectedVersion'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && this.configuration.accessToken) {
@@ -2858,7 +2902,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated.
+     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated. A span written by someone else since ``expected_version`` is not deleted (409).
      * Delete Tag Span
      */
     async deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>> {
@@ -2869,7 +2913,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated.
+     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated. A span written by someone else since ``expected_version`` is not deleted (409).
      * Delete Tag Span
      */
     async deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
@@ -3540,6 +3584,58 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet without sending the request
+     */
+    async getCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequestOpts(requestParameters: GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/people`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns the collection\'s owner and the users it is shared with, with their names (to name who created or changed its annotations). Owner and shared users.
+     * Get Collection People
+     */
+    async getCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRaw(requestParameters: GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CollectionPerson>>> {
+        const requestOptions = await this.getCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(CollectionPersonFromJSON));
+    }
+
+    /**
+     * Returns the collection\'s owner and the users it is shared with, with their names (to name who created or changed its annotations). Owner and shared users.
+     * Get Collection People
+     */
+    async getCollectionPeopleApiUserCollectionsCollectionIdPeopleGet(requestParameters: GetCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<CollectionPerson>> {
+        const response = await this.getCollectionPeopleApiUserCollectionsCollectionIdPeopleGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getCollectionStatsApiUserCollectionsCollectionIdStatsGet without sending the request
      */
     async getCollectionStatsApiUserCollectionsCollectionIdStatsGetRequestOpts(requestParameters: GetCollectionStatsApiUserCollectionsCollectionIdStatsGetRequest): Promise<runtime.RequestOpts> {
@@ -4071,6 +4167,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['offset'] != null) {
             queryParameters['offset'] = requestParameters['offset'];
+        }
+
+        if (requestParameters['annotationId'] != null) {
+            queryParameters['annotation_id'] = requestParameters['annotationId'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -4687,7 +4787,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain and the ids that are no annotation of the collection (``find_annotation``). Nothing is rolled back.
+     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection, each expected at its version in ``expected_versions``. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain, those written by someone else since (``edit_conflict``) and the ids that are no annotation of the collection (``find_annotation``); ``versions`` the new versions. Nothing is rolled back.
      * Review Collection Annotations
      */
     async reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRaw(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationReviewResult>> {
@@ -4698,7 +4798,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain and the ids that are no annotation of the collection (``find_annotation``). Nothing is rolled back.
+     * Approve (``pos``), reject (``neg``, kept), retag or delete up to 200 annotations of the collection, each expected at its version in ``expected_versions``. Best effort and per item: ``succeeded`` lists the changed annotations, ``failed`` the ones not changed or uncertain, those written by someone else since (``edit_conflict``) and the ids that are no annotation of the collection (``find_annotation``); ``versions`` the new versions. Nothing is rolled back.
      * Review Collection Annotations
      */
     async reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost(requestParameters: ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationReviewResult> {
@@ -5610,6 +5710,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['collection_id'] = requestParameters['collectionId'];
         }
 
+        if (requestParameters['expectedVersion'] != null) {
+            queryParameters['expected_version'] = requestParameters['expectedVersion'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
@@ -5633,7 +5737,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
+     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
      * Update Tag Span
      */
     async updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>> {
@@ -5644,7 +5748,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be.
+     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
      * Update Tag Span
      */
     async updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult> {

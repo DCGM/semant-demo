@@ -1,13 +1,14 @@
 
 # AnnotationIds
 
-The ids of all annotations matching a query when it was resolved (by id); the caller keeps them as a fixed set, so later changes of the filters or annotations never widen it.
+The ids of all annotations matching a query when it was resolved (by id); the caller keeps them as a fixed set, so later changes of the filters or annotations never widen it. ``versions``: each one\'s ``editVersion`` then, which review actions send back (#460).
 
 ## Properties
 
 Name | Type
 ------------ | -------------
 `ids` | Array&lt;string&gt;
+`versions` | { [key: string]: number; }
 
 ## Example
 
@@ -17,6 +18,7 @@ import type { AnnotationIds } from ''
 // TODO: Update the object below with actual values
 const example = {
   "ids": null,
+  "versions": null,
 } satisfies AnnotationIds
 
 console.log(example)

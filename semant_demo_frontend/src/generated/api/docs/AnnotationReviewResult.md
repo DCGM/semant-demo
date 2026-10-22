@@ -1,7 +1,7 @@
 
 # AnnotationReviewResult
 
-The outcome of a review action per annotation (best effort, ADR 0002; nothing is rolled back). ``succeeded``: annotations changed or deleted. ``failed``: ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted meanwhile) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved, tag-filtered search does not reflect it; ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion).
+The outcome of a review action per annotation (best effort, ADR 0002; nothing is rolled back). ``succeeded``: annotations changed or deleted, and those already as the action asks. ``failed``: ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted meanwhile), ``edit_conflict`` (written by someone else since the expected version; not changed) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved, tag-filtered search does not reflect it; ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion). ``versions``: the ``editVersion`` of each changed annotation after the action, and the current one of each conflicting annotation.
 
 ## Properties
 
@@ -11,6 +11,7 @@ Name | Type
 `succeeded` | Array&lt;string&gt;
 `failed` | [Array&lt;StepFailure&gt;](StepFailure.md)
 `unattempted` | Array&lt;string&gt;
+`versions` | { [key: string]: number; }
 
 ## Example
 
@@ -23,6 +24,7 @@ const example = {
   "succeeded": null,
   "failed": null,
   "unattempted": null,
+  "versions": null,
 } satisfies AnnotationReviewResult
 
 console.log(example)

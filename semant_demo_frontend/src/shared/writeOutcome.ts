@@ -48,8 +48,8 @@ export function spanWriteWarning (result: WriteResult, action: 'saved' | 'delete
 
 /** The span part of a span write result, without the outcome fields. */
 export function spanOf (result: TagSpanWriteResult): TagSpan {
-  const { id, chunkId, tagId, start, end, type, reason, confidence } = result
-  return { id, chunkId, tagId, start, end, type, reason, confidence }
+  const { id, chunkId, tagId, start, end, type, reason, confidence, editVersion } = result
+  return { id, chunkId, tagId, start, end, type, reason, confidence, editVersion }
 }
 
 /**

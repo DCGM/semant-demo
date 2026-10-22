@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 from uuid import UUID
 from datetime import datetime
@@ -13,6 +15,15 @@ class Collection(BaseModel):
     color: str
     shared_with_count: int = 0
     is_shared_with_me: bool = False
+
+
+class CollectionPerson(BaseModel):
+    """Someone who can use a collection now: its owner or a user it is shared with, by id,
+    to name the actors of its annotations (#460)."""
+    id: UUID
+    name: str | None = None
+    username: str | None = None
+    role: Literal["owner", "member"]
 
 
 class PostCollection(BaseModel):

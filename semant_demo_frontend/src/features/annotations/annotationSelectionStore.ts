@@ -6,12 +6,20 @@ import { createScope } from 'src/shared/api'
 /** Annotations one selection may hold; the backend resolves at most this many matches. */
 export const MAX_SELECTION = 5000
 
+/** A selected annotation and the `editVersion` it had when it was added (#460). */
+export type SelectionEntry = readonly [id: string, version: number]
+
 /**
  * The annotations a researcher chose in one collection's workspace (#459): the checked
  * annotations as explicit ids and the focused occurrence (the one whose source is open).
  * The concordance writes it; statistics and cluster views read the same ids. Nothing here
  * is a query: an empty selection is empty, "all matches" is added as the ids the server
  * resolved at that moment, and changing filters or pages never adds or removes members.
+ *
+ * Each member keeps the `editVersion` it had when it was added (#460); a review sends it, so
+ * an annotation someone else changed since it was selected is refused, not overwritten. Only
+ * this user's own saved writes move it on (`noteVersions`); "Show changed" selects the
+ * refused ones again at their current versions (`replace`).
  *
  * Entering another collection starts afresh; signing out or another account clears it
  * (`app/session.ts`). Writers use `captureScope` to drop answers of a collection left meanwhile and
@@ -21,6 +29,8 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
   const scope = createScope()
   const collectionId = ref<string | null>(null)
   const ids = ref<Set<string>>(new Set())
+  /** The version each member had when it was added, moved on by this user's saved writes. */
+  let versions = new Map<string, number>()
   /** Changes with every change of the members, so a review of them can stop (`captureMembership`). */
   let revision = 0
   /** The row whose source context is open, as the latest page that lists it shows it. */
@@ -33,6 +43,7 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
 
   function setIds (next: Set<string>) {
     ids.value = next
+    versions = new Map([...versions].filter(([id]) => next.has(id)))
     revision++
   }
 
@@ -50,13 +61,37 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
     }
   }
 
-  /** Adds the ids unless the selection would exceed `MAX_SELECTION`; false then, and nothing changes. */
-  function add (list: Iterable<string>): boolean {
+  /** Adds the annotations unless the selection would exceed `MAX_SELECTION`; false then, and
+   * nothing changes. A member already selected keeps the version it was selected at. */
+  function add (entries: Iterable<SelectionEntry>): boolean {
     const next = new Set(ids.value)
-    for (const id of list) next.add(id)
+    const added: SelectionEntry[] = []
+    for (const [id, version] of entries) {
+      if (!next.has(id)) added.push([id, version])
+      next.add(id)
+    }
     if (next.size > MAX_SELECTION) return false
+    for (const [id, version] of added) versions.set(id, version)
     setIds(next)
     return true
+  }
+
+  /** Selects exactly these annotations at these versions. */
+  function replace (entries: Iterable<SelectionEntry>) {
+    versions = new Map(entries)
+    setIds(new Set(versions.keys()))
+  }
+
+  /** The version a review of `id` expects. */
+  function versionOf (id: string): number {
+    return versions.get(id) ?? 0
+  }
+
+  /** This user's writes saved these versions; members keep them (not a change of the members). */
+  function noteVersions (saved: Record<string, number>) {
+    for (const [id, version] of Object.entries(saved)) {
+      if (versions.has(id)) versions.set(id, version)
+    }
   }
 
   function remove (list: Iterable<string>) {
@@ -65,8 +100,8 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
     setIds(next)
   }
 
-  function toggle (id: string, value?: boolean): boolean {
-    if (value ?? !ids.value.has(id)) return add([id])
+  function toggle (id: string, version: number, value?: boolean): boolean {
+    if (value ?? !ids.value.has(id)) return add([[id, version]])
     remove([id])
     return true
   }
@@ -112,6 +147,9 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
     focusedGone,
     enter,
     add,
+    replace,
+    versionOf,
+    noteVersions,
     remove,
     toggle,
     retain,

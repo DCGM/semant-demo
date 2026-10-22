@@ -1,8 +1,8 @@
 """Application errors that services and adapters raise independently of the storage SDK.
 
 ``create_app`` maps them to HTTP responses (``NotFoundError`` -> 404,
-``InvalidRequestError`` -> 400, ``ServiceUnavailableError`` -> 503, ``IncompleteWriteError``
--> 500 with a structured body).
+``InvalidRequestError`` -> 400, ``ServiceUnavailableError`` -> 503, ``IncompleteWriteError`` -> 500
+and ``EditConflictError`` -> 409 with a structured body).
 Other storage/SDK failures are not wrapped: they propagate and become 500 responses.
 """
 
@@ -40,3 +40,17 @@ class IncompleteWriteError(Exception):
     def body(self) -> dict:
         return {"detail": self.detail, "step": self.step, "completed": self.completed,
                 "uncertain": self.uncertain}
+
+
+class EditConflictError(Exception):
+    """An object was written by someone else since the version the caller expected (#460):
+    nothing was changed. ``create_app`` answers 409 with ``detail`` and ``current`` (the
+    object as stored now, so the client can show it instead of its stale copy)."""
+
+    def __init__(self, detail: str, current: dict):
+        super().__init__(detail)
+        self.detail = detail
+        self.current = current
+
+    def body(self) -> dict:
+        return {"detail": self.detail, "current": self.current}
