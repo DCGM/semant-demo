@@ -1,6 +1,7 @@
 services:
-  topicer:
-    hostname: topicer
+  # Not `topicer`: both Topicers are on semant_demo_embedder, where the service name is a DNS
+  # alias, so the same name would let an app reach the other instance's Topicer (#473).
+  topicer-test:
     # Named after TOPICER_VERSION below, so `docker ps` shows the running release.
     image: semant-demo-topicer:v0.1.0
     build:
@@ -14,8 +15,11 @@ services:
     env_file:
       - path: .env
         required: true
+    environment:
+      # Own config dir: only configs for the test Weaviate, and none that load models onto the GPU.
+      TOPICER_API_CONFIGS_DIR: /app/data/topicer-test/configs
     ports:
-    - "127.0.0.1:8089:8089"
+    - "127.0.0.1:8090:8089"
     networks:
       - semant_demo_test_topicer
       - semant_demo_embedder
@@ -24,18 +28,12 @@ services:
     - './data:/app/data'
     restart: always
     command: "python run.py"
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
 
 networks:
   semant_demo_test_topicer:
     name: semant_demo_test_topicer
     driver: bridge
+    external: true
   semant_demo_test_database:
     name: semant_demo_test_database
     external: true
