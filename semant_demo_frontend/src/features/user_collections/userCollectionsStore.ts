@@ -96,14 +96,15 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
       if (inSession()) loading.value = false
     }
   }
-  const updateCollection = async (collectionId: string, collectionData: PatchCollection) => {
+  /** Whether the update was saved (failures are reported here and not rethrown). */
+  const updateCollection = async (collectionId: string, collectionData: PatchCollection): Promise<boolean> => {
     const notif = ongoingNotification('Updating collection...')
     const inSession = captureSession()
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.update(collectionId, collectionData)
-      if (!inSession()) return notif.dismiss()
+      if (!inSession()) { notif.dismiss(); return false }
       const index = collections.value.findIndex((c) => c.id === collectionId)
       if (index !== -1) {
         collections.value[index] = data
@@ -112,11 +113,13 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
         activeCollection.value = data
       }
       notif.success('Collection updated')
+      return true
     } catch (err) {
-      if (!inSession()) return notif.dismiss()
+      if (!inSession()) { notif.dismiss(); return false }
       error.value = 'Failed to update collection'
       console.error('Error updating collection:', err)
       notif.error('Failed to update collection')
+      return false
     } finally {
       if (inSession()) loading.value = false
     }
