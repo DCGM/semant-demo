@@ -128,6 +128,7 @@ import { Collection, UserSearchResult } from 'src/generated/api'
 import useShareCollectionsDialog from './useShareCollectionsDialog'
 import { collectionRights } from './permissions'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
+import { plural } from 'src/shared/plural'
 import { countAnnotationsInCollections } from 'src/features/annotations/annotationCounts'
 
 interface Props {
@@ -236,11 +237,11 @@ const handleBulkDelete = () => {
   const ids = selected.value.map(c => c.id)
   confirmDelete({
     title: 'Delete Selected Collections',
-    message: `Delete ${count} selected collection${count === 1 ? '' : 's'}?`,
+    message: `Delete ${plural(count, 'selected collection')}?`,
     okLabel: 'Delete selected',
     count: () => countAnnotationsInCollections(ids)
   }).onOk(() => {
-    emit('deleteMany', selected.value.map(c => c.id))
+    emit('deleteMany', ids)
     selected.value = []
   })
 }

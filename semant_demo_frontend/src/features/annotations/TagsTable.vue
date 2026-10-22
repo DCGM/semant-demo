@@ -164,6 +164,7 @@ import { PostTag, Tag, PatchTag } from 'src/generated/api'
 import CreateButton from 'src/shared/ui/CreateButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
+import { plural } from 'src/shared/plural'
 import { countAnnotations } from './annotationCounts'
 
 const route = useRoute()
@@ -231,7 +232,7 @@ const handleBulkDelete = () => {
   const ids = selected.value.map(tag => tag.id)
   confirmDelete({
     title: 'Delete Selected Tags',
-    message: `Delete ${count} selected tag${count === 1 ? '' : 's'}?`,
+    message: `Delete ${plural(count, 'selected tag')}?`,
     okLabel: 'Delete selected',
     count: () => countAnnotations(collectionId.value, ids)
   }).onOk(async () => {

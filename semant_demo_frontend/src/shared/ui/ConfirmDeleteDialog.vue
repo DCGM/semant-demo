@@ -38,6 +38,7 @@
       <q-card-actions align="right">
         <q-btn flat label="Cancel" color="primary" @click="onDialogCancel" />
         <q-btn
+          ref="deleteButton"
           unelevated
           :label="props.okLabel ?? 'Delete'"
           color="negative"
@@ -50,8 +51,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useDialogPluginComponent } from 'quasar'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { QBtn, useDialogPluginComponent } from 'quasar'
+import { plural } from 'src/shared/plural'
 import type { AnnotationCounter, AnnotationCounts } from 'src/features/annotations/annotationCounts'
 
 const CONFIRM_WORD = 'DELETE'
@@ -72,22 +74,27 @@ const state = ref<'counting' | 'counted' | 'failed'>('counting')
 const counts = ref<AnnotationCounts | null>(null)
 const typed = ref('')
 
-const hasAnnotations = computed(() => !!counts.value && counts.value.approved + counts.value.suggestions > 0)
+const hasAnnotations = computed(() =>
+  !!counts.value && counts.value.approved + counts.value.suggestions + counts.value.rejected > 0
+)
 // Unknown counts are treated as "there may be annotations".
 const mustType = computed(() => state.value === 'failed' || hasAnnotations.value)
 const canDelete = computed(() =>
   state.value !== 'counting' && (!mustType.value || typed.value.trim() === CONFIRM_WORD)
 )
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 const annotationsText = computed(() => {
   if (!counts.value) return ''
-  const { approved, suggestions } = counts.value
+  const { approved, suggestions, rejected } = counts.value
   const parts = []
-  if (approved) parts.push(plural(approved, 'approved annotation', 'approved annotations'))
-  if (suggestions) parts.push(plural(suggestions, 'unresolved AI suggestion', 'unresolved AI suggestions'))
-  return parts.join(' and ')
+  if (approved) parts.push(plural(approved, 'approved annotation'))
+  if (suggestions) parts.push(plural(suggestions, 'unresolved AI suggestion'))
+  if (rejected) parts.push(plural(rejected, 'rejected suggestion'))
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts.join('')
 })
+
+// Without annotations it is a plain confirmation, so Enter deletes as before.
+const deleteButton = ref<QBtn | null>(null)
 
 const confirm = () => {
   if (canDelete.value) onDialogOK()
@@ -97,6 +104,10 @@ onMounted(async () => {
   try {
     counts.value = await props.count()
     state.value = 'counted'
+    if (!mustType.value) {
+      await nextTick()
+      ;(deleteButton.value?.$el as HTMLElement | undefined)?.focus()
+    }
   } catch (err) {
     console.error('Counting annotations failed', err)
     state.value = 'failed'
