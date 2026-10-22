@@ -41,6 +41,21 @@ annotations with their derived text, positions and vectors (#328), chunk tag ref
 search classifications. Search for e.g. `Jan Novák`; open *Kroniky a dopisy* to see the
 annotated Document view. This small corpus is for checking workflows, not search quality.
 
+**More documents.** For the corpus overview (`/corpus`) three documents are too few:
+`make dev-add-documents` adds 2,000 synthetic documents with bibliographic metadata only
+(`tests/synthetic_documents.py`): years 1600–2000, mostly 1850–1940; the libraries `mzk`,
+`nkp`, `svkhk` and `vkol`; the languages `ces`, its alias `cze`, `deu`, `lat` and `slk`; Czech,
+German and Latin titles; and some values missing. It also adds the two outliers of the real
+corpus, the years 311 and 2879, unless `OUTLIERS=no`. A larger `COUNT` (at most 1,000,000)
+gives a corpus for measuring aggregates; 2,000 documents take a few seconds. When the store
+has no `library` property (the fixture schema lacks it, #128), it is declared as production
+has it, `text` with `field` tokenization.
+Document `n` is always the same and existing ones are skipped, so running again adds
+nothing and a larger `COUNT` adds the difference. The documents have no chunks, so Search
+and Document view do not show them; `make dev-verify` reports them as one difference and
+`make dev-reset` removes them. A running backend keeps its corpus overview for up to
+`CORPUS_OVERVIEW_MAX_AGE` seconds (600); restart `make dev-backend` to see them at once.
+
 **Hot reload.** Saving a Vue/TypeScript file updates the open page through Vite HMR. Saving
 a Python file under `semant_demo_backend/semant_demo/` restarts the backend (Uvicorn
 `--reload`); the databases are not touched. Changes to `semant_demo_backend/tests/`
@@ -71,6 +86,7 @@ say nothing about model quality. To use a real service, see [section 6](#6-real-
 | `make dev-down` | Stop Weaviate. Data (yours and the seed) and accounts are kept. |
 | `make dev-status` | Container state, object counts, users and whether Weaviate and SQLite belong together. |
 | `make dev-verify` | Compare the stores with the seeded corpus (ids, collection owners and shares, users, annotations); non-zero exit when your edits differ from it. |
+| `make dev-add-documents` | Add synthetic metadata-only documents (`COUNT`, default 2000; `OUTLIERS=no`), see [More documents](#1-quick-start-the-seeded-local-application). Writes only to this checkout's pair, like the commands above. |
 | `make dev-reset` | Show what would be destroyed, then ask you to type `reset`. Non-interactively (agents) use `make dev-reset CONFIRM=yes`. Drops everything in both development stores and reseeds the identical corpus. Refuses while the backend runs, and refuses stores that are not this checkout's pair (see below). |
 
 Where the data lives:
