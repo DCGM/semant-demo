@@ -469,7 +469,7 @@ async def provider_for(provider: TopicerClient, config_name: str | None) -> Topi
     if config_name is None or config_name == provider.config_name:
         return provider
     if config_name not in await topicer_configs(provider):
-        raise InvalidRequestError("Unknown AI model")
+        raise InvalidRequestError("Unknown AI model")  # the frontend recognises this detail (UNKNOWN_MODEL_DETAIL)
     return provider.with_config(config_name)
 
 

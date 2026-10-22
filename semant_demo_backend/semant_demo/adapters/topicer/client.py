@@ -21,6 +21,7 @@ above its own safety ceiling.
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import logging
@@ -51,7 +52,8 @@ class TopicerError(RuntimeError):
     class and HTTP status only, never Topicer's URL, its response or the request text.
 
     ``no_work``: Topicer certainly ran no model for the request (it could not be connected
-    to, or refused the request before inference with 422); otherwise its usage is unknown.
+    to, or refused the request before inference: 404 unknown configuration, 409 method not
+    supported by the configuration, 422 invalid request); otherwise its usage is unknown.
     """
 
     def __init__(self, message: str, *, no_work: bool = False):
@@ -65,8 +67,11 @@ def _failure(e: Exception) -> str:
     return type(e).__name__
 
 
+_REFUSED_BEFORE_INFERENCE = {404, 409, 422}
+
+
 def _error(e: Exception) -> TopicerError:
-    refused = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 422
+    refused = isinstance(e, httpx.HTTPStatusError) and e.response.status_code in _REFUSED_BEFORE_INFERENCE
     return TopicerError(_failure(e), no_work=refused or isinstance(e, httpx.ConnectError))
 
 
@@ -178,6 +183,7 @@ class TopicerClient:
         self.max_chunks_per_tag = max_chunks_per_tag
         self.transport = transport
         self._configs: tuple[float, list[str]] | None = None
+        self._configs_read: asyncio.Future[list[str]] | None = None
 
     def with_config(self, config_name: str) -> "TopicerClient":
         """The same Topicer and settings with another of its configurations (#189)."""
@@ -194,9 +200,21 @@ class TopicerClient:
         """Call ``GET /v1/configs``: the names of the configurations Topicer has loaded.
 
         A list read in the last ``CONFIGS_MAX_AGE`` seconds is reused; failures are not.
+        Concurrent callers share one request, which a cancelled caller does not cancel.
         """
         if self._configs is not None and time.monotonic() - self._configs[0] < CONFIGS_MAX_AGE:
             return list(self._configs[1])
+        if self._configs_read is None:
+            self._configs_read = asyncio.ensure_future(self._read_configs())
+            self._configs_read.add_done_callback(self._configs_read_done)
+        return list(await asyncio.shield(self._configs_read))
+
+    def _configs_read_done(self, read: asyncio.Future[list[str]]) -> None:
+        self._configs_read = None
+        if not read.cancelled() and read.exception() is None:  # also marks a failure as retrieved
+            self._configs = (time.monotonic(), read.result())
+
+    async def _read_configs(self) -> list[str]:
         path = "/v1/configs"
         try:
             async with self._client(CONFIGS_TIMEOUT) as client:
@@ -208,7 +226,6 @@ class TopicerClient:
             raise _error(e) from e
         if not isinstance(data, list) or not all(isinstance(name, str) for name in data):
             raise TopicerError("configs is not a list of names")
-        self._configs = (time.monotonic(), list(data))
         return data
 
     async def propose_for_text(self, *, chunk_id: str, text: str, tags: list[TopicerTag]) -> TopicerProposals:

@@ -186,6 +186,7 @@ describe('confirmation before a large AI run', () => {
     const wrapper = await runAi(1)
 
     expect(wrapper.find('[data-testid="ai-model-select"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ai-model-unavailable"]').text()).toMatch(/the default model is used/)
     expect(bodies.map((b) => b.config_name)).toEqual([undefined])
   })
 })

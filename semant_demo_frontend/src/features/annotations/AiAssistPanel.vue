@@ -29,6 +29,9 @@
         :disable="aiAssist.isRunning.value"
       />
     </template>
+    <div v-else-if="topicerModel.failed" class="text-caption text-grey-7 q-mb-sm" data-testid="ai-model-unavailable">
+      The AI models could not be listed; the default model is used.
+    </div>
 
     <div class="ai-section-label">
       Tags
@@ -447,6 +450,8 @@ async function confirmLargeRun(collectionId: string, documentId: string, tagCoun
 
 async function onRunAi() {
   if (!selectedAiTagIds.value.length || isPreparingRun.value) return
+  // Not awaited: an outdated or failed list is read again for the next run.
+  void topicerModel.load()
   const req = {
     collectionId: props.collectionId,
     documentId: props.documentId,

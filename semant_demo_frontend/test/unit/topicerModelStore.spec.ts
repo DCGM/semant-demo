@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
+import { MAX_AGE_MS, useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
 import { muteConsole } from './console'
 
 // The model for AI suggestions (#189): Topicer's configurations, the server default
@@ -26,6 +26,10 @@ describe('useTopicerModelStore', () => {
   beforeEach(() => {
     localStorage.clear()
     getConfigs.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('uses the server default until another model is picked, also before the list is read', async () => {
@@ -82,7 +86,7 @@ describe('useTopicerModelStore', () => {
     const model = pageLoad()
     await model.load()
 
-    expect([model.loaded, model.options, model.chosenConfigName()]).toEqual([false, [], null])
+    expect([model.loaded, model.failed, model.options, model.chosenConfigName()]).toEqual([false, true, [], null])
     expect(warn).toHaveBeenCalledWith('Could not load the AI models for suggestions', expect.any(Error))
 
     listed(['llm', 'crossbert'])
@@ -95,5 +99,29 @@ describe('useTopicerModelStore', () => {
     await model.reload()
     expect(getConfigs).toHaveBeenCalledTimes(3)
     expect(model.chosenConfigName()).toBeNull()
+  })
+
+  it('reads an outdated list again and keeps it when that read fails', async () => {
+    vi.useFakeTimers()
+    const warn = muteConsole('warn')
+    listed(['llm', 'crossbert'])
+    const model = pageLoad()
+    await model.load()
+    model.selected = 'crossbert'
+
+    vi.advanceTimersByTime(MAX_AGE_MS - 1)
+    await model.load()
+    expect(getConfigs).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(2)
+    getConfigs.mockRejectedValueOnce(new Error('Topicer unavailable'))
+    await model.load()
+    expect(getConfigs).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalled()
+    expect([model.loaded, model.failed, model.chosenConfigName()]).toEqual([true, true, 'crossbert'])
+
+    listed(['llm', 'crossbert', 'qwen'])
+    await model.load()
+    expect([model.options, model.failed]).toEqual([['llm', 'crossbert', 'qwen'], false])
   })
 })

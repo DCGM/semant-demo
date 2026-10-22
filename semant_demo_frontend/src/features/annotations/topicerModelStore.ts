@@ -6,15 +6,20 @@ import { useApi } from 'src/shared/api'
  * The Topicer configuration (AI model) for AI suggestions (#189), shared by the AI Assist
  * panel and suggestions on a selection.
  *
- * The configurations are the ones Topicer has loaded (`GET /api/ai/topicer_configs`), read
- * once and again by `reload()` (after the backend refused a chosen model); a failed read
- * leaves the list unloaded (no picker, the server default is used) and is retried by the
- * next `load()`. The server default is always offered, also when Topicer does not list it.
- * The choice is remembered per browser; a remembered name that is not offered falls back
- * to the default.
+ * The configurations are the ones Topicer has loaded (`GET /api/ai/topicer_configs`).
+ * `load()` (panel mount, every run) reads them when they are older than `MAX_AGE_MS` or
+ * were never read, `reload()` at once (after the backend refused the chosen model as
+ * unknown). Until a read succeeds there is no picker and the server default is used
+ * (`failed` says why). The server default is always offered, also when Topicer does not
+ * list it. The choice is remembered per browser; a remembered name that is not offered
+ * falls back to the default.
  */
 
 const STORAGE_KEY = 'semant.topicerConfig'
+/** Age after which `load()` reads the list again (a Topicer redeploy may change it). */
+export const MAX_AGE_MS = 5 * 60_000
+/** The backend's `detail` for a request naming a model Topicer does not list. */
+export const UNKNOWN_MODEL_DETAIL = 'Unknown AI model'
 
 function readStored (): string | null {
   try {
@@ -37,6 +42,8 @@ export const useTopicerModelStore = defineStore('topicerModel', () => {
   const configs = ref<string[]>([])
   const defaultConfig = ref<string | null>(null)
   const loaded = ref(false)
+  const failed = ref(false)
+  let loadedAt = 0
   const stored = ref<string | null>(readStored())
   let loading: Promise<void> | null = null
 
@@ -61,16 +68,20 @@ export const useTopicerModelStore = defineStore('topicerModel', () => {
       configs.value = response.configs
       defaultConfig.value = response.defaultConfig
       loaded.value = true
+      failed.value = false
+      loadedAt = Date.now()
     } catch (e) {
       console.warn('Could not load the AI models for suggestions', e)
+      // A list read earlier stays in use.
+      failed.value = true
     } finally {
       loading = null
     }
   }
 
-  /** Read the list unless it was read already; concurrent calls share one request. */
+  /** Read the list unless it was read in the last `MAX_AGE_MS`; concurrent calls share one request. */
   async function load (): Promise<void> {
-    if (loaded.value) return
+    if (loaded.value && Date.now() - loadedAt < MAX_AGE_MS) return
     await (loading ??= read())
   }
 
@@ -84,5 +95,5 @@ export const useTopicerModelStore = defineStore('topicerModel', () => {
     return selected.value !== null && selected.value !== defaultConfig.value ? selected.value : null
   }
 
-  return { configs, defaultConfig, loaded, options, selected, load, reload, chosenConfigName }
+  return { configs, defaultConfig, loaded, failed, options, selected, load, reload, chosenConfigName }
 })

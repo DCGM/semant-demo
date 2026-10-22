@@ -187,7 +187,7 @@ describe('useAiAssistance', () => {
     expect(bodies().map((b) => b.config_name)).toEqual([undefined, undefined, 'crossbert', 'crossbert'])
   })
 
-  it('reads the model list again when the backend refuses a request that named a model', async () => {
+  it('reads the model list again when the backend refuses the named model as unknown', async () => {
     muteConsole('error')
     const reload = vi.spyOn(useTopicerModelStore(), 'reload').mockResolvedValue()
     const refused = () => Promise.resolve(new Response(JSON.stringify({ detail: 'Unknown AI model' }), { status: 400 }))
@@ -196,11 +196,14 @@ describe('useAiAssistance', () => {
 
     await ai.run({ ...request('d1'), configName: 'gone' })
     await ai.run(request('d1'))
+    vi.mocked(globalThis.fetch).mockImplementationOnce(() =>
+      Promise.resolve(new Response(JSON.stringify({ detail: 'tag_ids must not be empty' }), { status: 400 })))
+    await ai.run({ ...request('d1'), configName: 'gone' }) // another refusal: the list is not outdated
     await ai.runOnSelection({
       collectionId: 'c', documentId: 'd1', chunkIds: ['x'], selectionStart: 0, selectionEnd: 3, tagIds: ['t'], configName: 'gone'
     })
 
-    expect(ai.lastError.value).toBe('Unknown AI model')
+    expect(ai.lastSelectionError.value).toBe('Unknown AI model')
     expect(reload).toHaveBeenCalledTimes(2)
   })
 

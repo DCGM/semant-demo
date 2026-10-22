@@ -1,5 +1,6 @@
 """Topicer failures name only the error class or HTTP status, in logs and in suggestion events (#301);
 reported usage, the per-tag chunk limit and the stream's usage summary (#408)."""
+import asyncio
 import json
 
 import httpx
@@ -150,7 +151,8 @@ async def test_a_malformed_summary_is_not_yielded(broken):
 
 
 @pytest.mark.parametrize("handler, no_work", [
-    (_failing(422), True), (_unreachable, True), (_failing(500), False), (_failing(429), False)])
+    (_failing(422), True), (_failing(404), True), (_failing(409), True), (_unreachable, True),
+    (_failing(500), False), (_failing(429), False)])
 async def test_only_certainly_unprocessed_requests_are_marked_as_no_work(handler, no_work):
     with pytest.raises(TopicerError) as raised:
         async for _ in _client(handler).propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc"):
@@ -212,6 +214,25 @@ async def test_the_config_list_is_reused_for_a_while_and_a_failure_is_not(monkey
 
     # Not the proposal timeout: listing needs no inference.
     assert timeouts == [topicer_client.CONFIGS_TIMEOUT] * 3
+
+
+async def test_concurrent_config_list_reads_share_one_request():
+    requests, release = [], asyncio.Event()
+
+    async def handler(request):
+        requests.append(request)
+        await release.wait()
+        return httpx.Response(200, json=["a"])
+    client = _client(handler)
+
+    waiters = [asyncio.create_task(client.list_configs()) for _ in range(3)]
+    await asyncio.sleep(0.01)
+    waiters[0].cancel()  # one caller gone: the others still get the shared answer
+    release.set()
+    results = await asyncio.gather(*waiters, return_exceptions=True)
+
+    assert len(requests) == 1
+    assert isinstance(results[0], asyncio.CancelledError) and results[1:] == [["a"], ["a"]]
 
 
 async def test_another_config_keeps_the_other_settings():
